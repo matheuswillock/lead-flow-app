@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { updateTaskUseCase } from "@/app/api/useCases/task/UpdateTaskUseCase";
+import { invalidateTeamCalendarCache, invalidateLeadActivitiesCache } from "@/lib/cache/invalidation";
 
 const bodySchema = z.object({
   title: z.string().min(1).max(200),
@@ -54,6 +55,12 @@ export async function PATCH(
       return NextResponse.json(result, { status });
     }
 
+    const teamId = teamAccess.access.teamId;
+    invalidateTeamCalendarCache({ teamId });
+    const leadId = (result.result as { task?: { leadId?: string } } | null)?.task?.leadId;
+    if (leadId) {
+      invalidateLeadActivitiesCache({ leadId });
+    }
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error("[TasksByIdRoute][PATCH] Erro:", error);

@@ -166,7 +166,10 @@ export class LeadUseCase implements ILeadUseCase {
   }
 
   async createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
-    const output = await this.createLeadInternal(supabaseId, data, true, teamId);
+    const output = await this.createLeadInternal(supabaseId, data, true, teamId, {
+      body: "Lead criado via importação manual",
+      payload: { source: "import_manual" },
+    });
 
     if (output.isValid && data.status === LeadStatus.contract_finalized && output.result?.id) {
       const amount = Number(data.ticket ?? data.currentValue ?? 0);

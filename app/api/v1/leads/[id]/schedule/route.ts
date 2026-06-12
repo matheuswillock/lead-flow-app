@@ -6,6 +6,7 @@ import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadSchedul
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
+import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
 
 const scheduleSchema = z.object({
   date: z.string().datetime().optional(),
@@ -123,6 +124,7 @@ export async function POST(
       return NextResponse.json(result, { status: 400 });
     }
 
+    invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(result, { status: existingSchedule ? 200 : 201 });
   } catch (error) {
     console.error("[LeadScheduleRoute][POST] Erro ao criar agendamento:", error);

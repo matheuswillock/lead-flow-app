@@ -1,4 +1,6 @@
+import { cacheLife, cacheTag } from 'next/cache';
 import { Output } from '@/lib/output';
+import { cacheTags } from '@/lib/cache/cacheTags';
 import { performanceService } from '@/app/api/services/Performance/PerformanceService';
 import { createEmailService } from '@/lib/email/create-email-service';
 import {
@@ -8,7 +10,39 @@ import {
   normalizeExportSections,
 } from '@/lib/performance/exportPerformanceFiles';
 import type { IPerformanceUseCase, SendPerformanceExportEmailInput } from './IPerformanceUseCase';
-import type { PerformanceSalesFilters } from '@/app/api/services/Performance/IPerformanceService';
+import type { PerformanceSalesFilters, PerformanceSalesResult } from '@/app/api/services/Performance/IPerformanceService';
+
+async function getCachedSalesPerformance(
+  teamId: string,
+  profileId: string,
+  isManager: boolean,
+  isCloser: boolean,
+  startDateISO: string,
+  endDateISO: string,
+  sdrId: string,
+  closerId: string,
+  search: string,
+  page: number,
+  pageSize: number,
+): Promise<PerformanceSalesResult> {
+  "use cache";
+  cacheTag(cacheTags.teamPerformance(teamId));
+  cacheLife({ stale: 60, revalidate: 180, expire: 300 });
+
+  return performanceService.getSalesPerformance({
+    teamId,
+    profileId,
+    isManager,
+    isCloser,
+    startDate: new Date(startDateISO),
+    endDate: new Date(endDateISO),
+    sdrId: sdrId || undefined,
+    closerId: closerId || undefined,
+    search: search || undefined,
+    page,
+    pageSize,
+  });
+}
 import { addDaysInTz, endOfDayInTz, startOfDayInTz, DEFAULT_TZ } from '@/lib/dates';
 
 export class PerformanceUseCase implements IPerformanceUseCase {
@@ -38,7 +72,19 @@ export class PerformanceUseCase implements IPerformanceUseCase {
 
   async getSalesPerformance(filters: PerformanceSalesFilters): Promise<Output> {
     try {
-      const result = await performanceService.getSalesPerformance(filters);
+      const result = await getCachedSalesPerformance(
+        filters.teamId,
+        filters.profileId,
+        filters.isManager,
+        filters.isCloser,
+        filters.startDate.toISOString(),
+        filters.endDate.toISOString(),
+        filters.sdrId ?? "",
+        filters.closerId ?? "",
+        filters.search ?? "",
+        filters.page,
+        filters.pageSize,
+      );
       return new Output(true, ['Performance de vendas obtida com sucesso'], [], result);
     } catch (error) {
       console.error('[PerformanceUseCase] Erro ao buscar performance de vendas:', error);

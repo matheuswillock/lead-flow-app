@@ -106,3 +106,18 @@ export function invalidateDialerSubscriptionCache(input: { teamId: string }) {
   revalidateDefinedTags([cacheTags.dialerSubscription(input.teamId)]);
 }
 
+export function invalidateTeamLeadsCache(input: { teamId: string }) {
+  revalidateDefinedTags([
+    cacheTags.teamLeads(input.teamId),
+    cacheTags.teamDashboard(input.teamId),
+    cacheTags.teamPerformance(input.teamId),
+  ]);
+}
+
+export function invalidateLeadActivitiesCache(input: { leadId: string }) {
+  revalidateDefinedTags([
+    cacheTags.leadActivities(input.leadId),
+    cacheTags.leadDetails(input.leadId),
+  ]);
+}
+

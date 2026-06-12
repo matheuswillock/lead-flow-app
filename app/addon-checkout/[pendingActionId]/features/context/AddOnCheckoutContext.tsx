@@ -75,6 +75,7 @@ export const AddOnCheckoutContext = createContext<AddOnCheckoutContextType | und
 export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const pollingIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const fetchInflightRef = useRef(false);
 
   const setSelectedPaymentMethod = useCallback((method: "PIX" | "CREDIT_CARD") => {
     dispatch({ type: "SET_PAYMENT_METHOD", payload: method });
@@ -110,6 +111,8 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
 
   const fetchCheckoutData = useCallback(
     async (pendingActionId: string) => {
+      if (fetchInflightRef.current) return;
+      fetchInflightRef.current = true;
       dispatch({ type: "SET_LOADING" });
       try {
         const data = await addOnCheckoutService.fetchCheckoutData(pendingActionId);
@@ -120,6 +123,8 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar dados";
         dispatch({ type: "SET_ERROR", payload: message });
+      } finally {
+        fetchInflightRef.current = false;
       }
     },
     [startPolling]

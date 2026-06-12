@@ -1,11 +1,34 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { NotificationType, type UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
-import type { ITeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
+import type { ITeamMembersRepository, TeamMembersListItem, TeamMembersTeam, TeamMembersProfileOption } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 
 type ListMembersFunction = Extract<UserFunction, "SDR" | "CLOSER">;
+
+const defaultTeamMembersRepository = new TeamMembersRepository();
+
+async function getCachedTeamMembersData(teamId: string): Promise<{
+  team: TeamMembersTeam;
+  members: TeamMembersListItem[];
+  masterAccountTeamMembers: Array<{ profileId: string; profile: TeamMembersProfileOption }>;
+  masterAccountProfiles: TeamMembersProfileOption[];
+} | null> {
+  "use cache";
+  cacheTag(cacheTags.teamMembers(teamId));
+  cacheLife({ revalidate: 60 });
+  const team = await defaultTeamMembersRepository.findTeam(teamId);
+  if (!team) return null;
+  const [members, masterAccountTeamMembers, masterAccountProfiles] = await Promise.all([
+    defaultTeamMembersRepository.findMembers(teamId),
+    defaultTeamMembersRepository.findMasterAccountTeamMembers(team.masterId),
+    defaultTeamMembersRepository.findMasterAccountProfiles(team.masterId),
+  ]);
+  return { team, members, masterAccountTeamMembers, masterAccountProfiles };
+}
 
 function getDisplayName(profile: { fullName: string | null; email: string | null }) {
   return profile.fullName || profile.email || "Usuário";
@@ -25,20 +48,29 @@ export class TeamMembersUseCase {
         return new Output(false, [], ["Perfil não encontrado"], null);
       }
 
-      const [team, membership] = await Promise.all([
-        this.repository.findTeam(teamId),
-        this.repository.findMembership(teamId, profile.id),
-      ]);
-
-      if (!team) {
-        return new Output(false, [], ["Time não encontrado"], null);
-      }
-
+      const membership = await this.repository.findMembership(teamId, profile.id);
       if (!membership) {
+        const team = await this.repository.findTeam(teamId);
+        if (!team) return new Output(false, [], ["Time não encontrado"], null);
         return new Output(false, [], ["Você não faz parte deste time"], null);
       }
 
-      const members = await this.repository.findMembers(teamId);
+      const cached = this.repository === defaultTeamMembersRepository
+        ? await getCachedTeamMembersData(teamId)
+        : await (async () => {
+            const team = await this.repository.findTeam(teamId);
+            if (!team) return null;
+            const [members, masterAccountTeamMembers, masterAccountProfiles] = await Promise.all([
+              this.repository.findMembers(teamId),
+              this.repository.findMasterAccountTeamMembers(team.masterId),
+              this.repository.findMasterAccountProfiles(team.masterId),
+            ]);
+            return { team, members, masterAccountTeamMembers, masterAccountProfiles };
+          })();
+
+      if (!cached) return new Output(false, [], ["Time não encontrado"], null);
+      const { team, members, masterAccountTeamMembers, masterAccountProfiles } = cached;
+
       const formattedMembers = members.map((member) => ({
         id: member.id,
         profileId: member.profileId,
@@ -59,11 +91,6 @@ export class TeamMembersUseCase {
       let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
 
       if (!requestedFunction) {
-        const [masterTeamMembers, masterAccountProfiles] = await Promise.all([
-          this.repository.findMasterAccountTeamMembers(team.masterId),
-          this.repository.findMasterAccountProfiles(team.masterId),
-        ]);
-
         const currentMemberIds = new Set(members.map((member) => member.profileId));
         eligibleProfiles = masterAccountProfiles
           .filter((accountProfile) => accountProfile.supabaseId)
@@ -79,7 +106,7 @@ export class TeamMembersUseCase {
             return aKey.localeCompare(bKey, "pt-BR");
           });
 
-        transferCandidates = masterTeamMembers
+        transferCandidates = masterAccountTeamMembers
           .filter((member) => member.profile?.supabaseId)
           .filter((member) => member.profileId !== team.masterId)
           .map((member) => ({

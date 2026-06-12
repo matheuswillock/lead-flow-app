@@ -3,9 +3,12 @@ import { prisma } from '@/app/api/infra/data/prisma';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 import type {
   CreatePortfolioEntryPayload,
+  CreatePortfolioImportEntryPayload,
   IPortfolioService,
   PortfolioDetailResult,
   PortfolioFilters,
+  PortfolioImportConflictLead,
+  PortfolioImportTarget,
   PortfolioListResult,
   PortfolioRow,
   UpdatePortfolioData,
@@ -165,11 +168,13 @@ export class PortfolioService implements IPortfolioService {
     const dueSoonLimit = new Date(now);
     dueSoonLimit.setDate(dueSoonLimit.getDate() + 90);
 
+    const existingLeadWhere = where.lead as Prisma.LeadWhereInput;
+    const existingDueDateBounds = existingLeadWhere.contractDueDate as Record<string, unknown> | undefined;
     const renewalWhere: Prisma.LeadPortfolioWhereInput = {
       ...where,
       lead: {
-        ...(where.lead as Prisma.LeadWhereInput),
-        contractDueDate: { not: null, lte: dueSoonLimit },
+        ...existingLeadWhere,
+        contractDueDate: { ...existingDueDateBounds, not: null, lte: dueSoonLimit },
       },
     };
 
@@ -485,6 +490,138 @@ export class PortfolioService implements IPortfolioService {
     });
 
     return this.fetchDetailResult(created.id);
+  }
+
+  async getImportTarget(teamId: string, closerId: string): Promise<PortfolioImportTarget> {
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { masterId: true },
+    });
+
+    if (!team) {
+      throw new Error('Time não encontrado');
+    }
+
+    const closerMember = await prisma.teamMember.findFirst({
+      where: { teamId, profileId: closerId },
+      select: { id: true },
+    });
+
+    if (!closerMember) {
+      throw new Error('Closer inválido para este time');
+    }
+
+    return { masterId: team.masterId };
+  }
+
+  async findImportConflicts(
+    teamId: string,
+    emails: string[],
+    cnpjs: string[]
+  ): Promise<PortfolioImportConflictLead[]> {
+    if (emails.length === 0 && cnpjs.length === 0) {
+      return [];
+    }
+
+    const conditions: Prisma.LeadWhereInput[] = [];
+    if (emails.length > 0) conditions.push({ email: { in: emails } });
+    if (cnpjs.length > 0) conditions.push({ cnpj: { in: cnpjs } });
+
+    return prisma.lead.findMany({
+      where: { teamId, OR: conditions },
+      select: { id: true, email: true, cnpj: true },
+    });
+  }
+
+  async createPortfolioEntryFromImport(
+    teamId: string,
+    masterId: string,
+    profileId: string,
+    data: CreatePortfolioImportEntryPayload
+  ): Promise<string> {
+    const leadCode = await this.generateLeadCode(data.name);
+    const amount = Number(data.amount);
+
+    const created = await prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.create({
+        data: {
+          managerId: masterId,
+          teamId,
+          leadCode,
+          status: LeadStatus.contract_finalized,
+          name: data.name.trim(),
+          email: data.email?.trim() || null,
+          phone: data.phone.trim(),
+          cnpj: sanitizeDocumentDigits(data.cnpj || '') || null,
+          contractDueDate: data.contractDueDate ?? null,
+          ticket: amount,
+          currentValue: amount,
+          createdBy: profileId,
+          updatedBy: profileId,
+          closerId: data.closerId,
+          activities: {
+            create: [
+              {
+                type: ActivityType.note,
+                body: 'Cliente criado via importação manual na carteira',
+                payload: { source: 'import_manual' },
+                createdBy: profileId,
+              },
+              {
+                type: ActivityType.status_change,
+                body: `Contrato finalizado no valor de R$ ${amount.toFixed(2)}`,
+                payload: {
+                  previousStatus: LeadStatus.new_opportunity,
+                  newStatus: LeadStatus.contract_finalized,
+                  amount,
+                  startDateAt: data.startDateAt.toISOString(),
+                  finalizedDateAt: data.finalizedDateAt.toISOString(),
+                },
+                createdBy: profileId,
+              },
+            ],
+          },
+        },
+      });
+
+      const finalized = await tx.leadFinalized.create({
+        data: {
+          leadId: lead.id,
+          amount,
+          startDateAt: data.startDateAt,
+          finalizedDateAt: data.finalizedDateAt,
+          duration: 0,
+          notes: data.notes?.trim() || null,
+          closerId: data.closerId,
+          operadora: data.operadora.trim(),
+          productName: data.productName?.trim() || null,
+        },
+      });
+
+      if (data.holder) {
+        await tx.leadFinalizedHolder.create({
+          data: {
+            leadFinalizedId: finalized.id,
+            name: data.holder.name.trim(),
+            birthDate: data.holder.birthDate,
+            document: sanitizeRgCpfDigits(data.holder.document),
+          },
+        });
+      }
+
+      await tx.leadPortfolio.create({
+        data: {
+          leadId: lead.id,
+          teamId,
+          portfolioStatus: 'active',
+          source: data.source,
+        },
+      });
+
+      return lead;
+    });
+
+    return created.id;
   }
 
   async getPortfolioEntryDetail(

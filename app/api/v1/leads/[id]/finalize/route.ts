@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
 import { getTeamAccess, hasLeadAccess } from '@/app/api/v1/utils/teamAccess';
+import { invalidateLeadCache, invalidatePortfolioCache } from '@/lib/cache/invalidation';
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 
@@ -224,6 +225,9 @@ export async function POST(
       return { leadFinalized, lead: updatedLead };
     });
 
+    const teamId = teamAccess.access.teamId;
+    invalidateLeadCache({ leadId, teamId });
+    invalidatePortfolioCache({ teamId, leadId });
     return NextResponse.json(
       new Output(true, ['Contrato finalizado com sucesso'], [], result),
       { status: 200 }
