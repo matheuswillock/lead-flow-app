@@ -36,6 +36,33 @@ export interface CreatePortfolioHolderPayload {
   cnpj?: string | null;
 }
 
+export interface CreatePortfolioImportEntryPayload {
+  name: string;
+  email?: string | null;
+  phone: string;
+  cnpj?: string | null;
+  source: Exclude<PortfolioSource, 'crm'>;
+  amount: number;
+  startDateAt: Date;
+  finalizedDateAt: Date;
+  contractDueDate?: Date | null;
+  closerId: string;
+  operadora: string;
+  productName?: string | null;
+  notes?: string | null;
+  holder?: { name: string; birthDate: Date; document: string } | null;
+}
+
+export interface PortfolioImportTarget {
+  masterId: string;
+}
+
+export interface PortfolioImportConflictLead {
+  id: string;
+  email: string | null;
+  cnpj: string | null;
+}
+
 export interface CreatePortfolioEntryPayload {
   name: string;
   email: string;
@@ -185,6 +212,18 @@ export interface IPortfolioService {
     profileId: string,
     data: CreatePortfolioEntryPayload
   ): Promise<PortfolioDetailResult>;
+  getImportTarget(teamId: string, closerId: string): Promise<PortfolioImportTarget>;
+  findImportConflicts(
+    teamId: string,
+    emails: string[],
+    cnpjs: string[]
+  ): Promise<PortfolioImportConflictLead[]>;
+  createPortfolioEntryFromImport(
+    teamId: string,
+    masterId: string,
+    profileId: string,
+    data: CreatePortfolioImportEntryPayload
+  ): Promise<string>;
   listPortfolio(filters: PortfolioFilters): Promise<PortfolioListResult>;
   updatePortfolioEntry(
     leadId: string,
