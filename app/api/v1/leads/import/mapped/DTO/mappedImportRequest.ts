@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LEAD_IMPORT_MAX_ROWS } from "@/lib/leadImport/leadImportFields";
 
 const importRowSchema = z.object({
+  line: z.number().int().min(1).optional(),
   name: z.string().optional(),
   email: z.string().optional(),
   phone: z.string().optional(),

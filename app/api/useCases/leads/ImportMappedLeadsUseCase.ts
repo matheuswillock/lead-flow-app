@@ -22,12 +22,20 @@ export interface ImportMappedLeadsContext {
   teamId: string;
 }
 
+export interface ImportRowIssue {
+  line: number | null;
+  name: string;
+  kind: "not_imported" | "default_status";
+  reason: string;
+}
+
 export interface ImportMappedLeadsResult {
   created: number;
   createdWithDefaultStatus: number;
   skipped: number;
   sanitized: number;
   errors: string[];
+  issues: ImportRowIssue[];
 }
 
 export interface IImportMappedLeadsUseCase {
@@ -75,12 +83,20 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
     let skipped = 0;
     let sanitized = 0;
     const errors: string[] = [];
+    const issues: ImportRowIssue[] = [];
 
     for (const row of rows) {
+      const line = row.line ?? null;
       const name = row.name?.trim() ?? "";
       const phone = row.phone?.trim() ?? "";
       if (!name || !phone) {
         skipped += 1;
+        issues.push({
+          line,
+          name: name || "(sem nome)",
+          kind: "not_imported",
+          reason: "Linha sem nome ou telefone",
+        });
         continue;
       }
 
@@ -100,6 +116,15 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
 
       if ((emailConflict && !canReuseEmail) || (cnpjConflict && !canReuseCnpj)) {
         skipped += 1;
+        issues.push({
+          line,
+          name,
+          kind: "not_imported",
+          reason:
+            emailConflict && !canReuseEmail
+              ? "Já existe um lead no time com o mesmo e-mail"
+              : "Já existe um lead no time com o mesmo CNPJ",
+        });
         continue;
       }
 
@@ -142,6 +167,8 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
 
       if (!output.isValid) {
         skipped += 1;
+        const reason = output.errorMessages?.[0] || "Não foi possível criar o lead";
+        issues.push({ line, name, kind: "not_imported", reason });
         if (output.errorMessages?.[0]) {
           errors.push(output.errorMessages[0]);
         }
@@ -149,10 +176,18 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
       }
 
       created += 1;
-      const statusFellBackToDefault =
-        status === "new_opportunity" && (row.status?.trim() ?? "") !== "new_opportunity";
+      const rawStatus = row.status?.trim() ?? "";
+      const statusFellBackToDefault = status === "new_opportunity" && rawStatus !== "new_opportunity";
       if (statusFellBackToDefault) {
         createdWithDefaultStatus += 1;
+        issues.push({
+          line,
+          name,
+          kind: "default_status",
+          reason: rawStatus
+            ? `Status "${rawStatus}" sem mapeamento; importado como Nova oportunidade`
+            : "Sem status no arquivo; importado como Nova oportunidade",
+        });
       }
 
       if (email) {
@@ -173,6 +208,7 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
       skipped,
       sanitized,
       errors: errors.slice(0, 10),
+      issues,
     };
 
     return new Output(true, ["Importação concluída"], [], result);

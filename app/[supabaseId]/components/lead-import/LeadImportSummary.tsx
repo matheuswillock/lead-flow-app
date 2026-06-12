@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, FileCheck, Info, TriangleAlert, XCircle } from "lucide-react";
+import { CheckCircle2, FileCheck, Info, TriangleAlert, XCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -10,7 +10,7 @@ import { getLeadImportStatusLabel } from "@/lib/leadImport/leadImportStatus";
 import type { LeadImportMapping } from "./autoMapColumns";
 import type { LeadStatusMapping } from "./LeadStatusMapper";
 import type { LeadSoldPlanMapping } from "./LeadSoldPlanMapper";
-import type { LeadImportResult } from "./ILeadImportService";
+import type { LeadImportResult, LeadImportRowIssue } from "./ILeadImportService";
 
 interface LeadImportSummaryProps {
   fileName: string;
@@ -19,6 +19,54 @@ interface LeadImportSummaryProps {
   statusMapping: LeadStatusMapping;
   planMapping: LeadSoldPlanMapping;
   result: LeadImportResult | null;
+}
+
+const ISSUE_BADGES: Record<
+  LeadImportRowIssue["kind"],
+  { label: string; className: string; icon: typeof XCircle }
+> = {
+  not_imported: {
+    label: "Não importado",
+    className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
+    icon: XCircle,
+  },
+  default_status: {
+    label: "Nova oportunidade",
+    className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
+    icon: TriangleAlert,
+  },
+};
+
+function ImportIssueList({ issues }: { issues: LeadImportRowIssue[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium">Linhas que precisam de atenção</p>
+      <div className="flex flex-col gap-1.5">
+        {issues.map((issue, index) => {
+          const badge = ISSUE_BADGES[issue.kind];
+          const BadgeIcon = badge.icon;
+          return (
+            <div
+              key={`${issue.line ?? "linha"}-${index}`}
+              className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm"
+            >
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">
+                  {issue.line ? `Linha ${issue.line} — ` : ""}
+                  {issue.name}
+                </span>
+                <span className="text-xs text-muted-foreground">{issue.reason}</span>
+              </div>
+              <Badge variant="outline" className={cn("shrink-0 gap-1", badge.className)}>
+                <BadgeIcon className="size-3" />
+                {badge.label}
+              </Badge>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function LeadImportSummary({
@@ -72,30 +120,7 @@ export function LeadImportSummary({
           )}
           {result.sanitized > 0 && <Badge variant="secondary">Ajustados: {result.sanitized}</Badge>}
         </div>
-        {result.createdWithDefaultStatus > 0 && (
-          <p className="text-sm text-muted-foreground">
-            Leads marcados como Nova oportunidade tinham status sem mapeamento válido no arquivo.
-          </p>
-        )}
-        {result.skipped > 0 && (
-          <p className="text-sm text-muted-foreground">
-            Linhas recusadas incluem leads sem nome ou telefone e leads que já existem no time com
-            o mesmo e-mail ou CNPJ.
-          </p>
-        )}
-        {result.errors.length > 0 && (
-          <Alert variant="destructive">
-            <AlertCircle className="size-4" />
-            <AlertTitle>Alguns leads não puderam ser criados</AlertTitle>
-            <AlertDescription>
-              <ul className="list-disc pl-4">
-                {result.errors.map((error, index) => (
-                  <li key={index}>{error}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
+        {result.issues.length > 0 && <ImportIssueList issues={result.issues} />}
       </div>
     );
   }

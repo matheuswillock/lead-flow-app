@@ -31,7 +31,7 @@ import {
 import { LeadSoldPlanMapper, type LeadSoldPlanMapping } from "./LeadSoldPlanMapper";
 import { LeadImportSummary } from "./LeadImportSummary";
 import { autoMapColumns, type LeadImportMapping } from "./autoMapColumns";
-import { parseLeadFile } from "./leadFileParser";
+import { parseLeadFile, type ParsedLeadRow } from "./leadFileParser";
 import { leadImportService } from "./LeadImportService";
 import type { LeadImportResult } from "./ILeadImportService";
 
@@ -74,7 +74,7 @@ export function LeadImportDialog({
   const [step, setStep] = useState<LeadImportStep>("upload");
   const [fileName, setFileName] = useState("");
   const [columns, setColumns] = useState<string[]>([]);
-  const [rows, setRows] = useState<Record<string, string>[]>([]);
+  const [rows, setRows] = useState<ParsedLeadRow[]>([]);
   const [mapping, setMapping] = useState<LeadImportMapping>({});
   const [statusMapping, setStatusMapping] = useState<LeadStatusMapping>({});
   const [planMapping, setPlanMapping] = useState<LeadSoldPlanMapping>({});
@@ -154,7 +154,7 @@ export function LeadImportDialog({
     if (!column) return [];
     const counts = new Map<string, number>();
     rows.forEach((row) => {
-      const value = row[column]?.trim();
+      const value = row.values[column]?.trim();
       if (!value) return;
       counts.set(value, (counts.get(value) ?? 0) + 1);
     });
@@ -217,29 +217,27 @@ export function LeadImportDialog({
 
   const buildMappedRows = (): LeadImportRow[] => {
     const entries = Object.entries(mapping) as [LeadImportFieldKey, string][];
-    return rows
-      .map((row) => {
-        const mapped: LeadImportRow = {};
-        entries.forEach(([field, column]) => {
-          const value = row[column]?.trim();
-          if (value) {
-            mapped[field] = value;
-          }
-        });
-        if (mapped.status && statusMapping[mapped.status]) {
-          mapped.status = statusMapping[mapped.status];
+    return rows.map((row) => {
+      const mapped: LeadImportRow = { line: row.line };
+      entries.forEach(([field, column]) => {
+        const value = row.values[column]?.trim();
+        if (value) {
+          mapped[field] = value;
         }
-        if (mapped.soldPlan !== undefined) {
-          const mappedPlan = planMapping[mapped.soldPlan];
-          if (mappedPlan) {
-            mapped.soldPlan = mappedPlan;
-          } else {
-            delete mapped.soldPlan;
-          }
+      });
+      if (mapped.status && statusMapping[mapped.status]) {
+        mapped.status = statusMapping[mapped.status];
+      }
+      if (mapped.soldPlan !== undefined) {
+        const mappedPlan = planMapping[mapped.soldPlan];
+        if (mappedPlan) {
+          mapped.soldPlan = mappedPlan;
+        } else {
+          delete mapped.soldPlan;
         }
-        return mapped;
-      })
-      .filter((mapped) => Boolean(mapped.name) && Boolean(mapped.phone));
+      }
+      return mapped;
+    });
   };
 
   const handleImport = async () => {
@@ -254,7 +252,8 @@ export function LeadImportDialog({
     }
 
     const mappedRows = buildMappedRows();
-    if (mappedRows.length === 0) {
+    const hasImportableRow = mappedRows.some((row) => Boolean(row.name) && Boolean(row.phone));
+    if (!hasImportableRow) {
       toast.error(
         "Nenhuma linha do arquivo tem valor nas colunas mapeadas para nome e telefone do lead"
       );
@@ -310,7 +309,7 @@ export function LeadImportDialog({
           {step === "mapping" && (
             <LeadFieldMapper
               columns={columns}
-              rows={rows}
+              rows={rows.map((row) => row.values)}
               mapping={mapping}
               onMappingChange={handleMappingChange}
             />

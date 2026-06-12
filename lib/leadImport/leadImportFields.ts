@@ -153,4 +153,7 @@ export const LEAD_IMPORT_FIELDS: LeadImportFieldDef[] = [
 
 export const LEAD_IMPORT_FIELD_KEYS = LEAD_IMPORT_FIELDS.map((field) => field.key);
 
-export type LeadImportRow = Partial<Record<LeadImportFieldKey, string>>;
+export type LeadImportRow = Partial<Record<LeadImportFieldKey, string>> & {
+  /** Linha original no arquivo do usuário, usada no relatório final. */
+  line?: number;
+};
