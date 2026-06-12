@@ -21,6 +21,29 @@ const ROOT = process.cwd();
 const SKILLS_SOURCE_DIR = path.join(ROOT, ".claude", "skills");
 const CURSOR_SKILLS_DIR = path.join(ROOT, ".cursor", "skills");
 const COPILOT_PROMPTS_DIR = path.join(ROOT, ".github", "prompts");
+const SKILLS_LOCK_FILE = path.join(ROOT, "skills-lock.json");
+
+// Package-managed skills (e.g. vendored from GitHub) are mirrored into
+// .claude/skills/<name>/ but are NOT project-authored rules, so they must not
+// be re-emitted as Cursor/Copilot adapters. Returns the set of skill names
+// whose lock entry is not local.
+async function loadExternalSkillNames(): Promise<Set<string>> {
+  try {
+    const raw = await fs.readFile(SKILLS_LOCK_FILE, "utf8");
+    const lock = JSON.parse(raw) as {
+      skills?: Record<string, { sourceType?: string }>;
+    };
+    const external = new Set<string>();
+    for (const [name, entry] of Object.entries(lock.skills ?? {})) {
+      if (entry.sourceType && entry.sourceType !== "local") {
+        external.add(name);
+      }
+    }
+    return external;
+  } catch {
+    return new Set<string>();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Frontmatter parsing
@@ -168,8 +191,12 @@ async function syncSkills(): Promise<void> {
         sourceLabel: d.name,
       }));
 
+    const externalSkills = await loadExternalSkillNames();
     const folders: SkillSource[] = [];
     for (const d of dirents.filter((d) => d.isDirectory())) {
+      // Skip package-managed (vendored) skills — adapters are for
+      // project-authored skills only.
+      if (externalSkills.has(d.name)) continue;
       const skillPath = path.join(SKILLS_SOURCE_DIR, d.name, "SKILL.md");
       try {
         await fs.access(skillPath);
