@@ -61,6 +61,7 @@ const fieldSelectTriggerClassName = "";
 
 export function PublicLeadForm() {
   const {
+    teamName,
     bootstrapStatus,
     bootstrapError,
     healthPlans,
@@ -317,6 +318,13 @@ export function PublicLeadForm() {
           />
           <span className="text-lg font-semibold">Corretor Studio</span>
         </div>
+
+        {teamName ? (
+          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-center">
+            <p className="text-sm text-muted-foreground">Este lead será adicionado ao time</p>
+            <p className="text-base font-semibold">{teamName}</p>
+          </div>
+        ) : null}
 
         <Form {...form}>
           <form
