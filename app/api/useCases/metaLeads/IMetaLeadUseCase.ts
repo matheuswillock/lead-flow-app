@@ -18,7 +18,7 @@ export interface IMetaLeadUseCase {
    * Processa webhook do Meta
    * 
    * @param payload - Payload do webhook
-   * @param managerId - ID do manager (opcional)
+   * @param managerId - ID do manager 
    * @returns Output com resultado do processamento
    */
   processWebhook(payload: any, managerId?: string): Promise<Output>;
