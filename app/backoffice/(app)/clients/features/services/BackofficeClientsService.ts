@@ -20,6 +20,12 @@ export class BackofficeClientsService implements IBackofficeClientsService {
     if (params?.filters?.query?.trim()) {
       search.set("q", params.filters.query.trim())
     }
+    if (params?.filters?.plan && params.filters.plan !== "all") {
+      search.set("plan", params.filters.plan)
+    }
+    if (params?.filters?.userType && params.filters.userType !== "all") {
+      search.set("userType", params.filters.userType)
+    }
 
     const res = await fetch(`/api/v1/backoffice/clients?${search.toString()}`, {
       cache: "no-store",

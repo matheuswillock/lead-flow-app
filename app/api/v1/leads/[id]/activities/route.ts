@@ -6,7 +6,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAccess";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { createTaskUseCase } from "@/app/api/useCases/task/CreateTaskUseCase";
-import { invalidateLeadActivitiesCache } from "@/lib/cache/invalidation";
+import { invalidateLeadActivitiesCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
 
 const mentionSchema = z.object({
   profileId: z.string().uuid("profileId deve ser um UUID válido"),
@@ -90,6 +90,7 @@ export async function POST(
       }
 
       invalidateLeadActivitiesCache({ leadId });
+      invalidateTeamTasksCache({ teamId: teamAccess.access.teamId });
       return NextResponse.json(result, { status: 201 });
     }
 

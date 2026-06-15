@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { cancelTaskUseCase } from "@/app/api/useCases/task/CancelTaskUseCase";
-import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { invalidateTeamCalendarCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
 
 export async function POST(
   request: NextRequest,
@@ -28,6 +28,7 @@ export async function POST(
     }
 
     invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId });
+    invalidateTeamTasksCache({ teamId: teamAccess.access.teamId });
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error("[TaskCancelRoute][POST] Erro:", error);

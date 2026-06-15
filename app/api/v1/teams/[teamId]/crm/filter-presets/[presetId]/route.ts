@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
 import type { TeamFilterPresetUpdateInput } from "@/app/api/useCases/teamFilterPresets/ITeamFilterPresetsUseCase";
+import { invalidateTeamFilterPresetsCache } from "@/lib/cache/invalidation";
 
 const updateFilterPresetSchema = z
   .object({
@@ -62,6 +63,9 @@ export async function PATCH(
       presetId,
       updateInput
     );
+    if (output.isValid) {
+      invalidateTeamFilterPresetsCache({ teamId, profileId: teamAccess.access.profileId });
+    }
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
   } catch (error) {
     console.error("[TeamFilterPresetByIdRoute][PATCH] Erro ao atualizar preset:", error);
@@ -95,6 +99,9 @@ export async function DELETE(
       teamAccess.access.profileId,
       presetId
     );
+    if (output.isValid) {
+      invalidateTeamFilterPresetsCache({ teamId, profileId: teamAccess.access.profileId });
+    }
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
   } catch (error) {
     console.error("[TeamFilterPresetByIdRoute][DELETE] Erro ao remover preset:", error);

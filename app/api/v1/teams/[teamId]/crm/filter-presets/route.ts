@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
 import type { TeamFilterPresetInput } from "@/app/api/useCases/teamFilterPresets/ITeamFilterPresetsUseCase";
+import { invalidateTeamFilterPresetsCache } from "@/lib/cache/invalidation";
 
 const createFilterPresetSchema = z.object({
   name: z.string().trim().min(1, "Nome é obrigatório").max(120, "Nome muito longo"),
@@ -81,6 +82,9 @@ export async function POST(
         queryJson: parsed.data.queryJson as TeamFilterPresetInput["queryJson"],
       }
     );
+    if (output.isValid) {
+      invalidateTeamFilterPresetsCache({ teamId, profileId: teamAccess.access.profileId });
+    }
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 });
   } catch (error) {
     console.error("[TeamFilterPresetsRoute][POST] Erro ao criar preset:", error);

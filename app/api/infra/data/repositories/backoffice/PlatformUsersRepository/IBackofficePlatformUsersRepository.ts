@@ -83,6 +83,8 @@ export interface PlatformUsersFilters {
   name?: string
   email?: string
   team?: string
+  plan?: "lifetime" | "monthly" | "trial" | "none"
+  userType?: "common" | "member_pro"
 }
 
 export interface RepositoryPaginationParams {
