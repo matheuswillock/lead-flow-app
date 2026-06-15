@@ -81,7 +81,8 @@ export class CampanhasService implements ICampanhasService {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return (json.result ?? []) as Template[]
+    // Only published templates can be used in campaigns.
+    return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published')
   }
 
   async getContactLists() {

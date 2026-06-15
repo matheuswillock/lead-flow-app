@@ -30,6 +30,7 @@ export type Template = {
   id: string
   name: string
   subject: string
+  status?: 'draft' | 'published'
 }
 
 export type ContactList = {

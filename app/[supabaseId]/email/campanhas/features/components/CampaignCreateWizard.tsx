@@ -71,7 +71,7 @@ export function CampaignCreateWizard() {
                 </SelectTrigger>
                 <SelectContent>
                   {templates.length === 0 ? (
-                    <SelectItem value="__none" disabled>Nenhum template disponível</SelectItem>
+                    <SelectItem value="__none" disabled>Nenhum template publicado disponível</SelectItem>
                   ) : (
                     templates.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
