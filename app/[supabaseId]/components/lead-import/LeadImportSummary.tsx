@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
 import { LEAD_IMPORT_FIELDS } from "@/lib/leadImport/leadImportFields";
 import { getLeadImportStatusLabel } from "@/lib/leadImport/leadImportStatus";
 import type { LeadImportMapping } from "./autoMapColumns";
@@ -143,10 +144,7 @@ export function LeadImportSummary({
       </Alert>
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium">Campos mapeados</p>
-        <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          <span>Campo do Corretor Studio</span>
-          <span>Coluna do seu arquivo</span>
-        </div>
+        <ImportMappingHeader left="Campo do Corretor Studio" right="Coluna do seu arquivo" />
         <div className="flex flex-col gap-1.5">
           {mappedFields.map((field) => (
             <div key={field.key} className="flex items-center justify-between gap-2 text-sm">
@@ -161,10 +159,7 @@ export function LeadImportSummary({
           <Separator />
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Status mapeados</p>
-            <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <span>Status no Corretor Studio</span>
-              <span>Status do seu arquivo</span>
-            </div>
+            <ImportMappingHeader left="Status no Corretor Studio" right="Status do seu arquivo" />
             <div className="flex flex-col gap-1.5">
               {statusEntries.map(([fileValue, status]) => (
                 <div key={fileValue} className="flex items-center justify-between gap-2 text-sm">
@@ -181,10 +176,7 @@ export function LeadImportSummary({
           <Separator />
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Planos vendidos mapeados</p>
-            <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <span>Plano no Corretor Studio</span>
-              <span>Plano do seu arquivo</span>
-            </div>
+            <ImportMappingHeader left="Plano no Corretor Studio" right="Plano do seu arquivo" />
             <div className="flex flex-col gap-1.5">
               {planEntries.map(([fileValue, planName]) => (
                 <div key={fileValue} className="flex items-center justify-between gap-2 text-sm">

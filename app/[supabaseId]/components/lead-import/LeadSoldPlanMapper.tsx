@@ -2,20 +2,9 @@
 
 import { ArrowRight } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldTitle,
-} from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldTitle } from "@/components/ui/field";
+import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
+import { ImportSelect } from "@/components/import/ImportSelect";
 
 export interface LeadSoldPlanValueCount {
   value: string;
@@ -49,30 +38,22 @@ export function LeadSoldPlanMapper({
         </AlertDescription>
       </Alert>
 
-      <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <span>Plano no Corretor Studio</span>
-        <span>Plano do seu arquivo</span>
-      </div>
+      <ImportMappingHeader left="Plano no Corretor Studio" right="Plano do seu arquivo" />
 
-      <FieldGroup className="gap-4">
+      <FieldGroup className="gap-0">
         {distinctValues.map(({ value, count }) => (
-          <Field key={value} orientation="responsive">
-            <Select
+          <Field
+            key={value}
+            orientation="responsive"
+            className="border-l-2 border-l-primary border-b border-b-border py-4 pl-3"
+          >
+            <ImportSelect
               value={planMapping[value] || undefined}
-              onValueChange={(next) => onPlanMappingChange(value, next)}
+              options={planOptions.map((plan) => ({ value: plan, label: plan }))}
+              placeholder="Selecione o plano"
+              onChange={(next) => next && onPlanMappingChange(value, next)}
               disabled={disabled}
-            >
-              <SelectTrigger className="w-full sm:w-56">
-                <SelectValue placeholder="Selecione o plano" />
-              </SelectTrigger>
-              <SelectContent>
-                {planOptions.map((plan) => (
-                  <SelectItem key={plan} value={plan}>
-                    {plan}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             <FieldContent className="@md/field-group:items-end @md/field-group:text-right">
               <FieldTitle>&ldquo;{value}&rdquo;</FieldTitle>
               <FieldDescription>

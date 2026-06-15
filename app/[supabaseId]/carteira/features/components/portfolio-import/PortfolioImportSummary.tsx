@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
 import { PORTFOLIO_IMPORT_FIELDS } from "@/lib/portfolioImport/portfolioImportFields";
 import type { PortfolioImportMapping } from "./autoMapPortfolioColumns";
 import type {
@@ -136,10 +137,7 @@ export function PortfolioImportSummary({
       <Separator />
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium">Campos mapeados</p>
-        <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          <span>Campo do Corretor Studio</span>
-          <span>Coluna do seu arquivo</span>
-        </div>
+        <ImportMappingHeader left="Campo do Corretor Studio" right="Coluna do seu arquivo" />
         <div className="flex flex-col gap-1.5">
           {mappedFields.map((field) => (
             <div key={field.key} className="flex items-center justify-between gap-2 text-sm">
