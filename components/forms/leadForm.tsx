@@ -166,15 +166,12 @@ export function LeadForm({
         return map;
     }, [healthPlanOptions]);
     const hasBlockingErrors = React.useMemo(() => {
-        const entries = Object.entries(form.formState.errors);
-        if (entries.length === 0) return false;
+        const errors = Object.values(form.formState.errors);
+        if (errors.length === 0) return false;
 
-        return entries.some(([error]) => {
+        return errors.some((error) => {
             const errorType = (error as { type?: string } | undefined)?.type;
-            if (errorType !== "manual") {
-                return false;
-            }
-            return true;
+            return errorType === "manual";
         });
     }, [form.formState.errors]);
     const isSchemaValid = React.useMemo(

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { formatDocumentInput, unmask } from "@/lib/masks";
-import { Control, FieldValues, Path } from "react-hook-form";
+import { Control, FieldValues, Path, useFormContext } from "react-hook-form";
 
 interface LeadCnpjFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -17,13 +17,14 @@ export function LeadCnpjField<T extends FieldValues>({
   disabled,
   onDuplicateCheck,
 }: LeadCnpjFieldProps<T>) {
-  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const { clearErrors, setError } = useFormContext<T>();
+  const fieldName = "cnpj" as Path<T>;
 
   return (
     <FormField
       control={control}
-      name={"cnpj" as Path<T>}
+      name={fieldName}
       render={({ field }) => (
         <FormItem>
           <FormLabel className="mb-1 block text-sm font-medium">CNPJ</FormLabel>
@@ -33,9 +34,7 @@ export function LeadCnpjField<T extends FieldValues>({
               onChange={(e) => {
                 const masked = formatDocumentInput(e.target.value);
                 field.onChange(unmask(masked));
-                if (duplicateError) {
-                  setDuplicateError(null);
-                }
+                clearErrors(fieldName);
               }}
               onBlur={async () => {
                 field.onBlur();
@@ -43,14 +42,20 @@ export function LeadCnpjField<T extends FieldValues>({
 
                 const cnpj = String(field.value || "").trim();
                 if (!cnpj) {
-                  setDuplicateError(null);
+                  clearErrors(fieldName);
                   return;
                 }
 
                 setChecking(true);
+                setError(fieldName, { type: "manual" });
                 try {
                   const error = await onDuplicateCheck(cnpj);
-                  setDuplicateError(error);
+                  if (error) {
+                    setError(fieldName, { type: "manual", message: error });
+                    return;
+                  }
+
+                  clearErrors(fieldName);
                 } finally {
                   setChecking(false);
                 }
@@ -62,9 +67,6 @@ export function LeadCnpjField<T extends FieldValues>({
             />
           </FormControl>
           <FormMessage />
-          {duplicateError && (
-            <p className="text-sm font-medium text-destructive">{duplicateError}</p>
-          )}
           {checking && (
             <p className="text-sm text-muted-foreground">Verificando CNPJ...</p>
           )}
