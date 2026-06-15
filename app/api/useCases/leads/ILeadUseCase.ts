@@ -33,7 +33,7 @@ export interface ILeadUseCase {
     creationActivityContext?: LeadCreationActivityContext,
     options?: LeadCreateOptions
   ): Promise<Output>;
-  createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
+  createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output>;
   getLeadById(supabaseId: string, id: string): Promise<Output>;
   getLeadsByManager(
     supabaseId: string,

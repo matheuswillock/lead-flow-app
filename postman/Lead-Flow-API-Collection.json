@@ -3980,6 +3980,48 @@
                     }
                   },
                   "response": []
+                },
+                {
+                  "name": "POST /api/v1/leads/import/mapped",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      },
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{supabaseUserId}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "x-team-id",
+                        "value": "{{teamId}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/leads/import/mapped",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "leads",
+                        "import",
+                        "mapped"
+                      ]
+                    },
+                    "description": "Importa leads ja mapeados no cliente (planilha .xlsx ou JSON). Cada item de rows usa as chaves dos campos do CRM. Limite de 2000 linhas por requisicao.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"rows\": [\n    {\n      \"name\": \"Empresa Exemplo LTDA\",\n      \"email\": \"contato@exemplo.com.br\",\n      \"phone\": \"(11) 99999-9999\",\n      \"cnpj\": \"00.000.000/0000-00\",\n      \"age\": \"34, 32 e 5\",\n      \"currentHealthPlan\": \"Amil\",\n      \"currentValue\": \"R$ 1.234,56\",\n      \"status\": \"Agendado\",\n      \"notes\": \"Lead importado via arquivo\"\n    }\n  ]\n}"
+                    }
+                  },
+                  "response": []
                 }
               ]
             },
@@ -6822,6 +6864,45 @@
             },
             "description": "Atualiza status da carteira (portfolioStatus), status de renovação (renewalStatus), valor renovado (renewalAmount), nota e último contato. Ao definir renewalStatus=renewed, o valor de venda do contrato passa a ser o renewalAmount e o renewalAmount é zerado."
           }
+        },
+        {
+          "name": "POST Import Mapped Portfolio Clients",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"closerId\": \"{{closerProfileId}}\",\n  \"source\": \"manual\",\n  \"rows\": [\n    {\n      \"line\": 2,\n      \"name\": \"Cliente Exemplo LTDA\",\n      \"email\": \"contato@exemplo.com.br\",\n      \"phone\": \"(11) 99999-9999\",\n      \"cnpj\": \"00.000.000/0000-00\",\n      \"operadora\": \"Amil\",\n      \"productName\": \"Amil S380\",\n      \"amount\": \"R$ 1.234,56\",\n      \"startDateAt\": \"01/06/2026\",\n      \"contractDueDate\": \"01/06/2027\",\n      \"holderName\": \"Fulano de Tal\",\n      \"holderBirthDate\": \"10/02/1985\",\n      \"holderDocument\": \"123.456.789-00\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolio/import/mapped",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio",
+                "import",
+                "mapped"
+              ]
+            },
+            "description": "Importa clientes na carteira a partir de linhas já mapeadas no dialog de importação (.xlsx/.json). Todos os clientes são atribuídos ao closer informado e recebem a origem manual ou brokerage_transfer."
+          },
+          "response": []
         }
       ]
     },

@@ -53,6 +53,9 @@ function defaultValues(): FormValues {
 }
 
 function sanitizePhone(value: string): string {
+  const withoutCountryCode = value.replace(/^\+?55[\s-]?/, "")
+  const digits = withoutCountryCode.replace(/\D/g, "")
+  if (digits.length >= 10 && digits.length <= 11) return digits.slice(0, 11)
   return value.replace(/\D/g, "").slice(0, 11)
 }
 

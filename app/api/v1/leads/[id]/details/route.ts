@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
@@ -6,6 +8,43 @@ import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+
+async function getCachedLeadAttachments(leadId: string) {
+  "use cache";
+  cacheTag(cacheTags.leadDetails(leadId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  return leadAttachmentUseCase.listAttachments(leadId);
+}
+
+async function getCachedLeadTeamMembers(teamId: string) {
+  "use cache";
+  cacheTag(cacheTags.teamMembers(teamId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  return Promise.all([
+    prisma.teamMember.findMany({
+      where: { teamId },
+      include: {
+        profile: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+            supabaseId: true,
+            googleConnection: {
+              select: { refreshToken: true, revokedAt: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.team.findUnique({
+      where: { id: teamId },
+      select: { masterId: true, name: true },
+    }),
+  ]);
+}
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -95,31 +134,8 @@ export async function GET(
     const [leadSettled, attachmentsSettled, membersAndTeamSettled] =
       await Promise.allSettled([
         leadUseCase.getLeadById(supabaseId, leadId),
-        leadAttachmentUseCase.listAttachments(leadId),
-        Promise.all([
-          prisma.teamMember.findMany({
-            where: { teamId },
-            include: {
-              profile: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  email: true,
-                  profileIconUrl: true,
-                  supabaseId: true,
-                  googleConnection: {
-                    select: { refreshToken: true, revokedAt: true },
-                  },
-                },
-              },
-            },
-            orderBy: { createdAt: "asc" },
-          }),
-          prisma.team.findUnique({
-            where: { id: teamId },
-            select: { masterId: true, name: true },
-          }),
-        ]),
+        getCachedLeadAttachments(leadId),
+        getCachedLeadTeamMembers(teamId),
       ]);
 
     // Mapear lead

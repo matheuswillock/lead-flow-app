@@ -22,55 +22,94 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     const base: Prisma.ProfileWhereInput = { isMaster: true, role: "manager" }
 
-    if (!q && !normalizedTeam) return base
+    const andClauses: Prisma.ProfileWhereInput[] = []
 
-    const orClauses: Prisma.ProfileWhereInput[] = []
+    if (q || normalizedTeam) {
+      const orClauses: Prisma.ProfileWhereInput[] = []
 
-    if (q) {
-      orClauses.push(
-        { fullName: { contains: q, mode: "insensitive" } },
-        { email: { contains: q, mode: "insensitive" } },
-        {
-          operators: {
-            some: {
-              OR: [
-                { fullName: { contains: q, mode: "insensitive" } },
-                { email: { contains: q, mode: "insensitive" } },
-              ],
+      if (q) {
+        orClauses.push(
+          { fullName: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+          {
+            operators: {
+              some: {
+                OR: [
+                  { fullName: { contains: q, mode: "insensitive" } },
+                  { email: { contains: q, mode: "insensitive" } },
+                ],
+              },
             },
           },
-        },
-        {
-          teamsOwned: {
-            some: {
-              members: {
-                some: {
-                  profile: {
-                    OR: [
-                      { fullName: { contains: q, mode: "insensitive" } },
-                      { email: { contains: q, mode: "insensitive" } },
-                    ],
+          {
+            teamsOwned: {
+              some: {
+                members: {
+                  some: {
+                    profile: {
+                      OR: [
+                        { fullName: { contains: q, mode: "insensitive" } },
+                        { email: { contains: q, mode: "insensitive" } },
+                      ],
+                    },
                   },
                 },
               },
             },
+          }
+        )
+      }
+
+      if (normalizedTeam && normalizedTeam !== q) {
+        orClauses.push({
+          teamsOwned: {
+            some: { name: { contains: normalizedTeam, mode: "insensitive" } },
           },
-        }
-      )
+        })
+      }
+
+      if (orClauses.length > 0) {
+        andClauses.push({ OR: orClauses })
+      }
     }
 
-    if (normalizedTeam && normalizedTeam !== q) {
-      orClauses.push({
-        teamsOwned: {
-          some: { name: { contains: normalizedTeam, mode: "insensitive" } },
-        },
-      })
+    if (filters?.plan) {
+      const plan = filters.plan
+      if (plan === "lifetime") {
+        andClauses.push({ hasPermanentSubscription: true })
+      } else if (plan === "trial") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: { subscriptionPlan: "free_trial" } },
+        })
+      } else if (plan === "monthly") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: { subscriptionPlan: { in: ["manager_base", "with_operators"] } } },
+        })
+      } else if (plan === "none") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: null },
+        })
+      }
     }
 
-    return {
-      ...base,
-      ...(orClauses.length > 0 ? { OR: orClauses } : {}),
+    if (filters?.userType) {
+      if (filters.userType === "member_pro") {
+        andClauses.push({
+          userTypeAssignment: {
+            is: { userType: { is: { slug: "member_pro" } } },
+          },
+        })
+      } else {
+        andClauses.push({ userTypeAssignment: { is: null } })
+      }
     }
+
+    return andClauses.length > 0
+      ? { ...base, AND: andClauses }
+      : base
   }
 
   async findMasterUsersWithFilters(

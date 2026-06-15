@@ -1,6 +1,6 @@
 ---
 mode: 'agent'
-description: 'Diagnosticar e corrigir desvios de arquitetura no Lead Flow (Prisma em route, UseCase sem Output, estrutura features/ incorreta)'
+description: "Diagnosticar e corrigir desvios de arquitetura no Lead Flow (Prisma em route, UseCase sem Output, estrutura features/ incorreta)"
 ---
 
 <!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
