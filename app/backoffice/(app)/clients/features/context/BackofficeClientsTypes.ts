@@ -22,8 +22,13 @@ export interface BackofficeClientItem {
   teams: TeamSummaryItem[]
 }
 
+export type BackofficeClientsPlanFilter = "lifetime" | "monthly" | "trial" | "none"
+export type BackofficeClientsUserTypeFilter = "common" | "member_pro"
+
 export interface BackofficeClientsFilters {
   query: string
+  plan: BackofficeClientsPlanFilter | "all"
+  userType: BackofficeClientsUserTypeFilter | "all"
 }
 
 export interface BackofficePagination {

@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Copy, Edit, MailCheck, MoreHorizontal, RefreshCw, Search, Trash2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Copy, Edit, MailCheck, MoreHorizontal, RefreshCw, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -39,6 +39,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -50,7 +52,6 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
 import { BackofficeAdhesionDialog } from "../components/BackofficeAdhesionDialog"
 import { useBackofficeAdhesions } from "../context/BackofficeAdhesionsHook"
 import {
@@ -64,6 +65,10 @@ import { formatIntimezone } from "@/lib/dates/formatters"
 import { formatDocumentInput } from "@/lib/masks"
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50]
+
+const STATUS_OPTIONS: { value: BackofficeAdhesionStatusKey; label: string }[] = Object.entries(
+  BACKOFFICE_ADHESION_STATUS_LABELS
+).map(([value, label]) => ({ value: value as BackofficeAdhesionStatusKey, label }))
 
 function formatDate(value: string, tz: string): string {
   try {
@@ -116,19 +121,41 @@ export function BackofficeAdhesionsContainer() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BackofficeAdhesionItem | null>(null)
 
+  const isFiltered = useMemo(
+    () => localFilters.query.trim().length > 0 || localFilters.status !== "all",
+    [localFilters.query, localFilters.status]
+  )
+
   useEffect(() => {
     setLocalFilters(filters)
   }, [filters])
 
-  async function handleSearch() {
-    await fetchAdhesions({ filters: localFilters, page: 1 })
-  }
+  useEffect(() => {
+    const nextQuery = localFilters.query.trim()
+    const currentQuery = filters.query.trim()
+    if (nextQuery === currentQuery) return
+
+    const debounceId = window.setTimeout(() => {
+      void fetchAdhesions({ filters: localFilters, page: 1 })
+    }, 300)
+
+    return () => window.clearTimeout(debounceId)
+  }, [fetchAdhesions, filters.query, localFilters])
 
   async function handleClear() {
     const cleared = { query: "", status: "all" as const }
     setLocalFilters(cleared)
     setFilters(cleared)
     await clearFilters()
+  }
+
+  function handleStatusChange(values: string[]) {
+    const selected = values[values.length - 1]
+    const next = (selected ?? "all") as BackofficeAdhesionStatusKey | "all"
+    const updated = { ...localFilters, status: next }
+    setLocalFilters(updated)
+    setFilters(updated)
+    void fetchAdhesions({ filters: updated, page: 1 })
   }
 
   async function handleResend(adhesion: BackofficeAdhesionItem) {
@@ -226,36 +253,24 @@ export function BackofficeAdhesionsContainer() {
           }
           className="h-8 w-65 lg:w-105"
         />
-        <Select
-          value={localFilters.status}
-          onValueChange={(value) =>
-            setLocalFilters((current) => ({
-              ...current,
-              status: value as BackofficeAdhesionStatusKey | "all",
-            }))
-          }
-        >
-          <SelectTrigger className="w-45">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">Todos os status</SelectItem>
-              {Object.entries(BACKOFFICE_ADHESION_STATUS_LABELS).map(([status, label]) => (
-                <SelectItem key={status} value={status}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Button size="sm" onClick={handleSearch} disabled={isLoading}>
-          <Search data-icon="inline-start" />
-          Buscar
-        </Button>
-        <Button size="sm" variant="outline" onClick={handleClear} disabled={isLoading}>
-          Limpar
-        </Button>
+        <LeadsMultiFilter
+          title="Status"
+          options={STATUS_OPTIONS}
+          selectedValues={localFilters.status === "all" ? [] : [localFilters.status]}
+          onChange={handleStatusChange}
+        />
+        {isFiltered ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 lg:px-3"
+            onClick={() => void handleClear()}
+            disabled={isLoading}
+          >
+            Limpar
+            <X data-icon="inline-end" />
+          </Button>
+        ) : null}
       </LeadsFiltersLayout>
 
       {error ? (
