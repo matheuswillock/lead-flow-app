@@ -12,6 +12,7 @@ import type { PublicLeadFormState, PublicLeadFormActions, BootstrapStatus } from
 import { DEFAULT_TZ } from "@/lib/dates";
 
 export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): PublicLeadFormState & PublicLeadFormActions {
+  const [teamName, setTeamName] = useState("");
   const [healthPlans, setHealthPlans] = useState<HealthPlanOption[]>([]);
   const [healthPlansLoading, setHealthPlansLoading] = useState(true);
   const [closers, setClosers] = useState<CloserOption[]>([]);
@@ -57,6 +58,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
           return;
         }
 
+        setTeamName(bootstrapData.teamName);
         setHealthPlans(bootstrapData.healthPlans);
         setClosers(bootstrapData.closers);
         setSdrs(bootstrapData.sdrs);
@@ -68,6 +70,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
           return;
         }
         console.error("[usePublicLeadForm] Erro ao carregar bootstrap inicial:", error);
+        setTeamName("");
         setHealthPlans([]);
         setClosers([]);
         setSdrs([]);
@@ -164,6 +167,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
 
   return {
     teamId,
+    teamName,
     legacySupabaseId,
     bootstrapStatus,
     bootstrapError,

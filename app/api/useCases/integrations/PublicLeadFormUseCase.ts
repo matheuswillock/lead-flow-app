@@ -30,6 +30,7 @@ type PublicIntegrationAccess = {
   profileId: string;
   managerId: string;
   teamId: string;
+  teamName: string;
   timezone: string;
 };
 
@@ -91,6 +92,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       where: { id: teamId },
       select: {
         id: true,
+        name: true,
         masterId: true,
         master: {
           select: {
@@ -153,6 +155,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
           profileId: actorProfileId,
           managerId: team.masterId,
           teamId: team.id,
+          teamName: team.name,
           timezone: resolveTimezone(team.master.timezone),
         },
       };
@@ -378,6 +381,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       const guestCandidates = this.mapMembersToGuestCandidates(teamMembers);
 
       return new Output(true, [], [], {
+        teamName: access.teamName,
         healthPlans,
         closers,
         sdrs,
