@@ -97,8 +97,17 @@ export function invalidateTeamLeadsCache(input: { teamId: string }) {
 
 export function invalidateLeadActivitiesCache(input: { leadId: string }) {
   revalidateDefinedTags([
+    cacheTags.lead(input.leadId),
     cacheTags.leadActivities(input.leadId),
     cacheTags.leadDetails(input.leadId),
   ]);
+}
+
+export function invalidateTeamTasksCache(input: { teamId: string }) {
+  revalidateDefinedTags([cacheTags.teamTasks(input.teamId)]);
+}
+
+export function invalidateTeamFilterPresetsCache(input: { teamId: string; profileId: string }) {
+  revalidateDefinedTags([cacheTags.teamFilterPresets(input.teamId, input.profileId)]);
 }
 
