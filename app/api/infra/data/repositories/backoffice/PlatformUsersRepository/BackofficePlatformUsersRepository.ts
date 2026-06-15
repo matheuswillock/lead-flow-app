@@ -103,7 +103,16 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           },
         })
       } else {
-        andClauses.push({ userTypeAssignment: { is: null } })
+        andClauses.push({
+          OR: [
+            { userTypeAssignment: { is: null } },
+            {
+              userTypeAssignment: {
+                is: { userType: { is: { slug: "common" } } },
+              },
+            },
+          ],
+        })
       }
     }
 

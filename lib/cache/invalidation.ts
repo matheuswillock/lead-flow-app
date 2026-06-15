@@ -48,6 +48,7 @@ export function invalidateTeamCalendarCache(input: { teamId: string; leadId?: st
     cacheTags.teamCalendar(input.teamId),
     cacheTags.teamDashboard(input.teamId),
     cacheTags.teamPerformance(input.teamId),
+    input.leadId ? cacheTags.lead(input.leadId) : null,
     input.leadId ? cacheTags.leadDetails(input.leadId) : null,
     input.leadId ? cacheTags.leadSchedules(input.leadId) : null,
   ]);
