@@ -4,8 +4,9 @@ import type {
   ResendDomainStatus,
   UpdateEmailSettingsData,
   UpsertEmailSenderData,
+  UpsertEmailVariableData,
 } from "./IEmailSettingsService"
-import type { EmailSender, EmailSettings } from "../context/EmailSettingsTypes"
+import type { EmailGlobalVariable, EmailSender, EmailSettings } from "../context/EmailSettingsTypes"
 
 export class EmailSettingsService implements IEmailSettingsService {
   private readonly base = "/api/v1/email/settings"
@@ -110,5 +111,44 @@ export class EmailSettingsService implements IEmailSettingsService {
     const json = await res.json()
     if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro ao buscar registros DNS")
     return json.result as DomainConnectResult
+  }
+
+  async getVariables(): Promise<EmailGlobalVariable[]> {
+    const res = await fetch(`${this.base}/variables`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as EmailGlobalVariable[]
+  }
+
+  async createVariable(data: UpsertEmailVariableData): Promise<EmailGlobalVariable> {
+    const res = await fetch(`${this.base}/variables`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as EmailGlobalVariable
+  }
+
+  async updateVariable(variableId: string, data: UpsertEmailVariableData): Promise<EmailGlobalVariable> {
+    const res = await fetch(`${this.base}/variables/${variableId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as EmailGlobalVariable
+  }
+
+  async deleteVariable(variableId: string): Promise<void> {
+    const res = await fetch(`${this.base}/variables/${variableId}`, { method: "DELETE" })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
   }
 }

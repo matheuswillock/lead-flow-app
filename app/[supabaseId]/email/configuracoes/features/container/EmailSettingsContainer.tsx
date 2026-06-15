@@ -6,6 +6,7 @@ import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import { AccessPermissionsCard } from "../components/AccessPermissionsCard"
 import { CustomDomainCard } from "../components/CustomDomainCard"
 import { DispatchRestrictionsCard } from "../components/DispatchRestrictionsCard"
+import { GlobalVariablesCard } from "../components/GlobalVariablesCard"
 import { SenderCard } from "../components/SenderCard"
 import { TemplateApprovalCard } from "../components/TemplateApprovalCard"
 
@@ -47,6 +48,7 @@ export function EmailSettingsContainer() {
       </section>
 
       <SenderCard />
+      <GlobalVariablesCard />
       <DispatchRestrictionsCard />
       <AccessPermissionsCard />
       <TemplateApprovalCard />

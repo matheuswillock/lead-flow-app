@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { EmailSettingsService } from "../services/EmailSettingsService"
-import type { UpsertEmailSenderData } from "../services/IEmailSettingsService"
+import type { UpsertEmailSenderData, UpsertEmailVariableData } from "../services/IEmailSettingsService"
 import type {
   BlockedDateRange,
   DomainConnectResult,
   DomainRecord,
+  EmailGlobalVariable,
   EmailSender,
   EmailSettings,
   ResendDomainStatus,
@@ -66,6 +67,14 @@ export type EmailSettingsHookReturn = {
   handleDisconnectDomain: () => Promise<void>
   handleVerifyDomain: () => Promise<void>
   handleLoadDomainRecords: () => Promise<void>
+
+  globalVariables: EmailGlobalVariable[]
+  creatingVariable: boolean
+  updatingVariableId: string | null
+  deletingVariableId: string | null
+  handleCreateVariable: (data: UpsertEmailVariableData) => Promise<void>
+  handleUpdateVariable: (variableId: string, data: UpsertEmailVariableData) => Promise<void>
+  handleDeleteVariable: (variableId: string) => Promise<void>
 }
 
 export function useEmailSettings(): EmailSettingsHookReturn {
@@ -90,6 +99,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [updatingSenderId, setUpdatingSenderId] = useState<string | null>(null)
   const [deletingSenderId, setDeletingSenderId] = useState<string | null>(null)
   const [settingDefaultSenderId, setSettingDefaultSenderId] = useState<string | null>(null)
+
+  const [globalVariables, setGlobalVariables] = useState<EmailGlobalVariable[]>([])
+  const [creatingVariable, setCreatingVariable] = useState(false)
+  const [updatingVariableId, setUpdatingVariableId] = useState<string | null>(null)
+  const [deletingVariableId, setDeletingVariableId] = useState<string | null>(null)
 
   const [domainInput, setDomainInput] = useState("")
   const [domainRecords, setDomainRecords] = useState<DomainRecord[]>([])
@@ -116,6 +130,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     setDomainName(result.resendDomainName)
     setSenders(result.senders ?? [])
     setDefaultSenderId(result.defaultSenderId ?? null)
+    setGlobalVariables(result.globalVariables ?? [])
   }, [])
 
   const fetchSettings = useCallback(async () => {
@@ -272,6 +287,52 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     }
   }, [applySettings])
 
+  const handleCreateVariable = useCallback(async (data: UpsertEmailVariableData) => {
+    setCreatingVariable(true)
+    try {
+      const created = await service.createVariable(data)
+      setGlobalVariables((prev) => [...prev, created].sort((a, b) => a.key.localeCompare(b.key)))
+      toast.success("Variável global criada com sucesso")
+    } catch (err) {
+      console.error("[useEmailSettings] handleCreateVariable error", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao criar variável global")
+      throw err
+    } finally {
+      setCreatingVariable(false)
+    }
+  }, [])
+
+  const handleUpdateVariable = useCallback(async (variableId: string, data: UpsertEmailVariableData) => {
+    setUpdatingVariableId(variableId)
+    try {
+      const updated = await service.updateVariable(variableId, data)
+      setGlobalVariables((prev) =>
+        prev.map((v) => (v.id === variableId ? updated : v)).sort((a, b) => a.key.localeCompare(b.key))
+      )
+      toast.success("Variável global atualizada com sucesso")
+    } catch (err) {
+      console.error("[useEmailSettings] handleUpdateVariable error", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar variável global")
+      throw err
+    } finally {
+      setUpdatingVariableId(null)
+    }
+  }, [])
+
+  const handleDeleteVariable = useCallback(async (variableId: string) => {
+    setDeletingVariableId(variableId)
+    try {
+      await service.deleteVariable(variableId)
+      setGlobalVariables((prev) => prev.filter((v) => v.id !== variableId))
+      toast.success("Variável global removida com sucesso")
+    } catch (err) {
+      console.error("[useEmailSettings] handleDeleteVariable error", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao remover variável global")
+    } finally {
+      setDeletingVariableId(null)
+    }
+  }, [])
+
   const handleConnectDomain = useCallback(async () => {
     if (!domainInput.trim()) {
       toast.error("Informe o nome do domínio")
@@ -382,5 +443,12 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     handleDisconnectDomain,
     handleVerifyDomain,
     handleLoadDomainRecords,
+    globalVariables,
+    creatingVariable,
+    updatingVariableId,
+    deletingVariableId,
+    handleCreateVariable,
+    handleUpdateVariable,
+    handleDeleteVariable,
   }
 }

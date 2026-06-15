@@ -33,6 +33,17 @@ export type EmailSender = {
   isDefault: boolean
 }
 
+export type EmailVariableType = "string" | "number"
+
+export type EmailGlobalVariable = {
+  id: string
+  key: string
+  type: EmailVariableType
+  defaultValue: string | null
+  description: string | null
+  isActive: boolean
+}
+
 export type EmailSettings = {
   fromName: string
   fromEmail: string
@@ -50,4 +61,5 @@ export type EmailSettings = {
   resendDomainStatus: ResendDomainStatus | null
   senders: EmailSender[]
   defaultSenderId: string | null
+  globalVariables: EmailGlobalVariable[]
 }

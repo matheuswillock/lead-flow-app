@@ -102,7 +102,7 @@ function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfi
           </DialogHeader>
           <div className="overflow-y-auto flex-1 space-y-3 text-sm">
             <div>
-              <p className="text-muted-foreground">Email</p>
+              <p className="text-muted-foreground">E-mail</p>
               <p className="font-medium">{contact.email}</p>
             </div>
             <div>

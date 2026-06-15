@@ -102,7 +102,7 @@ export function SiteHeader() {
                 </>
               ) : (
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Email</BreadcrumbPage>
+                  <BreadcrumbPage>E-mail</BreadcrumbPage>
                 </BreadcrumbItem>
               )}
             </BreadcrumbList>

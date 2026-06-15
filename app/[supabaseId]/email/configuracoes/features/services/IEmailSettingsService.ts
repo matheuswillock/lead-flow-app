@@ -2,12 +2,22 @@ import type {
   BlockedDateRange,
   DomainConnectResult,
   DomainRecord,
+  EmailGlobalVariable,
   EmailSender,
   EmailSettings,
+  EmailVariableType,
   ResendDomainStatus,
 } from "../context/EmailSettingsTypes"
 
-export type { EmailSettings, BlockedDateRange, DomainConnectResult, DomainRecord, EmailSender, ResendDomainStatus }
+export type { EmailSettings, BlockedDateRange, DomainConnectResult, DomainRecord, EmailSender, EmailGlobalVariable, ResendDomainStatus }
+
+export interface UpsertEmailVariableData {
+  key: string
+  type?: EmailVariableType
+  defaultValue?: string | null
+  description?: string | null
+  isActive?: boolean
+}
 
 export interface UpdateEmailSettingsData {
   dispatchBlockedDates?: BlockedDateRange[] | null
@@ -38,4 +48,8 @@ export interface IEmailSettingsService {
   disconnectDomain(): Promise<void>
   verifyDomain(): Promise<{ status: ResendDomainStatus }>
   getDomainRecords(): Promise<DomainConnectResult>
+  getVariables(): Promise<EmailGlobalVariable[]>
+  createVariable(data: UpsertEmailVariableData): Promise<EmailGlobalVariable>
+  updateVariable(variableId: string, data: UpsertEmailVariableData): Promise<EmailGlobalVariable>
+  deleteVariable(variableId: string): Promise<void>
 }
