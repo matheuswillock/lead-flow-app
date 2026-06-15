@@ -9396,6 +9396,50 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Publicar Template",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/{{templateId}}/publish",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "{{templateId}}",
+                    "publish"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Despublicar Template",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/{{templateId}}/publish",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "{{templateId}}",
+                    "publish"
+                  ]
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -9573,6 +9617,110 @@
                     "settings",
                     "senders",
                     "{{senderId}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Listar Variáveis Globais",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Criar Variável Global",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"corretora_nome\",\n  \"type\": \"string\",\n  \"defaultValue\": \"Corretor Studio\",\n  \"description\": \"Nome da corretora exibido nos e-mails\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Atualizar Variável Global",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables/{{variableId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables",
+                    "{{variableId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"corretora_nome\",\n  \"type\": \"string\",\n  \"defaultValue\": \"Acme Corretora\",\n  \"description\": \"Nome da corretora\",\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Remover Variável Global",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables/{{variableId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables",
+                    "{{variableId}}"
                   ]
                 }
               },

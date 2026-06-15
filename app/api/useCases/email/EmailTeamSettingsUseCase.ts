@@ -114,9 +114,18 @@ export class EmailTeamSettingsUseCase {
     })
   }
 
+  private async getVariables(tx: Prisma.TransactionClient, teamId: string) {
+    return tx.emailTeamVariable.findMany({
+      where: { teamId },
+      select: { id: true, key: true, type: true, defaultValue: true, description: true, isActive: true },
+      orderBy: [{ key: "asc" }],
+    })
+  }
+
   private composeResult(
     settings: Awaited<ReturnType<EmailTeamSettingsUseCase["getSettingsRecord"]>>,
-    senders: Awaited<ReturnType<EmailTeamSettingsUseCase["getSenders"]>>
+    senders: Awaited<ReturnType<EmailTeamSettingsUseCase["getSenders"]>>,
+    globalVariables: Awaited<ReturnType<EmailTeamSettingsUseCase["getVariables"]>> = []
   ) {
     const defaultSender = senders.find((sender) => sender.isDefault) ?? null
 
@@ -140,6 +149,7 @@ export class EmailTeamSettingsUseCase {
       resendDomainStatus: settings?.resendDomainStatus ?? DEFAULTS.resendDomainStatus,
       senders,
       defaultSenderId: defaultSender?.id ?? null,
+      globalVariables,
     }
   }
 
@@ -202,7 +212,8 @@ export class EmailTeamSettingsUseCase {
       const result = await prisma.$transaction(async (tx) => {
         const settings = await this.getSettingsRecord(tx, ctx.teamId)
         const senders = await this.getSenders(tx, ctx.teamId)
-        return this.composeResult(settings, senders)
+        const variables = await this.getVariables(tx, ctx.teamId)
+        return this.composeResult(settings, senders, variables)
       })
 
       return new Output(true, [], [], result)
@@ -293,7 +304,8 @@ export class EmailTeamSettingsUseCase {
 
         const settings = await this.getSettingsRecord(tx, ctx.teamId)
         const senders = await this.getSenders(tx, ctx.teamId)
-        return this.composeResult(settings, senders)
+        const variables = await this.getVariables(tx, ctx.teamId)
+        return this.composeResult(settings, senders, variables)
       })
 
       return new Output(true, ["Configurações salvas com sucesso"], [], result)
@@ -434,7 +446,8 @@ export class EmailTeamSettingsUseCase {
 
         const settings = await this.getSettingsRecord(tx, ctx.teamId)
         const senders = await this.getSenders(tx, ctx.teamId)
-        return this.composeResult(settings, senders)
+        const variables = await this.getVariables(tx, ctx.teamId)
+        return this.composeResult(settings, senders, variables)
       })
 
       return new Output(true, ["Remetente padrão atualizado"], [], result)

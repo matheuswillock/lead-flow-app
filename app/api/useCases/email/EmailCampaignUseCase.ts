@@ -49,6 +49,22 @@ export class EmailCampaignUseCase {
     return current
   }
 
+  private async getGlobalDefaults(teamId: string): Promise<Record<string, string>> {
+    try {
+      const variables = await prisma.emailTeamVariable.findMany({
+        where: { teamId, isActive: true, defaultValue: { not: null } },
+        select: { key: true, defaultValue: true },
+      })
+      return variables.reduce<Record<string, string>>((acc, v) => {
+        if (v.defaultValue != null) acc[v.key] = v.defaultValue
+        return acc
+      }, {})
+    } catch (error) {
+      console.error("[EmailCampaignUseCase][getGlobalDefaults]", error)
+      return {}
+    }
+  }
+
   private async hasCampaignsBetaAccess(profileId: string): Promise<boolean> {
     const feature = await prisma.backofficeFeature.findFirst({
       where: { slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS, isActive: true },
@@ -153,14 +169,20 @@ export class EmailCampaignUseCase {
 
       const [template, contactList] = await Promise.all([
         prisma.emailTemplate.findFirst({
-          where: { id: data.templateId, teamId: ctx.teamId, isArchived: false, approvalStatus: "approved" },
+          where: {
+            id: data.templateId,
+            teamId: ctx.teamId,
+            isArchived: false,
+            approvalStatus: "approved",
+            status: "published",
+          },
           select: { id: true },
         }),
         prisma.emailContactList.findFirst({ where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false } }),
       ])
 
       if (!template) {
-        return new Output(false, [], ["Template não encontrado ou não pertence ao time"], null)
+        return new Output(false, [], ["Template não encontrado ou não está publicado. Apenas templates publicados podem ser usados em campanhas"], null)
       }
       if (!contactList) {
         return new Output(false, [], ["Lista de contatos não encontrada ou não pertence ao time"], null)
@@ -327,6 +349,9 @@ export class EmailCampaignUseCase {
       const from = `${fromName} <${fromEmail}>`
       const replyTo = teamSettings?.replyTo ?? null
 
+      // Team global variables (default values) used as interpolation fallback
+      const globalDefaults = await this.getGlobalDefaults(ctx.teamId)
+
       // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({
         from,
@@ -336,6 +361,7 @@ export class EmailCampaignUseCase {
         html: campaign.template.html,
         campaignId: campaign.id,
         teamId: ctx.teamId,
+        globalDefaults,
       })
 
       // Criar EmailLog para cada email enviado com mapeamento explícito email→resendId

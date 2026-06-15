@@ -127,6 +127,15 @@ export async function GET(request: NextRequest) {
 
         const recipientsList = contacts.map((c) => ({ email: c.email, name: c.name ?? undefined }))
 
+        const globalVariables = await prisma.emailTeamVariable.findMany({
+          where: { teamId: campaign.teamId, isActive: true, defaultValue: { not: null } },
+          select: { key: true, defaultValue: true },
+        })
+        const globalDefaults = globalVariables.reduce<Record<string, string>>((acc, v) => {
+          if (v.defaultValue != null) acc[v.key] = v.defaultValue
+          return acc
+        }, {})
+
         const result = await dispatchService.dispatchBatch({
           from: DEFAULT_FROM,
           recipients: recipientsList,
@@ -134,6 +143,7 @@ export async function GET(request: NextRequest) {
           html: campaign.template.html,
           campaignId: campaign.id,
           teamId: campaign.teamId,
+          globalDefaults,
         })
 
         if (result.dispatched.length > 0) {

@@ -5,12 +5,19 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
 
+const variableSchema = z.object({
+  key: z.string().min(1),
+  type: z.enum(["string", "number"]).optional(),
+  fallbackValue: z.string().nullable().optional(),
+})
+
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   subject: z.string().min(1).optional(),
   previewText: z.string().optional(),
   mailyJson: z.unknown().optional(),
   html: z.string().optional(),
+  variables: z.array(variableSchema).optional(),
 })
 
 function makeUseCase() {

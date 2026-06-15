@@ -267,6 +267,7 @@
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/email/EmailTemplateUseCase.ts",
       "app/api/useCases/email/EmailTeamSettingsUseCase.ts",
+      "app/api/useCases/email/EmailTeamVariablesUseCase.ts",
       "app/api/webhooks/resend/route.ts"
     ]
   }

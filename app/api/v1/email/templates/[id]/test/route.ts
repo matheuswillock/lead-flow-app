@@ -3,6 +3,7 @@ import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
+import { EmailTeamVariablesUseCase } from "@/app/api/useCases/email/EmailTeamVariablesUseCase"
 import { assertResend } from "@/lib/email"
 import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 
@@ -40,6 +41,7 @@ export async function POST(
       subject: string
       html: string | null
       previewText: string | null
+      variables: Array<{ key: string; fallbackValue?: string | null }> | null
     }
 
     if (!template.html) {
@@ -49,12 +51,24 @@ export async function POST(
       )
     }
 
+    // Build interpolation defaults: team global variables, then template-local fallbacks override.
+    const variablesUseCase = new EmailTeamVariablesUseCase()
+    const defaultsOutput = await variablesUseCase.getDefaultsMap(teamAccess.access)
+    const defaults: Record<string, string> = defaultsOutput.isValid
+      ? { ...(defaultsOutput.result as Record<string, string>) }
+      : {}
+    for (const v of template.variables ?? []) {
+      if (v.fallbackValue != null && v.fallbackValue !== "") defaults[v.key] = v.fallbackValue
+    }
+
+    const recipient = { email: validation.data.to, name: validation.data.to.split("@")[0] }
+
     const resend = assertResend()
     const { error } = await resend.emails.send({
       from: FROM,
       to: validation.data.to,
-      subject: `[Teste] ${interpolateEmailTemplate(template.subject, { email: validation.data.to, name: validation.data.to.split("@")[0] })}`,
-      html: interpolateEmailTemplate(template.html, { email: validation.data.to, name: validation.data.to.split("@")[0] }),
+      subject: `[Teste] ${interpolateEmailTemplate(template.subject, recipient, defaults)}`,
+      html: interpolateEmailTemplate(template.html, recipient, defaults),
     })
 
     if (error) {

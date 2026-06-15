@@ -13,6 +13,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     html: string
     campaignId: string
     teamId: string
+    globalDefaults?: Record<string, string | null | undefined> | null
   }): Promise<DispatchBatchResult> {
     if (!resend) {
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
@@ -27,8 +28,8 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           from: params.from,
           ...(params.replyTo ? { replyTo: params.replyTo } : {}),
           to: recipient.email,
-          subject: interpolateEmailTemplate(params.subject, recipient),
-          html: interpolateEmailTemplate(params.html, recipient),
+          subject: interpolateEmailTemplate(params.subject, recipient, params.globalDefaults),
+          html: interpolateEmailTemplate(params.html, recipient, params.globalDefaults),
           tags: [
             { name: "campaignId", value: params.campaignId },
             { name: "teamId", value: params.teamId },

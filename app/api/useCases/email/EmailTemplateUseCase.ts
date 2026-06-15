@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto"
+import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isManagerLikeRole } from "@/lib/roles"
@@ -13,6 +14,9 @@ const templateDetailSelect = {
   previewText: true,
   mailyJson: true,
   html: true,
+  variables: true,
+  status: true,
+  publishedAt: true,
   isArchived: true,
   approvalStatus: true,
   approvedBy: true,
@@ -26,12 +30,19 @@ const templateDetailSelect = {
 
 export type TemplateApprovalFilter = "pending_approval" | "approved" | "rejected" | "all"
 
+export interface TemplateVariableInput {
+  key: string
+  type?: "string" | "number"
+  fallbackValue?: string | null
+}
+
 export interface CreateTemplateInput {
   name: string
   subject: string
   previewText?: string
   mailyJson?: unknown
   html?: string
+  variables?: TemplateVariableInput[]
 }
 
 export interface UpdateTemplateInput {
@@ -40,6 +51,7 @@ export interface UpdateTemplateInput {
   previewText?: string
   mailyJson?: unknown
   html?: string
+  variables?: TemplateVariableInput[]
 }
 
 export class EmailTemplateUseCase {
@@ -57,6 +69,9 @@ export class EmailTemplateUseCase {
           previewText: true,
           mailyJson: true,
           html: true,
+          variables: true,
+          status: true,
+          publishedAt: true,
           approvalStatus: true,
           createdAt: true,
           updatedAt: true,
@@ -124,6 +139,7 @@ export class EmailTemplateUseCase {
           previewText: data.previewText?.trim() ?? null,
           mailyJson: (data.mailyJson as object) ?? null,
           html: data.html ?? null,
+          variables: (data.variables as object) ?? undefined,
           approvalStatus,
         },
       })
@@ -160,6 +176,7 @@ export class EmailTemplateUseCase {
           ...(data.previewText !== undefined && { previewText: data.previewText?.trim() ?? null }),
           ...(data.mailyJson !== undefined && { mailyJson: data.mailyJson as object }),
           ...(data.html !== undefined && { html: data.html }),
+          ...(data.variables !== undefined && { variables: (data.variables as object) ?? Prisma.JsonNull }),
         },
       })
 
@@ -240,6 +257,60 @@ export class EmailTemplateUseCase {
     } catch (error) {
       console.error("[EmailTemplateUseCase][reject]", error)
       return new Output(false, [], ["Erro ao rejeitar template"], null)
+    }
+  }
+
+  async publish(id: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const existing = await prisma.emailTemplate.findFirst({
+        where: { id, teamId: ctx.teamId, isArchived: false },
+        select: { id: true, html: true, approvalStatus: true },
+      })
+
+      if (!existing) {
+        return new Output(false, [], ["Template não encontrado"], null)
+      }
+      if (!existing.html?.trim()) {
+        return new Output(false, [], ["Template não possui HTML. Edite o conteúdo antes de publicar"], null)
+      }
+      if (existing.approvalStatus !== "approved") {
+        return new Output(false, [], ["Template precisa estar aprovado antes de ser publicado"], null)
+      }
+
+      const template = await prisma.emailTemplate.update({
+        where: { id },
+        select: templateDetailSelect,
+        data: { status: "published", publishedAt: new Date() },
+      })
+
+      return new Output(true, ["Template publicado com sucesso"], [], template)
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][publish]", error)
+      return new Output(false, [], ["Erro ao publicar template"], null)
+    }
+  }
+
+  async unpublish(id: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const existing = await prisma.emailTemplate.findFirst({
+        where: { id, teamId: ctx.teamId, isArchived: false },
+        select: { id: true },
+      })
+
+      if (!existing) {
+        return new Output(false, [], ["Template não encontrado"], null)
+      }
+
+      const template = await prisma.emailTemplate.update({
+        where: { id },
+        select: templateDetailSelect,
+        data: { status: "draft", publishedAt: null },
+      })
+
+      return new Output(true, ["Template movido para rascunho"], [], template)
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][unpublish]", error)
+      return new Output(false, [], ["Erro ao despublicar template"], null)
     }
   }
 

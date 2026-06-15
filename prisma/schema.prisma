@@ -1224,6 +1224,7 @@ model Team {
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
   emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
+  emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
 
   @@index([masterId])
   @@map("corretor_studio_teams")
@@ -1428,6 +1429,9 @@ model EmailTemplate {
   previewText String?  @db.Text
   mailyJson   Json?
   html        String?  @db.Text
+  variables   Json?
+  status         String   @default("draft") @db.Text
+  publishedAt    DateTime? @db.Timestamptz(6)
   isArchived     Boolean  @default(false)
   approvalStatus String   @default("approved") @db.Text
   approvedBy     String?  @db.Uuid
@@ -1446,6 +1450,7 @@ model EmailTemplate {
 
   @@index([teamId, isArchived])
   @@index([teamId, approvalStatus])
+  @@index([teamId, status])
   @@index([createdBy])
   @@map("corretor_studio_email_templates")
 }
@@ -1794,6 +1799,24 @@ model EmailTeamSender {
 
   @@index([teamId, isDefault])
   @@map("email_team_senders")
+}
+
+model EmailTeamVariable {
+  id           String   @id @default(uuid()) @db.Uuid
+  teamId       String   @db.Uuid
+  key          String   @db.Text
+  type         String   @default("string") @db.Text
+  defaultValue String?  @db.Text
+  description  String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailVariables", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, key])
+  @@index([teamId, isActive])
+  @@map("email_team_variables")
 }
 
 // -----------------------------

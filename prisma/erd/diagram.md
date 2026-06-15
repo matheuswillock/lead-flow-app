@@ -956,6 +956,9 @@ unsubscribed unsubscribed
     String previewText "❓"
     Json mailyJson "❓"
     String html "❓"
+    Json variables "❓"
+    String status 
+    DateTime publishedAt "❓"
     Boolean isArchived 
     String approvalStatus 
     DateTime approvedAt "❓"
@@ -1177,6 +1180,18 @@ unsubscribed unsubscribed
     }
   
 
+  "email_team_variables" {
+    String id "🗝️"
+    String key 
+    String type 
+    String defaultValue "❓"
+    String description "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "profile_user_types" {
     String id "🗝️"
     String slug 
@@ -1346,6 +1361,7 @@ unsubscribed unsubscribed
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
+    "email_team_variables" }o--|| corretor_studio_teams : "team"
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
