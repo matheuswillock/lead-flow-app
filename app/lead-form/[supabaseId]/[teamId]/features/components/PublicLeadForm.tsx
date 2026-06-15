@@ -13,9 +13,6 @@ import {
 import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import { SchedulingSection } from "./SchedulingSection";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { AgeEntryInput } from "@/components/ui/age-entry-input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -27,38 +24,23 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
-import { maskPhone, formatDocumentInput, unmask, normalizeLeadPhoneDigits } from "@/lib/masks";
+import { normalizeLeadPhoneDigits, unmask } from "@/lib/masks";
+import { parseCurrencyValue } from "@/lib/lead-form-utils";
 import { useIsInView } from "@/hooks/use-is-in-view";
+import { LeadAdditionalNotesField } from "@/components/forms/fields/LeadAdditionalNotesField";
+import { LeadAgeField } from "@/components/forms/fields/LeadAgeField";
+import { LeadCnpjField } from "@/components/forms/fields/LeadCnpjField";
+import { LeadCurrentValueField } from "@/components/forms/fields/LeadCurrentValueField";
+import { LeadEmailField } from "@/components/forms/fields/LeadEmailField";
+import { LeadHealthPlanField } from "@/components/forms/fields/LeadHealthPlanField";
+import { LeadNameField } from "@/components/forms/fields/LeadNameField";
+import { LeadOngoingTreatmentField } from "@/components/forms/fields/LeadOngoingTreatmentField";
+import { LeadPhoneField } from "@/components/forms/fields/LeadPhoneField";
+import { LeadReferenceHospitalField } from "@/components/forms/fields/LeadReferenceHospitalField";
 import {
   getPendingRequiredFieldsFeedback,
   LEAD_REQUIRED_FIELD_ORDER,
 } from "@/lib/validations/leadFormFeedback";
-
-const parseCurrencyValue = (value: string): number | null => {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return null;
-  const cents = digits.slice(-2).padStart(2, "0");
-  const intPart = digits.slice(0, -2) || "0";
-  return parseFloat(`${intPart}.${cents}`);
-};
-
-const toCurrencyStorageValue = (value: string): string | null => {
-  const parsed = parseCurrencyValue(value);
-  if (parsed === null || Number.isNaN(parsed)) return null;
-  return parsed.toFixed(2);
-};
-
-const formatCurrencyInput = (value: string): string => {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  const cents = digits.slice(-2).padStart(2, "0");
-  const intPart = digits.slice(0, -2) || "0";
-  const formattedInt = Number(intPart).toLocaleString("pt-BR");
-  return `R$ ${formattedInt},${cents}`;
-};
-
-const MAX_CURRENCY_VALUE = 9_999_999_999.99;
-const MAX_CURRENCY_LABEL = "10.000.000.000,00";
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -75,13 +57,11 @@ const parseExtraGuests = (value: string | undefined): string[] => {
   );
 };
 
-const fieldLabelClassName = "block text-sm font-medium mb-1";
-const fieldInputClassName = "h-9";
 const fieldSelectTriggerClassName = "";
-const fieldTextareaClassName = "min-h-[84px] resize-y";
 
 export function PublicLeadForm() {
   const {
+    teamName,
     bootstrapStatus,
     bootstrapError,
     healthPlans,
@@ -96,8 +76,6 @@ export function PublicLeadForm() {
     resetForm,
   } = usePublicLeadFormContext();
 
-  const [currentValueDisplay, setCurrentValueDisplay] = useState("");
-  const [currentValueError, setCurrentValueError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const lastInvalidHashRef = useRef<string>("");
   const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
@@ -150,26 +128,6 @@ export function PublicLeadForm() {
     [form]
   );
 
-  const handleCurrencyChange = useCallback(
-    (value: string) => {
-      const parsed = parseCurrencyValue(value);
-      if (parsed !== null && parsed > MAX_CURRENCY_VALUE) {
-        const message = `Valor deve ser menor que ${MAX_CURRENCY_LABEL}`;
-        setCurrentValueError(message);
-        form.setError("currentValue", { type: "manual", message });
-        return;
-      }
-
-      setCurrentValueError(null);
-      form.clearErrors("currentValue");
-      const formatted = formatCurrencyInput(value);
-      const storage = toCurrencyStorageValue(value);
-      setCurrentValueDisplay(formatted);
-      form.setValue("currentValue", storage ?? "", { shouldDirty: true, shouldValidate: true });
-    },
-    [form]
-  );
-
   const onSubmit = useCallback(
     async (data: PublicLeadFormData) => {
       if (submitting || isSubmitting) return;
@@ -215,8 +173,6 @@ export function PublicLeadForm() {
             responsible: "",
             extraGuests: "",
           });
-          setCurrentValueDisplay("");
-          setCurrentValueError(null);
           setCloserId("");
           setMeetingDate(undefined);
           setMeetingTitle("");
@@ -363,6 +319,13 @@ export function PublicLeadForm() {
           <span className="text-lg font-semibold">Corretor Studio</span>
         </div>
 
+        {teamName ? (
+          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-center">
+            <p className="text-sm text-muted-foreground">Este lead será adicionado ao time</p>
+            <p className="text-base font-semibold">{teamName}</p>
+          </div>
+        ) : null}
+
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit, () => {
@@ -375,202 +338,40 @@ export function PublicLeadForm() {
                 <h3 className="text-sm font-medium">Dados do Lead</h3>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormField
+                  <LeadNameField control={form.control} disabled={isLoading} />
+                  <LeadPhoneField control={form.control} disabled={isLoading} />
+                  <LeadEmailField control={form.control} disabled={isLoading} />
+                  <LeadCnpjField control={form.control} disabled={isLoading} />
+                  <LeadAgeField control={form.control} disabled={isLoading} />
+                  <LeadHealthPlanField
                     control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Nome *</FormLabel>
-                        <FormControl>
-                          <Input className={fieldInputClassName} placeholder="Nome completo" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    disabled={isLoading}
+                    loading={healthPlansLoading}
+                    options={healthPlans.map((plan) => ({
+                      id: plan.id,
+                      name: plan.name,
+                      iconUrl: null,
+                    }))}
                   />
-
-                  <FormField
+                  <LeadCurrentValueField
                     control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>E-mail</FormLabel>
-                        <FormControl>
-                          <Input className={fieldInputClassName} type="email" placeholder="email@exemplo.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    disabled={isLoading}
+                    setValue={form.setValue}
+                    setError={form.setError}
+                    clearErrors={form.clearErrors}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Telefone *</FormLabel>
-                        <FormControl>
-                          <Input
-                            className={fieldInputClassName}
-                            placeholder="(00) 00000-0000"
-                            value={maskPhone(normalizeLeadPhoneDigits(field.value || ""))}
-                            onChange={(e) => {
-                              const normalizedPhone = normalizeLeadPhoneDigits(e.target.value);
-                              field.onChange(normalizedPhone);
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="age"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Idades dos Beneficiários</FormLabel>
-                        <FormControl>
-                          <AgeEntryInput
-                            value={field.value || ""}
-                            onChange={field.onChange}
-                            disabled={isSubmitting}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="cnpj"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>CNPJ</FormLabel>
-                        <FormControl>
-                          <Input
-                            className={fieldInputClassName}
-                            placeholder="00.000.000/0000-00"
-                            value={formatDocumentInput(field.value || "")}
-                            onChange={(e) => {
-                              const masked = formatDocumentInput(e.target.value);
-                              const unmasked = unmask(masked);
-                              field.onChange(unmasked);
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="currentHealthPlan"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Plano de Saúde Atual</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className={fieldSelectTriggerClassName}>
-                              <SelectValue placeholder={healthPlansLoading ? "Carregando..." : "Selecione"} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {healthPlans.map((plan) => (
-                              <SelectItem key={plan.id} value={plan.name}>
-                                {plan.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="currentValue"
-                    render={() => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Valor Atual</FormLabel>
-                        <FormControl>
-                          <Input
-                            className={fieldInputClassName}
-                            placeholder="R$ 0,00"
-                            value={currentValueDisplay}
-                            onChange={(e) => handleCurrencyChange(e.target.value)}
-                          />
-                        </FormControl>
-                        {currentValueError && (
-                          <p className="text-xs text-destructive">{currentValueError}</p>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="referenceHospital"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Hospital de Referência</FormLabel>
-                        <FormControl>
-                          <Input className={fieldInputClassName} placeholder="Hospital de referência" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <LeadReferenceHospitalField control={form.control} disabled={isLoading} />
                 </div>
 
-                <FormField
-                  control={form.control}
-                  name="ongoingTreatment"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Tratamento em Andamento</FormLabel>
-                      <FormControl>
-                        <Input
-                          className={fieldInputClassName}
-                          placeholder="Descreva brevemente"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="additionalNotes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Observações</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          className={fieldTextareaClassName}
-                          placeholder="Observações adicionais"
-                          {...field}
-                          rows={3}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <LeadOngoingTreatmentField control={form.control} disabled={isLoading} />
+                <LeadAdditionalNotesField control={form.control} disabled={isLoading} />
               </div>
 
               {closers.length > 0 && (
                 <>
                   <Separator />
                   <div className="space-y-4">
-                    <h3 className="text-sm font-medium">Agendar Reunião (opcional)</h3>
+                    <h3 className="text-sm font-medium">Agendar Reunião</h3>
                     <SchedulingSection
                       leadName={watchedName || ""}
                       closerId={closerId}
@@ -602,7 +403,7 @@ export function PublicLeadForm() {
 
                   return (
                     <FormItem>
-                      <FormLabel className={fieldLabelClassName}>
+                      <FormLabel className="mb-1 block text-sm font-medium">
                         Responsável - SDR *{isOnlyOneSdr ? " (único disponível)" : ""}
                       </FormLabel>
                       <Select

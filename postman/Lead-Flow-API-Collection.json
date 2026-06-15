@@ -3710,7 +3710,12 @@
                     "description": "Auto-generated from app/api/v1/leads/[id]/finalize/route.ts",
                     "body": {
                       "mode": "raw",
-                      "raw": "{}"
+                      "raw": "{\n  \"contractType\": \"individual\",\n  \"holderName\": \"Nome do Titular\",\n  \"holderBirthDate\": \"1990-01-01\",\n  \"holderDocument\": \"00000000000\",\n  \"holderCnpj\": null,\n  \"holderRazaoSocial\": null\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
                     }
                   },
                   "response": []
@@ -3787,6 +3792,50 @@
                       ],
                       "cookie": [],
                       "body": "{\n  \"isValid\": true,\n  \"successMessages\": [\n    \"Agendamento criado com sucesso\",\n    \"Aviso: Google Calendar falhou (Falha ao criar evento no Google Calendar). Convite enviado via e-mail (Resend).\"\n  ],\n  \"errorMessages\": [],\n  \"result\": {\n    \"id\": \"d468b95f-8d23-4edf-8d4b-813106f5e1f1\",\n    \"leadId\": \"0b76fdb2-8649-41b6-8f28-3f5c7d949e7f\",\n    \"date\": \"2026-03-23T13:00:00.000Z\",\n    \"meetingTitle\": \"Estudo Plano de Saúde: Cliente Exemplo\",\n    \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n    \"inviteDispatchStatus\": \"sent_resend\",\n    \"inviteDispatchFallbackUsed\": true,\n    \"inviteDispatchLastAttemptAt\": \"2026-03-23T12:55:01.121Z\",\n    \"inviteDispatchLastError\": null,\n    \"status\": \"scheduled\",\n    \"inviteDispatch\": {\n      \"status\": \"sent_resend\",\n      \"provider\": \"resend\",\n      \"fallbackUsed\": true,\n      \"attemptedAt\": \"2026-03-23T12:55:01.121Z\",\n      \"error\": null\n    }\n  }\n}"
+                    }
+                  ]
+                },
+                {
+                  "name": "POST /api/v1/leads/{{id}}/schedule/share",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/leads/{{id}}/schedule/share",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "leads",
+                        "{{id}}",
+                        "schedule",
+                        "share"
+                      ]
+                    },
+                    "description": "Gera um link público do agendamento online do lead."
+                  },
+                  "response": [
+                    {
+                      "name": "200 OK",
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"isValid\": true,\n  \"successMessages\": [\n    \"Link público gerado com sucesso.\"\n  ],\n  \"errorMessages\": [],\n  \"result\": {\n    \"publicUrl\": \"{{baseUrl}}/agendamento/SEU_TOKEN_AQUI\",\n    \"expiresAt\": \"2026-03-24T13:00:00.000Z\",\n    \"summary\": {\n      \"leadId\": \"0b76fdb2-8649-41b6-8f28-3f5c7d949e7f\",\n      \"leadName\": \"Cliente Exemplo\",\n      \"meetingTitle\": \"Estudo Plano de Saúde: Cliente Exemplo\",\n      \"meetingDate\": \"2026-03-23T13:00:00.000Z\",\n      \"meetingType\": \"online\",\n      \"expiresAt\": \"2026-03-24T13:00:00.000Z\",\n      \"timezone\": \"America/Sao_Paulo\"\n    }\n  }\n}"
                     }
                   ]
                 },
@@ -6829,6 +6878,50 @@
           }
         },
         {
+          "name": "PATCH Update Portfolio Entry Detail",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contractType\": \"individual\",\n  \"operadora\": \"Amil\",\n  \"productName\": \"Amil S380\",\n  \"amount\": 1234.56,\n  \"startDateAt\": \"2026-06-01T00:00:00.000Z\",\n  \"finalizedDateAt\": \"2026-06-01T00:00:00.000Z\",\n  \"holder\": {\n    \"name\": \"Fulano de Tal\",\n    \"razaoSocial\": null,\n    \"birthDate\": \"1990-01-10T00:00:00.000Z\",\n    \"document\": \"00000000000\",\n    \"cnpj\": null\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolio/{{leadId}}/detail",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio",
+                "{{leadId}}",
+                "detail"
+              ]
+            },
+            "description": "Atualiza detalhes do contrato: contractType (individual/corporate/adhesion), operadora, plano, valor, datas, titular e dependentes. Para contractType=corporate: razaoSocial obrigatória e cnpj obrigatório no holder."
+          },
+          "response": []
+        },
+        {
           "name": "PATCH Update Portfolio Entry",
           "request": {
             "method": "PATCH",
@@ -6866,6 +6959,48 @@
           }
         },
         {
+          "name": "POST Create Portfolio Entry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fulano de Tal\",\n  \"email\": \"fulano@exemplo.com.br\",\n  \"phone\": \"(11) 99999-9999\",\n  \"source\": \"manual\",\n  \"contractType\": \"individual\",\n  \"amount\": 1234.56,\n  \"startDateAt\": \"2026-06-01T00:00:00.000Z\",\n  \"finalizedDateAt\": \"2026-06-01T00:00:00.000Z\",\n  \"closerId\": \"{{closerProfileId}}\",\n  \"operadora\": \"Amil\",\n  \"holder\": {\n    \"name\": \"Fulano de Tal\",\n    \"birthDate\": \"1990-01-10T00:00:00.000Z\",\n    \"document\": \"00000000000\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolio",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio"
+              ]
+            },
+            "description": "Cria entrada na carteira manualmente. contractType: individual (PF), corporate (Empresarial), adhesion (Adesão). Para corporate: razaoSocial obrigatória e CNPJ obrigatório no holder. Para individual/adhesion: document (CPF) obrigatório no holder."
+          },
+          "response": []
+        },
+        {
           "name": "POST Import Mapped Portfolio Clients",
           "request": {
             "method": "POST",
@@ -6885,7 +7020,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"closerId\": \"{{closerProfileId}}\",\n  \"source\": \"manual\",\n  \"rows\": [\n    {\n      \"line\": 2,\n      \"name\": \"Cliente Exemplo LTDA\",\n      \"email\": \"contato@exemplo.com.br\",\n      \"phone\": \"(11) 99999-9999\",\n      \"cnpj\": \"00.000.000/0000-00\",\n      \"operadora\": \"Amil\",\n      \"productName\": \"Amil S380\",\n      \"amount\": \"R$ 1.234,56\",\n      \"startDateAt\": \"01/06/2026\",\n      \"contractDueDate\": \"01/06/2027\",\n      \"holderName\": \"Fulano de Tal\",\n      \"holderBirthDate\": \"10/02/1985\",\n      \"holderDocument\": \"123.456.789-00\"\n    }\n  ]\n}"
+              "raw": "{\n  \"closerId\": \"{{closerProfileId}}\",\n  \"source\": \"manual\",\n  \"rows\": [\n    {\n      \"line\": 2,\n      \"name\": \"Cliente Exemplo LTDA\",\n      \"email\": \"contato@exemplo.com.br\",\n      \"phone\": \"(11) 99999-9999\",\n      \"cnpj\": \"00.000.000/0000-00\",\n      \"contractType\": \"individual\",\n      \"operadora\": \"Amil\",\n      \"productName\": \"Amil S380\",\n      \"amount\": \"R$ 1.234,56\",\n      \"startDateAt\": \"01/06/2026\",\n      \"contractDueDate\": \"01/06/2027\",\n      \"holderName\": \"Fulano de Tal\",\n      \"holderBirthDate\": \"10/02/1985\",\n      \"holderDocument\": \"123.456.789-00\"\n    }\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/portfolio/import/mapped",
@@ -8704,6 +8839,47 @@
                   ]
                 },
                 "description": "Remove o vínculo de um membro com um time específico (deleta TeamMember). Não exclui o Profile nem o acesso ao Supabase Auth."
+              }
+            },
+            {
+              "name": "POST Send Member Access Email",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mode\": \"invite\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/access-email",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "access-email"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha."
               }
             }
           ]

@@ -16,8 +16,9 @@ const dependentSchema = z.object({
 
 const holderSchema = z.object({
   name: z.string().min(1),
+  razaoSocial: z.string().nullish().transform((val) => val || undefined),
   birthDate: z.string().datetime(),
-  document: z.string().min(1),
+  document: z.string().nullish().transform((val) => val || undefined),
   cnpj: z.string().nullish().transform((val) => val || undefined),
 });
 
@@ -27,6 +28,7 @@ const createSchema = z.object({
   phone: z.string().min(10),
   cnpj: z.string().nullish().transform((val) => val || undefined),
   source: z.enum(['manual', 'brokerage_transfer']),
+  contractType: z.enum(['individual', 'corporate', 'adhesion']),
   amount: z.number().positive(),
   startDateAt: z.string().datetime(),
   finalizedDateAt: z.string().datetime(),
@@ -38,6 +40,36 @@ const createSchema = z.object({
   notes: z.string().nullish().transform((val) => val || undefined),
   holder: holderSchema,
   dependents: z.array(dependentSchema).optional(),
+}).superRefine((data, ctx) => {
+  const holderDocument = data.holder.document?.trim() ?? '';
+  const holderRazaoSocial = data.holder.razaoSocial?.trim() ?? '';
+  const holderCnpj = data.holder.cnpj?.trim() ?? '';
+
+  if (data.contractType === 'corporate') {
+    if (!holderRazaoSocial) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A Razão Social é obrigatória para contratos empresariais',
+        path: ['holder', 'razaoSocial'],
+      });
+    }
+    if (!holderCnpj) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'O CNPJ é obrigatório para contratos empresariais',
+        path: ['holder', 'cnpj'],
+      });
+    }
+    return;
+  }
+
+  if (!holderDocument) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'O CPF do titular é obrigatório',
+      path: ['holder', 'document'],
+    });
+  }
 });
 
 const listSchema = z.object({

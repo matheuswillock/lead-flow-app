@@ -329,6 +329,14 @@ lost lost
     
 
 
+        contract_type {
+            individual individual
+corporate corporate
+adhesion adhesion
+        }
+    
+
+
         email_credit_plan {
             starter starter
 plus plus
@@ -734,6 +742,8 @@ unsubscribed unsubscribed
     DateTime inviteDispatchLastAttemptAt "❓"
     String inviteDispatchLastError "❓"
     Json inviteDispatchLastPayload "❓"
+    String publicShareTokenHash "❓"
+    DateTime publicShareExpiresAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -745,6 +755,7 @@ unsubscribed unsubscribed
     DateTime startDateAt 
     Int duration 
     Decimal amount 
+    ContractType contractType 
     String notes "❓"
     String operadora "❓"
     String productName "❓"
@@ -758,6 +769,7 @@ unsubscribed unsubscribed
   "corretor_studio_lead_finalized_holders" {
     String id "🗝️"
     String name 
+    String razaoSocial "❓"
     DateTime birthDate 
     String document 
     String cnpj "❓"
@@ -1245,6 +1257,7 @@ unsubscribed unsubscribed
     "corretor_studio_task_assignees" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "corretor_studio_leads_schedule" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_finalized" |o--|| "ContractType" : "enum:contractType"
     "corretor_studio_lead_finalized" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_finalized" }o--|o corretor_studio_profiles : "closer"
     "corretor_studio_lead_finalized_holders" |o--|| corretor_studio_lead_finalized : "leadFinalized"

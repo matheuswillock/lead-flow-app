@@ -341,6 +341,14 @@ enum RenewalStatus {
   @@map("renewal_status")
 }
 
+enum ContractType {
+  individual
+  corporate
+  adhesion
+
+  @@map("contract_type")
+}
+
 enum EmailCreditPlan {
   starter
   plus
@@ -1038,6 +1046,8 @@ model LeadsSchedule {
   inviteDispatchLastAttemptAt DateTime?             @db.Timestamptz(6)
   inviteDispatchLastError     String?               @db.Text
   inviteDispatchLastPayload   Json?
+  publicShareTokenHash        String?               @map("publicShareTokenHash") @db.Text
+  publicShareExpiresAt        DateTime?             @map("publicShareExpiresAt") @db.Timestamptz(6)
   createdAt                   DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt                   DateTime              @updatedAt @db.Timestamptz(6)
 
@@ -1045,24 +1055,26 @@ model LeadsSchedule {
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@unique([leadId])
+  @@index([publicShareTokenHash], map: "corretor_studio_leads_schedule_public_share_token_hash_idx")
   @@map("corretor_studio_leads_schedule")
 }
 
 model LeadFinalized {
-  id                  String   @id @default(uuid()) @db.Uuid
-  leadId              String   @db.Uuid
-  finalizedDateAt     DateTime @db.Timestamptz(6)
-  startDateAt         DateTime @db.Timestamptz(6)
+  id                  String       @id @default(uuid()) @db.Uuid
+  leadId              String       @db.Uuid
+  finalizedDateAt     DateTime     @db.Timestamptz(6)
+  startDateAt         DateTime     @db.Timestamptz(6)
   duration            Int // duration in days from lead creation to finalization
-  amount              Decimal  @db.Decimal(12, 2)
-  notes               String?  @db.Text
-  closerId            String?  @db.Uuid
-  operadora           String?  @db.Text
-  productName         String?  @db.Text
-  contractFileUrl     String?  @db.Text
-  contractStoragePath String?  @db.Text
-  createdAt           DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+  amount              Decimal      @db.Decimal(12, 2)
+  contractType        ContractType @default(individual) @map("contractType")
+  notes               String?      @db.Text
+  closerId            String?      @db.Uuid
+  operadora           String?      @db.Text
+  productName         String?      @db.Text
+  contractFileUrl     String?      @db.Text
+  contractStoragePath String?      @db.Text
+  createdAt           DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime     @updatedAt @db.Timestamptz(6)
 
   // Relations
   lead       Lead                     @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1078,6 +1090,7 @@ model LeadFinalizedHolder {
   id              String   @id @default(uuid()) @db.Uuid
   leadFinalizedId String   @unique @db.Uuid
   name            String   @db.Text
+  razaoSocial     String?  @db.Text @map("razaoSocial")
   birthDate       DateTime @db.Date
   document        String   @db.Text
   cnpj            String?  @db.Text

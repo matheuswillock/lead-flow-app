@@ -1,3 +1,11 @@
+export type ContractType = 'individual' | 'corporate' | 'adhesion';
+
+export const CONTRACT_TYPE_LABELS: Record<ContractType, { title: string; description: string }> = {
+  individual: { title: 'PF', description: 'Pessoa Física' },
+  corporate:  { title: 'Empresarial', description: 'Pessoa Jurídica' },
+  adhesion:   { title: 'Adesão', description: 'Pessoa Física por Profissão' },
+};
+
 export type PortfolioStatusValue = 'active' | 'pending' | 'canceled';
 
 export type RenewalStatus = 'to_renew' | 'contacted' | 'proposal' | 'renewed' | 'lost';
@@ -208,6 +216,7 @@ export interface CreateCarteiraIdentityStepPayload {
 }
 
 export interface CreateCarteiraContractStepPayload {
+  contractType: ContractType;
   amount: number;
   startDateAt: string;
   finalizedDateAt: string;
@@ -219,6 +228,7 @@ export interface CreateCarteiraContractStepPayload {
   notes?: string | null;
   holder: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
     document: string;
     cnpj?: string | null;
@@ -237,6 +247,7 @@ export interface CreateCarteiraPayload {
   phone: string;
   cnpj?: string | null;
   source: Exclude<PortfolioSourceValue, 'crm'>;
+  contractType: ContractType;
   amount: number;
   startDateAt: string;
   finalizedDateAt: string;
@@ -248,6 +259,7 @@ export interface CreateCarteiraPayload {
   notes?: string | null;
   holder: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
     document: string;
     cnpj?: string | null;
@@ -256,6 +268,7 @@ export interface CreateCarteiraPayload {
 }
 
 export interface UpdateCarteiraDetailPayload {
+  contractType?: ContractType;
   operadora?: string | null;
   productName?: string | null;
   amount?: number;
@@ -266,6 +279,7 @@ export interface UpdateCarteiraDetailPayload {
   notes?: string | null;
   holder?: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
     document: string;
     cnpj?: string | null;
@@ -302,6 +316,7 @@ export interface CarteiraDetailContract {
 
 export interface CarteiraDetailHolder {
   name: string;
+  razaoSocial: string | null;
   birthDate: string;
   document: string;
   cnpj: string | null;
@@ -323,6 +338,7 @@ export interface CarteiraDetailData {
   source: PortfolioSourceValue;
   saleValue: number;
   portfolioStatus: PortfolioStatusValue;
+  contractType: ContractType;
   sdr: { id: string; name: string } | null;
   closer: { id: string; name: string } | null;
   soldPlan: string | null;

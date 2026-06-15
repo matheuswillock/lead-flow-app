@@ -60,6 +60,7 @@ class PublicLeadFormService implements IPublicLeadFormService {
     }
 
     return {
+      teamName: result.result?.teamName ?? "",
       healthPlans: result.result?.healthPlans ?? [],
       closers: result.result?.closers ?? [],
       sdrs: result.result?.sdrs ?? [],

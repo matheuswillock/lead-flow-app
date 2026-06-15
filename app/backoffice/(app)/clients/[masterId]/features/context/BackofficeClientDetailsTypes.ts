@@ -11,6 +11,9 @@ export interface BackofficeClientTeamMember {
   isMaster: boolean
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
+  accessStatus: "pending_first_access" | "active"
+  hasCompletedFirstAccess: boolean
+  lastSignInAt: string | null
 }
 
 export interface BackofficeClientTeam {

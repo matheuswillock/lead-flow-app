@@ -5,6 +5,11 @@ import type {
 } from "../context/BackofficeClientDetailsTypes"
 
 export interface IBackofficeClientDetailsService {
+  sendAccessEmail(
+    memberId: string,
+    mode: "invite" | "reset_password"
+  ): Promise<{ email: string }>
+
   getByMasterId(
     masterId: string,
     options?: {

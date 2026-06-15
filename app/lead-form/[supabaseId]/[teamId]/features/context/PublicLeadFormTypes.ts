@@ -9,6 +9,7 @@ export type BootstrapStatus = "loading" | "ready" | "error";
 
 export interface PublicLeadFormState {
   teamId: string;
+  teamName: string;
   legacySupabaseId?: string;
   bootstrapStatus: BootstrapStatus;
   bootstrapError: string | null;

@@ -9,6 +9,7 @@ export interface TeamSummaryRecord {
 
 export interface TeamMemberRecord {
   id: string
+  supabaseId: string | null
   fullName: string | null
   email: string
   phone: string | null
