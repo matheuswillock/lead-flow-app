@@ -74,6 +74,34 @@ class TemplateEditorService implements ITemplateEditorService {
     return this.parseResponse<Template>(response, "Erro ao atualizar template");
   }
 
+  async publishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Publishing template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/publish`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao publicar template");
+  }
+
+  async unpublishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Unpublishing template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/publish`, {
+      method: "DELETE",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao despublicar template");
+  }
+
   private toPayload(draft: TemplateEditorDraft) {
     return {
       name: draft.name,
@@ -81,6 +109,7 @@ class TemplateEditorService implements ITemplateEditorService {
       previewText: draft.previewText,
       html: draft.html,
       mailyJson: draft.mailyJson,
+      variables: draft.variables,
     };
   }
 }

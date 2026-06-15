@@ -62,6 +62,7 @@ type ImageUploadCommand = { commands: { uploadImage: () => boolean } };
 
 export interface EmailEditorStudioRef {
   publish: () => Promise<void>;
+  saveAndPublish: () => Promise<void>;
   openHtmlEditor: () => Promise<void>;
 }
 
@@ -98,6 +99,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
     isDirty,
     saving,
     saveTemplate,
+    publishTemplate,
     setHtml,
     setMailyJson,
   } = useTemplateEditorContext();
@@ -231,6 +233,21 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
     await saveTemplate(snapshot);
   }, [draft.html, htmlSourceActive, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
 
+  const handleSaveAndPublish = useCallback(async () => {
+    if (saving) return;
+    let saved;
+    if (htmlSourceActive && !visualEditorTouched) {
+      saved = await saveTemplate({ html: draft.html });
+    } else {
+      const snapshot = await syncEditorDraft();
+      if (!snapshot) return;
+      saved = await saveTemplate(snapshot);
+    }
+    if (saved) {
+      await publishTemplate(saved.id);
+    }
+  }, [draft.html, htmlSourceActive, publishTemplate, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
+
   const handleOpenHtmlEditor = useCallback(async () => {
     if (htmlEditorOpening) return;
 
@@ -285,9 +302,10 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
     ref,
     () => ({
       publish: handlePublish,
+      saveAndPublish: handleSaveAndPublish,
       openHtmlEditor: handleOpenHtmlEditor,
     }),
-    [handleOpenHtmlEditor, handlePublish]
+    [handleOpenHtmlEditor, handlePublish, handleSaveAndPublish]
   );
 
   const handleImportImage = useCallback(() => {

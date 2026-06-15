@@ -1,3 +1,11 @@
+export type TemplateStatus = "draft" | "published";
+
+export interface TemplateVariable {
+  key: string;
+  type: "string" | "number";
+  fallbackValue?: string | null;
+}
+
 export interface Template {
   id: string;
   name: string;
@@ -5,6 +13,9 @@ export interface Template {
   previewText: string | null;
   mailyJson: unknown | null;
   html: string | null;
+  variables: TemplateVariable[] | null;
+  status: TemplateStatus;
+  publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -15,6 +26,7 @@ export interface TemplateEditorDraft {
   previewText: string;
   html: string;
   mailyJson: unknown | null;
+  variables: TemplateVariable[];
 }
 
 export interface TemplateEditorState {

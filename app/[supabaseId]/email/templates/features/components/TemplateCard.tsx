@@ -102,9 +102,18 @@ export function TemplateCard({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-              Template
-            </Badge>
+            {template.status === 'published' ? (
+              <Badge
+                variant="outline"
+                className="h-5 gap-1 border-semantic-success/30 bg-semantic-success/10 px-1.5 text-[10px] text-semantic-success"
+              >
+                Publicado
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                Rascunho
+              </Badge>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

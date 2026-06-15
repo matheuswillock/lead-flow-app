@@ -7,6 +7,8 @@ import { useTemplateEditor } from "./TemplateEditorHook";
 interface ITemplateEditorContext extends TemplateEditorState {
   reloadTemplate: () => Promise<void>;
   saveTemplate: (patch?: Partial<TemplateEditorDraft>) => Promise<Template | null>;
+  publishTemplate: (id?: string) => Promise<Template | null>;
+  unpublishTemplate: () => Promise<Template | null>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
   setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;

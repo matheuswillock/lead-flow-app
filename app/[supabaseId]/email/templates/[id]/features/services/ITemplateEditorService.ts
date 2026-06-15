@@ -17,4 +17,14 @@ export interface ITemplateEditorService {
     draft: TemplateEditorDraft,
     teamId?: string | null
   ): Promise<Template>;
+  publishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template>;
+  unpublishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template>;
 }

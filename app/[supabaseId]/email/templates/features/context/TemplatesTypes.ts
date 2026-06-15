@@ -1,3 +1,5 @@
+export type TemplateStatus = "draft" | "published"
+
 export interface Template {
   id: string
   name: string
@@ -5,6 +7,9 @@ export interface Template {
   previewText: string | null
   mailyJson: unknown | null
   html: string | null
+  status: TemplateStatus
+  publishedAt: string | null
+  approvalStatus: string
   createdAt: string
   updatedAt: string
   creator: {
