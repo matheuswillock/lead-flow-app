@@ -131,7 +131,7 @@ export function CampaignCreateWizard() {
         {wizardStep === 3 && (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="wizard-schedule">Agendamento (opcional)</Label>
+              <Label htmlFor="wizard-schedule">Agendamento</Label>
               <Input
                 id="wizard-schedule"
                 type="datetime-local"

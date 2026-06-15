@@ -374,13 +374,13 @@ export function CreditCardForm({ initialData, onFormChange }: CreditCardFormProp
               />
             </div>
 
-            {/* Telefone Fixo (Opcional) */}
+            {/* Telefone Fixo */}
             <FormField
               control={form.control}
               name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Telefone Fixo (opcional)</FormLabel>
+                  <FormLabel>Telefone Fixo</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="(00) 0000-0000"
