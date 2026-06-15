@@ -1,6 +1,7 @@
 import type { SubscriptionPlan } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
+import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import type {
   BackofficeAllUsersFiltersInput,
   BackofficeAllUsersListRecord,
@@ -84,10 +85,28 @@ export class BackofficeAllUsersUseCase {
       const pageSize = Math.min(Math.max(input.pageSize ?? 10, 5), 100)
 
       const result = await this.repository.list(input.filters ?? {}, { page, pageSize })
+      const accessByProfileId = await resolveBackofficeMemberAccess(
+        result.items.map((item) => ({
+          profileId: item.id,
+          supabaseId: item.supabaseId,
+          email: item.email,
+          fullName: item.fullName,
+          role: item.role,
+          isMaster: item.isMaster,
+          managerName: item.master?.fullName ?? null,
+        }))
+      )
       const totalPages = Math.max(1, Math.ceil(result.totalItems / pageSize))
 
       return new Output(true, [], [], {
-        items: result.items.map(serializeListItem),
+        items: result.items.map((item) => ({
+          ...serializeListItem(item),
+          ...(accessByProfileId.get(item.id) ?? {
+            accessStatus: "pending_first_access",
+            hasCompletedFirstAccess: false,
+            lastSignInAt: null,
+          }),
+        })),
         pagination: {
           page,
           pageSize,
@@ -110,8 +129,25 @@ export class BackofficeAllUsersUseCase {
         return new Output(false, [], ["Usuário não encontrado"], null)
       }
 
+      const accessByProfileId = await resolveBackofficeMemberAccess([
+        {
+          profileId: detail.id,
+          supabaseId: detail.supabaseId,
+          email: detail.email,
+          fullName: detail.fullName,
+          role: detail.role,
+          isMaster: detail.isMaster,
+          managerName: detail.master?.fullName ?? null,
+        },
+      ])
+
       return new Output(true, [], [], {
         ...serializeListItem(detail),
+        ...(accessByProfileId.get(detail.id) ?? {
+          accessStatus: "pending_first_access",
+          hasCompletedFirstAccess: false,
+          lastSignInAt: null,
+        }),
         googleEmail: detail.googleEmail,
         teams: detail.teams.map((team) => ({
           id: team.id,

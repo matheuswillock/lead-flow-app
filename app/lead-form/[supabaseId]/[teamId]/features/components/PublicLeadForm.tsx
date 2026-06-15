@@ -371,7 +371,7 @@ export function PublicLeadForm() {
                 <>
                   <Separator />
                   <div className="space-y-4">
-                    <h3 className="text-sm font-medium">Agendar Reunião (opcional)</h3>
+                    <h3 className="text-sm font-medium">Agendar Reunião</h3>
                     <SchedulingSection
                       leadName={watchedName || ""}
                       closerId={closerId}

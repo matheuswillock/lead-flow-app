@@ -183,7 +183,7 @@ export function SupportRequestDialog({ trigger }: SupportRequestDialogProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="support-images">Imagens (opcional)</Label>
+            <Label htmlFor="support-images">Imagens</Label>
             <div className="flex items-center gap-2">
               <Input id="support-images" type="file" accept="image/*" multiple onChange={onImageSelect} />
             </div>

@@ -197,7 +197,7 @@ export function BackofficeClientEditDialog({
 
             {/* Address */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground">Endereço (opcional)</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">Endereço</h3>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

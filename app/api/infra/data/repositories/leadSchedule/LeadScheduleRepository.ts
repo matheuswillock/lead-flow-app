@@ -27,6 +27,8 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
         inviteDispatchFallbackUsed: data.inviteDispatchFallbackUsed ?? undefined,
         inviteDispatchLastAttemptAt: data.inviteDispatchLastAttemptAt ?? undefined,
         inviteDispatchLastError: data.inviteDispatchLastError ?? undefined,
+        publicShareTokenHash: data.publicShareTokenHash ?? undefined,
+        publicShareExpiresAt: data.publicShareExpiresAt ?? undefined,
         inviteDispatchLastPayload:
           data.inviteDispatchLastPayload === null
             ? Prisma.JsonNull
@@ -106,6 +108,8 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
       inviteDispatchFallbackUsed: data.inviteDispatchFallbackUsed ?? undefined,
       inviteDispatchLastAttemptAt: data.inviteDispatchLastAttemptAt ?? undefined,
       inviteDispatchLastError: data.inviteDispatchLastError ?? undefined,
+      publicShareTokenHash: data.publicShareTokenHash ?? undefined,
+      publicShareExpiresAt: data.publicShareExpiresAt ?? undefined,
       inviteDispatchLastPayload:
         data.inviteDispatchLastPayload === null
           ? Prisma.JsonNull

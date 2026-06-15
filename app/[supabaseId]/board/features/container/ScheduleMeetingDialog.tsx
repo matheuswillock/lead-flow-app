@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogClose,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { X } from "lucide-react";
+import { Copy, Share2, X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -72,6 +73,11 @@ type ScheduleInviteDispatch = {
 type NoShowConfirmationPayload = {
   noShowCount: number;
   threshold: number;
+};
+
+type ScheduleShareResponse = {
+  publicUrl: string;
+  expiresAt: string;
 };
 
 // SCHEDULE_TIMEZONE now comes from useTimezone() inside the component
@@ -126,6 +132,9 @@ export function ScheduleMeetingDialog({
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [teamMembersFromApi, setTeamMembersFromApi] = useState<UserAssociated[]>([]);
   const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
   const fallbackMembers = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
   const members = teamMembersFromApi.length > 0 ? teamMembersFromApi : fallbackMembers;
   const closersFromMembers = members.filter((member) => member.functions?.includes("CLOSER"));
@@ -357,7 +366,43 @@ export function ScheduleMeetingDialog({
     handleExtraGuestsInput(`${extraGuestsDraft} `);
   };
 
-  const submitSchedule = async (confirmNoShowSchedule: boolean) => {
+  const requestPublicShare = useCallback(async (): Promise<ScheduleShareResponse> => {
+    const response = await fetch(`/api/v1/leads/${lead.id}/schedule/share`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": activeTeamId || "",
+      },
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.isValid || !result?.result?.publicUrl) {
+      throw new Error(
+        Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+          ? result.errorMessages.join(", ")
+          : "Erro ao gerar link público do agendamento."
+      );
+    }
+
+    return {
+      publicUrl: result.result.publicUrl as string,
+      expiresAt: result.result.expiresAt as string,
+    };
+  }, [activeTeamId, lead.id, supabaseId]);
+
+  const handleCopyShareLink = useCallback(async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Link copiado.");
+    } catch (error) {
+      console.error("Erro ao copiar link público do agendamento:", error);
+      toast.error("Não foi possível copiar o link.");
+    }
+  }, [shareUrl]);
+
+  const submitSchedule = useCallback(async (confirmNoShowSchedule: boolean, shouldShare = false) => {
     if (isOnlineMeeting && !isValidDate(meetingDate)) {
       toast.error("Selecione uma data e hora para o agendamento");
       return;
@@ -537,6 +582,12 @@ export function ScheduleMeetingDialog({
         meetingType,
       };
       
+      if (shouldShare && meetingType === "online") {
+        const shareResult = await requestPublicShare();
+        setShareUrl(shareResult.publicUrl);
+        setShareExpiresAt(shareResult.expiresAt);
+      }
+
       // Limpar form
       setMeetingDate(undefined);
       setMeetingTitle("");
@@ -552,6 +603,9 @@ export function ScheduleMeetingDialog({
 
       // Fechar dialog
       onOpenChange(false);
+      if (shouldShare && meetingType === "online") {
+        setShareDialogOpen(true);
+      }
       
     } catch (error) {
       console.error("Erro ao agendar reunião:", error);
@@ -564,11 +618,11 @@ export function ScheduleMeetingDialog({
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [SCHEDULE_TIMEZONE, activeTeamId, closerId, lead.closerId, lead.email, lead.id, lead.name, meetingDate, meetingLink, meetingLinkValidation, meetingTitle, meetingType, notes, onOpenChange, onScheduleSuccess, requestPublicShare, requiresManualMeetingLink, supabaseId, extraGuests, isOnlineMeeting]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await submitSchedule(false);
+    await submitSchedule(false, false);
   };
 
   return (
@@ -715,7 +769,7 @@ export function ScheduleMeetingDialog({
             {/* Link da reunião */}
             <div className="grid gap-2">
               <Label htmlFor="meetingLink">
-                Link da reunião {isOnlineMeeting && requiresManualMeetingLink ? "(obrigatório para este closer)" : "(opcional)"}
+                Link da reunião {isOnlineMeeting && requiresManualMeetingLink ? "(obrigatório para este closer)" : ""}
               </Label>
               <Input
                 id="meetingLink"
@@ -821,6 +875,17 @@ export function ScheduleMeetingDialog({
             >
               Cancelar
             </Button>
+            {isOnlineMeeting && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void submitSchedule(false, true)}
+                disabled={isSubmitting || !canSubmit}
+              >
+                <Share2 data-icon="inline-start" />
+                {isSubmitting ? "Salvando..." : "Salvar e compartilhar"}
+              </Button>
+            )}
             <Button type="submit" disabled={isSubmitting || !canSubmit}>
               {isSubmitting ? "Salvando..." : mode === "reschedule" ? "Reagendar Reunião" : "Agendar Reunião"}
             </Button>
@@ -851,7 +916,7 @@ export function ScheduleMeetingDialog({
               onClick={(event) => {
                 event.preventDefault();
                 setPendingNoShowConfirmation(null);
-                void submitSchedule(true);
+                void submitSchedule(true, false);
               }}
             >
               Continuar
@@ -859,6 +924,46 @@ export function ScheduleMeetingDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Link público do agendamento</DialogTitle>
+            <DialogDescription>
+              Compartilhe este link para abrir o modal público da reunião.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="rounded-2xl border border-border bg-surface-2 px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Agendamento online</p>
+                  <p className="text-sm font-medium text-foreground">{lead.name}</p>
+                </div>
+                {shareExpiresAt && (
+                  <Badge variant="outline" className="border-[color:var(--semantic-info-border)] text-[color:var(--semantic-info)]">
+                    Expira em {formatIntimezone(new Date(shareExpiresAt), "dd/MM/yyyy HH:mm", SCHEDULE_TIMEZONE)}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="public-share-url">Link público</Label>
+              <div className="flex items-center gap-2">
+                <Input id="public-share-url" value={shareUrl} readOnly />
+                <Button type="button" variant="secondary" onClick={() => void handleCopyShareLink()} disabled={!shareUrl}>
+                  <Copy />
+                  Copiar
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Fechar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

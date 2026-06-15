@@ -3,6 +3,7 @@ export type PortfolioImportFieldKey =
   | "email"
   | "phone"
   | "cnpj"
+  | "contractType"
   | "operadora"
   | "productName"
   | "amount"
@@ -109,6 +110,13 @@ export const PORTFOLIO_IMPORT_FIELDS: PortfolioImportFieldDef[] = [
     description: "Anotações gerais sobre o cliente ou o contrato.",
     required: false,
     aliases: ["observacoes", "observacao", "notas", "notes", "obs"],
+  },
+  {
+    key: "contractType",
+    label: "Tipo de contrato",
+    description: "Tipo do contrato: individual (PF), corporate (Empresarial) ou adhesion (Adesão). Padrão: individual.",
+    required: false,
+    aliases: ["tipo de contrato", "tipo contrato", "contract type", "tipo"],
   },
   {
     key: "holderName",

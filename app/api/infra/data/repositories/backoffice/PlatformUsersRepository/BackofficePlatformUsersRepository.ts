@@ -103,7 +103,16 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           },
         })
       } else {
-        andClauses.push({ userTypeAssignment: { is: null } })
+        andClauses.push({
+          OR: [
+            { userTypeAssignment: { is: null } },
+            {
+              userTypeAssignment: {
+                is: { userType: { is: { slug: "common" } } },
+              },
+            },
+          ],
+        })
       }
     }
 
@@ -335,6 +344,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
               profile: {
                 select: {
                   id: true,
+                  supabaseId: true,
                   fullName: true,
                   email: true,
                   phone: true,
@@ -409,6 +419,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         membersCount: team._count.members,
         members: team.members.map((member) => ({
           id: member.profile.id,
+          supabaseId: member.profile.supabaseId,
           fullName: member.profile.fullName,
           email: member.profile.email,
           phone: member.profile.phone,
