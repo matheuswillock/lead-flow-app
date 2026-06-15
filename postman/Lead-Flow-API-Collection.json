@@ -8834,6 +8834,47 @@
                 },
                 "description": "Remove o vínculo de um membro com um time específico (deleta TeamMember). Não exclui o Profile nem o acesso ao Supabase Auth."
               }
+            },
+            {
+              "name": "POST Send Member Access Email",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mode\": \"invite\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/access-email",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "access-email"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha."
+              }
             }
           ]
         },

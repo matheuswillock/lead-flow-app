@@ -6,6 +6,22 @@ import type {
 } from "../context/BackofficeClientDetailsTypes"
 
 export class BackofficeClientDetailsService implements IBackofficeClientDetailsService {
+  async sendAccessEmail(
+    memberId: string,
+    mode: "invite" | "reset_password"
+  ): Promise<{ email: string }> {
+    const res = await fetch(`/api/v1/backoffice/members/${memberId}/access-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    })
+    const json = await res.json()
+    if (!json.isValid || !json.result) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao enviar e-mail de acesso")
+    }
+    return json.result as { email: string }
+  }
+
   async getByMasterId(
     masterId: string,
     options?: {

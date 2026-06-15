@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { CalendarDays, Crown, DollarSign, Eye, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
+import { CalendarDays, Crown, DollarSign, Eye, KeyRound, Mail, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
 import {
@@ -164,6 +164,7 @@ export function BackofficeClientDetailsContainer() {
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [memberAccessActionId, setMemberAccessActionId] = useState<string | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addTeamOpen, setAddTeamOpen] = useState(false)
   const [editingTeam, setEditingTeam] = useState<BackofficeClientTeam | null>(null)
@@ -244,6 +245,36 @@ export function BackofficeClientDetailsContainer() {
     } finally {
       setIsTogglingLifetime(false)
       lifetimeInFlight.current = false
+    }
+  }
+
+  async function handleSendMemberAccessEmail(
+    member: BackofficeClientTeamMember,
+    mode: "invite" | "reset_password"
+  ) {
+    if (memberAccessActionId) return
+
+    setMemberAccessActionId(`${member.id}:${mode}`)
+    const toastId = toast.loading(
+      mode === "invite" ? "Reenviando convite..." : "Enviando reset de senha..."
+    )
+
+    try {
+      const result = await service.sendAccessEmail(member.id, mode)
+      toast.success(
+        mode === "invite"
+          ? `Convite reenviado para ${result.email}.`
+          : `Reset de senha enviado para ${result.email}.`,
+        { id: toastId }
+      )
+    } catch (error) {
+      console.error("[BackofficeClientDetailsContainer][handleSendMemberAccessEmail]", error)
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.",
+        { id: toastId }
+      )
+    } finally {
+      setMemberAccessActionId(null)
     }
   }
 
@@ -452,7 +483,11 @@ export function BackofficeClientDetailsContainer() {
                                     <TableCell className="text-center">
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            disabled={memberAccessActionId !== null}
+                                          >
                                             <MoreHorizontal />
                                           </Button>
                                         </DropdownMenuTrigger>
@@ -475,6 +510,22 @@ export function BackofficeClientDetailsContainer() {
                                             <Pencil />
                                             Editar
                                           </DropdownMenuItem>
+                                          {member.accessStatus === "pending_first_access" ? (
+                                            <DropdownMenuItem
+                                              onClick={() => void handleSendMemberAccessEmail(member, "invite")}
+                                            >
+                                              <Mail />
+                                              Reenviar convite
+                                            </DropdownMenuItem>
+                                          ) : null}
+                                          {member.accessStatus === "active" ? (
+                                            <DropdownMenuItem
+                                              onClick={() => void handleSendMemberAccessEmail(member, "reset_password")}
+                                            >
+                                              <KeyRound />
+                                              Enviar reset de senha
+                                            </DropdownMenuItem>
+                                          ) : null}
                                           {!member.isMaster ? (
                                             <DropdownMenuItem
                                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
