@@ -18,11 +18,18 @@ const EMPTY_DRAFT: TemplateEditorDraft = {
   previewText: "",
   html: "",
   mailyJson: null,
+  variables: [],
 };
 
 interface UseTemplateEditorReturn extends TemplateEditorState {
+  activeRole: "manager" | "backoffice" | "operator" | null;
   reloadTemplate: () => Promise<void>;
   saveTemplate: (patch?: Partial<TemplateEditorDraft>) => Promise<Template | null>;
+  publishTemplate: (id?: string) => Promise<Template | null>;
+  unpublishTemplate: () => Promise<Template | null>;
+  submitForApproval: () => Promise<void>;
+  approveTemplate: () => Promise<void>;
+  rejectTemplate: (reviewNote: string) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
   setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
@@ -35,6 +42,7 @@ function createDraftFromTemplate(template: Template): TemplateEditorDraft {
     previewText: template.previewText ?? "",
     html: template.html ?? "",
     mailyJson: template.mailyJson ?? null,
+    variables: template.variables ?? [],
   };
 }
 
@@ -42,7 +50,7 @@ export function useTemplateEditor(
   supabaseId: string,
   templateId: string
 ): UseTemplateEditorReturn {
-  const { activeTeamId, isLoading: teamLoading } = useTeamContext();
+  const { activeTeamId, activeRole, isLoading: teamLoading } = useTeamContext();
   const isNewTemplate = templateId === "new";
   const [template, setTemplate] = useState<Template | null>(null);
   const [draft, setDraft] = useState<TemplateEditorDraft>(EMPTY_DRAFT);
@@ -132,18 +140,141 @@ export function useTemplateEditor(
       setTemplate(saved);
       setDraft(savedDraft);
       initialDraftRef.current = savedDraft;
-      toast.success("Template publicado com sucesso");
+      toast.success("Rascunho salvo com sucesso");
       return saved;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao publicar template";
+      const message = err instanceof Error ? err.message : "Erro ao salvar template";
       console.error("[useTemplateEditor] Failed to save template", err);
+      setError(message);
+      toast.error("Erro ao salvar template", { description: message });
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, draft, isNewTemplate, saving, supabaseId, templateId]);
+
+  const publishTemplate = useCallback(async (id?: string) => {
+    if (!activeTeamId) {
+      toast.error("Selecione um time para publicar templates.");
+      return null;
+    }
+    const targetId = id ?? template?.id;
+    if (!targetId) {
+      toast.error("Salve o template antes de publicar.");
+      return null;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const published = await service.publishTemplate(supabaseId, targetId, activeTeamId);
+      const publishedDraft = createDraftFromTemplate(published);
+      setTemplate(published);
+      setDraft(publishedDraft);
+      initialDraftRef.current = publishedDraft;
+      toast.success("Template publicado com sucesso");
+      return published;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao publicar template";
+      console.error("[useTemplateEditor] Failed to publish template", err);
       setError(message);
       toast.error("Erro ao publicar template", { description: message });
       return null;
     } finally {
       setSaving(false);
     }
-  }, [activeTeamId, draft, isNewTemplate, saving, supabaseId, templateId]);
+  }, [activeTeamId, supabaseId, template?.id]);
+
+  const unpublishTemplate = useCallback(async () => {
+    if (saving) return null;
+    if (!activeTeamId || !template?.id) {
+      toast.error("Salve o template antes de despublicar.");
+      return null;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await service.unpublishTemplate(supabaseId, template.id, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      toast.success("Template movido para rascunho");
+      return updated;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao despublicar template";
+      console.error("[useTemplateEditor] Failed to unpublish template", err);
+      setError(message);
+      toast.error("Erro ao despublicar template", { description: message });
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, template?.id]);
+
+  const submitForApproval = useCallback(async () => {
+    if (saving || !activeTeamId || !template?.id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await service.submitForApproval(supabaseId, template.id, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      toast.success("Template enviado para aprovação");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao enviar para aprovação";
+      console.error("[useTemplateEditor] Failed to submit for approval", err);
+      setError(message);
+      toast.error("Erro ao enviar para aprovação", { description: message });
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, template?.id]);
+
+  const approveTemplate = useCallback(async () => {
+    if (saving || !activeTeamId || !template?.id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await service.approveTemplate(supabaseId, template.id, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      toast.success("Template aprovado");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao aprovar template";
+      console.error("[useTemplateEditor] Failed to approve template", err);
+      setError(message);
+      toast.error("Erro ao aprovar template", { description: message });
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, template?.id]);
+
+  const rejectTemplate = useCallback(async (reviewNote: string) => {
+    if (saving || !activeTeamId || !template?.id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await service.rejectTemplate(supabaseId, template.id, reviewNote, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      toast.success("Template recusado");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao recusar template";
+      console.error("[useTemplateEditor] Failed to reject template", err);
+      setError(message);
+      toast.error("Erro ao recusar template", { description: message });
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, template?.id]);
 
   return {
     template,
@@ -153,8 +284,14 @@ export function useTemplateEditor(
     error,
     isDirty,
     isNewTemplate,
+    activeRole,
     reloadTemplate,
     saveTemplate,
+    publishTemplate,
+    unpublishTemplate,
+    submitForApproval,
+    approveTemplate,
+    rejectTemplate,
     updateDraft,
     setMailyJson,
     setHtml,

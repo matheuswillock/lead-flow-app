@@ -187,6 +187,12 @@
       "description": "Path param auto-generated para teamId"
     },
     {
+      "key": "senderId",
+      "value": "",
+      "type": "string",
+      "description": "Path param auto-generated para senderId"
+    },
+    {
       "key": "userId",
       "value": "",
       "type": "string",
@@ -9386,6 +9392,335 @@
                     "templates",
                     "{{templateId}}",
                     "test"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Publicar Template",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/{{templateId}}/publish",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "{{templateId}}",
+                    "publish"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Despublicar Template",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/{{templateId}}/publish",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "{{templateId}}",
+                    "publish"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Configurações",
+          "item": [
+            {
+              "name": "Buscar Configurações de Email",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Salvar Configurações de Email",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"dispatchTimeFrom\": \"08:00\",\n  \"dispatchTimeTo\": \"18:00\",\n  \"dispatchAllowedRoles\": [\"manager\", \"backoffice\"],\n  \"templateCreateRoles\": [\"manager\", \"operator\"],\n  \"templateApprovalRequired\": true,\n  \"templateApprovalRoles\": [\"manager\", \"backoffice\"],\n  \"blockedDispatchDays\": [5, 15],\n  \"dispatchBlockedDates\": [\n    { \"date\": \"2026-12-25\" },\n    { \"from\": \"2026-12-30\", \"to\": \"2027-01-02\" }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Listar Remetentes",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/senders",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "senders"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Criar Remetente",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/senders",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "senders"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Comercial Corretor Studio\",\n  \"email\": \"comercial@corretorstudio.com.br\",\n  \"replyTo\": \"atendimento@corretorstudio.com.br\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Atualizar Remetente",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/senders/{{senderId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "senders",
+                    "{{senderId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Comercial Premium\",\n  \"email\": \"premium@corretorstudio.com.br\",\n  \"replyTo\": \"suporte@corretorstudio.com.br\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Definir Remetente Padrão",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/senders/{{senderId}}/default",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "senders",
+                    "{{senderId}}",
+                    "default"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Remover Remetente",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/senders/{{senderId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "senders",
+                    "{{senderId}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Listar Variáveis Globais",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Criar Variável Global",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"corretora_nome\",\n  \"type\": \"string\",\n  \"defaultValue\": \"Corretor Studio\",\n  \"description\": \"Nome da corretora exibido nos e-mails\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Atualizar Variável Global",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables/{{variableId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables",
+                    "{{variableId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"corretora_nome\",\n  \"type\": \"string\",\n  \"defaultValue\": \"Acme Corretora\",\n  \"description\": \"Nome da corretora\",\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Remover Variável Global",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/variables/{{variableId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "variables",
+                    "{{variableId}}"
                   ]
                 }
               },

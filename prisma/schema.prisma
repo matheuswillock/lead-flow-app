@@ -490,6 +490,8 @@ model Profile {
   // Email campaigns relations
   emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
   emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
+  emailTemplatesApproved   EmailTemplate[]          @relation("EmailTemplateApprover")
+  emailTemplatesRejected   EmailTemplate[]          @relation("EmailTemplateRejecter")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
@@ -1220,6 +1222,9 @@ model Team {
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
+  emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
+  emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
+  emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
 
   @@index([masterId])
   @@map("corretor_studio_teams")
@@ -1424,15 +1429,28 @@ model EmailTemplate {
   previewText String?  @db.Text
   mailyJson   Json?
   html        String?  @db.Text
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  variables   Json?
+  status         String   @default("draft") @db.Text
+  publishedAt    DateTime? @db.Timestamptz(6)
+  isArchived     Boolean  @default(false)
+  approvalStatus String   @default("approved") @db.Text
+  approvedBy     String?  @db.Uuid
+  approvedAt     DateTime? @db.Timestamptz(6)
+  rejectedBy     String?  @db.Uuid
+  rejectedAt     DateTime? @db.Timestamptz(6)
+  reviewNote     String?  @db.Text
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
 
   team      Team            @relation("TeamEmailTemplates", fields: [teamId], references: [id], onDelete: Cascade)
   creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  approver  Profile?        @relation("EmailTemplateApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  rejecter  Profile?        @relation("EmailTemplateRejecter", fields: [rejectedBy], references: [id], onDelete: SetNull)
   campaigns EmailCampaign[]
 
   @@index([teamId, isArchived])
+  @@index([teamId, approvalStatus])
+  @@index([teamId, status])
   @@index([createdBy])
   @@map("corretor_studio_email_templates")
 }
@@ -1445,6 +1463,7 @@ model EmailContactList {
   description    String?  @db.Text
   csvStoragePath String?  @db.Text
   totalContacts  Int      @default(0)
+  isSystemDefault Boolean @default(false)
   isArchived     Boolean  @default(false)
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
@@ -1495,6 +1514,7 @@ model EmailCampaign {
   totalOpened     Int                 @default(0)
   totalClicked    Int                 @default(0)
   totalBounced    Int                 @default(0)
+  dispatchCount   Int                 @default(0)
   totalComplained Int                 @default(0)
   errorMessage    String?             @db.Text
   createdAt       DateTime            @default(now()) @db.Timestamptz(6)
@@ -1737,6 +1757,68 @@ model ProfileSubscriptionCapacity {
   @@map("corretor_studio_profile_subscription_capacities")
 }
 
+model EmailTeamSettings {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @unique @db.Uuid
+  fromName  String   @default("Corretor Studio") @db.Text
+  fromEmail String   @default("no-reply@corretorstudio.com") @db.Text
+  replyTo   String?  @db.Text
+
+  dispatchBlockedDates     Json?
+  dispatchTimeFrom         String?  @db.Text
+  dispatchTimeTo           String?  @db.Text
+  dispatchAllowedRoles     String[] @default(["manager", "backoffice"])
+  templateCreateRoles      String[] @default(["manager", "backoffice"])
+  templateApprovalRequired Boolean  @default(false)
+  templateApprovalRoles    String[] @default(["manager", "backoffice"])
+  blockedDispatchDays      Int[]    @default([])
+
+  resendDomainId     String? @db.Text
+  resendDomainName   String? @db.Text
+  resendDomainStatus String? @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailSettings", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("email_team_settings")
+}
+
+model EmailTeamSender {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId     String   @db.Uuid
+  name       String   @db.Text
+  email      String   @db.Text
+  replyTo    String?  @db.Text
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailSenders", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, isDefault])
+  @@map("email_team_senders")
+}
+
+model EmailTeamVariable {
+  id           String   @id @default(uuid()) @db.Uuid
+  teamId       String   @db.Uuid
+  key          String   @db.Text
+  type         String   @default("string") @db.Text
+  defaultValue String?  @db.Text
+  description  String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailVariables", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, key])
+  @@index([teamId, isActive])
+  @@map("email_team_variables")
+}
+
 // -----------------------------
 // PROFILE USER TYPE (Comum / Member PRO)
 // Lookup table with the user type tiers, plus a 1:1 assignment table
@@ -1774,4 +1856,3 @@ model ProfileUserTypeAssignment {
   @@index([accessExpiresAt])
   @@map("profile_user_type_assignments")
 }
-

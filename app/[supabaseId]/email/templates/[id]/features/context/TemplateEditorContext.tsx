@@ -5,8 +5,14 @@ import type { Template, TemplateEditorDraft, TemplateEditorState } from "./Templ
 import { useTemplateEditor } from "./TemplateEditorHook";
 
 interface ITemplateEditorContext extends TemplateEditorState {
+  activeRole: "manager" | "backoffice" | "operator" | null;
   reloadTemplate: () => Promise<void>;
   saveTemplate: (patch?: Partial<TemplateEditorDraft>) => Promise<Template | null>;
+  publishTemplate: (id?: string) => Promise<Template | null>;
+  unpublishTemplate: () => Promise<Template | null>;
+  submitForApproval: () => Promise<void>;
+  approveTemplate: () => Promise<void>;
+  rejectTemplate: (reviewNote: string) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
   setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;

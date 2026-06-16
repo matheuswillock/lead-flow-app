@@ -26,6 +26,7 @@ function ContactListItem({ list }: { list: ContactList }) {
   const [deletingList, setDeletingList] = useState(false);
 
   const isSelected = selectedListId === list.id;
+  const creatorLabel = list.creator?.fullName?.trim() || list.creator?.email || "—";
 
   async function confirmDelete() {
     setDeletingList(true);
@@ -62,35 +63,39 @@ function ContactListItem({ list }: { list: ContactList }) {
               {list.description}
             </p>
           )}
+          <p className="truncate text-xs text-muted-foreground leading-snug mt-0.5">
+            Criado por: {creatorLabel}
+          </p>
         </div>
 
         <div className="ml-2 flex shrink-0 items-center gap-1.5">
           <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
             {list.totalContacts.toLocaleString("pt-BR")}
           </Badge>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteOpen(true);
-            }}
-            title="Arquivar lista"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {!list.isSystemDefault ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteOpen(true);
+              }}
+              title="Excluir lista"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
         </div>
       </div>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Arquivar lista?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir lista?</AlertDialogTitle>
             <AlertDialogDescription>
-              A lista <strong>"{list.name}"</strong> será arquivada e não
-              aparecerá mais nas campanhas. Os contatos não serão apagados
-              permanentemente.
+              A lista <strong>&quot;{list.name}&quot;</strong> e todos os seus contatos serão
+              excluídos permanentemente. Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -102,7 +107,7 @@ function ContactListItem({ list }: { list: ContactList }) {
               disabled={deletingList}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingList ? "Arquivando..." : "Sim, arquivar"}
+              {deletingList ? "Excluindo..." : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

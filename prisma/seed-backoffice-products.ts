@@ -111,7 +111,8 @@ const FEATURES: Array<{
   { slug: "email-contacts",      name: "Contatos",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 120, parentSlug: "email", productSlug: "email" },
   { slug: "email-campaigns",     name: "Campanhas", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 130, parentSlug: "email", productSlug: "email" },
   { slug: "email-history",       name: "Histórico", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 140, parentSlug: "email", productSlug: "email" },
-  { slug: "email-analytics",     name: "Analytics", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 150, parentSlug: "email", productSlug: "email" },
+  { slug: "email-analytics",     name: "Analytics",      accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 150, parentSlug: "email", productSlug: "email" },
+  { slug: "email-settings",     name: "Configurações",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 160, parentSlug: "email", productSlug: "email" },
 
   // ── Integração guarda-chuva ───────────────────────────────────────────────
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, sortOrder: 200, productSlug: null },
@@ -250,6 +251,10 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MANAGER", accessLevel: "FULL" },
   ]),
   "email-analytics": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
+  "email-settings": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
   ]),
