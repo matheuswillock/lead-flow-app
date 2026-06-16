@@ -59,6 +59,8 @@ export function useTemplateEditor(
   const [error, setError] = useState<string | null>(null);
   const initialDraftRef = useRef<TemplateEditorDraft>(EMPTY_DRAFT);
 
+  const isFetchingRef = useRef(false);
+
   const isDirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(initialDraftRef.current),
     [draft]
@@ -82,6 +84,8 @@ export function useTemplateEditor(
       return;
     }
 
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -97,6 +101,7 @@ export function useTemplateEditor(
       toast.error("Erro ao carregar template", { description: message });
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   }, [activeTeamId, isNewTemplate, supabaseId, teamLoading, templateId]);
 
