@@ -99,6 +99,15 @@ export const envSchema = z.object({
   NEXT_PUBLIC_API_URL: z.string().optional().describe('Public API URL (optional)'),
   NEXT_API_BASE_URL: nonEmptyString.describe('API base path'),
 
+  // Sentry
+  NEXT_PUBLIC_SENTRY_DSN: urlSchema.describe('Sentry DSN for browser and server SDKs'),
+  SENTRY_AUTH_TOKEN: nonEmptyString.describe('Sentry auth token for source map upload'),
+  SENTRY_ORG: nonEmptyString.describe('Sentry organization slug'),
+  SENTRY_OTLP_TRACES_URL: urlSchema.describe('Sentry OTLP traces endpoint'),
+  SENTRY_PROJECT: nonEmptyString.describe('Sentry project slug'),
+  SENTRY_PUBLIC_KEY: nonEmptyString.describe('Sentry public key'),
+  SENTRY_VERCEL_LOG_DRAIN_URL: urlSchema.describe('Sentry Vercel log drain URL'),
+
   // Encryption keys
   ENCRYPTION_KEY: hexKeySchema.describe('Server-side encryption key'),
   NEXT_PUBLIC_ENCRYPTION_KEY: hexKeySchema.describe('Client-side encryption key'),
@@ -132,6 +141,13 @@ export const CRITICAL_ENV_VARS = [
   'ASAAS_WEBHOOK_TOKEN',
   'ENCRYPTION_KEY',
   'NEXT_PUBLIC_APP_URL',
+  'NEXT_PUBLIC_SENTRY_DSN',
+  'SENTRY_AUTH_TOKEN',
+  'SENTRY_ORG',
+  'SENTRY_OTLP_TRACES_URL',
+  'SENTRY_PROJECT',
+  'SENTRY_PUBLIC_KEY',
+  'SENTRY_VERCEL_LOG_DRAIN_URL',
 ] as const;
 
 /**
