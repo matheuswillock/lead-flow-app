@@ -119,13 +119,15 @@ jobs:
             exit 1
           fi
 
-  migration-status:
-    name: Migration Status
+  migration-check:
+    name: Migration Check
     if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
       - quality-gate
+    outputs:
+      has_pending: ${{ steps.detect.outputs.has_pending }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -148,48 +150,114 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Check Migration Status
+      - name: Detect Migration Status
+        id: detect
         shell: bash
         run: |
           set -euo pipefail
 
-          migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
-          echo "$migration_list"
+          MIGRATION_LIST="$(bun run db:migrate:status -- --db-url "$DIRECT_URL" 2>&1)"
+          echo "$MIGRATION_LIST"
 
-          if MIGRATION_LIST="$migration_list" node -e '
+          RESULT=$(MIGRATION_LIST="$MIGRATION_LIST" node -e '
             const input = process.env.MIGRATION_LIST ?? "";
-            let bad = false;
+            let hasPending = false;
 
             for (const line of input.split(/\r?\n/)) {
-              if (!/\d{14}/.test(line)) {
-                continue;
-              }
+              if (!/\d{14}/.test(line)) continue;
+              const parts = line.split(/[│|]/).map(v => v.trim());
+              const local = parts[0] ?? "";
+              const remote = parts[1] ?? "";
 
-              const [local = "", remote = ""] = line.split(/[│|]/).map((value) => value.trim());
-
-              if (!local || !remote || local !== remote) {
-                bad = true;
-                break;
+              if (!local && remote) {
+                process.stderr.write("Remote migration " + remote + " not tracked locally. Repair history before continuing.\n");
+                process.exit(1);
               }
+              if (local && remote && local !== remote) {
+                process.stderr.write("Migration mismatch: local=" + local + " remote=" + remote + "\n");
+                process.exit(1);
+              }
+              if (local && !remote) hasPending = true;
             }
 
-            process.exit(bad ? 1 : 0);
-          '; then
-            exit 0
-          fi
+            process.stdout.write(hasPending ? "true" : "false");
+          ') || { echo "::error::Migration history is inconsistent. Repair remote history before continuing."; exit 1; }
 
-          echo "Migration history is out of sync. Apply the missing migrations or repair the remote history before merging."
-          exit 1
+          echo "has_pending=$RESULT" >> "$GITHUB_OUTPUT"
+
+          if [ "$RESULT" = "true" ]; then
+            echo "::notice::Pending migrations detected — dry-run and approval required before push."
+          else
+            echo "::notice::All migrations applied. No action required."
+          fi
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
+  migration-dry-run:
+    name: Migration Dry Run
+    if: |
+      !cancelled() &&
+      (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
+      needs.migration-check.outputs.has_pending == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - migration-check
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Link Supabase project
+        run: bunx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Dry Run Migration Push
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "### Migration Dry Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "The following migrations would be applied to the remote database:" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          bun run db:migrate:push:dry-run 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> Review the output above and approve the **Migration Apply** job to proceed." >> "$GITHUB_STEP_SUMMARY"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
   build:
     name: Build
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: |
+      always() &&
+      (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
+      needs.migration-check.result == 'success' &&
+      (needs.migration-dry-run.result == 'success' || needs.migration-dry-run.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - migration-status
+      - migration-check
+      - migration-dry-run
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -226,8 +294,8 @@ jobs:
 
       - name: Build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 're_placeholder' }}
         run: bun run build
 

@@ -6,7 +6,8 @@ import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDi
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import { formatIntimezone, resolveTimezone } from "@/lib/dates"
 
-const DEFAULT_FROM = `Corretor Studio <no-reply@corretorstudio.com>`
+const FALLBACK_FROM_NAME = "Corretor Studio"
+const FALLBACK_FROM_EMAIL = "no-reply@corretorstudio.com"
 const MAX_CAMPAIGNS_PER_RUN = 5
 
 export async function GET(request: NextRequest) {
@@ -49,7 +50,14 @@ export async function GET(request: NextRequest) {
         // Check dispatch restrictions (blocked dates and time window)
         const teamSettings = await prisma.emailTeamSettings.findUnique({
           where: { teamId: campaign.teamId },
-          select: { dispatchBlockedDates: true, dispatchTimeFrom: true, dispatchTimeTo: true },
+          select: {
+            dispatchBlockedDates: true,
+            dispatchTimeFrom: true,
+            dispatchTimeTo: true,
+            fromName: true,
+            fromEmail: true,
+            replyTo: true,
+          },
         }).catch(() => null)
 
         if (teamSettings) {
@@ -136,8 +144,14 @@ export async function GET(request: NextRequest) {
           return acc
         }, {})
 
+        const fromName = teamSettings?.fromName ?? FALLBACK_FROM_NAME
+        const fromEmail = teamSettings?.fromEmail ?? FALLBACK_FROM_EMAIL
+        const from = `${fromName} <${fromEmail}>`
+        const replyTo = teamSettings?.replyTo ?? null
+
         const result = await dispatchService.dispatchBatch({
-          from: DEFAULT_FROM,
+          from,
+          replyTo,
           recipients: recipientsList,
           subject: campaign.template.subject,
           html: campaign.template.html,
