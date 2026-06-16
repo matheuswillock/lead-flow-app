@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS "public"."email_team_variables" (
   "updatedAt"    timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "email_team_variables_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "email_team_variables_teamId_fkey" FOREIGN KEY ("teamId")
-    REFERENCES "public"."Team"("id") ON DELETE CASCADE ON UPDATE CASCADE
+    REFERENCES "public"."corretor_studio_teams"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "email_team_variables_teamId_key_key"
