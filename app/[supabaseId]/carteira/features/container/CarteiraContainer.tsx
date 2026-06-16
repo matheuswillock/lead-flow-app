@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from 'react';
-import { AlertCircle, GripVertical, Settings, UserPlus } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { AlertCircle, GripVertical, Settings, Upload, UserPlus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -18,9 +20,13 @@ import {
   DEFAULT_CARTEIRA_TABLE_COLUMN_VISIBILITY,
   type CarteiraTableColumnKey,
 } from '../context/CarteiraTypes';
+import { CarteiraStatsRow } from '../components/CarteiraStatsRow';
 import { CarteiraFiltersBar } from './CarteiraFiltersBar';
+import { CarteiraRenovacoesView } from './CarteiraRenovacoesView';
 import { CarteiraTable } from './CarteiraTable';
 import { AddPortfolioClientDialog } from '../components/AddPortfolioClientDialog';
+import { PortfolioImportDialog } from '../components/portfolio-import/PortfolioImportDialog';
+import { useTeamContext } from '@/app/context/TeamContext';
 
 function SortableCarteiraColumnOption({
   option,
@@ -73,13 +79,21 @@ function SortableCarteiraColumnOption({
 
 export function CarteiraContainer() {
   const {
+    data,
     error,
     tableColumnVisibility,
     setTableColumnVisibility,
     tableColumnOrder,
     setTableColumnOrder,
+    refresh,
   } = useCarteiraContext();
+  const params = useParams();
+  const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+
+  const renewalCount = data?.renewals.length ?? 0;
   const sensors = useSensors(useSensor(PointerSensor));
 
   const orderedColumnOptions = (() => {
@@ -113,103 +127,136 @@ export function CarteiraContainer() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">Carteira</h1>
-          <p className="text-sm text-muted-foreground">Gestão de clientes com negócio fechado</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" onClick={() => setIsAddOpen(true)}>
-            <UserPlus data-icon="inline-start" />
-            Adicionar cliente
-          </Button>
-          <Sheet>
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <SheetTrigger asChild>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-xl font-semibold">Carteira</h1>
+        <p className="text-sm text-muted-foreground">Gestão de clientes com negócio fechado</p>
+      </div>
+
+      <Tabs defaultValue="clientes">
+        <div className="flex items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="clientes">Clientes</TabsTrigger>
+            <TabsTrigger value="renovacoes" className="gap-1.5">
+              Renovações
+              {renewalCount > 0 && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">
+                  {renewalCount}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="clientes" className="m-0">
+            <div className="flex items-center gap-2">
+              <Button type="button" onClick={() => setIsAddOpen(true)}>
+                <UserPlus data-icon="inline-start" />
+                Adicionar cliente
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setIsImportOpen(true)}>
+                <Upload data-icon="inline-start" />
+                Importar clientes
+              </Button>
+              <Sheet>
+                <TooltipProvider delayDuration={0}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <SheetTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-9"
+                          aria-label="Configuração das colunas da tabela"
+                        >
+                          <Settings className="size-4" />
+                        </Button>
+                      </SheetTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Configuração das colunas</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <SheetContent side="right" className="w-[420px] sm:w-[460px]">
+                  <SheetHeader>
+                    <SheetTitle>Configuração das colunas</SheetTitle>
+                    <SheetDescription>
+                      Selecione os headers visíveis na tabela da carteira e ajuste a ordem.
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-4 grid gap-3">
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleColumnConfigDragEnd}
+                    >
+                      <SortableContext
+                        items={orderedColumnOptions.map((option) => option.key)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="grid gap-3">
+                          {orderedColumnOptions.map((option) => (
+                            <SortableCarteiraColumnOption
+                              key={option.key}
+                              option={option}
+                              isChecked={tableColumnVisibility[option.key] !== false}
+                              onCheckedChange={(nextChecked) => {
+                                setTableColumnVisibility((prev) => ({
+                                  ...prev,
+                                  [option.key]: nextChecked,
+                                }));
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Essa configuração afeta apenas sua visualização da carteira.
+                  </p>
+                  <div className="flex justify-end">
                     <Button
                       type="button"
                       variant="outline"
-                      size="icon"
-                      className="size-9"
-                      aria-label="Configuração das colunas da tabela"
+                      size="sm"
+                      onClick={() => {
+                        setTableColumnVisibility(DEFAULT_CARTEIRA_TABLE_COLUMN_VISIBILITY);
+                        setTableColumnOrder(DEFAULT_CARTEIRA_TABLE_COLUMN_ORDER);
+                      }}
                     >
-                      <Settings className="size-4" />
+                      Restaurar padrão
                     </Button>
-                  </SheetTrigger>
-                </TooltipTrigger>
-                <TooltipContent>Configuração das colunas</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <SheetContent side="right" className="w-[420px] sm:w-[460px]">
-              <SheetHeader>
-                <SheetTitle>Configuração das colunas</SheetTitle>
-                <SheetDescription>
-                  Selecione os headers visíveis na tabela da carteira e ajuste a ordem.
-                </SheetDescription>
-              </SheetHeader>
-              <div className="mt-4 grid gap-3">
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleColumnConfigDragEnd}
-                >
-                  <SortableContext
-                    items={orderedColumnOptions.map((option) => option.key)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="grid gap-3">
-                      {orderedColumnOptions.map((option) => (
-                        <SortableCarteiraColumnOption
-                          key={option.key}
-                          option={option}
-                          isChecked={tableColumnVisibility[option.key] !== false}
-                          onCheckedChange={(nextChecked) => {
-                            setTableColumnVisibility((prev) => ({
-                              ...prev,
-                              [option.key]: nextChecked,
-                            }));
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Essa configuração afeta apenas sua visualização da carteira.
-              </p>
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setTableColumnVisibility(DEFAULT_CARTEIRA_TABLE_COLUMN_VISIBILITY);
-                    setTableColumnOrder(DEFAULT_CARTEIRA_TABLE_COLUMN_ORDER);
-                  }}
-                >
-                  Restaurar padrão
-                </Button>
-              </div>
-            </SheetContent>
-          </Sheet>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
+          </TabsContent>
         </div>
-      </div>
 
-      <CarteiraFiltersBar />
+        <TabsContent value="clientes" className="mt-5 flex flex-col gap-5">
+          <CarteiraStatsRow />
+          <CarteiraFiltersBar />
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <CarteiraTable />
+        </TabsContent>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <CarteiraTable />
+        <TabsContent value="renovacoes" className="mt-5">
+          <CarteiraRenovacoesView />
+        </TabsContent>
+      </Tabs>
 
       <AddPortfolioClientDialog open={isAddOpen} onOpenChange={setIsAddOpen} />
+      <PortfolioImportDialog
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        supabaseId={supabaseId}
+        teamId={activeTeamId}
+        onImportComplete={refresh}
+      />
     </div>
   );
 }

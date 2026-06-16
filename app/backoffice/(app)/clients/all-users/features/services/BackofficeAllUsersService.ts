@@ -89,6 +89,20 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     )
   }
 
+  async sendAccessEmail(
+    memberId: string,
+    mode: "invite" | "reset_password"
+  ): Promise<{ email: string }> {
+    return parseOutput<{ email: string }>(
+      await fetch(`/api/v1/backoffice/members/${memberId}/access-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      }),
+      "Erro ao enviar e-mail de acesso"
+    )
+  }
+
   async updateUserType(
     profileId: string,
     payload: BackofficeAllUsersUpdateUserTypeInput

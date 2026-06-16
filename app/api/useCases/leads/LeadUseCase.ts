@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { ILeadUseCase } from "./ILeadUseCase";
 import type {
   LeadCreateOptions,
@@ -6,6 +8,7 @@ import type {
   UpdateLeadStatusTriggerInput,
 } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
+import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
 import { LeadStatus, ActivityType, InviteDispatchStatus, Prisma, TeamStatusRuleType } from "@prisma/client";
@@ -71,6 +74,15 @@ type LeadStatusTransitionBlockerType =
   | "email_required"
   | "lead_info_required"
   | "none";
+
+const defaultLeadRepository = new LeadRepository();
+
+async function getCachedLeadById(leadId: string) {
+  "use cache";
+  cacheTag(cacheTags.lead(leadId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  return defaultLeadRepository.findById(leadId);
+}
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -166,7 +178,10 @@ export class LeadUseCase implements ILeadUseCase {
   }
 
   async createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
-    const output = await this.createLeadInternal(supabaseId, data, true, teamId);
+    const output = await this.createLeadInternal(supabaseId, data, true, teamId, {
+      body: "Lead criado via importação manual",
+      payload: { source: "import_manual" },
+    });
 
     if (output.isValid && data.status === LeadStatus.contract_finalized && output.result?.id) {
       const amount = Number(data.ticket ?? data.currentValue ?? 0);
@@ -402,8 +417,8 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      const lead = await this.leadRepository.findById(id);
-      
+      const lead = await getCachedLeadById(id);
+
       if (!lead) {
         return new Output(false, [], ["Lead não encontrado"], null);
       }

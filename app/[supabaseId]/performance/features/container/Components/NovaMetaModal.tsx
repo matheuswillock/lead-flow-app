@@ -278,7 +278,7 @@ export function NovaMetaModal({ open, onOpenChange }: NovaMetaModalProps) {
           {/* Recompensa */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="meta-reward" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Recompensa <span className="normal-case font-normal text-muted-foreground">(opcional)</span>
+              Recompensa 
             </Label>
             <Input
               id="meta-reward"

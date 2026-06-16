@@ -220,28 +220,7 @@ export class LeadRepository implements ILeadRepository {
     const [leads, total] = await Promise.all([
       prisma.lead.findMany({
         where,
-        include: {
-          manager: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-            },
-          },
-          assignee: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              profileIconUrl: true,
-            },
-          },
-          _count: {
-            select: {
-              attachments: true,
-            },
-          },
-        },
+        select: CRM_LEAD_LIST_SELECT,
         orderBy: {
           createdAt: 'desc',
         },
@@ -882,6 +861,30 @@ export class LeadRepository implements ILeadRepository {
         : null,
       assignee: lead.assignee,
     };
+  }
+
+  async findImportConflicts(
+    teamId: string,
+    emails: string[],
+    cnpjs: string[]
+  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus }>> {
+    const conflictFilters: Prisma.LeadWhereInput[] = [];
+    if (emails.length) conflictFilters.push({ email: { in: emails } });
+    if (cnpjs.length) conflictFilters.push({ cnpj: { in: cnpjs } });
+    if (!conflictFilters.length) return [];
+
+    return await prisma.lead.findMany({
+      where: {
+        teamId,
+        OR: conflictFilters,
+      },
+      select: {
+        id: true,
+        email: true,
+        cnpj: true,
+        status: true,
+      },
+    });
   }
 }
 

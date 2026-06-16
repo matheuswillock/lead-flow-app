@@ -288,7 +288,7 @@ export function TransferBetweenTeamsDialog({
           </div>
 
           <div className="flex flex-col gap-3">
-            <Label htmlFor="sdr">SDR responsável (opcional)</Label>
+            <Label htmlFor="sdr">SDR responsável</Label>
             <Select value={sdrId} onValueChange={setSdrId} disabled={!targetTeamId || membersLoading}>
               <SelectTrigger id="sdr">
                 <SelectValue placeholder="Sem SDR" />

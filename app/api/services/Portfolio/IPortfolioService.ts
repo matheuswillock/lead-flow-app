@@ -1,4 +1,6 @@
-import type { PortfolioSource, PortfolioStatus } from '@prisma/client';
+import type { ContractType, PortfolioSource, PortfolioStatus, RenewalStatus } from '@prisma/client';
+
+export type { RenewalStatus, ContractType };
 
 export interface PortfolioFilters {
   teamId: string;
@@ -10,7 +12,7 @@ export interface PortfolioFilters {
   sdrIds?: string[];
   closerIds?: string[];
   sources?: PortfolioSource[];
-  operadora?: string;
+  operadoras?: string[];
   contractDateStart?: Date;
   contractDateEnd?: Date;
   dueDateStart?: Date;
@@ -29,9 +31,38 @@ export interface CreatePortfolioDependentPayload {
 
 export interface CreatePortfolioHolderPayload {
   name: string;
+  razaoSocial?: string | null;
   birthDate: string;
-  document: string;
+  document?: string | null;
   cnpj?: string | null;
+}
+
+export interface CreatePortfolioImportEntryPayload {
+  name: string;
+  email?: string | null;
+  phone: string;
+  cnpj?: string | null;
+  source: Exclude<PortfolioSource, 'crm'>;
+  contractType?: ContractType;
+  amount: number;
+  startDateAt: Date;
+  finalizedDateAt: Date;
+  contractDueDate?: Date | null;
+  closerId: string;
+  operadora: string;
+  productName?: string | null;
+  notes?: string | null;
+  holder?: { name: string; razaoSocial?: string | null; birthDate: Date; document: string } | null;
+}
+
+export interface PortfolioImportTarget {
+  masterId: string;
+}
+
+export interface PortfolioImportConflictLead {
+  id: string;
+  email: string | null;
+  cnpj: string | null;
 }
 
 export interface CreatePortfolioEntryPayload {
@@ -40,6 +71,7 @@ export interface CreatePortfolioEntryPayload {
   phone: string;
   cnpj?: string | null;
   source: Exclude<PortfolioSource, 'crm'>;
+  contractType: ContractType;
   amount: number;
   startDateAt: string;
   finalizedDateAt: string;
@@ -54,6 +86,7 @@ export interface CreatePortfolioEntryPayload {
 }
 
 export interface UpdatePortfolioDetailPayload {
+  contractType?: ContractType;
   operadora?: string | null;
   productName?: string | null;
   amount?: number;
@@ -64,8 +97,9 @@ export interface UpdatePortfolioDetailPayload {
   notes?: string | null;
   holder?: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
-    document: string;
+    document?: string | null;
     cnpj?: string | null;
   } | null;
   dependents?: Array<{
@@ -79,6 +113,8 @@ export interface UpdatePortfolioDetailPayload {
 
 export interface UpdatePortfolioData {
   portfolioStatus?: PortfolioStatus;
+  renewalStatus?: RenewalStatus;
+  renewalAmount?: number | null;
   note?: string | null;
   lastContactAt?: Date | null;
 }
@@ -90,6 +126,8 @@ export interface PortfolioRow {
   leadName: string;
   source: PortfolioSource;
   portfolioStatus: PortfolioStatus;
+  renewalStatus: RenewalStatus;
+  renewalAmount: number | null;
   note: string | null;
   lastContactAt: Date | null;
   sdr: { id: string; name: string } | null;
@@ -105,8 +143,17 @@ export interface PortfolioRow {
   updatedAt: Date;
 }
 
+export interface PortfolioStats {
+  totalClients: number;
+  totalValue: number;
+  activeCount: number;
+  dueSoonCount: number;
+}
+
 export interface PortfolioListResult {
   rows: PortfolioRow[];
+  renewals: PortfolioRow[];
+  stats: PortfolioStats;
   availableOperadoras: string[];
   pagination: {
     page: number;
@@ -138,6 +185,7 @@ export interface PortfolioDetailResult {
   closer: { id: string; name: string } | null;
   soldPlan: string | null;
   contractDueDate: Date | null;
+  contractType: ContractType;
   contract: {
     operadora: string | null;
     productName: string | null;
@@ -150,6 +198,7 @@ export interface PortfolioDetailResult {
   } | null;
   holder: {
     name: string;
+    razaoSocial: string | null;
     birthDate: Date;
     document: string;
     cnpj: string | null;
@@ -170,6 +219,18 @@ export interface IPortfolioService {
     profileId: string,
     data: CreatePortfolioEntryPayload
   ): Promise<PortfolioDetailResult>;
+  getImportTarget(teamId: string, closerId: string): Promise<PortfolioImportTarget>;
+  findImportConflicts(
+    teamId: string,
+    emails: string[],
+    cnpjs: string[]
+  ): Promise<PortfolioImportConflictLead[]>;
+  createPortfolioEntryFromImport(
+    teamId: string,
+    masterId: string,
+    profileId: string,
+    data: CreatePortfolioImportEntryPayload
+  ): Promise<string>;
   listPortfolio(filters: PortfolioFilters): Promise<PortfolioListResult>;
   updatePortfolioEntry(
     leadId: string,

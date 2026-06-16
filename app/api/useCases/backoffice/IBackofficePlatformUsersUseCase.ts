@@ -2,7 +2,7 @@ import type { Output } from "@/lib/output"
 
 export interface IBackofficePlatformUsersUseCase {
   listMasterUsers(
-    filters: { name?: string; email?: string; team?: string } | undefined,
+    filters: { name?: string; email?: string; team?: string; plan?: "lifetime" | "monthly" | "trial" | "none"; userType?: "common" | "member_pro" } | undefined,
     pagination: { page: number; pageSize: number }
   ): Promise<Output>
 

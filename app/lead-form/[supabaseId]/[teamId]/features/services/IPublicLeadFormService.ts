@@ -63,6 +63,7 @@ export interface AvailabilityResult {
 }
 
 export interface PublicLeadFormBootstrapData {
+  teamName: string;
   healthPlans: HealthPlanOption[];
   closers: CloserOption[];
   sdrs: SdrOption[];

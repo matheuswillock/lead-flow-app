@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/app/api/infra/data/prisma";
@@ -6,6 +8,14 @@ import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadSchedul
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
+import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+
+async function getCachedLeadSchedule(leadId: string) {
+  "use cache";
+  cacheTag(cacheTags.leadSchedules(leadId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  return leadScheduleRepository.findByLeadId(leadId);
+}
 
 const scheduleSchema = z.object({
   date: z.string().datetime().optional(),
@@ -123,6 +133,7 @@ export async function POST(
       return NextResponse.json(result, { status: 400 });
     }
 
+    invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(result, { status: existingSchedule ? 200 : 201 });
   } catch (error) {
     console.error("[LeadScheduleRoute][POST] Erro ao criar agendamento:", error);
@@ -161,7 +172,7 @@ export async function GET(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const schedules = await leadScheduleRepository.findByLeadId(leadId);
+    const schedules = await getCachedLeadSchedule(leadId);
 
     const output = new Output(true, [], [], schedules);
     return NextResponse.json(output, { status: 200 });

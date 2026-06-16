@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
-import { CalendarDays, Crown, DollarSign, Eye, MoreHorizontal, Pencil, Search, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { CalendarDays, Crown, DollarSign, Eye, KeyRound, Mail, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
 import {
@@ -146,7 +146,6 @@ export function BackofficeClientDetailsContainer() {
     activeSection,
     setActiveSection,
     filters,
-    setFilters,
     fetchDetails,
     setTeamsPage,
     setTeamsPageSize,
@@ -165,6 +164,7 @@ export function BackofficeClientDetailsContainer() {
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [memberAccessActionId, setMemberAccessActionId] = useState<string | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addTeamOpen, setAddTeamOpen] = useState(false)
   const [editingTeam, setEditingTeam] = useState<BackofficeClientTeam | null>(null)
@@ -212,18 +212,19 @@ export function BackofficeClientDetailsContainer() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
-  function updateFilter(value: string) {
-    const next = { query: value }
-    setLocalFilters(next)
-    setFilters(next)
-  }
+  const isFiltered = useMemo(() => localFilters.query.trim().length > 0, [localFilters.query])
 
-  async function handleSearch() {
-    await fetchDetails({
-      filters: localFilters,
-      page: 1,
-    })
-  }
+  useEffect(() => {
+    const nextQuery = localFilters.query.trim()
+    const currentQuery = filters.query.trim()
+    if (nextQuery === currentQuery) return
+
+    const debounceId = window.setTimeout(() => {
+      void fetchDetails({ filters: localFilters, page: 1 })
+    }, 300)
+
+    return () => window.clearTimeout(debounceId)
+  }, [fetchDetails, filters.query, localFilters])
 
   async function handleClearFilters() {
     setLocalFilters({ query: "" })
@@ -244,6 +245,36 @@ export function BackofficeClientDetailsContainer() {
     } finally {
       setIsTogglingLifetime(false)
       lifetimeInFlight.current = false
+    }
+  }
+
+  async function handleSendMemberAccessEmail(
+    member: BackofficeClientTeamMember,
+    mode: "invite" | "reset_password"
+  ) {
+    if (memberAccessActionId) return
+
+    setMemberAccessActionId(`${member.id}:${mode}`)
+    const toastId = toast.loading(
+      mode === "invite" ? "Reenviando convite..." : "Enviando reset de senha..."
+    )
+
+    try {
+      const result = await service.sendAccessEmail(member.id, mode)
+      toast.success(
+        mode === "invite"
+          ? `Convite reenviado para ${result.email}.`
+          : `Reset de senha enviado para ${result.email}.`,
+        { id: toastId }
+      )
+    } catch (error) {
+      console.error("[BackofficeClientDetailsContainer][handleSendMemberAccessEmail]", error)
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.",
+        { id: toastId }
+      )
+    } finally {
+      setMemberAccessActionId(null)
     }
   }
 
@@ -321,21 +352,21 @@ export function BackofficeClientDetailsContainer() {
             <Input
               placeholder="Buscar por time, nome ou e-mail de membro"
               value={localFilters.query}
-              onChange={(e) => updateFilter(e.target.value)}
+              onChange={(e) => setLocalFilters({ query: e.target.value })}
               className="h-8 w-62.5 lg:w-105"
             />
-            <Button size="sm" onClick={handleSearch} disabled={isTeamsLoading}>
-              <Search className="mr-1 h-4 w-4" />
-              Buscar
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleClearFilters}
-              disabled={isTeamsLoading}
-            >
-              Limpar
-            </Button>
+            {isFiltered ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 px-2 lg:px-3"
+                onClick={() => void handleClearFilters()}
+                disabled={isTeamsLoading}
+              >
+                Limpar
+                <X data-icon="inline-end" />
+              </Button>
+            ) : null}
           </LeadsFiltersLayout>
 
           <Tabs
@@ -452,7 +483,11 @@ export function BackofficeClientDetailsContainer() {
                                     <TableCell className="text-center">
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            disabled={memberAccessActionId !== null}
+                                          >
                                             <MoreHorizontal />
                                           </Button>
                                         </DropdownMenuTrigger>
@@ -475,6 +510,22 @@ export function BackofficeClientDetailsContainer() {
                                             <Pencil />
                                             Editar
                                           </DropdownMenuItem>
+                                          {member.accessStatus === "pending_first_access" ? (
+                                            <DropdownMenuItem
+                                              onClick={() => void handleSendMemberAccessEmail(member, "invite")}
+                                            >
+                                              <Mail />
+                                              Reenviar convite
+                                            </DropdownMenuItem>
+                                          ) : null}
+                                          {member.accessStatus === "active" ? (
+                                            <DropdownMenuItem
+                                              onClick={() => void handleSendMemberAccessEmail(member, "reset_password")}
+                                            >
+                                              <KeyRound />
+                                              Enviar reset de senha
+                                            </DropdownMenuItem>
+                                          ) : null}
                                           {!member.isMaster ? (
                                             <DropdownMenuItem
                                               className="text-destructive focus:text-destructive focus:bg-destructive/10"

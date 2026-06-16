@@ -48,6 +48,14 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
     return prisma.backofficeUser.findUnique({ where: { id } })
   }
 
+  async findManyByIds(ids: string[]): Promise<BackofficeUser[]> {
+    if (ids.length === 0) return []
+
+    return prisma.backofficeUser.findMany({
+      where: { id: { in: ids } },
+    })
+  }
+
   async findByEmail(email: string): Promise<BackofficeUser | null> {
     return prisma.backofficeUser.findUnique({ where: { email } })
   }
@@ -59,6 +67,22 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
   async findByIdWithGoogleContext(id: string) {
     return prisma.backofficeUser.findUnique({
       where: { id },
+      include: {
+        googleConnection: true,
+        linkedCorretorStudioProfile: {
+          select: {
+            googleConnection: true,
+          },
+        },
+      },
+    })
+  }
+
+  async findManyByIdsWithGoogleContext(ids: string[]) {
+    if (ids.length === 0) return []
+
+    return prisma.backofficeUser.findMany({
+      where: { id: { in: ids } },
       include: {
         googleConnection: true,
         linkedCorretorStudioProfile: {

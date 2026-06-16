@@ -42,7 +42,7 @@ class CarteiraService implements ICarteiraService {
     if (filters.sources.length) params.set('sources', filters.sources.join(','));
     if (filters.sdrIds.length) params.set('sdrIds', filters.sdrIds.join(','));
     if (filters.closerIds.length) params.set('closerIds', filters.closerIds.join(','));
-    if (filters.operadora) params.set('operadora', filters.operadora);
+    if (filters.operadoras.length) params.set('operadoras', filters.operadoras.join(','));
     if (filters.contractDateStart) params.set('contractDateStart', filters.contractDateStart);
     if (filters.contractDateEnd) params.set('contractDateEnd', filters.contractDateEnd);
     if (filters.dueDateStart) params.set('dueDateStart', filters.dueDateStart);

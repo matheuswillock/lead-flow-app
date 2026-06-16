@@ -4,6 +4,7 @@ import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { isManagerLikeRole } from '@/lib/roles';
 import { portfolioUseCase } from '@/app/api/useCases/portfolio/PortfolioUseCase';
+import { invalidatePortfolioCache } from '@/lib/cache/invalidation';
 
 const dependentSchema = z.object({
   id: z.string().uuid().optional(),
@@ -15,12 +16,14 @@ const dependentSchema = z.object({
 
 const holderSchema = z.object({
   name: z.string().min(1),
+  razaoSocial: z.string().nullable().optional(),
   birthDate: z.string(),
-  document: z.string().min(1),
+  document: z.string().nullable().optional(),
   cnpj: z.string().nullable().optional(),
 });
 
 const updateDetailSchema = z.object({
+  contractType: z.enum(['individual', 'corporate', 'adhesion']).optional(),
   operadora: z.string().nullable().optional(),
   productName: z.string().nullable().optional(),
   amount: z.number().positive().optional(),
@@ -31,6 +34,41 @@ const updateDetailSchema = z.object({
   notes: z.string().nullable().optional(),
   holder: holderSchema.nullable().optional(),
   dependents: z.array(dependentSchema).optional(),
+}).superRefine((data, ctx) => {
+  if (!data.holder) {
+    return;
+  }
+
+  const effectiveContractType = data.contractType ?? 'individual';
+  const holderDocument = data.holder.document?.trim() ?? '';
+  const holderRazaoSocial = data.holder.razaoSocial?.trim() ?? '';
+  const holderCnpj = data.holder.cnpj?.trim() ?? '';
+
+  if (effectiveContractType === 'corporate') {
+    if (!holderRazaoSocial) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A Razão Social é obrigatória para contratos empresariais',
+        path: ['holder', 'razaoSocial'],
+      });
+    }
+    if (!holderCnpj) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'O CNPJ é obrigatório para contratos empresariais',
+        path: ['holder', 'cnpj'],
+      });
+    }
+    return;
+  }
+
+  if (!holderDocument) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'O CPF do titular é obrigatório',
+      path: ['holder', 'document'],
+    });
+  }
 });
 
 export async function GET(
@@ -126,5 +164,6 @@ export async function PATCH(
     return NextResponse.json(result, { status });
   }
 
+  invalidatePortfolioCache({ teamId, leadId });
   return NextResponse.json(result, { status: 200 });
 }

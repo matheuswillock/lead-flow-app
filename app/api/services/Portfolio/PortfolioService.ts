@@ -1,11 +1,14 @@
-import { ActivityType, LeadStatus, Prisma, PortfolioSource } from '@prisma/client';
+import { ActivityType, ContractType, LeadStatus, Prisma, PortfolioSource, RenewalStatus } from '@prisma/client';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 import type {
   CreatePortfolioEntryPayload,
+  CreatePortfolioImportEntryPayload,
   IPortfolioService,
   PortfolioDetailResult,
   PortfolioFilters,
+  PortfolioImportConflictLead,
+  PortfolioImportTarget,
   PortfolioListResult,
   PortfolioRow,
   UpdatePortfolioData,
@@ -15,6 +18,8 @@ import type {
 function mapToPortfolioRow(entry: {
   id: string;
   portfolioStatus: string;
+  renewalStatus: RenewalStatus;
+  renewalAmount: { toNumber(): number } | null;
   source: PortfolioSource;
   note: string | null;
   lastContactAt: Date | null;
@@ -30,19 +35,25 @@ function mapToPortfolioRow(entry: {
     contractDueDate: Date | null;
     assignee: { id: string; fullName: string | null } | null;
     closer: { id: string; fullName: string | null } | null;
-    LeadFinalized: { operadora: string | null; startDateAt: Date }[];
+    LeadFinalized: { operadora: string | null; startDateAt: Date; contractType: ContractType; holder: { razaoSocial: string | null } | null }[];
   };
 }): PortfolioRow {
   const ticket = entry.lead.ticket ? entry.lead.ticket.toNumber() : 0;
   const currentValue = entry.lead.currentValue ? entry.lead.currentValue.toNumber() : 0;
   const finalized = entry.lead.LeadFinalized[0] ?? null;
+  const displayName =
+    finalized?.contractType === ContractType.corporate && finalized.holder?.razaoSocial
+      ? finalized.holder.razaoSocial
+      : entry.lead.name;
   return {
     portfolioId: entry.id,
     leadId: entry.lead.id,
     leadCode: entry.lead.leadCode,
-    leadName: entry.lead.name,
+    leadName: displayName,
     source: entry.source,
     portfolioStatus: entry.portfolioStatus as PortfolioRow['portfolioStatus'],
+    renewalStatus: entry.renewalStatus,
+    renewalAmount: entry.renewalAmount ? entry.renewalAmount.toNumber() : null,
     note: entry.note,
     lastContactAt: entry.lastContactAt,
     sdr: entry.lead.assignee
@@ -77,7 +88,7 @@ const leadInclude = {
       assignee: { select: { id: true, fullName: true } },
       closer: { select: { id: true, fullName: true } },
       LeadFinalized: {
-        select: { operadora: true, startDateAt: true },
+        select: { operadora: true, startDateAt: true, contractType: true, holder: { select: { razaoSocial: true } } },
         orderBy: { createdAt: 'desc' as const },
         take: 1,
       },
@@ -90,7 +101,7 @@ export class PortfolioService implements IPortfolioService {
     const {
       teamId, profileId, isManager, isCloser,
       portfolioStatuses, sdrIds, closerIds, sources,
-      operadora,
+      operadoras,
       contractDateStart, contractDateEnd,
       dueDateStart, dueDateEnd,
       documentSearch,
@@ -98,7 +109,7 @@ export class PortfolioService implements IPortfolioService {
       page, pageSize,
     } = filters;
 
-    const needsLeadFinalizedJoin = contractDateStart || contractDateEnd || documentSearch || operadora;
+    const needsLeadFinalizedJoin = contractDateStart || contractDateEnd || documentSearch || operadoras?.length;
 
     const accessLeadFilter = {
       ...(isCloser && !isManager ? { closerId: profileId } : {}),
@@ -129,8 +140,8 @@ export class PortfolioService implements IPortfolioService {
                     ...(contractDateEnd ? { lt: contractDateEnd } : {}),
                   },
                 }] : []),
-                ...(operadora ? [{
-                  operadora: { equals: operadora, mode: Prisma.QueryMode.insensitive },
+                ...(operadoras?.length ? [{
+                  operadora: { in: operadoras },
                 }] : []),
                 ...(documentSearch ? [{
                   OR: [
@@ -154,7 +165,24 @@ export class PortfolioService implements IPortfolioService {
       operadora: { not: null },
     };
 
-    const [totalRows, entries, operadoraRecords] = await Promise.all([
+    // Janela de renovação: vencimento já vencido ou em até 90 dias (todos os matches, sem paginação).
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const dueSoonLimit = new Date(now);
+    dueSoonLimit.setDate(dueSoonLimit.getDate() + 90);
+
+    const existingLeadWhere = where.lead as Prisma.LeadWhereInput;
+    const existingDueDateBounds = existingLeadWhere.contractDueDate as Record<string, unknown> | undefined;
+    const renewalWhere: Prisma.LeadPortfolioWhereInput = {
+      ...where,
+      lead: {
+        ...existingLeadWhere,
+        contractDueDate: { ...existingDueDateBounds, not: null, lte: dueSoonLimit },
+      },
+    };
+
+    const [totalRows, entries, operadoraRecords, statsRows, renewalEntries] = await Promise.all([
       prisma.leadPortfolio.count({ where }),
       prisma.leadPortfolio.findMany({
         where,
@@ -169,6 +197,20 @@ export class PortfolioService implements IPortfolioService {
         distinct: ['operadora'],
         orderBy: { operadora: 'asc' },
       }),
+      // Agregados de todos os matches (não apenas a página atual).
+      prisma.leadPortfolio.findMany({
+        where,
+        select: {
+          portfolioStatus: true,
+          lead: { select: { ticket: true, currentValue: true, contractDueDate: true } },
+        },
+      }),
+      // Renovações completas de todos os matches dentro da janela.
+      prisma.leadPortfolio.findMany({
+        where: renewalWhere,
+        include: leadInclude,
+        orderBy: { updatedAt: 'desc' },
+      }),
     ]);
 
     const availableOperadoras = operadoraRecords
@@ -176,8 +218,27 @@ export class PortfolioService implements IPortfolioService {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
+    let totalValue = 0;
+    let activeCount = 0;
+    let dueSoonCount = 0;
+    for (const r of statsRows) {
+      const ticket = r.lead.ticket ? r.lead.ticket.toNumber() : 0;
+      const currentValue = r.lead.currentValue ? r.lead.currentValue.toNumber() : 0;
+      totalValue += ticket > 0 ? ticket : currentValue;
+      if (r.portfolioStatus === 'active') activeCount += 1;
+      const due = r.lead.contractDueDate;
+      if (due && due >= todayStart && due <= dueSoonLimit) dueSoonCount += 1;
+    }
+
     return {
       rows: entries.map(mapToPortfolioRow),
+      renewals: renewalEntries.map(mapToPortfolioRow),
+      stats: {
+        totalClients: totalRows,
+        totalValue,
+        activeCount,
+        dueSoonCount,
+      },
       availableOperadoras,
       pagination: {
         page,
@@ -223,11 +284,16 @@ export class PortfolioService implements IPortfolioService {
     const ticket = entry.lead.ticket ? entry.lead.ticket.toNumber() : 0;
     const currentValue = entry.lead.currentValue ? entry.lead.currentValue.toNumber() : 0;
 
+    const detailDisplayName =
+      finalized?.contractType === ContractType.corporate && finalized.holder?.razaoSocial
+        ? finalized.holder.razaoSocial
+        : entry.lead.name;
+
     return {
       portfolioId: entry.id,
       leadId: entry.lead.id,
       leadCode: entry.lead.leadCode,
-      leadName: entry.lead.name,
+      leadName: detailDisplayName,
       source: entry.source,
       saleValue: ticket > 0 ? ticket : currentValue,
       portfolioStatus: entry.portfolioStatus,
@@ -235,6 +301,7 @@ export class PortfolioService implements IPortfolioService {
       closer: entry.lead.closer ? { id: entry.lead.closer.id, name: entry.lead.closer.fullName ?? '' } : null,
       soldPlan: entry.lead.soldPlan,
       contractDueDate: entry.lead.contractDueDate,
+      contractType: finalized?.contractType ?? ContractType.individual,
       contract: finalized
         ? {
             operadora: finalized.operadora ?? null,
@@ -250,6 +317,7 @@ export class PortfolioService implements IPortfolioService {
       holder: finalized?.holder
         ? {
             name: finalized.holder.name,
+            razaoSocial: finalized.holder.razaoSocial ?? null,
             birthDate: finalized.holder.birthDate,
             document: finalized.holder.document,
             cnpj: finalized.holder.cnpj ?? null,
@@ -390,6 +458,7 @@ export class PortfolioService implements IPortfolioService {
               (finalizedDateAt.getTime() - lead.createdAt.getTime()) / (1000 * 60 * 60 * 24)
             )
           ),
+          contractType: data.contractType,
           notes: data.notes?.trim() || null,
           closerId: data.closerId,
           operadora: data.operadora.trim(),
@@ -401,8 +470,9 @@ export class PortfolioService implements IPortfolioService {
         data: {
           leadFinalizedId: finalized.id,
           name: data.holder.name.trim(),
+          razaoSocial: data.holder.razaoSocial?.trim() || null,
           birthDate: holderBirthDate,
-          document: sanitizeRgCpfDigits(data.holder.document),
+          document: sanitizeRgCpfDigits(data.holder.document || ''),
           cnpj: sanitizeDocumentDigits(data.holder.cnpj || '') || null,
         },
       });
@@ -433,6 +503,140 @@ export class PortfolioService implements IPortfolioService {
     });
 
     return this.fetchDetailResult(created.id);
+  }
+
+  async getImportTarget(teamId: string, closerId: string): Promise<PortfolioImportTarget> {
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { masterId: true },
+    });
+
+    if (!team) {
+      throw new Error('Time não encontrado');
+    }
+
+    const closerMember = await prisma.teamMember.findFirst({
+      where: { teamId, profileId: closerId },
+      select: { id: true },
+    });
+
+    if (!closerMember) {
+      throw new Error('Closer inválido para este time');
+    }
+
+    return { masterId: team.masterId };
+  }
+
+  async findImportConflicts(
+    teamId: string,
+    emails: string[],
+    cnpjs: string[]
+  ): Promise<PortfolioImportConflictLead[]> {
+    if (emails.length === 0 && cnpjs.length === 0) {
+      return [];
+    }
+
+    const conditions: Prisma.LeadWhereInput[] = [];
+    if (emails.length > 0) conditions.push({ email: { in: emails } });
+    if (cnpjs.length > 0) conditions.push({ cnpj: { in: cnpjs } });
+
+    return prisma.lead.findMany({
+      where: { teamId, OR: conditions },
+      select: { id: true, email: true, cnpj: true },
+    });
+  }
+
+  async createPortfolioEntryFromImport(
+    teamId: string,
+    masterId: string,
+    profileId: string,
+    data: CreatePortfolioImportEntryPayload
+  ): Promise<string> {
+    const leadCode = await this.generateLeadCode(data.name);
+    const amount = Number(data.amount);
+
+    const created = await prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.create({
+        data: {
+          managerId: masterId,
+          teamId,
+          leadCode,
+          status: LeadStatus.contract_finalized,
+          name: data.name.trim(),
+          email: data.email?.trim() || null,
+          phone: data.phone.trim(),
+          cnpj: sanitizeDocumentDigits(data.cnpj || '') || null,
+          contractDueDate: data.contractDueDate ?? null,
+          ticket: amount,
+          currentValue: amount,
+          createdBy: profileId,
+          updatedBy: profileId,
+          closerId: data.closerId,
+          activities: {
+            create: [
+              {
+                type: ActivityType.note,
+                body: 'Cliente criado via importação manual na carteira',
+                payload: { source: 'import_manual' },
+                createdBy: profileId,
+              },
+              {
+                type: ActivityType.status_change,
+                body: `Contrato finalizado no valor de R$ ${amount.toFixed(2)}`,
+                payload: {
+                  previousStatus: LeadStatus.new_opportunity,
+                  newStatus: LeadStatus.contract_finalized,
+                  amount,
+                  startDateAt: data.startDateAt.toISOString(),
+                  finalizedDateAt: data.finalizedDateAt.toISOString(),
+                },
+                createdBy: profileId,
+              },
+            ],
+          },
+        },
+      });
+
+      const finalized = await tx.leadFinalized.create({
+        data: {
+          leadId: lead.id,
+          amount,
+          startDateAt: data.startDateAt,
+          finalizedDateAt: data.finalizedDateAt,
+          duration: 0,
+          contractType: data.contractType ?? ContractType.individual,
+          notes: data.notes?.trim() || null,
+          closerId: data.closerId,
+          operadora: data.operadora.trim(),
+          productName: data.productName?.trim() || null,
+        },
+      });
+
+      if (data.holder) {
+        await tx.leadFinalizedHolder.create({
+          data: {
+            leadFinalizedId: finalized.id,
+            name: data.holder.name.trim(),
+            razaoSocial: data.holder.razaoSocial?.trim() || null,
+            birthDate: data.holder.birthDate,
+            document: sanitizeRgCpfDigits(data.holder.document),
+          },
+        });
+      }
+
+      await tx.leadPortfolio.create({
+        data: {
+          leadId: lead.id,
+          teamId,
+          portfolioStatus: 'active',
+          source: data.source,
+        },
+      });
+
+      return lead;
+    });
+
+    return created.id;
   }
 
   async getPortfolioEntryDetail(
@@ -502,6 +706,7 @@ export class PortfolioService implements IPortfolioService {
       if (finalized) {
         // Update LeadFinalized fields
         const finalizedPatch: Prisma.LeadFinalizedUpdateInput = {};
+        if (payload.contractType !== undefined) finalizedPatch.contractType = payload.contractType;
         if (payload.operadora !== undefined) finalizedPatch.operadora = payload.operadora;
         if (payload.productName !== undefined) finalizedPatch.productName = payload.productName;
         if (payload.amount !== undefined) finalizedPatch.amount = payload.amount;
@@ -521,14 +726,16 @@ export class PortfolioService implements IPortfolioService {
               create: {
                 leadFinalizedId: finalized.id,
                 name: payload.holder.name,
+                razaoSocial: payload.holder.razaoSocial ?? null,
                 birthDate: new Date(payload.holder.birthDate),
-                document: payload.holder.document,
+                document: payload.holder.document ?? '',
                 cnpj: payload.holder.cnpj ?? null,
               },
               update: {
                 name: payload.holder.name,
+                razaoSocial: payload.holder.razaoSocial ?? null,
                 birthDate: new Date(payload.holder.birthDate),
-                document: payload.holder.document,
+                document: payload.holder.document ?? '',
                 cnpj: payload.holder.cnpj ?? null,
               },
             });
@@ -588,15 +795,44 @@ export class PortfolioService implements IPortfolioService {
       throw new Error('Acesso negado: você só pode editar leads da sua própria carteira');
     }
 
-    const updated = await prisma.leadPortfolio.update({
+    const willRenew = data.renewalStatus === 'renewed';
+    const effectiveRenewalAmount =
+      data.renewalAmount !== undefined && data.renewalAmount !== null
+        ? data.renewalAmount
+        : entry.renewalAmount
+          ? entry.renewalAmount.toNumber()
+          : null;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.leadPortfolio.update({
+        where: { leadId },
+        data: {
+          ...(data.portfolioStatus !== undefined ? { portfolioStatus: data.portfolioStatus } : {}),
+          ...(data.renewalStatus !== undefined ? { renewalStatus: data.renewalStatus } : {}),
+          ...(data.renewalAmount !== undefined ? { renewalAmount: data.renewalAmount } : {}),
+          ...(data.note !== undefined ? { note: data.note } : {}),
+          ...(data.lastContactAt !== undefined ? { lastContactAt: data.lastContactAt } : {}),
+          // Ao renovar, o novo valor é aplicado ao contrato e o renewalAmount é consumido.
+          ...(willRenew ? { renewalAmount: null } : {}),
+        },
+      });
+
+      if (willRenew && effectiveRenewalAmount && effectiveRenewalAmount > 0) {
+        await tx.lead.update({
+          where: { id: leadId },
+          data: { ticket: effectiveRenewalAmount, currentValue: effectiveRenewalAmount },
+        });
+      }
+    });
+
+    const updated = await prisma.leadPortfolio.findUnique({
       where: { leadId },
-      data: {
-        ...(data.portfolioStatus !== undefined ? { portfolioStatus: data.portfolioStatus } : {}),
-        ...(data.note !== undefined ? { note: data.note } : {}),
-        ...(data.lastContactAt !== undefined ? { lastContactAt: data.lastContactAt } : {}),
-      },
       include: leadInclude,
     });
+
+    if (!updated) {
+      throw new Error('Entrada de carteira não encontrada ou sem permissão');
+    }
 
     return mapToPortfolioRow(updated);
   }

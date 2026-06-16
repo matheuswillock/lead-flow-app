@@ -1,0 +1,23 @@
+export const cacheTags = {
+  healthPlans: () => "health-plans",
+  pmeSimulator: () => "pme-simulator",
+  backofficeFeatures: () => "backoffice-features",
+  featureAccess: (profileId: string) => `feature-access:${profileId}`,
+  featureAccessOwner: (managerId: string) => `feature-access-owner:${managerId}`,
+  teamStatusRules: (teamId: string) => `team-status-rules:${teamId}`,
+  teamMembers: (teamId: string) => `team-members:${teamId}`,
+  teamDashboard: (teamId: string) => `team-dashboard:${teamId}`,
+  teamPerformance: (teamId: string) => `team-performance:${teamId}`,
+  portfolio: (teamId: string) => `portfolio:${teamId}`,
+  portfolioDetail: (leadId: string) => `portfolio-detail:${leadId}`,
+  teamLeads: (teamId: string) => `team-leads:${teamId}`,
+  lead: (leadId: string) => `lead:${leadId}`,
+  leadDetails: (leadId: string) => `lead-details:${leadId}`,
+  leadActivities: (leadId: string) => `lead-activities:${leadId}`,
+  leadSchedules: (leadId: string) => `lead-schedules:${leadId}`,
+  teamCalendar: (teamId: string) => `team-calendar:${teamId}`,
+  teamTasks: (teamId: string) => `team-tasks:${teamId}`,
+  publicFormBootstrap: (teamId: string) => `public-form-bootstrap:${teamId}`,
+  teamFilterPresets: (teamId: string, profileId: string) => `team-filter-presets:${teamId}:${profileId}`,
+} as const;
+

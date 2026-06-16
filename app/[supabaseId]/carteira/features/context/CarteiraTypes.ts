@@ -1,4 +1,39 @@
+export type ContractType = 'individual' | 'corporate' | 'adhesion';
+
+export const CONTRACT_TYPE_LABELS: Record<ContractType, { title: string; description: string }> = {
+  individual: { title: 'PF', description: 'Pessoa Física' },
+  corporate:  { title: 'Empresarial', description: 'Pessoa Jurídica' },
+  adhesion:   { title: 'Adesão', description: 'Pessoa Física por Profissão' },
+};
+
 export type PortfolioStatusValue = 'active' | 'pending' | 'canceled';
+
+export type RenewalStatus = 'to_renew' | 'contacted' | 'proposal' | 'renewed' | 'lost';
+
+export const RENEWAL_STATUS_LABELS: Record<RenewalStatus, string> = {
+  to_renew:  'A renovar',
+  contacted: 'Contatado',
+  proposal:  'Proposta enviada',
+  renewed:   'Renovado',
+  lost:      'Perdido',
+};
+
+export const OPERADORA_COLORS: Record<string, string> = {
+  'Hapvida':    'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
+  'Unimed':     'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800',
+  'Amil':       'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
+  'Bradesco':   'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+  'SulAmérica': 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800',
+  'Porto':      'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800',
+};
+
+export const RENEWAL_STATUS_COLORS: Record<RenewalStatus, string> = {
+  to_renew:  'bg-muted text-muted-foreground border-border',
+  contacted: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+  proposal:  'bg-[var(--semantic-warning-surface)] text-[var(--semantic-warning)] border-[var(--semantic-warning-border)]',
+  renewed:   'bg-[var(--semantic-success-surface)] text-[var(--semantic-success)] border-[var(--semantic-success-border)]',
+  lost:      'bg-[var(--semantic-danger-surface)] text-[var(--semantic-danger)] border-[var(--semantic-danger-border)]',
+};
 export type PortfolioSourceValue = 'crm' | 'manual' | 'brokerage_transfer';
 
 export const PORTFOLIO_STATUS_LABELS: Record<PortfolioStatusValue, string> = {
@@ -19,7 +54,7 @@ export interface CarteiraFiltersState {
   sources: string[];
   sdrIds: string[];
   closerIds: string[];
-  operadora: string;
+  operadoras: string[];
   contractDateStart: string;
   contractDateEnd: string;
   dueDateStart: string;
@@ -85,7 +120,7 @@ export const DEFAULT_CARTEIRA_FILTERS: CarteiraFiltersState = {
   sources: [],
   sdrIds: [],
   closerIds: [],
-  operadora: '',
+  operadoras: [],
   contractDateStart: '',
   contractDateEnd: '',
   dueDateStart: '',
@@ -102,7 +137,7 @@ export function isCarteiraFiltersChanged(filters: CarteiraFiltersState): boolean
     filters.sources.length > 0 ||
     filters.sdrIds.length > 0 ||
     filters.closerIds.length > 0 ||
-    !!filters.operadora ||
+    filters.operadoras.length > 0 ||
     !!filters.contractDateStart ||
     !!filters.contractDateEnd ||
     !!filters.dueDateStart ||
@@ -118,6 +153,8 @@ export interface CarteiraRow {
   leadName: string;
   source: PortfolioSourceValue;
   portfolioStatus: PortfolioStatusValue;
+  renewalStatus: RenewalStatus;
+  renewalAmount: number | null;
   note: string | null;
   lastContactAt: string | null;
   sdr: { id: string; name: string } | null;
@@ -140,14 +177,25 @@ export interface CarteiraPagination {
   totalPages: number;
 }
 
+export interface CarteiraStats {
+  totalClients: number;
+  totalValue: number;
+  activeCount: number;
+  dueSoonCount: number;
+}
+
 export interface CarteiraData {
   rows: CarteiraRow[];
+  renewals: CarteiraRow[];
+  stats: CarteiraStats;
   availableOperadoras: string[];
   pagination: CarteiraPagination;
 }
 
 export interface UpdateCarteiraData {
   portfolioStatus?: PortfolioStatusValue;
+  renewalStatus?: RenewalStatus;
+  renewalAmount?: number | null;
   note?: string | null;
   lastContactAt?: string | null;
 }
@@ -168,6 +216,7 @@ export interface CreateCarteiraIdentityStepPayload {
 }
 
 export interface CreateCarteiraContractStepPayload {
+  contractType: ContractType;
   amount: number;
   startDateAt: string;
   finalizedDateAt: string;
@@ -179,6 +228,7 @@ export interface CreateCarteiraContractStepPayload {
   notes?: string | null;
   holder: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
     document: string;
     cnpj?: string | null;
@@ -197,6 +247,7 @@ export interface CreateCarteiraPayload {
   phone: string;
   cnpj?: string | null;
   source: Exclude<PortfolioSourceValue, 'crm'>;
+  contractType: ContractType;
   amount: number;
   startDateAt: string;
   finalizedDateAt: string;
@@ -208,6 +259,7 @@ export interface CreateCarteiraPayload {
   notes?: string | null;
   holder: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
     document: string;
     cnpj?: string | null;
@@ -216,6 +268,7 @@ export interface CreateCarteiraPayload {
 }
 
 export interface UpdateCarteiraDetailPayload {
+  contractType?: ContractType;
   operadora?: string | null;
   productName?: string | null;
   amount?: number;
@@ -226,6 +279,7 @@ export interface UpdateCarteiraDetailPayload {
   notes?: string | null;
   holder?: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
     document: string;
     cnpj?: string | null;
@@ -262,6 +316,7 @@ export interface CarteiraDetailContract {
 
 export interface CarteiraDetailHolder {
   name: string;
+  razaoSocial: string | null;
   birthDate: string;
   document: string;
   cnpj: string | null;
@@ -283,6 +338,7 @@ export interface CarteiraDetailData {
   source: PortfolioSourceValue;
   saleValue: number;
   portfolioStatus: PortfolioStatusValue;
+  contractType: ContractType;
   sdr: { id: string; name: string } | null;
   closer: { id: string; name: string } | null;
   soldPlan: string | null;

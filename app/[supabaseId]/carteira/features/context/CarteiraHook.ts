@@ -174,6 +174,9 @@ export function useCarteiraHook() {
         rows: prev.rows.map((row: CarteiraRow) =>
           row.leadId === leadId ? { ...row, ...updateData } : row
         ),
+        renewals: prev.renewals.map((row: CarteiraRow) =>
+          row.leadId === leadId ? { ...row, ...updateData } : row
+        ),
       };
     });
 
@@ -184,6 +187,9 @@ export function useCarteiraHook() {
         return {
           ...prev,
           rows: prev.rows.map((row: CarteiraRow) =>
+            row.leadId === leadId ? updated : row
+          ),
+          renewals: prev.renewals.map((row: CarteiraRow) =>
             row.leadId === leadId ? updated : row
           ),
         };
@@ -204,6 +210,11 @@ export function useCarteiraHook() {
     toast.success('Cliente adicionado na carteira');
     return created;
   }, [supabaseId, activeTeamId, fetchData, filters]);
+
+  const refresh = useCallback(async () => {
+    lastFetchKey.current = '';
+    await fetchData(filters);
+  }, [fetchData, filters]);
 
   const getEntryDetail = useCallback(async (leadId: string): Promise<CarteiraDetailData> => {
     if (!supabaseId || !activeTeamId) throw new Error('Sessão não disponível');
@@ -236,5 +247,6 @@ export function useCarteiraHook() {
     updateEntry,
     getEntryDetail,
     updateEntryDetail,
+    refresh,
   };
 }

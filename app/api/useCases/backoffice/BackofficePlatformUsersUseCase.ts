@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import { createEmailService } from "@/lib/services/EmailService"
+import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import { getAppUrl, getFullUrl } from "@/lib/utils/app-url"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
@@ -319,7 +320,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
   }
 
   async listMasterUsers(
-    filters: { name?: string; email?: string; team?: string } | undefined,
+    filters: { name?: string; email?: string; team?: string; plan?: "lifetime" | "monthly" | "trial" | "none"; userType?: "common" | "member_pro" } | undefined,
     pagination: { page: number; pageSize: number }
   ): Promise<Output> {
     try {
@@ -401,6 +402,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         master.hasPermanentSubscription ||
         (!!master.subscriptionId && master.subscriptionStatus === "active")
 
+      const accessByProfileId = await resolveBackofficeMemberAccess(
+        master.teams.flatMap((team) =>
+          team.members.map((member) => ({
+            profileId: member.id,
+            supabaseId: member.supabaseId,
+            email: member.email,
+            fullName: member.fullName,
+            role: member.role as "manager" | "backoffice" | "operator",
+            isMaster: member.isMaster,
+            managerName: master.fullName ?? master.email,
+          }))
+        )
+      )
+
       return new Output(true, [], [], {
         id: master.id,
         fullName: master.fullName,
@@ -423,7 +438,28 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           hasAccess,
           status: master.subscriptionStatus,
         },
-        teams: master.teams,
+        teams: master.teams.map((team) => ({
+          ...team,
+          members: team.members.map((member) => ({
+            id: member.id,
+            fullName: member.fullName,
+            email: member.email,
+            phone: member.phone,
+            addedAt: member.addedAt,
+            role: member.role,
+            googleCalendarConnected: member.googleCalendarConnected,
+            googleEmail: member.googleEmail,
+            functions: member.functions,
+            isMaster: member.isMaster,
+            canCreateAccountUsers: member.canCreateAccountUsers,
+            canManageAccountTeams: member.canManageAccountTeams,
+            ...(accessByProfileId.get(member.id) ?? {
+              accessStatus: "pending_first_access",
+              hasCompletedFirstAccess: false,
+              lastSignInAt: null,
+            }),
+          })),
+        })),
         teamsPagination: {
           page,
           pageSize,

@@ -6,8 +6,6 @@ import {
   PUBLIC_RESOURCES_HUB_PATH,
 } from "@/lib/seo/publicResources"
 
-export const revalidate = 3600
-
 export async function GET() {
   const resourceUrls = getPublicResourceSlugs().map((slug) =>
     `- ${getAbsoluteUrl(getPublicResourcePath(slug))}`,

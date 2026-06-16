@@ -69,7 +69,6 @@
       "app/api/v1/teams/payments/create/route.ts",
       "app/api/v1/teams/pending-actions/[id]/route.ts",
       "app/api/v1/teams/route.ts",
-      "app/api/v1/teams/[teamId]/members/route.ts",
       "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
       "app/api/v1/email/analytics/route.ts",
@@ -114,7 +113,6 @@
       "app/api/v1/manager/[supabaseId]/users/route.ts",
       "app/api/v1/operators/pending/[id]/route.ts",
       "app/api/v1/operators/pending/[id]/status/route.ts",
-      "app/api/v1/teams/[teamId]/members/route.ts",
       "app/api/v1/teams/route.ts"
     ],
     "useCaseWithoutOutputAllowlist": [],
@@ -179,10 +177,7 @@
       "app/api/v1/profiles/[supabaseId]/permanent-subscription/route.ts",
       "app/api/v1/subscriptions/check/route.ts"
     ],
-    "routeHttpRequestAllowlist": [
-      "app/api/v1/operators/payments/create/route.ts",
-      "app/api/v1/teams/payments/create/route.ts"
-    ],
+    "routeHttpRequestAllowlist": [],
     "useCaseHttpRequestAllowlist": [
       "app/api/useCases/leads/LeadUseCase.ts"
     ],
@@ -200,8 +195,6 @@
       "app/api/v1/backoffice/users/route.ts",
       "app/api/v1/billing/summary/route.ts",
       "app/api/v1/dashboard/metrics/detailed/[supabaseId]/route.ts",
-      "app/api/v1/dashboard/metrics/route.ts",
-      "app/api/v1/integrations/health-plans/route.ts",
       "app/api/v1/leads/import/route.ts",
       "app/api/v1/leads/[id]/activities/route.ts",
       "app/api/v1/leads/[id]/activities/[activityId]/reactions/route.ts",
@@ -223,7 +216,6 @@
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/teams/route.ts",
       "app/api/v1/teams/payments/create/route.ts",
-      "app/api/v1/teams/[teamId]/members/route.ts",
       "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
       "app/api/webhooks/asaas/route.ts",
@@ -232,7 +224,6 @@
     ],
     "nonRepositoryDatabaseAccessAllowlist": [
       "app/api/services/AsaasOperator/AsaasOperatorService.ts",
-      "app/api/services/billing/TeamBillingService.ts",
       "app/api/services/DashboardInfos/DashboardInfosService.ts",
       "app/api/services/healthPlans/HealthPlanService.ts",
       "app/api/services/leadSchedule/LeadScheduleService.ts",

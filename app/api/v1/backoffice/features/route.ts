@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
+import { invalidateBackofficeFeaturesCache } from "@/lib/cache/invalidation"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeFeatureUseCase } from "@/app/api/useCases/backofficeFeature/BackofficeFeatureUseCase"
 
@@ -27,10 +28,12 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const output = await backofficeFeatureUseCase.create(body)
+    if (output.isValid) {
+      invalidateBackofficeFeaturesCache()
+    }
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
     console.error("[BackofficeFeaturesRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
 }
-

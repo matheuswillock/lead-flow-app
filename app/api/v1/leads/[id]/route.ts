@@ -5,6 +5,7 @@ import { RegisterNewUserProfile } from "../../../useCases/profiles/ProfileUseCas
 import { UpdateLeadRequestSchema } from "../DTO/requestToUpdateLead";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { invalidateLeadCache, invalidateLeadFullCache } from "@/lib/cache/invalidation";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -179,6 +180,9 @@ export async function PUT(
     }
 
     const output = await leadUseCase.updateLead(supabaseId, id, validatedData);
+    if (output.isValid) {
+      invalidateLeadCache({ leadId: id, teamId });
+    }
     const status = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status });
 
@@ -250,6 +254,9 @@ export async function DELETE(
     }
 
     const output = await leadUseCase.deleteLead(supabaseId, id);
+    if (output.isValid) {
+      invalidateLeadFullCache({ leadId: id, teamId });
+    }
     const status = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status });
 

@@ -6,6 +6,7 @@ import { TransferLeadRequestSchema } from "../../DTO/requestToTransferLead";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { invalidateLeadCache } from "@/lib/cache/invalidation";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -48,9 +49,12 @@ export async function PUT(
       return NextResponse.json(output, { status: 404 });
     }
 
-    // Chamar o UseCase para transferir o lead
+    const previousTeamId = teamAccess.access.teamId;
     const output = await leadUseCase.transferLead(teamAccess.access.supabaseId, id, validatedData);
 
+    if (output.isValid) {
+      invalidateLeadCache({ leadId: id, teamId: previousTeamId });
+    }
     const responseStatus = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status: responseStatus });
 

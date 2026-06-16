@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Select,
   SelectContent,
@@ -47,6 +48,15 @@ const ALLOWED_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 export interface FinalizeContractDependent {
   id: string;
   name: string;
@@ -55,8 +65,11 @@ export interface FinalizeContractDependent {
   document?: string;
 }
 
+export type ContractType = 'individual' | 'corporate' | 'adhesion';
+
 export interface FinalizeContractHolder {
   name: string;
+  razaoSocial?: string;
   birthDate: Date;
   document: string;
   cnpj?: string;
@@ -67,6 +80,7 @@ export interface FinalizeContractData {
   startDateAt: Date;
   finalizedDateAt: Date;
   source: 'crm' | 'brokerage_transfer';
+  contractType: ContractType;
   notes?: string;
   closerId: string;
   contractHolder: FinalizeContractHolder;
@@ -96,8 +110,10 @@ interface FinalizeContractDialogProps {
   initialOperadora?: string | null;
   initialProductName?: string | null;
   initialSource?: 'crm' | 'brokerage_transfer';
+  initialContractType?: ContractType;
   initialNotes?: string | null;
   initialHolderName?: string | null;
+  initialHolderRazaoSocial?: string | null;
   initialHolderBirthDate?: string | Date | null;
   initialHolderDocument?: string | null;
   initialDependents?: FinalizeContractDependent[];
@@ -123,8 +139,10 @@ export function FinalizeContractDialog({
   initialOperadora,
   initialProductName,
   initialSource,
+  initialContractType,
   initialNotes,
   initialHolderName,
+  initialHolderRazaoSocial,
   initialHolderBirthDate,
   initialHolderDocument,
   initialDependents,
@@ -137,6 +155,8 @@ export function FinalizeContractDialog({
   const [operadora, setOperadora]     = useState('');
   const [productName, setProductName] = useState('');
   const [source, setSource] = useState<'crm' | 'brokerage_transfer'>('crm');
+  const [contractType, setContractType] = useState<ContractType>('individual');
+  const [holderRazaoSocial, setHolderRazaoSocial] = useState('');
   const [holderName, setHolderName] = useState('');
   const [holderBirthDate, setHolderBirthDate] = useState<Date | undefined>();
   const [holderDocument, setHolderDocument] = useState('');
@@ -176,6 +196,8 @@ export function FinalizeContractDialog({
       setOperadora(fallbackOperadora);
       setProductName(initialProductName ?? '');
       setSource(initialSource ?? 'crm');
+      setContractType(initialContractType ?? 'individual');
+      setHolderRazaoSocial(initialHolderRazaoSocial ?? '');
       setHolderName(initialHolderName ?? '');
       setHolderBirthDate(parseInitialDate(initialHolderBirthDate));
       setHolderDocument(sanitizeRgCpfDigits(initialHolderDocument ?? ''));
@@ -198,8 +220,10 @@ export function FinalizeContractDialog({
     initialHolderCnpj,
     initialProductName,
     initialSource,
+    initialContractType,
     initialNotes,
     initialHolderName,
+    initialHolderRazaoSocial,
     initialHolderBirthDate,
     initialHolderDocument,
     initialDependents,
@@ -271,6 +295,8 @@ export function FinalizeContractDialog({
     setDependents((prev) => prev.filter((d) => d.id !== id));
   };
 
+  const isCorporate = contractType === 'corporate';
+  const selectedCloser = closers.find((closer) => closer.id === closerId);
   const isFormValid =
     parseFormattedValue(amount) > 0 &&
     !amountError &&
@@ -278,7 +304,9 @@ export function FinalizeContractDialog({
     !!operadora &&
     holderName.trim().length > 0 &&
     !!holderBirthDate &&
-    sanitizeRgCpfDigits(holderDocument).length > 0 &&
+    (isCorporate
+      ? holderRazaoSocial.trim().length > 0 && sanitizeDocumentDigits(holderCnpj).length > 0
+      : sanitizeRgCpfDigits(holderDocument).length > 0) &&
     !!startDate &&
     !!finalizedDate &&
     finalizedDate >= startDate;
@@ -298,10 +326,12 @@ export function FinalizeContractDialog({
         startDateAt: startOfDayInTz(startDate, tz),
         finalizedDateAt: startOfDayInTz(finalizedDate, tz),
         source,
+        contractType,
         notes: notes.trim() || undefined,
         closerId,
         contractHolder: {
           name: holderName.trim(),
+          razaoSocial: isCorporate ? holderRazaoSocial.trim() || undefined : undefined,
           birthDate: holderBirthDate,
           document: sanitizeRgCpfDigits(holderDocument),
           cnpj: sanitizeDocumentDigits(holderCnpj) || undefined,
@@ -374,7 +404,27 @@ export function FinalizeContractDialog({
                   <Separator />
                 </div>
 
-                {/* Valor do Contrato */}
+                {/* Tipo de contrato */}
+                <div className="grid gap-2">
+                  <Label>Tipo de contrato *</Label>
+                  <RadioGroup value={contractType} onValueChange={(v) => setContractType(v as ContractType)} className="grid gap-2">
+                    {([
+                      { value: 'individual', title: 'PF', description: 'Pessoa Física' },
+                      { value: 'corporate',  title: 'Empresarial', description: 'Pessoa Jurídica' },
+                      { value: 'adhesion',   title: 'Adesão', description: 'Pessoa Física por Profissão' },
+                    ] as const).map((opt) => (
+                      <div key={opt.value} className="flex items-center gap-2">
+                        <RadioGroupItem id={`finalize-ct-${opt.value}`} value={opt.value} />
+                        <Label htmlFor={`finalize-ct-${opt.value}`} className="cursor-pointer">
+                          <span className="font-medium">{opt.title}</span>
+                          <span className="ml-1.5 text-xs text-muted-foreground">{opt.description}</span>
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+
+                {/* Origem */}
                 <div className="grid gap-2">
                   <Label>Origem do cliente *</Label>
                   <RadioGroup value={source} onValueChange={(value) => setSource(value as 'crm' | 'brokerage_transfer')} className="grid gap-2">
@@ -412,11 +462,33 @@ export function FinalizeContractDialog({
                   <Label>Closer responsável *</Label>
                   <Select value={closerId} onValueChange={setCloserId} disabled={isLoading}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o closer" />
+                      <SelectValue placeholder="Selecione o closer">
+                        {selectedCloser ? (
+                          <div className="flex items-center gap-2">
+                            <Avatar className="size-5">
+                              <AvatarImage src={selectedCloser.avatarImageUrl || undefined} alt={selectedCloser.name} />
+                              <AvatarFallback className="text-[10px]">
+                                {getInitials(selectedCloser.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">{selectedCloser.name}</span>
+                          </div>
+                        ) : null}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {closers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        <SelectItem key={c.id} value={c.id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="size-5">
+                              <AvatarImage src={c.avatarImageUrl || undefined} alt={c.name} />
+                              <AvatarFallback className="text-[10px]">
+                                {getInitials(c.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{c.name}</span>
+                          </div>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -526,7 +598,7 @@ export function FinalizeContractDialog({
 
                 {/* Upload do Contrato */}
                 <div className="grid gap-2">
-                  <Label>Contrato (opcional)</Label>
+                  <Label>Contrato</Label>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -565,7 +637,7 @@ export function FinalizeContractDialog({
 
                 {/* Observações */}
                 <div className="grid gap-2">
-                  <Label htmlFor="notes">Observações (opcional)</Label>
+                  <Label htmlFor="notes">Observações</Label>
                   <Textarea
                     id="notes"
                     placeholder="Adicione observações sobre o contrato..."
@@ -622,27 +694,41 @@ export function FinalizeContractDialog({
                   </Popover>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="holder-document">Documento (RG/CPF) *</Label>
-                  <Input
-                    id="holder-document"
-                    placeholder="CPF ou RG"
-                    value={formatRgCpfInput(holderDocument)}
-                    onChange={(e) => setHolderDocument(sanitizeRgCpfDigits(e.target.value))}
-                    disabled={isLoading}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="holder-cnpj">CNPJ</Label>
-                  <Input
-                    id="holder-cnpj"
-                    placeholder="00.000.000/0000-00"
-                    value={formatDocumentInput(holderCnpj)}
-                    onChange={(e) => setHolderCnpj(sanitizeDocumentDigits(e.target.value))}
-                    disabled={isLoading}
-                  />
-                </div>
+                {isCorporate ? (
+                  <>
+                    <div className="grid gap-2">
+                      <Label htmlFor="holder-razao-social">Razão Social *</Label>
+                      <Input
+                        id="holder-razao-social"
+                        placeholder="Razão social da empresa"
+                        value={holderRazaoSocial}
+                        onChange={(e) => setHolderRazaoSocial(e.target.value)}
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="holder-cnpj">CNPJ *</Label>
+                      <Input
+                        id="holder-cnpj"
+                        placeholder="00.000.000/0000-00"
+                        value={formatDocumentInput(holderCnpj)}
+                        onChange={(e) => setHolderCnpj(sanitizeDocumentDigits(e.target.value))}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid gap-2">
+                    <Label htmlFor="holder-document">CPF *</Label>
+                    <Input
+                      id="holder-document"
+                      placeholder="000.000.000-00"
+                      value={formatRgCpfInput(holderDocument)}
+                      onChange={(e) => setHolderDocument(sanitizeRgCpfDigits(e.target.value))}
+                      disabled={isLoading}
+                    />
+                  </div>
+                )}
 
                 <div className="grid gap-2 pt-1">
                   <p className="text-sm font-semibold">Dados de dependentes</p>

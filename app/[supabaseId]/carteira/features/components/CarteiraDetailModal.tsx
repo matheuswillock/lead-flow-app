@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -36,11 +37,13 @@ import { useTeamClosers } from '@/hooks/useTeamMembersByFunction';
 import { useHealthPlans } from '@/hooks/useHealthPlans';
 import { FinalizeContractDialog, type FinalizeContractData } from '@/app/[supabaseId]/board/features/container/FinalizeContractDialog';
 import {
+  CONTRACT_TYPE_LABELS,
   PORTFOLIO_STATUS_LABELS,
   type CarteiraDetailAttachment,
   type CarteiraDetailData,
   type UpdateCarteiraDetailPayload,
 } from '../context/CarteiraTypes';
+import { CarteiraActivityFeed } from './CarteiraActivityFeed';
 
 const STATUS_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive'> = {
   active: 'default',
@@ -189,6 +192,7 @@ interface EditForm {
   holderBirthDate: string;
   holderDocument: string;
   holderCnpj: string;
+  holderRazaoSocial: string;
   dependents: EditDependent[];
 }
 
@@ -205,6 +209,7 @@ function _initEditForm(detail: CarteiraDetailData): EditForm {
     holderBirthDate: toInputDate(detail.holder?.birthDate),
     holderDocument: detail.holder?.document ?? '',
     holderCnpj: detail.holder?.cnpj ?? '',
+    holderRazaoSocial: detail.holder?.razaoSocial ?? '',
     dependents: detail.dependents.map((d) => ({
       _key: d.id,
       id: d.id,
@@ -235,6 +240,7 @@ function buildPayload(form: EditForm): UpdateCarteiraDetailPayload {
     holder: (form.holderEnabled || hasHolderContent)
       ? {
           name: form.holderName.trim(),
+          razaoSocial: form.holderRazaoSocial.trim() || null,
           birthDate: form.holderBirthDate,
           document: holderDocument,
           cnpj: form.holderCnpj.trim() || null,
@@ -381,7 +387,10 @@ export function CarteiraDetailModal({
   return (
     <>
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="bg-transparent border-none shadow-none p-0 w-[92vw] max-w-[92vw] sm:w-[85vw] sm:max-w-[85vw] lg:w-[60vw] lg:max-w-[60vw] max-h-[90vh] [&>button]:hidden">
+        <div className="flex h-[90vh] max-h-[90vh] flex-col gap-2 lg:flex-row lg:items-stretch">
+          {/* Card esquerdo: dados do cliente */}
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm lg:h-[95%] lg:max-h-[95%] lg:flex-[1_1_0%] lg:self-center">
         {/* Header */}
         <DialogHeader className="shrink-0 border-b px-6 pb-4 pt-6">
           {isLoading ? (
@@ -465,6 +474,12 @@ export function CarteiraDetailModal({
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4">
+                <InfoRow label="Tipo de contrato" value={
+                  <Badge variant="outline" className="text-xs font-normal">
+                    {CONTRACT_TYPE_LABELS[detail.contractType].title}
+                    <span className="ml-1 text-muted-foreground">— {CONTRACT_TYPE_LABELS[detail.contractType].description}</span>
+                  </Badge>
+                } />
                 <InfoRow label="Operadora" value={detail.contract.operadora} />
                 <InfoRow label="Plano" value={detail.contract.productName ?? detail.soldPlan} />
                 <InfoRow label="Valor" value={formatBRL(detail.contract.amount)} />
@@ -535,8 +550,17 @@ export function CarteiraDetailModal({
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs">CNPJ (opcional)</Label>
+                    <Label className="text-xs">CNPJ</Label>
                     <Input value={form.holderCnpj} onChange={(e) => patchForm('holderCnpj', e.target.value)} className="h-8 text-sm" />
+                  </div>
+                  <div className="col-span-2 flex flex-col gap-1.5">
+                    <Label className="text-xs">Razão Social</Label>
+                    <Input
+                      value={form.holderRazaoSocial}
+                      onChange={(e) => patchForm('holderRazaoSocial', e.target.value)}
+                      className="h-8 text-sm"
+                      placeholder="Apenas para contratos Empresariais"
+                    />
                   </div>
                 </div>
               </div>
@@ -547,8 +571,15 @@ export function CarteiraDetailModal({
                 <div className="col-span-2">
                   <InfoRow label="Nome" value={detail.holder.name} />
                 </div>
+                {detail.holder.razaoSocial && (
+                  <div className="col-span-2">
+                    <InfoRow label="Razão Social" value={detail.holder.razaoSocial} />
+                  </div>
+                )}
                 <InfoRow label="Data de nascimento" value={formatDate(detail.holder.birthDate)} />
-                <InfoRow label="CPF" value={formatRgCpfInput(detail.holder.document)} />
+                {detail.holder.document && (
+                  <InfoRow label="CPF" value={formatRgCpfInput(detail.holder.document)} />
+                )}
                 {detail.holder.cnpj && (
                   <InfoRow label="CNPJ" value={formatDocumentInput(detail.holder.cnpj)} />
                 )}
@@ -680,6 +711,7 @@ export function CarteiraDetailModal({
               </div>
             )}
           </section>
+
         </div>
 
         {/* Footer */}
@@ -708,6 +740,18 @@ export function CarteiraDetailModal({
             </>
           )}
         </DialogFooter>
+          </div>
+
+          {/* Card direito: feed */}
+          <div className="relative flex min-h-0 flex-col rounded-xl border border-border/60 bg-card p-4 shadow-sm lg:h-[95%] lg:max-h-[95%] lg:w-[320px] lg:min-w-[320px] lg:max-w-[320px] lg:self-center">
+            <DialogClose asChild>
+              <Button type="button" size="icon" variant="ghost" className="absolute right-3 top-3 size-8">
+                <X className="size-4" />
+              </Button>
+            </DialogClose>
+            <CarteiraActivityFeed leadId={detail?.leadId ?? null} open={open} />
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
 
@@ -726,11 +770,13 @@ export function CarteiraDetailModal({
         leadCloserId={detail.closer?.id}
         initialAmount={detail.contract?.amount ?? detail.saleValue}
         initialStartDate={detail.contract?.startDateAt}
-        initialFinalizedDate={detail.contractDueDate}
+        initialFinalizedDate={detail.contract?.finalizedDateAt}
         initialOperadora={detail.contract?.operadora ?? null}
         initialProductName={detail.contract?.productName ?? detail.soldPlan ?? null}
+        initialContractType={detail.contractType}
         initialNotes={detail.contract?.notes ?? null}
         initialHolderName={detail.holder?.name ?? null}
+        initialHolderRazaoSocial={detail.holder?.razaoSocial ?? null}
         initialHolderBirthDate={detail.holder?.birthDate ?? null}
         initialHolderDocument={detail.holder?.document ?? null}
         initialHolderCnpj={detail.holder?.cnpj ?? null}

@@ -40,10 +40,20 @@ export async function GET(request: NextRequest) {
       const query = searchParams.get("q") ?? undefined
       const page = parsePositiveInt(searchParams.get("page"), 1)
       const pageSize = Math.max(parsePositiveInt(searchParams.get("pageSize"), 10), 5)
+      const rawPlan = searchParams.get("plan")
+      const rawUserType = searchParams.get("userType")
+      const plan = (rawPlan === "lifetime" || rawPlan === "monthly" || rawPlan === "trial" || rawPlan === "none")
+        ? (rawPlan as "lifetime" | "monthly" | "trial" | "none")
+        : undefined
+      const userType = (rawUserType === "common" || rawUserType === "member_pro")
+        ? (rawUserType as "common" | "member_pro")
+        : undefined
       const filters = {
         name: query,
         email: query,
         team: query,
+        plan,
+        userType,
       }
       const platformUsersUseCase = makePlatformUsersUseCase()
       const output = await platformUsersUseCase.listMasterUsers(filters, { page, pageSize })

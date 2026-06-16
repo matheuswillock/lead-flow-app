@@ -39,6 +39,7 @@ export interface BackofficeAllUsersMasterRef {
 
 export interface BackofficeAllUsersListRecord {
   id: string
+  supabaseId: string | null
   fullName: string | null
   email: string
   phone: string | null
