@@ -27,4 +27,20 @@ export interface ITemplateEditorService {
     templateId: string,
     teamId?: string | null
   ): Promise<Template>;
+  submitForApproval(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template>;
+  approveTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template>;
+  rejectTemplate(
+    supabaseId: string,
+    templateId: string,
+    reviewNote: string,
+    teamId?: string | null
+  ): Promise<Template>;
 }

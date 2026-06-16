@@ -1,4 +1,5 @@
 export type TemplateStatus = "draft" | "published";
+export type TemplateApprovalStatus = "pending_approval" | "approved" | "rejected";
 
 export interface TemplateVariable {
   key: string;
@@ -15,6 +16,8 @@ export interface Template {
   html: string | null;
   variables: TemplateVariable[] | null;
   status: TemplateStatus;
+  approvalStatus: TemplateApprovalStatus;
+  reviewNote: string | null;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;

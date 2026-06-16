@@ -260,6 +260,36 @@ export class EmailTemplateUseCase {
     }
   }
 
+  async submitForApproval(id: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const existing = await prisma.emailTemplate.findFirst({
+        where: {
+          id,
+          teamId: ctx.teamId,
+          isArchived: false,
+          status: "draft",
+          approvalStatus: { in: ["approved", "rejected"] },
+        },
+        select: { id: true },
+      })
+
+      if (!existing) {
+        return new Output(false, [], ["Template não encontrado ou não pode ser submetido para aprovação"], null)
+      }
+
+      const template = await prisma.emailTemplate.update({
+        where: { id },
+        select: templateDetailSelect,
+        data: { approvalStatus: "pending_approval" },
+      })
+
+      return new Output(true, ["Template enviado para aprovação"], [], template)
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][submitForApproval]", error)
+      return new Output(false, [], ["Erro ao enviar template para aprovação"], null)
+    }
+  }
+
   async publish(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailTemplate.findFirst({

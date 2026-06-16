@@ -1,4 +1,6 @@
 export type TemplateStatus = "draft" | "published"
+export type TemplateApprovalStatus = "pending_approval" | "approved" | "rejected"
+export type TemplateTab = "all" | "draft" | "pending_approval" | "published" | "rejected"
 
 export interface Template {
   id: string
@@ -9,7 +11,8 @@ export interface Template {
   html: string | null
   status: TemplateStatus
   publishedAt: string | null
-  approvalStatus: string
+  approvalStatus: TemplateApprovalStatus
+  reviewNote: string | null
   createdAt: string
   updatedAt: string
   creator: {
@@ -25,4 +28,8 @@ export interface TemplatesState {
   error: string | null
   deleting: string | null
   duplicating: string | null
+  submitting: string | null
+  approving: string | null
+  rejecting: string | null
+  activeTab: TemplateTab
 }

@@ -22,10 +22,14 @@ const EMPTY_DRAFT: TemplateEditorDraft = {
 };
 
 interface UseTemplateEditorReturn extends TemplateEditorState {
+  activeRole: "manager" | "backoffice" | "operator" | null;
   reloadTemplate: () => Promise<void>;
   saveTemplate: (patch?: Partial<TemplateEditorDraft>) => Promise<Template | null>;
   publishTemplate: (id?: string) => Promise<Template | null>;
   unpublishTemplate: () => Promise<Template | null>;
+  submitForApproval: () => Promise<void>;
+  approveTemplate: () => Promise<void>;
+  rejectTemplate: (reviewNote: string) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
   setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
@@ -46,7 +50,7 @@ export function useTemplateEditor(
   supabaseId: string,
   templateId: string
 ): UseTemplateEditorReturn {
-  const { activeTeamId, isLoading: teamLoading } = useTeamContext();
+  const { activeTeamId, activeRole, isLoading: teamLoading } = useTeamContext();
   const isNewTemplate = templateId === "new";
   const [template, setTemplate] = useState<Template | null>(null);
   const [draft, setDraft] = useState<TemplateEditorDraft>(EMPTY_DRAFT);
@@ -209,6 +213,69 @@ export function useTemplateEditor(
     }
   }, [activeTeamId, saving, supabaseId, template?.id]);
 
+  const submitForApproval = useCallback(async () => {
+    if (saving || !activeTeamId || !template?.id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await service.submitForApproval(supabaseId, template.id, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      toast.success("Template enviado para aprovação");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao enviar para aprovação";
+      console.error("[useTemplateEditor] Failed to submit for approval", err);
+      setError(message);
+      toast.error("Erro ao enviar para aprovação", { description: message });
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, template?.id]);
+
+  const approveTemplate = useCallback(async () => {
+    if (saving || !activeTeamId || !template?.id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await service.approveTemplate(supabaseId, template.id, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      toast.success("Template aprovado");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao aprovar template";
+      console.error("[useTemplateEditor] Failed to approve template", err);
+      setError(message);
+      toast.error("Erro ao aprovar template", { description: message });
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, template?.id]);
+
+  const rejectTemplate = useCallback(async (reviewNote: string) => {
+    if (saving || !activeTeamId || !template?.id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await service.rejectTemplate(supabaseId, template.id, reviewNote, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      toast.success("Template recusado");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao recusar template";
+      console.error("[useTemplateEditor] Failed to reject template", err);
+      setError(message);
+      toast.error("Erro ao recusar template", { description: message });
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, template?.id]);
+
   return {
     template,
     draft,
@@ -217,10 +284,14 @@ export function useTemplateEditor(
     error,
     isDirty,
     isNewTemplate,
+    activeRole,
     reloadTemplate,
     saveTemplate,
     publishTemplate,
     unpublishTemplate,
+    submitForApproval,
+    approveTemplate,
+    rejectTemplate,
     updateDraft,
     setMailyJson,
     setHtml,

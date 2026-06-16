@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Template, TemplatesState } from './TemplatesTypes'
+import type { Template, TemplatesState, TemplateTab } from './TemplatesTypes'
 import { createTemplatesService } from '../services/TemplatesService'
 import { useTeamContext } from '@/app/context/TeamContext'
 
@@ -10,17 +10,26 @@ const service = createTemplatesService()
 
 interface UseTemplatesReturn extends TemplatesState {
   fetchTemplates: () => Promise<void>
+  setActiveTab: (tab: TemplateTab) => void
+  activeRole: 'manager' | 'backoffice' | 'operator' | null
   handleDelete: (id: string) => Promise<void>
   handleDuplicate: (id: string) => Promise<void>
+  handleSubmitForApproval: (id: string) => Promise<void>
+  handleApprove: (id: string) => Promise<void>
+  handleReject: (id: string, reviewNote: string) => Promise<void>
 }
 
 export function useTemplates(supabaseId: string): UseTemplatesReturn {
-  const { activeTeamId, isLoading: teamLoading } = useTeamContext()
+  const { activeTeamId, activeRole, isLoading: teamLoading } = useTeamContext()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [duplicating, setDuplicating] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState<string | null>(null)
+  const [approving, setApproving] = useState<string | null>(null)
+  const [rejecting, setRejecting] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<TemplateTab>('all')
 
   const isFetchingRef = useRef(false)
 
@@ -88,7 +97,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
 
       setDuplicating(id)
       try {
-        const duplicatedTemplate = await service.create(
+        const duplicated = await service.create(
           supabaseId,
           {
             name: `Cópia de ${sourceTemplate.name}`,
@@ -99,8 +108,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
           },
           activeTeamId
         )
-
-        setTemplates((prev) => [duplicatedTemplate, ...prev])
+        setTemplates((prev) => [duplicated, ...prev])
         toast.success('Template duplicado com sucesso')
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Erro ao duplicar template'
@@ -114,6 +122,63 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
     [activeTeamId, duplicating, fetchTemplates, supabaseId, templates]
   )
 
+  const handleSubmitForApproval = useCallback(
+    async (id: string) => {
+      if (submitting === id) return
+      setSubmitting(id)
+      try {
+        const updated = await service.submitForApproval(supabaseId, id, activeTeamId)
+        setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)))
+        toast.success('Template enviado para aprovação')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao enviar para aprovação'
+        console.error('[useTemplates] Failed to submit for approval', err)
+        toast.error('Erro ao enviar para aprovação', { description: message })
+      } finally {
+        setSubmitting(null)
+      }
+    },
+    [activeTeamId, submitting, supabaseId]
+  )
+
+  const handleApprove = useCallback(
+    async (id: string) => {
+      if (approving === id) return
+      setApproving(id)
+      try {
+        const updated = await service.approve(supabaseId, id, activeTeamId)
+        setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)))
+        toast.success('Template aprovado com sucesso')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao aprovar template'
+        console.error('[useTemplates] Failed to approve template', err)
+        toast.error('Erro ao aprovar template', { description: message })
+      } finally {
+        setApproving(null)
+      }
+    },
+    [activeTeamId, approving, supabaseId]
+  )
+
+  const handleReject = useCallback(
+    async (id: string, reviewNote: string) => {
+      if (rejecting === id) return
+      setRejecting(id)
+      try {
+        const updated = await service.reject(supabaseId, id, reviewNote, activeTeamId)
+        setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)))
+        toast.success('Template recusado')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao recusar template'
+        console.error('[useTemplates] Failed to reject template', err)
+        toast.error('Erro ao recusar template', { description: message })
+      } finally {
+        setRejecting(null)
+      }
+    },
+    [activeTeamId, rejecting, supabaseId]
+  )
+
   useEffect(() => {
     fetchTemplates()
   }, [fetchTemplates])
@@ -124,8 +189,17 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
     error,
     deleting,
     duplicating,
+    submitting,
+    approving,
+    rejecting,
+    activeTab,
+    setActiveTab,
+    activeRole,
     fetchTemplates,
     handleDelete,
     handleDuplicate,
+    handleSubmitForApproval,
+    handleApprove,
+    handleReject,
   }
 }

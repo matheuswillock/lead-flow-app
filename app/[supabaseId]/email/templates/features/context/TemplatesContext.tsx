@@ -1,13 +1,18 @@
 'use client'
 
 import { createContext, ReactNode, useContext } from 'react'
-import { Template, TemplatesState } from './TemplatesTypes'
+import type { Template, TemplatesState, TemplateTab } from './TemplatesTypes'
 import { useTemplates } from './TemplatesHook'
 
 interface ITemplatesContext extends TemplatesState {
   fetchTemplates: () => Promise<void>
+  setActiveTab: (tab: TemplateTab) => void
+  activeRole: 'manager' | 'backoffice' | 'operator' | null
   handleDelete: (id: string) => Promise<void>
   handleDuplicate: (id: string) => Promise<void>
+  handleSubmitForApproval: (id: string) => Promise<void>
+  handleApprove: (id: string) => Promise<void>
+  handleReject: (id: string, reviewNote: string) => Promise<void>
 }
 
 const TemplatesContext = createContext<ITemplatesContext | undefined>(undefined)
@@ -35,5 +40,4 @@ export function useTemplatesContext(): ITemplatesContext {
   return context
 }
 
-// Re-export Template type for convenience
 export type { Template }

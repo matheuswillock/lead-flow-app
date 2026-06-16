@@ -7,15 +7,25 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { cn } from '@/lib/utils'
 import { useTemplatesContext } from '../context/TemplatesContext'
 import { TemplateCard } from '../components/TemplateCard'
+import type { TemplateTab } from '../context/TemplatesTypes'
+
+const TABS: { key: TemplateTab; label: string }[] = [
+  { key: 'all', label: 'Todos' },
+  { key: 'draft', label: 'Rascunhos' },
+  { key: 'pending_approval', label: 'Aguardando aprovação' },
+  { key: 'published', label: 'Publicados' },
+  { key: 'rejected', label: 'Recusados' },
+]
 
 function SkeletonCards() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="overflow-hidden rounded-lg border">
-          <Skeleton className="h-36 w-full rounded-none" />
+          <Skeleton className="h-32 w-full rounded-none" />
           <div className="border-t px-3 py-2.5 space-y-1.5">
             <Skeleton className="h-4 w-32" />
             <Skeleton className="h-3 w-48" />
@@ -29,14 +39,14 @@ function SkeletonCards() {
 function EmptyState({ hasSearch }: { hasSearch: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-20 text-center">
-      <FileText className="h-10 w-10 text-muted-foreground/40" />
+      <FileText className="size-10 text-muted-foreground/40" />
       <div>
         <p className="text-sm font-medium text-muted-foreground">
-          {hasSearch ? 'Nenhum template encontrado' : 'Nenhum template criado ainda'}
+          {hasSearch ? 'Nenhum template encontrado' : 'Nenhum template nesta categoria'}
         </p>
         {!hasSearch && (
           <p className="mt-1 text-xs text-muted-foreground/70">
-            Crie seu primeiro template clicando em "Criar Template"
+            Crie seu primeiro template clicando em "+ Criar Template"
           </p>
         )}
       </div>
@@ -51,15 +61,48 @@ export function TemplatesContainer() {
   const [search, setSearch] = useState('')
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false)
 
-  const { templates, loading, deleting, duplicating, handleDelete, handleDuplicate } = useTemplatesContext()
+  const {
+    templates,
+    loading,
+    deleting,
+    duplicating,
+    submitting,
+    approving,
+    rejecting,
+    activeTab,
+    setActiveTab,
+    activeRole,
+    handleDelete,
+    handleDuplicate,
+    handleSubmitForApproval,
+    handleApprove,
+    handleReject,
+  } = useTemplatesContext()
+
+  const tabFiltered = templates.filter((t) => {
+    if (activeTab === 'all') return true
+    if (activeTab === 'draft') return t.status === 'draft' && t.approvalStatus === 'approved'
+    if (activeTab === 'pending_approval') return t.approvalStatus === 'pending_approval'
+    if (activeTab === 'published') return t.status === 'published'
+    if (activeTab === 'rejected') return t.approvalStatus === 'rejected'
+    return true
+  })
+
+  const counts: Record<TemplateTab, number> = {
+    all: templates.length,
+    draft: templates.filter((t) => t.status === 'draft' && t.approvalStatus === 'approved').length,
+    pending_approval: templates.filter((t) => t.approvalStatus === 'pending_approval').length,
+    published: templates.filter((t) => t.status === 'published').length,
+    rejected: templates.filter((t) => t.approvalStatus === 'rejected').length,
+  }
 
   const filtered = search.trim()
-    ? templates.filter(
+    ? tabFiltered.filter(
         (t) =>
           t.name.toLowerCase().includes(search.toLowerCase()) ||
           t.subject.toLowerCase().includes(search.toLowerCase())
       )
-    : templates
+    : tabFiltered
 
   const handleCreateTemplate = () => {
     if (isCreatingTemplate) return
@@ -78,13 +121,43 @@ export function TemplatesContainer() {
       </div>
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Buscar templates..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
         />
+      </div>
+
+      <div className="flex gap-0 border-b">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'relative flex items-center gap-1.5 px-4 pb-2.5 pt-1 text-sm font-medium transition-colors',
+              activeTab === tab.key
+                ? 'text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {tab.label}
+            {counts[tab.key] > 0 && (
+              <span
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-[10px] font-bold',
+                  activeTab === tab.key
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-muted text-muted-foreground'
+                )}
+              >
+                {counts[tab.key]}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {loading ? (
@@ -97,10 +170,17 @@ export function TemplatesContainer() {
             <TemplateCard
               key={template.id}
               template={template}
+              activeRole={activeRole}
               deleting={deleting}
               duplicating={duplicating}
+              submitting={submitting}
+              approving={approving}
+              rejecting={rejecting}
               onDelete={handleDelete}
               onDuplicate={handleDuplicate}
+              onSubmitForApproval={handleSubmitForApproval}
+              onApprove={handleApprove}
+              onReject={handleReject}
             />
           ))}
         </div>
