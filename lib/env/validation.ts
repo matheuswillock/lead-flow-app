@@ -101,12 +101,15 @@ export const envSchema = z.object({
 
   // Sentry
   NEXT_PUBLIC_SENTRY_DSN: urlSchema.describe('Sentry DSN for browser and server SDKs'),
-  SENTRY_AUTH_TOKEN: nonEmptyString.describe('Sentry auth token for source map upload'),
-  SENTRY_ORG: nonEmptyString.describe('Sentry organization slug'),
-  SENTRY_OTLP_TRACES_URL: urlSchema.describe('Sentry OTLP traces endpoint'),
-  SENTRY_PROJECT: nonEmptyString.describe('Sentry project slug'),
-  SENTRY_PUBLIC_KEY: nonEmptyString.describe('Sentry public key'),
-  SENTRY_VERCEL_LOG_DRAIN_URL: urlSchema.describe('Sentry Vercel log drain URL'),
+  // Build-time only — provided via .env.sentry-build-plugin; not needed at runtime
+  SENTRY_AUTH_TOKEN: nonEmptyString.optional().describe('Sentry auth token for source map upload'),
+  // Hardcoded in next.config.ts; kept here for CI/Vercel overrides
+  SENTRY_ORG: nonEmptyString.optional().describe('Sentry organization slug'),
+  SENTRY_PROJECT: nonEmptyString.optional().describe('Sentry project slug'),
+  SENTRY_PUBLIC_KEY: nonEmptyString.optional().describe('Sentry public key (extractable from DSN)'),
+  // Vercel-injected integrations — not available in local dev
+  SENTRY_OTLP_TRACES_URL: urlSchema.optional().describe('Sentry OTLP traces endpoint'),
+  SENTRY_VERCEL_LOG_DRAIN_URL: urlSchema.optional().describe('Sentry Vercel log drain URL'),
 
   // Encryption keys
   ENCRYPTION_KEY: hexKeySchema.describe('Server-side encryption key'),
@@ -142,12 +145,6 @@ export const CRITICAL_ENV_VARS = [
   'ENCRYPTION_KEY',
   'NEXT_PUBLIC_APP_URL',
   'NEXT_PUBLIC_SENTRY_DSN',
-  'SENTRY_AUTH_TOKEN',
-  'SENTRY_ORG',
-  'SENTRY_OTLP_TRACES_URL',
-  'SENTRY_PROJECT',
-  'SENTRY_PUBLIC_KEY',
-  'SENTRY_VERCEL_LOG_DRAIN_URL',
 ] as const;
 
 /**
