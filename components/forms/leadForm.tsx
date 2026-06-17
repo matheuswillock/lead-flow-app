@@ -542,20 +542,6 @@ export function LeadForm({
                                     </div>
                                 </div>
                             )}
-                            {!scheduleSummary?.meetingLink && !!onShareSchedule && (
-                                <div className="grid gap-1">
-                                    <span className="text-foreground">Link público</span>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="w-fit"
-                                onClick={onShareSchedule}
-                            >
-                                <Share2 data-icon="inline-start" />
-                                Compartilhar {isPreSchedule ? "pré-agendamento" : "agendamento"}
-                            </Button>
-                                </div>
-                            )}
                             {!!scheduleSummary?.meetingNotes && (
                                 <div className="grid gap-1">
                                     <span className="text-foreground">Notas</span>

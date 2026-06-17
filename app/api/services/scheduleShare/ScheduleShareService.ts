@@ -32,6 +32,10 @@ export class ScheduleShareService implements IScheduleShareService {
       throw new Error("Lead não encontrado ou sem permissão no seu time.");
     }
 
+    if (lead.isTransfer === true) {
+      throw new Error("Compartilhamento público disponível apenas após concluir a transferência.");
+    }
+
     const schedule = await scheduleShareRepository.findScheduleByLeadId(input.leadId);
 
     if (!schedule) {
@@ -74,7 +78,7 @@ export class ScheduleShareService implements IScheduleShareService {
         meetingType: resolvedMeetingType,
         expiresAt: shareExpiresAt.toISOString(),
         timezone: lead.closerTimezone ?? DEFAULT_TZ,
-        isPreSchedule: lead.isTransfer === true,
+        isPreSchedule: false,
       },
     };
   }
@@ -94,6 +98,10 @@ export class ScheduleShareService implements IScheduleShareService {
 
     if (isScheduleShareExpired(schedule.publicShareExpiresAt) || isScheduleShareExpired(parsedToken.expiresAt)) {
       throw new Error("Link de agendamento expirado.");
+    }
+
+    if (schedule.leadIsTransfer === true) {
+      throw new Error("Este agendamento ainda não está disponível para acesso público.");
     }
 
     const resolvedMeetingType = schedule.meetingType ?? schedule.leadMeetingType ?? ONLINE_MEETING_TYPE;
@@ -120,7 +128,7 @@ export class ScheduleShareService implements IScheduleShareService {
       timezone: schedule.closerTimezone ?? DEFAULT_TZ,
       joinAllowed,
       meetingLink: joinAllowed ? resolvedMeetingLink : null,
-      isPreSchedule: schedule.leadIsTransfer === true,
+      isPreSchedule: false,
     };
   }
 }

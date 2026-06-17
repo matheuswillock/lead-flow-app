@@ -132,6 +132,8 @@ export async function POST(
             meetingLink: null,
             meetingType: resolvedMeetingType,
             extraGuests: extraGuests ?? [],
+            publicShareTokenHash: null,
+            publicShareExpiresAt: null,
           },
           update: {
             date: meetingDate,
@@ -140,6 +142,8 @@ export async function POST(
             meetingLink: null,
             meetingType: resolvedMeetingType,
             extraGuests: extraGuests ?? [],
+            publicShareTokenHash: null,
+            publicShareExpiresAt: null,
           },
         }),
         prisma.lead.update({

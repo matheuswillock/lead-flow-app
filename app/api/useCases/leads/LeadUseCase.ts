@@ -33,7 +33,6 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
-import { scheduleShareService } from "@/app/api/services/scheduleShare/ScheduleShareService";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -2081,36 +2080,29 @@ export class LeadUseCase implements ILeadUseCase {
         date: meetingDate,
         meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
         notes: lead.meetingNotes || lead.notes || null,
-        meetingLink: lead.meetingLink || null,
+        meetingLink: null,
         meetingType: lead.meetingType || "online",
         extraGuests: [],
+        publicShareTokenHash: null,
+        publicShareExpiresAt: null,
       },
       update: {
         date: meetingDate,
         meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
         notes: lead.meetingNotes || lead.notes || null,
-        meetingLink: lead.meetingLink || null,
+        meetingLink: null,
         meetingType: lead.meetingType || "online",
+        publicShareTokenHash: null,
+        publicShareExpiresAt: null,
       },
     });
   }
 
   private async resolveTransferScheduleShareUrl(lead: any, teamId: string): Promise<string | null> {
-    if (!lead?.meetingDate) {
-      return null;
-    }
+    void teamId;
+    void lead;
 
-    try {
-      await this.ensureTransferPreSchedule(lead);
-      const share = await scheduleShareService.createPublicShare({
-        leadId: lead.id,
-        teamId,
-      });
-      return share.publicUrl;
-    } catch (error) {
-      console.error("[handleTransferActivationAlert] Schedule share error:", error);
-      return null;
-    }
+    return null;
   }
 
   private async handleTransferActivationAlert(lead: any): Promise<void> {

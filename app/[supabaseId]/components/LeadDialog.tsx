@@ -297,6 +297,27 @@ export default function LeadDialog({
   }, [currentLead?.id, open, refreshLeadDetails]);
 
   useEffect(() => {
+    const detailedLead = leadDetails?.lead;
+    if (!open || !currentLead || !detailedLead || detailedLead.id !== currentLead.id) return;
+    if (
+      detailedLead.meetingDate === currentLead.meetingDate &&
+      detailedLead.meetingTitle === currentLead.meetingTitle &&
+      detailedLead.meetingType === currentLead.meetingType &&
+      detailedLead.isTransfer === currentLead.isTransfer
+    ) {
+      return;
+    }
+
+    setLocalLead((prev) =>
+      prev && prev.id === detailedLead.id ? ({ ...prev, ...detailedLead } as Lead) : prev,
+    );
+  }, [
+    currentLead,
+    leadDetails?.lead,
+    open,
+  ]);
+
+  useEffect(() => {
     if (!open) {
       setActivityBody("");
       setActivityType("note");
@@ -2346,7 +2367,7 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    {currentLead && currentLead.status === "new_opportunity" && canTransferBetweenTeams && (
+                    {currentLead && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -2491,7 +2512,11 @@ export default function LeadDialog({
                           : undefined
                       }
                       onManageSchedule={currentLead ? () => setShowScheduleDialog(true) : undefined}
-                      onShareSchedule={currentLead?.meetingDate ? () => void handleShareSchedule() : undefined}
+                      onShareSchedule={
+                        currentLead?.meetingDate && currentLead.isTransfer !== true
+                          ? () => void handleShareSchedule()
+                          : undefined
+                      }
                       canToggleMeetingHeald={canEditMeetingHeald}
                       meetingHealdSaving={meetingHealdSaving}
                       onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}

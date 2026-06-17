@@ -22,6 +22,7 @@ import { Lead } from "../context/BoardTypes";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { Info } from "lucide-react";
+import { formatLocalTimeValue } from "@/lib/dates";
 
 interface TeamMemberOption {
   id: string;
@@ -70,6 +71,14 @@ export function TransferBetweenTeamsDialog({
   const targetTeams = teams.filter((t) => t.id !== activeTeamId && allowedTargetTeamIds.includes(t.id));
   const closers = teamMembers.filter((m) => m.functions.includes("CLOSER"));
   const sdrs = teamMembers.filter((m) => m.functions.includes("SDR"));
+  const selectedMeetingTime =
+    meetingDate && !Number.isNaN(meetingDate.getTime())
+      ? formatLocalTimeValue(meetingDate, tz)
+      : null;
+  const pickerAvailableTimes =
+    scheduleEnabled && selectedMeetingTime && (!closerId || availabilityLoading)
+      ? [selectedMeetingTime]
+      : availableTimes;
 
   useEffect(() => {
     setTargetTeamId("");
@@ -356,7 +365,8 @@ export function TransferBetweenTeamsDialog({
                   date={meetingDate}
                   onDateChange={setMeetingDate}
                   tz={tz}
-                  availableTimes={availableTimes}
+                  label=""
+                  availableTimes={pickerAvailableTimes}
                   timeLoading={availabilityLoading}
                   timeLoadingText="Carregando agenda do closer..."
                 />
