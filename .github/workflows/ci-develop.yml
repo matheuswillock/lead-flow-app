@@ -252,6 +252,7 @@ jobs:
       always() &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.migration-check.result == 'success' &&
+      needs.migration-check.outputs.has_pending == 'false' &&
       (needs.migration-dry-run.result == 'success' || needs.migration-dry-run.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
