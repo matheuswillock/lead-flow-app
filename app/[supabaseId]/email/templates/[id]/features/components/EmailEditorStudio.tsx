@@ -228,21 +228,21 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
 
   const handlePublish = useCallback(async () => {
     if (saving) return;
-    if (htmlSourceActive && !visualEditorTouched) {
-      await saveTemplate({ html: draft.html });
+    if (!visualEditorTouched) {
+      await saveTemplate();
       return;
     }
 
     const snapshot = await syncEditorDraft();
     if (!snapshot) return;
     await saveTemplate(snapshot);
-  }, [draft.html, htmlSourceActive, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
+  }, [saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
 
   const handleSaveAndPublish = useCallback(async () => {
     if (saving) return;
     let saved;
-    if (htmlSourceActive && !visualEditorTouched) {
-      saved = await saveTemplate({ html: draft.html });
+    if (!visualEditorTouched) {
+      saved = await saveTemplate();
     } else {
       const snapshot = await syncEditorDraft();
       if (!snapshot) return;
@@ -251,7 +251,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
     if (saved) {
       await publishTemplate(saved.id);
     }
-  }, [draft.html, htmlSourceActive, publishTemplate, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
+  }, [publishTemplate, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
 
   const handleOpenHtmlEditor = useCallback(async () => {
     if (htmlEditorOpening) return;
