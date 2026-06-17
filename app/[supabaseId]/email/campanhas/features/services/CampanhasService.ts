@@ -38,9 +38,9 @@ export class CampanhasService implements ICampanhasService {
 
   async send(id: string) {
     const res = await fetch(`${this.baseUrl}/campaigns/${id}/send`, { method: 'POST' })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!json?.isValid) throw new Error(json?.errorMessages?.join(', ') ?? 'Erro')
     return json.result as { sent: number; failed: number }
   }
 
@@ -49,6 +49,18 @@ export class CampanhasService implements ICampanhasService {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+  }
+
+  async update(id: string, data: { name?: string; templateId?: string; contactListId?: string; scheduledAt?: string | null }) {
+    const res = await fetch(`${this.baseUrl}/campaigns/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    return json.result as Campaign
   }
 
   async deleteDraft(id: string) {
@@ -69,7 +81,8 @@ export class CampanhasService implements ICampanhasService {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return (json.result ?? []) as Template[]
+    // Only published templates can be used in campaigns.
+    return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published')
   }
 
   async getContactLists() {

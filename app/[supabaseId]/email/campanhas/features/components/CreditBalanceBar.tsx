@@ -8,6 +8,8 @@ import { useParams } from "next/navigation"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const PLAN_LABELS: Record<string, string> = {
   starter: "Starter",
@@ -20,12 +22,18 @@ export function CreditBalanceBar() {
   const { credits, loadingCredits } = useCampanhasContext()
   const params = useParams<{ supabaseId: string }>()
   const { tz } = useTimezone()
+  const { isBeta } = useFeatureAccess()
+  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
 
   if (loadingCredits) {
     return <Skeleton className="h-14 w-full rounded-lg" />
   }
 
   if (!credits || !credits.hasSubscription) {
+    if (isCampaignsBetaAccess) {
+      return null
+    }
+
     return (
       <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
         <CardContent className="flex items-center gap-3 py-3">

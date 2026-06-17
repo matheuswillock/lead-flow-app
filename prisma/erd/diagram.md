@@ -956,7 +956,14 @@ unsubscribed unsubscribed
     String previewText "❓"
     Json mailyJson "❓"
     String html "❓"
+    Json variables "❓"
+    String status 
+    DateTime publishedAt "❓"
     Boolean isArchived 
+    String approvalStatus 
+    DateTime approvedAt "❓"
+    DateTime rejectedAt "❓"
+    String reviewNote "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -968,6 +975,7 @@ unsubscribed unsubscribed
     String description "❓"
     String csvStoragePath "❓"
     Int totalContacts 
+    Boolean isSystemDefault 
     Boolean isArchived 
     DateTime createdAt 
     DateTime updatedAt 
@@ -999,6 +1007,7 @@ unsubscribed unsubscribed
     Int totalOpened 
     Int totalClicked 
     Int totalBounced 
+    Int dispatchCount 
     Int totalComplained 
     String errorMessage "❓"
     DateTime createdAt 
@@ -1139,6 +1148,50 @@ unsubscribed unsubscribed
     }
   
 
+  "email_team_settings" {
+    String id "🗝️"
+    String fromName 
+    String fromEmail 
+    String replyTo "❓"
+    Json dispatchBlockedDates "❓"
+    String dispatchTimeFrom "❓"
+    String dispatchTimeTo "❓"
+    String dispatchAllowedRoles 
+    String templateCreateRoles 
+    Boolean templateApprovalRequired 
+    String templateApprovalRoles 
+    Int blockedDispatchDays 
+    String resendDomainId "❓"
+    String resendDomainName "❓"
+    String resendDomainStatus "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_team_senders" {
+    String id "🗝️"
+    String name 
+    String email 
+    String replyTo "❓"
+    Boolean isDefault 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_team_variables" {
+    String id "🗝️"
+    String key 
+    String type 
+    String defaultValue "❓"
+    String description "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "profile_user_types" {
     String id "🗝️"
     String slug 
@@ -1265,6 +1318,8 @@ unsubscribed unsubscribed
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "approver"
+    "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "rejecter"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
@@ -1304,6 +1359,9 @@ unsubscribed unsubscribed
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
+    "email_team_settings" |o--|| corretor_studio_teams : "team"
+    "email_team_senders" }o--|| corretor_studio_teams : "team"
+    "email_team_variables" }o--|| corretor_studio_teams : "team"
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"

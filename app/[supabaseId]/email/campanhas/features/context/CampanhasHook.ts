@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { CampanhasService } from "../services/CampanhasService"
 import type { Campaign, CreditStatus, Template, ContactList } from "./CampanhasTypes"
-import { parseLocalToUtc } from "@/lib/dates"
+import { parseLocalToUtc, formatLocalInputValue } from "@/lib/dates"
 import { useTimezone } from "@/app/context/TimezoneContext"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const PAGE_SIZE = 20
 const service = new CampanhasService()
@@ -24,6 +26,13 @@ export type CampanhasActions = {
   setWizardContactListId: (v: string) => void
   setWizardScheduledAt: (v: string) => void
   handleCreateCampaign: () => Promise<void>
+  openEdit: (campaign: Campaign) => void
+  closeEdit: () => void
+  setEditName: (v: string) => void
+  setEditTemplateId: (v: string) => void
+  setEditContactListId: (v: string) => void
+  setEditScheduledAt: (v: string) => void
+  handleUpdateCampaign: () => Promise<void>
 }
 
 export type CampanhasHookReturn = {
@@ -47,10 +56,18 @@ export type CampanhasHookReturn = {
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
+  editingCampaign: Campaign | null
+  editName: string
+  editTemplateId: string
+  editContactListId: string
+  editScheduledAt: string
+  editSaving: boolean
 } & CampanhasActions
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const { tz } = useTimezone()
+  const { isBeta } = useFeatureAccess()
+  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -73,6 +90,14 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardCreating, setWizardCreating] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
+
+  // Edit draft
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editTemplateId, setEditTemplateId] = useState("")
+  const [editContactListId, setEditContactListId] = useState("")
+  const [editScheduledAt, setEditScheduledAt] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
 
   const fetchingRef = useRef(false)
 
@@ -125,6 +150,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [fetchCampaigns, statusFilter])
 
   const handleSend = useCallback(async (id: string) => {
+    if (!credits?.hasSubscription && !isCampaignsBetaAccess) {
+      toast.error("Ative um plano em Assinaturas para disparar campanhas")
+      return
+    }
     setSendingId(id)
     console.info("[useCampanhas] handleSend", id)
     try {
@@ -138,7 +167,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setSendingId(null)
     }
-  }, [fetchCampaigns, fetchCredits, page, statusFilter])
+  }, [credits?.hasSubscription, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter])
 
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)
@@ -223,6 +252,56 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
   }, [wizardName, wizardTemplateId, wizardContactListId, wizardScheduledAt, tz, fetchCampaigns, statusFilter])
 
+  const openEdit = useCallback(async (campaign: Campaign) => {
+    setEditingCampaign(campaign)
+    setEditName(campaign.name)
+    setEditTemplateId(campaign.template?.id ?? "")
+    setEditContactListId(campaign.contactList?.id ?? "")
+    setEditScheduledAt(campaign.scheduledAt ? formatLocalInputValue(new Date(campaign.scheduledAt), tz) : "")
+    try {
+      const [tmpl, lists] = await Promise.all([
+        service.getTemplates(),
+        service.getContactLists(),
+      ])
+      setTemplates(tmpl)
+      setContactLists(lists)
+    } catch (err) {
+      console.error("[useCampanhas] openEdit fetch error", err)
+    }
+  }, [tz])
+
+  const closeEdit = useCallback(() => {
+    if (editSaving) return
+    setEditingCampaign(null)
+  }, [editSaving])
+
+  const handleUpdateCampaign = useCallback(async () => {
+    if (!editingCampaign || !editName.trim()) {
+      toast.error("Nome da campanha é obrigatório")
+      return
+    }
+    setEditSaving(true)
+    console.info("[useCampanhas] handleUpdateCampaign", editingCampaign.id)
+    try {
+      const updated = await service.update(editingCampaign.id, {
+        name: editName.trim(),
+        templateId: editTemplateId || undefined,
+        contactListId: editContactListId || undefined,
+        scheduledAt: editScheduledAt
+          ? parseLocalToUtc(editScheduledAt, tz).toISOString()
+          : null,
+      })
+      setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      toast.success("Campanha atualizada")
+      setEditingCampaign(null)
+    } catch (err) {
+      console.error("[useCampanhas] handleUpdateCampaign error", err)
+      toast.error("Erro ao atualizar campanha")
+    } finally {
+      setEditSaving(false)
+    }
+  }, [editingCampaign, editName, editTemplateId, editContactListId, editScheduledAt, tz])
+
   return {
     campaigns,
     total,
@@ -244,6 +323,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardCreating,
     templates,
     contactLists,
+    editingCampaign,
+    editName,
+    editTemplateId,
+    editContactListId,
+    editScheduledAt,
+    editSaving,
     handleSend,
     handleCancel,
     handleDeleteDraft,
@@ -257,5 +342,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardContactListId,
     setWizardScheduledAt,
     handleCreateCampaign,
+    openEdit,
+    closeEdit,
+    setEditName,
+    setEditTemplateId,
+    setEditContactListId,
+    setEditScheduledAt,
+    handleUpdateCampaign,
   }
 }

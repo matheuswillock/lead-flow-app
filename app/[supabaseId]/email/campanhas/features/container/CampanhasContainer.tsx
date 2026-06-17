@@ -6,6 +6,7 @@ import { useCampanhasContext } from "../context/CampanhasContext"
 import { CreditBalanceBar } from "../components/CreditBalanceBar"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
+import { CampaignEditDialog } from "../components/CampaignEditDialog"
 
 const STATUS_TABS = [
   { value: "", label: "Todas" },
@@ -52,6 +53,7 @@ export function CampanhasContainer() {
 
       <CampaignList />
       <CampaignCreateWizard />
+      <CampaignEditDialog />
     </div>
   )
 }

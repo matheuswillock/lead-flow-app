@@ -3,9 +3,15 @@ export type ContactList = {
   name: string
   description: string | null
   totalContacts: number
+  isSystemDefault: boolean
   isArchived: boolean
   createdAt: string
   updatedAt: string
+  creator: {
+    id: string
+    fullName: string | null
+    email: string | null
+  } | null
 }
 
 export type Contact = {

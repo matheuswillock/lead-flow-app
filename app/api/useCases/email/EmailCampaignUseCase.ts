@@ -4,8 +4,10 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
-const DEFAULT_FROM = `Corretor Studio <no-reply@corretorstudio.com>`
+const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
+const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretorstudio.com"
 
 export interface CreateCampaignInput {
   name: string
@@ -17,6 +19,78 @@ export interface CreateCampaignInput {
 export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
   private creditService = new EmailCreditService()
+
+  private async resolveEffectiveCampaignFeature() {
+    type CampaignFeatureNode = {
+      id: string
+      parentId: string | null
+      inheritParentSettings: boolean
+      betaEnabled: boolean
+    }
+
+    const visited = new Set<string>()
+    let current: CampaignFeatureNode | null = await prisma.backofficeFeature.findFirst({
+      where: { slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS, isActive: true },
+      select: { id: true, parentId: true, inheritParentSettings: true, betaEnabled: true },
+    })
+
+    if (!current) return null
+
+    while (current.inheritParentSettings && current.parentId && !visited.has(current.id)) {
+      visited.add(current.id)
+      const parent: (CampaignFeatureNode & { isActive: boolean }) | null = await prisma.backofficeFeature.findUnique({
+        where: { id: current.parentId },
+        select: { id: true, parentId: true, inheritParentSettings: true, betaEnabled: true, isActive: true },
+      })
+      if (!parent || !parent.isActive) break
+      current = parent
+    }
+
+    return current
+  }
+
+  private async getGlobalDefaults(teamId: string): Promise<Record<string, string>> {
+    try {
+      const variables = await prisma.emailTeamVariable.findMany({
+        where: { teamId, isActive: true, defaultValue: { not: null } },
+        select: { key: true, defaultValue: true },
+      })
+      return variables.reduce<Record<string, string>>((acc, v) => {
+        if (v.defaultValue != null) acc[v.key] = v.defaultValue
+        return acc
+      }, {})
+    } catch (error) {
+      console.error("[EmailCampaignUseCase][getGlobalDefaults]", error)
+      return {}
+    }
+  }
+
+  private async hasCampaignsBetaAccess(profileId: string): Promise<boolean> {
+    const feature = await prisma.backofficeFeature.findFirst({
+      where: { slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS, isActive: true },
+      select: { id: true, betaEnabled: true },
+    })
+
+    if (!feature) return false
+
+    const effectiveFeature = await this.resolveEffectiveCampaignFeature()
+    const betaFeatureId = effectiveFeature?.betaEnabled ? effectiveFeature.id : feature.betaEnabled ? feature.id : null
+
+    if (!betaFeatureId) return false
+
+    const featureIds = Array.from(new Set([feature.id, betaFeatureId]))
+    const betaGrant = await prisma.backofficeFeatureGrant.findFirst({
+      where: {
+        profileId,
+        grantType: "BETA",
+        isActive: true,
+        featureId: { in: featureIds },
+      },
+      select: { id: true },
+    })
+
+    return !!betaGrant
+  }
 
   async list(ctx: TeamContext, options: { status?: string; page: number; pageSize: number }): Promise<Output> {
     try {
@@ -40,7 +114,9 @@ export class EmailCampaignUseCase {
             totalOpened: true,
             totalClicked: true,
             totalBounced: true,
+            dispatchCount: true,
             createdAt: true,
+            creator: { select: { fullName: true, email: true } },
             template: { select: { id: true, name: true } },
             contactList: { select: { id: true, name: true } },
           },
@@ -93,14 +169,20 @@ export class EmailCampaignUseCase {
 
       const [template, contactList] = await Promise.all([
         prisma.emailTemplate.findFirst({
-          where: { id: data.templateId, teamId: ctx.teamId, isArchived: false },
+          where: {
+            id: data.templateId,
+            teamId: ctx.teamId,
+            isArchived: false,
+            approvalStatus: "approved",
+            status: "published",
+          },
           select: { id: true },
         }),
         prisma.emailContactList.findFirst({ where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false } }),
       ])
 
       if (!template) {
-        return new Output(false, [], ["Template não encontrado ou não pertence ao time"], null)
+        return new Output(false, [], ["Template não encontrado ou não está publicado. Apenas templates publicados podem ser usados em campanhas"], null)
       }
       if (!contactList) {
         return new Output(false, [], ["Lista de contatos não encontrada ou não pertence ao time"], null)
@@ -173,8 +255,52 @@ export class EmailCampaignUseCase {
         },
       })
 
+      let teamSettings = null
+      try {
+        teamSettings = await prisma.emailTeamSettings.findUnique({ where: { teamId: ctx.teamId } })
+      } catch {
+        // fall back to env defaults if model unavailable in current client build
+      }
+
       if (!campaign) {
         return new Output(false, [], ["Campanha não encontrada ou já foi enviada"], null)
+      }
+
+      // Enforce dispatch restrictions from team settings
+      if (teamSettings) {
+        const allowedRoles: string[] = teamSettings.dispatchAllowedRoles ?? ["manager", "backoffice"]
+        if (!allowedRoles.includes(ctx.teamMember.role)) {
+          return new Output(false, [], ["Seu perfil não tem permissão para disparar campanhas"], null)
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10)
+        type BlockedEntry = { date?: string; from?: string; to?: string }
+        const blockedDates = ((teamSettings.dispatchBlockedDates as BlockedEntry[]) ?? [])
+        for (const entry of blockedDates) {
+          if (entry.date && entry.date === todayStr) {
+            return new Output(false, [], [`Disparo bloqueado: a data ${todayStr} está na lista de restrições`], null)
+          }
+          if (entry.from && entry.to && todayStr >= entry.from && todayStr <= entry.to) {
+            return new Output(false, [], [`Disparo bloqueado: data atual está no período bloqueado ${entry.from} – ${entry.to}`], null)
+          }
+        }
+
+        if (teamSettings.dispatchTimeFrom && teamSettings.dispatchTimeTo) {
+          const now = new Date()
+          const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+          const [fH, fM] = teamSettings.dispatchTimeFrom.split(":").map(Number)
+          const [tH, tM] = teamSettings.dispatchTimeTo.split(":").map(Number)
+          const fromMinutes = fH * 60 + fM
+          const toMinutes = tH * 60 + tM
+          if (currentMinutes < fromMinutes || currentMinutes > toMinutes) {
+            return new Output(
+              false,
+              [],
+              [`Disparo bloqueado: horário permitido é ${teamSettings.dispatchTimeFrom} – ${teamSettings.dispatchTimeTo} (UTC)`],
+              null
+            )
+          }
+        }
       }
 
       if (!campaign.template.html) {
@@ -183,7 +309,8 @@ export class EmailCampaignUseCase {
 
       const masterId = campaign.team.master.id
       const hasCredits = await this.creditService.hasEnoughCredits(masterId)
-      if (!hasCredits) {
+      const hasCampaignsBetaAccess = await this.hasCampaignsBetaAccess(ctx.profileId)
+      if (!hasCredits && !hasCampaignsBetaAccess) {
         return new Output(false, [], ["Sem assinatura de créditos de email ativa. Ative um plano em Assinaturas"], null)
       }
 
@@ -200,7 +327,7 @@ export class EmailCampaignUseCase {
       // Buscar contatos ativos
       const contacts = await prisma.emailContact.findMany({
         where: { listId: campaign.contactListId, isUnsubscribed: false, isBounced: false },
-        select: { email: true, name: true },
+        select: { email: true, name: true, customFields: true },
       })
 
       if (contacts.length === 0) {
@@ -211,16 +338,30 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Nenhum contato ativo na lista para envio"], null)
       }
 
-      const recipientsList = contacts.map((c) => ({ email: c.email, name: c.name ?? undefined }))
+      const recipientsList = contacts.map((c) => ({
+        email: c.email,
+        name: c.name,
+        customFields: c.customFields as Record<string, unknown> | null,
+      }))
+
+      const fromName = teamSettings?.fromName ?? FALLBACK_FROM_NAME
+      const fromEmail = teamSettings?.fromEmail ?? FALLBACK_FROM_EMAIL
+      const from = `${fromName} <${fromEmail}>`
+      const replyTo = teamSettings?.replyTo ?? null
+
+      // Team global variables (default values) used as interpolation fallback
+      const globalDefaults = await this.getGlobalDefaults(ctx.teamId)
 
       // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({
-        from: DEFAULT_FROM,
+        from,
+        replyTo,
         recipients: recipientsList,
         subject: campaign.template.subject,
         html: campaign.template.html,
         campaignId: campaign.id,
         teamId: ctx.teamId,
+        globalDefaults,
       })
 
       // Criar EmailLog para cada email enviado com mapeamento explícito email→resendId
@@ -242,8 +383,9 @@ export class EmailCampaignUseCase {
           skipDuplicates: true,
         })
 
-        // Deduzir créditos
-        await this.creditService.deductCredits(masterId, dispatchResult.sent)
+        if (hasCredits) {
+          await this.creditService.deductCredits(masterId, dispatchResult.sent)
+        }
       }
 
       await prisma.emailCampaign.update({
@@ -252,6 +394,7 @@ export class EmailCampaignUseCase {
           status: "sent",
           sentAt: new Date(),
           totalSent: dispatchResult.sent,
+          dispatchCount: { increment: 1 },
         },
       })
 

@@ -10,7 +10,8 @@ import { SiteHeader } from "@/components/site-header";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { Users2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { getFeatureSlugForAppPath } from "@/lib/features/feature-route-access";
+import { getFeatureSlugForAppPath } from "@/lib/features/feature-route-access"
+import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext";
 
 interface LayoutContentProps {
   children: React.ReactNode;
@@ -77,6 +78,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
 
   // Dados carregados, renderiza o layout completo
   return (
+    <PageBreadcrumbProvider>
     <SidebarProvider
       defaultOpen={defaultOpen}
       style={
@@ -123,5 +125,6 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
         </div>
       </SidebarInset>
     </SidebarProvider>
+    </PageBreadcrumbProvider>
   );
 }
