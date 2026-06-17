@@ -69,6 +69,7 @@ export interface ILeadFormProps {
         meetingNotes?: string | null;
         meetingLink?: string | null;
         meetingHeald?: "yes" | "no" | null;
+        isPreSchedule?: boolean;
         isOverdue?: boolean;
     };
     onManageSchedule?: () => void;
@@ -182,6 +183,13 @@ export function LeadForm({
     );
     const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
+    const isPreSchedule = scheduleSummary?.isPreSchedule === true;
+    const scheduleSectionTitle = isPreSchedule ? "Pré-agendamento" : "Agendamento";
+    const manageScheduleLabel = scheduleSummary?.meetingDate
+        ? isPreSchedule
+            ? "Editar pré-agendamento"
+            : "Editar agendamento"
+        : "Agendar lead";
 
     useEffect(() => {
         if (!initialData) {
@@ -414,7 +422,7 @@ export function LeadForm({
 
             <div className="sm:col-span-2 pt-4 border-t">
                 <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">Agendamento</h3>
+                    <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
                     <div className="flex items-center gap-2">
                         {!!canToggleMeetingHeald && (
                             <Button
@@ -459,9 +467,9 @@ export function LeadForm({
                         )}
                         <Button type="button" variant="outline" onClick={onManageSchedule} disabled={!onManageSchedule}>
                             {scheduleSummary?.meetingDate ? (
-                                <><CalendarSync className="h-4 w-4" />Editar agendamento</>
+                                <><CalendarSync className="h-4 w-4" />{manageScheduleLabel}</>
                             ) : (
-                                <><CalendarClock className="h-4 w-4" />Agendar lead</>
+                                <><CalendarClock className="h-4 w-4" />{manageScheduleLabel}</>
                             )}
                         </Button>
                     </div>
@@ -532,6 +540,20 @@ export function LeadForm({
                                             </Button>
                                         )}
                                     </div>
+                                </div>
+                            )}
+                            {!scheduleSummary?.meetingLink && !!onShareSchedule && (
+                                <div className="grid gap-1">
+                                    <span className="text-foreground">Link público</span>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="w-fit"
+                                onClick={onShareSchedule}
+                            >
+                                <Share2 data-icon="inline-start" />
+                                Compartilhar {isPreSchedule ? "pré-agendamento" : "agendamento"}
+                            </Button>
                                 </div>
                             )}
                             {!!scheduleSummary?.meetingNotes && (

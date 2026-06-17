@@ -57,14 +57,23 @@ export function PublicScheduleShareDialog({
   const isReady = status === "ready" && !!data;
   const isWithinWindow = timeLeft !== null && timeLeft <= 0;
   const joinAllowed = isWithinWindow && !!data?.meetingLink;
+  const isPreSchedule = data?.isPreSchedule === true;
+  const dialogTitle = isPreSchedule ? "Pré-agendamento" : "Agendamento";
+  const badgeLabel = joinAllowed
+    ? "Reunião pronta"
+    : isPreSchedule
+    ? "Pré-agendamento"
+    : "Aguardando liberação";
 
   return (
     <Dialog open>
       <DialogContent className="max-h-[90vh] flex flex-col border-border bg-surface-3 shadow-[var(--precision-shadow-2)] sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Agendamento</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogDescription>
-            Resumo público da reunião compartilhada no Corretor Studio.
+            {isPreSchedule
+              ? "Resumo público do pré-agendamento compartilhado no Corretor Studio."
+              : "Resumo público da reunião compartilhada no Corretor Studio."}
           </DialogDescription>
         </DialogHeader>
 
@@ -93,7 +102,9 @@ export function PublicScheduleShareDialog({
               <div className="rounded-2xl border border-border bg-surface-2 px-4 py-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-col gap-1">
-                    <p className="text-sm text-muted-foreground">Reunião com {data.leadName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {isPreSchedule ? "Pré-agendamento com" : "Reunião com"} {data.leadName}
+                    </p>
                     <h2 className="text-xl font-semibold text-foreground">{data.meetingTitle}</h2>
                   </div>
                   <Badge
@@ -105,7 +116,7 @@ export function PublicScheduleShareDialog({
                         : "border-[color:var(--semantic-warning-border)] text-[color:var(--semantic-warning)]"
                     )}
                   >
-                    {joinAllowed ? "Reunião pronta" : "Aguardando liberação"}
+                    {badgeLabel}
                   </Badge>
                 </div>
 
@@ -137,6 +148,8 @@ export function PublicScheduleShareDialog({
                     ? "Verificando disponibilidade..."
                     : joinAllowed
                     ? "Sua reunião está pronta. Clique para acessar."
+                    : isPreSchedule
+                    ? "Este pré-agendamento será liberado quando a transferência for concluída e o link da reunião for gerado."
                     : formatCountdown(timeLeft)}
                 </p>
                 <Button
@@ -151,7 +164,7 @@ export function PublicScheduleShareDialog({
                       Acessar reunião
                     </a>
                   ) : (
-                    <span>Acessar reunião</span>
+                    <span>{isPreSchedule ? "Aguardando link da reunião" : "Acessar reunião"}</span>
                   )}
                 </Button>
               </div>

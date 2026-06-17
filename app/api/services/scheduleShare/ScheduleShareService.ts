@@ -74,6 +74,7 @@ export class ScheduleShareService implements IScheduleShareService {
         meetingType: resolvedMeetingType,
         expiresAt: shareExpiresAt.toISOString(),
         timezone: lead.closerTimezone ?? DEFAULT_TZ,
+        isPreSchedule: lead.isTransfer === true,
       },
     };
   }
@@ -119,6 +120,7 @@ export class ScheduleShareService implements IScheduleShareService {
       timezone: schedule.closerTimezone ?? DEFAULT_TZ,
       joinAllowed,
       meetingLink: joinAllowed ? resolvedMeetingLink : null,
+      isPreSchedule: schedule.leadIsTransfer === true,
     };
   }
 }
