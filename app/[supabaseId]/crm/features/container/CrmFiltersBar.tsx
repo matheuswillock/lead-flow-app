@@ -70,6 +70,7 @@ const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersStat
   scheduledPeriodStart: filters.scheduledPeriodStart || "",
   scheduledPeriodEnd: filters.scheduledPeriodEnd || "",
   onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
+  onlyTransfer: filters.onlyTransfer === true,
 });
 
 const areCrmFiltersEqual = (left: CrmFiltersState, right: CrmFiltersState) =>
@@ -241,6 +242,7 @@ export function CrmFiltersBar() {
       );
     }
     if (queryJson.onlyMeetingsHeld) parts.push("Reuniões realizadas");
+    if (queryJson.onlyTransfer) parts.push("Transferência");
     if (parts.length === 0) return "Sem filtros aplicados";
     return parts.join(" • ");
   };
@@ -350,6 +352,8 @@ export function CrmFiltersBar() {
         onToggleMeetingHeld={(value) =>
           setCrmFilter("onlyMeetingsHeld", value)
         }
+        transfer={crmFilters.onlyTransfer}
+        onToggleTransfer={(value) => setCrmFilter("onlyTransfer", value)}
       />
       {responsibleOptions.length > 0 && (
         <LeadsMultiFilter

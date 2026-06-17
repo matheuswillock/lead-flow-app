@@ -188,6 +188,7 @@ export async function GET(request: NextRequest) {
       role: membership.role,
       functions: membership.functions,
       membershipCreatedAt: membership.createdAt,
+      isPending: false,
       pendingPayment: pendingByName.get(membership.team.name) ?? null,
     }));
 
@@ -212,13 +213,14 @@ export async function GET(request: NextRequest) {
             : pendingByName.get(teamName)?.paymentMethod || billingType;
 
         return {
-          id: `pending-${action.id}`,
+          id: action.id,
           name: teamName,
           masterId: profile.id,
           isDefault: false,
           role: "manager",
           functions: [],
           membershipCreatedAt: action.createdAt,
+          isPending: true,
           pendingPayment: {
             id: action.id,
             paymentId: action.paymentId || "",

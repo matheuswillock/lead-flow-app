@@ -92,6 +92,8 @@ interface IBoardContextState {
   setQuery: (query: string) => void;
   onlyMeetingsHeld: boolean;
   setOnlyMeetingsHeld: (value: boolean) => void;
+  onlyTransfer: boolean;
+  setOnlyTransfer: (value: boolean) => void;
   leadCardDisplay: LeadCardDisplaySettings;
   setLeadCardDisplay: Dispatch<SetStateAction<LeadCardDisplaySettings>>;
   data: Record<ColumnKey, Lead[]>;
@@ -207,6 +209,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
+  const [onlyTransfer, setOnlyTransfer] = useState(false);
   const [leadCardDisplay, setLeadCardDisplay] = useState<LeadCardDisplaySettings>(
     DEFAULT_LEAD_CARD_DISPLAY
   );
@@ -254,6 +257,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setScheduledPeriodStart(externalFilters.scheduledPeriodStart);
     setScheduledPeriodEnd(externalFilters.scheduledPeriodEnd);
     setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
+    setOnlyTransfer(externalFilters.onlyTransfer);
   }, [externalFilters]);
 
   const [open, setOpen] = useState(false);
@@ -1195,6 +1199,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     const inCloser = (l: Lead) =>
       closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
     const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
+    const inTransfer = (l: Lead) => !onlyTransfer || l.isTransfer === true;
     const inPeriod = (l: Lead) => {
       const createdKey = formatDateKey(l.createdAt, tz);
       if (!createdKey) return false;
@@ -1225,6 +1230,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               inResponsible(l) &&
               inCloser(l) &&
               inMeetingsHeld(l) &&
+              inTransfer(l) &&
               inPeriod(l) &&
               inScheduledPeriod(l)
           )
@@ -1238,6 +1244,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     assignedUsers,
     closerFilter,
     onlyMeetingsHeld,
+    onlyTransfer,
     periodStart,
     periodEnd,
     scheduledPeriodStart,
@@ -1267,6 +1274,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       setQuery,
       onlyMeetingsHeld,
       setOnlyMeetingsHeld,
+      onlyTransfer,
+      setOnlyTransfer,
       leadCardDisplay,
       setLeadCardDisplay,
       data,
@@ -1319,6 +1328,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       isLoading,
       query,
       onlyMeetingsHeld,
+      onlyTransfer,
       leadCardDisplay,
       data,
       filtered,

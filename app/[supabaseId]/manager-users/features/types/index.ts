@@ -16,6 +16,7 @@ export interface ManagerUser {
   managerId?: string; // Para operators
   canCreateAccountUsers?: boolean;
   canManageAccountTeams?: boolean;
+  canTransferAccountLeads?: boolean;
   leadsCount?: number; // Contador de leads
   meetingsCount?: number; // Contador de agendamentos (closer)
   hasPermanentSubscription?: boolean; // Indica assinatura permanente
@@ -72,6 +73,7 @@ export interface ManagerUserTeamSummary {
   id: string;
   name: string;
   leadsCount: number;
+  scheduledLeadsCount: number;
   meetingsCount: number;
 }
 
@@ -88,6 +90,7 @@ export const CreateManagerUserSchema = z.object({
   billingType: z.enum(["PIX", "CREDIT_CARD"]).optional().default("PIX"),
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
+  canTransferAccountLeads: z.boolean().optional(),
 });
 
 export const UpdateManagerUserSchema = z.object({
@@ -101,6 +104,7 @@ export const UpdateManagerUserSchema = z.object({
     .optional(),
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
+  canTransferAccountLeads: z.boolean().optional(),
 });
 
 // Tipos inferidos dos schemas

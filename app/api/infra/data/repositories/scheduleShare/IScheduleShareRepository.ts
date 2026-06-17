@@ -7,6 +7,7 @@ export type LeadForScheduleShare = {
   meetingLink: string | null;
   meetingType: string | null;
   closerTimezone: string | null;
+  isTransfer: boolean;
 };
 
 export type ScheduleForScheduleShare = {
@@ -33,6 +34,7 @@ export type PublicScheduleShareRecord = {
   leadMeetingLink: string | null;
   leadMeetingType: string | null;
   closerTimezone: string | null;
+  leadIsTransfer: boolean;
 };
 
 export interface IScheduleShareRepository {

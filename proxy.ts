@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/auth-sessions"
 import { isManagerLikeRole, isBackofficeRole } from "@/lib/roles"
+import * as Sentry from "@sentry/nextjs"
 
 // Define protected route prefixes (actual URL paths)
 const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications", "/integrations", "/docs", "/pme-simulador"]
@@ -13,7 +14,7 @@ const managerOnlyRoutes = ["/manager-users", "/integrations"]
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-  
+  try {
   // Skip Proxy completely for webhook routes
   if (pathname.startsWith('/api/webhooks')) {
     return NextResponse.next();
@@ -203,6 +204,13 @@ export async function proxy(request: NextRequest) {
 
   // User is authenticated and accessing correct route; continue with refreshed cookies
   return response
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { layer: "middleware" },
+      extra: { pathname },
+    })
+    return NextResponse.next()
+  }
 }
 
 export const config = {

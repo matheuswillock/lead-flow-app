@@ -98,6 +98,7 @@ export function UserFormDialog({
           functions: user?.functions || [],
           canCreateAccountUsers: user?.canCreateAccountUsers ?? false,
           canManageAccountTeams: user?.canManageAccountTeams ?? false,
+          canTransferAccountLeads: user?.canTransferAccountLeads ?? false,
         }
       : {
           name: "",
@@ -107,6 +108,7 @@ export function UserFormDialog({
           billingType: "PIX",
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
+          canTransferAccountLeads: false,
         },
   });
 
@@ -121,6 +123,7 @@ export function UserFormDialog({
           functions: user.functions || [],
           canCreateAccountUsers: user.canCreateAccountUsers ?? false,
           canManageAccountTeams: user.canManageAccountTeams ?? false,
+          canTransferAccountLeads: user.canTransferAccountLeads ?? false,
         });
       } else {
         form.reset({
@@ -131,6 +134,7 @@ export function UserFormDialog({
           billingType: "PIX",
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
+          canTransferAccountLeads: false,
         });
       }
     }
@@ -240,6 +244,10 @@ export function UserFormDialog({
           currentUser?.isMaster && selectedRole === "manager"
             ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canManageAccountTeams === true
             : undefined,
+        canTransferAccountLeads:
+          currentUser?.isMaster && (selectedRole === "manager" || selectedRole === "backoffice")
+            ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canTransferAccountLeads === true
+            : undefined,
       };
 
       await onSubmit(nextData);
@@ -264,7 +272,8 @@ export function UserFormDialog({
   const isManagerLike = isManagerLikeRole(user?.role);
   const canEditRole = !isOwnProfile || !isManagerLike;
   const selectedRole = form.watch("role");
-  const showDelegatedPermissions = currentUser?.isMaster && selectedRole === "manager";
+  const showDelegatedPermissions =
+    currentUser?.isMaster && (selectedRole === "manager" || selectedRole === "backoffice");
   const canEditDelegatedPermissions = showDelegatedPermissions && !isOwnProfile;
 
   return (
@@ -470,37 +479,63 @@ export function UserFormDialog({
                   </p>
                 </div>
 
-                <FormField
-                  control={form.control}
-                  name="canCreateAccountUsers"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-md border border-input px-3 py-3">
-                      <div className="space-y-1">
-                        <FormLabel className="m-0">Pode cadastrar novos usuários</FormLabel>
-                        <FormDescription className="m-0">
-                          Permite solicitar novos usuários da conta sujeitos à cobrança incremental.
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value === true}
-                          onCheckedChange={field.onChange}
-                          disabled={loading || !canEditDelegatedPermissions}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+                {selectedRole === "manager" ? (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="canCreateAccountUsers"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                          <div className="space-y-1">
+                            <FormLabel className="m-0">Pode cadastrar novos usuários</FormLabel>
+                            <FormDescription className="m-0">
+                              Permite solicitar novos usuários da conta sujeitos à cobrança incremental.
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value === true}
+                              onCheckedChange={field.onChange}
+                              disabled={loading || !canEditDelegatedPermissions}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="canManageAccountTeams"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                          <div className="space-y-1">
+                            <FormLabel className="m-0">Pode gerenciar times</FormLabel>
+                            <FormDescription className="m-0">
+                              Permite criar, editar e deletar times da conta, sem transferir ownership.
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value === true}
+                              onCheckedChange={field.onChange}
+                              disabled={loading || !canEditDelegatedPermissions}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                ) : null}
 
                 <FormField
                   control={form.control}
-                  name="canManageAccountTeams"
+                  name="canTransferAccountLeads"
                   render={({ field }) => (
                     <FormItem className="flex items-center justify-between rounded-md border border-input px-3 py-3">
                       <div className="space-y-1">
-                        <FormLabel className="m-0">Pode gerenciar times</FormLabel>
+                        <FormLabel className="m-0">Pode transferir leads entre times</FormLabel>
                         <FormDescription className="m-0">
-                          Permite criar, editar e deletar times da conta, sem transferir ownership.
+                          Permite repassar leads para outro time da mesma conta e concluir a transferência com pré-agendamento.
                         </FormDescription>
                       </div>
                       <FormControl>
@@ -536,26 +571,27 @@ export function UserFormDialog({
                       <TableRow className="hover:bg-transparent">
                         <TableHead className="text-center">Time</TableHead>
                         <TableHead className="text-center">Leads</TableHead>
+                        <TableHead className="text-center">Agendados</TableHead>
                         <TableHead className="text-center">Reuniões realizadas</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {isLoadingTeams ? (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center text-muted-foreground">
+                          <TableCell colSpan={4} className="text-center text-muted-foreground">
                             Carregando times...
                           </TableCell>
                         </TableRow>
                       ) : teamsError ? (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center text-muted-foreground">
+                          <TableCell colSpan={4} className="text-center text-muted-foreground">
                             {teamsError}
                           </TableCell>
                         </TableRow>
                       ) : otherTeams.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center text-muted-foreground">
-                            Usuário não participa de outros times.
+                          <TableCell colSpan={4} className="text-center text-muted-foreground">
+                            Usuário não participa de nenhum time.
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -563,6 +599,7 @@ export function UserFormDialog({
                           <TableRow key={team.id}>
                             <TableCell className="font-medium text-center">{team.name}</TableCell>
                             <TableCell className="text-center">{team.leadsCount ?? 0}</TableCell>
+                            <TableCell className="text-center">{team.scheduledLeadsCount ?? 0}</TableCell>
                             <TableCell className="text-center">{team.meetingsCount ?? 0}</TableCell>
                           </TableRow>
                         ))

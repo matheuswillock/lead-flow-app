@@ -81,6 +81,7 @@ export interface IProfileRepository {
       functions?: ("SDR" | "CLOSER")[];
       canCreateAccountUsers?: boolean;
       canManageAccountTeams?: boolean;
+      canTransferAccountLeads?: boolean;
     }
   ): Promise<Profile | null>;
   updateProfileIcon(

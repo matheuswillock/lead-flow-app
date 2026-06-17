@@ -33,6 +33,14 @@ function getActivityId(notification: NotificationItem) {
   return typeof metadata.activityId === "string" ? metadata.activityId : null;
 }
 
+function getScheduleShareUrl(notification: NotificationItem) {
+  const metadata = notification.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  return typeof metadata.scheduleShareUrl === "string" && metadata.scheduleShareUrl.trim()
+    ? metadata.scheduleShareUrl
+    : null;
+}
+
 function hasLeadLink(notification: NotificationItem) {
   return (
     notification.type === "ACTIVITY_MENTION" ||
@@ -168,6 +176,7 @@ export function NotificationsContainer() {
         {notifications.map((notification) => {
           const leadCode = getLeadCode(notification);
           const activityId = getActivityId(notification);
+          const scheduleShareUrl = getScheduleShareUrl(notification);
           const canOpenLead = hasLeadLink(notification) && !!leadCode;
           const isProposalPending = isProposalPendingNotification(notification);
           const googleBadge = getGoogleNotificationBadge(notification);
@@ -205,13 +214,36 @@ export function NotificationsContainer() {
                   </p>
                 </div>
                 {canOpenLead ? (
-                  <Link
-                    href={`/${supabaseId}/crm?leadCode=${encodeURIComponent(leadCode as string)}${activityId ? `&activityId=${encodeURIComponent(activityId)}` : ""}`}
+                  <div className="flex flex-col items-end gap-2">
+                    <Link
+                      href={`/${supabaseId}/crm?leadCode=${encodeURIComponent(leadCode as string)}${activityId ? `&activityId=${encodeURIComponent(activityId)}` : ""}`}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      Abrir lead
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                    {scheduleShareUrl ? (
+                      <a
+                        href={scheduleShareUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        Abrir agendamento
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                  </div>
+                ) : scheduleShareUrl ? (
+                  <a
+                    href={scheduleShareUrl}
+                    target="_blank"
+                    rel="noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                   >
-                    Abrir lead
+                    Abrir agendamento
                     <ExternalLink className="h-3.5 w-3.5" />
-                  </Link>
+                  </a>
                 ) : null}
               </div>
             </div>

@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
+import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -69,9 +69,11 @@ export interface ILeadFormProps {
         meetingNotes?: string | null;
         meetingLink?: string | null;
         meetingHeald?: "yes" | "no" | null;
+        isPreSchedule?: boolean;
         isOverdue?: boolean;
     };
     onManageSchedule?: () => void;
+    onShareSchedule?: () => void;
     canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
@@ -126,6 +128,7 @@ export function LeadForm({
     currentProfileId,
     currentUserIsSdr = false,
     currentUserIsCloser = false,
+    onShareSchedule,
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -180,6 +183,13 @@ export function LeadForm({
     );
     const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
+    const isPreSchedule = scheduleSummary?.isPreSchedule === true;
+    const scheduleSectionTitle = isPreSchedule ? "Pré-agendamento" : "Agendamento";
+    const manageScheduleLabel = scheduleSummary?.meetingDate
+        ? isPreSchedule
+            ? "Editar pré-agendamento"
+            : "Editar agendamento"
+        : "Agendar lead";
 
     useEffect(() => {
         if (!initialData) {
@@ -196,6 +206,7 @@ export function LeadForm({
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
                 (watchedValues.closerId && watchedValues.closerId.trim() !== '') ||
+                watchedValues.isTransfer === true ||
                 watchedValues.isReferral ||
                 (watchedValues.referrerLeadId && watchedValues.referrerLeadId.trim() !== '') ||
                 (watchedValues.referrerName && watchedValues.referrerName.trim() !== '') ||
@@ -219,6 +230,7 @@ export function LeadForm({
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
                 watchedValues.responsible !== initialData.responsible ||
                 watchedValues.closerId !== initialData.closerId ||
+                watchedValues.isTransfer !== initialData.isTransfer ||
                 watchedValues.isReferral !== initialData.isReferral ||
                 watchedValues.referrerLeadId !== initialData.referrerLeadId ||
                 watchedValues.referrerName !== initialData.referrerName ||
@@ -410,7 +422,7 @@ export function LeadForm({
 
             <div className="sm:col-span-2 pt-4 border-t">
                 <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">Agendamento</h3>
+                    <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
                     <div className="flex items-center gap-2">
                         {!!canToggleMeetingHeald && (
                             <Button
@@ -455,9 +467,9 @@ export function LeadForm({
                         )}
                         <Button type="button" variant="outline" onClick={onManageSchedule} disabled={!onManageSchedule}>
                             {scheduleSummary?.meetingDate ? (
-                                <><CalendarSync className="h-4 w-4" />Editar agendamento</>
+                                <><CalendarSync className="h-4 w-4" />{manageScheduleLabel}</>
                             ) : (
-                                <><CalendarClock className="h-4 w-4" />Agendar lead</>
+                                <><CalendarClock className="h-4 w-4" />{manageScheduleLabel}</>
                             )}
                         </Button>
                     </div>
@@ -515,6 +527,18 @@ export function LeadForm({
                                         >
                                             <ExternalLink className="h-4 w-4" />
                                         </Button>
+                                        {!!onShareSchedule && (
+                                            <Button
+                                                type="button"
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8 shrink-0"
+                                                onClick={onShareSchedule}
+                                                aria-label="Compartilhar agendamento"
+                                            >
+                                                <Share2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             )}

@@ -183,6 +183,7 @@ export const leadFormSchema = z.object({
   meetingLink: z.string().url("Link da reuniao invalido").optional().or(z.literal("")),
   // Allow null so UI can explicitly clear the "reuniao realizada" flag.
   meetingHeald: z.enum(["yes", "no"]).nullable().optional(),
+  isTransfer: z.boolean().optional(),
   extraGuests: z
     .string()
     .optional()
