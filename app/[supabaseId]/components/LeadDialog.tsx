@@ -302,14 +302,17 @@ export default function LeadDialog({
     if (
       detailedLead.meetingDate === currentLead.meetingDate &&
       detailedLead.meetingTitle === currentLead.meetingTitle &&
-      detailedLead.meetingType === currentLead.meetingType &&
-      detailedLead.isTransfer === currentLead.isTransfer
+      detailedLead.meetingType === currentLead.meetingType
     ) {
       return;
     }
 
+    // isTransfer is intentionally excluded: handleTransferToggle manages it
+    // via its own optimistic + server-confirmation flow. Spreading detailedLead
+    // here would revert the optimistic update before the API response arrives.
+    const { isTransfer: _isTransferIgnored, ...detailedLeadWithoutTransfer } = detailedLead;
     setLocalLead((prev) =>
-      prev && prev.id === detailedLead.id ? ({ ...prev, ...detailedLead } as Lead) : prev,
+      prev && prev.id === detailedLead.id ? ({ ...prev, ...detailedLeadWithoutTransfer } as Lead) : prev,
     );
   }, [
     currentLead,

@@ -21,7 +21,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { Lead } from "../context/BoardTypes";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import { Info } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
 import { formatLocalTimeValue } from "@/lib/dates";
 
 interface TeamMemberOption {
@@ -370,6 +370,18 @@ export function TransferBetweenTeamsDialog({
                   timeLoading={availabilityLoading}
                   timeLoadingText="Carregando agenda do closer..."
                 />
+                {!closerId && meetingDate && (
+                  <p className="text-xs text-muted-foreground">Selecione um closer para carregar os horários disponíveis.</p>
+                )}
+                {closerId && availabilityLoading && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" />
+                    Carregando horários disponíveis...
+                  </p>
+                )}
+                {closerId && meetingDate && !availabilityLoading && availableTimes.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhum horário disponível para este closer neste dia. Selecione outro closer ou outra data.</p>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
