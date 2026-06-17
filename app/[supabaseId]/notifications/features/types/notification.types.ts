@@ -4,7 +4,8 @@ export type NotificationTypeValue =
   | "TEAM_MEMBER_ADDED"
   | "TEAM_MEMBER_REMOVED"
   | "LEAD_SCHEDULE_CREATED"
-  | "LEAD_PROPOSAL_PENDING";
+  | "LEAD_PROPOSAL_PENDING"
+  | "LEAD_TRANSFER_ACTIVATED";
 
 export type NotificationMetadata = {
   event?: "GOOGLE_CONNECTED" | "GOOGLE_DISCONNECTED" | "TASK_ASSIGNED" | "TASK_COMPLETED" | string;
@@ -27,6 +28,7 @@ export type NotificationMetadata = {
   notes?: string | null;
   previousStatus?: string;
   nextStatus?: string;
+  scheduleShareUrl?: string | null;
 };
 
 export type MarkAllAsReadOptions = {

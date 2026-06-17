@@ -43,11 +43,6 @@ export class ScheduleShareService implements IScheduleShareService {
       throw new Error("Compartilhamento público disponível apenas para agendamentos online.");
     }
 
-    const resolvedMeetingLink = schedule.meetingLink?.trim() || lead.meetingLink?.trim() || null;
-    if (!resolvedMeetingLink) {
-      throw new Error("Agendamento sem link de reunião válido para compartilhamento.");
-    }
-
     const resolvedMeetingDate = schedule.date ?? lead.meetingDate;
     if (!resolvedMeetingDate) {
       throw new Error("Agendamento sem data válida para compartilhamento.");
@@ -107,12 +102,9 @@ export class ScheduleShareService implements IScheduleShareService {
 
     const resolvedMeetingDate = schedule.date;
     const resolvedMeetingLink = schedule.meetingLink?.trim() || schedule.leadMeetingLink?.trim() || null;
-    if (!resolvedMeetingLink) {
-      throw new Error("Agendamento sem link de reunião disponível.");
-    }
 
     const availableAt = getScheduleJoinAvailableAt(resolvedMeetingDate);
-    const joinAllowed = new Date().getTime() >= availableAt.getTime();
+    const joinAllowed = !!resolvedMeetingLink && new Date().getTime() >= availableAt.getTime();
 
     return {
       leadName: schedule.leadName,

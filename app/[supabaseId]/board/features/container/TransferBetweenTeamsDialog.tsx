@@ -72,23 +72,23 @@ export function TransferBetweenTeamsDialog({
   const sdrs = teamMembers.filter((m) => m.functions.includes("SDR"));
 
   useEffect(() => {
-    if (!open) {
-      setTargetTeamId("");
-      setCloserId("");
-      setSdrId("");
-      setTeamMembers([]);
-      setAllowedTargetTeamIds([]);
-      setScheduleEnabled(false);
-      setMeetingDate(lead.isTransfer && lead.meetingDate ? new Date(lead.meetingDate) : undefined);
-      setMeetingTitle(lead.isTransfer ? lead.meetingTitle ?? "" : "");
-      setMeetingType(
-        lead.isTransfer && (lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
-          ? lead.meetingType
-          : "call"
-      );
-      setAvailableTimes([]);
-      setAvailabilityLoading(false);
-    }
+    setTargetTeamId("");
+    setCloserId("");
+    setSdrId("");
+    setTeamMembers([]);
+    setAllowedTargetTeamIds([]);
+    setScheduleEnabled(open && lead.isTransfer === true && !!lead.meetingDate);
+    setMeetingDate(open && lead.isTransfer && lead.meetingDate ? new Date(lead.meetingDate) : undefined);
+    setMeetingTitle(open && lead.isTransfer ? lead.meetingTitle ?? "" : "");
+    setMeetingType(
+      open &&
+        lead.isTransfer &&
+        (lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
+        ? lead.meetingType
+        : "call"
+    );
+    setAvailableTimes([]);
+    setAvailabilityLoading(false);
   }, [open, lead]);
 
   useEffect(() => {
@@ -115,14 +115,6 @@ export function TransferBetweenTeamsDialog({
       active = false;
     };
   }, [open, activeTeamId, supabaseId]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    if (lead.isTransfer && lead.meetingDate) {
-      setScheduleEnabled(true);
-    }
-  }, [open, lead]);
 
   useEffect(() => {
     if (!targetTeamId || !supabaseId) {
@@ -202,7 +194,7 @@ export function TransferBetweenTeamsDialog({
         "x-supabase-user-id": supabaseId,
         "x-team-id": targetTeamId,
       },
-      body: JSON.stringify({ closerId, date: meetingDateKey }),
+      body: JSON.stringify({ closerId, date: meetingDateKey, excludeLeadId: lead.id }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -220,9 +212,13 @@ export function TransferBetweenTeamsDialog({
     return () => {
       active = false;
     };
-  }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, targetTeamId]);
+  }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, targetTeamId, lead.id]);
 
-  const canSubmit = !!targetTeamId && !!closerId && !submitting && (!scheduleEnabled || !!meetingDate);
+  const canSubmit =
+    !!targetTeamId &&
+    !!closerId &&
+    !submitting &&
+    (!scheduleEnabled || (!!meetingDate && !availabilityLoading && availableTimes.length > 0));
 
   const handleSubmit = async () => {
     if (!canSubmit || !supabaseId) return;

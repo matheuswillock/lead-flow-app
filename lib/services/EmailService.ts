@@ -35,6 +35,7 @@ export interface LeadTransferActivatedEmailData {
   leadCurrentHealthPlan?: string | null;
   leadCurrentValue?: number | null;
   leadNotes?: string | null;
+  scheduleShareUrl?: string | null;
 }
 
 export interface WelcomeEmailData {
@@ -1706,6 +1707,17 @@ export class EmailService {
         ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.leadCurrentValue)
         : "Não informado";
     const leadNotes = (data.leadNotes || "Sem observações").trim();
+    const scheduleShareUrl = data.scheduleShareUrl?.trim() || "";
+    const scheduleShareBlock = scheduleShareUrl
+      ? `
+          <div style="margin-top: 16px; background: #fff7ed; border: 1px solid #fed7aa; padding: 12px; border-radius: 6px;">
+            <p style="margin: 0 0 8px;"><strong>Link do formulário da reunião</strong></p>
+            <p style="margin: 0;">
+              <a href="${scheduleShareUrl}" style="color: #ff6900; text-decoration: none;">Abrir agendamento</a>
+            </p>
+          </div>
+        `
+      : "";
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
@@ -1727,6 +1739,7 @@ export class EmailService {
             <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
             <p style="margin: 0; white-space: pre-wrap;">${leadNotes}</p>
           </div>
+          ${scheduleShareBlock}
         </div>
       </div>
     `;

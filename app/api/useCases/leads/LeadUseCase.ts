@@ -33,6 +33,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { scheduleShareService } from "@/app/api/services/scheduleShare/ScheduleShareService";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -355,6 +356,12 @@ export class LeadUseCase implements ILeadUseCase {
         }
       });
 
+      if (lead.isTransfer === true) {
+        this.handleTransferActivationAlert(lead).catch((err) =>
+          console.error("[LeadUseCase][handleTransferActivationAlert] Background error:", err)
+        );
+      }
+
       return new Output(true, ["Lead criado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
       console.error("Erro ao criar lead:", error);
@@ -441,6 +448,7 @@ export class LeadUseCase implements ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<Output> {
     try {
@@ -483,6 +491,7 @@ export class LeadUseCase implements ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
       role: string;
       teamId?: string;
     }
@@ -527,6 +536,7 @@ export class LeadUseCase implements ILeadUseCase {
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
+          onlyTransfer: options.onlyTransfer,
         });
 
         leads = result.leads;
@@ -537,6 +547,7 @@ export class LeadUseCase implements ILeadUseCase {
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
+          onlyTransfer: options.onlyTransfer,
         });
 
         leads = result.leads;
@@ -1699,10 +1710,16 @@ export class LeadUseCase implements ILeadUseCase {
         data.sdrId ?? null
       );
 
-      await prisma.lead.update({
+      const transferStateLead = await prisma.lead.update({
         where: { id: transferredLead.id },
         data: {
           isTransfer: false,
+        },
+        include: {
+          manager: { select: { id: true, fullName: true, email: true } },
+          assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          _count: { select: { attachments: true } },
         },
       });
 
@@ -1734,7 +1751,7 @@ export class LeadUseCase implements ILeadUseCase {
             true,
             [],
             ["Lead transferido, mas o agendamento falhou: " + (scheduleOutput.errorMessages?.[0] ?? "erro desconhecido")],
-            this.transformToDTO(transferredLead)
+            this.transformToDTO(transferStateLead)
           );
         }
       }
@@ -1754,7 +1771,13 @@ export class LeadUseCase implements ILeadUseCase {
         },
       });
 
-      return new Output(true, [], ["Lead transferido entre times com sucesso"], this.transformToDTO(transferredLead));
+      const finalLead = await this.leadRepository.findById(transferredLead.id);
+      return new Output(
+        true,
+        [],
+        ["Lead transferido entre times com sucesso"],
+        this.transformToDTO(finalLead ?? transferStateLead)
+      );
     } catch (error) {
       console.error("[transferLeadBetweenTeams] Erro ao transferir lead entre times:", error);
       return new Output(false, [], ["Erro interno do servidor ao transferir lead entre times"], null);
@@ -2045,6 +2068,51 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
+  private async ensureTransferPreSchedule(lead: any): Promise<void> {
+    if (!lead?.id || !lead?.meetingDate) return;
+
+    const meetingDate = lead.meetingDate instanceof Date ? lead.meetingDate : new Date(lead.meetingDate);
+    if (Number.isNaN(meetingDate.getTime())) return;
+
+    await prisma.leadsSchedule.upsert({
+      where: { leadId: lead.id },
+      create: {
+        leadId: lead.id,
+        date: meetingDate,
+        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
+        notes: lead.meetingNotes || lead.notes || null,
+        meetingLink: lead.meetingLink || null,
+        meetingType: lead.meetingType || "online",
+        extraGuests: [],
+      },
+      update: {
+        date: meetingDate,
+        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
+        notes: lead.meetingNotes || lead.notes || null,
+        meetingLink: lead.meetingLink || null,
+        meetingType: lead.meetingType || "online",
+      },
+    });
+  }
+
+  private async resolveTransferScheduleShareUrl(lead: any, teamId: string): Promise<string | null> {
+    if (!lead?.meetingDate) {
+      return null;
+    }
+
+    try {
+      await this.ensureTransferPreSchedule(lead);
+      const share = await scheduleShareService.createPublicShare({
+        leadId: lead.id,
+        teamId,
+      });
+      return share.publicUrl;
+    } catch (error) {
+      console.error("[handleTransferActivationAlert] Schedule share error:", error);
+      return null;
+    }
+  }
+
   private async handleTransferActivationAlert(lead: any): Promise<void> {
     const teamId = lead.teamId as string | null;
     if (!teamId) return;
@@ -2089,6 +2157,7 @@ export class LeadUseCase implements ILeadUseCase {
         ...(masterProfile?.email ? [masterProfile.email] : []),
       ];
       const uniqueEmails = Array.from(new Set(emailAddresses));
+      const scheduleShareUrl = await this.resolveTransferScheduleShareUrl(lead, teamId);
 
       await Promise.all([
         uniqueEmails.length > 0
@@ -2101,6 +2170,7 @@ export class LeadUseCase implements ILeadUseCase {
                 leadCurrentHealthPlan: lead.currentHealthPlan,
                 leadCurrentValue: lead.currentValue,
                 leadNotes: lead.notes,
+                scheduleShareUrl,
               })
               .catch((err) => console.error("[handleTransferActivationAlert] E-mail error:", err))
           : Promise.resolve(),
@@ -2111,6 +2181,7 @@ export class LeadUseCase implements ILeadUseCase {
                 recipientProfileIds: recipientIds,
                 leadId: lead.id,
                 leadName: lead.name,
+                scheduleShareUrl,
               })
               .catch((err) => console.error("[handleTransferActivationAlert] Notification error:", err))
           : Promise.resolve(),

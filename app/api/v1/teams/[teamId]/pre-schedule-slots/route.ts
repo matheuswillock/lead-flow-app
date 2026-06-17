@@ -27,6 +27,7 @@ export async function GET(
     }
 
     const dateParam = request.nextUrl.searchParams.get("date");
+    const excludeLeadId = request.nextUrl.searchParams.get("excludeLeadId");
     if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
       const output = new Output(false, [], ["Parâmetro date inválido. Use formato YYYY-MM-DD."], null);
       return NextResponse.json(output, { status: 400 });
@@ -39,6 +40,7 @@ export async function GET(
       where: {
         teamId,
         isTransfer: true,
+        ...(excludeLeadId ? { id: { not: excludeLeadId } } : {}),
         closerId: null,
         meetingDate: { gte: startOfDay, lt: endOfDay },
         status: {

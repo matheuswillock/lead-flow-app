@@ -68,6 +68,7 @@ type LeadTransferActivatedNotificationInput = {
   recipientProfileIds: string[];
   leadId: string;
   leadName: string;
+  scheduleShareUrl?: string | null;
 };
 
 type ListNotificationsInput = {
@@ -469,6 +470,7 @@ class NotificationService {
         metadata: {
           leadId: input.leadId,
           leadName: input.leadName,
+          scheduleShareUrl: input.scheduleShareUrl ?? null,
         },
       })),
       skipDuplicates: false,

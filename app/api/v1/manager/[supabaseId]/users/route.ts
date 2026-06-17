@@ -184,23 +184,6 @@ async function finalizeUserCreation(args: {
   const { profile, teamMemberRecord } = args;
   const email = normalizeEmail(args.userData.email);
 
-  // Profile is committed at this point — notification FK will succeed
-  try {
-    await notificationService.createTeamMembershipNotification({
-      teamId: args.teamId,
-      actorProfileId: args.requesterProfileId,
-      actorName: args.actorName,
-      teamName: args.teamName,
-      recipientProfileId: profile.id,
-      type: NotificationType.TEAM_MEMBER_ADDED,
-    });
-  } catch (notificationError) {
-    console.error(
-      "[ManagerUsersRoute][finalizeUserCreation] Erro ao criar notificação de membro adicionado:",
-      notificationError
-    );
-  }
-
   // External API calls outside any transaction — no timeout risk
   try {
     const supabaseAdmin = createSupabaseAdmin();
@@ -227,7 +210,7 @@ async function finalizeUserCreation(args: {
       throw new Error("Erro ao gerar link de convite");
     }
 
-    const supabaseUserId = (data as any)?.user?.id as string | undefined;
+    const supabaseUserId = data.user?.id;
     const inviteLink = buildSetPasswordEmailAuthLink(data, "invite");
 
     if (supabaseUserId) {
@@ -250,6 +233,22 @@ async function finalizeUserCreation(args: {
       managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
       inviteUrl: inviteLink,
     });
+
+    try {
+      await notificationService.createTeamMembershipNotification({
+        teamId: args.teamId,
+        actorProfileId: args.requesterProfileId,
+        actorName: args.actorName,
+        teamName: args.teamName,
+        recipientProfileId: profile.id,
+        type: NotificationType.TEAM_MEMBER_ADDED,
+      });
+    } catch (notificationError) {
+      console.error(
+        "[ManagerUsersRoute][finalizeUserCreation] Erro ao criar notificação de membro adicionado:",
+        notificationError
+      );
+    }
   } catch (inviteError) {
     console.error("[ManagerUsersRoute][finalizeUserCreation] Invite falhou:", {
       email,

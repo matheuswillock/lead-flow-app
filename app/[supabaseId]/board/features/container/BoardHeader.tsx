@@ -53,6 +53,8 @@ export default function BoardHeader({
     setCloserFilter,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
+    onlyTransfer,
+    setOnlyTransfer,
     statusLabels,
     data,
     isLoading,
@@ -118,6 +120,7 @@ export default function BoardHeader({
     statusFilter.length > 0 ||
     closerFilter.length > 0 ||
     onlyMeetingsHeld ||
+    onlyTransfer ||
     Boolean(periodStart) ||
     Boolean(periodEnd);
 
@@ -127,6 +130,7 @@ export default function BoardHeader({
     setStatusFilter([]);
     setCloserFilter([]);
     setOnlyMeetingsHeld(false);
+    setOnlyTransfer(false);
     setPeriodStart("");
     setPeriodEnd("");
     setDateRange(undefined);
@@ -231,6 +235,8 @@ export default function BoardHeader({
             onChangeStatuses={(values) => setStatusFilter(values as typeof statusFilter)}
             meetingHeld={onlyMeetingsHeld}
             onToggleMeetingHeld={setOnlyMeetingsHeld}
+            transfer={onlyTransfer}
+            onToggleTransfer={setOnlyTransfer}
           />
           {responsibleOptions.length > 0 && (
             <LeadsMultiFilter

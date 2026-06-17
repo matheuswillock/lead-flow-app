@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { formatIntimezone } from "@/lib/dates";
+import { cn } from "@/lib/utils";
 import { ExternalLink, RefreshCcw } from "lucide-react";
 import type { PublicScheduleShareData } from "../services/IPublicScheduleShareService";
 
@@ -91,17 +92,18 @@ export function PublicScheduleShareDialog({
             <>
               <div className="rounded-2xl border border-border bg-surface-2 px-4 py-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
+                  <div className="flex min-w-0 flex-col gap-1">
                     <p className="text-sm text-muted-foreground">Reunião com {data.leadName}</p>
                     <h2 className="text-xl font-semibold text-foreground">{data.meetingTitle}</h2>
                   </div>
                   <Badge
                     variant="outline"
-                    className={
+                    className={cn(
+                      "shrink-0 whitespace-nowrap",
                       joinAllowed
                         ? "border-[color:var(--semantic-success-border)] text-[color:var(--semantic-success)]"
                         : "border-[color:var(--semantic-warning-border)] text-[color:var(--semantic-warning)]"
-                    }
+                    )}
                   >
                     {joinAllowed ? "Reunião pronta" : "Aguardando liberação"}
                   </Badge>

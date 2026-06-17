@@ -9,6 +9,7 @@ import { Output } from "@/lib/output";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
+import { getScheduleShareExpiry } from "@/lib/schedule-share";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import type { Attachment } from "resend";
@@ -544,6 +545,10 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
 
     // --- Persist schedule + update lead ---
+    const refreshedPublicShareExpiresAt = existingSchedule?.publicShareTokenHash
+      ? getScheduleShareExpiry(meetingDate)
+      : undefined;
+
     const persisted = await prisma.$transaction(async (tx) => {
       const inviteDispatchLastPayloadForDb =
         inviteDispatchLastPayload === null ? Prisma.JsonNull : (inviteDispatchLastPayload ?? undefined);
@@ -566,6 +571,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           inviteDispatchLastAttemptAt,
           inviteDispatchLastError,
           inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
+          publicShareExpiresAt: refreshedPublicShareExpiresAt,
         },
         update: {
           date: meetingDate,
@@ -581,6 +587,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           inviteDispatchLastAttemptAt,
           inviteDispatchLastError,
           inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
+          publicShareExpiresAt: refreshedPublicShareExpiresAt,
         },
       });
 

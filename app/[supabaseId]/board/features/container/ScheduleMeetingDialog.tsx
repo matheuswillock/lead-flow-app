@@ -358,7 +358,7 @@ export function ScheduleMeetingDialog({
     }
     let isMounted = true;
     setPreSlotsLoading(true);
-    fetch(`/api/v1/teams/${activeTeamId}/pre-schedule-slots?date=${meetingDateKey}`, {
+    fetch(`/api/v1/teams/${activeTeamId}/pre-schedule-slots?date=${meetingDateKey}&excludeLeadId=${lead.id}`, {
       headers: {
         "x-supabase-user-id": supabaseId,
         "x-team-id": activeTeamId,
@@ -379,7 +379,7 @@ export function ScheduleMeetingDialog({
         if (isMounted) setPreSlotsLoading(false);
       });
     return () => { isMounted = false; };
-  }, [isPreSchedule, open, activeTeamId, supabaseId, meetingDateKey]);
+  }, [isPreSchedule, open, activeTeamId, supabaseId, meetingDateKey, lead.id]);
 
   const preScheduleAvailableTimes = useMemo(() => {
     if (!isPreSchedule || !isValidDate(meetingDate) || !meetingDateKey) return undefined;
@@ -462,28 +462,28 @@ export function ScheduleMeetingDialog({
   }, [shareUrl]);
 
   const submitSchedule = useCallback(async (confirmNoShowSchedule: boolean, shouldShare = false) => {
-    if (isOnlineMeeting && !isValidDate(meetingDate)) {
+    if ((isOnlineMeeting || isPreSchedule) && !isValidDate(meetingDate)) {
       toast.error("Selecione uma data e hora para o agendamento");
       return;
     }
     const scheduledMeetingDate = isValidDate(meetingDate) ? meetingDate : new Date();
-    if (isOnlineMeeting && !meetingTitle.trim()) {
-      toast.error("Informe o titulo da reunião");
+    if ((isOnlineMeeting || isPreSchedule) && !meetingTitle.trim()) {
+      toast.error("Informe o título da reunião");
       return;
     }
-    if (!closerId) {
-      toast.error("Selecione um closer para a reuniao");
+    if (!isPreSchedule && !closerId) {
+      toast.error("Selecione um closer para a reunião");
       return;
     }
-    if (isOnlineMeeting && !isValidEmail(leadEmailDraft)) {
+    if (!isPreSchedule && isOnlineMeeting && !isValidEmail(leadEmailDraft)) {
       toast.error("Informe um e-mail válido para agendamento online.");
       return;
     }
-    if (isOnlineMeeting && requiresManualMeetingLink && !meetingLink.trim()) {
+    if (!isPreSchedule && isOnlineMeeting && requiresManualMeetingLink && !meetingLink.trim()) {
       toast.error("Este closer não tem Google conectado. Informe um link manual da reunião.");
       return;
     }
-    if (isOnlineMeeting && !meetingLinkValidation.isValid) {
+    if (!isPreSchedule && isOnlineMeeting && !meetingLinkValidation.isValid) {
       toast.error(meetingLinkValidation.error);
       return;
     }
@@ -499,7 +499,7 @@ export function ScheduleMeetingDialog({
       const normalizedLeadEmail = leadEmailDraft.trim().toLowerCase();
       let resolvedLeadEmail = lead.email?.trim().toLowerCase() || null;
 
-      if (isOnlineMeeting && normalizedLeadEmail !== resolvedLeadEmail) {
+      if (!isPreSchedule && isOnlineMeeting && normalizedLeadEmail !== resolvedLeadEmail) {
         const updateLeadResponse = await fetch(`/api/v1/leads/${lead.id}`, {
           method: "PUT",
           headers: {
@@ -529,14 +529,14 @@ export function ScheduleMeetingDialog({
           "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({
-          date: isOnlineMeeting ? scheduledMeetingDate.toISOString() : undefined,
-          meetingTitle: isOnlineMeeting ? meetingTitle.trim() : undefined,
+          date: isOnlineMeeting || isPreSchedule ? scheduledMeetingDate.toISOString() : undefined,
+          meetingTitle: isOnlineMeeting || isPreSchedule ? meetingTitle.trim() : undefined,
           notes: normalizedNotes,
-          meetingLink: normalizedMeetingLink || undefined,
+          meetingLink: !isPreSchedule ? normalizedMeetingLink || undefined : undefined,
           meetingType,
           closerId: closerId || undefined,
           extraGuests: guests.length ? guests : undefined,
-          transitionStatusToScheduled: true,
+          transitionStatusToScheduled: !isPreSchedule,
           confirmNoShowSchedule: confirmNoShowSchedule || undefined,
         }),
       });
@@ -588,7 +588,13 @@ export function ScheduleMeetingDialog({
       const inviteDispatch = scheduleResult.inviteDispatch;
 
       // ✅ Sucesso - Fechar dialog e atualizar UI
-      const successMessage = isOnlineMeeting
+      const successMessage = isPreSchedule
+        ? `Pré-agendamento salvo para ${formatIntimezone(
+            scheduledMeetingDate,
+            "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
+            SCHEDULE_TIMEZONE,
+          )}`
+        : isOnlineMeeting
         ? `Reunião agendada para ${formatIntimezone(
             scheduledMeetingDate,
             "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
@@ -615,18 +621,18 @@ export function ScheduleMeetingDialog({
           : meetingLink || null;
       const schedulePayload: ScheduleMeetingSuccessPayload = {
         leadId: lead.id,
-        status: scheduleResult.status ?? "scheduled",
+        status: scheduleResult.status ?? (isPreSchedule ? lead.status : "scheduled"),
         leadEmail: resolvedLeadEmail,
         meetingDate:
           typeof scheduleResult.date === "string"
             ? scheduleResult.date
-            : isOnlineMeeting
+            : isOnlineMeeting || isPreSchedule
               ? scheduledMeetingDate.toISOString()
               : null,
         meetingTitle:
           typeof scheduleResult.meetingTitle === "string"
             ? scheduleResult.meetingTitle
-            : isOnlineMeeting
+            : isOnlineMeeting || isPreSchedule
               ? meetingTitle.trim()
               : null,
         meetingNotes:
@@ -634,7 +640,7 @@ export function ScheduleMeetingDialog({
             ? scheduleResult.notes
             : normalizedNotes,
         meetingLink: resolvedMeetingLink,
-        closerId: closerId || lead.closerId || null,
+        closerId: isPreSchedule ? null : closerId || lead.closerId || null,
         extraGuests: Array.isArray(scheduleResult.extraGuests)
           ? scheduleResult.extraGuests
           : guests,
@@ -677,7 +683,7 @@ export function ScheduleMeetingDialog({
     } finally {
       setIsSubmitting(false);
     }
-  }, [SCHEDULE_TIMEZONE, activeTeamId, closerId, lead.closerId, lead.email, lead.id, lead.name, meetingDate, meetingLink, meetingLinkValidation, meetingTitle, meetingType, notes, onOpenChange, onScheduleSuccess, requestPublicShare, requiresManualMeetingLink, supabaseId, extraGuests, isOnlineMeeting]);
+  }, [SCHEDULE_TIMEZONE, activeTeamId, closerId, lead.closerId, lead.email, lead.id, lead.name, lead.status, meetingDate, meetingLink, meetingLinkValidation, meetingTitle, meetingType, notes, onOpenChange, onScheduleSuccess, requestPublicShare, requiresManualMeetingLink, supabaseId, extraGuests, isOnlineMeeting, isPreSchedule]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -798,7 +804,7 @@ export function ScheduleMeetingDialog({
             {isOnlineMeeting && !isValidDate(meetingDate) && (
               <p className="text-xs text-muted-foreground">Selecione uma data para carregar horários disponíveis.</p>
             )}
-            {isOnlineMeeting && isValidDate(meetingDate) && !closerId && (
+            {isOnlineMeeting && !isPreSchedule && isValidDate(meetingDate) && !closerId && (
               <p className="text-xs text-muted-foreground">Selecione um closer para carregar horários disponíveis.</p>
             )}
             {isOnlineMeeting && availabilityLoading && (
@@ -807,7 +813,7 @@ export function ScheduleMeetingDialog({
             {isOnlineMeeting && availabilityError && (
               <p className="text-xs text-destructive">{availabilityError}</p>
             )}
-            {isOnlineMeeting && hasAvailabilityInputs && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
+            {isOnlineMeeting && !isPreSchedule && hasAvailabilityInputs && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
               <p className="text-xs text-muted-foreground">Nenhum horário disponível para este dia.</p>
             )}
 
@@ -947,7 +953,7 @@ export function ScheduleMeetingDialog({
             >
               Cancelar
             </Button>
-            {isOnlineMeeting && mode !== "reschedule" && (
+            {isOnlineMeeting && !isPreSchedule && mode !== "reschedule" && (
               <Button
                 type="button"
                 variant="outline"

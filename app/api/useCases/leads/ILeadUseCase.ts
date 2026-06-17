@@ -45,6 +45,7 @@ export interface ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<Output>;
   getAllLeadsByUserRole(
@@ -55,6 +56,7 @@ export interface ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
       role: string;
       teamId?: string;
     }

@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const onlyTransfer = searchParams.get('onlyTransfer') === 'true';
     const teamId = request.headers.get('x-team-id') || searchParams.get('teamId');
 
     if (!role) {
@@ -102,6 +103,7 @@ export async function GET(request: NextRequest) {
       ...(search && { search }),
       ...(startDate && { startDate: new Date(startDate) }),
       ...(endDate && { endDate: new Date(endDate) }),
+      ...(onlyTransfer && { onlyTransfer }),
       role, // Adiciona o role nas opções
       teamId,
     };
