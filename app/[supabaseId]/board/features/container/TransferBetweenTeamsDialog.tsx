@@ -38,6 +38,7 @@ interface TransferBetweenTeamsDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: Lead;
   onSuccess: (lead: Lead) => void;
+  allowedTeamIds?: string[];
 }
 
 export function TransferBetweenTeamsDialog({
@@ -45,6 +46,7 @@ export function TransferBetweenTeamsDialog({
   onOpenChange,
   lead,
   onSuccess,
+  allowedTeamIds,
 }: TransferBetweenTeamsDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -101,6 +103,10 @@ export function TransferBetweenTeamsDialog({
   }, [open, lead]);
 
   useEffect(() => {
+    if (allowedTeamIds) {
+      setAllowedTargetTeamIds(allowedTeamIds);
+      return;
+    }
     if (!open || !activeTeamId || !supabaseId) return;
 
     let active = true;
@@ -123,7 +129,7 @@ export function TransferBetweenTeamsDialog({
     return () => {
       active = false;
     };
-  }, [open, activeTeamId, supabaseId]);
+  }, [open, activeTeamId, supabaseId, allowedTeamIds]);
 
   useEffect(() => {
     if (!targetTeamId || !supabaseId) {
@@ -380,7 +386,11 @@ export function TransferBetweenTeamsDialog({
                   </p>
                 )}
                 {closerId && meetingDate && !availabilityLoading && availableTimes.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Nenhum horário disponível para este closer neste dia. Selecione outro closer ou outra data.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {lead.isTransfer && lead.meetingDate
+                      ? "O horário do pré-agendamento não está disponível para este closer. Para prosseguir, selecione outro closer, escolha outro horário ou desative o agendamento abaixo."
+                      : "Nenhum horário disponível para este closer neste dia. Selecione outro closer ou outra data."}
+                  </p>
                 )}
               </div>
 
