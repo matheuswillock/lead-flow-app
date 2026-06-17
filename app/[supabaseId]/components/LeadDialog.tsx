@@ -212,6 +212,7 @@ export default function LeadDialog({
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showTransferBetweenTeamsDialog, setShowTransferBetweenTeamsDialog] = useState(false);
   const [isTransferToggling, setIsTransferToggling] = useState(false);
+  const [allowedTransferTargetIds, setAllowedTransferTargetIds] = useState<string[]>([]);
 
   useEffect(() => {
     setLocalLead(lead);
@@ -241,6 +242,7 @@ export default function LeadDialog({
   const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
   const canTransferBetweenTeams =
     isTeamMaster || Boolean(user?.canTransferAccountLeads);
+  const hasTransferTargets = allowedTransferTargetIds.length > 0;
   const {
     details: leadDetails,
     loading: leadDetailsLoading,
@@ -346,6 +348,29 @@ export default function LeadDialog({
     setSelectedMentions([]);
     setHighlightedActivityId(null);
   }, [currentLead?.id]);
+
+  useEffect(() => {
+    if (!open || !activeTeamId || !supabaseId) {
+      setAllowedTransferTargetIds([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/v1/teams/${activeTeamId}/members`, {
+      headers: { "x-supabase-user-id": supabaseId },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const ids = Array.isArray(data?.result?.transferTargets)
+          ? data.result.transferTargets.map((t: { teamId: string }) => t.teamId)
+          : [];
+        setAllowedTransferTargetIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setAllowedTransferTargetIds([]);
+      });
+    return () => { cancelled = true; };
+  }, [open, activeTeamId, supabaseId]);
 
   // teamMembers para o popover de menções — derivado do useLeadDetails (sem fetch separado)
   useEffect(() => {
@@ -2370,7 +2395,7 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    {currentLead && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && (
+                    {currentLead && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && hasTransferTargets && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -2389,7 +2414,7 @@ export default function LeadDialog({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {currentLead && canTransferBetweenTeams && (
+                    {currentLead && hasTransferTargets && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -3245,6 +3270,7 @@ export default function LeadDialog({
           open={showTransferBetweenTeamsDialog}
           onOpenChange={setShowTransferBetweenTeamsDialog}
           lead={currentLead}
+          allowedTeamIds={allowedTransferTargetIds}
           onSuccess={async (updatedLead) => {
             await applyLocalLeadPatch(updatedLead.id, updatedLead);
             await refreshLeads();
