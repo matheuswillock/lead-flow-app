@@ -32,6 +32,7 @@ export interface ProfileResponseDTO {
   isMaster: boolean;
   canCreateAccountUsers: boolean;
   canManageAccountTeams: boolean;
+  canTransferAccountLeads?: boolean;
   hasPermanentSubscription: boolean;
   managerId: string | null;
   profileIconId: string | null;
@@ -103,6 +104,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     isMaster: profile.isMaster ?? false,
     canCreateAccountUsers: profile.canCreateAccountUsers ?? false,
     canManageAccountTeams: profile.canManageAccountTeams ?? false,
+    canTransferAccountLeads: profile.canTransferAccountLeads ?? false,
     hasPermanentSubscription: profile.hasPermanentSubscription ?? false,
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,

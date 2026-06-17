@@ -12,7 +12,15 @@ export class TeamMembersRepository implements ITeamMembersRepository {
   async findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null> {
     return prisma.profile.findUnique({
       where: { supabaseId },
-      select: { id: true, email: true, fullName: true, isMaster: true },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        isMaster: true,
+        role: true,
+        canManageAccountTeams: true,
+        canTransferAccountLeads: true,
+      },
     });
   }
 
@@ -94,6 +102,26 @@ export class TeamMembersRepository implements ITeamMembersRepository {
         supabaseId: true,
       },
     });
+  }
+
+  async findTransferTargets(teamId: string) {
+    const routes = await prisma.teamTransferRoute.findMany({
+      where: { sourceTeamId: teamId },
+      select: {
+        targetTeamId: true,
+        targetTeam: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { targetTeam: { name: "asc" } },
+    });
+
+    return routes.map((item) => ({
+      teamId: item.targetTeamId,
+      teamName: item.targetTeam.name,
+    }));
   }
 
   async findExistingMember(teamId: string, profileId: string): Promise<{ id: string } | null> {

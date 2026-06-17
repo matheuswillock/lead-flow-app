@@ -116,11 +116,20 @@ export class TeamMembersUseCase {
           }));
       }
 
+      const canManageTransferRoutes =
+        profile.isMaster || (profile.role === "manager" && profile.canManageAccountTeams === true);
+
+      const transferTargets = canManageTransferRoutes
+        ? await this.repository.findTransferTargets(teamId)
+        : [];
+
       return new Output(true, [], [], {
         team: { id: team.id, name: team.name, masterId: team.masterId },
         members: filteredMembers,
         eligibleProfiles,
         transferCandidates,
+        transferTargets,
+        canManageTransferRoutes,
       });
     } catch (error) {
       console.error("[TeamMembersUseCase][listMembers] Erro ao listar membros do time:", error);

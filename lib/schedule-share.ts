@@ -1,7 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 
 const SCHEDULE_SHARE_TTL_MS = 24 * 60 * 60 * 1000;
-const MEETING_JOIN_EARLY_WINDOW_MS = 10 * 60 * 1000;
+const MEETING_JOIN_EARLY_WINDOW_MS = 15 * 60 * 1000;
 
 function getScheduleShareSecret(): string {
   const secret = process.env.ENCRYPTION_KEY;
@@ -32,7 +32,14 @@ export function parseScheduleShareToken(token: string): {
   expiresAt: Date;
 } {
   const decoded = Buffer.from(token, "base64url").toString("utf8");
-  const [scheduleId, expiresAtIso, signature] = decoded.split(".");
+  const firstDot = decoded.indexOf(".");
+  const lastDot = decoded.lastIndexOf(".");
+  if (firstDot === -1 || firstDot === lastDot) {
+    throw new Error("Token de agendamento inválido.");
+  }
+  const scheduleId = decoded.slice(0, firstDot);
+  const expiresAtIso = decoded.slice(firstDot + 1, lastDot);
+  const signature = decoded.slice(lastDot + 1);
   if (!scheduleId || !expiresAtIso || !signature) {
     throw new Error("Token de agendamento inválido.");
   }

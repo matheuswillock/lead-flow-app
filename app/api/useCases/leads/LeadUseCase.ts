@@ -109,7 +109,7 @@ export class LeadUseCase implements ILeadUseCase {
       return leadOutput;
     }
 
-    const hasMeetingData = !!(data.closerId && data.meetingDate);
+    const hasMeetingData = !data.isTransfer && !!(data.closerId && data.meetingDate);
     if (!hasMeetingData || !teamId) {
       return leadOutput;
     }
@@ -321,6 +321,7 @@ export class LeadUseCase implements ILeadUseCase {
         meetingHeald: data.meetingHeald || null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
+        isTransfer: data.isTransfer === true,
         // Novos campos de venda (sempre null na criação)
         ticket: data.ticket || null,
         contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
@@ -353,6 +354,12 @@ export class LeadUseCase implements ILeadUseCase {
           }
         }
       });
+
+      if (lead.isTransfer === true) {
+        this.handleTransferActivationAlert(lead).catch((err) =>
+          console.error("[LeadUseCase][handleTransferActivationAlert] Background error:", err)
+        );
+      }
 
       return new Output(true, ["Lead criado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
@@ -440,6 +447,7 @@ export class LeadUseCase implements ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<Output> {
     try {
@@ -482,6 +490,7 @@ export class LeadUseCase implements ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
       role: string;
       teamId?: string;
     }
@@ -526,6 +535,7 @@ export class LeadUseCase implements ILeadUseCase {
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
+          onlyTransfer: options.onlyTransfer,
         });
 
         leads = result.leads;
@@ -536,6 +546,7 @@ export class LeadUseCase implements ILeadUseCase {
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
+          onlyTransfer: options.onlyTransfer,
         });
 
         leads = result.leads;
@@ -565,7 +576,8 @@ export class LeadUseCase implements ILeadUseCase {
       const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
       const shouldTrackStatus = data.status !== undefined;
       const shouldCheckCnpj = data.cnpj !== undefined && !!data.cnpj;
-      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus || shouldCheckCnpj;
+      const shouldTrackTransfer = data.isTransfer === true;
+      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus || shouldCheckCnpj || shouldTrackTransfer;
       const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
       if (shouldTrackChanges && !existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
@@ -612,6 +624,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
+      if (data.isTransfer !== undefined) updateData.isTransfer = data.isTransfer === true;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.status !== undefined) updateData.status = data.status;
       // Novos campos de venda
@@ -723,13 +736,19 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       if (shouldTrackStatus && existingLead && existingLead.status !== lead.status) {
-        await this.handleOfferSubmissionAlert({
+        this.handleOfferSubmissionAlert({
           lead,
           previousStatus: existingLead.status,
           nextStatus: lead.status,
           actorProfileId: profileInfo.id,
           actorName: actorLabel,
-        });
+        }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
+      }
+
+      if (data.isTransfer === true && existingLead && !existingLead.isTransfer) {
+        this.handleTransferActivationAlert(lead).catch((err) =>
+          console.error("[LeadUseCase][handleTransferActivationAlert] Background error:", err)
+        );
       }
 
       return new Output(true, ["Lead atualizado com sucesso"], [], this.transformToDTO(lead));
@@ -1424,13 +1443,13 @@ export class LeadUseCase implements ILeadUseCase {
           }
         }
 
-        await this.handleOfferSubmissionAlert({
+        this.handleOfferSubmissionAlert({
           lead,
           previousStatus: existingLead.status,
           nextStatus: status,
           actorProfileId: profileInfo.id,
           actorName: actorLabel,
-        });
+        }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
       }
 
       const successMessages = ["Status do lead atualizado com sucesso"];
@@ -1595,8 +1614,8 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      if (!profileInfo.isMaster && !isManagerLikeRole(profileInfo.role)) {
-        return new Output(false, [], ["Apenas managers e masters podem transferir leads entre times"], null);
+      if (!profileInfo.isMaster && profileInfo.canTransferAccountLeads !== true) {
+        return new Output(false, [], ["Acesso negado: delegação de transferência de leads é obrigatória."], null);
       }
 
       const lead = await this.leadRepository.findById(id);
@@ -1636,6 +1655,26 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["O lead já pertence a este time"], null);
       }
 
+      const transferRoute = lead.teamId
+        ? await prisma.teamTransferRoute.findUnique({
+            where: {
+              sourceTeamId_targetTeamId: {
+                sourceTeamId: lead.teamId,
+                targetTeamId: data.targetTeamId,
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+
+      if (!transferRoute) {
+        return new Output(false, [], ["O time destino não está habilitado para receber transferências deste time"], null);
+      }
+
+      if (!data.closerId) {
+        return new Output(false, [], ["Selecione um closer do time destino para concluir a transferência"], null);
+      }
+
       const closerMember = await prisma.teamMember.findUnique({
         where: { teamId_profileId: { teamId: data.targetTeamId, profileId: data.closerId } },
         select: { functions: true },
@@ -1670,6 +1709,19 @@ export class LeadUseCase implements ILeadUseCase {
         data.sdrId ?? null
       );
 
+      const transferStateLead = await prisma.lead.update({
+        where: { id: transferredLead.id },
+        data: {
+          isTransfer: false,
+        },
+        include: {
+          manager: { select: { id: true, fullName: true, email: true } },
+          assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          _count: { select: { attachments: true } },
+        },
+      });
+
       if (data.schedule) {
         const scheduleOutput = await leadScheduleService.createSchedule({
           leadId: transferredLead.id,
@@ -1698,12 +1750,33 @@ export class LeadUseCase implements ILeadUseCase {
             true,
             [],
             ["Lead transferido, mas o agendamento falhou: " + (scheduleOutput.errorMessages?.[0] ?? "erro desconhecido")],
-            this.transformToDTO(transferredLead)
+            this.transformToDTO(transferStateLead)
           );
         }
       }
 
-      return new Output(true, [], ["Lead transferido entre times com sucesso"], this.transformToDTO(transferredLead));
+      await prisma.leadTransfer.create({
+        data: {
+          leadId: transferredLead.id,
+          fromTeamId: lead.teamId!,
+          toTeamId: data.targetTeamId,
+          transferredByProfileId: profileInfo.id,
+          receivedByProfileId: data.closerId,
+          fromManagerId: lead.managerId,
+          toManagerId: transferredLead.managerId,
+          transferTagUsed: lead.isTransfer === true,
+          preScheduledAt: lead.meetingDate ?? null,
+          scheduledAtTransfer: !!data.schedule,
+        },
+      });
+
+      const finalLead = await this.leadRepository.findById(transferredLead.id);
+      return new Output(
+        true,
+        [],
+        ["Lead transferido entre times com sucesso"],
+        this.transformToDTO(finalLead ?? transferStateLead)
+      );
     } catch (error) {
       console.error("[transferLeadBetweenTeams] Erro ao transferir lead entre times:", error);
       return new Output(false, [], ["Erro interno do servidor ao transferir lead entre times"], null);
@@ -1732,6 +1805,7 @@ export class LeadUseCase implements ILeadUseCase {
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
+      isTransfer: lead.isTransfer === true,
       followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
       followUpNotes: lead.followUpNotes ?? null,
       followUpSourceStatus: lead.followUpSourceStatus ?? null,
@@ -1993,6 +2067,122 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
+  private async ensureTransferPreSchedule(lead: any): Promise<void> {
+    if (!lead?.id || !lead?.meetingDate) return;
+
+    const meetingDate = lead.meetingDate instanceof Date ? lead.meetingDate : new Date(lead.meetingDate);
+    if (Number.isNaN(meetingDate.getTime())) return;
+
+    await prisma.leadsSchedule.upsert({
+      where: { leadId: lead.id },
+      create: {
+        leadId: lead.id,
+        date: meetingDate,
+        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
+        notes: lead.meetingNotes || lead.notes || null,
+        meetingLink: null,
+        meetingType: lead.meetingType || "online",
+        extraGuests: [],
+        publicShareTokenHash: null,
+        publicShareExpiresAt: null,
+      },
+      update: {
+        date: meetingDate,
+        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
+        notes: lead.meetingNotes || lead.notes || null,
+        meetingLink: null,
+        meetingType: lead.meetingType || "online",
+        publicShareTokenHash: null,
+        publicShareExpiresAt: null,
+      },
+    });
+  }
+
+  private async resolveTransferScheduleShareUrl(lead: any, teamId: string): Promise<string | null> {
+    void teamId;
+    void lead;
+
+    return null;
+  }
+
+  private async handleTransferActivationAlert(lead: any): Promise<void> {
+    const teamId = lead.teamId as string | null;
+    if (!teamId) return;
+
+    try {
+      const [team, eligibleMembers] = await Promise.all([
+        prisma.team.findUnique({
+          where: { id: teamId },
+          select: { masterId: true },
+        }),
+        prisma.teamMember.findMany({
+          where: {
+            teamId,
+            role: { in: ["manager", "backoffice"] },
+            profile: { canTransferAccountLeads: true },
+          },
+          select: {
+            profileId: true,
+            profile: { select: { email: true } },
+          },
+        }),
+      ]);
+
+      if (!team) return;
+
+      const masterProfile = team.masterId
+        ? await prisma.profile.findUnique({
+            where: { id: team.masterId },
+            select: { id: true, email: true },
+          })
+        : null;
+
+      const recipientIds = Array.from(
+        new Set([
+          ...eligibleMembers.map((m) => m.profileId),
+          ...(masterProfile?.id ? [masterProfile.id] : []),
+        ])
+      );
+
+      const emailAddresses = [
+        ...eligibleMembers.map((m) => m.profile.email).filter((e): e is string => Boolean(e)),
+        ...(masterProfile?.email ? [masterProfile.email] : []),
+      ];
+      const uniqueEmails = Array.from(new Set(emailAddresses));
+      const scheduleShareUrl = await this.resolveTransferScheduleShareUrl(lead, teamId);
+
+      await Promise.all([
+        uniqueEmails.length > 0
+          ? getEmailService()
+              .sendLeadTransferActivatedEmail({
+                to: uniqueEmails,
+                leadName: lead.name,
+                leadPhone: lead.phone,
+                leadCnpj: lead.cnpj,
+                leadCurrentHealthPlan: lead.currentHealthPlan,
+                leadCurrentValue: lead.currentValue,
+                leadNotes: lead.notes,
+                scheduleShareUrl,
+              })
+              .catch((err) => console.error("[handleTransferActivationAlert] E-mail error:", err))
+          : Promise.resolve(),
+        recipientIds.length > 0
+          ? notificationService
+              .createLeadTransferActivatedNotification({
+                teamId,
+                recipientProfileIds: recipientIds,
+                leadId: lead.id,
+                leadName: lead.name,
+                scheduleShareUrl,
+              })
+              .catch((err) => console.error("[handleTransferActivationAlert] Notification error:", err))
+          : Promise.resolve(),
+      ]);
+    } catch (error) {
+      console.error("[handleTransferActivationAlert] Erro:", error);
+    }
+  }
+
   private async buildLeadProposalAttachments(leadId: string): Promise<Attachment[]> {
     const leadAttachments = await prisma.leadAttachment.findMany({
       where: { leadId },
@@ -2011,58 +2201,58 @@ export class LeadUseCase implements ILeadUseCase {
     }
 
     const supabaseAdmin = createSupabaseAdmin();
-    const attachments: Attachment[] = [];
 
-    for (const leadAttachment of leadAttachments) {
-      try {
-        let buffer: Buffer | null = null;
+    const downloads = await Promise.all(
+      leadAttachments.map(async (leadAttachment) => {
+        try {
+          let buffer: Buffer | null = null;
 
-        const storagePath = leadAttachment.storagePath?.trim();
-        if (supabaseAdmin && storagePath) {
-          const { data, error } = await supabaseAdmin.storage
-            .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
-            .download(storagePath);
+          const storagePath = leadAttachment.storagePath?.trim();
+          if (supabaseAdmin && storagePath) {
+            const { data, error } = await supabaseAdmin.storage
+              .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
+              .download(storagePath);
 
-          if (error) {
-            console.error("Erro ao baixar anexo do storage para e-mail:", {
-              leadId,
-              attachmentId: leadAttachment.id,
-              storagePath,
-              error,
-            });
-          } else if (data) {
-            buffer = Buffer.from(await data.arrayBuffer());
-          }
-        }
-
-        if (!buffer && leadAttachment.fileUrl) {
-          const response = await fetch(leadAttachment.fileUrl);
-          if (!response.ok) {
-            throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+            if (error) {
+              console.error("Erro ao baixar anexo do storage para e-mail:", {
+                leadId,
+                attachmentId: leadAttachment.id,
+                storagePath,
+                error,
+              });
+            } else if (data) {
+              buffer = Buffer.from(await data.arrayBuffer());
+            }
           }
 
-          const arrayBuffer = await response.arrayBuffer();
-          buffer = Buffer.from(arrayBuffer);
+          if (!buffer && leadAttachment.fileUrl) {
+            const response = await fetch(leadAttachment.fileUrl);
+            if (!response.ok) {
+              throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+          }
+
+          if (!buffer) return null;
+
+          return {
+            filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
+            content: buffer,
+            ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
+          } as Attachment;
+        } catch (error) {
+          console.error("Erro ao preparar anexo de lead para e-mail:", {
+            leadId,
+            attachmentId: leadAttachment.id,
+            error,
+          });
+          return null;
         }
+      })
+    );
 
-        if (!buffer) {
-          continue;
-        }
-
-        attachments.push({
-          filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
-          content: buffer,
-          ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
-        });
-      } catch (error) {
-        console.error("Erro ao preparar anexo de lead para e-mail:", {
-          leadId,
-          attachmentId: leadAttachment.id,
-          error,
-        });
-      }
-    }
-
-    return attachments;
+    return downloads.filter((a): a is Attachment => a !== null);
   }
 }

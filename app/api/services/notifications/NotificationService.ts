@@ -63,6 +63,14 @@ type LeadProposalPendingNotificationInput = {
   nextStatus: string;
 };
 
+type LeadTransferActivatedNotificationInput = {
+  teamId: string;
+  recipientProfileIds: string[];
+  leadId: string;
+  leadName: string;
+  scheduleShareUrl?: string | null;
+};
+
 type ListNotificationsInput = {
   recipientProfileId: string;
   teamId: string;
@@ -440,6 +448,35 @@ class NotificationService {
     });
 
     return result.count;
+  }
+
+  async createLeadTransferActivatedNotification(input: LeadTransferActivatedNotificationInput) {
+    const uniqueRecipients = Array.from(
+      new Set(input.recipientProfileIds.filter((id) => !!id))
+    );
+
+    if (uniqueRecipients.length === 0) {
+      return { createdCount: 0 };
+    }
+
+    const message = `Lead ${input.leadName} foi adicionado para transferência.`;
+
+    const result = await prisma.notification.createMany({
+      data: uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.LEAD_TRANSFER_ACTIVATED,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadName: input.leadName,
+          scheduleShareUrl: input.scheduleShareUrl ?? null,
+        },
+      })),
+      skipDuplicates: false,
+    });
+
+    return { createdCount: result.count };
   }
 }
 

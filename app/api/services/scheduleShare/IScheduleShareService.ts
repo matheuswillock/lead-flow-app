@@ -6,6 +6,7 @@ export type ScheduleShareSummary = {
   meetingType: string;
   expiresAt: string;
   timezone: string;
+  isPreSchedule: boolean;
 };
 
 export type PublicScheduleShareResult = {
@@ -18,6 +19,7 @@ export type PublicScheduleShareResult = {
   timezone: string;
   joinAllowed: boolean;
   meetingLink: string | null;
+  isPreSchedule: boolean;
 };
 
 export interface IScheduleShareService {

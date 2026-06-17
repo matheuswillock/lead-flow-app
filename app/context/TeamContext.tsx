@@ -15,6 +15,7 @@ export interface TeamSummary {
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
   membershipCreatedAt: string;
+  isPending?: boolean;
   pendingPayment?: {
     id: string;
     paymentId: string;
@@ -128,7 +129,8 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   }, [supabaseId]);
 
   const setActiveTeamId = useCallback(async (teamId: string) => {
-    if (!teamId || teamId === activeTeamId || teamId.startsWith("pending-")) {
+    const targetTeam = teams.find((t) => t.id === teamId);
+    if (!teamId || teamId === activeTeamId || targetTeam?.isPending) {
       return;
     }
 
@@ -149,20 +151,22 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
     if (typeof window !== "undefined") {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored && !stored.startsWith("pending-") && teams.some((team) => team.id === stored)) {
+      const storedTeam = stored ? teams.find((t) => t.id === stored) : null;
+      if (stored && storedTeam && !storedTeam.isPending) {
         nextTeamId = stored;
       }
     }
 
     if (!nextTeamId && serverActiveTeamIdRef.current) {
       const serverTeamId = serverActiveTeamIdRef.current;
-      if (!serverTeamId.startsWith("pending-") && teams.some((team) => team.id === serverTeamId)) {
+      const serverTeam = teams.find((t) => t.id === serverTeamId);
+      if (serverTeam && !serverTeam.isPending) {
         nextTeamId = serverTeamId;
       }
     }
 
     if (!nextTeamId) {
-      nextTeamId = teams.find((team) => !team.id.startsWith("pending-"))?.id ?? null;
+      nextTeamId = teams.find((team) => !team.isPending)?.id ?? null;
     }
 
     if (nextTeamId) {

@@ -18,6 +18,7 @@ export class ScheduleShareRepository implements IScheduleShareRepository {
         meetingTitle: true,
         meetingLink: true,
         meetingType: true,
+        isTransfer: true,
         closer: {
           select: {
             timezone: true,
@@ -37,6 +38,7 @@ export class ScheduleShareRepository implements IScheduleShareRepository {
       meetingLink: lead.meetingLink,
       meetingType: lead.meetingType,
       closerTimezone: lead.closer?.timezone ?? null,
+      isTransfer: lead.isTransfer === true,
     };
   }
 
@@ -83,6 +85,7 @@ export class ScheduleShareRepository implements IScheduleShareRepository {
             meetingTitle: true,
             meetingLink: true,
             meetingType: true,
+            isTransfer: true,
             closer: {
               select: {
                 timezone: true,
@@ -109,6 +112,7 @@ export class ScheduleShareRepository implements IScheduleShareRepository {
       leadMeetingLink: schedule.lead.meetingLink,
       leadMeetingType: schedule.lead.meetingType,
       closerTimezone: schedule.lead.closer?.timezone ?? null,
+      leadIsTransfer: schedule.lead.isTransfer === true,
     };
   }
 }

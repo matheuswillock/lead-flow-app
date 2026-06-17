@@ -291,6 +291,7 @@ TEAM_MEMBER_REMOVED TEAM_MEMBER_REMOVED
 LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
 LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
 GOOGLE_CONNECTION_BROKEN GOOGLE_CONNECTION_BROKEN
+LEAD_TRANSFER_ACTIVATED LEAD_TRANSFER_ACTIVATED
         }
     
 
@@ -410,6 +411,7 @@ unsubscribed unsubscribed
     Boolean isMaster 
     Boolean canCreateAccountUsers 
     Boolean canManageAccountTeams 
+    Boolean canTransferAccountLeads 
     Boolean hasPermanentSubscription 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
@@ -667,6 +669,7 @@ unsubscribed unsubscribed
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
     String meetingType "❓"
+    Boolean isTransfer 
     DateTime followUpAt "❓"
     String followUpNotes "❓"
     LeadStatus followUpSourceStatus "❓"
@@ -921,6 +924,24 @@ unsubscribed unsubscribed
     UserFunction functions 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_transfer_routes" {
+    String id "🗝️"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_lead_transfers" {
+    String id "🗝️"
+    String fromManagerId 
+    String toManagerId 
+    Boolean transferTagUsed 
+    DateTime preScheduledAt "❓"
+    Boolean scheduledAtTransfer 
+    DateTime createdAt 
     }
   
 
@@ -1312,6 +1333,14 @@ unsubscribed unsubscribed
     "corretor_studio_team_members" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_team_members" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_members" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_team_transfer_routes" }o--|| corretor_studio_teams : "sourceTeam"
+    "corretor_studio_team_transfer_routes" }o--|| corretor_studio_teams : "targetTeam"
+    "corretor_studio_team_transfer_routes" }o--|o corretor_studio_profiles : "creator"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_teams : "fromTeam"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_teams : "toTeam"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_profiles : "transferredByProfile"
+    "corretor_studio_lead_transfers" }o--|o corretor_studio_profiles : "receivedByProfile"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_profiles : "profile"

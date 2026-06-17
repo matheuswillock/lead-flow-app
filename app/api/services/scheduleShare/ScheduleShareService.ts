@@ -32,6 +32,10 @@ export class ScheduleShareService implements IScheduleShareService {
       throw new Error("Lead não encontrado ou sem permissão no seu time.");
     }
 
+    if (lead.isTransfer === true) {
+      throw new Error("Compartilhamento público disponível apenas após concluir a transferência.");
+    }
+
     const schedule = await scheduleShareRepository.findScheduleByLeadId(input.leadId);
 
     if (!schedule) {
@@ -41,11 +45,6 @@ export class ScheduleShareService implements IScheduleShareService {
     const resolvedMeetingType = schedule.meetingType ?? lead.meetingType ?? ONLINE_MEETING_TYPE;
     if (resolvedMeetingType !== ONLINE_MEETING_TYPE) {
       throw new Error("Compartilhamento público disponível apenas para agendamentos online.");
-    }
-
-    const resolvedMeetingLink = schedule.meetingLink?.trim() || lead.meetingLink?.trim() || null;
-    if (!resolvedMeetingLink) {
-      throw new Error("Agendamento sem link de reunião válido para compartilhamento.");
     }
 
     const resolvedMeetingDate = schedule.date ?? lead.meetingDate;
@@ -79,6 +78,7 @@ export class ScheduleShareService implements IScheduleShareService {
         meetingType: resolvedMeetingType,
         expiresAt: shareExpiresAt.toISOString(),
         timezone: lead.closerTimezone ?? DEFAULT_TZ,
+        isPreSchedule: false,
       },
     };
   }
@@ -100,6 +100,10 @@ export class ScheduleShareService implements IScheduleShareService {
       throw new Error("Link de agendamento expirado.");
     }
 
+    if (schedule.leadIsTransfer === true) {
+      throw new Error("Este agendamento ainda não está disponível para acesso público.");
+    }
+
     const resolvedMeetingType = schedule.meetingType ?? schedule.leadMeetingType ?? ONLINE_MEETING_TYPE;
     if (resolvedMeetingType !== ONLINE_MEETING_TYPE) {
       throw new Error("Este agendamento não está disponível para acesso público.");
@@ -107,12 +111,9 @@ export class ScheduleShareService implements IScheduleShareService {
 
     const resolvedMeetingDate = schedule.date;
     const resolvedMeetingLink = schedule.meetingLink?.trim() || schedule.leadMeetingLink?.trim() || null;
-    if (!resolvedMeetingLink) {
-      throw new Error("Agendamento sem link de reunião disponível.");
-    }
 
     const availableAt = getScheduleJoinAvailableAt(resolvedMeetingDate);
-    const joinAllowed = new Date().getTime() >= availableAt.getTime();
+    const joinAllowed = !!resolvedMeetingLink && new Date().getTime() >= availableAt.getTime();
 
     return {
       leadName: schedule.leadName,
@@ -127,6 +128,7 @@ export class ScheduleShareService implements IScheduleShareService {
       timezone: schedule.closerTimezone ?? DEFAULT_TZ,
       joinAllowed,
       meetingLink: joinAllowed ? resolvedMeetingLink : null,
+      isPreSchedule: false,
     };
   }
 }

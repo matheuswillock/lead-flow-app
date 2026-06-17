@@ -8,6 +8,7 @@ export type PublicScheduleShareData = {
   timezone: string;
   joinAllowed: boolean;
   meetingLink: string | null;
+  isPreSchedule: boolean;
 };
 
 export interface IPublicScheduleShareService {
