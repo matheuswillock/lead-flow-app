@@ -26,6 +26,7 @@ const CRM_LEAD_LIST_SELECT = {
   meetingLink: true,
   meetingHeald: true,
   meetingType: true,
+  isTransfer: true,
   followUpAt: true,
   followUpNotes: true,
   followUpSourceStatus: true,

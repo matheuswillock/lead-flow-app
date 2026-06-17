@@ -109,7 +109,7 @@ export class LeadUseCase implements ILeadUseCase {
       return leadOutput;
     }
 
-    const hasMeetingData = !!(data.closerId && data.meetingDate);
+    const hasMeetingData = !data.isTransfer && !!(data.closerId && data.meetingDate);
     if (!hasMeetingData || !teamId) {
       return leadOutput;
     }
@@ -321,6 +321,7 @@ export class LeadUseCase implements ILeadUseCase {
         meetingHeald: data.meetingHeald || null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
+        isTransfer: data.isTransfer === true,
         // Novos campos de venda (sempre null na criação)
         ticket: data.ticket || null,
         contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
@@ -612,6 +613,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
+      if (data.isTransfer !== undefined) updateData.isTransfer = data.isTransfer === true;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.status !== undefined) updateData.status = data.status;
       // Novos campos de venda
@@ -1595,8 +1597,8 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      if (!profileInfo.isMaster && !isManagerLikeRole(profileInfo.role)) {
-        return new Output(false, [], ["Apenas managers e masters podem transferir leads entre times"], null);
+      if (!profileInfo.isMaster && profileInfo.canTransferAccountLeads !== true) {
+        return new Output(false, [], ["Acesso negado: delegação de transferência de leads é obrigatória."], null);
       }
 
       const lead = await this.leadRepository.findById(id);
@@ -1636,6 +1638,26 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["O lead já pertence a este time"], null);
       }
 
+      const transferRoute = lead.teamId
+        ? await prisma.teamTransferRoute.findUnique({
+            where: {
+              sourceTeamId_targetTeamId: {
+                sourceTeamId: lead.teamId,
+                targetTeamId: data.targetTeamId,
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+
+      if (!transferRoute) {
+        return new Output(false, [], ["O time destino não está habilitado para receber transferências deste time"], null);
+      }
+
+      if (!data.closerId) {
+        return new Output(false, [], ["Selecione um closer do time destino para concluir a transferência"], null);
+      }
+
       const closerMember = await prisma.teamMember.findUnique({
         where: { teamId_profileId: { teamId: data.targetTeamId, profileId: data.closerId } },
         select: { functions: true },
@@ -1670,6 +1692,13 @@ export class LeadUseCase implements ILeadUseCase {
         data.sdrId ?? null
       );
 
+      await prisma.lead.update({
+        where: { id: transferredLead.id },
+        data: {
+          isTransfer: false,
+        },
+      });
+
       if (data.schedule) {
         const scheduleOutput = await leadScheduleService.createSchedule({
           leadId: transferredLead.id,
@@ -1703,6 +1732,21 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      await prisma.leadTransfer.create({
+        data: {
+          leadId: transferredLead.id,
+          fromTeamId: lead.teamId!,
+          toTeamId: data.targetTeamId,
+          transferredByProfileId: profileInfo.id,
+          receivedByProfileId: data.closerId,
+          fromManagerId: lead.managerId,
+          toManagerId: transferredLead.managerId,
+          transferTagUsed: lead.isTransfer === true,
+          preScheduledAt: lead.meetingDate ?? null,
+          scheduledAtTransfer: !!data.schedule,
+        },
+      });
+
       return new Output(true, [], ["Lead transferido entre times com sucesso"], this.transformToDTO(transferredLead));
     } catch (error) {
       console.error("[transferLeadBetweenTeams] Erro ao transferir lead entre times:", error);
@@ -1732,6 +1776,7 @@ export class LeadUseCase implements ILeadUseCase {
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
+      isTransfer: lead.isTransfer === true,
       followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
       followUpNotes: lead.followUpNotes ?? null,
       followUpSourceStatus: lead.followUpSourceStatus ?? null,

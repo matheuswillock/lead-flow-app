@@ -16,6 +16,7 @@ export type TeamAccess = {
   managerId: string;
   canCreateAccountUsers: boolean;
   canManageAccountTeams: boolean;
+  canTransferAccountLeads: boolean;
   userTimezone: string;
   teamMember: {
     role: UserRole;
@@ -39,6 +40,7 @@ const resolveProfileForTeamAccess = cache(async (supabaseId: string) => {
       managerId: true,
       canCreateAccountUsers: true,
       canManageAccountTeams: true,
+      canTransferAccountLeads: true,
       timezone: true,
     },
   });
@@ -125,6 +127,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         teamMember.role === "manager" && profile.canCreateAccountUsers === true,
       canManageAccountTeams:
         teamMember.role === "manager" && profile.canManageAccountTeams === true,
+      canTransferAccountLeads:
+        (teamMember.role === "manager" || teamMember.role === "backoffice") &&
+        profile.canTransferAccountLeads === true,
       userTimezone: resolveTimezone(profile.timezone),
       teamMember,
     },
@@ -157,4 +162,8 @@ export function hasDelegatedUserCreationAccess(access: TeamAccess) {
 
 export function hasDelegatedTeamManagementAccess(access: TeamAccess) {
   return access.isMaster || access.canManageAccountTeams;
+}
+
+export function hasDelegatedLeadTransferAccess(access: TeamAccess) {
+  return access.isMaster || access.canTransferAccountLeads;
 }

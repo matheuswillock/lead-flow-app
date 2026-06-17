@@ -196,6 +196,7 @@ export function LeadForm({
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
                 (watchedValues.closerId && watchedValues.closerId.trim() !== '') ||
+                watchedValues.isTransfer === true ||
                 watchedValues.isReferral ||
                 (watchedValues.referrerLeadId && watchedValues.referrerLeadId.trim() !== '') ||
                 (watchedValues.referrerName && watchedValues.referrerName.trim() !== '') ||
@@ -219,6 +220,7 @@ export function LeadForm({
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
                 watchedValues.responsible !== initialData.responsible ||
                 watchedValues.closerId !== initialData.closerId ||
+                watchedValues.isTransfer !== initialData.isTransfer ||
                 watchedValues.isReferral !== initialData.isReferral ||
                 watchedValues.referrerLeadId !== initialData.referrerLeadId ||
                 watchedValues.referrerName !== initialData.referrerName ||
@@ -407,6 +409,33 @@ export function LeadForm({
             <LeadReferenceHospitalField control={form.control} disabled={isLoading || isUpdating} />
             <LeadOngoingTreatmentField control={form.control} disabled={isLoading || isUpdating} />
             <LeadAdditionalNotesField control={form.control} disabled={isLoading || isUpdating} />
+
+            <div className="sm:col-span-2 rounded-md border border-border p-3">
+                <FormField
+                    control={form.control}
+                    name="isTransfer"
+                    render={({ field }) => (
+                        <FormItem className="flex items-center justify-between gap-3">
+                            <div className="grid gap-1">
+                                <FormLabel className="mb-0">Tag de transferência</FormLabel>
+                                <p className="text-xs text-muted-foreground">
+                                    Mantém o lead em pré-agendamento até a transferência para o time destino.
+                                </p>
+                            </div>
+                            <FormControl>
+                                <Button
+                                    type="button"
+                                    variant={field.value ? "default" : "outline"}
+                                    onClick={() => field.onChange(!field.value)}
+                                    disabled={isLoading || isUpdating}
+                                >
+                                    {field.value ? "Transferência ativa" : "Ativar transferência"}
+                                </Button>
+                            </FormControl>
+                        </FormItem>
+                    )}
+                />
+            </div>
 
             <div className="sm:col-span-2 pt-4 border-t">
                 <div className="flex items-center justify-between gap-3">

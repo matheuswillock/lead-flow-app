@@ -55,6 +55,7 @@ export function TransferBetweenTeamsDialog({
   const [sdrId, setSdrId] = useState("");
   const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [allowedTargetTeamIds, setAllowedTargetTeamIds] = useState<string[]>([]);
 
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [meetingDate, setMeetingDate] = useState<Date | undefined>(undefined);
@@ -66,7 +67,7 @@ export function TransferBetweenTeamsDialog({
 
   const [submitting, setSubmitting] = useState(false);
 
-  const targetTeams = teams.filter((t) => t.id !== activeTeamId);
+  const targetTeams = teams.filter((t) => t.id !== activeTeamId && allowedTargetTeamIds.includes(t.id));
   const closers = teamMembers.filter((m) => m.functions.includes("CLOSER"));
   const sdrs = teamMembers.filter((m) => m.functions.includes("SDR"));
 
@@ -76,14 +77,52 @@ export function TransferBetweenTeamsDialog({
       setCloserId("");
       setSdrId("");
       setTeamMembers([]);
+      setAllowedTargetTeamIds([]);
       setScheduleEnabled(false);
-      setMeetingDate(undefined);
-      setMeetingTitle("");
-      setMeetingType("call");
+      setMeetingDate(lead.isTransfer && lead.meetingDate ? new Date(lead.meetingDate) : undefined);
+      setMeetingTitle(lead.isTransfer ? lead.meetingTitle ?? "" : "");
+      setMeetingType(
+        lead.isTransfer && (lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
+          ? lead.meetingType
+          : "call"
+      );
       setAvailableTimes([]);
       setAvailabilityLoading(false);
     }
-  }, [open]);
+  }, [open, lead]);
+
+  useEffect(() => {
+    if (!open || !activeTeamId || !supabaseId) return;
+
+    let active = true;
+    fetch(`/api/v1/teams/${activeTeamId}/members`, {
+      headers: { "x-supabase-user-id": supabaseId },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        const ids = Array.isArray(data?.result?.transferTargets)
+          ? data.result.transferTargets.map((item: { teamId: string }) => item.teamId)
+          : [];
+        setAllowedTargetTeamIds(ids);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAllowedTargetTeamIds([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open, activeTeamId, supabaseId]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    if (lead.isTransfer && lead.meetingDate) {
+      setScheduleEnabled(true);
+    }
+  }, [open, lead]);
 
   useEffect(() => {
     if (!targetTeamId || !supabaseId) {

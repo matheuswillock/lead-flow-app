@@ -430,6 +430,7 @@ model Profile {
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   canCreateAccountUsers    Boolean             @default(false)
   canManageAccountTeams    Boolean             @default(false)
+  canTransferAccountLeads  Boolean             @default(false)
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
@@ -469,6 +470,9 @@ model Profile {
   pendingActions              PendingAction[]           @relation("PendingActionMaster")
   teamsOwned                  Team[]                    @relation("TeamMaster")
   teamMemberships             TeamMember[]
+  createdTeamTransferRoutes   TeamTransferRoute[]       @relation("TeamTransferRouteCreator")
+  outboundLeadTransfers       LeadTransfer[]           @relation("LeadTransferActor")
+  inboundLeadTransfers        LeadTransfer[]           @relation("LeadTransferRecipient")
   createdHealthPlanOptions    HealthPlanOption[]        @relation("HealthPlanOptionCreator")
   backofficeUser              BackofficeUser?           @relation("BackofficeUserProfile")
   googleConnection            GoogleOAuthConnection?    @relation("ProfileGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
@@ -884,6 +888,7 @@ model Lead {
   meetingLink          String?       @db.Text
   meetingHeald         MeetingHeald?
   meetingType          String?       @db.Text
+  isTransfer           Boolean       @default(false)
   followUpAt           DateTime?     @db.Timestamptz(6)
   followUpNotes        String?       @db.Text
   followUpSourceStatus LeadStatus?
@@ -921,6 +926,7 @@ model Lead {
   tasks         Task[]
   LeadsSchedule LeadsSchedule[]
   LeadFinalized LeadFinalized[]
+  transfers     LeadTransfer[]
   portfolio     LeadPortfolio?
   attachments   LeadAttachment[]
 
@@ -1215,6 +1221,10 @@ model Team {
   studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
   filterPresets            TeamFilterPreset[]
   statusRules              TeamStatusRule[]
+  transferRoutesFrom       TeamTransferRoute[]          @relation("TeamTransferRouteFrom")
+  transferRoutesTo         TeamTransferRoute[]          @relation("TeamTransferRouteTo")
+  outboundLeadTransfers    LeadTransfer[]               @relation("LeadTransferFromTeam")
+  inboundLeadTransfers     LeadTransfer[]               @relation("LeadTransferToTeam")
   portfolioEntries         LeadPortfolio[]
 
   // Email campaigns relations
@@ -1378,6 +1388,49 @@ model TeamMember {
   @@unique([teamId, profileId])
   @@index([profileId])
   @@map("corretor_studio_team_members")
+}
+
+model TeamTransferRoute {
+  id           String   @id @default(uuid()) @db.Uuid
+  sourceTeamId String   @db.Uuid
+  targetTeamId String   @db.Uuid
+  createdBy    String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  sourceTeam Team     @relation("TeamTransferRouteFrom", fields: [sourceTeamId], references: [id], onDelete: Cascade)
+  targetTeam Team     @relation("TeamTransferRouteTo", fields: [targetTeamId], references: [id], onDelete: Cascade)
+  creator    Profile? @relation("TeamTransferRouteCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([sourceTeamId, targetTeamId])
+  @@index([targetTeamId])
+  @@map("corretor_studio_team_transfer_routes")
+}
+
+model LeadTransfer {
+  id                    String   @id @default(uuid()) @db.Uuid
+  leadId                 String   @db.Uuid
+  fromTeamId             String   @db.Uuid
+  toTeamId               String   @db.Uuid
+  transferredByProfileId String   @db.Uuid
+  receivedByProfileId    String?  @db.Uuid
+  fromManagerId          String   @db.Uuid
+  toManagerId            String   @db.Uuid
+  transferTagUsed        Boolean  @default(false)
+  preScheduledAt         DateTime? @db.Timestamptz(6)
+  scheduledAtTransfer    Boolean  @default(false)
+  createdAt              DateTime @default(now()) @db.Timestamptz(6)
+
+  lead                 Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromTeam             Team     @relation("LeadTransferFromTeam", fields: [fromTeamId], references: [id], onDelete: Cascade)
+  toTeam               Team     @relation("LeadTransferToTeam", fields: [toTeamId], references: [id], onDelete: Cascade)
+  transferredByProfile Profile  @relation("LeadTransferActor", fields: [transferredByProfileId], references: [id], onDelete: Cascade)
+  receivedByProfile    Profile? @relation("LeadTransferRecipient", fields: [receivedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt(sort: Desc)])
+  @@index([fromTeamId, createdAt(sort: Desc)])
+  @@index([toTeamId, createdAt(sort: Desc)])
+  @@map("corretor_studio_lead_transfers")
 }
 
 // -----------------------------

@@ -679,6 +679,7 @@ class PrismaProfileRepository implements IProfileRepository {
             functions?: ("SDR" | "CLOSER")[];
             canCreateAccountUsers?: boolean;
             canManageAccountTeams?: boolean;
+            canTransferAccountLeads?: boolean;
         }
     ): Promise<Profile | null> {
         try {
@@ -787,6 +788,14 @@ class PrismaProfileRepository implements IProfileRepository {
                 console.info(
                     "🔐 [updateProfileById] Atualizando canManageAccountTeams:",
                     updates.canManageAccountTeams
+                );
+            }
+
+            if (updates.canTransferAccountLeads !== undefined) {
+                updateData.canTransferAccountLeads = updates.canTransferAccountLeads;
+                console.info(
+                    "🔐 [updateProfileById] Atualizando canTransferAccountLeads:",
+                    updates.canTransferAccountLeads
                 );
             }
 

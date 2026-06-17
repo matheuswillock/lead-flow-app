@@ -235,6 +235,8 @@ export default function LeadDialog({
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const canTransferBetweenTeams =
+    isTeamMaster || Boolean(user?.canTransferAccountLeads);
   const {
     details: leadDetails,
     loading: leadDetailsLoading,
@@ -1342,6 +1344,7 @@ export default function LeadDialog({
       contractDueDate: undefined,
       soldPlan: undefined,
       meetingType: undefined,
+      isTransfer: data.isTransfer || false,
       isReferral: data.isReferral || false,
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
@@ -1378,6 +1381,7 @@ export default function LeadDialog({
         currentLead?.meetingType === "whatsapp"
           ? currentLead.meetingType
           : undefined,
+      isTransfer: data.isTransfer || false,
       isReferral: data.isReferral || false,
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
@@ -2009,6 +2013,7 @@ export default function LeadDialog({
         meetingNotes: currentLead.meetingNotes || "",
         meetingLink: currentLead.meetingLink || "",
         meetingHeald: currentLead.meetingHeald === "yes" ? "yes" : "no",
+        isTransfer: currentLead.isTransfer === true,
         extraGuests: "",
         responsible: currentLead.assignedTo || "",
         ticket: currentLead.ticket ? formatCurrency(currentLead.ticket) : "",
@@ -2037,6 +2042,7 @@ export default function LeadDialog({
         meetingNotes: "",
         meetingLink: "",
         meetingHeald: "no",
+        isTransfer: false,
         extraGuests: "",
         responsible: "",
         ticket: "",
@@ -2271,7 +2277,7 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    {currentLead && currentLead.status === "new_opportunity" && (isTeamMaster || activeRole === "manager") && (
+                    {currentLead && currentLead.status === "new_opportunity" && canTransferBetweenTeams && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
