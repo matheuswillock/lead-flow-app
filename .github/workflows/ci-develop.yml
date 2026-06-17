@@ -451,17 +451,20 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Reset release branch to develop and apply version bump
-        if: ${{ needs['version-bump'].result == 'success' && needs['deploy-preview'].result == 'success' }}
+        if: ${{ needs['build'].result == 'success' }}
         run: |
           git checkout -B release/develop-to-main origin/develop
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ needs['version-bump'].outputs.new_version }}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          git add package.json
-          git diff --cached --quiet || git commit -m "chore: bump version to v${{ needs['version-bump'].outputs.new_version }} [skip ci]"
+          VERSION="${{ needs['version-bump'].outputs.new_version }}"
+          if [ -n "$VERSION" ]; then
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              pkg.version = '$VERSION';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            git add package.json
+            git diff --cached --quiet || git commit -m "chore: bump version to v$VERSION [skip ci]"
+          fi
           git push origin release/develop-to-main --force-with-lease 2>/dev/null || \
             git push origin release/develop-to-main --force
 
@@ -476,9 +479,21 @@ jobs:
             const repo = context.repo.repo;
             const head = 'release/develop-to-main';
             const base = 'main';
-            const newVersion = '${{ needs['version-bump'].outputs.new_version }}';
+            const versionBumpResult = '${{ needs['version-bump'].result }}';
+            const deployPreviewResult = '${{ needs['deploy-preview'].result }}';
+            const buildResult = '${{ needs['build'].result }}';
+            let newVersion = '${{ needs['version-bump'].outputs.new_version }}' || '';
+            if (!newVersion) {
+              try {
+                const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+                newVersion = pkg.version;
+              } catch (_) {}
+            }
             const bumpType = '${{ needs['version-bump'].outputs.bump_type }}';
-            const canCreateReleasePr = '${{ needs['version-bump'].result }}' === 'success' && '${{ needs['deploy-preview'].result }}' === 'success';
+            const canCreateReleasePr =
+              buildResult === 'success' &&
+              (versionBumpResult === 'success' || versionBumpResult === 'skipped') &&
+              (deployPreviewResult === 'success' || deployPreviewResult === 'skipped');
             const checks = {
               governanceSync: '${{ needs.quality.outputs['governance-sync'] }}',
               governanceCheck: '${{ needs.quality.outputs['governance-check'] }}',
