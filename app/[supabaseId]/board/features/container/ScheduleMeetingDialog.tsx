@@ -38,7 +38,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Copy, Share2, X } from "lucide-react";
+import { Copy, Loader2, Share2, X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -808,7 +808,10 @@ export function ScheduleMeetingDialog({
               <p className="text-xs text-muted-foreground">Selecione um closer para carregar horários disponíveis.</p>
             )}
             {isOnlineMeeting && availabilityLoading && (
-              <p className="text-xs text-muted-foreground">Carregando horários disponíveis...</p>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                Carregando horários disponíveis...
+              </p>
             )}
             {isOnlineMeeting && availabilityError && (
               <p className="text-xs text-destructive">{availabilityError}</p>
