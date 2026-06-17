@@ -100,22 +100,20 @@ function resolveDelegatedPermissions(
   };
 }
 
-async function createUserAndInvite(args: {
-  teamId: string;
-  masterId: string;
-  requesterProfileId: string;
-  actorName: string;
-  teamName: string;
-  userData: CreateUserRequest;
-  delegatedPermissions: {
-    canCreateAccountUsers: boolean;
-    canManageAccountTeams: boolean;
-    canTransferAccountLeads: boolean;
-  };
-  tx?: Prisma.TransactionClient;
-}) {
+async function createUserRecords(
+  args: {
+    teamId: string;
+    masterId: string;
+    userData: CreateUserRequest;
+    delegatedPermissions: {
+      canCreateAccountUsers: boolean;
+      canManageAccountTeams: boolean;
+      canTransferAccountLeads: boolean;
+    };
+  },
+  db: Prisma.TransactionClient | typeof prisma
+) {
   const email = normalizeEmail(args.userData.email);
-  const db = args.tx ?? prisma;
 
   const profile = await db.profile.create({
     data: {
@@ -154,6 +152,39 @@ async function createUserAndInvite(args: {
     },
   });
 
+  return { profile, teamMemberRecord };
+}
+
+async function finalizeUserCreation(args: {
+  teamId: string;
+  masterId: string;
+  requesterProfileId: string;
+  actorName: string;
+  teamName: string;
+  userData: CreateUserRequest;
+  delegatedPermissions: {
+    canCreateAccountUsers: boolean;
+    canManageAccountTeams: boolean;
+    canTransferAccountLeads: boolean;
+  };
+  profile: {
+    id: string;
+    fullName: string | null;
+    email: string;
+    profileIconId: string | null;
+    profileIconUrl: string | null;
+  };
+  teamMemberRecord: {
+    role: UserRole;
+    functions: string[];
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}) {
+  const { profile, teamMemberRecord } = args;
+  const email = normalizeEmail(args.userData.email);
+
+  // Profile is committed at this point — notification FK will succeed
   try {
     await notificationService.createTeamMembershipNotification({
       teamId: args.teamId,
@@ -165,11 +196,12 @@ async function createUserAndInvite(args: {
     });
   } catch (notificationError) {
     console.error(
-      "[ManagerUsersRoute][createUserAndInvite] Erro ao criar notificação de membro adicionado:",
+      "[ManagerUsersRoute][finalizeUserCreation] Erro ao criar notificação de membro adicionado:",
       notificationError
     );
   }
 
+  // External API calls outside any transaction — no timeout risk
   try {
     const supabaseAdmin = createSupabaseAdmin();
     if (!supabaseAdmin) {
@@ -199,13 +231,13 @@ async function createUserAndInvite(args: {
     const inviteLink = buildSetPasswordEmailAuthLink(data, "invite");
 
     if (supabaseUserId) {
-      await db.profile.update({
+      await prisma.profile.update({
         where: { id: profile.id },
         data: { supabaseId: supabaseUserId },
       });
     }
 
-    const requesterProfile = await db.profile.findUnique({
+    const requesterProfile = await prisma.profile.findUnique({
       where: { id: args.requesterProfileId },
       select: { fullName: true, email: true },
     });
@@ -219,14 +251,14 @@ async function createUserAndInvite(args: {
       inviteUrl: inviteLink,
     });
   } catch (inviteError) {
-    console.error("[ManagerUsersRoute][createUserAndInvite] Invite falhou:", {
+    console.error("[ManagerUsersRoute][finalizeUserCreation] Invite falhou:", {
       email,
       teamId: args.teamId,
       error: inviteError instanceof Error
         ? { message: inviteError.message, stack: inviteError.stack, name: inviteError.name }
         : inviteError,
     });
-    await db.teamMember.delete({
+    await prisma.teamMember.delete({
       where: {
         teamId_profileId: {
           teamId: args.teamId,
@@ -234,8 +266,7 @@ async function createUserAndInvite(args: {
         },
       },
     });
-
-    await db.profile.delete({ where: { id: profile.id } });
+    await prisma.profile.delete({ where: { id: profile.id } });
     throw new Error("Erro ao enviar convite. Tente novamente.");
   }
 
@@ -399,7 +430,11 @@ export async function POST(
     }
 
     if (billingOwner.hasPermanentSubscription) {
-      const createdUser = await createUserAndInvite({
+      const { profile, teamMemberRecord } = await createUserRecords(
+        { teamId, masterId: managerId, userData: validatedData, delegatedPermissions },
+        prisma
+      );
+      const createdUser = await finalizeUserCreation({
         teamId,
         masterId: managerId,
         requesterProfileId: profileId,
@@ -407,6 +442,8 @@ export async function POST(
         teamName,
         userData: validatedData,
         delegatedPermissions,
+        profile,
+        teamMemberRecord,
       });
 
       const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
@@ -418,19 +455,26 @@ export async function POST(
     });
 
     if (projectedBilling.billingDelta <= 0) {
-      const createdUser = await prisma.$transaction(async (tx) => {
+      // Transaction contains only fast DB ops — no external API calls
+      const { profile, teamMemberRecord } = await prisma.$transaction(async (tx) => {
         await subscriptionCreditService.assertCapacityAvailable(tx, managerId, { users: 1 });
+        return createUserRecords(
+          { teamId, masterId: managerId, userData: validatedData, delegatedPermissions },
+          tx
+        );
+      });
 
-        return createUserAndInvite({
-          teamId,
-          masterId: managerId,
-          requesterProfileId: profileId,
-          actorName,
-          teamName,
-          userData: validatedData,
-          delegatedPermissions,
-          tx,
-        });
+      // External calls run after tx commits — no timeout risk, no FK violation
+      const createdUser = await finalizeUserCreation({
+        teamId,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        actorName,
+        teamName,
+        userData: validatedData,
+        delegatedPermissions,
+        profile,
+        teamMemberRecord,
       });
 
       const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);

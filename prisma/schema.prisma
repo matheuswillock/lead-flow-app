@@ -303,6 +303,7 @@ enum NotificationType {
   LEAD_SCHEDULE_CREATED
   LEAD_PROPOSAL_PENDING
   GOOGLE_CONNECTION_BROKEN
+  LEAD_TRANSFER_ACTIVATED
 
   @@map("notification_type")
 }
@@ -941,6 +942,7 @@ model Lead {
   @@index([meetingDate])
   @@index([followUpAt])
   @@index([statusEnteredAt])
+  @@index([status])
   @@map("corretor_studio_leads")
 }
 

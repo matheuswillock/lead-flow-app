@@ -71,6 +71,7 @@
       "app/api/v1/teams/route.ts",
       "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
+      "app/api/v1/teams/[teamId]/pre-schedule-slots/route.ts",
       "app/api/v1/email/analytics/route.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
       "app/api/v1/email/cron/reset-credits/route.ts",

@@ -27,6 +27,16 @@ export interface LeadProposalPendingUrgentEmailData {
   actorName: string;
 }
 
+export interface LeadTransferActivatedEmailData {
+  to: string[];
+  leadName: string;
+  leadPhone?: string | null;
+  leadCnpj?: string | null;
+  leadCurrentHealthPlan?: string | null;
+  leadCurrentValue?: number | null;
+  leadNotes?: string | null;
+}
+
 export interface WelcomeEmailData {
   userName: string;
   userEmail: string;
@@ -1684,6 +1694,48 @@ export class EmailService {
       text: `Olá, ${data.userName}.\n\nSeu link para finalizar a adesão está pronto: ${data.checkoutUrl}\n\nValidade: ${expiresAt}\n`,
       from: "Corretor Studio <no-reply@corretorstudio.com>",
     })
+  }
+
+  async sendLeadTransferActivatedEmail(data: LeadTransferActivatedEmailData) {
+    const leadName = data.leadName || "Lead sem nome";
+    const leadPhone = data.leadPhone || "Não informado";
+    const leadCnpj = data.leadCnpj || "Não informado";
+    const leadCurrentHealthPlan = data.leadCurrentHealthPlan || "Não informado";
+    const leadCurrentValue =
+      data.leadCurrentValue != null
+        ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.leadCurrentValue)
+        : "Não informado";
+    const leadNotes = (data.leadNotes || "Sem observações").trim();
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 22px;">Lead para transferência adicionado</h1>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">
+            Um novo lead foi marcado para transferência no Corretor Studio.
+          </p>
+        </div>
+
+        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
+          <p style="margin: 0 0 8px;"><strong>Lead:</strong> ${leadName}</p>
+          <p style="margin: 0 0 8px;"><strong>Telefone:</strong> ${leadPhone}</p>
+          <p style="margin: 0 0 8px;"><strong>CNPJ:</strong> ${leadCnpj}</p>
+          <p style="margin: 0 0 8px;"><strong>Plano atual:</strong> ${leadCurrentHealthPlan}</p>
+          <p style="margin: 0 0 14px;"><strong>Valor atual:</strong> ${leadCurrentValue}</p>
+
+          <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
+            <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
+            <p style="margin: 0; white-space: pre-wrap;">${leadNotes}</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: data.to,
+      subject: `Novo lead para transferência: ${leadName}`,
+      html,
+    });
   }
 }
 

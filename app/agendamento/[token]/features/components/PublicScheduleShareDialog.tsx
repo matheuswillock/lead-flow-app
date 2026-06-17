@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,11 +15,17 @@ import { formatIntimezone } from "@/lib/dates";
 import { ExternalLink, RefreshCcw } from "lucide-react";
 import type { PublicScheduleShareData } from "../services/IPublicScheduleShareService";
 
-function getRemainingLabel(availableAt: string): string {
-  const diffMs = new Date(availableAt).getTime() - Date.now();
-  if (diffMs <= 0) return "A reunião já está liberada.";
-  const minutes = Math.ceil(diffMs / 60_000);
-  return `Faltam ${minutes} min para liberar o acesso à reunião.`;
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return "Reunião pronta";
+  const totalSeconds = Math.ceil(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || hours > 0) parts.push(`${minutes}min`);
+  parts.push(`${seconds}seg`);
+  return `Faltam ${parts.join(" ")} para a reunião`;
 }
 
 export function PublicScheduleShareDialog({
@@ -32,8 +39,23 @@ export function PublicScheduleShareDialog({
   error: string | null;
   onRetry: () => Promise<void>;
 }) {
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!data?.availableAt) {
+      setTimeLeft(null);
+      return;
+    }
+    const availableAtMs = new Date(data.availableAt).getTime();
+    const tick = () => setTimeLeft(availableAtMs - Date.now());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [data?.availableAt]);
+
   const isReady = status === "ready" && !!data;
-  const joinAllowed = !!data?.joinAllowed && !!data?.meetingLink;
+  const isWithinWindow = timeLeft !== null && timeLeft <= 0;
+  const joinAllowed = isWithinWindow && !!data?.meetingLink;
 
   return (
     <Dialog open>
@@ -81,7 +103,7 @@ export function PublicScheduleShareDialog({
                         : "border-[color:var(--semantic-warning-border)] text-[color:var(--semantic-warning)]"
                     }
                   >
-                    {joinAllowed ? "Acesso liberado" : "Aguardando liberação"}
+                    {joinAllowed ? "Reunião pronta" : "Aguardando liberação"}
                   </Badge>
                 </div>
 
@@ -109,7 +131,11 @@ export function PublicScheduleShareDialog({
 
               <div className="rounded-2xl border border-border bg-surface-2 px-4 py-5">
                 <p className="text-sm text-muted-foreground">
-                  {joinAllowed ? "Seu acesso já está liberado." : getRemainingLabel(data.availableAt)}
+                  {timeLeft === null
+                    ? "Verificando disponibilidade..."
+                    : joinAllowed
+                    ? "Sua reunião está pronta. Clique para acessar."
+                    : formatCountdown(timeLeft)}
                 </p>
                 <Button
                   type="button"

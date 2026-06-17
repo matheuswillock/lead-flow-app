@@ -566,7 +566,8 @@ export class LeadUseCase implements ILeadUseCase {
       const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
       const shouldTrackStatus = data.status !== undefined;
       const shouldCheckCnpj = data.cnpj !== undefined && !!data.cnpj;
-      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus || shouldCheckCnpj;
+      const shouldTrackTransfer = data.isTransfer === true;
+      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus || shouldCheckCnpj || shouldTrackTransfer;
       const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
       if (shouldTrackChanges && !existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
@@ -725,13 +726,19 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       if (shouldTrackStatus && existingLead && existingLead.status !== lead.status) {
-        await this.handleOfferSubmissionAlert({
+        this.handleOfferSubmissionAlert({
           lead,
           previousStatus: existingLead.status,
           nextStatus: lead.status,
           actorProfileId: profileInfo.id,
           actorName: actorLabel,
-        });
+        }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
+      }
+
+      if (data.isTransfer === true && existingLead && !existingLead.isTransfer) {
+        this.handleTransferActivationAlert(lead).catch((err) =>
+          console.error("[LeadUseCase][handleTransferActivationAlert] Background error:", err)
+        );
       }
 
       return new Output(true, ["Lead atualizado com sucesso"], [], this.transformToDTO(lead));
@@ -1426,13 +1433,13 @@ export class LeadUseCase implements ILeadUseCase {
           }
         }
 
-        await this.handleOfferSubmissionAlert({
+        this.handleOfferSubmissionAlert({
           lead,
           previousStatus: existingLead.status,
           nextStatus: status,
           actorProfileId: profileInfo.id,
           actorName: actorLabel,
-        });
+        }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
       }
 
       const successMessages = ["Status do lead atualizado com sucesso"];
@@ -2038,6 +2045,81 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
+  private async handleTransferActivationAlert(lead: any): Promise<void> {
+    const teamId = lead.teamId as string | null;
+    if (!teamId) return;
+
+    try {
+      const [team, eligibleMembers] = await Promise.all([
+        prisma.team.findUnique({
+          where: { id: teamId },
+          select: { masterId: true },
+        }),
+        prisma.teamMember.findMany({
+          where: {
+            teamId,
+            role: { in: ["manager", "backoffice"] },
+            profile: { canTransferAccountLeads: true },
+          },
+          select: {
+            profileId: true,
+            profile: { select: { email: true } },
+          },
+        }),
+      ]);
+
+      if (!team) return;
+
+      const masterProfile = team.masterId
+        ? await prisma.profile.findUnique({
+            where: { id: team.masterId },
+            select: { id: true, email: true },
+          })
+        : null;
+
+      const recipientIds = Array.from(
+        new Set([
+          ...eligibleMembers.map((m) => m.profileId),
+          ...(masterProfile?.id ? [masterProfile.id] : []),
+        ])
+      );
+
+      const emailAddresses = [
+        ...eligibleMembers.map((m) => m.profile.email).filter((e): e is string => Boolean(e)),
+        ...(masterProfile?.email ? [masterProfile.email] : []),
+      ];
+      const uniqueEmails = Array.from(new Set(emailAddresses));
+
+      await Promise.all([
+        uniqueEmails.length > 0
+          ? getEmailService()
+              .sendLeadTransferActivatedEmail({
+                to: uniqueEmails,
+                leadName: lead.name,
+                leadPhone: lead.phone,
+                leadCnpj: lead.cnpj,
+                leadCurrentHealthPlan: lead.currentHealthPlan,
+                leadCurrentValue: lead.currentValue,
+                leadNotes: lead.notes,
+              })
+              .catch((err) => console.error("[handleTransferActivationAlert] E-mail error:", err))
+          : Promise.resolve(),
+        recipientIds.length > 0
+          ? notificationService
+              .createLeadTransferActivatedNotification({
+                teamId,
+                recipientProfileIds: recipientIds,
+                leadId: lead.id,
+                leadName: lead.name,
+              })
+              .catch((err) => console.error("[handleTransferActivationAlert] Notification error:", err))
+          : Promise.resolve(),
+      ]);
+    } catch (error) {
+      console.error("[handleTransferActivationAlert] Erro:", error);
+    }
+  }
+
   private async buildLeadProposalAttachments(leadId: string): Promise<Attachment[]> {
     const leadAttachments = await prisma.leadAttachment.findMany({
       where: { leadId },
@@ -2056,58 +2138,58 @@ export class LeadUseCase implements ILeadUseCase {
     }
 
     const supabaseAdmin = createSupabaseAdmin();
-    const attachments: Attachment[] = [];
 
-    for (const leadAttachment of leadAttachments) {
-      try {
-        let buffer: Buffer | null = null;
+    const downloads = await Promise.all(
+      leadAttachments.map(async (leadAttachment) => {
+        try {
+          let buffer: Buffer | null = null;
 
-        const storagePath = leadAttachment.storagePath?.trim();
-        if (supabaseAdmin && storagePath) {
-          const { data, error } = await supabaseAdmin.storage
-            .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
-            .download(storagePath);
+          const storagePath = leadAttachment.storagePath?.trim();
+          if (supabaseAdmin && storagePath) {
+            const { data, error } = await supabaseAdmin.storage
+              .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
+              .download(storagePath);
 
-          if (error) {
-            console.error("Erro ao baixar anexo do storage para e-mail:", {
-              leadId,
-              attachmentId: leadAttachment.id,
-              storagePath,
-              error,
-            });
-          } else if (data) {
-            buffer = Buffer.from(await data.arrayBuffer());
-          }
-        }
-
-        if (!buffer && leadAttachment.fileUrl) {
-          const response = await fetch(leadAttachment.fileUrl);
-          if (!response.ok) {
-            throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+            if (error) {
+              console.error("Erro ao baixar anexo do storage para e-mail:", {
+                leadId,
+                attachmentId: leadAttachment.id,
+                storagePath,
+                error,
+              });
+            } else if (data) {
+              buffer = Buffer.from(await data.arrayBuffer());
+            }
           }
 
-          const arrayBuffer = await response.arrayBuffer();
-          buffer = Buffer.from(arrayBuffer);
+          if (!buffer && leadAttachment.fileUrl) {
+            const response = await fetch(leadAttachment.fileUrl);
+            if (!response.ok) {
+              throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+          }
+
+          if (!buffer) return null;
+
+          return {
+            filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
+            content: buffer,
+            ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
+          } as Attachment;
+        } catch (error) {
+          console.error("Erro ao preparar anexo de lead para e-mail:", {
+            leadId,
+            attachmentId: leadAttachment.id,
+            error,
+          });
+          return null;
         }
+      })
+    );
 
-        if (!buffer) {
-          continue;
-        }
-
-        attachments.push({
-          filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
-          content: buffer,
-          ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
-        });
-      } catch (error) {
-        console.error("Erro ao preparar anexo de lead para e-mail:", {
-          leadId,
-          attachmentId: leadAttachment.id,
-          error,
-        });
-      }
-    }
-
-    return attachments;
+    return downloads.filter((a): a is Attachment => a !== null);
   }
 }

@@ -13,7 +13,9 @@ async function getCachedLeadAttachments(leadId: string) {
   "use cache";
   cacheTag(cacheTags.leadDetails(leadId));
   cacheLife({ stale: 30, revalidate: 60 });
-  return leadAttachmentUseCase.listAttachments(leadId);
+  const output = await leadAttachmentUseCase.listAttachments(leadId);
+  // "use cache" requires plain objects — Output class instances are not serializable
+  return { isValid: output.isValid, result: output.result, errorMessages: output.errorMessages };
 }
 
 async function getCachedLeadTeamMembers(teamId: string) {

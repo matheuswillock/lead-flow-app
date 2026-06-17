@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
+import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -72,6 +72,7 @@ export interface ILeadFormProps {
         isOverdue?: boolean;
     };
     onManageSchedule?: () => void;
+    onShareSchedule?: () => void;
     canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
@@ -126,6 +127,7 @@ export function LeadForm({
     currentProfileId,
     currentUserIsSdr = false,
     currentUserIsCloser = false,
+    onShareSchedule,
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -410,33 +412,6 @@ export function LeadForm({
             <LeadOngoingTreatmentField control={form.control} disabled={isLoading || isUpdating} />
             <LeadAdditionalNotesField control={form.control} disabled={isLoading || isUpdating} />
 
-            <div className="sm:col-span-2 rounded-md border border-border p-3">
-                <FormField
-                    control={form.control}
-                    name="isTransfer"
-                    render={({ field }) => (
-                        <FormItem className="flex items-center justify-between gap-3">
-                            <div className="grid gap-1">
-                                <FormLabel className="mb-0">Tag de transferência</FormLabel>
-                                <p className="text-xs text-muted-foreground">
-                                    Mantém o lead em pré-agendamento até a transferência para o time destino.
-                                </p>
-                            </div>
-                            <FormControl>
-                                <Button
-                                    type="button"
-                                    variant={field.value ? "default" : "outline"}
-                                    onClick={() => field.onChange(!field.value)}
-                                    disabled={isLoading || isUpdating}
-                                >
-                                    {field.value ? "Transferência ativa" : "Ativar transferência"}
-                                </Button>
-                            </FormControl>
-                        </FormItem>
-                    )}
-                />
-            </div>
-
             <div className="sm:col-span-2 pt-4 border-t">
                 <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold text-foreground">Agendamento</h3>
@@ -544,6 +519,18 @@ export function LeadForm({
                                         >
                                             <ExternalLink className="h-4 w-4" />
                                         </Button>
+                                        {!!onShareSchedule && (
+                                            <Button
+                                                type="button"
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8 shrink-0"
+                                                onClick={onShareSchedule}
+                                                aria-label="Compartilhar agendamento"
+                                            >
+                                                <Share2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             )}
