@@ -21,6 +21,14 @@ import { resolve } from "node:path";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const DUMP_DIR = resolve(process.cwd(), "tmp", "db-clone");
+const POST_CLONE_MIGRATIONS = [
+  resolve(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    "20260618211731_migrate-rafael-nogueira-to-pathos-seguros.sql",
+  ),
+];
 const SCHEMAS: Array<{ name: "auth" | "storage" | "public"; file: string }> = [
   { name: "auth", file: "auth.sql" },
   { name: "storage", file: "storage.sql" },
@@ -257,6 +265,13 @@ WHERE t.slug = 'common'
   run("psql", [LOCAL_DB_URL, "-v", "ON_ERROR_STOP=1", "-f", sqlFile]);
 }
 
+function reapplyPostCloneMigrations() {
+  for (const migrationPath of POST_CLONE_MIGRATIONS) {
+    step(`Reapply post-clone migration ${migrationPath}`);
+    run("psql", [LOCAL_DB_URL, "-v", "ON_ERROR_STOP=1", "-f", migrationPath]);
+  }
+}
+
 function cleanup() {
   if (keepDumps) {
     console.info(`\nKeeping dumps under ${DUMP_DIR} (passed --keep-dumps).`);
@@ -274,6 +289,7 @@ async function main() {
   resetLocal();
   restoreLocal();
   repairUserTypeAssignments();
+  reapplyPostCloneMigrations();
   cleanup();
   const seconds = Math.round((Date.now() - started) / 1000);
   console.info(`\n✅ Done in ${seconds}s. Local DB now mirrors remote data.`);
