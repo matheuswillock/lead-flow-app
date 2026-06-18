@@ -85,6 +85,9 @@ Esse nao e um caso generico de backfill. E uma correcao de cadastro conhecida e 
 - `53b0ba0f-0fc2-451c-b3ea-9c27446be10e` - Rafael Nogueira
   - novo manager: Carlos Henrique (`df71451b-bcd2-4602-9b7b-230b32f08b65`)
   - novo time: Pathos Seguros (`c30e3590-04a3-4544-bf66-43228037bfc9`)
+- `07316970-c45f-4cc3-977a-4e0fa1d706f9` - Henrique Cunha
+  - novo manager: Carlos Henrique (`df71451b-bcd2-4602-9b7b-230b32f08b65`)
+  - novo time: Pathos Seguros (`c30e3590-04a3-4544-bf66-43228037bfc9`)
 
 ### Migration relacionada
 
@@ -141,6 +144,7 @@ O destino e ambiguo. A regra de negocio definida foi nao adicionar esses usuario
 ### Perfis excluidos
 
 - `5de7227f-07e0-400c-af54-2b88c764c28b` - Brenda Kauany Soares Pereira
+- `a199bce6-bc6d-4a91-8ce4-560f868071d8` - Alexandre Audino
 - `72d64455-d7df-44e0-a7a0-9b8eada7eba3` - Bruna Floripes Franca
 - `cf0f1c1c-e470-47b6-a34d-439012931643` - Carol Prado
 - `60bce55e-380e-4ff6-b3de-60146e187284` - Debora Cristiny
@@ -171,6 +175,10 @@ O destino e ambiguo. A regra de negocio definida foi nao adicionar esses usuario
 ### Justificativa
 
 Esses casos ainda exigem decisao operacional ou saneamento de cadastro antes de qualquer remocao final de `Profile.role/functions`.
+
+### Migration relacionada
+
+- `20260617151009_audit-profile-role-functions-before-drop.sql`
 
 ## Estado esperado da auditoria
 
