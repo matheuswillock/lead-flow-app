@@ -239,9 +239,9 @@ export default function LeadDialog({
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const { activeTeamId, activeTeam, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
   const canTransferBetweenTeams =
-    isTeamMaster || Boolean(user?.canTransferAccountLeads);
+    isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
   const hasTransferTargets = allowedTransferTargetIds.length > 0;
   const {
     details: leadDetails,
@@ -2048,6 +2048,7 @@ export default function LeadDialog({
             } as Lead)
           : prev,
       );
+      refreshLeadDetails({ silent: true });
     }
   };
 

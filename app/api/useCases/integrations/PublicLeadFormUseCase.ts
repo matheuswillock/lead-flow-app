@@ -222,7 +222,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         }
       }
 
-      const hasMeetingData = !!(data.closerId && data.meetingDate && data.meetingTitle);
+      const hasMeetingData = !data.isTransfer && !!(data.closerId && data.meetingDate && data.meetingTitle);
       const createLeadData: CreateLeadRequest = {
         name: data.name,
         email: data.email,
@@ -243,6 +243,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         ticket: undefined,
         contractDueDate: undefined,
         soldPlan: undefined,
+        isTransfer: data.isTransfer === true,
         status: hasMeetingData ? LeadStatus.scheduled : LeadStatus.new_opportunity,
       };
 
@@ -363,9 +364,10 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       }
 
       const access = accessResult.access as PublicIntegrationAccess;
-      const [healthPlanOptions, teamMembers] = await Promise.all([
+      const [healthPlanOptions, teamMembers, transferRoutesCount] = await Promise.all([
         healthPlanService.listOptions(),
         this.listTeamMembersSnapshot(access.teamId),
+        prisma.teamTransferRoute.count({ where: { sourceTeamId: access.teamId } }),
       ]);
 
       const healthPlans = healthPlanOptions.map((option) => ({
@@ -387,6 +389,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         sdrs,
         guestCandidates,
         timezone: access.timezone,
+        hasTransferTargets: transferRoutesCount > 0,
       });
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao carregar bootstrap do formulário público:", error);
@@ -541,6 +544,55 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       return new Output(true, [], [], { availableTimes, source });
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao buscar disponibilidade:", error);
+      return new Output(false, [], ["Erro interno do servidor"], null);
+    }
+  }
+
+  async getPreScheduleSlots(teamId: string, date: string, legacySupabaseId?: string): Promise<Output> {
+    try {
+      const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
+      if (accessResult.output) {
+        return accessResult.output;
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return new Output(false, [], ["Formato de data inválido. Use YYYY-MM-DD."], null);
+      }
+
+      const access = accessResult.access as PublicIntegrationAccess;
+
+      const startOfDay = new Date(`${date}T00:00:00.000Z`);
+      const endOfDay = new Date(`${date}T23:59:59.999Z`);
+
+      const leads = await prisma.lead.findMany({
+        where: {
+          teamId: access.teamId,
+          isTransfer: true,
+          closerId: null,
+          meetingDate: { gte: startOfDay, lt: endOfDay },
+          status: {
+            notIn: [
+              LeadStatus.opportunityLost,
+              LeadStatus.disqualified,
+              LeadStatus.operator_denied,
+              LeadStatus.contract_finalized,
+            ],
+          },
+        },
+        select: { meetingDate: true },
+      });
+
+      const occupiedSlots = leads
+        .map((lead) => {
+          if (!lead.meetingDate) return null;
+          const d = lead.meetingDate;
+          return d.getUTCHours() * 60 + Math.floor(d.getUTCMinutes() / 30) * 30;
+        })
+        .filter((slot): slot is number => slot !== null);
+
+      return new Output(true, [], [], { occupiedSlots });
+    } catch (error) {
+      console.error("[PublicLeadFormUseCase] Erro ao buscar slots de pré-agendamento:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
     }
   }

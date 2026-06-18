@@ -12,6 +12,7 @@ import {
 } from "@/lib/validations/publicLeadFormSchema";
 import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import { SchedulingSection } from "./SchedulingSection";
+import { PreScheduleSection } from "./PreScheduleSection";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -69,6 +70,7 @@ export function PublicLeadForm() {
     closers,
     sdrs,
     guestCandidates,
+    hasTransferTargets,
     isSubmitting,
     isSubmitted,
     submitLead,
@@ -77,6 +79,7 @@ export function PublicLeadForm() {
   } = usePublicLeadFormContext();
 
   const [submitting, setSubmitting] = useState(false);
+  const [isTransfer, setIsTransfer] = useState(false);
   const lastInvalidHashRef = useRef<string>("");
   const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
     threshold: 0.2,
@@ -135,6 +138,7 @@ export function PublicLeadForm() {
 
       try {
         const hasMeeting = !!(closerId && meetingDate && meetingTitle.trim());
+        const hasPreSchedule = isTransfer && !!meetingDate;
         const guests = parseExtraGuests(data.extraGuests);
 
         const result = await submitLead({
@@ -150,10 +154,19 @@ export function PublicLeadForm() {
           notes: data.additionalNotes || undefined,
           assignedTo: data.responsible,
           closerId: hasMeeting ? closerId : undefined,
-          meetingDate: hasMeeting ? meetingDate.toISOString() : undefined,
-          meetingTitle: hasMeeting ? meetingTitle.trim() : undefined,
+          meetingDate: hasPreSchedule
+            ? meetingDate.toISOString()
+            : hasMeeting
+              ? meetingDate.toISOString()
+              : undefined,
+          meetingTitle: hasPreSchedule
+            ? `Estudo Plano de Saúde: ${data.name}`
+            : hasMeeting
+              ? meetingTitle.trim()
+              : undefined,
           meetingNotes: hasMeeting && meetingNotes ? meetingNotes : undefined,
           extraGuests: hasMeeting && guests.length > 0 ? guests : undefined,
+          isTransfer: isTransfer || undefined,
         });
 
         if (result.isValid) {
@@ -177,6 +190,7 @@ export function PublicLeadForm() {
           setMeetingDate(undefined);
           setMeetingTitle("");
           setMeetingNotes("");
+          setIsTransfer(false);
         } else {
           const errorMsg = result.errorMessages[0] || "Erro ao cadastrar lead";
           toast.error(errorMsg);
@@ -188,7 +202,7 @@ export function PublicLeadForm() {
         setSubmitting(false);
       }
     },
-    [submitting, isSubmitting, closerId, meetingDate, meetingTitle, meetingNotes, submitLead, form]
+    [submitting, isSubmitting, closerId, meetingDate, meetingTitle, meetingNotes, isTransfer, submitLead, form]
   );
 
   const handleInvalidSubmit = useCallback(async () => {
@@ -335,7 +349,24 @@ export function PublicLeadForm() {
           >
             <div className="space-y-6 rounded-lg border p-4">
               <div className="space-y-4">
-                <h3 className="text-sm font-medium">Dados do Lead</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">Dados do Lead</h3>
+                  {hasTransferTargets && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isTransfer ? "default" : "outline"}
+                      onClick={() => {
+                        setIsTransfer((previous) => !previous);
+                        setMeetingDate(undefined);
+                        setCloserId("");
+                      }}
+                      disabled={isLoading}
+                    >
+                      {isTransfer ? "Transferência ativa" : "Ativar transferência"}
+                    </Button>
+                  )}
+                </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <LeadNameField control={form.control} disabled={isLoading} />
@@ -367,7 +398,21 @@ export function PublicLeadForm() {
                 <LeadAdditionalNotesField control={form.control} disabled={isLoading} />
               </div>
 
-              {closers.length > 0 && (
+              {isTransfer && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Pré-agendamento</h3>
+                    <PreScheduleSection
+                      meetingDate={meetingDate}
+                      onMeetingDateChange={setMeetingDate}
+                      disabled={isLoading}
+                    />
+                  </div>
+                </>
+              )}
+
+              {!isTransfer && closers.length > 0 && (
                 <>
                   <Separator />
                   <div className="space-y-4">

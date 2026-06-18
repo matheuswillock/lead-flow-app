@@ -117,11 +117,9 @@ export class TeamMembersUseCase {
       }
 
       const canManageTransferRoutes =
-        profile.isMaster || (profile.role === "manager" && profile.canManageAccountTeams === true);
+        profile.isMaster || (membership.role === "manager" && membership.canManageAccountTeams === true);
 
-      const transferTargets = canManageTransferRoutes
-        ? await this.repository.findTransferTargets(teamId)
-        : [];
+      const transferTargets = await this.repository.findTransferTargets(teamId);
 
       return new Output(true, [], [], {
         team: { id: team.id, name: team.name, masterId: team.masterId },

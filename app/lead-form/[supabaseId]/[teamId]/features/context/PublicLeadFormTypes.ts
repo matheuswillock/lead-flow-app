@@ -20,14 +20,18 @@ export interface PublicLeadFormState {
   sdrs: SdrOption[];
   guestCandidates: GuestCandidateOption[];
   timezone: string;
+  hasTransferTargets: boolean;
   availableTimes: string[];
   availabilityLoading: boolean;
+  preScheduleOccupiedSlots: number[];
+  preScheduleSlotsLoading: boolean;
   isSubmitting: boolean;
   isSubmitted: boolean;
 }
 
 export interface PublicLeadFormActions {
   fetchAvailability: (closerId: string, date: string) => Promise<void>;
+  fetchPreScheduleSlots: (date: string) => Promise<void>;
   submitLead: (data: {
     name: string;
     email: string;
@@ -45,6 +49,7 @@ export interface PublicLeadFormActions {
     meetingTitle?: string;
     meetingNotes?: string;
     extraGuests?: string[];
+    isTransfer?: boolean;
   }) => Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }>;
   retryBootstrap: () => void;
   resetForm: () => void;
