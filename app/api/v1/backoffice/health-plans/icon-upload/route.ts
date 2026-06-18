@@ -1,12 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { SupabaseStorageService, STORAGE_BUCKETS } from "@/lib/supabase/storage"
 
 export async function POST(request: NextRequest) {
   try {
     const access = await getBackofficeAccess(request)
     if (access.error) return NextResponse.json(access.error, { status: access.status })
+    const denied = requireMasterAccess(access.access)
+    if (denied) return denied
 
     const formData = await request.formData()
     const file = formData.get("icon")

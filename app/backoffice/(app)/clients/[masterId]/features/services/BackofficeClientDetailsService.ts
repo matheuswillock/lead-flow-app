@@ -165,6 +165,8 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       functions?: ("SDR" | "CLOSER")[]
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      teamId?: string
     }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {
@@ -223,6 +225,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/members`, {
@@ -248,7 +251,11 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
-  async updateTeam(masterId: string, teamId: string, data: { name: string }): Promise<void> {
+  async updateTeam(
+    masterId: string,
+    teamId: string,
+    data: { name?: string; transferTargetTeamIds?: string[] }
+  ): Promise<void> {
     const res = await fetch(
       `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}`,
       {

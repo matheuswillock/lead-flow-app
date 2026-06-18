@@ -15,6 +15,7 @@ import type {
   CreatePaymentFormData,
 } from "../services/IBackofficePaymentsService"
 import type { BackofficeClientItem } from "../services/IBackofficePaymentsService"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 interface PaymentsContextValue {
   payments: BackofficePaymentItem[]
@@ -22,6 +23,7 @@ interface PaymentsContextValue {
   isLoading: boolean
   isCreating: boolean
   error: string | null
+  canManage: boolean
   fetchPayments: () => Promise<void>
   createPayment: (
     data: CreatePaymentFormData
@@ -36,6 +38,8 @@ interface Props {
 }
 
 export function BackofficePaymentsProvider({ children, paymentsService }: Props) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [payments, setPayments] = useState<BackofficePaymentItem[]>([])
   const [clients, setClients] = useState<BackofficeClientItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -86,7 +90,7 @@ export function BackofficePaymentsProvider({ children, paymentsService }: Props)
 
   return (
     <BackofficePaymentsContext.Provider
-      value={{ payments, clients, isLoading, isCreating, error, fetchPayments, createPayment }}
+      value={{ payments, clients, isLoading, isCreating, error, canManage, fetchPayments, createPayment }}
     >
       {children}
     </BackofficePaymentsContext.Provider>

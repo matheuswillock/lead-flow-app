@@ -9,6 +9,7 @@ export interface TeamSummaryRecord {
 
 export interface TeamMemberRecord {
   id: string
+  teamMemberId: string
   supabaseId: string | null
   fullName: string | null
   email: string
@@ -21,6 +22,7 @@ export interface TeamMemberRecord {
   isMaster: boolean
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
+  canTransferAccountLeads: boolean
 }
 
 export interface MasterPlatformUserRecord {
@@ -69,6 +71,7 @@ export interface MasterPlatformUserDetailsRecord {
     createdAt: Date
     membersCount: number
     members: TeamMemberRecord[]
+    transferRoutes: Array<{ teamId: string; teamName: string }>
   }>
 }
 
@@ -164,6 +167,7 @@ export interface IBackofficePlatformUsersRepository {
       functions: ("SDR" | "CLOSER")[]
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     },
     teamId: string
   ): Promise<{ profileId: string; teamMemberId: string }>
@@ -173,7 +177,11 @@ export interface IBackofficePlatformUsersRepository {
     teamId: string,
     role: "manager" | "backoffice" | "operator",
     functions: ("SDR" | "CLOSER")[],
-    permissions?: { canCreateAccountUsers: boolean; canManageAccountTeams: boolean }
+    permissions?: {
+      canCreateAccountUsers: boolean
+      canManageAccountTeams: boolean
+      canTransferAccountLeads: boolean
+    }
   ): Promise<{ teamMemberId: string }>
 
   createTeamForMaster(
@@ -186,6 +194,13 @@ export interface IBackofficePlatformUsersRepository {
     masterId: string,
     data: { name: string }
   ): Promise<{ id: string } | null>
+
+  syncTeamTransferRoutes(
+    teamId: string,
+    masterId: string,
+    targetTeamIds: string[],
+    createdBy: string
+  ): Promise<void>
 
   deleteTeam(teamId: string, masterId: string): Promise<void>
 

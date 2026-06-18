@@ -408,15 +408,13 @@ export class PendingActionUseCase {
     }
 
     const delegatedPermissions =
-      role === "manager"
-        ? {
-            canCreateAccountUsers: payload.canCreateAccountUsers === true,
-            canManageAccountTeams: payload.canManageAccountTeams === true,
-          }
-        : {
-            canCreateAccountUsers: false,
-            canManageAccountTeams: false,
-          };
+      {
+        canCreateAccountUsers: role === "manager" && payload.canCreateAccountUsers === true,
+        canManageAccountTeams: role === "manager" && payload.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (role === "manager" || role === "backoffice") &&
+          payload.canTransferAccountLeads === true,
+      };
 
     let profile = await tx.profile.findFirst({
       where: { email: { equals: email, mode: "insensitive" } },
@@ -432,8 +430,6 @@ export class PendingActionUseCase {
           functions,
           managerId: action.masterId,
           isMaster: false,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
         },
         select: { id: true },
       });
@@ -442,11 +438,7 @@ export class PendingActionUseCase {
         where: { id: profile.id },
         data: {
           fullName: name,
-          role,
-          functions,
           managerId: action.masterId,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
         },
       });
     }
@@ -467,6 +459,25 @@ export class PendingActionUseCase {
           profileId: profile.id,
           role,
           functions,
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+          canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+        },
+      });
+    } else {
+      await tx.teamMember.update({
+        where: {
+          teamId_profileId: {
+            teamId,
+            profileId: profile.id,
+          },
+        },
+        data: {
+          role,
+          functions,
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+          canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
         },
       });
     }

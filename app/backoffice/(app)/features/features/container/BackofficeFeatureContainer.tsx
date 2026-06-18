@@ -9,7 +9,7 @@ import { BackofficeFeatureDeleteDialog } from "../components/BackofficeFeatureDe
 import { useBackofficeFeature } from "../context/BackofficeFeatureContext"
 
 export function BackofficeFeatureContainer() {
-  const { features, isLoading, openCreateDialog } = useBackofficeFeature()
+  const { features, isLoading, canManage, openCreateDialog } = useBackofficeFeature()
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
@@ -20,10 +20,12 @@ export function BackofficeFeatureContainer() {
             Gerencie as funcionalidades e controle de acesso do produto.
           </p>
         </div>
-        <Button type="button" onClick={openCreateDialog}>
-          <Plus data-icon="inline-start" />
-          Nova Funcionalidade
-        </Button>
+        {canManage && (
+          <Button type="button" onClick={openCreateDialog}>
+            <Plus data-icon="inline-start" />
+            Nova Funcionalidade
+          </Button>
+        )}
       </div>
 
       {isLoading ? (

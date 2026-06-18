@@ -16,7 +16,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -28,6 +28,11 @@ const SCHEMAS: Array<{ name: "auth" | "storage" | "public"; file: string }> = [
 ];
 
 const keepDumps = process.argv.includes("--keep-dumps");
+const DROPPED_PROFILE_COLUMNS = new Set([
+  "canCreateAccountUsers",
+  "canManageAccountTeams",
+  "canTransferAccountLeads",
+]);
 
 function step(label: string) {
   console.info(`\n▶ ${label}`);
@@ -45,6 +50,154 @@ function run(cmd: string, args: string[], opts: { stdio?: "inherit" | "pipe"; ou
   return result;
 }
 
+function normalizeSqlIdentifier(identifier: string) {
+  return identifier.trim().replace(/^"|"$/g, "").replace(/""/g, '"');
+}
+
+function splitSqlList(input: string) {
+  const parts: string[] = [];
+  let current = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let depth = 0;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    const next = input[index + 1];
+
+    if (inSingleQuote) {
+      current += char;
+      if (char === "'" && next === "'") {
+        current += next;
+        index += 1;
+      } else if (char === "'") {
+        inSingleQuote = false;
+      }
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      current += char;
+      if (char === '"' && next === '"') {
+        current += next;
+        index += 1;
+      } else if (char === '"') {
+        inDoubleQuote = false;
+      }
+      continue;
+    }
+
+    if (char === "'") {
+      inSingleQuote = true;
+      current += char;
+      continue;
+    }
+
+    if (char === '"') {
+      inDoubleQuote = true;
+      current += char;
+      continue;
+    }
+
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+
+    if (char === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  parts.push(current.trim());
+  return parts;
+}
+
+function splitInsertRows(valuesBlock: string) {
+  const rows: string[] = [];
+  let current = "";
+  let inSingleQuote = false;
+  let depth = 0;
+
+  for (let index = 0; index < valuesBlock.length; index += 1) {
+    const char = valuesBlock[index];
+    const next = valuesBlock[index + 1];
+
+    if (inSingleQuote) {
+      current += char;
+      if (char === "'" && next === "'") {
+        current += next;
+        index += 1;
+      } else if (char === "'") {
+        inSingleQuote = false;
+      }
+      continue;
+    }
+
+    if (char === "'") {
+      inSingleQuote = true;
+      current += char;
+      continue;
+    }
+
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+
+    current += char;
+
+    if (depth === 0 && current.trim()) {
+      rows.push(current.trim().replace(/,$/, ""));
+      current = "";
+      while (valuesBlock[index + 1] === "," || /\s/.test(valuesBlock[index + 1] ?? "")) {
+        index += 1;
+      }
+    }
+  }
+
+  return rows;
+}
+
+function sanitizeProfilesInsertStatement(source: string) {
+  const insertPattern =
+    /INSERT INTO (?:"public"\.)?"corretor_studio_profiles" \(([\s\S]*?)\)\s+VALUES\s*\n([\s\S]*?);/m;
+  const match = source.match(insertPattern);
+  if (!match) return source;
+
+  const [statement, rawColumns, rawRows] = match;
+  const columns = splitSqlList(rawColumns);
+  const keepIndexes = columns
+    .map((column, index) => ({ column: normalizeSqlIdentifier(column), index }))
+    .filter(({ column }) => !DROPPED_PROFILE_COLUMNS.has(column))
+    .map(({ index }) => index);
+
+  if (keepIndexes.length === columns.length) return source;
+
+  const rows = splitInsertRows(rawRows).map((row) => {
+    const trimmed = row.trim();
+    const values = splitSqlList(trimmed.slice(1, -1));
+    if (values.length !== columns.length) return row;
+    return `\t(${keepIndexes.map((index) => values[index]).join(", ")})`;
+  });
+
+  const nextColumns = keepIndexes.map((index) => columns[index]).join(", ");
+  const sanitizedStatement = `INSERT INTO "public"."corretor_studio_profiles" (${nextColumns}) VALUES\n${rows.join(",\n")};`;
+  return source.replace(statement, sanitizedStatement);
+}
+
+function sanitizePublicDumpForLocalSchema() {
+  const publicDumpPath = resolve(DUMP_DIR, "public.sql");
+  if (!existsSync(publicDumpPath)) return;
+
+  const source = readFileSync(publicDumpPath, "utf8");
+  const sanitized = sanitizeProfilesInsertStatement(source);
+
+  if (sanitized !== source) {
+    writeFileSync(publicDumpPath, sanitized);
+  }
+}
+
 function ensureDumpDir() {
   if (!existsSync(DUMP_DIR)) {
     mkdirSync(DUMP_DIR, { recursive: true });
@@ -56,11 +209,10 @@ function dumpRemote() {
     const outPath = resolve(DUMP_DIR, schema.file);
     step(`Dump remote schema "${schema.name}" → ${outPath}`);
     const args = ["db", "dump", "--linked", "--data-only", "-f", outPath];
-    if (schema.name !== "public") {
-      args.push("--schema", schema.name);
-    }
+    args.push("--schema", schema.name);
     run("supabase", args);
   }
+  sanitizePublicDumpForLocalSchema();
 }
 
 function resetLocal() {
@@ -68,10 +220,23 @@ function resetLocal() {
   run("supabase", ["db", "reset", "--local", "--no-seed"]);
 }
 
+function preparePublicRestore() {
+  const sqlFile = resolve(DUMP_DIR, "prepare-public-restore.sql");
+  writeFileSync(
+    sqlFile,
+    `DELETE FROM "public"."profile_user_types";
+`
+  );
+  run("psql", [LOCAL_DB_URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", sqlFile]);
+}
+
 function restoreLocal() {
   for (const schema of SCHEMAS) {
     const inPath = resolve(DUMP_DIR, schema.file);
     step(`Restore "${schema.name}" → local`);
+    if (schema.name === "public") {
+      preparePublicRestore();
+    }
     // ON_ERROR_STOP=0 lets us tolerate FK warnings from circular constraints.
     run("psql", [LOCAL_DB_URL, "-v", "ON_ERROR_STOP=0", "-q", "-f", inPath]);
   }

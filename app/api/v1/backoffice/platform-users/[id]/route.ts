@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { BackofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
 
@@ -50,6 +51,8 @@ export async function PATCH(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireMasterAccess(result.access)
+    if (denied) return denied
 
     const { id } = await params
     const body = await request.json()
@@ -94,6 +97,8 @@ export async function DELETE(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireMasterAccess(result.access)
+    if (denied) return denied
 
     const { id } = await params
     const useCase = new BackofficePlatformUsersUseCase(new BackofficePlatformUsersRepository())

@@ -132,6 +132,26 @@ class PrismaProfileRepository implements IProfileRepository {
                     return null;
                 }
 
+                if (found.activeTeamId) {
+                    const activeTeamMembership = await prisma.teamMember.findUnique({
+                        where: {
+                            teamId_profileId: {
+                                teamId: found.activeTeamId,
+                                profileId: found.id,
+                            },
+                        },
+                        select: {
+                            role: true,
+                            functions: true,
+                            canCreateAccountUsers: true,
+                            canManageAccountTeams: true,
+                            canTransferAccountLeads: true,
+                        },
+                    });
+
+                    (found as any).activeTeamMembership = activeTeamMembership;
+                }
+
                 // Se o usuário é um manager não-master, buscar todos os usuários do master
                 if (isManagerLikeRole(found.role) && !found.isMaster && found.managerId) {
                     // Buscar todos os usuários associados ao master (incluindo o próprio master)
@@ -677,9 +697,6 @@ class PrismaProfileRepository implements IProfileRepository {
             email?: string;
             role?: string;
             functions?: ("SDR" | "CLOSER")[];
-            canCreateAccountUsers?: boolean;
-            canManageAccountTeams?: boolean;
-            canTransferAccountLeads?: boolean;
         }
     ): Promise<Profile | null> {
         try {
@@ -773,30 +790,6 @@ class PrismaProfileRepository implements IProfileRepository {
             if (updates.functions !== undefined) {
                 updateData.functions = updates.functions;
                 console.info("🧩 [updateProfileById] Atualizando functions:", updates.functions);
-            }
-
-            if (updates.canCreateAccountUsers !== undefined) {
-                updateData.canCreateAccountUsers = updates.canCreateAccountUsers;
-                console.info(
-                    "🔐 [updateProfileById] Atualizando canCreateAccountUsers:",
-                    updates.canCreateAccountUsers
-                );
-            }
-
-            if (updates.canManageAccountTeams !== undefined) {
-                updateData.canManageAccountTeams = updates.canManageAccountTeams;
-                console.info(
-                    "🔐 [updateProfileById] Atualizando canManageAccountTeams:",
-                    updates.canManageAccountTeams
-                );
-            }
-
-            if (updates.canTransferAccountLeads !== undefined) {
-                updateData.canTransferAccountLeads = updates.canTransferAccountLeads;
-                console.info(
-                    "🔐 [updateProfileById] Atualizando canTransferAccountLeads:",
-                    updates.canTransferAccountLeads
-                );
             }
 
             const profile = await prisma.profile.update({

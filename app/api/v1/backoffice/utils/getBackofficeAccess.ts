@@ -10,6 +10,7 @@ export type BackofficeAccess = {
   backofficeUserId: string | null
   backofficeEmail: string
   fullAccess: boolean
+  isOperator: boolean
 }
 
 export type BackofficeAccessResult =
@@ -64,13 +65,15 @@ export async function getBackofficeAccess(
     }
   }
 
+  const fullAccess = profile.backofficeUser?.fullAccess ?? false
   return {
     access: {
       supabaseId,
       profileId: profile.id,
       backofficeUserId: profile.backofficeUser?.id ?? null,
       backofficeEmail: profile.backofficeUser?.email ?? profile.email,
-      fullAccess: profile.backofficeUser?.fullAccess ?? false,
+      fullAccess,
+      isOperator: !fullAccess,
     },
   }
 }

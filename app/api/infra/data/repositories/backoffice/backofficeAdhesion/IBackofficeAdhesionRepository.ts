@@ -196,8 +196,6 @@ export interface IBackofficeAdhesionRepository {
       subscriptionEndDate: Date
       subscriptionCycle: string
       subscriptionNextDueDate: Date
-      canCreateAccountUsers: boolean
-      canManageAccountTeams: boolean
     }
   ): Promise<void>
   upsertProfileSubscription(data: {

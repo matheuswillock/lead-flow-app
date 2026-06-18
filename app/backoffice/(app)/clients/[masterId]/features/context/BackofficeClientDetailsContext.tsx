@@ -18,6 +18,7 @@ import type {
   BackofficePagination,
 } from "./BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 const DEFAULT_FILTERS: BackofficeClientDetailsFilters = {
   query: "",
@@ -51,6 +52,7 @@ type ClientDetailsSection = "teams" | "invoices"
 interface BackofficeClientDetailsContextValue {
   masterId: string
   service: IBackofficeClientDetailsService
+  canManage: boolean
   details: BackofficeClientDetails | null
   teams: BackofficeClientDetails["teams"]
   teamsPagination: BackofficePagination
@@ -102,6 +104,8 @@ interface BackofficeClientDetailsProviderProps {
 
 export function BackofficeClientDetailsProvider({ children, masterId, service }: BackofficeClientDetailsProviderProps) {
   const { tz } = useTimezone()
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [details, setDetails] = useState<BackofficeClientDetails | null>(null)
   const [teamsPagination, setTeamsPagination] = useState<BackofficePagination>(
     DEFAULT_TEAMS_PAGINATION
@@ -319,6 +323,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
       value={{
         masterId,
         service,
+        canManage,
         details,
         teams,
         teamsPagination,
