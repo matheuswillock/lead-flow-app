@@ -182,11 +182,13 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
   }
 
   private mapMembersToAssignableOptions(members: TeamMemberSnapshot[]) {
-    return members.map((member) => ({
-      id: member.profile.id,
-      name: member.profile.fullName || member.profile.email || "Membro do time",
-      avatarImageUrl: member.profile.profileIconUrl || "",
-    }));
+    return members
+      .map((member) => ({
+        id: member.profile.id,
+        name: member.profile.fullName || member.profile.email || "Membro do time",
+        avatarImageUrl: member.profile.profileIconUrl || "",
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
   }
 
   private mapMembersToGuestCandidates(members: TeamMemberSnapshot[]) {
@@ -197,7 +199,8 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         name: member.profile.fullName || member.profile.email || "Membro do time",
         email: member.profile.email as string,
         avatarImageUrl: member.profile.profileIconUrl || "",
-      }));
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
   }
 
   async createPublicLead(data: PublicLeadFormRequest, originContext?: PublicLeadFormOriginContext): Promise<Output> {

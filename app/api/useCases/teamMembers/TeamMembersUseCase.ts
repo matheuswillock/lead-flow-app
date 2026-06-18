@@ -113,7 +113,12 @@ export class TeamMembersUseCase {
             id: member.profile.id,
             name: getDisplayName(member.profile),
             email: member.profile.email,
-          }));
+          }))
+          .sort((a, b) => {
+            const aKey = (a.name || a.email || "").toLowerCase();
+            const bKey = (b.name || b.email || "").toLowerCase();
+            return aKey.localeCompare(bKey, "pt-BR");
+          });
       }
 
       const canManageTransferRoutes =

@@ -2891,7 +2891,7 @@ export default function LeadDialog({
                   onOpenChange={setTaskDialogOpen}
                   leadId={currentLead.id}
                   leadName={currentLead.name}
-                  teamMembers={(user as ProfileResponseDTO | null)?.usersAssociated ?? []}
+                  teamMembers={usersToAssign}
                   supabaseId={supabaseId}
                   activeTeamId={activeTeamId}
                   onSuccess={() => {
