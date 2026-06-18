@@ -48,6 +48,7 @@ export function invalidateTeamCalendarCache(input: { teamId: string; leadId?: st
     cacheTags.teamCalendar(input.teamId),
     cacheTags.teamDashboard(input.teamId),
     cacheTags.teamPerformance(input.teamId),
+    input.leadId ? cacheTags.lead(input.leadId) : null,
     input.leadId ? cacheTags.leadDetails(input.leadId) : null,
     input.leadId ? cacheTags.leadSchedules(input.leadId) : null,
   ]);
@@ -97,8 +98,17 @@ export function invalidateTeamLeadsCache(input: { teamId: string }) {
 
 export function invalidateLeadActivitiesCache(input: { leadId: string }) {
   revalidateDefinedTags([
+    cacheTags.lead(input.leadId),
     cacheTags.leadActivities(input.leadId),
     cacheTags.leadDetails(input.leadId),
   ]);
+}
+
+export function invalidateTeamTasksCache(input: { teamId: string }) {
+  revalidateDefinedTags([cacheTags.teamTasks(input.teamId)]);
+}
+
+export function invalidateTeamFilterPresetsCache(input: { teamId: string; profileId: string }) {
+  revalidateDefinedTags([cacheTags.teamFilterPresets(input.teamId, input.profileId)]);
 }
 

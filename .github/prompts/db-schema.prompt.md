@@ -1,6 +1,6 @@
 ---
 mode: 'agent'
-description: 'Consultar o schema do banco de dados Lead Flow sem exploração desnecessária de arquivos'
+description: "Consultar o schema do banco de dados Lead Flow sem exploração desnecessária de arquivos"
 ---
 
 <!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->

@@ -85,7 +85,7 @@ export function ContactAddModal({ trigger }: ContactAddModalProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contact-name">Nome (opcional)</Label>
+            <Label htmlFor="contact-name">Nome</Label>
             <Input
               id="contact-name"
               placeholder="Nome do contato"

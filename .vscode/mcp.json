@@ -10,6 +10,10 @@
         "shadcn@latest",
         "mcp"
       ]
+    },
+    "Sentry": {
+      "url": "https://mcp.sentry.dev/mcp/corretor-studio/sentry-camel-flower",
+      "type": "http"
     }
   }
 }

@@ -1,4 +1,4 @@
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
@@ -186,6 +186,9 @@ export default function LeadDialog({
   const [_pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [scheduleShareDialogOpen, setScheduleShareDialogOpen] = useState(false);
+  const [scheduleShareUrl, setScheduleShareUrl] = useState("");
+  const [scheduleShareExpiresAt, setScheduleShareExpiresAt] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
   const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email" | "task">("note");
   const [activityBody, setActivityBody] = useState("");
@@ -208,6 +211,8 @@ export default function LeadDialog({
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showTransferBetweenTeamsDialog, setShowTransferBetweenTeamsDialog] = useState(false);
+  const [isTransferToggling, setIsTransferToggling] = useState(false);
+  const [allowedTransferTargetIds, setAllowedTransferTargetIds] = useState<string[]>([]);
 
   useEffect(() => {
     setLocalLead(lead);
@@ -234,7 +239,10 @@ export default function LeadDialog({
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const { activeTeamId, activeTeam, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const canTransferBetweenTeams =
+    isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
+  const hasTransferTargets = allowedTransferTargetIds.length > 0;
   const {
     details: leadDetails,
     loading: leadDetailsLoading,
@@ -291,6 +299,30 @@ export default function LeadDialog({
   }, [currentLead?.id, open, refreshLeadDetails]);
 
   useEffect(() => {
+    const detailedLead = leadDetails?.lead;
+    if (!open || !currentLead || !detailedLead || detailedLead.id !== currentLead.id) return;
+    if (
+      detailedLead.meetingDate === currentLead.meetingDate &&
+      detailedLead.meetingTitle === currentLead.meetingTitle &&
+      detailedLead.meetingType === currentLead.meetingType
+    ) {
+      return;
+    }
+
+    // isTransfer is intentionally excluded: handleTransferToggle manages it
+    // via its own optimistic + server-confirmation flow. Spreading detailedLead
+    // here would revert the optimistic update before the API response arrives.
+    const { isTransfer: _isTransferIgnored, ...detailedLeadWithoutTransfer } = detailedLead;
+    setLocalLead((prev) =>
+      prev && prev.id === detailedLead.id ? ({ ...prev, ...detailedLeadWithoutTransfer } as Lead) : prev,
+    );
+  }, [
+    currentLead,
+    leadDetails?.lead,
+    open,
+  ]);
+
+  useEffect(() => {
     if (!open) {
       setActivityBody("");
       setActivityType("note");
@@ -316,6 +348,29 @@ export default function LeadDialog({
     setSelectedMentions([]);
     setHighlightedActivityId(null);
   }, [currentLead?.id]);
+
+  useEffect(() => {
+    if (!open || !activeTeamId || !supabaseId) {
+      setAllowedTransferTargetIds([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/v1/teams/${activeTeamId}/members`, {
+      headers: { "x-supabase-user-id": supabaseId },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const ids = Array.isArray(data?.result?.transferTargets)
+          ? data.result.transferTargets.map((t: { teamId: string }) => t.teamId)
+          : [];
+        setAllowedTransferTargetIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setAllowedTransferTargetIds([]);
+      });
+    return () => { cancelled = true; };
+  }, [open, activeTeamId, supabaseId]);
 
   // teamMembers para o popover de menções — derivado do useLeadDetails (sem fetch separado)
   useEffect(() => {
@@ -1342,6 +1397,7 @@ export default function LeadDialog({
       contractDueDate: undefined,
       soldPlan: undefined,
       meetingType: undefined,
+      isTransfer: data.isTransfer || false,
       isReferral: data.isReferral || false,
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
@@ -1378,6 +1434,7 @@ export default function LeadDialog({
         currentLead?.meetingType === "whatsapp"
           ? currentLead.meetingType
           : undefined,
+      isTransfer: data.isTransfer || false,
       isReferral: data.isReferral || false,
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
@@ -1859,6 +1916,71 @@ export default function LeadDialog({
     }
   };
 
+  const handleTransferToggle = async () => {
+    if (!currentLead || !supabaseId || isTransferToggling) return;
+    const next = !currentLead.isTransfer;
+    setIsTransferToggling(true);
+    patchLead?.(currentLead.id, { isTransfer: next });
+    setLocalLead((prev) =>
+      prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: next } as Lead) : prev
+    );
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({ isTransfer: next }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar a transferência.");
+      }
+      const serverValue = result?.result?.isTransfer ?? next;
+      patchLead?.(currentLead.id, { isTransfer: serverValue });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: serverValue } as Lead) : prev
+      );
+    } catch (error) {
+      patchLead?.(currentLead.id, { isTransfer: !next });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: !next } as Lead) : prev
+      );
+      toast.warning(error instanceof Error ? error.message : "Não foi possível atualizar a transferência.");
+    } finally {
+      setIsTransferToggling(false);
+    }
+  };
+
+  const handleShareSchedule = async () => {
+    if (!currentLead || !supabaseId) return;
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule/share`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid || !result?.result?.publicUrl) {
+        throw new Error(
+          Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+            ? result.errorMessages.join(", ")
+            : "Erro ao gerar link público do agendamento."
+        );
+      }
+      setScheduleShareUrl(result.result.publicUrl as string);
+      setScheduleShareExpiresAt(result.result.expiresAt as string | null);
+      setScheduleShareDialogOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao gerar link de compartilhamento.");
+    }
+  };
+
   const handleSalesInfoRequirementSave = async (payload: SalesInfoPayload) => {
     if (!currentLead || !supabaseId || !pendingSalesInfoGate) return;
 
@@ -1926,6 +2048,7 @@ export default function LeadDialog({
             } as Lead)
           : prev,
       );
+      refreshLeadDetails({ silent: true });
     }
   };
 
@@ -2009,6 +2132,7 @@ export default function LeadDialog({
         meetingNotes: currentLead.meetingNotes || "",
         meetingLink: currentLead.meetingLink || "",
         meetingHeald: currentLead.meetingHeald === "yes" ? "yes" : "no",
+        isTransfer: currentLead.isTransfer === true,
         extraGuests: "",
         responsible: currentLead.assignedTo || "",
         ticket: currentLead.ticket ? formatCurrency(currentLead.ticket) : "",
@@ -2037,6 +2161,7 @@ export default function LeadDialog({
         meetingNotes: "",
         meetingLink: "",
         meetingHeald: "no",
+        isTransfer: false,
         extraGuests: "",
         responsible: "",
         ticket: "",
@@ -2271,7 +2396,7 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    {currentLead && currentLead.status === "new_opportunity" && (isTeamMaster || activeRole === "manager") && (
+                    {currentLead && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && hasTransferTargets && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -2287,6 +2412,28 @@ export default function LeadDialog({
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Transferir entre times</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {currentLead && hasTransferTargets && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={currentLead.isTransfer ? "default" : "outline"}
+                              onClick={() => void handleTransferToggle()}
+                              disabled={isTransferToggling}
+                            >
+                              {currentLead.isTransfer ? "Transferência ativa" : "Ativar transferência"}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {currentLead.isTransfer
+                              ? "Clique para desativar a transferência"
+                              : "Clique para marcar como lead para transferência"}
+                          </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
@@ -2389,10 +2536,16 @@ export default function LeadDialog({
                               meetingNotes: currentLead.meetingNotes,
                               meetingLink: currentLead.meetingLink,
                               meetingHeald: currentLead.meetingHeald,
+                              isPreSchedule: currentLead.isTransfer === true && !!currentLead.meetingDate,
                             }
                           : undefined
                       }
                       onManageSchedule={currentLead ? () => setShowScheduleDialog(true) : undefined}
+                      onShareSchedule={
+                        currentLead?.meetingDate && currentLead.isTransfer !== true
+                          ? () => void handleShareSchedule()
+                          : undefined
+                      }
                       canToggleMeetingHeald={canEditMeetingHeald}
                       meetingHealdSaving={meetingHealdSaving}
                       onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
@@ -2738,7 +2891,7 @@ export default function LeadDialog({
                   onOpenChange={setTaskDialogOpen}
                   leadId={currentLead.id}
                   leadName={currentLead.name}
-                  teamMembers={(user as ProfileResponseDTO | null)?.usersAssociated ?? []}
+                  teamMembers={usersToAssign}
                   supabaseId={supabaseId}
                   activeTeamId={activeTeamId}
                   onSuccess={() => {
@@ -3118,6 +3271,7 @@ export default function LeadDialog({
           open={showTransferBetweenTeamsDialog}
           onOpenChange={setShowTransferBetweenTeamsDialog}
           lead={currentLead}
+          allowedTeamIds={allowedTransferTargetIds}
           onSuccess={async (updatedLead) => {
             await applyLocalLeadPatch(updatedLead.id, updatedLead);
             await refreshLeads();
@@ -3125,6 +3279,48 @@ export default function LeadDialog({
           }}
         />
       )}
+
+      <Dialog open={scheduleShareDialogOpen} onOpenChange={setScheduleShareDialogOpen}>
+        <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Link público do agendamento</DialogTitle>
+            <DialogDescription>
+              Compartilhe este link para que o participante acesse a reunião.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            {scheduleShareExpiresAt && (
+              <p className="text-xs text-muted-foreground">
+                Expira em {new Date(scheduleShareExpiresAt).toLocaleString("pt-BR")}
+              </p>
+            )}
+            <div className="grid gap-2">
+              <Label>Link público</Label>
+              <div className="flex items-center gap-2">
+                <Input value={scheduleShareUrl} readOnly />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(scheduleShareUrl).then(() =>
+                      toast.success("Link copiado.")
+                    );
+                  }}
+                  disabled={!scheduleShareUrl}
+                >
+                  <CopyIcon size={16} />
+                  Copiar
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Fechar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </>
   );

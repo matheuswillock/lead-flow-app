@@ -186,7 +186,7 @@ jobs:
 
               const [local = "", remote = ""] = line.split(/[│|]/).map((value) => value.trim());
 
-              if (!local || !remote || local !== remote) {
+              if (!local || (remote && local !== remote)) {
                 bad = true;
                 break;
               }

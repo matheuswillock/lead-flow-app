@@ -1,4 +1,5 @@
 import { resend } from "@/lib/email"
+import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 import type { IEmailCampaignDispatchService, DispatchBatchResult } from "./IEmailCampaignDispatchService"
 
 const BATCH_SIZE = 50
@@ -6,11 +7,13 @@ const BATCH_SIZE = 50
 export class EmailCampaignDispatchService implements IEmailCampaignDispatchService {
   async dispatchBatch(params: {
     from: string
-    recipients: Array<{ email: string; name?: string }>
+    replyTo?: string | null
+    recipients: Array<{ email: string; name?: string | null; customFields?: Record<string, unknown> | null }>
     subject: string
     html: string
     campaignId: string
     teamId: string
+    globalDefaults?: Record<string, string | null | undefined> | null
   }): Promise<DispatchBatchResult> {
     if (!resend) {
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
@@ -23,9 +26,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       try {
         const batchPayload = chunk.map((recipient) => ({
           from: params.from,
+          ...(params.replyTo ? { replyTo: params.replyTo } : {}),
           to: recipient.email,
-          subject: this.interpolateVariables(params.subject, recipient),
-          html: this.interpolateVariables(params.html, recipient),
+          subject: interpolateEmailTemplate(params.subject, recipient, params.globalDefaults),
+          html: interpolateEmailTemplate(params.html, recipient, params.globalDefaults),
           tags: [
             { name: "campaignId", value: params.campaignId },
             { name: "teamId", value: params.teamId },
@@ -63,20 +67,6 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       chunks.push(array.slice(i, i + size))
     }
     return chunks
-  }
-
-  /**
-   * Interpola variáveis no formato {{variavel}} com os dados do destinatário
-   */
-  private interpolateVariables(
-    template: string,
-    recipient: { email: string; name?: string }
-  ): string {
-    return template
-      .replace(/\{\{nome_do_lead\}\}/gi, recipient.name ?? "")
-      .replace(/\{\{nome\}\}/gi, recipient.name ?? "")
-      .replace(/\{\{name\}\}/gi, recipient.name ?? "")
-      .replace(/\{\{email\}\}/gi, recipient.email)
   }
 }
 

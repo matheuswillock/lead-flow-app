@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { Output } from "@/lib/output";
 import type { ITeamFilterPresetService } from "@/app/api/services/teamFilterPreset/ITeamFilterPresetService";
 import { teamFilterPresetService } from "@/app/api/services/teamFilterPreset/TeamFilterPresetService";
@@ -7,12 +9,19 @@ import type {
   TeamFilterPresetUpdateInput,
 } from "./ITeamFilterPresetsUseCase";
 
+async function getCachedFilterPresets(teamId: string, profileId: string) {
+  "use cache";
+  cacheTag(cacheTags.teamFilterPresets(teamId, profileId));
+  cacheLife({ stale: 60, revalidate: 300 });
+  return teamFilterPresetService.listByTeamAndCreator(teamId, profileId);
+}
+
 export class TeamFilterPresetsUseCase implements ITeamFilterPresetsUseCase {
   constructor(private readonly service: ITeamFilterPresetService = teamFilterPresetService) {}
 
   async list(teamId: string, createdBy: string): Promise<Output> {
     try {
-      const presets = await this.service.listByTeamAndCreator(teamId, createdBy);
+      const presets = await getCachedFilterPresets(teamId, createdBy);
       return new Output(true, [], [], presets);
     } catch (error) {
       console.error("[TeamFilterPresetsUseCase][list] Erro ao listar presets:", error);

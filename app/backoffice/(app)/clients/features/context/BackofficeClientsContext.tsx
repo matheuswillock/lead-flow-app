@@ -18,6 +18,8 @@ import type {
 
 const DEFAULT_FILTERS: BackofficeClientsFilters = {
   query: "",
+  plan: "all",
+  userType: "all",
 }
 
 const DEFAULT_PAGINATION: BackofficePagination = {

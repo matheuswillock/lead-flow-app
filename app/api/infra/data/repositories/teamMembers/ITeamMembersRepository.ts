@@ -43,13 +43,25 @@ export interface TeamMembersEligibleProfile extends TeamMembersProfileOption {
   functions: UserFunction[];
 }
 
+export interface TeamMembersTransferTarget {
+  teamId: string;
+  teamName: string;
+}
+
+export interface TeamMembersMembershipAccess {
+  id: string;
+  role: UserRole;
+  canManageAccountTeams: boolean;
+}
+
 export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
-  findMembership(teamId: string, profileId: string): Promise<{ id: string } | null>;
+  findMembership(teamId: string, profileId: string): Promise<TeamMembersMembershipAccess | null>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;
   findMasterAccountProfiles(masterId: string): Promise<TeamMembersProfileOption[]>;
+  findTransferTargets(teamId: string): Promise<TeamMembersTransferTarget[]>;
   findExistingMember(teamId: string, profileId: string): Promise<{ id: string } | null>;
   findEligibleProfile(profileId: string, masterId: string): Promise<TeamMembersEligibleProfile | null>;
   createMember(input: {

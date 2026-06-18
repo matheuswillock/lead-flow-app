@@ -21,7 +21,8 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { Lead } from "../context/BoardTypes";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import { Info } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
+import { formatLocalTimeValue } from "@/lib/dates";
 
 interface TeamMemberOption {
   id: string;
@@ -37,6 +38,7 @@ interface TransferBetweenTeamsDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: Lead;
   onSuccess: (lead: Lead) => void;
+  allowedTeamIds?: string[];
 }
 
 export function TransferBetweenTeamsDialog({
@@ -44,6 +46,7 @@ export function TransferBetweenTeamsDialog({
   onOpenChange,
   lead,
   onSuccess,
+  allowedTeamIds,
 }: TransferBetweenTeamsDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -55,6 +58,7 @@ export function TransferBetweenTeamsDialog({
   const [sdrId, setSdrId] = useState("");
   const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [allowedTargetTeamIds, setAllowedTargetTeamIds] = useState<string[]>([]);
 
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [meetingDate, setMeetingDate] = useState<Date | undefined>(undefined);
@@ -66,24 +70,66 @@ export function TransferBetweenTeamsDialog({
 
   const [submitting, setSubmitting] = useState(false);
 
-  const targetTeams = teams.filter((t) => t.id !== activeTeamId);
+  const targetTeams = teams.filter((t) => t.id !== activeTeamId && allowedTargetTeamIds.includes(t.id));
   const closers = teamMembers.filter((m) => m.functions.includes("CLOSER"));
   const sdrs = teamMembers.filter((m) => m.functions.includes("SDR"));
+  const selectedMeetingTime =
+    meetingDate && !Number.isNaN(meetingDate.getTime())
+      ? formatLocalTimeValue(meetingDate, tz)
+      : null;
+  const pickerAvailableTimes =
+    scheduleEnabled && selectedMeetingTime && (!closerId || availabilityLoading)
+      ? [selectedMeetingTime]
+      : availableTimes;
 
   useEffect(() => {
-    if (!open) {
-      setTargetTeamId("");
-      setCloserId("");
-      setSdrId("");
-      setTeamMembers([]);
-      setScheduleEnabled(false);
-      setMeetingDate(undefined);
-      setMeetingTitle("");
-      setMeetingType("call");
-      setAvailableTimes([]);
-      setAvailabilityLoading(false);
+    setTargetTeamId("");
+    setCloserId("");
+    setSdrId("");
+    setTeamMembers([]);
+    setAllowedTargetTeamIds([]);
+    setScheduleEnabled(open && lead.isTransfer === true && !!lead.meetingDate);
+    setMeetingDate(open && lead.isTransfer && lead.meetingDate ? new Date(lead.meetingDate) : undefined);
+    setMeetingTitle(open && lead.isTransfer ? lead.meetingTitle ?? "" : "");
+    setMeetingType(
+      open &&
+        lead.isTransfer &&
+        (lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
+        ? lead.meetingType
+        : "call"
+    );
+    setAvailableTimes([]);
+    setAvailabilityLoading(false);
+  }, [open, lead]);
+
+  useEffect(() => {
+    if (allowedTeamIds) {
+      setAllowedTargetTeamIds(allowedTeamIds);
+      return;
     }
-  }, [open]);
+    if (!open || !activeTeamId || !supabaseId) return;
+
+    let active = true;
+    fetch(`/api/v1/teams/${activeTeamId}/members`, {
+      headers: { "x-supabase-user-id": supabaseId },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        const ids = Array.isArray(data?.result?.transferTargets)
+          ? data.result.transferTargets.map((item: { teamId: string }) => item.teamId)
+          : [];
+        setAllowedTargetTeamIds(ids);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAllowedTargetTeamIds([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open, activeTeamId, supabaseId, allowedTeamIds]);
 
   useEffect(() => {
     if (!targetTeamId || !supabaseId) {
@@ -163,7 +209,7 @@ export function TransferBetweenTeamsDialog({
         "x-supabase-user-id": supabaseId,
         "x-team-id": targetTeamId,
       },
-      body: JSON.stringify({ closerId, date: meetingDateKey }),
+      body: JSON.stringify({ closerId, date: meetingDateKey, excludeLeadId: lead.id }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -181,9 +227,13 @@ export function TransferBetweenTeamsDialog({
     return () => {
       active = false;
     };
-  }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, targetTeamId]);
+  }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, targetTeamId, lead.id]);
 
-  const canSubmit = !!targetTeamId && !!closerId && !submitting && (!scheduleEnabled || !!meetingDate);
+  const canSubmit =
+    !!targetTeamId &&
+    !!closerId &&
+    !submitting &&
+    (!scheduleEnabled || (!!meetingDate && !availabilityLoading && availableTimes.length > 0));
 
   const handleSubmit = async () => {
     if (!canSubmit || !supabaseId) return;
@@ -288,7 +338,7 @@ export function TransferBetweenTeamsDialog({
           </div>
 
           <div className="flex flex-col gap-3">
-            <Label htmlFor="sdr">SDR responsável (opcional)</Label>
+            <Label htmlFor="sdr">SDR responsável</Label>
             <Select value={sdrId} onValueChange={setSdrId} disabled={!targetTeamId || membersLoading}>
               <SelectTrigger id="sdr">
                 <SelectValue placeholder="Sem SDR" />
@@ -321,10 +371,27 @@ export function TransferBetweenTeamsDialog({
                   date={meetingDate}
                   onDateChange={setMeetingDate}
                   tz={tz}
-                  availableTimes={availableTimes}
+                  label=""
+                  availableTimes={pickerAvailableTimes}
                   timeLoading={availabilityLoading}
                   timeLoadingText="Carregando agenda do closer..."
                 />
+                {!closerId && meetingDate && (
+                  <p className="text-xs text-muted-foreground">Selecione um closer para carregar os horários disponíveis.</p>
+                )}
+                {closerId && availabilityLoading && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" />
+                    Carregando horários disponíveis...
+                  </p>
+                )}
+                {closerId && meetingDate && !availabilityLoading && availableTimes.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {lead.isTransfer && lead.meetingDate
+                      ? "O horário do pré-agendamento não está disponível para este closer. Para prosseguir, selecione outro closer, escolha outro horário ou desative o agendamento abaixo."
+                      : "Nenhum horário disponível para este closer neste dia. Selecione outro closer ou outra data."}
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">

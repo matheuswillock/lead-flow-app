@@ -291,6 +291,7 @@ TEAM_MEMBER_REMOVED TEAM_MEMBER_REMOVED
 LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
 LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
 GOOGLE_CONNECTION_BROKEN GOOGLE_CONNECTION_BROKEN
+LEAD_TRANSFER_ACTIVATED LEAD_TRANSFER_ACTIVATED
         }
     
 
@@ -325,6 +326,14 @@ contacted contacted
 proposal proposal
 renewed renewed
 lost lost
+        }
+    
+
+
+        contract_type {
+            individual individual
+corporate corporate
+adhesion adhesion
         }
     
 
@@ -458,8 +467,6 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     UserRole role 
     UserFunction functions 
     Boolean isMaster 
-    Boolean canCreateAccountUsers 
-    Boolean canManageAccountTeams 
     Boolean hasPermanentSubscription 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
@@ -717,6 +724,7 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
     String meetingType "❓"
+    Boolean isTransfer 
     DateTime followUpAt "❓"
     String followUpNotes "❓"
     LeadStatus followUpSourceStatus "❓"
@@ -792,6 +800,8 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     DateTime inviteDispatchLastAttemptAt "❓"
     String inviteDispatchLastError "❓"
     Json inviteDispatchLastPayload "❓"
+    String publicShareTokenHash "❓"
+    DateTime publicShareExpiresAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -803,6 +813,7 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     DateTime startDateAt 
     Int duration 
     Decimal amount 
+    ContractType contractType 
     String notes "❓"
     String operadora "❓"
     String productName "❓"
@@ -816,6 +827,7 @@ RECONNECTION_EVENT RECONNECTION_EVENT
   "corretor_studio_lead_finalized_holders" {
     String id "🗝️"
     String name 
+    String razaoSocial "❓"
     DateTime birthDate 
     String document 
     String cnpj "❓"
@@ -965,8 +977,29 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     String id "🗝️"
     UserRole role 
     UserFunction functions 
+    Boolean canCreateAccountUsers 
+    Boolean canManageAccountTeams 
+    Boolean canTransferAccountLeads 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_transfer_routes" {
+    String id "🗝️"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_lead_transfers" {
+    String id "🗝️"
+    String fromManagerId 
+    String toManagerId 
+    Boolean transferTagUsed 
+    DateTime preScheduledAt "❓"
+    Boolean scheduledAtTransfer 
+    DateTime createdAt 
     }
   
 
@@ -1002,7 +1035,14 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     String previewText "❓"
     Json mailyJson "❓"
     String html "❓"
+    Json variables "❓"
+    String status 
+    DateTime publishedAt "❓"
     Boolean isArchived 
+    String approvalStatus 
+    DateTime approvedAt "❓"
+    DateTime rejectedAt "❓"
+    String reviewNote "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1014,6 +1054,7 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     String description "❓"
     String csvStoragePath "❓"
     Int totalContacts 
+    Boolean isSystemDefault 
     Boolean isArchived 
     DateTime createdAt 
     DateTime updatedAt 
@@ -1045,6 +1086,7 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     Int totalOpened 
     Int totalClicked 
     Int totalBounced 
+    Int dispatchCount 
     Int totalComplained 
     String errorMessage "❓"
     DateTime createdAt 
@@ -1180,6 +1222,50 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     Int includedExtraUsers 
     Int manualAdjustmentExtraTeams 
     Int manualAdjustmentExtraUsers 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_team_settings" {
+    String id "🗝️"
+    String fromName 
+    String fromEmail 
+    String replyTo "❓"
+    Json dispatchBlockedDates "❓"
+    String dispatchTimeFrom "❓"
+    String dispatchTimeTo "❓"
+    String dispatchAllowedRoles 
+    String templateCreateRoles 
+    Boolean templateApprovalRequired 
+    String templateApprovalRoles 
+    Int blockedDispatchDays 
+    String resendDomainId "❓"
+    String resendDomainName "❓"
+    String resendDomainStatus "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_team_senders" {
+    String id "🗝️"
+    String name 
+    String email 
+    String replyTo "❓"
+    Boolean isDefault 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_team_variables" {
+    String id "🗝️"
+    String key 
+    String type 
+    String defaultValue "❓"
+    String description "❓"
+    Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1344,6 +1430,7 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     "corretor_studio_task_assignees" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "corretor_studio_leads_schedule" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_finalized" |o--|| "ContractType" : "enum:contractType"
     "corretor_studio_lead_finalized" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_finalized" }o--|o corretor_studio_profiles : "closer"
     "corretor_studio_lead_finalized_holders" |o--|| corretor_studio_lead_finalized : "leadFinalized"
@@ -1383,12 +1470,22 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     "corretor_studio_team_members" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_team_members" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_members" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_team_transfer_routes" }o--|| corretor_studio_teams : "sourceTeam"
+    "corretor_studio_team_transfer_routes" }o--|| corretor_studio_teams : "targetTeam"
+    "corretor_studio_team_transfer_routes" }o--|o corretor_studio_profiles : "creator"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_teams : "fromTeam"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_teams : "toTeam"
+    "corretor_studio_lead_transfers" }o--|| corretor_studio_profiles : "transferredByProfile"
+    "corretor_studio_lead_transfers" }o--|o corretor_studio_profiles : "receivedByProfile"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "approver"
+    "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "rejecter"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
@@ -1428,6 +1525,9 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
+    "email_team_settings" |o--|| corretor_studio_teams : "team"
+    "email_team_senders" }o--|| corretor_studio_teams : "team"
+    "email_team_variables" }o--|| corretor_studio_teams : "team"
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"

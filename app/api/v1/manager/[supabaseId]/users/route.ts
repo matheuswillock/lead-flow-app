@@ -77,46 +77,43 @@ function resolveDelegatedPermissions(
   requestedPermissions: {
     canCreateAccountUsers?: boolean;
     canManageAccountTeams?: boolean;
+    canTransferAccountLeads?: boolean;
   },
   options: {
     canManageDelegation: boolean;
   }
 ) {
-  if (role !== "manager") {
-    return {
-      canCreateAccountUsers: false,
-      canManageAccountTeams: false,
-    };
-  }
-
   if (!options.canManageDelegation) {
     return {
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
+      canTransferAccountLeads: false,
     };
   }
 
+  const isManagerLike = role === "manager" || role === "backoffice";
+
   return {
-    canCreateAccountUsers: requestedPermissions.canCreateAccountUsers === true,
-    canManageAccountTeams: requestedPermissions.canManageAccountTeams === true,
+    canCreateAccountUsers: role === "manager" && requestedPermissions.canCreateAccountUsers === true,
+    canManageAccountTeams: role === "manager" && requestedPermissions.canManageAccountTeams === true,
+    canTransferAccountLeads: isManagerLike && requestedPermissions.canTransferAccountLeads === true,
   };
 }
 
-async function createUserAndInvite(args: {
-  teamId: string;
-  masterId: string;
-  requesterProfileId: string;
-  actorName: string;
-  teamName: string;
-  userData: CreateUserRequest;
-  delegatedPermissions: {
-    canCreateAccountUsers: boolean;
-    canManageAccountTeams: boolean;
-  };
-  tx?: Prisma.TransactionClient;
-}) {
+async function createUserRecords(
+  args: {
+    teamId: string;
+    masterId: string;
+    userData: CreateUserRequest;
+    delegatedPermissions: {
+      canCreateAccountUsers: boolean;
+      canManageAccountTeams: boolean;
+      canTransferAccountLeads: boolean;
+    };
+  },
+  db: Prisma.TransactionClient | typeof prisma
+) {
   const email = normalizeEmail(args.userData.email);
-  const db = args.tx ?? prisma;
 
   const profile = await db.profile.create({
     data: {
@@ -127,8 +124,6 @@ async function createUserAndInvite(args: {
       managerId: args.masterId,
       isMaster: false,
       hasPermanentSubscription: args.userData.hasPermanentSubscription ?? false,
-      canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
-      canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
     },
     select: {
       id: true,
@@ -145,31 +140,54 @@ async function createUserAndInvite(args: {
       profileId: profile.id,
       role: args.userData.role as UserRole,
       functions: args.userData.functions ?? [],
+      canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
+      canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
+      canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
     },
     select: {
       role: true,
       functions: true,
       createdAt: true,
       updatedAt: true,
+      canCreateAccountUsers: true,
+      canManageAccountTeams: true,
+      canTransferAccountLeads: true,
     },
   });
 
-  try {
-    await notificationService.createTeamMembershipNotification({
-      teamId: args.teamId,
-      actorProfileId: args.requesterProfileId,
-      actorName: args.actorName,
-      teamName: args.teamName,
-      recipientProfileId: profile.id,
-      type: NotificationType.TEAM_MEMBER_ADDED,
-    });
-  } catch (notificationError) {
-    console.error(
-      "[ManagerUsersRoute][createUserAndInvite] Erro ao criar notificação de membro adicionado:",
-      notificationError
-    );
-  }
+  return { profile, teamMemberRecord };
+}
 
+async function finalizeUserCreation(args: {
+  teamId: string;
+  masterId: string;
+  requesterProfileId: string;
+  actorName: string;
+  teamName: string;
+  userData: CreateUserRequest;
+  delegatedPermissions: {
+    canCreateAccountUsers: boolean;
+    canManageAccountTeams: boolean;
+    canTransferAccountLeads: boolean;
+  };
+  profile: {
+    id: string;
+    fullName: string | null;
+    email: string;
+    profileIconId: string | null;
+    profileIconUrl: string | null;
+  };
+  teamMemberRecord: {
+    role: UserRole;
+    functions: string[];
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}) {
+  const { profile, teamMemberRecord } = args;
+  const email = normalizeEmail(args.userData.email);
+
+  // External API calls outside any transaction — no timeout risk
   try {
     const supabaseAdmin = createSupabaseAdmin();
     if (!supabaseAdmin) {
@@ -195,17 +213,17 @@ async function createUserAndInvite(args: {
       throw new Error("Erro ao gerar link de convite");
     }
 
-    const supabaseUserId = (data as any)?.user?.id as string | undefined;
+    const supabaseUserId = data.user?.id;
     const inviteLink = buildSetPasswordEmailAuthLink(data, "invite");
 
     if (supabaseUserId) {
-      await db.profile.update({
+      await prisma.profile.update({
         where: { id: profile.id },
         data: { supabaseId: supabaseUserId },
       });
     }
 
-    const requesterProfile = await db.profile.findUnique({
+    const requesterProfile = await prisma.profile.findUnique({
       where: { id: args.requesterProfileId },
       select: { fullName: true, email: true },
     });
@@ -218,15 +236,31 @@ async function createUserAndInvite(args: {
       managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
       inviteUrl: inviteLink,
     });
+
+    try {
+      await notificationService.createTeamMembershipNotification({
+        teamId: args.teamId,
+        actorProfileId: args.requesterProfileId,
+        actorName: args.actorName,
+        teamName: args.teamName,
+        recipientProfileId: profile.id,
+        type: NotificationType.TEAM_MEMBER_ADDED,
+      });
+    } catch (notificationError) {
+      console.error(
+        "[ManagerUsersRoute][finalizeUserCreation] Erro ao criar notificação de membro adicionado:",
+        notificationError
+      );
+    }
   } catch (inviteError) {
-    console.error("[ManagerUsersRoute][createUserAndInvite] Invite falhou:", {
+    console.error("[ManagerUsersRoute][finalizeUserCreation] Invite falhou:", {
       email,
       teamId: args.teamId,
       error: inviteError instanceof Error
         ? { message: inviteError.message, stack: inviteError.stack, name: inviteError.name }
         : inviteError,
     });
-    await db.teamMember.delete({
+    await prisma.teamMember.delete({
       where: {
         teamId_profileId: {
           teamId: args.teamId,
@@ -234,8 +268,7 @@ async function createUserAndInvite(args: {
         },
       },
     });
-
-    await db.profile.delete({ where: { id: profile.id } });
+    await prisma.profile.delete({ where: { id: profile.id } });
     throw new Error("Erro ao enviar convite. Tente novamente.");
   }
 
@@ -250,6 +283,7 @@ async function createUserAndInvite(args: {
     managerId: args.masterId,
     canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
     canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
+    canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
     createdAt: teamMemberRecord.createdAt,
     updatedAt: teamMemberRecord.updatedAt,
   };
@@ -348,7 +382,10 @@ export async function POST(
       canManageDelegation,
     });
 
-    if (!isMaster && (validatedData.canCreateAccountUsers || validatedData.canManageAccountTeams)) {
+    if (
+      !isMaster &&
+      (validatedData.canCreateAccountUsers || validatedData.canManageAccountTeams || validatedData.canTransferAccountLeads)
+    ) {
       const output = new Output(
         false,
         [],
@@ -395,7 +432,11 @@ export async function POST(
     }
 
     if (billingOwner.hasPermanentSubscription) {
-      const createdUser = await createUserAndInvite({
+      const { profile, teamMemberRecord } = await createUserRecords(
+        { teamId, masterId: managerId, userData: validatedData, delegatedPermissions },
+        prisma
+      );
+      const createdUser = await finalizeUserCreation({
         teamId,
         masterId: managerId,
         requesterProfileId: profileId,
@@ -403,6 +444,8 @@ export async function POST(
         teamName,
         userData: validatedData,
         delegatedPermissions,
+        profile,
+        teamMemberRecord,
       });
 
       const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
@@ -414,19 +457,26 @@ export async function POST(
     });
 
     if (projectedBilling.billingDelta <= 0) {
-      const createdUser = await prisma.$transaction(async (tx) => {
+      // Transaction contains only fast DB ops — no external API calls
+      const { profile, teamMemberRecord } = await prisma.$transaction(async (tx) => {
         await subscriptionCreditService.assertCapacityAvailable(tx, managerId, { users: 1 });
+        return createUserRecords(
+          { teamId, masterId: managerId, userData: validatedData, delegatedPermissions },
+          tx
+        );
+      });
 
-        return createUserAndInvite({
-          teamId,
-          masterId: managerId,
-          requesterProfileId: profileId,
-          actorName,
-          teamName,
-          userData: validatedData,
-          delegatedPermissions,
-          tx,
-        });
+      // External calls run after tx commits — no timeout risk, no FK violation
+      const createdUser = await finalizeUserCreation({
+        teamId,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        actorName,
+        teamName,
+        userData: validatedData,
+        delegatedPermissions,
+        profile,
+        teamMemberRecord,
       });
 
       const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
@@ -444,6 +494,7 @@ export async function POST(
       requestedByEmail: requesterProfile?.email || "",
       canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
       canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+      canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
       billingType: validatedData.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
       billingDelta: projectedBilling.billingDelta,
       targetRecurringTotal: projectedBilling.targetRecurringTotal,
@@ -595,8 +646,6 @@ export async function GET(
                 revokedAt: true,
               },
             },
-            canCreateAccountUsers: true,
-            canManageAccountTeams: true,
             _count: {
               select: {
                 leadsAsAssignee: {
@@ -629,8 +678,9 @@ export async function GET(
         profileIconId: member.profile.profileIconId,
         profileIconUrl: member.profile.profileIconUrl,
         managerId,
-        canCreateAccountUsers: member.profile.canCreateAccountUsers,
-        canManageAccountTeams: member.profile.canManageAccountTeams,
+        canCreateAccountUsers: member.canCreateAccountUsers,
+        canManageAccountTeams: member.canManageAccountTeams,
+        canTransferAccountLeads: member.canTransferAccountLeads,
         leadsCount: member.profile._count?.leadsAsAssignee ?? 0,
         meetingsCount: member.profile._count?.leadsAsCloser ?? 0,
         createdAt: member.createdAt,
@@ -670,6 +720,7 @@ export async function GET(
           managerId,
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
+          canTransferAccountLeads: false,
           leadsCount: 0,
           meetingsCount: 0,
           createdAt: pending.createdAt,
@@ -710,6 +761,7 @@ export async function GET(
             managerId,
             canCreateAccountUsers: payload.canCreateAccountUsers === true,
             canManageAccountTeams: payload.canManageAccountTeams === true,
+            canTransferAccountLeads: payload.canTransferAccountLeads === true,
             leadsCount: 0,
             meetingsCount: 0,
             createdAt: action.createdAt,
@@ -921,7 +973,11 @@ export async function PUT(
 
     if (
       !isMaster &&
-      (validatedData.canCreateAccountUsers !== undefined || validatedData.canManageAccountTeams !== undefined)
+      (
+        validatedData.canCreateAccountUsers !== undefined ||
+        validatedData.canManageAccountTeams !== undefined ||
+        validatedData.canTransferAccountLeads !== undefined
+      )
     ) {
       const output = new Output(
         false,
@@ -934,7 +990,11 @@ export async function PUT(
 
     if (
       validatedData.id === profileId &&
-      (validatedData.canCreateAccountUsers !== undefined || validatedData.canManageAccountTeams !== undefined)
+      (
+        validatedData.canCreateAccountUsers !== undefined ||
+        validatedData.canManageAccountTeams !== undefined ||
+        validatedData.canTransferAccountLeads !== undefined
+      )
     ) {
       const output = new Output(
         false,
@@ -953,19 +1013,11 @@ export async function PUT(
 
     if (
       validatedData.name ||
-      validatedData.email ||
-      validatedData.role ||
-      validatedData.functions ||
-      validatedData.canCreateAccountUsers !== undefined ||
-      validatedData.canManageAccountTeams !== undefined
+      validatedData.email
     ) {
       await profileRepository.updateProfileById(validatedData.id, {
         ...(validatedData.name ? { fullName: validatedData.name } : {}),
         ...(validatedData.email ? { email: normalizeEmail(validatedData.email) } : {}),
-        ...(validatedData.role ? { role: validatedData.role } : {}),
-        ...(validatedData.functions ? { functions: validatedData.functions } : {}),
-        canCreateAccountUsers: nextDelegatedPermissions.canCreateAccountUsers,
-        canManageAccountTeams: nextDelegatedPermissions.canManageAccountTeams,
       });
     }
 
@@ -973,18 +1025,20 @@ export async function PUT(
       validatedData.role ||
       validatedData.functions ||
       validatedData.canCreateAccountUsers !== undefined ||
-      validatedData.canManageAccountTeams !== undefined
+      validatedData.canManageAccountTeams !== undefined ||
+      validatedData.canTransferAccountLeads !== undefined
     ) {
-      await prisma.teamMember.update({
+      await prisma.teamMember.updateMany({
         where: {
-          teamId_profileId: {
-            teamId,
-            profileId: validatedData.id,
-          },
+          profileId: validatedData.id,
+          team: { masterId: managerId },
         },
         data: {
           ...(validatedData.role ? { role: validatedData.role as UserRole } : {}),
           ...(validatedData.functions ? { functions: validatedData.functions } : {}),
+          canCreateAccountUsers: nextDelegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: nextDelegatedPermissions.canManageAccountTeams,
+          canTransferAccountLeads: nextDelegatedPermissions.canTransferAccountLeads,
         },
       });
     }
@@ -1003,8 +1057,6 @@ export async function PUT(
             email: true,
             profileIconId: true,
             profileIconUrl: true,
-            canCreateAccountUsers: true,
-            canManageAccountTeams: true,
           },
         },
       },
@@ -1019,8 +1071,9 @@ export async function PUT(
       profileIconId: updatedMember?.profile.profileIconId,
       profileIconUrl: updatedMember?.profile.profileIconUrl,
       managerId,
-      canCreateAccountUsers: updatedMember?.profile.canCreateAccountUsers ?? false,
-      canManageAccountTeams: updatedMember?.profile.canManageAccountTeams ?? false,
+      canCreateAccountUsers: updatedMember?.canCreateAccountUsers ?? false,
+      canManageAccountTeams: updatedMember?.canManageAccountTeams ?? false,
+      canTransferAccountLeads: updatedMember?.canTransferAccountLeads ?? false,
     });
 
     return NextResponse.json(output, { status: 200 });

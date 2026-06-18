@@ -31,7 +31,7 @@ export interface IPaymentRepository {
    * Atualiza o status da assinatura de um Profile
    * @param profileId - ID do Profile
    * @param subscriptionStatus - Novo status da assinatura
-   * @param subscriptionStartDate - Data de início da assinatura (opcional)
+   * @param subscriptionStartDate - Data de início da assinatura
    * @returns Profile atualizado
    */
   updateSubscriptionStatus(

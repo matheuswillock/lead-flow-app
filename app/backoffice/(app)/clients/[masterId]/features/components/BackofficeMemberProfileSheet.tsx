@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { CircleCheckBig, CircleX } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -15,6 +16,7 @@ import {
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
+import { toast } from "sonner"
 import type { BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
 
@@ -70,6 +72,7 @@ export function BackofficeMemberProfileSheet({
   const [grantedScopes, setGrantedScopes] = useState<string[]>([])
   const [isScopesLoading, setIsScopesLoading] = useState(false)
   const [scopesError, setScopesError] = useState<string | null>(null)
+  const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | null>(null)
   const lastFetchedMemberId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -111,8 +114,33 @@ export function BackofficeMemberProfileSheet({
       lastFetchedMemberId.current = null
       setGrantedScopes([])
       setScopesError(null)
+      setAccessAction(null)
     }
     onOpenChange(next)
+  }
+
+  async function handleSendAccessEmail(mode: "invite" | "reset_password") {
+    if (!member || accessAction) return
+
+    setAccessAction(mode)
+    try {
+      const result = await service.sendAccessEmail(member.id, mode)
+      toast.success(
+        mode === "invite"
+          ? `Convite reenviado para ${result.email}.`
+          : `Reset de senha enviado para ${result.email}.`
+      )
+      console.info("[BackofficeMemberProfileSheet][handleSendAccessEmail]", {
+        memberId: member.id,
+        mode,
+        email: result.email,
+      })
+    } catch (error) {
+      console.error("[BackofficeMemberProfileSheet][handleSendAccessEmail]", error)
+      toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.")
+    } finally {
+      setAccessAction(null)
+    }
   }
 
   return (
@@ -159,6 +187,62 @@ export function BackofficeMemberProfileSheet({
 
                 <span className="text-muted-foreground">Membro desde</span>
                 <span>{formatIntimezone(new Date(member.addedAt), "dd/MM/yyyy", tz)}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Acesso à plataforma
+              </p>
+
+              <div className="grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+                <span className="text-muted-foreground">Primeiro acesso</span>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className={
+                      member.hasCompletedFirstAccess
+                        ? "border-semantic-success-border bg-semantic-success-surface text-semantic-success"
+                        : "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning"
+                    }
+                  >
+                    {member.hasCompletedFirstAccess
+                      ? "Primeiro acesso concluído"
+                      : "Convite pendente"}
+                  </Badge>
+                </div>
+
+                <span className="text-muted-foreground">Último acesso</span>
+                <span>
+                  {member.lastSignInAt
+                    ? formatIntimezone(new Date(member.lastSignInAt), "dd/MM/yyyy HH:mm", tz)
+                    : "—"}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {member.accessStatus === "pending_first_access" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleSendAccessEmail("invite")}
+                    disabled={accessAction !== null}
+                  >
+                    Reenviar convite
+                  </Button>
+                ) : null}
+                {member.accessStatus === "active" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleSendAccessEmail("reset_password")}
+                    disabled={accessAction !== null}
+                  >
+                    Enviar reset de senha
+                  </Button>
+                ) : null}
               </div>
             </div>
 

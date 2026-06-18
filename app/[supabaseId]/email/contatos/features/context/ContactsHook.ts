@@ -127,22 +127,14 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         if (selectedListId === id) {
           setSelectedListId(null);
         }
-        toast.success("Lista arquivada com sucesso");
+        toast.success("Lista excluída com sucesso");
       } catch (error) {
         console.error("[useContatos] handleDeleteList error", error);
-        toast.error("Erro ao arquivar lista");
+        toast.error("Erro ao excluir lista");
         throw error;
       }
     },
     [fetchLists, selectedListId]
-  );
-
-  const handleAddContact = useCallback(
-    async (_email: string, _name?: string) => {
-      toast.error("Adição manual de contato ainda não está disponível");
-      throw new Error("Adição manual de contato ainda não está disponível");
-    },
-    []
   );
 
   const handleUploadCsv = useCallback(
@@ -193,6 +185,25 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       }
     },
     [selectedListId]
+  );
+
+  const handleAddContact = useCallback(
+    async (email: string, name?: string) => {
+      if (!selectedListId) return;
+      console.info("[useContatos] handleAddContact", { email });
+      try {
+        await service.addContact(selectedListId, email, name);
+        await fetchLists();
+        void fetchContacts(selectedListId, page, search);
+        toast.success("Contato adicionado com sucesso");
+      } catch (error) {
+        console.error("[useContatos] handleAddContact error", error);
+        const message = error instanceof Error ? error.message : "Erro ao adicionar contato";
+        toast.error(message);
+        throw error;
+      }
+    },
+    [selectedListId, fetchLists, fetchContacts, page, search]
   );
 
   const handleSearch = useCallback(

@@ -1259,8 +1259,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionEndDate,
         subscriptionCycle: adhesion.cycle,
         subscriptionNextDueDate: subscriptionEndDate,
-        canCreateAccountUsers: true,
-        canManageAccountTeams: true,
       })
 
       await this.repo.markAccountCreated(adhesion.id, {

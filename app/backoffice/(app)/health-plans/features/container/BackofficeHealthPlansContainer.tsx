@@ -186,7 +186,7 @@ const formatDate = (value: string | null | undefined): string => {
 }
 
 export function BackofficeHealthPlansContainer() {
-  const { items, isLoading, isSaving, createItem, updateItem, deactivateItem, activateItem, uploadIcon } = useBackofficeHealthPlans()
+  const { items, isLoading, isSaving, canManage, createItem, updateItem, deactivateItem, activateItem, uploadIcon } = useBackofficeHealthPlans()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [query, setQuery] = useState("")
@@ -382,7 +382,7 @@ export function BackofficeHealthPlansContainer() {
         header: () => <span className="text-center">Ações</span>,
         enableSorting: false,
         enableHiding: false,
-        cell: ({ row }) => (
+        cell: ({ row }) => canManage ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               asChild
@@ -449,10 +449,10 @@ export function BackofficeHealthPlansContainer() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-        ),
+        ) : null,
       },
     ],
-    [activateItem, deactivateItem]
+    [activateItem, canManage, deactivateItem]
   )
 
   const table = useReactTable({
@@ -491,10 +491,12 @@ export function BackofficeHealthPlansContainer() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={startCreate}>
-            <Plus data-icon="inline-start" />
-            Nova operadora
-          </Button>
+          {canManage && (
+            <Button size="sm" onClick={startCreate}>
+              <Plus data-icon="inline-start" />
+              Nova operadora
+            </Button>
+          )}
         <Sheet>
           <TooltipProvider delayDuration={0}>
             <Tooltip>
@@ -767,7 +769,11 @@ export function BackofficeHealthPlansContainer() {
               </TableRow>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} className="cursor-pointer" onClick={() => startEdit(row.original)}>
+                <TableRow
+                  key={row.id}
+                  className={canManage ? "cursor-pointer" : undefined}
+                  onClick={canManage ? () => startEdit(row.original) : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="text-center align-middle">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

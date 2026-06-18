@@ -48,7 +48,7 @@ export function BackofficeUsersProvider({ children, usersService }: Props) {
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
-  const canManageUsers = user?.fullAccess === true
+  const canManageUsers = !user?.isOperator
 
   const fetchUsers = useCallback(async () => {
     if (inFlight.current) return

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { BackofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
 
@@ -19,6 +20,8 @@ export async function POST(
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireMasterAccess(access.access)
+    if (denied) return denied
 
     const { id } = await params
     const body = await request.json().catch(() => null)
@@ -47,6 +50,7 @@ export async function POST(
     const teamId = typeof data.teamId === "string" ? data.teamId.trim() : ""
     const canCreateAccountUsers = data.canCreateAccountUsers === true
     const canManageAccountTeams = data.canManageAccountTeams === true
+    const canTransferAccountLeads = data.canTransferAccountLeads === true
 
     if (!fullName) {
       return NextResponse.json(
@@ -79,6 +83,7 @@ export async function POST(
       teamId,
       canCreateAccountUsers,
       canManageAccountTeams,
+      canTransferAccountLeads,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })

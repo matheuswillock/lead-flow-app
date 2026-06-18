@@ -1,4 +1,4 @@
-import { ActivityType, LeadStatus, Prisma, PortfolioSource, RenewalStatus } from '@prisma/client';
+import { ActivityType, ContractType, LeadStatus, Prisma, PortfolioSource, RenewalStatus } from '@prisma/client';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 import type {
@@ -35,17 +35,21 @@ function mapToPortfolioRow(entry: {
     contractDueDate: Date | null;
     assignee: { id: string; fullName: string | null } | null;
     closer: { id: string; fullName: string | null } | null;
-    LeadFinalized: { operadora: string | null; startDateAt: Date }[];
+    LeadFinalized: { operadora: string | null; startDateAt: Date; contractType: ContractType; holder: { razaoSocial: string | null } | null }[];
   };
 }): PortfolioRow {
   const ticket = entry.lead.ticket ? entry.lead.ticket.toNumber() : 0;
   const currentValue = entry.lead.currentValue ? entry.lead.currentValue.toNumber() : 0;
   const finalized = entry.lead.LeadFinalized[0] ?? null;
+  const displayName =
+    finalized?.contractType === ContractType.corporate && finalized.holder?.razaoSocial
+      ? finalized.holder.razaoSocial
+      : entry.lead.name;
   return {
     portfolioId: entry.id,
     leadId: entry.lead.id,
     leadCode: entry.lead.leadCode,
-    leadName: entry.lead.name,
+    leadName: displayName,
     source: entry.source,
     portfolioStatus: entry.portfolioStatus as PortfolioRow['portfolioStatus'],
     renewalStatus: entry.renewalStatus,
@@ -84,7 +88,7 @@ const leadInclude = {
       assignee: { select: { id: true, fullName: true } },
       closer: { select: { id: true, fullName: true } },
       LeadFinalized: {
-        select: { operadora: true, startDateAt: true },
+        select: { operadora: true, startDateAt: true, contractType: true, holder: { select: { razaoSocial: true } } },
         orderBy: { createdAt: 'desc' as const },
         take: 1,
       },
@@ -280,11 +284,16 @@ export class PortfolioService implements IPortfolioService {
     const ticket = entry.lead.ticket ? entry.lead.ticket.toNumber() : 0;
     const currentValue = entry.lead.currentValue ? entry.lead.currentValue.toNumber() : 0;
 
+    const detailDisplayName =
+      finalized?.contractType === ContractType.corporate && finalized.holder?.razaoSocial
+        ? finalized.holder.razaoSocial
+        : entry.lead.name;
+
     return {
       portfolioId: entry.id,
       leadId: entry.lead.id,
       leadCode: entry.lead.leadCode,
-      leadName: entry.lead.name,
+      leadName: detailDisplayName,
       source: entry.source,
       saleValue: ticket > 0 ? ticket : currentValue,
       portfolioStatus: entry.portfolioStatus,
@@ -292,6 +301,7 @@ export class PortfolioService implements IPortfolioService {
       closer: entry.lead.closer ? { id: entry.lead.closer.id, name: entry.lead.closer.fullName ?? '' } : null,
       soldPlan: entry.lead.soldPlan,
       contractDueDate: entry.lead.contractDueDate,
+      contractType: finalized?.contractType ?? ContractType.individual,
       contract: finalized
         ? {
             operadora: finalized.operadora ?? null,
@@ -307,6 +317,7 @@ export class PortfolioService implements IPortfolioService {
       holder: finalized?.holder
         ? {
             name: finalized.holder.name,
+            razaoSocial: finalized.holder.razaoSocial ?? null,
             birthDate: finalized.holder.birthDate,
             document: finalized.holder.document,
             cnpj: finalized.holder.cnpj ?? null,
@@ -447,6 +458,7 @@ export class PortfolioService implements IPortfolioService {
               (finalizedDateAt.getTime() - lead.createdAt.getTime()) / (1000 * 60 * 60 * 24)
             )
           ),
+          contractType: data.contractType,
           notes: data.notes?.trim() || null,
           closerId: data.closerId,
           operadora: data.operadora.trim(),
@@ -458,8 +470,9 @@ export class PortfolioService implements IPortfolioService {
         data: {
           leadFinalizedId: finalized.id,
           name: data.holder.name.trim(),
+          razaoSocial: data.holder.razaoSocial?.trim() || null,
           birthDate: holderBirthDate,
-          document: sanitizeRgCpfDigits(data.holder.document),
+          document: sanitizeRgCpfDigits(data.holder.document || ''),
           cnpj: sanitizeDocumentDigits(data.holder.cnpj || '') || null,
         },
       });
@@ -591,6 +604,7 @@ export class PortfolioService implements IPortfolioService {
           startDateAt: data.startDateAt,
           finalizedDateAt: data.finalizedDateAt,
           duration: 0,
+          contractType: data.contractType ?? ContractType.individual,
           notes: data.notes?.trim() || null,
           closerId: data.closerId,
           operadora: data.operadora.trim(),
@@ -603,6 +617,7 @@ export class PortfolioService implements IPortfolioService {
           data: {
             leadFinalizedId: finalized.id,
             name: data.holder.name.trim(),
+            razaoSocial: data.holder.razaoSocial?.trim() || null,
             birthDate: data.holder.birthDate,
             document: sanitizeRgCpfDigits(data.holder.document),
           },
@@ -691,6 +706,7 @@ export class PortfolioService implements IPortfolioService {
       if (finalized) {
         // Update LeadFinalized fields
         const finalizedPatch: Prisma.LeadFinalizedUpdateInput = {};
+        if (payload.contractType !== undefined) finalizedPatch.contractType = payload.contractType;
         if (payload.operadora !== undefined) finalizedPatch.operadora = payload.operadora;
         if (payload.productName !== undefined) finalizedPatch.productName = payload.productName;
         if (payload.amount !== undefined) finalizedPatch.amount = payload.amount;
@@ -710,14 +726,16 @@ export class PortfolioService implements IPortfolioService {
               create: {
                 leadFinalizedId: finalized.id,
                 name: payload.holder.name,
+                razaoSocial: payload.holder.razaoSocial ?? null,
                 birthDate: new Date(payload.holder.birthDate),
-                document: payload.holder.document,
+                document: payload.holder.document ?? '',
                 cnpj: payload.holder.cnpj ?? null,
               },
               update: {
                 name: payload.holder.name,
+                razaoSocial: payload.holder.razaoSocial ?? null,
                 birthDate: new Date(payload.holder.birthDate),
-                document: payload.holder.document,
+                document: payload.holder.document ?? '',
                 cnpj: payload.holder.cnpj ?? null,
               },
             });

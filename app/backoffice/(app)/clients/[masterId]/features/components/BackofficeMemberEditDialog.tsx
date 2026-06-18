@@ -46,6 +46,7 @@ interface FormState {
   functions: MemberFunction[]
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
+  canTransferAccountLeads: boolean
 }
 
 function toRole(value: string): MemberRole {
@@ -66,6 +67,7 @@ function initForm(member: BackofficeClientTeamMember): FormState {
     functions: toFunctions(member.functions),
     canCreateAccountUsers: member.canCreateAccountUsers,
     canManageAccountTeams: member.canManageAccountTeams,
+    canTransferAccountLeads: member.canTransferAccountLeads,
   }
 }
 
@@ -80,6 +82,7 @@ interface BackofficeMemberEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   member: BackofficeClientTeamMember | null
+  teamId: string | null
   details: BackofficeClientDetails | null
   service: IBackofficeClientDetailsService
   onSuccess: () => void
@@ -90,6 +93,7 @@ export function BackofficeMemberEditDialog({
   open,
   onOpenChange,
   member,
+  teamId,
   details,
   service,
   onSuccess,
@@ -98,7 +102,7 @@ export function BackofficeMemberEditDialog({
   const [form, setForm] = useState<FormState>(() =>
     member
       ? initForm(member)
-      : { fullName: "", phone: "", email: "", role: "operator", functions: [], canCreateAccountUsers: false, canManageAccountTeams: false }
+      : { fullName: "", phone: "", email: "", role: "operator", functions: [], canCreateAccountUsers: false, canManageAccountTeams: false, canTransferAccountLeads: false }
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [removingTeamId, setRemovingTeamId] = useState<string | null>(null)
@@ -137,8 +141,12 @@ export function BackofficeMemberEditDialog({
         JSON.stringify([...toFunctions(member.functions)].sort())
       const canCreateChanged = form.canCreateAccountUsers !== member.canCreateAccountUsers
       const canManageChanged = form.canManageAccountTeams !== member.canManageAccountTeams
+      const canTransferChanged = form.canTransferAccountLeads !== member.canTransferAccountLeads
 
-      if (!fullNameChanged && !phoneChanged && !emailChanged && !roleChanged && !functionsChanged && !canCreateChanged && !canManageChanged) {
+      const hasTransferPermission = form.role === "manager" || form.role === "backoffice"
+      const effectiveCanTransfer = hasTransferPermission ? form.canTransferAccountLeads : false
+
+      if (!fullNameChanged && !phoneChanged && !emailChanged && !roleChanged && !functionsChanged && !canCreateChanged && !canManageChanged && !canTransferChanged) {
         toast.info("Nenhuma alteração para salvar")
         onOpenChange(false)
         return
@@ -155,6 +163,8 @@ export function BackofficeMemberEditDialog({
         functions: form.functions,
         canCreateAccountUsers: effectiveCanCreate,
         canManageAccountTeams: effectiveCanManage,
+        canTransferAccountLeads: effectiveCanTransfer,
+        ...(teamId ? { teamId } : {}),
       })
 
       toast.success("Membro atualizado com sucesso")
@@ -344,6 +354,34 @@ export function BackofficeMemberEditDialog({
                         checked={form.canManageAccountTeams}
                         onCheckedChange={(checked) =>
                           setForm((prev) => ({ ...prev, canManageAccountTeams: checked }))
+                        }
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {(form.role === "manager" || form.role === "backoffice") ? (
+                  <div className="flex flex-col gap-3">
+                    {form.role === "backoffice" && (
+                      <div>
+                        <p className="text-sm font-medium">Permissões delegadas</p>
+                        <p className="text-xs text-muted-foreground">
+                          Essas permissões adicionais só podem ser atribuídas pelo master da conta.
+                        </p>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium">Pode transferir leads entre times</span>
+                        <span className="text-xs text-muted-foreground">
+                          Permite repassar leads para outro time da conta neste time. Válido somente para este time.
+                        </span>
+                      </div>
+                      <Switch
+                        checked={form.canTransferAccountLeads}
+                        onCheckedChange={(checked) =>
+                          setForm((prev) => ({ ...prev, canTransferAccountLeads: checked }))
                         }
                         disabled={isSubmitting}
                       />

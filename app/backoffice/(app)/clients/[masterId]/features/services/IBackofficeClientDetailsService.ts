@@ -5,6 +5,11 @@ import type {
 } from "../context/BackofficeClientDetailsTypes"
 
 export interface IBackofficeClientDetailsService {
+  sendAccessEmail(
+    memberId: string,
+    mode: "invite" | "reset_password"
+  ): Promise<{ email: string }>
+
   getByMasterId(
     masterId: string,
     options?: {
@@ -55,6 +60,8 @@ export interface IBackofficeClientDetailsService {
       functions?: ("SDR" | "CLOSER")[]
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      teamId?: string
     }
   ): Promise<void>
 
@@ -75,12 +82,17 @@ export interface IBackofficeClientDetailsService {
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     }
   ): Promise<void>
 
   addTeam(masterId: string, data: { name: string }): Promise<void>
 
-  updateTeam(masterId: string, teamId: string, data: { name: string }): Promise<void>
+  updateTeam(
+    masterId: string,
+    teamId: string,
+    data: { name?: string; transferTargetTeamIds?: string[] }
+  ): Promise<void>
 
   deleteTeam(masterId: string, teamId: string): Promise<void>
 }

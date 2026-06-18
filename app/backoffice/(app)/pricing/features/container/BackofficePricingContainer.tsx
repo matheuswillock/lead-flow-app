@@ -9,7 +9,7 @@ import { BackofficeProductTable } from "../components/BackofficeProductTable"
 import { useBackofficePricing } from "../context/BackofficePricingContext"
 
 export function BackofficePricingContainer() {
-  const { products, isLoading, openCreateDialog } = useBackofficePricing()
+  const { products, isLoading, canManage, openCreateDialog } = useBackofficePricing()
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
@@ -20,10 +20,12 @@ export function BackofficePricingContainer() {
             Produtos e preços usados nos fluxos de adesão do backoffice.
           </p>
         </div>
-        <Button type="button" onClick={openCreateDialog}>
-          <Plus data-icon="inline-start" />
-          Novo Produto
-        </Button>
+        {canManage && (
+          <Button type="button" onClick={openCreateDialog}>
+            <Plus data-icon="inline-start" />
+            Novo Produto
+          </Button>
+        )}
       </div>
 
       {isLoading ? (

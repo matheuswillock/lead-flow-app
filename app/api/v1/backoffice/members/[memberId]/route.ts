@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeMemberUseCase } from "@/app/api/useCases/backoffice/BackofficeMemberUseCase"
 
 export async function PATCH(
@@ -12,6 +13,8 @@ export async function PATCH(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
+    const denied = requireMasterAccess(accessResult.access)
+    if (denied) return denied
 
     const { memberId } = await params
     const body = await request.json().catch(() => ({}))
@@ -48,6 +51,9 @@ export async function PATCH(
       typeof body.canCreateAccountUsers === "boolean" ? body.canCreateAccountUsers : undefined
     const canManageAccountTeams =
       typeof body.canManageAccountTeams === "boolean" ? body.canManageAccountTeams : undefined
+    const canTransferAccountLeads =
+      typeof body.canTransferAccountLeads === "boolean" ? body.canTransferAccountLeads : undefined
+    const teamId = optionalString(body.teamId)
 
     const data = {
       fullName: optionalString(body.fullName),
@@ -57,6 +63,8 @@ export async function PATCH(
       functions,
       canCreateAccountUsers,
       canManageAccountTeams,
+      canTransferAccountLeads,
+      teamId,
     }
 
     const output = await backofficeMemberUseCase.updateMember(memberId, data)
@@ -76,6 +84,8 @@ export async function DELETE(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
+    const denied = requireMasterAccess(accessResult.access)
+    if (denied) return denied
 
     const { memberId } = await params
     const body = await request.json().catch(() => ({}))

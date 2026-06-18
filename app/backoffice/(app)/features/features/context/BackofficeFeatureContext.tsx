@@ -6,6 +6,7 @@ import type { IBackofficeFeatureService } from "../services/IBackofficeFeatureSe
 import type { AccessRuleFormEntry, BackofficeFeatureFormData, BackofficeFeatureItem } from "./BackofficeFeatureTypes"
 import { EMPTY_FEATURE_FORM } from "./BackofficeFeatureTypes"
 import { toast } from "sonner"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 const DEFAULT_ACCESS_RULES: AccessRuleFormEntry[] = [
   { principal: "MASTER", accessLevel: "FULL" },
@@ -21,6 +22,7 @@ const DEFAULT_ACCESS_RULES: AccessRuleFormEntry[] = [
 interface FeatureContextValue {
   features: BackofficeFeatureItem[]
   isLoading: boolean
+  canManage: boolean
 
   dialogOpen: boolean
   dialogMode: "create" | "edit"
@@ -53,6 +55,8 @@ interface Props {
 }
 
 export function BackofficeFeatureProvider({ children, featureService }: Props) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [features, setFeatures] = useState<BackofficeFeatureItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -204,6 +208,7 @@ export function BackofficeFeatureProvider({ children, featureService }: Props) {
       value={{
         features,
         isLoading,
+        canManage,
         dialogOpen,
         dialogMode,
         dialogFeature,

@@ -1,6 +1,6 @@
-import type { PortfolioSource, PortfolioStatus, RenewalStatus } from '@prisma/client';
+import type { ContractType, PortfolioSource, PortfolioStatus, RenewalStatus } from '@prisma/client';
 
-export type { RenewalStatus };
+export type { RenewalStatus, ContractType };
 
 export interface PortfolioFilters {
   teamId: string;
@@ -31,8 +31,9 @@ export interface CreatePortfolioDependentPayload {
 
 export interface CreatePortfolioHolderPayload {
   name: string;
+  razaoSocial?: string | null;
   birthDate: string;
-  document: string;
+  document?: string | null;
   cnpj?: string | null;
 }
 
@@ -42,6 +43,7 @@ export interface CreatePortfolioImportEntryPayload {
   phone: string;
   cnpj?: string | null;
   source: Exclude<PortfolioSource, 'crm'>;
+  contractType?: ContractType;
   amount: number;
   startDateAt: Date;
   finalizedDateAt: Date;
@@ -50,7 +52,7 @@ export interface CreatePortfolioImportEntryPayload {
   operadora: string;
   productName?: string | null;
   notes?: string | null;
-  holder?: { name: string; birthDate: Date; document: string } | null;
+  holder?: { name: string; razaoSocial?: string | null; birthDate: Date; document: string } | null;
 }
 
 export interface PortfolioImportTarget {
@@ -69,6 +71,7 @@ export interface CreatePortfolioEntryPayload {
   phone: string;
   cnpj?: string | null;
   source: Exclude<PortfolioSource, 'crm'>;
+  contractType: ContractType;
   amount: number;
   startDateAt: string;
   finalizedDateAt: string;
@@ -83,6 +86,7 @@ export interface CreatePortfolioEntryPayload {
 }
 
 export interface UpdatePortfolioDetailPayload {
+  contractType?: ContractType;
   operadora?: string | null;
   productName?: string | null;
   amount?: number;
@@ -93,8 +97,9 @@ export interface UpdatePortfolioDetailPayload {
   notes?: string | null;
   holder?: {
     name: string;
+    razaoSocial?: string | null;
     birthDate: string;
-    document: string;
+    document?: string | null;
     cnpj?: string | null;
   } | null;
   dependents?: Array<{
@@ -180,6 +185,7 @@ export interface PortfolioDetailResult {
   closer: { id: string; name: string } | null;
   soldPlan: string | null;
   contractDueDate: Date | null;
+  contractType: ContractType;
   contract: {
     operadora: string | null;
     productName: string | null;
@@ -192,6 +198,7 @@ export interface PortfolioDetailResult {
   } | null;
   holder: {
     name: string;
+    razaoSocial: string | null;
     birthDate: Date;
     document: string;
     cnpj: string | null;

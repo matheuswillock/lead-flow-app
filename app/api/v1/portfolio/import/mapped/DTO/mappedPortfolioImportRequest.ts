@@ -7,6 +7,7 @@ const importRowSchema = z.object({
   email: z.string().optional(),
   phone: z.string().optional(),
   cnpj: z.string().optional(),
+  contractType: z.enum(['individual', 'corporate', 'adhesion']).optional(),
   operadora: z.string().optional(),
   productName: z.string().optional(),
   amount: z.string().optional(),

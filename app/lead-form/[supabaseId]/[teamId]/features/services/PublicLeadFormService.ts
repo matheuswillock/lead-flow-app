@@ -4,6 +4,7 @@ import type {
   SubmitPublicLeadPayload,
   SubmitPublicLeadResult,
   AvailabilityResult,
+  PreScheduleSlotsResult,
 } from "./IPublicLeadFormService";
 import { DEFAULT_TZ } from "@/lib/dates";
 
@@ -60,11 +61,13 @@ class PublicLeadFormService implements IPublicLeadFormService {
     }
 
     return {
+      teamName: result.result?.teamName ?? "",
       healthPlans: result.result?.healthPlans ?? [],
       closers: result.result?.closers ?? [],
       sdrs: result.result?.sdrs ?? [],
       guestCandidates: result.result?.guestCandidates ?? [],
       timezone: result.result?.timezone ?? DEFAULT_TZ,
+      hasTransferTargets: result.result?.hasTransferTargets ?? false,
     };
   }
 
@@ -91,6 +94,23 @@ class PublicLeadFormService implements IPublicLeadFormService {
       availableTimes: result.result?.availableTimes ?? [],
       source: result.result?.source ?? "internal",
     };
+  }
+
+  async getPreScheduleSlots(teamId: string, date: string, supabaseId?: string): Promise<PreScheduleSlotsResult> {
+    const params = new URLSearchParams({ teamId, date });
+    if (supabaseId) {
+      params.set("supabaseId", supabaseId);
+    }
+
+    const response = await fetch(`/api/v1/integrations/pre-schedule-slots?${params}`);
+    const result = await response.json();
+
+    if (!response.ok || !result?.isValid) {
+      console.error("[PublicLeadFormService] Erro ao buscar slots de pré-agendamento:", result?.errorMessages);
+      return { occupiedSlots: [] };
+    }
+
+    return { occupiedSlots: result.result?.occupiedSlots ?? [] };
   }
 
   async submitLead(payload: SubmitPublicLeadPayload): Promise<SubmitPublicLeadResult> {

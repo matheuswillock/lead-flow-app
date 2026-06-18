@@ -57,6 +57,9 @@ export const PublicLeadFormRequestSchema = z
     notes: z.string().nullish().transform((val) => val || undefined),
     assignedTo: z.string().uuid("ID do SDR deve ser um UUID válido"),
 
+    // Transfer flag (optional)
+    isTransfer: z.boolean().nullish().transform((val) => val ?? undefined),
+
     // Scheduling fields (optional)
     closerId: z.string().uuid("ID do closer deve ser um UUID válido").nullish().transform((val) => val || undefined),
     meetingDate: z.string().datetime().nullish().transform((val) => val || undefined),

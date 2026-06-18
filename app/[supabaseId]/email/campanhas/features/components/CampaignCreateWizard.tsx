@@ -71,7 +71,7 @@ export function CampaignCreateWizard() {
                 </SelectTrigger>
                 <SelectContent>
                   {templates.length === 0 ? (
-                    <SelectItem value="__none" disabled>Nenhum template disponível</SelectItem>
+                    <SelectItem value="__none" disabled>Nenhum template publicado disponível</SelectItem>
                   ) : (
                     templates.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
@@ -131,7 +131,7 @@ export function CampaignCreateWizard() {
         {wizardStep === 3 && (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="wizard-schedule">Agendamento (opcional)</Label>
+              <Label htmlFor="wizard-schedule">Agendamento</Label>
               <Input
                 id="wizard-schedule"
                 type="datetime-local"

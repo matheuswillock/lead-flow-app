@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeEmailTemplatesUseCase } from "@/app/api/useCases/backofficeEmailTemplates/BackofficeEmailTemplatesUseCase"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -9,6 +10,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireMasterAccess(result.access)
+    if (denied) return denied
     const { id } = await params
     const output = await backofficeEmailTemplatesUseCase.duplicate(id)
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })

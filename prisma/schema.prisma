@@ -303,6 +303,7 @@ enum NotificationType {
   LEAD_SCHEDULE_CREATED
   LEAD_PROPOSAL_PENDING
   GOOGLE_CONNECTION_BROKEN
+  LEAD_TRANSFER_ACTIVATED
 
   @@map("notification_type")
 }
@@ -339,6 +340,14 @@ enum RenewalStatus {
   lost
 
   @@map("renewal_status")
+}
+
+enum ContractType {
+  individual
+  corporate
+  adhesion
+
+  @@map("contract_type")
 }
 
 enum EmailCreditPlan {
@@ -420,8 +429,6 @@ model Profile {
   role                     UserRole            @default(manager)
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
-  canCreateAccountUsers    Boolean             @default(false)
-  canManageAccountTeams    Boolean             @default(false)
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
@@ -461,6 +468,9 @@ model Profile {
   pendingActions              PendingAction[]           @relation("PendingActionMaster")
   teamsOwned                  Team[]                    @relation("TeamMaster")
   teamMemberships             TeamMember[]
+  createdTeamTransferRoutes   TeamTransferRoute[]       @relation("TeamTransferRouteCreator")
+  outboundLeadTransfers       LeadTransfer[]           @relation("LeadTransferActor")
+  inboundLeadTransfers        LeadTransfer[]           @relation("LeadTransferRecipient")
   createdHealthPlanOptions    HealthPlanOption[]        @relation("HealthPlanOptionCreator")
   backofficeUser              BackofficeUser?           @relation("BackofficeUserProfile")
   googleConnection            GoogleOAuthConnection?    @relation("ProfileGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
@@ -482,6 +492,8 @@ model Profile {
   // Email campaigns relations
   emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
   emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
+  emailTemplatesApproved   EmailTemplate[]          @relation("EmailTemplateApprover")
+  emailTemplatesRejected   EmailTemplate[]          @relation("EmailTemplateRejecter")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
@@ -880,6 +892,7 @@ model Lead {
   meetingLink          String?       @db.Text
   meetingHeald         MeetingHeald?
   meetingType          String?       @db.Text
+  isTransfer           Boolean       @default(false)
   followUpAt           DateTime?     @db.Timestamptz(6)
   followUpNotes        String?       @db.Text
   followUpSourceStatus LeadStatus?
@@ -917,6 +930,7 @@ model Lead {
   tasks         Task[]
   LeadsSchedule LeadsSchedule[]
   LeadFinalized LeadFinalized[]
+  transfers     LeadTransfer[]
   portfolio     LeadPortfolio?
   attachments   LeadAttachment[]
 
@@ -935,6 +949,7 @@ model Lead {
   @@index([meetingDate])
   @@index([followUpAt])
   @@index([statusEnteredAt])
+  @@index([status])
   @@map("corretor_studio_leads")
 }
 
@@ -1046,6 +1061,8 @@ model LeadsSchedule {
   inviteDispatchLastAttemptAt DateTime?             @db.Timestamptz(6)
   inviteDispatchLastError     String?               @db.Text
   inviteDispatchLastPayload   Json?
+  publicShareTokenHash        String?               @map("publicShareTokenHash") @db.Text
+  publicShareExpiresAt        DateTime?             @map("publicShareExpiresAt") @db.Timestamptz(6)
   createdAt                   DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt                   DateTime              @updatedAt @db.Timestamptz(6)
 
@@ -1053,24 +1070,26 @@ model LeadsSchedule {
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@unique([leadId])
+  @@index([publicShareTokenHash], map: "corretor_studio_leads_schedule_public_share_token_hash_idx")
   @@map("corretor_studio_leads_schedule")
 }
 
 model LeadFinalized {
-  id                  String   @id @default(uuid()) @db.Uuid
-  leadId              String   @db.Uuid
-  finalizedDateAt     DateTime @db.Timestamptz(6)
-  startDateAt         DateTime @db.Timestamptz(6)
+  id                  String       @id @default(uuid()) @db.Uuid
+  leadId              String       @db.Uuid
+  finalizedDateAt     DateTime     @db.Timestamptz(6)
+  startDateAt         DateTime     @db.Timestamptz(6)
   duration            Int // duration in days from lead creation to finalization
-  amount              Decimal  @db.Decimal(12, 2)
-  notes               String?  @db.Text
-  closerId            String?  @db.Uuid
-  operadora           String?  @db.Text
-  productName         String?  @db.Text
-  contractFileUrl     String?  @db.Text
-  contractStoragePath String?  @db.Text
-  createdAt           DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+  amount              Decimal      @db.Decimal(12, 2)
+  contractType        ContractType @default(individual) @map("contractType")
+  notes               String?      @db.Text
+  closerId            String?      @db.Uuid
+  operadora           String?      @db.Text
+  productName         String?      @db.Text
+  contractFileUrl     String?      @db.Text
+  contractStoragePath String?      @db.Text
+  createdAt           DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime     @updatedAt @db.Timestamptz(6)
 
   // Relations
   lead       Lead                     @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1086,6 +1105,7 @@ model LeadFinalizedHolder {
   id              String   @id @default(uuid()) @db.Uuid
   leadFinalizedId String   @unique @db.Uuid
   name            String   @db.Text
+  razaoSocial     String?  @db.Text @map("razaoSocial")
   birthDate       DateTime @db.Date
   document        String   @db.Text
   cnpj            String?  @db.Text
@@ -1210,6 +1230,10 @@ model Team {
   studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
   filterPresets            TeamFilterPreset[]
   statusRules              TeamStatusRule[]
+  transferRoutesFrom       TeamTransferRoute[]          @relation("TeamTransferRouteFrom")
+  transferRoutesTo         TeamTransferRoute[]          @relation("TeamTransferRouteTo")
+  outboundLeadTransfers    LeadTransfer[]               @relation("LeadTransferFromTeam")
+  inboundLeadTransfers     LeadTransfer[]               @relation("LeadTransferToTeam")
   portfolioEntries         LeadPortfolio[]
 
   // Email campaigns relations
@@ -1217,6 +1241,9 @@ model Team {
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
+  emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
+  emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
+  emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
 
   // WhatsApp relations
   whatsappConfig        TeamWhatsAppConfig?
@@ -1362,13 +1389,16 @@ model PendingAction {
 // -----------------------------
 
 model TeamMember {
-  id        String         @id @default(uuid()) @db.Uuid
-  teamId    String         @db.Uuid
-  profileId String         @db.Uuid
-  role      UserRole
-  functions UserFunction[] @default([])
-  createdAt DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime       @updatedAt @db.Timestamptz(6)
+  id                      String         @id @default(uuid()) @db.Uuid
+  teamId                  String         @db.Uuid
+  profileId               String         @db.Uuid
+  role                    UserRole
+  functions               UserFunction[] @default([])
+  canCreateAccountUsers   Boolean        @default(false)
+  canManageAccountTeams   Boolean        @default(false)
+  canTransferAccountLeads Boolean        @default(false)
+  createdAt               DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime       @updatedAt @db.Timestamptz(6)
 
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -1376,6 +1406,49 @@ model TeamMember {
   @@unique([teamId, profileId])
   @@index([profileId])
   @@map("corretor_studio_team_members")
+}
+
+model TeamTransferRoute {
+  id           String   @id @default(uuid()) @db.Uuid
+  sourceTeamId String   @db.Uuid
+  targetTeamId String   @db.Uuid
+  createdBy    String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  sourceTeam Team     @relation("TeamTransferRouteFrom", fields: [sourceTeamId], references: [id], onDelete: Cascade)
+  targetTeam Team     @relation("TeamTransferRouteTo", fields: [targetTeamId], references: [id], onDelete: Cascade)
+  creator    Profile? @relation("TeamTransferRouteCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([sourceTeamId, targetTeamId])
+  @@index([targetTeamId])
+  @@map("corretor_studio_team_transfer_routes")
+}
+
+model LeadTransfer {
+  id                    String   @id @default(uuid()) @db.Uuid
+  leadId                 String   @db.Uuid
+  fromTeamId             String   @db.Uuid
+  toTeamId               String   @db.Uuid
+  transferredByProfileId String   @db.Uuid
+  receivedByProfileId    String?  @db.Uuid
+  fromManagerId          String   @db.Uuid
+  toManagerId            String   @db.Uuid
+  transferTagUsed        Boolean  @default(false)
+  preScheduledAt         DateTime? @db.Timestamptz(6)
+  scheduledAtTransfer    Boolean  @default(false)
+  createdAt              DateTime @default(now()) @db.Timestamptz(6)
+
+  lead                 Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromTeam             Team     @relation("LeadTransferFromTeam", fields: [fromTeamId], references: [id], onDelete: Cascade)
+  toTeam               Team     @relation("LeadTransferToTeam", fields: [toTeamId], references: [id], onDelete: Cascade)
+  transferredByProfile Profile  @relation("LeadTransferActor", fields: [transferredByProfileId], references: [id], onDelete: Cascade)
+  receivedByProfile    Profile? @relation("LeadTransferRecipient", fields: [receivedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt(sort: Desc)])
+  @@index([fromTeamId, createdAt(sort: Desc)])
+  @@index([toTeamId, createdAt(sort: Desc)])
+  @@map("corretor_studio_lead_transfers")
 }
 
 // -----------------------------
@@ -1427,15 +1500,28 @@ model EmailTemplate {
   previewText String?  @db.Text
   mailyJson   Json?
   html        String?  @db.Text
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  variables   Json?
+  status         String   @default("draft") @db.Text
+  publishedAt    DateTime? @db.Timestamptz(6)
+  isArchived     Boolean  @default(false)
+  approvalStatus String   @default("approved") @db.Text
+  approvedBy     String?  @db.Uuid
+  approvedAt     DateTime? @db.Timestamptz(6)
+  rejectedBy     String?  @db.Uuid
+  rejectedAt     DateTime? @db.Timestamptz(6)
+  reviewNote     String?  @db.Text
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
 
   team      Team            @relation("TeamEmailTemplates", fields: [teamId], references: [id], onDelete: Cascade)
   creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  approver  Profile?        @relation("EmailTemplateApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  rejecter  Profile?        @relation("EmailTemplateRejecter", fields: [rejectedBy], references: [id], onDelete: SetNull)
   campaigns EmailCampaign[]
 
   @@index([teamId, isArchived])
+  @@index([teamId, approvalStatus])
+  @@index([teamId, status])
   @@index([createdBy])
   @@map("corretor_studio_email_templates")
 }
@@ -1448,6 +1534,7 @@ model EmailContactList {
   description    String?  @db.Text
   csvStoragePath String?  @db.Text
   totalContacts  Int      @default(0)
+  isSystemDefault Boolean @default(false)
   isArchived     Boolean  @default(false)
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
@@ -1498,6 +1585,7 @@ model EmailCampaign {
   totalOpened     Int                 @default(0)
   totalClicked    Int                 @default(0)
   totalBounced    Int                 @default(0)
+  dispatchCount   Int                 @default(0)
   totalComplained Int                 @default(0)
   errorMessage    String?             @db.Text
   createdAt       DateTime            @default(now()) @db.Timestamptz(6)
@@ -1740,6 +1828,68 @@ model ProfileSubscriptionCapacity {
   @@map("corretor_studio_profile_subscription_capacities")
 }
 
+model EmailTeamSettings {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @unique @db.Uuid
+  fromName  String   @default("Corretor Studio") @db.Text
+  fromEmail String   @default("no-reply@corretorstudio.com") @db.Text
+  replyTo   String?  @db.Text
+
+  dispatchBlockedDates     Json?
+  dispatchTimeFrom         String?  @db.Text
+  dispatchTimeTo           String?  @db.Text
+  dispatchAllowedRoles     String[] @default(["manager", "backoffice"])
+  templateCreateRoles      String[] @default(["manager", "backoffice"])
+  templateApprovalRequired Boolean  @default(false)
+  templateApprovalRoles    String[] @default(["manager", "backoffice"])
+  blockedDispatchDays      Int[]    @default([])
+
+  resendDomainId     String? @db.Text
+  resendDomainName   String? @db.Text
+  resendDomainStatus String? @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailSettings", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("email_team_settings")
+}
+
+model EmailTeamSender {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId     String   @db.Uuid
+  name       String   @db.Text
+  email      String   @db.Text
+  replyTo    String?  @db.Text
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailSenders", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, isDefault])
+  @@map("email_team_senders")
+}
+
+model EmailTeamVariable {
+  id           String   @id @default(uuid()) @db.Uuid
+  teamId       String   @db.Uuid
+  key          String   @db.Text
+  type         String   @default("string") @db.Text
+  defaultValue String?  @db.Text
+  description  String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailVariables", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, key])
+  @@index([teamId, isActive])
+  @@map("email_team_variables")
+}
+
 // -----------------------------
 // PROFILE USER TYPE (Comum / Member PRO)
 // Lookup table with the user type tiers, plus a 1:1 assignment table
@@ -1956,4 +2106,3 @@ model WhatsAppUsageEvent {
   @@index([configId, periodKey])
   @@map("whatsapp_usage_events")
 }
-

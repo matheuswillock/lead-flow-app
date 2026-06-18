@@ -663,3 +663,13 @@ h1, h2, h3, h4, h5, h6 {
 .dialog-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(220, 220, 220, 0.95);
 }
+
+/* Template card banner gradients */
+[data-banner-gradient="0"] { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+[data-banner-gradient="1"] { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
+[data-banner-gradient="2"] { background: linear-gradient(135deg, #ec4899, #f472b6); }
+[data-banner-gradient="3"] { background: linear-gradient(135deg, #10b981, #34d399); }
+[data-banner-gradient="4"] { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+[data-banner-gradient="5"] { background: linear-gradient(135deg, #06b6d4, #38bdf8); }
+[data-banner-gradient="6"] { background: linear-gradient(135deg, #ef4444, #f87171); }
+[data-banner-gradient="7"] { background: linear-gradient(135deg, #84cc16, #a3e635); }

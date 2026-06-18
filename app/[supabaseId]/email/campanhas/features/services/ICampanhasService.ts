@@ -7,6 +7,13 @@ export type CreateCampaignData = {
   scheduledAt?: string
 }
 
+export type UpdateCampaignData = {
+  name?: string
+  templateId?: string
+  contactListId?: string
+  scheduledAt?: string | null
+}
+
 export type ListCampaignsResult = {
   campaigns: Campaign[]
   total: number
@@ -20,6 +27,7 @@ export type SendResult = { sent: number; failed: number }
 export interface ICampanhasService {
   list(page: number, pageSize: number, status?: string): Promise<ListCampaignsResult>
   create(data: CreateCampaignData): Promise<Campaign>
+  update(id: string, data: UpdateCampaignData): Promise<Campaign>
   send(id: string): Promise<SendResult>
   cancel(id: string): Promise<void>
   deleteDraft(id: string): Promise<void>

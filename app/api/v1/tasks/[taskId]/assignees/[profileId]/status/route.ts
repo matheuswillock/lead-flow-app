@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { updateTaskAssigneeStatusUseCase } from "@/app/api/useCases/task/UpdateTaskAssigneeStatusUseCase";
-import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { invalidateTeamCalendarCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
 
 const bodySchema = z.object({
   status: z.enum(["PENDING", "IN_PROGRESS", "DONE", "CANCELED", "OVERDUE"]),
@@ -46,6 +46,7 @@ export async function PATCH(
     }
 
     invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId });
+    invalidateTeamTasksCache({ teamId: teamAccess.access.teamId });
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error("[TaskAssigneeStatusRoute][PATCH] Erro:", error);
