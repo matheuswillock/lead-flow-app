@@ -381,6 +381,64 @@ delivery_delayed delivery_delayed
 unsubscribed unsubscribed
         }
     
+
+
+        WhatsAppProvider {
+            EVOLUTION EVOLUTION
+        }
+    
+
+
+        WhatsAppConnectionStatus {
+            PENDING PENDING
+QR_READY QR_READY
+CONNECTED CONNECTED
+DISCONNECTED DISCONNECTED
+ERROR ERROR
+BANNED BANNED
+        }
+    
+
+
+        WhatsAppMessageDirection {
+            INBOUND INBOUND
+OUTBOUND OUTBOUND
+        }
+    
+
+
+        WhatsAppMessageType {
+            TEXT TEXT
+IMAGE IMAGE
+AUDIO AUDIO
+VIDEO VIDEO
+DOCUMENT DOCUMENT
+STICKER STICKER
+LOCATION LOCATION
+CONTACT CONTACT
+UNKNOWN UNKNOWN
+        }
+    
+
+
+        WhatsAppMessageStatus {
+            PENDING PENDING
+SENT SENT
+DELIVERED DELIVERED
+READ READ
+FAILED FAILED
+RECEIVED RECEIVED
+        }
+    
+
+
+        WhatsAppUsageEventType {
+            OUTBOUND_MESSAGE OUTBOUND_MESSAGE
+INBOUND_MESSAGE INBOUND_MESSAGE
+CONNECTION_EVENT CONNECTION_EVENT
+RECONNECTION_EVENT RECONNECTION_EVENT
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -1145,6 +1203,85 @@ unsubscribed unsubscribed
     DateTime updatedAt 
     }
   
+
+  "team_whatsapp_configs" {
+    String id "🗝️"
+    WhatsAppProvider provider 
+    String instanceName 
+    String instanceId "❓"
+    String phoneNumber "❓"
+    String displayName "❓"
+    WhatsAppConnectionStatus status 
+    String qrCodeText "❓"
+    String qrCodeImageUrl "❓"
+    String webhookSecret 
+    String hostBaseUrl "❓"
+    DateTime lastConnectedAt "❓"
+    DateTime lastDisconnectedAt "❓"
+    DateTime lastSyncAt "❓"
+    Int usageLimitMonthly 
+    Boolean billingEnabled 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_conversations" {
+    String id "🗝️"
+    String externalChatId "❓"
+    String contactPhone 
+    String contactName "❓"
+    String normalizedPhone 
+    DateTime lastMessageAt "❓"
+    DateTime lastInboundAt "❓"
+    DateTime lastOutboundAt "❓"
+    String lastMessagePreview "❓"
+    Int unreadCount 
+    Boolean isArchived 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_messages" {
+    String id "🗝️"
+    String providerMessageId "❓"
+    String providerEventId "❓"
+    WhatsAppMessageDirection direction 
+    WhatsAppMessageType messageType 
+    WhatsAppMessageStatus status 
+    String contentText "❓"
+    String mediaUrl "❓"
+    String mediaMimeType "❓"
+    String caption "❓"
+    String senderPhone "❓"
+    String recipientPhone "❓"
+    DateTime sentAt "❓"
+    DateTime deliveredAt "❓"
+    DateTime readAt "❓"
+    DateTime failedAt "❓"
+    Json rawPayload 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_usage_events" {
+    String id "🗝️"
+    String conversationId "❓"
+    String messageId "❓"
+    String providerMessageId "❓"
+    String periodKey 
+    WhatsAppProvider provider 
+    WhatsAppUsageEventType eventType 
+    WhatsAppMessageDirection direction "❓"
+    Boolean billable 
+    Boolean countedTowardsQuota 
+    Int quantity 
+    Json rawPayload "❓"
+    DateTime createdAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -1294,4 +1431,26 @@ unsubscribed unsubscribed
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
+    "team_whatsapp_configs" |o--|| "WhatsAppProvider" : "enum:provider"
+    "team_whatsapp_configs" |o--|| "WhatsAppConnectionStatus" : "enum:status"
+    "team_whatsapp_configs" |o--|| corretor_studio_teams : "team"
+    "team_whatsapp_configs" }o--|| corretor_studio_profiles : "createdBy"
+    "team_whatsapp_configs" }o--|| corretor_studio_profiles : "updatedBy"
+    "whatsapp_conversations" }o--|| corretor_studio_teams : "team"
+    "whatsapp_conversations" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_conversations" }o--|o corretor_studio_leads : "lead"
+    "whatsapp_conversations" }o--|o corretor_studio_profiles : "assignedProfile"
+    "whatsapp_messages" |o--|| "WhatsAppMessageDirection" : "enum:direction"
+    "whatsapp_messages" |o--|| "WhatsAppMessageType" : "enum:messageType"
+    "whatsapp_messages" |o--|| "WhatsAppMessageStatus" : "enum:status"
+    "whatsapp_messages" }o--|| whatsapp_conversations : "conversation"
+    "whatsapp_messages" }o--|| corretor_studio_teams : "team"
+    "whatsapp_messages" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_messages" }o--|o corretor_studio_leads : "lead"
+    "whatsapp_messages" }o--|o corretor_studio_profiles : "sentByProfile"
+    "whatsapp_usage_events" |o--|| "WhatsAppProvider" : "enum:provider"
+    "whatsapp_usage_events" |o--|| "WhatsAppUsageEventType" : "enum:eventType"
+    "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
+    "whatsapp_usage_events" }o--|| corretor_studio_teams : "team"
+    "whatsapp_usage_events" }o--|| team_whatsapp_configs : "config"
 ```

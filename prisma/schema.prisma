@@ -496,6 +496,12 @@ model Profile {
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
   assignedUserTypeChanges ProfileUserTypeAssignment[] @relation("ProfileUserTypeAssignmentAssignedBy")
 
+  // WhatsApp relations
+  whatsappConfigsCreated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigCreatedBy")
+  whatsappConfigsUpdated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigUpdatedBy")
+  whatsappConversations   WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
+  whatsappMessagesSent    WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
+
   @@index([role])
   @@index([managerId])
   @@index([cpfCnpj])
@@ -914,6 +920,10 @@ model Lead {
   portfolio     LeadPortfolio?
   attachments   LeadAttachment[]
 
+  // WhatsApp relations
+  whatsappConversations WhatsAppConversation[]
+  whatsappMessages      WhatsAppMessage[]
+
   // Unique per tenant
   @@unique([teamId, email])
   @@unique([teamId, cnpj])
@@ -1207,6 +1217,12 @@ model Team {
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
+
+  // WhatsApp relations
+  whatsappConfig        TeamWhatsAppConfig?
+  whatsappConversations WhatsAppConversation[]
+  whatsappMessages      WhatsAppMessage[]
+  whatsappUsageEvents   WhatsAppUsageEvent[]
 
   @@index([masterId])
   @@map("corretor_studio_teams")
@@ -1760,5 +1776,184 @@ model ProfileUserTypeAssignment {
   @@index([userTypeId])
   @@index([accessExpiresAt])
   @@map("profile_user_type_assignments")
+}
+
+// ==============================
+// WHATSAPP MODULE
+// ==============================
+
+enum WhatsAppProvider {
+  EVOLUTION
+}
+
+enum WhatsAppConnectionStatus {
+  PENDING
+  QR_READY
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  BANNED
+}
+
+enum WhatsAppMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsAppMessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACT
+  UNKNOWN
+}
+
+enum WhatsAppMessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+enum WhatsAppUsageEventType {
+  OUTBOUND_MESSAGE
+  INBOUND_MESSAGE
+  CONNECTION_EVENT
+  RECONNECTION_EVENT
+}
+
+model TeamWhatsAppConfig {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  teamId             String                   @unique @db.Uuid
+  provider           WhatsAppProvider         @default(EVOLUTION)
+  instanceName       String                   @db.Text
+  instanceId         String?                  @db.Text
+  phoneNumber        String?                  @db.Text
+  displayName        String?                  @db.Text
+  status             WhatsAppConnectionStatus @default(PENDING)
+  qrCodeText         String?                  @db.Text
+  qrCodeImageUrl     String?                  @db.Text
+  webhookSecret      String                   @db.Text
+  hostBaseUrl        String?                  @db.Text
+  lastConnectedAt    DateTime?                @db.Timestamptz(6)
+  lastDisconnectedAt DateTime?                @db.Timestamptz(6)
+  lastSyncAt         DateTime?                @db.Timestamptz(6)
+  usageLimitMonthly  Int                      @default(2000)
+  billingEnabled     Boolean                  @default(true)
+  createdByProfileId String                   @db.Uuid
+  updatedByProfileId String                   @db.Uuid
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                 @updatedAt @db.Timestamptz(6)
+
+  team          Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdBy     Profile                @relation("WhatsAppConfigCreatedBy", fields: [createdByProfileId], references: [id])
+  updatedBy     Profile                @relation("WhatsAppConfigUpdatedBy", fields: [updatedByProfileId], references: [id])
+  conversations WhatsAppConversation[]
+  usageEvents   WhatsAppUsageEvent[]
+  messages      WhatsAppMessage[]
+
+  @@map("team_whatsapp_configs")
+}
+
+model WhatsAppConversation {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @db.Uuid
+  configId           String    @db.Uuid
+  leadId             String?   @db.Uuid
+  externalChatId     String?   @db.Text
+  contactPhone       String    @db.Text
+  contactName        String?   @db.Text
+  normalizedPhone    String    @db.Text
+  assignedProfileId  String?   @db.Uuid
+  lastMessageAt      DateTime? @db.Timestamptz(6)
+  lastInboundAt      DateTime? @db.Timestamptz(6)
+  lastOutboundAt     DateTime? @db.Timestamptz(6)
+  lastMessagePreview String?   @db.Text
+  unreadCount        Int       @default(0)
+  isArchived         Boolean   @default(false)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team            Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config          TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  lead            Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedProfile Profile?           @relation("WhatsAppConversationAssignee", fields: [assignedProfileId], references: [id], onDelete: SetNull)
+  messages        WhatsAppMessage[]
+
+  @@unique([configId, externalChatId])
+  @@index([teamId, lastMessageAt(sort: Desc)])
+  @@index([teamId, normalizedPhone])
+  @@index([leadId])
+  @@map("whatsapp_conversations")
+}
+
+model WhatsAppMessage {
+  id                String                   @id @default(uuid()) @db.Uuid
+  conversationId    String                   @db.Uuid
+  teamId            String                   @db.Uuid
+  configId          String                   @db.Uuid
+  leadId            String?                  @db.Uuid
+  providerMessageId String?                  @db.Text
+  providerEventId   String?                  @db.Text
+  direction         WhatsAppMessageDirection
+  messageType       WhatsAppMessageType      @default(TEXT)
+  status            WhatsAppMessageStatus    @default(PENDING)
+  contentText       String?                  @db.Text
+  mediaUrl          String?                  @db.Text
+  mediaMimeType     String?                  @db.Text
+  caption           String?                  @db.Text
+  sentByProfileId   String?                  @db.Uuid
+  senderPhone       String?                  @db.Text
+  recipientPhone    String?                  @db.Text
+  sentAt            DateTime?                @db.Timestamptz(6)
+  deliveredAt       DateTime?                @db.Timestamptz(6)
+  readAt            DateTime?                @db.Timestamptz(6)
+  failedAt          DateTime?                @db.Timestamptz(6)
+  rawPayload        Json
+  createdAt         DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                 @updatedAt @db.Timestamptz(6)
+
+  conversation  WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  team          Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config        TeamWhatsAppConfig   @relation(fields: [configId], references: [id], onDelete: Cascade)
+  lead          Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  sentByProfile Profile?             @relation("WhatsAppMessageSentBy", fields: [sentByProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, providerMessageId])
+  @@unique([teamId, providerEventId])
+  @@index([conversationId, createdAt(sort: Asc)])
+  @@map("whatsapp_messages")
+}
+
+model WhatsAppUsageEvent {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  teamId              String                    @db.Uuid
+  configId            String                    @db.Uuid
+  conversationId      String?                   @db.Uuid
+  messageId           String?                   @db.Uuid
+  providerMessageId   String?                   @db.Text
+  periodKey           String                    @db.Text
+  provider            WhatsAppProvider          @default(EVOLUTION)
+  eventType           WhatsAppUsageEventType
+  direction           WhatsAppMessageDirection?
+  billable            Boolean                   @default(false)
+  countedTowardsQuota Boolean                   @default(true)
+  quantity            Int                       @default(1)
+  rawPayload          Json?
+  createdAt           DateTime                  @default(now()) @db.Timestamptz(6)
+
+  team   Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, providerMessageId, eventType])
+  @@index([teamId, periodKey])
+  @@index([configId, periodKey])
+  @@map("whatsapp_usage_events")
 }
 
