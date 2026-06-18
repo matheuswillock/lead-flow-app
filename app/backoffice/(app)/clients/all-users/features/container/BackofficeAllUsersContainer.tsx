@@ -122,6 +122,7 @@ export function BackofficeAllUsersContainer() {
     pagination,
     isLoading,
     error,
+    canManage,
     filters,
     setFilters,
     fetchUsers,
@@ -232,6 +233,7 @@ export function BackofficeAllUsersContainer() {
   function buildFallbackMember(item: BackofficeAllUsersItem): BackofficeClientTeamMember {
     return {
       id: item.id,
+      teamMemberId: "",
       fullName: item.fullName,
       email: item.email,
       phone: item.phone,
@@ -243,6 +245,7 @@ export function BackofficeAllUsersContainer() {
       isMaster: item.isMaster,
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
+      canTransferAccountLeads: false,
       accessStatus: item.accessStatus,
       hasCompletedFirstAccess: item.hasCompletedFirstAccess,
       lastSignInAt: item.lastSignInAt,
@@ -487,29 +490,31 @@ export function BackofficeAllUsersContainer() {
                           <Eye />
                           Visualizar
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
-                          <Pencil />
-                          Editar
-                        </DropdownMenuItem>
-                        {item.accessStatus === "pending_first_access" ? (
+                        {canManage && (
+                          <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
+                            <Pencil />
+                            Editar
+                          </DropdownMenuItem>
+                        )}
+                        {canManage && item.accessStatus === "pending_first_access" ? (
                           <DropdownMenuItem onClick={() => void handleSendAccessEmail(item, "invite")}>
                             <Mail />
                             Reenviar convite
                           </DropdownMenuItem>
                         ) : null}
-                        {item.accessStatus === "active" ? (
+                        {canManage && item.accessStatus === "active" ? (
                           <DropdownMenuItem onClick={() => void handleSendAccessEmail(item, "reset_password")}>
                             <KeyRound />
                             Enviar reset de senha
                           </DropdownMenuItem>
                         ) : null}
-                        {item.isMaster ? (
+                        {canManage && item.isMaster ? (
                           <DropdownMenuItem onClick={() => setUserTypeDialogItem(item)}>
                             <Sparkles />
                             Gerenciar tipo de usuário
                           </DropdownMenuItem>
                         ) : null}
-                        {!item.isMaster ? (
+                        {canManage && !item.isMaster ? (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive focus:bg-destructive/10"
                             onClick={() => void handleOpenDelete(item)}
@@ -584,6 +589,7 @@ export function BackofficeAllUsersContainer() {
         open={memberEditOpen}
         onOpenChange={setMemberEditOpen}
         member={selectedMember}
+        teamId={null}
         details={selectedDetails}
         service={clientDetailsService}
         onSuccess={() => void handleActionSuccess()}

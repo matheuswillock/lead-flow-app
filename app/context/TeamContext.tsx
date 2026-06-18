@@ -14,6 +14,9 @@ export interface TeamSummary {
   isDefault: boolean;
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
+  canCreateAccountUsers: boolean;
+  canManageAccountTeams: boolean;
+  canTransferAccountLeads: boolean;
   membershipCreatedAt: string;
   isPending?: boolean;
   pendingPayment?: {

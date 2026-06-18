@@ -1614,8 +1614,27 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      if (!profileInfo.isMaster && profileInfo.canTransferAccountLeads !== true) {
-        return new Output(false, [], ["Acesso negado: delegação de transferência de leads é obrigatória."], null);
+      if (!profileInfo.isMaster) {
+        const transferMembership = await prisma.teamMember.findUnique({
+          where: {
+            teamId_profileId: {
+              teamId: callerTeamId,
+              profileId: profileInfo.id,
+            },
+          },
+          select: {
+            role: true,
+            canTransferAccountLeads: true,
+          },
+        });
+
+        const canTransfer =
+          (transferMembership?.role === "manager" || transferMembership?.role === "backoffice") &&
+          transferMembership.canTransferAccountLeads === true;
+
+        if (!canTransfer) {
+          return new Output(false, [], ["Acesso negado: delegação de transferência de leads é obrigatória."], null);
+        }
       }
 
       const lead = await this.leadRepository.findById(id);
@@ -2119,7 +2138,7 @@ export class LeadUseCase implements ILeadUseCase {
           where: {
             teamId,
             role: { in: ["manager", "backoffice"] },
-            profile: { canTransferAccountLeads: true },
+            canTransferAccountLeads: true,
           },
           select: {
             profileId: true,

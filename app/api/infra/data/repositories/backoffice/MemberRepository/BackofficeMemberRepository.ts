@@ -38,10 +38,6 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
       fullName?: string | null
       phone?: string | null
       email?: string
-      role?: string
-      functions?: string[]
-      canCreateAccountUsers?: boolean
-      canManageAccountTeams?: boolean
     }
   ): Promise<{ id: string } | null> {
     const payload: Record<string, unknown> = {}
@@ -49,10 +45,6 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     if (data.fullName !== undefined) payload.fullName = data.fullName
     if (data.phone !== undefined) payload.phone = data.phone
     if (data.email !== undefined) payload.email = data.email
-    if (data.role !== undefined) payload.role = data.role
-    if (data.functions !== undefined) payload.functions = data.functions
-    if (data.canCreateAccountUsers !== undefined) payload.canCreateAccountUsers = data.canCreateAccountUsers
-    if (data.canManageAccountTeams !== undefined) payload.canManageAccountTeams = data.canManageAccountTeams
 
     if (Object.keys(payload).length === 0) {
       const existing = await prisma.profile.findUnique({
@@ -126,14 +118,35 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     })
   }
 
-  async updateAllTeamMembershipsRoleAndFunctions(
+  async updateTeamMemberAccess(
     profileId: string,
-    role: string,
-    functions: string[]
+    teamId: string,
+    data: {
+      role?: string
+      functions?: string[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+    }
   ): Promise<void> {
+    const payload: Record<string, unknown> = {}
+    if (data.role !== undefined) payload.role = data.role as UserRole
+    if (data.functions !== undefined) payload.functions = data.functions as UserFunction[]
+    if (data.canCreateAccountUsers !== undefined) {
+      payload.canCreateAccountUsers = data.canCreateAccountUsers
+    }
+    if (data.canManageAccountTeams !== undefined) {
+      payload.canManageAccountTeams = data.canManageAccountTeams
+    }
+    if (data.canTransferAccountLeads !== undefined) {
+      payload.canTransferAccountLeads = data.canTransferAccountLeads
+    }
+
+    if (Object.keys(payload).length === 0) return
+
     await prisma.teamMember.updateMany({
-      where: { profileId },
-      data: { role: role as UserRole, functions: functions as UserFunction[] },
+      where: { profileId, teamId },
+      data: payload,
     })
   }
 }

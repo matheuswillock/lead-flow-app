@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -9,6 +10,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireMasterAccess(result.access)
+    if (denied) return denied
 
     const { id } = await params
     const body = await request.json()
@@ -29,6 +32,8 @@ export async function DELETE(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireMasterAccess(result.access)
+    if (denied) return denied
 
     const { id } = await params
     const output = await backofficeProductUseCase.delete(id)

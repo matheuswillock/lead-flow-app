@@ -144,7 +144,7 @@ const buildTeamStatusRulesSnapshot = (input: {
 
 export default function TeamsPage() {
   const { user } = useUser();
-  const { teams, activeTeamId, activeRole, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
+  const { teams, activeTeamId, activeRole, activeTeam, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const [switchingTeamId, setSwitchingTeamId] = useState<string | null>(null);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -197,7 +197,7 @@ export default function TeamsPage() {
 
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && user?.canManageAccountTeams));
+  const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && activeTeam?.canManageAccountTeams));
   const { hasAvailableTeamSlot } = useBillingSlots(supabaseId, !!user?.isMaster);
   const isOnlyMasterTeam = user?.id
     ? teams.filter((team) => team.masterId === user.id).length <= 1

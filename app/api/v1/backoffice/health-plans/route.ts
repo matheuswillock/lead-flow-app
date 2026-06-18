@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeHealthPlanUseCase } from "@/app/api/useCases/backofficeHealthPlan/BackofficeHealthPlanUseCase"
 
 const createSchema = z.object({
@@ -28,6 +29,8 @@ export async function POST(request: NextRequest) {
   try {
     const access = await getBackofficeAccess(request)
     if (access.error) return NextResponse.json(access.error, { status: access.status })
+    const denied = requireMasterAccess(access.access)
+    if (denied) return denied
 
     const parsed = createSchema.safeParse(await request.json())
     if (!parsed.success) {

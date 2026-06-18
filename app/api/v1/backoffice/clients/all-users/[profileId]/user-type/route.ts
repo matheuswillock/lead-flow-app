@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import {
   backofficeProfileUserTypeUseCase,
   type BackofficeProfileUserTypeInput,
@@ -23,10 +24,8 @@ export async function PATCH(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
-
-    if (!result.access.fullAccess) {
-      return NextResponse.json(new Output(false, [], ["Acesso negado"], null), { status: 403 })
-    }
+    const denied = requireMasterAccess(result.access)
+    if (denied) return denied
 
     const { profileId } = await params
     const body = await request.json()

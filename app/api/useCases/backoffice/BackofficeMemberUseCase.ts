@@ -15,6 +15,8 @@ interface UpdateMemberInput {
   functions?: string[]
   canCreateAccountUsers?: boolean
   canManageAccountTeams?: boolean
+  canTransferAccountLeads?: boolean
+  teamId?: string
 }
 
 function createSupabaseAdmin() {
@@ -93,12 +95,20 @@ export class BackofficeMemberUseCase {
         }
       }
 
-      if (data.role !== undefined) payload.role = data.role
-      if (data.functions !== undefined) payload.functions = data.functions
-      if (data.canCreateAccountUsers !== undefined) payload.canCreateAccountUsers = data.canCreateAccountUsers
-      if (data.canManageAccountTeams !== undefined) payload.canManageAccountTeams = data.canManageAccountTeams
+      const hasTeamAccessUpdate =
+        data.role !== undefined ||
+        data.functions !== undefined ||
+        data.canCreateAccountUsers !== undefined ||
+        data.canManageAccountTeams !== undefined ||
+        data.canTransferAccountLeads !== undefined
 
-      if (Object.keys(payload).length === 0) {
+      if (hasTeamAccessUpdate && data.teamId === undefined) {
+        return new Output(false, [], ["teamId é obrigatório para alterar permissões do membro"], null)
+      }
+
+      const profilePayloadEmpty = Object.keys(payload).length === 0
+
+      if (profilePayloadEmpty && !hasTeamAccessUpdate) {
         return new Output(true, ["Nenhuma alteração necessária"], [], { id: memberId })
       }
 
@@ -107,8 +117,28 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Não foi possível atualizar o membro"], null)
       }
 
-      if (data.role !== undefined && data.functions !== undefined) {
-        await this.repository.updateAllTeamMembershipsRoleAndFunctions(memberId, data.role, data.functions)
+      if (hasTeamAccessUpdate) {
+        const role = data.role
+        await this.repository.updateTeamMemberAccess(
+          memberId,
+          data.teamId!,
+          {
+            ...(role !== undefined ? { role } : {}),
+            ...(data.functions !== undefined ? { functions: data.functions } : {}),
+            canCreateAccountUsers:
+              role === "manager" || (role === undefined && data.canCreateAccountUsers !== undefined)
+                ? data.canCreateAccountUsers
+                : false,
+            canManageAccountTeams:
+              role === "manager" || (role === undefined && data.canManageAccountTeams !== undefined)
+                ? data.canManageAccountTeams
+                : false,
+            canTransferAccountLeads:
+              role === "manager" || role === "backoffice" || (role === undefined && data.canTransferAccountLeads !== undefined)
+                ? data.canTransferAccountLeads
+                : false,
+          }
+        )
       }
 
       if (emailChanged && member.supabaseId) {

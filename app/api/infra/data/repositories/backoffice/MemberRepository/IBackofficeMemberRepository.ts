@@ -33,17 +33,19 @@ export interface IBackofficeMemberRepository {
       fullName?: string | null
       phone?: string | null
       email?: string
+    }
+  ): Promise<{ id: string } | null>
+
+  updateTeamMemberAccess(
+    profileId: string,
+    teamId: string,
+    data: {
       role?: string
       functions?: string[]
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     }
-  ): Promise<{ id: string } | null>
-
-  updateAllTeamMembershipsRoleAndFunctions(
-    profileId: string,
-    role: string,
-    functions: string[]
   ): Promise<void>
 
   findMemberForDeletion(memberId: string): Promise<MemberForDeletionRecord | null>

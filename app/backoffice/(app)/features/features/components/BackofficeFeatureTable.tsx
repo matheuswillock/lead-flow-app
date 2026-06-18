@@ -40,7 +40,7 @@ interface FeatureRowProps {
 }
 
 function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
-  const { openEditDialog, openDeleteDialog } = useBackofficeFeature()
+  const { canManage, openEditDialog, openDeleteDialog } = useBackofficeFeature()
 
   const inheritsAccess = Boolean(isChild && parent && feature.inheritParentSettings)
 
@@ -93,24 +93,26 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
         </Badge>
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => openEditDialog(feature)}
-            aria-label={`Editar ${feature.name}`}
-          >
-            <Pencil className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => openDeleteDialog(feature)}
-            aria-label={`Excluir ${feature.name}`}
-          >
-            <Trash2 className="size-4 text-destructive" />
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => openEditDialog(feature)}
+              aria-label={`Editar ${feature.name}`}
+            >
+              <Pencil className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => openDeleteDialog(feature)}
+              aria-label={`Excluir ${feature.name}`}
+            >
+              <Trash2 className="size-4 text-destructive" />
+            </Button>
+          </div>
+        )}
       </TableCell>
     </TableRow>
   )
