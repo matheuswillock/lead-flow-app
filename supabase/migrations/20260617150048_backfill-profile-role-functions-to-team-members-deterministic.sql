@@ -13,6 +13,11 @@ SELECT
   now()
 FROM "public"."corretor_studio_profiles" p
 WHERE p."activeTeamId" IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM "public"."backoffice_users" bu
+    WHERE bu."profileId" = p."id"
+  )
   AND EXISTS (
     SELECT 1
     FROM "public"."corretor_studio_teams" t
@@ -45,6 +50,11 @@ WITH candidate_profiles AS (
   JOIN "public"."corretor_studio_teams" t
     ON t."masterId" = COALESCE(p."managerId", p."id")
   WHERE p."activeTeamId" IS NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "public"."backoffice_users" bu
+      WHERE bu."profileId" = p."id"
+    )
     AND NOT EXISTS (
       SELECT 1
       FROM "public"."corretor_studio_team_members" tm
