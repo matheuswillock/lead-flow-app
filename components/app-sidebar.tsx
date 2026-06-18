@@ -22,6 +22,7 @@ import {
   BarChart3,
   Calculator,
   Settings,
+  MessageCircle,
 } from "lucide-react"
 
 import {
@@ -348,6 +349,33 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     </SidebarMenu>
                   </SidebarGroupContent>
                 )}
+              </SidebarGroup>
+            )}
+            {hasAccess(FEATURE_SLUGS.WHATSAPP) && (
+              <SidebarGroup>
+                <SidebarGroupLabel>WhatsApp</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/whatsapp`)}>
+                        <Link href={`/${supabaseId}/whatsapp`} className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2">
+                            <MessageCircle className="size-4 shrink-0" />
+                            <span>Inbox</span>
+                          </span>
+                          {isBeta(FEATURE_SLUGS.WHATSAPP) && (() => {
+                            const badge = getSidebarStatusBadge("beta")
+                            return badge ? (
+                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            ) : null
+                          })()}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
               </SidebarGroup>
             )}
             {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
