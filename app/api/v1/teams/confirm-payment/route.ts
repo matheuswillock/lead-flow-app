@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
-      select: { id: true, isMaster: true, role: true, managerId: true, canManageAccountTeams: true },
+      select: { id: true, isMaster: true, role: true, managerId: true },
     });
 
     if (!profile) {
@@ -40,8 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const canConfirmTeamPayment =
-      profile.isMaster ||
-      (profile.role === "manager" && profile.canManageAccountTeams === true);
+      profile.isMaster || profile.role === "manager";
 
     if (!canConfirmTeamPayment) {
       return NextResponse.json(

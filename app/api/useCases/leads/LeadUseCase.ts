@@ -2119,7 +2119,7 @@ export class LeadUseCase implements ILeadUseCase {
           where: {
             teamId,
             role: { in: ["manager", "backoffice"] },
-            profile: { canTransferAccountLeads: true },
+            canTransferAccountLeads: true,
           },
           select: {
             profileId: true,

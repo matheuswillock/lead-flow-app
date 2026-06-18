@@ -341,6 +341,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
               role: true,
               functions: true,
               createdAt: true,
+              canCreateAccountUsers: true,
+              canManageAccountTeams: true,
               profile: {
                 select: {
                   id: true,
@@ -356,8 +358,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                     },
                   },
                   isMaster: true,
-                  canCreateAccountUsers: true,
-                  canManageAccountTeams: true,
                 },
               },
             },
@@ -429,8 +429,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           googleEmail: member.profile.googleConnection?.googleEmail ?? null,
           functions: member.functions,
           isMaster: member.profile.isMaster,
-          canCreateAccountUsers: member.profile.canCreateAccountUsers,
-          canManageAccountTeams: member.profile.canManageAccountTeams,
+          canCreateAccountUsers: member.canCreateAccountUsers,
+          canManageAccountTeams: member.canManageAccountTeams,
         })),
       })),
     }
@@ -664,8 +664,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           functions: data.functions as UserFunction[],
           managerId: masterProfileId,
           isMaster: false,
-          canCreateAccountUsers: data.canCreateAccountUsers ?? false,
-          canManageAccountTeams: data.canManageAccountTeams ?? false,
         },
         select: { id: true },
       })
@@ -676,6 +674,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           profileId: profile.id,
           role: data.role as UserRole,
           functions: data.functions as UserFunction[],
+          canCreateAccountUsers: data.canCreateAccountUsers ?? false,
+          canManageAccountTeams: data.canManageAccountTeams ?? false,
         },
         select: { id: true },
       })
@@ -692,18 +692,17 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     permissions?: { canCreateAccountUsers: boolean; canManageAccountTeams: boolean }
   ): Promise<{ teamMemberId: string }> {
     return prisma.$transaction(async (tx) => {
-      if (permissions) {
-        await tx.profile.update({
-          where: { id: profileId },
-          data: {
+      const teamMember = await tx.teamMember.create({
+        data: {
+          profileId,
+          teamId,
+          role: role as UserRole,
+          functions: functions as UserFunction[],
+          ...(permissions ? {
             canCreateAccountUsers: permissions.canCreateAccountUsers,
             canManageAccountTeams: permissions.canManageAccountTeams,
-          },
-        })
-      }
-
-      const teamMember = await tx.teamMember.create({
-        data: { profileId, teamId, role: role as UserRole, functions: functions as UserFunction[] },
+          } : {}),
+        },
         select: { id: true },
       })
 

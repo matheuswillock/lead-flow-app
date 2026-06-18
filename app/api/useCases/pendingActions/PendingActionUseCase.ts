@@ -432,8 +432,6 @@ export class PendingActionUseCase {
           functions,
           managerId: action.masterId,
           isMaster: false,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
         },
         select: { id: true },
       });
@@ -445,8 +443,6 @@ export class PendingActionUseCase {
           role,
           functions,
           managerId: action.masterId,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
         },
       });
     }
@@ -467,6 +463,16 @@ export class PendingActionUseCase {
           profileId: profile.id,
           role,
           functions,
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+        },
+      });
+    } else {
+      await tx.teamMember.update({
+        where: { teamId_profileId: { teamId, profileId: profile.id } },
+        data: {
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
         },
       });
     }

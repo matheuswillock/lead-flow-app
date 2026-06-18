@@ -125,7 +125,20 @@ export async function GET(request: NextRequest) {
 
     const memberships = await prisma.teamMember.findMany({
       where: { profileId: profile.id },
-      include: { team: true },
+      select: {
+        role: true,
+        functions: true,
+        createdAt: true,
+        canTransferAccountLeads: true,
+        team: {
+          select: {
+            id: true,
+            name: true,
+            masterId: true,
+            isDefault: true,
+          },
+        },
+      },
       orderBy: { createdAt: "asc" }
     });
 
@@ -188,6 +201,7 @@ export async function GET(request: NextRequest) {
       role: membership.role,
       functions: membership.functions,
       membershipCreatedAt: membership.createdAt,
+      canTransferAccountLeads: membership.canTransferAccountLeads,
       isPending: false,
       pendingPayment: pendingByName.get(membership.team.name) ?? null,
     }));

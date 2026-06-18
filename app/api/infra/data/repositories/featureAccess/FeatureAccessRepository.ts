@@ -96,8 +96,6 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
         isMaster: true,
         role: true,
         functions: true,
-        canManageAccountTeams: true,
-        canCreateAccountUsers: true,
       },
     })
     if (!profile) return null
@@ -106,8 +104,8 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       isMaster: profile.isMaster,
       role: profile.role,
       functions: profile.functions as string[],
-      canManageAccountTeams: profile.canManageAccountTeams,
-      canCreateAccountUsers: profile.canCreateAccountUsers,
+      canManageAccountTeams: false,
+      canCreateAccountUsers: false,
       userTypeSlug: "common",
       memberProActive: false,
       memberProExpiresAt: null,

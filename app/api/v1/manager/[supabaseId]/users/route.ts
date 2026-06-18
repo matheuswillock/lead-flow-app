@@ -124,9 +124,6 @@ async function createUserRecords(
       managerId: args.masterId,
       isMaster: false,
       hasPermanentSubscription: args.userData.hasPermanentSubscription ?? false,
-      canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
-      canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
-      canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
     },
     select: {
       id: true,
@@ -143,10 +140,16 @@ async function createUserRecords(
       profileId: profile.id,
       role: args.userData.role as UserRole,
       functions: args.userData.functions ?? [],
+      canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
+      canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
+      canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
     },
     select: {
       role: true,
       functions: true,
+      canCreateAccountUsers: true,
+      canManageAccountTeams: true,
+      canTransferAccountLeads: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -628,7 +631,16 @@ export async function GET(
 
     const teamMembers = await prisma.teamMember.findMany({
       where: { teamId },
-      include: {
+      select: {
+        id: true,
+        role: true,
+        functions: true,
+        createdAt: true,
+        updatedAt: true,
+        profileId: true,
+        canCreateAccountUsers: true,
+        canManageAccountTeams: true,
+        canTransferAccountLeads: true,
         profile: {
           select: {
             id: true,
@@ -643,9 +655,6 @@ export async function GET(
                 revokedAt: true,
               },
             },
-            canCreateAccountUsers: true,
-            canManageAccountTeams: true,
-            canTransferAccountLeads: true,
             _count: {
               select: {
                 leadsAsAssignee: {
@@ -678,9 +687,9 @@ export async function GET(
         profileIconId: member.profile.profileIconId,
         profileIconUrl: member.profile.profileIconUrl,
         managerId,
-        canCreateAccountUsers: member.profile.canCreateAccountUsers,
-        canManageAccountTeams: member.profile.canManageAccountTeams,
-        canTransferAccountLeads: member.profile.canTransferAccountLeads,
+        canCreateAccountUsers: member.canCreateAccountUsers,
+        canManageAccountTeams: member.canManageAccountTeams,
+        canTransferAccountLeads: member.canTransferAccountLeads,
         leadsCount: member.profile._count?.leadsAsAssignee ?? 0,
         meetingsCount: member.profile._count?.leadsAsCloser ?? 0,
         createdAt: member.createdAt,
@@ -1011,23 +1020,12 @@ export async function PUT(
       { canManageDelegation: isMaster }
     );
 
-    if (
-      validatedData.name ||
-      validatedData.email ||
-      validatedData.role ||
-      validatedData.functions ||
-      validatedData.canCreateAccountUsers !== undefined ||
-      validatedData.canManageAccountTeams !== undefined ||
-      validatedData.canTransferAccountLeads !== undefined
-    ) {
+    if (validatedData.name || validatedData.email || validatedData.role || validatedData.functions) {
       await profileRepository.updateProfileById(validatedData.id, {
         ...(validatedData.name ? { fullName: validatedData.name } : {}),
         ...(validatedData.email ? { email: normalizeEmail(validatedData.email) } : {}),
         ...(validatedData.role ? { role: validatedData.role } : {}),
         ...(validatedData.functions ? { functions: validatedData.functions } : {}),
-        canCreateAccountUsers: nextDelegatedPermissions.canCreateAccountUsers,
-        canManageAccountTeams: nextDelegatedPermissions.canManageAccountTeams,
-        canTransferAccountLeads: nextDelegatedPermissions.canTransferAccountLeads,
       });
     }
 
@@ -1048,6 +1046,9 @@ export async function PUT(
         data: {
           ...(validatedData.role ? { role: validatedData.role as UserRole } : {}),
           ...(validatedData.functions ? { functions: validatedData.functions } : {}),
+          canCreateAccountUsers: nextDelegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: nextDelegatedPermissions.canManageAccountTeams,
+          canTransferAccountLeads: nextDelegatedPermissions.canTransferAccountLeads,
         },
       });
     }
@@ -1059,16 +1060,18 @@ export async function PUT(
           profileId: validatedData.id,
         },
       },
-      include: {
+      select: {
+        role: true,
+        functions: true,
+        canCreateAccountUsers: true,
+        canManageAccountTeams: true,
+        canTransferAccountLeads: true,
         profile: {
           select: {
             fullName: true,
             email: true,
             profileIconId: true,
             profileIconUrl: true,
-            canCreateAccountUsers: true,
-            canManageAccountTeams: true,
-            canTransferAccountLeads: true,
           },
         },
       },
@@ -1083,9 +1086,9 @@ export async function PUT(
       profileIconId: updatedMember?.profile.profileIconId,
       profileIconUrl: updatedMember?.profile.profileIconUrl,
       managerId,
-      canCreateAccountUsers: updatedMember?.profile.canCreateAccountUsers ?? false,
-      canManageAccountTeams: updatedMember?.profile.canManageAccountTeams ?? false,
-      canTransferAccountLeads: updatedMember?.profile.canTransferAccountLeads ?? false,
+      canCreateAccountUsers: updatedMember?.canCreateAccountUsers ?? false,
+      canManageAccountTeams: updatedMember?.canManageAccountTeams ?? false,
+      canTransferAccountLeads: updatedMember?.canTransferAccountLeads ?? false,
     });
 
     return NextResponse.json(output, { status: 200 });
