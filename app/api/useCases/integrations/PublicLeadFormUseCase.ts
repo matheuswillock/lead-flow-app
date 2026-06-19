@@ -46,6 +46,14 @@ type TeamMemberSnapshot = {
 };
 
 export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
+  private async canCreateTransferLead(teamId: string): Promise<boolean> {
+    const transferRoutesCount = await prisma.teamTransferRoute.count({
+      where: { sourceTeamId: teamId },
+    });
+
+    return transferRoutesCount > 0;
+  }
+
   private async validateMemberFunctionForTeam(
     teamId: string,
     profileId: string,
@@ -222,6 +230,22 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         const closerValidationOutput = await this.validateCloserForTeam(access.teamId, data.closerId);
         if (closerValidationOutput) {
           return closerValidationOutput;
+        }
+      }
+
+      if (data.isTransfer === true) {
+        const canTransfer = await this.canCreateTransferLead(access.teamId);
+        if (!canTransfer) {
+          return new Output(false, [], ["Transferência indisponível para este time."], null);
+        }
+
+        if (!data.meetingDate) {
+          return new Output(
+            false,
+            [],
+            ["Selecione uma data para o pré-agendamento da transferência."],
+            null
+          );
         }
       }
 
@@ -564,8 +588,8 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
 
       const access = accessResult.access as PublicIntegrationAccess;
 
-      const startOfDay = new Date(`${date}T00:00:00.000Z`);
-      const endOfDay = new Date(`${date}T23:59:59.999Z`);
+      const timezone = access.timezone || DEFAULT_TZ;
+      const { start: startOfDay, end: endOfDay } = getDayRangeInTz(date, timezone);
 
       const leads = await prisma.lead.findMany({
         where: {
@@ -588,8 +612,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       const occupiedSlots = leads
         .map((lead) => {
           if (!lead.meetingDate) return null;
-          const d = lead.meetingDate;
-          return d.getUTCHours() * 60 + Math.floor(d.getUTCMinutes() / 30) * 30;
+          return Math.floor(getMinutesInTz(lead.meetingDate, timezone) / SLOT_MINUTES) * SLOT_MINUTES;
         })
         .filter((slot): slot is number => slot !== null);
 

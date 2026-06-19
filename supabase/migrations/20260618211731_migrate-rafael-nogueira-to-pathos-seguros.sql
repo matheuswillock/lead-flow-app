@@ -1,6 +1,7 @@
 DO $$
 DECLARE
   v_rafael_profile_id constant uuid := '53b0ba0f-0fc2-451c-b3ea-9c27446be10e';
+  v_henrique_profile_id constant uuid := '07316970-c45f-4cc3-977a-4e0fa1d706f9';
   v_carlos_profile_id constant uuid := 'df71451b-bcd2-4602-9b7b-230b32f08b65';
   v_pathos_team_id constant uuid := 'c30e3590-04a3-4544-bf66-43228037bfc9';
 BEGIN
@@ -37,7 +38,7 @@ BEGIN
     "managerId" = v_carlos_profile_id,
     "activeTeamId" = v_pathos_team_id,
     "updatedAt" = now()
-  WHERE id = v_rafael_profile_id;
+  WHERE id IN (v_rafael_profile_id, v_henrique_profile_id);
 
   INSERT INTO "public"."corretor_studio_team_members"
     (
@@ -64,11 +65,11 @@ BEGIN
     now(),
     now()
   FROM "public"."corretor_studio_profiles" p
-  WHERE p.id = v_rafael_profile_id
+  WHERE p.id IN (v_rafael_profile_id, v_henrique_profile_id)
     AND NOT EXISTS (
       SELECT 1
       FROM "public"."corretor_studio_team_members" tm
       WHERE tm."teamId" = v_pathos_team_id
-        AND tm."profileId" = v_rafael_profile_id
+        AND tm."profileId" = p.id
     );
 END $$;

@@ -18,7 +18,9 @@ BEGIN
       '9a09e391-dba9-48dc-a391-5cc8a8319ade',
       'd538a1f7-7bbe-4183-b303-cc164708a740',
       'c46898df-7135-4d06-8abe-c219fa7467e2',
-      '492deb28-5593-4deb-b508-4fdeb3f8aba8'
+      '492deb28-5593-4deb-b508-4fdeb3f8aba8',
+      '53b0ba0f-0fc2-451c-b3ea-9c27446be10e',
+      'a199bce6-bc6d-4a91-8ce4-560f868071d8'
     )
     AND NOT EXISTS (
       SELECT 1
@@ -42,6 +44,9 @@ BEGIN
   FROM "public"."corretor_studio_profiles" p
   WHERE
     p."activeTeamId" IS NOT NULL
+    AND p."id" NOT IN (
+      '53b0ba0f-0fc2-451c-b3ea-9c27446be10e'
+    )
     AND NOT EXISTS (
       SELECT 1
       FROM "public"."backoffice_users" bu
