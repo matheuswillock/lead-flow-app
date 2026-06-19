@@ -19,6 +19,7 @@ BEGIN
       'd538a1f7-7bbe-4183-b303-cc164708a740',
       'c46898df-7135-4d06-8abe-c219fa7467e2',
       '492deb28-5593-4deb-b508-4fdeb3f8aba8',
+      '07316970-c45f-4cc3-977a-4e0fa1d706f9',
       '53b0ba0f-0fc2-451c-b3ea-9c27446be10e',
       'a199bce6-bc6d-4a91-8ce4-560f868071d8'
     )
@@ -45,6 +46,7 @@ BEGIN
   WHERE
     p."activeTeamId" IS NOT NULL
     AND p."id" NOT IN (
+      '07316970-c45f-4cc3-977a-4e0fa1d706f9',
       '53b0ba0f-0fc2-451c-b3ea-9c27446be10e'
     )
     AND NOT EXISTS (
