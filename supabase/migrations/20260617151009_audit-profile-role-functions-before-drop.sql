@@ -46,6 +46,7 @@ BEGIN
   WHERE
     p."activeTeamId" IS NOT NULL
     AND p."id" NOT IN (
+      '1b1cc33f-1aea-4877-bc53-ca49d52ee764',
       '07316970-c45f-4cc3-977a-4e0fa1d706f9',
       '53b0ba0f-0fc2-451c-b3ea-9c27446be10e'
     )
