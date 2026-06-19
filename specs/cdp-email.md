@@ -28,7 +28,7 @@ A CDP resolve esse problema criando um perfil unico por cliente dentro de cada t
 ## Non-Goals
 
 - Implementar codigo nesta etapa.
-- Criar UI completa de CDP nesta fase.
+- Criar automacoes avancadas, construtor visual livre de jornadas ou dashboards analiticos complexos nesta fase.
 - Substituir CRM, carteira, listas de contatos de e-mail ou WhatsApp como fontes operacionais.
 - Tornar a CDP a fonte de verdade para edicao de lead, contrato ou contato de e-mail.
 - Executar campanhas diretamente pela CDP na v1.
@@ -246,14 +246,116 @@ Segmentos v1:
 
 ### UI/UX
 
-Nao ha UI dedicada de CDP na v1 desta especificacao.
+A v1 deve incluir uma UI dedicada para a CDP, focada em consulta, auditoria e uso operacional dos segmentos de e-mail. A UI nao deve substituir as telas de CRM, carteira ou e-mail; ela deve mostrar a visao unificada do cliente e permitir que o time entenda por que um perfil esta apto ou bloqueado para campanhas.
 
-Quando uma etapa futura incluir UI, sera obrigatorio:
+Superficie prevista:
+
+- Rota tenant-aware em `app/[supabaseId]/cdp`.
+- Arquitetura local obrigatoria: `page -> context -> service` / `page -> container -> context`.
+- Servico frontend dedicado consumindo `/api/v1/cdp/*`.
+- Tabela principal de perfis CDP com filtros por texto, canal, consentimento, origem, segmento e ultima interacao.
+- Detalhe de perfil em `Sheet` ou pagina de detalhe, exibindo dados consolidados, identidades, fontes, consentimentos e timeline de eventos.
+- Area de segmentos com contagens e acao para visualizar perfis de cada segmento.
+
+#### Desenho inicial da tela
+
+A UI inicial deve ser uma superficie operacional densa, sem hero marketing, sem orbs e sem decoracao visual. O primeiro viewport deve priorizar leitura rapida de perfis, elegibilidade de campanha e explicabilidade dos dados.
+
+Layout desktop:
+
+- Header compacto com titulo `CDP`, subtitulo curto `Perfis unificados para campanhas de e-mail`, badge de status do ultimo sync e acao secundaria `Sincronizar`.
+- Faixa de metricas no topo com quatro cards compactos:
+  - `Perfis unificados`
+  - `Aptos para e-mail`
+  - `Bloqueados`
+  - `Com engajamento recente`
+- Linha de filtros abaixo das metricas:
+  - busca por nome, telefone ou e-mail;
+  - filtro de segmento;
+  - filtro de consentimento;
+  - filtro de origem;
+  - filtro de ultima interacao.
+- Corpo principal em duas colunas:
+  - coluna esquerda larga com tabela de perfis;
+  - coluna direita fixa em desktop com painel de segmentos e contagens.
+- Ao selecionar um perfil, abrir `Sheet` lateral com detalhe consolidado, identidades, fontes, consentimentos e timeline.
+
+Layout mobile:
+
+- Header compacto no topo.
+- Metricas em grid de duas colunas.
+- Filtros em `Sheet` acionado por botao.
+- Lista de perfis em cards compactos no lugar da tabela.
+- Detalhe do perfil em `Sheet` full-height com area interna scrollavel.
+
+Tabela de perfis:
+
+- Colunas desktop:
+  - cliente: nome, telefone e e-mail principal quando existir;
+  - consentimento: badges de e-mail e futuro WhatsApp;
+  - origem: CRM, carteira, lista de e-mail e futuro WhatsApp;
+  - segmento principal;
+  - ultima interacao;
+  - acao de abrir detalhe.
+- A linha deve deixar claro por que o contato esta apto ou bloqueado para campanha.
+- Contatos bloqueados por bounce, complaint ou unsubscribe devem usar badge de perigo/alerta e nao aparecer como aptos.
+
+Painel de segmentos:
+
+- Lista vertical de segmentos v1 com nome, descricao curta, contagem e acao `Ver perfis`.
+- Segmentos obrigatorios:
+  - aptos para e-mail;
+  - bloqueados;
+  - abriram e nao clicaram;
+  - clicaram e nao fecharam;
+  - carteira proxima de renovacao;
+  - sem campanha recente.
+
+Detalhe do perfil:
+
+- Topo com nome, telefone, e-mail principal, documento quando existir e badge de elegibilidade.
+- Aba `Resumo`: fontes vinculadas, ultimos eventos e dados consolidados.
+- Aba `Identidades`: telefone, e-mail, documento, leadId, emailContactId, portfolioId e futuro whatsappContactId.
+- Aba `Consentimentos`: status por canal, motivo, origem e data de atualizacao.
+- Aba `Timeline`: eventos ordenados por `occurredAt`, com tipo, origem e metadados seguros.
+
+Componentes shadcn previstos:
+
+- `Table` para desktop.
+- `Card` para metricas e lista mobile.
+- `Badge` para status, consentimento, origem e segmento.
+- `Sheet` para filtros mobile e detalhe do perfil.
+- `Tabs` para secoes do detalhe.
+- `Input` para busca.
+- `Select` para filtros.
+- `Button` para sincronizar, aplicar filtros e abrir detalhe.
+- `Skeleton` para carregamento.
+- `Separator` para separar grupos no detalhe.
+
+Direcao visual:
+
+- Superficie App/CRM com tipografia Poppins.
+- Usar `bg-background`, `bg-card`, `bg-muted`, `text-muted-foreground`, `border-border`, `bg-primary` e tokens `semantic-*`.
+- Usar `semantic-success` para apto, `semantic-danger` para bloqueado, `semantic-warning` para atencao e `semantic-info` para eventos informativos.
+- Usar acento primario apenas em acoes principais e foco ativo.
+- Evitar gradientes, blur, orbs, sombras decorativas e cards aninhados.
+- Densidade compacta: `gap-4`, cards com padding contido e cabecalhos de painel menores que headings de pagina.
+
+Estados obrigatorios:
+
+- Loading com `Skeleton`.
+- Empty state para nenhum perfil sincronizado.
+- Error state com mensagem acionavel e sem expor detalhes sensiveis.
+- Badges para consentimento, origem e elegibilidade de campanha.
+- Paginacao ou carregamento incremental para lista de perfis e timeline.
+
+Regras visuais obrigatorias:
 
 - Usar `design-system-guard` e `corretor-studio-design` antes de criar telas, modais, tabelas ou formularios.
 - Consultar shadcn antes de markup customizado.
-- Seguir a arquitetura frontend local de `page -> context -> service` / `page -> container -> context`.
-- Rodar `design:check` alem das validacoes padrao.
+- Usar componentes shadcn existentes para `Table`, `Badge`, `Sheet`, `Tabs`, `Skeleton`, `Button`, `Input`, `Select` e `Separator` quando aplicavel.
+- Seguir tokens semanticos do projeto, sem cores hardcoded.
+- Rodar `design:check` alem das validacoes padrao apos qualquer implementacao visual.
 
 ### Caching And Runtime
 
@@ -339,7 +441,7 @@ Esta SPEC e o artefato base. Se a equipe decidir levar o trabalho ao Notion, o f
 - [ ] A janela padrao para "campanha recente" deve ser 30, 60 ou 90 dias?
 - [ ] A carteira proxima de renovacao deve considerar qual janela inicial: 30, 45 ou 60 dias?
 - [ ] O segmento `clicked_not_closed` deve considerar apenas fechamento em carteira ou tambem status finais do CRM?
-- [ ] A primeira UI futura sera uma tela de perfis CDP ou apenas seletores de segmento dentro do modulo de e-mail?
+- [ ] A rota de CDP deve aparecer no menu lateral principal desde a v1 ou ficar acessivel apenas pelo modulo de e-mail ate haver uso suficiente?
 
 ## Decisions Log
 
@@ -360,3 +462,6 @@ Esta SPEC e o artefato base. Se a equipe decidir levar o trabalho ao Notion, o f
 
 > **Q:** Devemos implementar codigo agora?
 > **A:** Nao. Esta etapa cria a SPEC primeiro; a implementacao vem depois da revisao/aprovacao do documento.
+
+> **Q:** A v1 deve ter UI dedicada de CDP?
+> **A:** Sim. A v1 deve incluir uma UI dedicada para consulta de perfis, segmentos, consentimentos, fontes e timeline, sem substituir CRM, carteira ou telas de e-mail.

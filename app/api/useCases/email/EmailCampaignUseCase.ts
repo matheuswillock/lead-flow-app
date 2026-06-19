@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto"
+import type { EmailCampaignStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
@@ -96,7 +97,7 @@ export class EmailCampaignUseCase {
     try {
       const where = {
         teamId: ctx.teamId,
-        ...(options.status && { status: options.status as never }),
+        ...(options.status && { status: options.status as EmailCampaignStatus }),
       }
 
       const [campaigns, total] = await prisma.$transaction([
@@ -116,9 +117,9 @@ export class EmailCampaignUseCase {
             totalBounced: true,
             dispatchCount: true,
             createdAt: true,
-            creator: { select: { fullName: true, email: true } },
-            template: { select: { id: true, name: true } },
-            contactList: { select: { id: true, name: true } },
+            createdBy: true,
+            templateId: true,
+            contactListId: true,
           },
           orderBy: { createdAt: "desc" },
           skip: (options.page - 1) * options.pageSize,
@@ -127,8 +128,48 @@ export class EmailCampaignUseCase {
         prisma.emailCampaign.count({ where }),
       ])
 
+      const creatorIds = Array.from(new Set(campaigns.map((campaign) => campaign.createdBy)))
+      const templateIds = Array.from(new Set(campaigns.map((campaign) => campaign.templateId)))
+      const contactListIds = Array.from(new Set(campaigns.map((campaign) => campaign.contactListId)))
+
+      const [creators, templates, contactLists] = await prisma.$transaction([
+        prisma.profile.findMany({
+          where: { id: { in: creatorIds } },
+          select: { id: true, fullName: true, email: true },
+        }),
+        prisma.emailTemplate.findMany({
+          where: { id: { in: templateIds }, teamId: ctx.teamId },
+          select: { id: true, name: true },
+        }),
+        prisma.emailContactList.findMany({
+          where: { id: { in: contactListIds }, teamId: ctx.teamId },
+          select: { id: true, name: true },
+        }),
+      ])
+
+      const creatorsById = new Map(creators.map((creator) => [creator.id, creator]))
+      const templatesById = new Map(templates.map((template) => [template.id, template]))
+      const contactListsById = new Map(contactLists.map((contactList) => [contactList.id, contactList]))
+
       return new Output(true, [], [], {
-        campaigns,
+        campaigns: campaigns.map((campaign) => ({
+          id: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          scheduledAt: campaign.scheduledAt,
+          sentAt: campaign.sentAt,
+          totalRecipients: campaign.totalRecipients,
+          totalSent: campaign.totalSent,
+          totalDelivered: campaign.totalDelivered,
+          totalOpened: campaign.totalOpened,
+          totalClicked: campaign.totalClicked,
+          totalBounced: campaign.totalBounced,
+          dispatchCount: campaign.dispatchCount,
+          createdAt: campaign.createdAt,
+          creator: creatorsById.get(campaign.createdBy) ?? null,
+          template: templatesById.get(campaign.templateId) ?? null,
+          contactList: contactListsById.get(campaign.contactListId) ?? null,
+        })),
         total,
         page: options.page,
         pageSize: options.pageSize,
