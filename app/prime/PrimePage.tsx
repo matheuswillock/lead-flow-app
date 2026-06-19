@@ -207,7 +207,11 @@ export function PrimePage() {
         }
       `}</style>
 
-      <div style={{ background: "#F6F4F0", minHeight: "100vh", width: "100%" }}>
+      <div
+        aria-hidden
+        style={{ position: "fixed", inset: 0, background: "#F6F4F0", zIndex: 0 }}
+      />
+      <div style={{ position: "relative", zIndex: 1, background: "#F6F4F0", minHeight: "100vh", width: "100%" }}>
       <div
         style={{ fontFamily: "'Poppins', sans-serif", maxWidth: 680, margin: "0 auto", color: "#181612", background: "#F6F4F0", overflow: "hidden" }}
       >
