@@ -5,10 +5,12 @@ import { toast } from 'sonner'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { useUserContext } from '@/app/context/UserContext'
 import { isManagerLikeRole } from '@/lib/roles'
+import { useWhatsAppRealtime } from '@/hooks/useWhatsAppRealtime'
 import { whatsAppInboxService } from '../services/WhatsAppInboxService'
 import type {
   InboxActions,
   InboxState,
+  LeadSearchResult,
   TeamMember,
   WhatsAppConfig,
   WhatsAppConversation,
@@ -46,6 +48,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [searchQuery, setSearchQueryState] = useState('')
   const [page, setPage] = useState(1)
   const [isAssigning, setIsAssigning] = useState(false)
+  const [isLinkingLead, setIsLinkingLead] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
 
@@ -376,6 +379,63 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     }
   }, [activeTeamId, supabaseId])
 
+  // Realtime callbacks
+  const handleMessageInserted = useCallback(
+    (row: { id: string; conversationId: string; direction: string; messageType: string; status: string; contentText: string | null; sentByProfileId: string | null; senderPhone: string | null; recipientPhone: string | null; sentAt: string | null; deliveredAt: string | null; readAt: string | null; failedAt: string | null; createdAt: string }) => {
+      if (row.conversationId !== currentMessagesConvIdRef.current) return
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === row.id)) return prev
+        const msg: WhatsAppMessage = {
+          id: row.id,
+          conversationId: row.conversationId,
+          direction: row.direction as 'INBOUND' | 'OUTBOUND',
+          messageType: row.messageType,
+          status: row.status,
+          contentText: row.contentText,
+          sentByProfileId: row.sentByProfileId,
+          senderPhone: row.senderPhone,
+          recipientPhone: row.recipientPhone,
+          sentAt: row.sentAt,
+          deliveredAt: row.deliveredAt,
+          readAt: row.readAt,
+          failedAt: row.failedAt,
+          createdAt: row.createdAt,
+        }
+        return [...prev, msg]
+      })
+    },
+    []
+  )
+
+  const handleConversationUpdated = useCallback(
+    (row: { id: string; configId: string; lastMessagePreview: string | null; lastMessageAt: string | null; unreadCount: number; assignedProfileId: string | null; leadId: string | null; isArchived: boolean }) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === row.id
+            ? {
+                ...c,
+                lastMessagePreview: row.lastMessagePreview,
+                lastMessageAt: row.lastMessageAt,
+                unreadCount: c.id === selectedConversationId ? 0 : row.unreadCount,
+                assignedProfileId: row.assignedProfileId,
+                leadId: row.leadId,
+                isArchived: row.isArchived,
+              }
+            : c
+        )
+      )
+    },
+    [selectedConversationId]
+  )
+
+  useWhatsAppRealtime({
+    enabled: Boolean(activeTeamId && config),
+    teamId: activeTeamId ?? null,
+    selectedConversationId,
+    onMessageInserted: handleMessageInserted,
+    onConversationUpdated: handleConversationUpdated,
+  })
+
   const assignConversation = useCallback(
     (conversationId: string, profileId: string) => {
       if (!activeTeamId || isAssigning) return
@@ -404,6 +464,47 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [activeTeamId, supabaseId, isAssigning]
   )
 
+  const linkLead = useCallback(
+    (conversationId: string, leadId: string) => {
+      if (!activeTeamId || isLinkingLead) return
+
+      const execute = async () => {
+        setIsLinkingLead(true)
+        try {
+          await whatsAppInboxService.linkLead(activeTeamId, supabaseId, conversationId, leadId)
+          setConversations((prev) =>
+            prev.map((c) => (c.id === conversationId ? { ...c, leadId } : c))
+          )
+          toast.success('Lead vinculado com sucesso')
+        } catch (error) {
+          console.error('[useWhatsAppInbox] Erro ao vincular lead:', error)
+          toast.error(error instanceof Error ? error.message : 'Não foi possível vincular o lead')
+        } finally {
+          setIsLinkingLead(false)
+        }
+      }
+
+      execute().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao vincular lead:', error)
+        setIsLinkingLead(false)
+      })
+    },
+    [activeTeamId, supabaseId, isLinkingLead]
+  )
+
+  const searchLeads = useCallback(
+    async (query: string): Promise<LeadSearchResult[]> => {
+      if (!activeTeamId || !query.trim()) return []
+      try {
+        return await whatsAppInboxService.searchLeads(activeTeamId, supabaseId, query)
+      } catch (error) {
+        console.error('[useWhatsAppInbox] Erro ao buscar leads:', error)
+        return []
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
   return {
     config,
     conversations,
@@ -418,6 +519,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     searchQuery,
     page,
     isAssigning,
+    isLinkingLead,
     teamMembers,
     isLoadingTeamMembers,
     currentProfileId,
@@ -428,5 +530,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     setSearchQuery,
     assignConversation,
     loadTeamMembers,
+    linkLead,
+    searchLeads,
   }
 }

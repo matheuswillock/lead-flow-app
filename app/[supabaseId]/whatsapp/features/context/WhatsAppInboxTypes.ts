@@ -5,6 +5,14 @@ export interface TeamMember {
   functions: string[]
 }
 
+export interface LeadSearchResult {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  leadCode: string
+}
+
 export interface WhatsAppConversation {
   id: string
   teamId: string
@@ -46,6 +54,7 @@ export interface WhatsAppConfig {
   status: WhatsAppConnectionStatus
   phoneNumber: string | null
   instanceName: string
+  configId?: string
 }
 
 export interface InboxState {
@@ -62,6 +71,7 @@ export interface InboxState {
   searchQuery: string
   page: number
   isAssigning: boolean
+  isLinkingLead: boolean
   teamMembers: TeamMember[]
   isLoadingTeamMembers: boolean
   currentProfileId: string | null
@@ -75,4 +85,7 @@ export interface InboxActions {
   setSearchQuery: (q: string) => void
   assignConversation: (conversationId: string, profileId: string) => void
   loadTeamMembers: () => void
+  linkLead: (conversationId: string, leadId: string) => void
+  searchLeads: (query: string) => Promise<LeadSearchResult[]>
 }
+

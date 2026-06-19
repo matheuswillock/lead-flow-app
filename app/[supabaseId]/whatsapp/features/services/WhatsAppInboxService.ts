@@ -1,5 +1,5 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
-import type { WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember } from '../context/WhatsAppInboxTypes'
 
 class WhatsAppInboxService implements IWhatsAppInboxService {
   private extractErrorMessage(output: unknown, fallback: string): string {
@@ -187,6 +187,53 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       name: (member.name ?? member.fullName ?? 'Usuário') as string,
       role: (member.role ?? '') as string,
       functions: (Array.isArray(member.functions) ? member.functions : []) as string[],
+    }))
+  }
+
+  async linkLead(teamId: string, supabaseId: string, conversationId: string, leadId: string): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/link-lead`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+        },
+        body: JSON.stringify({ leadId }),
+      }
+    )
+
+    if (!response.ok) {
+      const output: unknown = await response.json().catch(() => null)
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível vincular o lead'))
+    }
+  }
+
+  async searchLeads(teamId: string, supabaseId: string, query: string): Promise<LeadSearchResult[]> {
+    const params = new URLSearchParams({ search: query, teamId, limit: '10' })
+    const response = await fetch(`/api/v1/leads?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'x-supabase-user-id': supabaseId,
+        'x-team-id': teamId,
+      },
+    })
+
+    const output: unknown = await response.json()
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível buscar leads'))
+    }
+
+    const result = (output as Record<string, unknown>).result
+    const leads = Array.isArray(result) ? result : ((result as Record<string, unknown>)?.leads ?? [])
+    if (!Array.isArray(leads)) return []
+
+    return (leads as Array<Record<string, unknown>>).map((lead) => ({
+      id: lead.id as string,
+      name: (lead.name ?? 'Sem nome') as string,
+      phone: (lead.phone ?? null) as string | null,
+      email: (lead.email ?? null) as string | null,
+      leadCode: (lead.leadCode ?? '') as string,
     }))
   }
 }

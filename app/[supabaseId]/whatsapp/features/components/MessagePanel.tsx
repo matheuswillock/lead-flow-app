@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { AssignmentControl } from './AssignmentControl'
+import { LinkLeadDialog } from './LinkLeadDialog'
 import { MessageBubble } from './MessageBubble'
 import { MessageComposer } from './MessageComposer'
 
@@ -38,6 +39,7 @@ export function MessagePanel() {
     messages,
     isLoadingMessages,
     config,
+    canManageAssignment,
   } = useWhatsAppInboxContext()
 
   const scrollBottomRef = useRef<HTMLDivElement>(null)
@@ -76,6 +78,9 @@ export function MessagePanel() {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {canManageAssignment && (
+            <LinkLeadDialog selectedConversation={selectedConversation} />
+          )}
           <AssignmentControl selectedConversation={selectedConversation} />
           <Badge
             variant={isConnected ? 'default' : 'secondary'}

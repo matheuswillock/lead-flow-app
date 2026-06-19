@@ -1,4 +1,4 @@
-import type { WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember } from '../context/WhatsAppInboxTypes'
 
 export interface IWhatsAppInboxService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
@@ -27,4 +27,6 @@ export interface IWhatsAppInboxService {
     profileId: string
   ): Promise<void>
   fetchTeamMembers(teamId: string, supabaseId: string): Promise<TeamMember[]>
+  linkLead(teamId: string, supabaseId: string, conversationId: string, leadId: string): Promise<void>
+  searchLeads(teamId: string, supabaseId: string, query: string): Promise<LeadSearchResult[]>
 }
