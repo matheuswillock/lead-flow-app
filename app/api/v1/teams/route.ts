@@ -187,6 +187,9 @@ export async function GET(request: NextRequest) {
       isDefault: membership.team.isDefault,
       role: membership.role,
       functions: membership.functions,
+      canCreateAccountUsers: membership.canCreateAccountUsers,
+      canManageAccountTeams: membership.canManageAccountTeams,
+      canTransferAccountLeads: membership.canTransferAccountLeads,
       membershipCreatedAt: membership.createdAt,
       isPending: false,
       pendingPayment: pendingByName.get(membership.team.name) ?? null,
@@ -219,6 +222,9 @@ export async function GET(request: NextRequest) {
           isDefault: false,
           role: "manager",
           functions: [],
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
+          canTransferAccountLeads: false,
           membershipCreatedAt: action.createdAt,
           isPending: true,
           pendingPayment: {
@@ -261,7 +267,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const { profileId, managerId, teamMember, isMaster } = teamAccess.access;
+    const { profileId, managerId, teamMember } = teamAccess.access;
     if (!hasDelegatedTeamManagementAccess(teamAccess.access)) {
       return NextResponse.json(
         new Output(false, [], ["Apenas o master ou um manager delegado pode criar times"], null),
@@ -272,11 +278,19 @@ export async function POST(request: NextRequest) {
     const [profile, billingOwner] = await Promise.all([
       prisma.profile.findUnique({
         where: { supabaseId },
-        select: { id: true, fullName: true, email: true, functions: true },
+        select: { id: true, fullName: true, email: true },
       }),
       prisma.profile.findUnique({
         where: { id: managerId },
-        select: { id: true, hasPermanentSubscription: true, functions: true },
+        select: {
+          id: true,
+          hasPermanentSubscription: true,
+          teamMemberships: {
+            orderBy: { createdAt: "asc" },
+            take: 1,
+            select: { functions: true },
+          },
+        },
       }),
     ]);
 
@@ -296,13 +310,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 });
     }
 
+    const masterFunctions = billingOwner.teamMemberships[0]?.functions ?? [];
+    const requesterFunctions = teamMember.functions ?? [];
+
     if (billingOwner.hasPermanentSubscription) {
       const team = await createTeamForAccount({
         teamName: validatedData.name,
         masterId: managerId,
         requesterProfileId: profileId,
-        masterFunctions: billingOwner.functions ?? [],
-        requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
+        masterFunctions,
+        requesterFunctions,
       });
 
       return NextResponse.json(
@@ -323,8 +340,8 @@ export async function POST(request: NextRequest) {
           teamName: validatedData.name,
           masterId: managerId,
           requesterProfileId: profileId,
-          masterFunctions: billingOwner.functions ?? [],
-          requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
+          masterFunctions,
+          requesterFunctions,
           tx,
         });
       });

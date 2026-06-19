@@ -367,6 +367,7 @@ export function BackofficeCrmTable() {
     filteredLeads,
     users,
     closerOptions,
+    canManage,
     openEditDialog,
     updateLeadStatus,
     removeLead,
@@ -560,6 +561,8 @@ export function BackofficeCrmTable() {
           const lead = row.original
           const isStatusPending = pendingStatusLeadId === lead.id
 
+          if (!canManage) return null
+
           return (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -621,7 +624,7 @@ export function BackofficeCrmTable() {
         },
       },
     ],
-    [handleStatusChange, pendingStatusLeadId, tz],
+    [canManage, handleStatusChange, pendingStatusLeadId, tz],
   )
 
   const table = useReactTable({
@@ -666,8 +669,8 @@ export function BackofficeCrmTable() {
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="cursor-pointer"
-                  onClick={() => openEditDialog(row.original)}
+                  className={canManage ? "cursor-pointer" : undefined}
+                  onClick={canManage ? () => openEditDialog(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="text-center align-middle">

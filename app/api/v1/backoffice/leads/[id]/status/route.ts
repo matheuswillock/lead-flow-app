@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import {
   backofficeLeadUseCase,
   BACKOFFICE_LEAD_STATUS_VALUES,
@@ -29,6 +30,8 @@ export async function PUT(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireMasterAccess(result.access)
+    if (denied) return denied
 
     const { id } = await params
     const body = await request.json().catch(() => null)

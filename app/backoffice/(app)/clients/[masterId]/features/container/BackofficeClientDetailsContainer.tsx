@@ -130,6 +130,7 @@ export function BackofficeClientDetailsContainer() {
   const {
     masterId,
     service,
+    canManage,
     details,
     teams,
     teamsPagination,
@@ -167,6 +168,7 @@ export function BackofficeClientDetailsContainer() {
   const [memberAccessActionId, setMemberAccessActionId] = useState<string | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addTeamOpen, setAddTeamOpen] = useState(false)
+  const [selectedMemberTeamId, setSelectedMemberTeamId] = useState<string | null>(null)
   const [editingTeam, setEditingTeam] = useState<BackofficeClientTeam | null>(null)
   const [deletingTeam, setDeletingTeam] = useState<BackofficeClientTeam | null>(null)
 
@@ -337,15 +339,17 @@ export function BackofficeClientDetailsContainer() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditOpen(true)}
-              className="shrink-0"
-            >
-              <Pencil className="mr-2 h-4 w-4" />
-              Editar
-            </Button>
+            {canManage && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditOpen(true)}
+                className="shrink-0"
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Editar
+              </Button>
+            )}
           </div>
 
           <LeadsFiltersLayout>
@@ -379,14 +383,16 @@ export function BackofficeClientDetailsContainer() {
             </TabsList>
 
             <TabsContent value="teams" className="mt-4">
-              <div className="mb-3 flex justify-end gap-2">
-                <Button size="sm" variant="outline" onClick={() => setAddTeamOpen(true)}>
-                  Adicionar time
-                </Button>
-                <Button size="sm" onClick={() => setAddMemberOpen(true)}>
-                  Adicionar usuário
-                </Button>
-              </div>
+              {canManage && (
+                <div className="mb-3 flex justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setAddTeamOpen(true)}>
+                    Adicionar time
+                  </Button>
+                  <Button size="sm" onClick={() => setAddMemberOpen(true)}>
+                    Adicionar usuário
+                  </Button>
+                </div>
+              )}
 
               <div className="rounded-md border overflow-hidden">
                 <div className="grid grid-cols-[2fr_1fr_1fr] gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -420,29 +426,31 @@ export function BackofficeClientDetailsContainer() {
                             <span className="font-medium text-center">{team.name}</span>
                             <span className="text-center">{team.membersCount}</span>
                             <span className="text-center">{formatDate(team.createdAt, tz)}</span>
-                            <div
-                              className="flex items-center gap-1"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-7"
-                                title="Editar time"
-                                onClick={() => setEditingTeam(team)}
+                            {canManage && (
+                              <div
+                                className="flex items-center gap-1"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <Pencil className="size-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-7 text-destructive hover:text-destructive"
-                                title="Excluir time"
-                                onClick={() => setDeletingTeam(team)}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7"
+                                  title="Editar time"
+                                  onClick={() => setEditingTeam(team)}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-destructive hover:text-destructive"
+                                  title="Excluir time"
+                                  onClick={() => setDeletingTeam(team)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-4 pb-4">
@@ -501,16 +509,19 @@ export function BackofficeClientDetailsContainer() {
                                             <Eye />
                                             Visualizar
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onClick={() => {
-                                              setSelectedMember(member)
-                                              setMemberEditOpen(true)
-                                            }}
-                                          >
-                                            <Pencil />
-                                            Editar
-                                          </DropdownMenuItem>
-                                          {member.accessStatus === "pending_first_access" ? (
+                                          {canManage && (
+                                            <DropdownMenuItem
+                                              onClick={() => {
+                                                setSelectedMember(member)
+                                                setSelectedMemberTeamId(team.id)
+                                                setMemberEditOpen(true)
+                                              }}
+                                            >
+                                              <Pencil />
+                                              Editar
+                                            </DropdownMenuItem>
+                                          )}
+                                          {canManage && member.accessStatus === "pending_first_access" ? (
                                             <DropdownMenuItem
                                               onClick={() => void handleSendMemberAccessEmail(member, "invite")}
                                             >
@@ -518,7 +529,7 @@ export function BackofficeClientDetailsContainer() {
                                               Reenviar convite
                                             </DropdownMenuItem>
                                           ) : null}
-                                          {member.accessStatus === "active" ? (
+                                          {canManage && member.accessStatus === "active" ? (
                                             <DropdownMenuItem
                                               onClick={() => void handleSendMemberAccessEmail(member, "reset_password")}
                                             >
@@ -526,7 +537,7 @@ export function BackofficeClientDetailsContainer() {
                                               Enviar reset de senha
                                             </DropdownMenuItem>
                                           ) : null}
-                                          {!member.isMaster ? (
+                                          {canManage && !member.isMaster ? (
                                             <DropdownMenuItem
                                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                               onClick={() => {
@@ -874,6 +885,7 @@ export function BackofficeClientDetailsContainer() {
         open={memberEditOpen}
         onOpenChange={setMemberEditOpen}
         member={selectedMember}
+        teamId={selectedMemberTeamId}
         details={details}
         service={service}
         onSuccess={reload}
@@ -912,6 +924,7 @@ export function BackofficeClientDetailsContainer() {
         open={editingTeam !== null}
         onOpenChange={(open) => { if (!open) setEditingTeam(null) }}
         team={editingTeam}
+        allTeams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
         masterId={masterId}
         service={service}
         onSuccess={() => { setEditingTeam(null); void reload() }}

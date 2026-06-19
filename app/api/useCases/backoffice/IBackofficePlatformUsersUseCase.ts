@@ -63,6 +63,7 @@ export interface IBackofficePlatformUsersUseCase {
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     }
   ): Promise<Output>
 
@@ -74,7 +75,7 @@ export interface IBackofficePlatformUsersUseCase {
   updateTeamForMasterUser(
     masterProfileId: string,
     teamId: string,
-    data: { name: string }
+    data: { name?: string; transferTargetTeamIds?: string[]; updatedBy?: string }
   ): Promise<Output>
 
   deleteTeamFromMasterUser(

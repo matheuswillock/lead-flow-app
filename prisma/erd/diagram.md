@@ -409,9 +409,6 @@ unsubscribed unsubscribed
     UserRole role 
     UserFunction functions 
     Boolean isMaster 
-    Boolean canCreateAccountUsers 
-    Boolean canManageAccountTeams 
-    Boolean canTransferAccountLeads 
     Boolean hasPermanentSubscription 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
@@ -922,6 +919,9 @@ unsubscribed unsubscribed
     String id "🗝️"
     UserRole role 
     UserFunction functions 
+    Boolean canCreateAccountUsers 
+    Boolean canManageAccountTeams 
+    Boolean canTransferAccountLeads 
     DateTime createdAt 
     DateTime updatedAt 
     }

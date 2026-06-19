@@ -94,20 +94,36 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       where: { id: profileId },
       select: {
         isMaster: true,
-        role: true,
-        functions: true,
-        canManageAccountTeams: true,
-        canCreateAccountUsers: true,
+        activeTeamId: true,
       },
     })
     if (!profile) return null
 
+    const membership = profile.activeTeamId
+      ? await prisma.teamMember.findUnique({
+          where: {
+            teamId_profileId: {
+              teamId: profile.activeTeamId,
+              profileId,
+            },
+          },
+          select: {
+            role: true,
+            functions: true,
+            canManageAccountTeams: true,
+            canCreateAccountUsers: true,
+          },
+        })
+      : null
+
     return {
       isMaster: profile.isMaster,
-      role: profile.role,
-      functions: profile.functions as string[],
-      canManageAccountTeams: profile.canManageAccountTeams,
-      canCreateAccountUsers: profile.canCreateAccountUsers,
+      role: membership?.role ?? "operator",
+      functions: (membership?.functions ?? []) as string[],
+      canManageAccountTeams:
+        membership?.role === "manager" && membership.canManageAccountTeams === true,
+      canCreateAccountUsers:
+        membership?.role === "manager" && membership.canCreateAccountUsers === true,
       userTypeSlug: "common",
       memberProActive: false,
       memberProExpiresAt: null,

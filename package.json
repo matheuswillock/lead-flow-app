@@ -149,7 +149,7 @@
     "prisma": "6.19.3",
     "prisma-erd-generator": "2.4.2",
     "shadcn": "^4.7.0",
-    "supabase": "^2.106.0",
+    "supabase": "^2.107.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.2",

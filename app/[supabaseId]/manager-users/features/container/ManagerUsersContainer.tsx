@@ -41,12 +41,12 @@ export function ManagerUsersContainer({
 }: ManagerUsersContainerProps) {
   const { user } = useUserContext();
   const { tz } = useTimezone();
-  const { activeRole, isTeamMaster, activeTeamId } = useTeamContext();
+  const { activeRole, activeTeam, isTeamMaster, activeTeamId } = useTeamContext();
   const resolvedRole = activeRole ?? currentUserRole;
   const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
-  const canCreateUser = resolvedIsMaster || (resolvedRole === "manager" && user?.canCreateAccountUsers === true);
+  const canCreateUser = resolvedIsMaster || (resolvedRole === "manager" && activeTeam?.canCreateAccountUsers === true);
   const canDeleteUser = resolvedIsMaster;
-  const canManagePendingPayments = resolvedIsMaster || (resolvedRole === "manager" && user?.canCreateAccountUsers === true);
+  const canManagePendingPayments = resolvedIsMaster || (resolvedRole === "manager" && activeTeam?.canCreateAccountUsers === true);
   const { hasAvailableUserSlot } = useBillingSlots(supabaseId, resolvedIsMaster);
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
@@ -98,7 +98,7 @@ export function ManagerUsersContainer({
     currentUserRole,
     currentProfileId: user?.id,
     currentUserIsMaster: resolvedIsMaster,
-    currentUserCanCreateUsers: user?.canCreateAccountUsers === true,
+    currentUserCanCreateUsers: activeTeam?.canCreateAccountUsers === true,
     hasPermanentSubscription,
   });
 

@@ -17,9 +17,6 @@ export class TeamMembersRepository implements ITeamMembersRepository {
         email: true,
         fullName: true,
         isMaster: true,
-        role: true,
-        canManageAccountTeams: true,
-        canTransferAccountLeads: true,
       },
     });
   }
@@ -31,10 +28,14 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
-  async findMembership(teamId: string, profileId: string): Promise<{ id: string } | null> {
+  async findMembership(teamId: string, profileId: string) {
     return prisma.teamMember.findUnique({
       where: { teamId_profileId: { teamId, profileId } },
-      select: { id: true },
+      select: {
+        id: true,
+        role: true,
+        canManageAccountTeams: true,
+      },
     });
   }
 
@@ -62,7 +63,7 @@ export class TeamMembersRepository implements ITeamMembersRepository {
           },
         },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { profile: { fullName: "asc" } },
     });
   }
 

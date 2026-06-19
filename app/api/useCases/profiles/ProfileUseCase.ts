@@ -126,7 +126,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 isMaster: profile.isMaster,
                 fullName: profile.fullName,
                 email: profile.email,
-                canTransferAccountLeads: profile.canTransferAccountLeads ?? false,
+                canTransferAccountLeads: false,
                 activeTeamId: profile.activeTeamId ?? null
             };
         } catch (error) {
@@ -154,7 +154,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 isMaster: profile.isMaster,
                 fullName: profile.fullName,
                 email: profile.email,
-                canTransferAccountLeads: profile.canTransferAccountLeads ?? false,
+                canTransferAccountLeads: false,
                 activeTeamId: profile.activeTeamId ?? null
             };
         } catch (error) {

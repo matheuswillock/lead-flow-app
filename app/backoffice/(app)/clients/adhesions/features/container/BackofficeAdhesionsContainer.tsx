@@ -104,6 +104,7 @@ export function BackofficeAdhesionsContainer() {
     filters,
     isLoading,
     error,
+    canManage,
     service,
     setFilters,
     fetchAdhesions,
@@ -233,15 +234,17 @@ export function BackofficeAdhesionsContainer() {
             Links públicos gerados a partir dos leads do CRM.
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() => {
-            setEditingAdhesion(null)
-            setDialogOpen(true)
-          }}
-        >
-          Nova adesão
-        </Button>
+        {canManage && (
+          <Button
+            type="button"
+            onClick={() => {
+              setEditingAdhesion(null)
+              setDialogOpen(true)
+            }}
+          >
+            Nova adesão
+          </Button>
+        )}
       </div>
 
       <LeadsFiltersLayout>
@@ -339,7 +342,7 @@ export function BackofficeAdhesionsContainer() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
+                    {canManage && <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" aria-label="Abrir ações">
                           <MoreHorizontal data-icon="inline-start" />
@@ -389,7 +392,7 @@ export function BackofficeAdhesionsContainer() {
                           </DropdownMenuItem>
                         </DropdownMenuGroup>
                       </DropdownMenuContent>
-                    </DropdownMenu>
+                    </DropdownMenu>}
                   </TableCell>
                 </TableRow>
               ))

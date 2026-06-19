@@ -6680,6 +6680,42 @@
             "description": "Verifica disponibilidade de horários de um closer para uma data (endpoint público). Retorna slots de 30min disponíveis."
           },
           "response": []
+        },
+        {
+          "name": "Get Pre-Schedule Occupied Slots (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/pre-schedule-slots?teamId={{teamId}}&date=2026-06-18",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "pre-schedule-slots"
+              ],
+              "query": [
+                {
+                  "key": "teamId",
+                  "value": "{{teamId}}"
+                },
+                {
+                  "key": "date",
+                  "value": "2026-06-18"
+                },
+                {
+                  "key": "supabaseId",
+                  "value": "{{supabaseId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retorna slots de 30min ocupados por leads de transferência (isTransfer=true, closerId=null) para um time e data. Usado pelo formulário público para checar conflitos de pré-agendamento."
+          },
+          "response": []
         }
       ]
     },

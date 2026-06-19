@@ -439,9 +439,14 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           status: master.subscriptionStatus,
         },
         teams: master.teams.map((team) => ({
-          ...team,
+          id: team.id,
+          name: team.name,
+          createdAt: team.createdAt,
+          membersCount: team.membersCount,
+          transferRoutes: team.transferRoutes,
           members: team.members.map((member) => ({
             id: member.id,
+            teamMemberId: member.teamMemberId,
             fullName: member.fullName,
             email: member.email,
             phone: member.phone,
@@ -453,6 +458,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             isMaster: member.isMaster,
             canCreateAccountUsers: member.canCreateAccountUsers,
             canManageAccountTeams: member.canManageAccountTeams,
+            canTransferAccountLeads: member.canTransferAccountLeads,
             ...(accessByProfileId.get(member.id) ?? {
               accessStatus: "pending_first_access",
               hasCompletedFirstAccess: false,
@@ -889,6 +895,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     }
   ): Promise<Output> {
     try {
@@ -927,9 +934,13 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       }
       const roleLabel = roleLabels[data.role] ?? data.role
 
-      const delegatedPermissions = data.role === "manager"
-        ? { canCreateAccountUsers: data.canCreateAccountUsers ?? false, canManageAccountTeams: data.canManageAccountTeams ?? false }
-        : { canCreateAccountUsers: false, canManageAccountTeams: false }
+      const delegatedPermissions = {
+        canCreateAccountUsers: data.role === "manager" && data.canCreateAccountUsers === true,
+        canManageAccountTeams: data.role === "manager" && data.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (data.role === "manager" || data.role === "backoffice") &&
+          data.canTransferAccountLeads === true,
+      }
 
       if (existingProfile) {
         if (existingProfile.isMaster) {
@@ -1043,22 +1054,32 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
   async updateTeamForMasterUser(
     masterProfileId: string,
     teamId: string,
-    data: { name: string }
+    data: { name?: string; transferTargetTeamIds?: string[]; updatedBy?: string }
   ): Promise<Output> {
     try {
-      const name = data.name.trim()
-      if (name.length < 2) {
-        return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
-      }
-
       const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
       if (!master) {
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      const updated = await this.platformUsersRepository.updateTeam(teamId, masterProfileId, { name })
-      if (!updated) {
-        return new Output(false, [], ["Time não encontrado"], null)
+      if (data.name !== undefined) {
+        const name = data.name.trim()
+        if (name.length < 2) {
+          return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
+        }
+        const updated = await this.platformUsersRepository.updateTeam(teamId, masterProfileId, { name })
+        if (!updated) {
+          return new Output(false, [], ["Time não encontrado"], null)
+        }
+      }
+
+      if (data.transferTargetTeamIds !== undefined) {
+        await this.platformUsersRepository.syncTeamTransferRoutes(
+          teamId,
+          masterProfileId,
+          data.transferTargetTeamIds,
+          data.updatedBy ?? masterProfileId
+        )
       }
 
       console.info("[BackofficePlatformUsersUseCase][updateTeamForMasterUser] Time atualizado:", teamId)

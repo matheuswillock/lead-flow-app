@@ -40,7 +40,7 @@ interface Props {
 }
 
 export function BackofficeProductTable({ products }: Props) {
-  const { openEditDialog, openDeleteDialog } = useBackofficePricing()
+  const { canManage, openEditDialog, openDeleteDialog } = useBackofficePricing()
 
   if (products.length === 0) {
     return (
@@ -125,29 +125,31 @@ export function BackofficeProductTable({ products }: Props) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-center">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" aria-label={`Ações de ${product.name}`}>
-                        <MoreHorizontal data-icon="inline-start" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => openEditDialog(product)}>
-                          <Pencil data-icon="inline-start" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => openDeleteDialog(product)}
-                        >
-                          <Trash2 data-icon="inline-start" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {canManage && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" aria-label={`Ações de ${product.name}`}>
+                          <MoreHorizontal data-icon="inline-start" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem onClick={() => openEditDialog(product)}>
+                            <Pencil data-icon="inline-start" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => openDeleteDialog(product)}
+                          >
+                            <Trash2 data-icon="inline-start" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </TableCell>
               </TableRow>
             )

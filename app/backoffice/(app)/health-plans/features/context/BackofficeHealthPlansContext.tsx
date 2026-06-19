@@ -8,6 +8,7 @@ import type {
 } from "../services/IBackofficeHealthPlansService"
 import type { BackofficeHealthPlansContextValue } from "./BackofficeHealthPlansTypes"
 import { useBackofficeHealthPlansHook } from "./BackofficeHealthPlansHook"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 const BackofficeHealthPlansContext = createContext<BackofficeHealthPlansContextValue | undefined>(undefined)
 
@@ -18,6 +19,8 @@ export function BackofficeHealthPlansProvider({
   children: ReactNode
   service: IBackofficeHealthPlansService
 }) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const { state, setSaving, setError, refresh } = useBackofficeHealthPlansHook(service)
   const { items, isLoading, isSaving, error } = state
 
@@ -103,6 +106,7 @@ export function BackofficeHealthPlansProvider({
       isLoading,
       isSaving,
       error,
+      canManage,
       refresh: refreshWithLog,
       createItem,
       updateItem,
@@ -110,7 +114,7 @@ export function BackofficeHealthPlansProvider({
       activateItem,
       uploadIcon,
     }),
-    [activateItem, createItem, deactivateItem, error, isLoading, isSaving, items, refreshWithLog, updateItem, uploadIcon]
+    [activateItem, canManage, createItem, deactivateItem, error, isLoading, isSaving, items, refreshWithLog, updateItem, uploadIcon]
   )
 
   return <BackofficeHealthPlansContext.Provider value={value}>{children}</BackofficeHealthPlansContext.Provider>

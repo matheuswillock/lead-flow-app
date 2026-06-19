@@ -15,6 +15,7 @@ import type {
   BackofficeAdhesionItem,
   BackofficeAdhesionPagination,
 } from "./BackofficeAdhesionsTypes"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 const DEFAULT_FILTERS: BackofficeAdhesionFilters = {
   query: "",
@@ -36,6 +37,7 @@ interface BackofficeAdhesionsContextValue {
   filters: BackofficeAdhesionFilters
   isLoading: boolean
   error: string | null
+  canManage: boolean
   service: IBackofficeAdhesionsService
   setFilters: (filters: BackofficeAdhesionFilters) => void
   fetchAdhesions: (options?: {
@@ -60,6 +62,8 @@ export function BackofficeAdhesionsProvider({
   children,
   service,
 }: BackofficeAdhesionsProviderProps) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [adhesions, setAdhesions] = useState<BackofficeAdhesionItem[]>([])
   const [pagination, setPagination] =
     useState<BackofficeAdhesionPagination>(DEFAULT_PAGINATION)
@@ -155,6 +159,7 @@ export function BackofficeAdhesionsProvider({
         filters,
         isLoading,
         error,
+        canManage,
         service,
         setFilters,
         fetchAdhesions,

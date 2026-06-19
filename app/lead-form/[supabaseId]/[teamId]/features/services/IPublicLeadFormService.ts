@@ -41,6 +41,7 @@ export interface SubmitPublicLeadPayload {
   meetingTitle?: string;
   meetingNotes?: string;
   extraGuests?: string[];
+  isTransfer?: boolean;
   source?: string;
   utmSource?: string;
   utmMedium?: string;
@@ -69,10 +70,16 @@ export interface PublicLeadFormBootstrapData {
   sdrs: SdrOption[];
   guestCandidates: GuestCandidateOption[];
   timezone: string;
+  hasTransferTargets: boolean;
+}
+
+export interface PreScheduleSlotsResult {
+  occupiedSlots: number[];
 }
 
 export interface IPublicLeadFormService {
   getBootstrapData(teamId: string, supabaseId?: string): Promise<PublicLeadFormBootstrapData>;
   getAvailability(teamId: string, closerId: string, date: string, supabaseId?: string): Promise<AvailabilityResult>;
+  getPreScheduleSlots(teamId: string, date: string, supabaseId?: string): Promise<PreScheduleSlotsResult>;
   submitLead(payload: SubmitPublicLeadPayload): Promise<SubmitPublicLeadResult>;
 }

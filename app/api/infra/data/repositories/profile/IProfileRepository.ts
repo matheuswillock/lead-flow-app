@@ -79,9 +79,6 @@ export interface IProfileRepository {
       email?: string;
       role?: string;
       functions?: ("SDR" | "CLOSER")[];
-      canCreateAccountUsers?: boolean;
-      canManageAccountTeams?: boolean;
-      canTransferAccountLeads?: boolean;
     }
   ): Promise<Profile | null>;
   updateProfileIcon(

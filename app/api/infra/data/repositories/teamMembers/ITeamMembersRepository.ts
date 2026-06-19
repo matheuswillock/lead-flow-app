@@ -5,9 +5,6 @@ export interface TeamMembersRequesterProfile {
   email: string | null;
   fullName: string | null;
   isMaster: boolean;
-  role: UserRole;
-  canManageAccountTeams: boolean;
-  canTransferAccountLeads: boolean;
 }
 
 export interface TeamMembersTeam {
@@ -51,10 +48,16 @@ export interface TeamMembersTransferTarget {
   teamName: string;
 }
 
+export interface TeamMembersMembershipAccess {
+  id: string;
+  role: UserRole;
+  canManageAccountTeams: boolean;
+}
+
 export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
-  findMembership(teamId: string, profileId: string): Promise<{ id: string } | null>;
+  findMembership(teamId: string, profileId: string): Promise<TeamMembersMembershipAccess | null>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;
   findMasterAccountProfiles(masterId: string): Promise<TeamMembersProfileOption[]>;

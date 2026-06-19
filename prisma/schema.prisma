@@ -429,9 +429,6 @@ model Profile {
   role                     UserRole            @default(manager)
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
-  canCreateAccountUsers    Boolean             @default(false)
-  canManageAccountTeams    Boolean             @default(false)
-  canTransferAccountLeads  Boolean             @default(false)
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
@@ -1376,13 +1373,16 @@ model PendingAction {
 // -----------------------------
 
 model TeamMember {
-  id        String         @id @default(uuid()) @db.Uuid
-  teamId    String         @db.Uuid
-  profileId String         @db.Uuid
-  role      UserRole
-  functions UserFunction[] @default([])
-  createdAt DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime       @updatedAt @db.Timestamptz(6)
+  id                      String         @id @default(uuid()) @db.Uuid
+  teamId                  String         @db.Uuid
+  profileId               String         @db.Uuid
+  role                    UserRole
+  functions               UserFunction[] @default([])
+  canCreateAccountUsers   Boolean        @default(false)
+  canManageAccountTeams   Boolean        @default(false)
+  canTransferAccountLeads Boolean        @default(false)
+  createdAt               DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime       @updatedAt @db.Timestamptz(6)
 
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
