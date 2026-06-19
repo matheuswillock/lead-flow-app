@@ -207,9 +207,9 @@ export function PrimePage() {
         }
       `}</style>
 
+      <div style={{ background: "#F6F4F0", minHeight: "100vh", width: "100%" }}>
       <div
-        className="overflow-x-hidden"
-        style={{ fontFamily: "'Poppins', sans-serif", maxWidth: 680, margin: "0 auto", color: "#181612", background: "#F6F4F0" }}
+        style={{ fontFamily: "'Poppins', sans-serif", maxWidth: 680, margin: "0 auto", color: "#181612", background: "#F6F4F0", overflow: "hidden" }}
       >
         {/* HERO */}
         <div
@@ -818,6 +818,7 @@ export function PrimePage() {
           Onside Ltda · <span style={{ color: "var(--prime-o2)" }}>Backstage Club</span> · Barueri, SP ·
           @brunomarceliino
         </footer>
+      </div>
       </div>
     </>
   )
