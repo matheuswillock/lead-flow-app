@@ -15,6 +15,7 @@ const routeMatchers: RouteMatcher[] = [
   { prefix: "/teams", slug: FEATURE_SLUGS.CRM_TIME_MANAGE_TEAMS },
   { prefix: "/manager-users", slug: FEATURE_SLUGS.CRM_TIME_MANAGE_USERS },
   { prefix: "/integrations", slug: FEATURE_SLUGS.CONFIGURATION },
+  { prefix: "/whatsapp/configuracoes", slug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
   { prefix: "/whatsapp", slug: FEATURE_SLUGS.WHATSAPP },
   { prefix: "/email/templates", slug: FEATURE_SLUGS.EMAIL_TEMPLATES },
   { prefix: "/email/contatos", slug: FEATURE_SLUGS.EMAIL_CONTACTS },

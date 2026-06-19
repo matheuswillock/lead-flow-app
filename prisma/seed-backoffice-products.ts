@@ -128,7 +128,8 @@ const FEATURES: Array<{
   { slug: "email-settings",     name: "Configurações",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 160, parentSlug: "email", productSlug: "email" },
 
   // ── WhatsApp guarda-chuva ─────────────────────────────────────────────────
-  { slug: "whatsapp", name: "WhatsApp", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, sortOrder: 170, productSlug: "whatsapp" },
+  { slug: "whatsapp",          name: "WhatsApp",               accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true,  sortOrder: 170, productSlug: "whatsapp" },
+  { slug: "whatsapp-settings", name: "Configurações WhatsApp", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 175, parentSlug: "whatsapp", productSlug: "whatsapp" },
 
   // ── Integração guarda-chuva ───────────────────────────────────────────────
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, sortOrder: 200, productSlug: null },
@@ -298,6 +299,10 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "OPERATOR",  accessLevel: "FULL" },
     { principal: "SDR",       accessLevel: "FULL" },
     { principal: "CLOSER",    accessLevel: "FULL" },
+  ]),
+  "whatsapp-settings": completeRuleSet([
+    { principal: "MASTER",  accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
   ]),
   integration: completeRuleSet([{ principal: "MASTER", accessLevel: "FULL" }]),
 }

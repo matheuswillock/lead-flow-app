@@ -101,9 +101,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     () => `sidebar-email-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
   );
+  const whatsAppStorageKey = useMemo(
+    () => `sidebar-whatsapp-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
+    [supabaseId, activeTeamId]
+  );
   const [isTeamActivityCollapsed, setIsTeamActivityCollapsed] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isEmailCollapsed, setIsEmailCollapsed] = useState(false);
+  const [isWhatsAppCollapsed, setIsWhatsAppCollapsed] = useState(false);
   const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
@@ -122,6 +127,11 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL_HISTORY },
     { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_ANALYTICS },
     { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
+  ];
+
+  const whatsAppItems: SidebarItem[] = [
+    { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP },
+    { title: "Configurações", url: `/${supabaseId}/whatsapp/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -196,7 +206,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     setIsTeamActivityCollapsed(window.localStorage.getItem(teamActivityStorageKey) === "true");
     setIsNavCollapsed(window.localStorage.getItem(navStorageKey) === "true");
     setIsEmailCollapsed(window.localStorage.getItem(emailStorageKey) === "true");
-  }, [teamActivityStorageKey, navStorageKey, emailStorageKey]);
+    setIsWhatsAppCollapsed(window.localStorage.getItem(whatsAppStorageKey) === "true");
+  }, [teamActivityStorageKey, navStorageKey, emailStorageKey, whatsAppStorageKey]);
 
   const toggleTeamActivityVisibility = () => {
     setIsTeamActivityCollapsed((previous) => {
@@ -222,6 +233,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     });
   };
 
+  const toggleWhatsAppVisibility = () => {
+    setIsWhatsAppCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") window.localStorage.setItem(whatsAppStorageKey, String(next));
+      return next;
+    });
+  };
+
   const formatInitials = (fullName: string) =>
     fullName
       .split(" ")
@@ -238,6 +257,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
 
   const visibleNavigationItems = navigationItems.filter(canShowItem)
   const visibleEmailItems = emailItems.filter(canShowItem)
+  const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)
 
   return (
@@ -351,31 +371,43 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroup>
             )}
-            {hasAccess(FEATURE_SLUGS.WHATSAPP) && (
+            {hasAccess(FEATURE_SLUGS.WHATSAPP) && visibleWhatsAppItems.length > 0 && (
               <SidebarGroup>
-                <SidebarGroupLabel>WhatsApp</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/whatsapp`)}>
-                        <Link href={`/${supabaseId}/whatsapp`} className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2">
-                            <MessageCircle className="size-4 shrink-0" />
-                            <span>Inbox</span>
-                          </span>
-                          {isBeta(FEATURE_SLUGS.WHATSAPP) && (() => {
-                            const badge = getSidebarStatusBadge("beta")
-                            return badge ? (
-                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
-                                {badge.label}
-                              </span>
-                            ) : null
-                          })()}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarGroupContent>
+                <SidebarGroupLabel
+                  className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors"
+                  onClick={toggleWhatsAppVisibility}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    WhatsApp
+                    {isWhatsAppCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </span>
+                </SidebarGroupLabel>
+                {!isWhatsAppCollapsed && (
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {visibleWhatsAppItems.map((item) => {
+                        const statusBadge = getItemBadge(item)
+                        return (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                              <Link href={item.url} className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <item.icon className="size-4 shrink-0" />
+                                  <span>{item.title}</span>
+                                </span>
+                                {statusBadge && (
+                                  <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                    {statusBadge.label}
+                                  </span>
+                                )}
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        )
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
               </SidebarGroup>
             )}
             {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
