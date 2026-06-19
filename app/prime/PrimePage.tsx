@@ -49,14 +49,14 @@ function ItemList({ items }: { items: { title: string; sub: string }[] }) {
   return (
     <div className="flex flex-col">
       {items.map((item, i) => (
-        <div key={i} className="flex items-start gap-3 py-3 border-b border-border last:border-0">
+        <div key={i} className="flex items-start gap-3 py-3 border-b border-[var(--prime-border)] last:border-0">
           <span
             className="size-[7px] rounded-full flex-shrink-0 mt-[6px]"
             style={{ background: "var(--prime-o2)" }}
           />
           <div>
             <p className="text-[13px] font-medium mb-0.5">{item.title}</p>
-            <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--muted-foreground)" }}>
+            <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--prime-text2)" }}>
               {item.sub}
             </p>
           </div>
@@ -70,10 +70,10 @@ function BbCard({ title, desc, tag }: { title: string; desc: string; tag: string
   return (
     <div
       className="rounded-[14px] p-5 mb-3 border"
-      style={{ background: "var(--card)", borderColor: "var(--border)", borderTopWidth: "3px", borderTopColor: "var(--prime-o2)" }}
+      style={{ background: "var(--prime-bg2)", borderColor: "var(--prime-border)", borderTopWidth: "3px", borderTopColor: "var(--prime-o2)" }}
     >
       <p className="text-[14px] font-medium mb-1.5">{title}</p>
-      <p className="text-[12px] font-light leading-[1.6]" style={{ color: "var(--muted-foreground)" }}>
+      <p className="text-[12px] font-light leading-[1.6]" style={{ color: "var(--prime-text2)" }}>
         {desc}
       </p>
       <span
@@ -100,7 +100,7 @@ function MeetingRow({
   gradOverride?: string
 }) {
   return (
-    <div className="flex items-start gap-3.5 py-3.5 border-b border-border last:border-0">
+    <div className="flex items-start gap-3.5 py-3.5 border-b border-[var(--prime-border)] last:border-0">
       <div
         className="size-11 rounded-[10px] flex flex-col items-center justify-center flex-shrink-0"
         style={gradOverride ? { background: gradOverride } : gradBg}
@@ -110,7 +110,7 @@ function MeetingRow({
       </div>
       <div>
         <p className="text-[13px] font-medium mb-0.5">{title}</p>
-        <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--muted-foreground)" }}>
+        <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--prime-text2)" }}>
           {desc}
         </p>
       </div>
@@ -128,7 +128,7 @@ function AnexoCard({
   sub: string
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-[9px] p-4 mb-2.5 border border-border bg-card">
+    <div className="flex items-start gap-3 rounded-[9px] p-4 mb-2.5 border border-[var(--prime-border)] bg-[var(--prime-bg2)]">
       <div
         className="size-9 rounded-[9px] flex items-center justify-center flex-shrink-0"
         style={{ background: "color-mix(in srgb, var(--prime-o2) 10%, transparent)" }}
@@ -137,7 +137,7 @@ function AnexoCard({
       </div>
       <div>
         <p className="text-[13px] font-medium mb-0.5">{title}</p>
-        <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--muted-foreground)" }}>
+        <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--prime-text2)" }}>
           {sub}
         </p>
       </div>
@@ -174,6 +174,12 @@ export function PrimePage() {
           --prime-o4: color-mix(in srgb, var(--primary) 58%, white);
           --prime-dark: oklch(0.11 0.04 33);
           --prime-dark2: oklch(0.17 0.055 33);
+          --prime-bg: #F6F4F0;
+          --prime-bg2: #fff;
+          --prime-text: #181612;
+          --prime-text2: #52504A;
+          --prime-text3: #9A978F;
+          --prime-border: #E4E0D8;
         }
         .prime-reveal {
           opacity: 0;
@@ -201,8 +207,8 @@ export function PrimePage() {
       >
         {/* HERO */}
         <div
-          className="relative overflow-hidden text-center border-b border-border"
-          style={{ padding: "48px 24px 40px", background: "var(--card)" }}
+          className="relative overflow-hidden text-center border-b border-[var(--prime-border)]"
+          style={{ padding: "48px 24px 40px", background: "var(--prime-bg2)" }}
         >
           {/* background radial glow */}
           <div
@@ -265,7 +271,7 @@ export function PrimePage() {
           <div
             className="inline-flex items-center gap-[7px] text-[11px] font-medium tracking-[.04em] px-3.5 py-[5px] rounded-full mb-6 relative z-[2] border"
             style={{
-              background: "color-mix(in srgb, var(--prime-o2) 8%, var(--card))",
+              background: "color-mix(in srgb, var(--prime-o2) 8%, var(--prime-bg2))",
               borderColor: "color-mix(in srgb, var(--prime-o2) 20%, transparent)",
               color: "var(--prime-o1)",
             }}
@@ -286,7 +292,7 @@ export function PrimePage() {
 
           <p
             className="text-[14px] font-light leading-[1.7] max-w-[480px] mx-auto mb-7 relative z-[2]"
-            style={{ color: "var(--muted-foreground)" }}
+            style={{ color: "var(--prime-text2)" }}
           >
             100 dias de imersão total na construção de uma operação comercial previsível, lucrativa e que não
             escraviza o dono.
@@ -294,38 +300,38 @@ export function PrimePage() {
 
           {/* price box */}
           <div
-            className="inline-block rounded-[14px] px-8 py-5 relative z-[2] mb-2 border border-border"
-            style={{ background: "var(--background)" }}
+            className="inline-block rounded-[14px] px-8 py-5 relative z-[2] mb-2 border border-[var(--prime-border)]"
+            style={{ background: "var(--prime-bg)" }}
           >
-            <p className="text-[11px] font-medium tracking-[.08em] uppercase mb-2" style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}>
+            <p className="text-[11px] font-medium tracking-[.08em] uppercase mb-2" style={{ color: "var(--prime-text3)" }}>
               Investimento
             </p>
             <p className="text-[40px] font-medium tracking-[-0.03em] leading-none mb-1" style={gradStyle}>
               R$ 15.000
             </p>
-            <p className="text-[12px] my-1.5" style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}>
+            <p className="text-[12px] my-1.5" style={{ color: "var(--prime-text3)" }}>
               ou
             </p>
             <p className="text-[15px] font-medium">
               R$ 14.000 <span style={{ color: "var(--prime-o2)" }}>no Pix</span>
             </p>
-            <p className="text-[12px] font-light mt-1" style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}>
+            <p className="text-[12px] font-light mt-1" style={{ color: "var(--prime-text3)" }}>
               4x de R$ 3.750 no cartão sem juros
             </p>
           </div>
 
-          <p className="text-[12px] font-light relative z-[2]" style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}>
-            <strong className="font-medium" style={{ color: "var(--muted-foreground)" }}>100 dias</strong> de acompanhamento contínuo
+          <p className="text-[12px] font-light relative z-[2]" style={{ color: "var(--prime-text3)" }}>
+            <strong className="font-medium" style={{ color: "var(--prime-text2)" }}>100 dias</strong> de acompanhamento contínuo
           </p>
         </div>
 
         {/* O PROGRAMA */}
-        <div className="prime-reveal border-b border-border bg-card" style={{ padding: "32px 24px" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)] bg-[var(--prime-bg2)]" style={{ padding: "32px 24px" }}>
           <SectionLabel>O Programa</SectionLabel>
           <SectionTitle>
             Mais do que um treinamento. Uma <GradText>operação montada.</GradText>
           </SectionTitle>
-          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--muted-foreground)" }}>
+          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--prime-text2)" }}>
             O Prime é o programa completo da Onside para corretores que querem montar equipe comercial, estruturar
             processo de vendas e escalar com previsibilidade no mercado PME. Não é curso. É construção.
           </p>
@@ -352,12 +358,12 @@ export function PrimePage() {
         </div>
 
         {/* BLACKBOX */}
-        <div className="prime-reveal border-b border-border" style={{ padding: "32px 24px", background: "var(--background)" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)]" style={{ padding: "32px 24px", background: "var(--prime-bg)" }}>
           <SectionLabel>Plataforma de apoio</SectionLabel>
           <SectionTitle>
             Black Box <GradText>não é infoproduto.</GradText>
           </SectionTitle>
-          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--muted-foreground)" }}>
+          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--prime-text2)" }}>
             A Black Box é a plataforma de apoio contínuo ao corretor — um ambiente vivo de ferramentas, conteúdo
             aplicado e suporte direto. Não é curso gravado. É operação em tempo real.
           </p>
@@ -379,12 +385,12 @@ export function PrimePage() {
         </div>
 
         {/* ENCONTROS */}
-        <div className="prime-reveal border-b border-border bg-card" style={{ padding: "32px 24px" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)] bg-[var(--prime-bg2)]" style={{ padding: "32px 24px" }}>
           <SectionLabel>Comunidade · Calendário semanal</SectionLabel>
           <SectionTitle>
             Encontros que <GradText>movem a operação.</GradText>
           </SectionTitle>
-          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--muted-foreground)" }}>
+          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--prime-text2)" }}>
             A comunidade Backstage Club tem uma cadência semanal estruturada — não é um grupo de WhatsApp, é uma
             sala de operação ao vivo.
           </p>
@@ -420,12 +426,12 @@ export function PrimePage() {
         </div>
 
         {/* SDRs */}
-        <div className="prime-reveal border-b border-border" style={{ padding: "32px 24px", background: "var(--background)" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)]" style={{ padding: "32px 24px", background: "var(--prime-bg)" }}>
           <SectionLabel>Time comercial</SectionLabel>
           <SectionTitle>
             Contratação de SDR <GradText>do jeito certo.</GradText>
           </SectionTitle>
-          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--muted-foreground)" }}>
+          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--prime-text2)" }}>
             A Onside cuida de todo o processo — da seleção à operação. Não é indicação de currículo. É construção
             de time.
           </p>
@@ -438,7 +444,7 @@ export function PrimePage() {
             ].map((card, i) => (
               <div
                 key={i}
-                className="prime-sdr-card rounded-[9px] p-4 border border-border bg-card transition-colors duration-200"
+                className="prime-sdr-card rounded-[9px] p-4 border border-[var(--prime-border)] bg-[var(--prime-bg2)] transition-colors duration-200"
               >
                 <p
                   className="text-2xl font-medium tracking-[-0.02em] mb-1"
@@ -446,10 +452,10 @@ export function PrimePage() {
                 >
                   {card.n}
                 </p>
-                <p className="text-[11px]" style={{ color: "var(--muted-foreground)" }}>
+                <p className="text-[11px]" style={{ color: "var(--prime-text2)" }}>
                   {card.label}
                 </p>
-                <p className="text-[11px] font-light leading-[1.5] mt-1" style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}>
+                <p className="text-[11px] font-light leading-[1.5] mt-1" style={{ color: "var(--prime-text3)" }}>
                   {card.sub}
                 </p>
               </div>
@@ -458,12 +464,12 @@ export function PrimePage() {
         </div>
 
         {/* FACILITADORES */}
-        <div className="prime-reveal border-b border-border bg-card" style={{ padding: "32px 24px" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)] bg-[var(--prime-bg2)]" style={{ padding: "32px 24px" }}>
           <SectionLabel>Monitor de qualidade</SectionLabel>
           <SectionTitle>
             Facilitadores que <GradText>estão na trincheira.</GradText>
           </SectionTitle>
-          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--muted-foreground)" }}>
+          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--prime-text2)" }}>
             Os facilitadores da Onside não são professores de teoria. São profissionais que monitoram ligações
             reais, analisam conversas e intervêm para garantir qualidade operacional.
           </p>
@@ -490,14 +496,14 @@ export function PrimePage() {
         </div>
 
         {/* CLOSERS */}
-        <div className="prime-reveal border-b border-border" style={{ padding: "32px 24px", background: "var(--background)" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)]" style={{ padding: "32px 24px", background: "var(--prime-bg)" }}>
           <SectionLabel>Treinamento de Closer</SectionLabel>
           <SectionTitle>
             Não vendemos plano.
             <br />
             <GradText>Assessoramos o empresário.</GradText>
           </SectionTitle>
-          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--muted-foreground)" }}>
+          <p className="text-[13px] font-light leading-[1.7] mb-5" style={{ color: "var(--prime-text2)" }}>
             O treinamento de Closer da Onside é uma virada de chave. O foco sai completamente do produto — rede
             credenciada, coparticipação, operadora — e vai para o que realmente fecha: uma assessoria consultiva e
             adequada ao perfil do empresário.
@@ -520,12 +526,12 @@ export function PrimePage() {
 
           {/* 65% stat */}
           <div
-            className="mt-5 rounded-[14px] p-6 text-center border border-border"
-            style={{ background: "var(--card)" }}
+            className="mt-5 rounded-[14px] p-6 text-center border border-[var(--prime-border)]"
+            style={{ background: "var(--prime-bg2)" }}
           >
             <p
               className="text-[11px] font-medium tracking-[.08em] uppercase mb-2.5"
-              style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}
+              style={{ color: "var(--prime-text3)" }}
             >
               Resultado do time treinado
             </p>
@@ -538,7 +544,7 @@ export function PrimePage() {
             <p className="text-[14px] font-medium mt-2 mb-1.5">taxa de conversão média</p>
             <p
               className="text-[12px] font-light max-w-[340px] mx-auto"
-              style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}
+              style={{ color: "var(--prime-text3)" }}
             >
               Média atingida pelos Closers que passam pelo treinamento completo da Onside e seguem a metodologia
               de assessoria.
@@ -547,7 +553,7 @@ export function PrimePage() {
         </div>
 
         {/* GARANTIA */}
-        <div className="prime-reveal border-b border-border bg-card" style={{ padding: "32px 24px" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)] bg-[var(--prime-bg2)]" style={{ padding: "32px 24px" }}>
           <SectionLabel>Garantia contratual</SectionLabel>
           <div
             className="rounded-[14px] p-7 relative overflow-hidden"
@@ -599,7 +605,7 @@ export function PrimePage() {
         </div>
 
         {/* CHECKLIST */}
-        <div className="prime-reveal border-b border-border" style={{ padding: "32px 24px", background: "var(--background)" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)]" style={{ padding: "32px 24px", background: "var(--prime-bg)" }}>
           <SectionLabel>O que está incluído</SectionLabel>
           <SectionTitle>
             Tudo que o <GradText>Prime entrega.</GradText>
@@ -623,7 +629,7 @@ export function PrimePage() {
             ].map((item, i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 py-[11px] border-b border-border last:border-0 text-[13px]"
+                className="flex items-center gap-3 py-[11px] border-b border-[var(--prime-border)] last:border-0 text-[13px]"
               >
                 <div
                   className="size-[22px] rounded-full flex items-center justify-center flex-shrink-0"
@@ -638,20 +644,20 @@ export function PrimePage() {
         </div>
 
         {/* PAGAMENTO */}
-        <div className="prime-reveal border-b border-border bg-card" style={{ padding: "32px 24px" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)] bg-[var(--prime-bg2)]" style={{ padding: "32px 24px" }}>
           <SectionLabel>Formas de pagamento</SectionLabel>
           <SectionTitle>
             Escolha a melhor <GradText>forma de entrada.</GradText>
           </SectionTitle>
           <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-[14px] p-5 text-center border border-border bg-card">
-              <p className="text-[10px] font-medium tracking-[.08em] uppercase mb-2" style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}>
+            <div className="rounded-[14px] p-5 text-center border border-[var(--prime-border)] bg-[var(--prime-bg2)]">
+              <p className="text-[10px] font-medium tracking-[.08em] uppercase mb-2" style={{ color: "var(--prime-text3)" }}>
                 Cartão de crédito
               </p>
               <p className="text-[26px] font-medium tracking-[-0.025em] mb-1" style={gradStyle}>
                 R$ 15.000
               </p>
-              <p className="text-[12px] font-light leading-[1.5]" style={{ color: "var(--muted-foreground)" }}>
+              <p className="text-[12px] font-light leading-[1.5]" style={{ color: "var(--prime-text2)" }}>
                 4x de R$ 3.750
                 <br />
                 sem juros
@@ -671,16 +677,16 @@ export function PrimePage() {
               style={{
                 borderColor: "color-mix(in srgb, var(--prime-o2) 30%, transparent)",
                 boxShadow: "0 4px 20px color-mix(in srgb, var(--prime-o2) 10%, transparent)",
-                background: "var(--card)",
+                background: "var(--prime-bg2)",
               }}
             >
-              <p className="text-[10px] font-medium tracking-[.08em] uppercase mb-2" style={{ color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}>
+              <p className="text-[10px] font-medium tracking-[.08em] uppercase mb-2" style={{ color: "var(--prime-text3)" }}>
                 Pix à vista
               </p>
               <p className="text-[26px] font-medium tracking-[-0.025em] mb-1" style={gradStyle}>
                 R$ 14.000
               </p>
-              <p className="text-[12px] font-light leading-[1.5]" style={{ color: "var(--muted-foreground)" }}>
+              <p className="text-[12px] font-light leading-[1.5]" style={{ color: "var(--prime-text2)" }}>
                 Pagamento único
                 <br />
                 economia de R$ 1.000
@@ -699,7 +705,7 @@ export function PrimePage() {
         </div>
 
         {/* CONDIÇÕES CONTRATUAIS */}
-        <div className="prime-reveal border-b border-border" style={{ padding: "32px 24px", background: "var(--background)" }}>
+        <div className="prime-reveal border-b border-[var(--prime-border)]" style={{ padding: "32px 24px", background: "var(--prime-bg)" }}>
           <SectionLabel>Condições contratuais</SectionLabel>
           <SectionTitle>
             O que o contrato <GradText>prevê.</GradText>
@@ -798,8 +804,8 @@ export function PrimePage() {
 
         {/* FOOTER */}
         <footer
-          className="text-center text-[12px] border-t border-border"
-          style={{ padding: "24px", background: "var(--card)", color: "color-mix(in srgb, var(--muted-foreground) 70%, transparent)" }}
+          className="text-center text-[12px] border-t border-[var(--prime-border)]"
+          style={{ padding: "24px", background: "var(--prime-bg2)", color: "var(--prime-text3)" }}
         >
           Onside Ltda · <span style={{ color: "var(--prime-o2)" }}>Backstage Club</span> · Barueri, SP ·
           @brunomarceliino
