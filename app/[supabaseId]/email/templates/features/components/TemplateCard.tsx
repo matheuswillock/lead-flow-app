@@ -42,6 +42,7 @@ function getBannerGradientIndex(id: string): number {
 interface TemplateCardProps {
   template: Template
   activeRole: 'manager' | 'backoffice' | 'operator' | null
+  templateApprovalRequired: boolean
   deleting: string | null
   duplicating: string | null
   submitting: string | null
@@ -86,6 +87,7 @@ function StatusBadge({ template }: { template: Template }) {
 export function TemplateCard({
   template,
   activeRole,
+  templateApprovalRequired,
   deleting,
   duplicating,
   submitting,
@@ -135,7 +137,7 @@ export function TemplateCard({
     setReviewNote('')
   }
 
-  const showSubmitButton = !isManager && (isDraft || isRejectedStatus)
+  const showSubmitButton = templateApprovalRequired && !isPublished && !isPending && (isDraft || isRejectedStatus)
   const showApproveReject = isManager && isPending
 
   return (
@@ -208,6 +210,18 @@ export function TemplateCard({
                       >
                         <X className="mr-2 size-3.5" />
                         Rejeitar
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {showSubmitButton && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => void onSubmitForApproval(template.id)}
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? <Spinner className="mr-2 size-3.5" /> : <ArrowRight className="mr-2 size-3.5" />}
+                        {isRejectedStatus ? 'Reenviar para aprovação' : 'Enviar para aprovação'}
                       </DropdownMenuItem>
                     </>
                   )}

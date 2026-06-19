@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
 import type {
@@ -50,6 +51,7 @@ export function useTemplateEditor(
   supabaseId: string,
   templateId: string
 ): UseTemplateEditorReturn {
+  const router = useRouter();
   const { activeTeamId, activeRole, isLoading: teamLoading } = useTeamContext();
   const isNewTemplate = templateId === "new";
   const [template, setTemplate] = useState<Template | null>(null);
@@ -57,6 +59,7 @@ export function useTemplateEditor(
   const [loading, setLoading] = useState(!isNewTemplate);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templateApprovalRequired, setTemplateApprovalRequired] = useState(false);
   const initialDraftRef = useRef<TemplateEditorDraft>(EMPTY_DRAFT);
 
   const isFetchingRef = useRef(false);
@@ -75,7 +78,16 @@ export function useTemplateEditor(
       return;
     }
 
+    const loadApprovalSettings = async () => {
+      const settings = await service.getApprovalSettings(supabaseId, activeTeamId);
+      setTemplateApprovalRequired(settings.templateApprovalRequired);
+    };
+
     if (isNewTemplate) {
+      await loadApprovalSettings().catch((err) => {
+        console.error("[useTemplateEditor] Failed to load approval settings", err);
+        setTemplateApprovalRequired(false);
+      });
       setTemplate(null);
       setDraft(EMPTY_DRAFT);
       initialDraftRef.current = EMPTY_DRAFT;
@@ -89,7 +101,10 @@ export function useTemplateEditor(
     setLoading(true);
     setError(null);
     try {
-      const nextTemplate = await service.getTemplate(supabaseId, templateId, activeTeamId);
+      const [nextTemplate] = await Promise.all([
+        service.getTemplate(supabaseId, templateId, activeTeamId),
+        loadApprovalSettings(),
+      ]);
       const nextDraft = createDraftFromTemplate(nextTemplate);
       setTemplate(nextTemplate);
       setDraft(nextDraft);
@@ -145,6 +160,9 @@ export function useTemplateEditor(
       setTemplate(saved);
       setDraft(savedDraft);
       initialDraftRef.current = savedDraft;
+      if (saved.id !== templateId) {
+        router.replace(`/${supabaseId}/email/templates/${saved.id}`);
+      }
       toast.success("Rascunho salvo com sucesso");
       return saved;
     } catch (err) {
@@ -156,7 +174,7 @@ export function useTemplateEditor(
     } finally {
       setSaving(false);
     }
-  }, [activeTeamId, draft, isNewTemplate, saving, supabaseId, templateId]);
+  }, [activeTeamId, draft, isNewTemplate, router, saving, supabaseId, templateId]);
 
   const publishTemplate = useCallback(async (id?: string) => {
     if (!activeTeamId) {
@@ -289,6 +307,7 @@ export function useTemplateEditor(
     error,
     isDirty,
     isNewTemplate,
+    templateApprovalRequired,
     activeRole,
     reloadTemplate,
     saveTemplate,

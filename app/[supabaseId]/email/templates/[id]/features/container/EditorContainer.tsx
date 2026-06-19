@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, Check, Code2, FileText, Save, Send, Undo2, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Clock3, Code2, FileText, Save, Send, Undo2, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
 import { VariablesPanel } from "../components/VariablesPanel";
+import type { TemplateHistoryItem } from "../context/TemplateEditorTypes";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
 
 function StatusBadge({ approvalStatus, status }: { approvalStatus: string | undefined; status: string | undefined }) {
@@ -55,6 +56,61 @@ function StatusBadge({ approvalStatus, status }: { approvalStatus: string | unde
   );
 }
 
+const HISTORY_LABELS: Record<string, string> = {
+  created: "Criado",
+  draft_saved: "Rascunho salvo",
+  submitted_for_approval: "Enviado para aprovação",
+  approved: "Aprovado",
+  rejected: "Recusado",
+  published: "Publicado",
+  unpublished: "Despublicado",
+  version_created: "Nova versão",
+};
+
+function formatHistoryDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function TemplateHistoryPanel({ history }: { history: TemplateHistoryItem[] }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Clock3 className="size-4 text-primary" />
+          <h2 className="text-sm font-semibold">Histórico</h2>
+        </div>
+        <Badge variant="outline">{history.length}</Badge>
+      </div>
+      {history.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nenhum evento registrado.</p>
+      ) : (
+        <div className="flex max-h-64 flex-col gap-3 overflow-y-auto pr-1">
+          {history.map((item) => {
+            const actor = item.actor?.fullName?.trim() || item.actor?.email || "Sistema";
+            return (
+              <div key={item.id} className="flex flex-col gap-1 border-l pl-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold">
+                    {HISTORY_LABELS[item.eventType] ?? item.eventType}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    {formatHistoryDate(item.createdAt)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{item.description || "Sem descrição"}</p>
+                <p className="text-[10px] text-muted-foreground">Por {actor}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function EditorContainer() {
   const {
     draft,
@@ -62,6 +118,7 @@ export function EditorContainer() {
     error,
     loading,
     saving,
+    templateApprovalRequired,
     activeRole,
     updateDraft,
     unpublishTemplate,
@@ -106,13 +163,13 @@ export function EditorContainer() {
     );
   }
 
-  const showSubmitButton = !isManager && !isPublished && !isPending && (isApproved === false || isRejected);
+  const showSubmitButton = templateApprovalRequired && !isPublished && !isPending && (isApproved || isRejected);
   const showApproveReject = isManager && isPending;
-  const showPublish = !isPublished && isApproved && !isPending;
+  const showPublish = !isPublished && isApproved && !isPending && (!templateApprovalRequired || Boolean(template?.approvedAt));
 
   return (
     <>
-      <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-background p-6">
+      <div className="flex h-full max-h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-background p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -218,8 +275,16 @@ export function EditorContainer() {
           />
         </div>
 
-        <div className="min-h-0 flex-1">
-          <EmailEditorStudio ref={editorRef} bottomSlot={<VariablesPanel />} />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <EmailEditorStudio
+            ref={editorRef}
+            bottomSlot={
+              <div className="flex flex-col gap-4">
+                <VariablesPanel />
+                <TemplateHistoryPanel history={template?.history ?? []} />
+              </div>
+            }
+          />
         </div>
       </div>
 

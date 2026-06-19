@@ -426,7 +426,7 @@ unsubscribed unsubscribed
     DateTime createdAt 
     DateTime updatedAt 
     }
-  
+
 
   "corretor_studio_health_plan_options" {
     String id "🗝️"
@@ -978,6 +978,8 @@ unsubscribed unsubscribed
     Json mailyJson "❓"
     String html "❓"
     Json variables "❓"
+    Int versionNumber
+    Boolean isCurrentPublished
     String status 
     DateTime publishedAt "❓"
     Boolean isArchived 
@@ -989,6 +991,15 @@ unsubscribed unsubscribed
     DateTime updatedAt 
     }
   
+
+  "corretor_studio_email_template_history" {
+    String id "🗝️"
+    String eventType
+    String description "❓"
+    Json metadata "❓"
+    DateTime createdAt
+    }
+
 
   "corretor_studio_email_contact_lists" {
     String id "🗝️"
@@ -1349,6 +1360,10 @@ unsubscribed unsubscribed
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "approver"
     "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "rejecter"
+    "corretor_studio_email_templates" ||--|| corretor_studio_email_templates : "versionGroup"
+    "corretor_studio_email_template_history" }o--|| corretor_studio_email_templates : "template"
+    "corretor_studio_email_template_history" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_template_history" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"

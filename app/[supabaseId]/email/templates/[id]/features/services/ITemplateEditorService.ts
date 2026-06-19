@@ -1,6 +1,7 @@
 import type { Template, TemplateEditorDraft } from "../context/TemplateEditorTypes";
 
 export interface ITemplateEditorService {
+  getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }>;
   getTemplate(
     supabaseId: string,
     templateId: string,

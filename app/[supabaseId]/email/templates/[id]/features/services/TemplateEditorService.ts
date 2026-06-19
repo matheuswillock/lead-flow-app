@@ -10,6 +10,7 @@ type ApiOutput<T> = {
 
 class TemplateEditorService implements ITemplateEditorService {
   private readonly baseUrl = "/api/v1/email/templates";
+  private readonly settingsUrl = "/api/v1/email/settings";
 
   private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
     return {
@@ -41,6 +42,22 @@ class TemplateEditorService implements ITemplateEditorService {
     });
 
     return this.parseResponse<Template>(response, "Erro ao buscar template");
+  }
+
+  async getApprovalSettings(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ templateApprovalRequired: boolean }> {
+    const response = await fetch(this.settingsUrl, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+    const settings = await this.parseResponse<{ templateApprovalRequired?: boolean }>(
+      response,
+      "Erro ao buscar configurações de aprovação"
+    );
+
+    return { templateApprovalRequired: settings.templateApprovalRequired ?? false };
   }
 
   async createTemplate(

@@ -80,6 +80,17 @@ function normalizeColor(value: unknown, fallback: string): string {
   return /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
 }
 
+function isEditorJsonEmpty(value: unknown): boolean {
+  if (!value || typeof value !== "object") return true;
+  const content = (value as { content?: unknown }).content;
+  if (!Array.isArray(content) || content.length === 0) return true;
+  return content.every((node) => {
+    if (!node || typeof node !== "object") return true;
+    const childContent = (node as { content?: unknown }).content;
+    return !Array.isArray(childContent) || childContent.length === 0;
+  });
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -100,6 +111,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
   ref
 ) {
   const {
+    template,
     draft,
     isDirty,
     saving,
@@ -118,9 +130,17 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
   const [htmlEditorOpening, setHtmlEditorOpening] = useState(false);
   const [visualEditorTouched, setVisualEditorTouched] = useState(false);
   const [htmlSourceActive, setHtmlSourceActive] = useState(false);
+  const [visualContentRevision, setVisualContentRevision] = useState(0);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [eventStatus, setEventStatus] = useState("Pronto");
   const htmlPreviewContent = htmlEditorValue.trim() ? htmlEditorValue : getFallbackPreviewHtml();
+  const editorContent = useMemo(() => {
+    if (draft.mailyJson && !isEditorJsonEmpty(draft.mailyJson)) {
+      return draft.mailyJson;
+    }
+    return draft.html || undefined;
+  }, [draft.html, draft.mailyJson]);
+  const editorContentKey = `${template?.id ?? "new"}:${template?.versionNumber ?? 1}:${visualContentRevision}`;
   const htmlEditorOptions = useMemo(
     () => ({
       formatOnPaste: true,
@@ -284,24 +304,27 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
     (value: string) => {
       setHtmlEditorValue(value);
       setHtml(value);
+      setMailyJson(null);
       setHtmlSourceActive(true);
       setVisualEditorTouched(false);
     },
-    [setHtml]
+    [setHtml, setMailyJson]
   );
 
   const handlePublishHtml = useCallback(async () => {
     if (saving) return;
 
     setHtml(htmlEditorValue);
+    setMailyJson(null);
     const saved = await saveTemplate({ html: htmlEditorValue });
     if (saved) {
       setHtmlSourceActive(true);
       setVisualEditorTouched(false);
       setHtmlEditorOpen(false);
+      setVisualContentRevision((current) => current + 1);
       setEventStatus(`HTML publicado com ${htmlEditorValue.length} caracteres`);
     }
-  }, [htmlEditorValue, saveTemplate, saving, setHtml]);
+  }, [htmlEditorValue, saveTemplate, saving, setHtml, setMailyJson]);
 
   useImperativeHandle(
     ref,
@@ -337,8 +360,8 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
   }, []);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
-      <div className="flex min-h-0 flex-1">
+    <div className="flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
+      <div className="flex h-full min-h-0 flex-1 overflow-hidden">
         <EditorBlocksPanel
           isDirty={isDirty}
           eventStatus={eventStatus}
@@ -350,7 +373,9 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
           bottomSlot={bottomSlot}
         />
         <EmailEditor
+          key={editorContentKey}
           ref={editorRef}
+          content={editorContent}
           onUpdate={handleEditorUpdate}
           onUploadImage={uploadImage}
           bubbleMenu={{
@@ -499,7 +524,7 @@ function EditorBlocksPanel({
   bottomSlot?: ReactNode;
 }) {
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-r bg-background p-4">
+    <aside className="h-full min-h-0 w-72 shrink-0 overflow-y-auto border-r bg-background p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Blocos</h2>
         <Badge variant="secondary">Editor</Badge>
@@ -565,7 +590,7 @@ function EditorBlocksPanel({
 
 function CustomInspector() {
   return (
-    <Inspector.Root className="w-80 shrink-0 overflow-y-auto border-l bg-background p-4">
+    <Inspector.Root className="h-full min-h-0 w-80 shrink-0 overflow-y-auto border-l bg-background p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Ajustes</h2>
         <Badge variant="secondary">Editor</Badge>

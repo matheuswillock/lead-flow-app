@@ -494,6 +494,7 @@ model Profile {
   emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
   emailTemplatesApproved   EmailTemplate[]          @relation("EmailTemplateApprover")
   emailTemplatesRejected   EmailTemplate[]          @relation("EmailTemplateRejecter")
+  emailTemplateHistory     EmailTemplateHistory[]   @relation("EmailTemplateHistoryActor")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
@@ -1234,6 +1235,7 @@ model Team {
   emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
   emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
+  emailTemplateHistory EmailTemplateHistory[]
 
   @@index([masterId])
   @@map("corretor_studio_teams")
@@ -1485,6 +1487,9 @@ model EmailTemplate {
   mailyJson   Json?
   html        String?  @db.Text
   variables   Json?
+  versionGroupId String   @db.Uuid
+  versionNumber  Int      @default(1)
+  isCurrentPublished Boolean @default(false)
   status         String   @default("draft") @db.Text
   publishedAt    DateTime? @db.Timestamptz(6)
   isArchived     Boolean  @default(false)
@@ -1501,13 +1506,38 @@ model EmailTemplate {
   creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   approver  Profile?        @relation("EmailTemplateApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   rejecter  Profile?        @relation("EmailTemplateRejecter", fields: [rejectedBy], references: [id], onDelete: SetNull)
+  versionGroup EmailTemplate @relation("EmailTemplateVersionGroup", fields: [versionGroupId], references: [id], onDelete: Restrict)
+  versions     EmailTemplate[] @relation("EmailTemplateVersionGroup")
+  history      EmailTemplateHistory[]
   campaigns EmailCampaign[]
 
   @@index([teamId, isArchived])
   @@index([teamId, approvalStatus])
   @@index([teamId, status])
+  @@index([teamId, versionGroupId, versionNumber])
+  @@index([teamId, isCurrentPublished])
+  @@unique([versionGroupId, versionNumber])
   @@index([createdBy])
   @@map("corretor_studio_email_templates")
+}
+
+model EmailTemplateHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  templateId     String   @db.Uuid
+  teamId         String   @db.Uuid
+  actorProfileId String?  @db.Uuid
+  eventType      String   @db.Text
+  description    String?  @db.Text
+  metadata       Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  template EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  team     Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  actor    Profile?      @relation("EmailTemplateHistoryActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([templateId, createdAt(sort: Desc)])
+  @@index([teamId, createdAt(sort: Desc)])
+  @@map("corretor_studio_email_template_history")
 }
 
 model EmailContactList {

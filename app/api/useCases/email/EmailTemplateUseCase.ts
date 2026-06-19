@@ -9,6 +9,9 @@ const templateDetailSelect = {
   id: true,
   teamId: true,
   createdBy: true,
+  versionGroupId: true,
+  versionNumber: true,
+  isCurrentPublished: true,
   name: true,
   subject: true,
   previewText: true,
@@ -26,9 +29,21 @@ const templateDetailSelect = {
   reviewNote: true,
   createdAt: true,
   updatedAt: true,
+  history: {
+    select: {
+      id: true,
+      eventType: true,
+      description: true,
+      metadata: true,
+      createdAt: true,
+      actor: { select: { id: true, fullName: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  },
 } as const
 
 export type TemplateApprovalFilter = "pending_approval" | "approved" | "rejected" | "all"
+export type TemplateListScope = "workbench" | "campaign"
 
 export interface TemplateVariableInput {
   key: string
@@ -55,15 +70,49 @@ export interface UpdateTemplateInput {
 }
 
 export class EmailTemplateUseCase {
-  async list(ctx: TeamContext, approvalFilter: TemplateApprovalFilter = "all"): Promise<Output> {
+  private async recordHistory(params: {
+    templateId: string
+    teamId: string
+    actorProfileId: string
+    eventType: string
+    description: string
+    metadata?: Prisma.InputJsonValue
+  }) {
+    await prisma.emailTemplateHistory.create({
+      data: {
+        id: randomUUID(),
+        templateId: params.templateId,
+        teamId: params.teamId,
+        actorProfileId: params.actorProfileId,
+        eventType: params.eventType,
+        description: params.description,
+        metadata: params.metadata ?? Prisma.JsonNull,
+      },
+      select: { id: true },
+    })
+  }
+
+  async list(
+    ctx: TeamContext,
+    approvalFilter: TemplateApprovalFilter = "all",
+    scope: TemplateListScope = "workbench"
+  ): Promise<Output> {
     try {
       const approvalWhere =
         approvalFilter === "all" ? undefined : { approvalStatus: approvalFilter }
 
       const templates = await prisma.emailTemplate.findMany({
-        where: { teamId: ctx.teamId, isArchived: false, ...approvalWhere },
+        where: {
+          teamId: ctx.teamId,
+          isArchived: false,
+          ...(scope === "campaign" ? { status: "published", isCurrentPublished: true } : {}),
+          ...approvalWhere,
+        },
         select: {
           id: true,
+          versionGroupId: true,
+          versionNumber: true,
+          isCurrentPublished: true,
           name: true,
           subject: true,
           previewText: true,
@@ -80,7 +129,29 @@ export class EmailTemplateUseCase {
         orderBy: { updatedAt: "desc" },
       })
 
-      return new Output(true, [], [], templates)
+      if (scope === "campaign") {
+        return new Output(true, [], [], templates)
+      }
+
+      const latestByGroup = new Map<string, (typeof templates)[number]>()
+      for (const template of templates) {
+        const groupId = template.versionGroupId
+        const current = latestByGroup.get(groupId)
+        if (!current) {
+          latestByGroup.set(groupId, template)
+          continue
+        }
+        const templatePriority = template.status === "published" ? 0 : 1
+        const currentPriority = current.status === "published" ? 0 : 1
+        if (
+          templatePriority > currentPriority ||
+          (templatePriority === currentPriority && template.versionNumber > current.versionNumber)
+        ) {
+          latestByGroup.set(groupId, template)
+        }
+      }
+
+      return new Output(true, [], [], Array.from(latestByGroup.values()))
     } catch (error) {
       console.error("[EmailTemplateUseCase][list]", error)
       return new Output(false, [], ["Erro ao listar templates de email"], null)
@@ -128,12 +199,14 @@ export class EmailTemplateUseCase {
       const isManager = isManagerLikeRole(ctx.teamMember.role)
       const approvalStatus = requiresApproval && !isManager ? "pending_approval" : "approved"
 
+      const templateId = randomUUID()
       const template = await prisma.emailTemplate.create({
         select: templateDetailSelect,
         data: {
-          id: randomUUID(),
+          id: templateId,
           teamId: ctx.teamId,
           createdBy: ctx.profileId,
+          versionGroupId: templateId,
           name: data.name.trim(),
           subject: data.subject.trim(),
           previewText: data.previewText?.trim() ?? null,
@@ -143,13 +216,25 @@ export class EmailTemplateUseCase {
           approvalStatus,
         },
       })
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "created",
+        description: "Template criado",
+        metadata: { versionNumber: template.versionNumber },
+      })
+      const created = await prisma.emailTemplate.findUniqueOrThrow({
+        where: { id: template.id },
+        select: templateDetailSelect,
+      })
 
       const message =
         approvalStatus === "pending_approval"
           ? "Template criado e enviado para aprovação"
           : "Template criado com sucesso"
 
-      return new Output(true, [message], [], template)
+      return new Output(true, [message], [], created)
     } catch (error) {
       console.error("[EmailTemplateUseCase][create]", error)
       return new Output(false, [], ["Erro ao criar template de email"], null)
@@ -160,24 +245,118 @@ export class EmailTemplateUseCase {
     try {
       const existing = await prisma.emailTemplate.findFirst({
         where: { id, teamId: ctx.teamId, isArchived: false },
-        select: { id: true },
+        select: {
+          id: true,
+          teamId: true,
+          createdBy: true,
+          versionGroupId: true,
+          versionNumber: true,
+          name: true,
+          subject: true,
+          previewText: true,
+          mailyJson: true,
+          html: true,
+          variables: true,
+          status: true,
+          approvalStatus: true,
+        },
       })
 
       if (!existing) {
         return new Output(false, [], ["Template não encontrado"], null)
       }
 
+      const updateData = {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.subject !== undefined && { subject: data.subject.trim() }),
+        ...(data.previewText !== undefined && { previewText: data.previewText?.trim() ?? null }),
+        ...(data.mailyJson !== undefined && { mailyJson: data.mailyJson as object }),
+        ...(data.html !== undefined && { html: data.html }),
+        ...(data.variables !== undefined && { variables: (data.variables as object) ?? Prisma.JsonNull }),
+      }
+
+      if (existing.status === "published") {
+        const existingDraft = await prisma.emailTemplate.findFirst({
+          where: {
+            teamId: ctx.teamId,
+            versionGroupId: existing.versionGroupId,
+            isArchived: false,
+            status: "draft",
+          },
+          select: { id: true },
+          orderBy: { versionNumber: "desc" },
+        })
+
+        if (existingDraft) {
+          const template = await prisma.emailTemplate.update({
+            where: { id: existingDraft.id },
+            select: templateDetailSelect,
+            data: updateData,
+          })
+          await this.recordHistory({
+            templateId: template.id,
+            teamId: ctx.teamId,
+            actorProfileId: ctx.profileId,
+            eventType: "draft_saved",
+            description: "Rascunho salvo",
+            metadata: { versionNumber: template.versionNumber, sourceTemplateId: existing.id },
+          })
+          return new Output(true, ["Nova versão atualizada com sucesso"], [], template)
+        }
+
+        const latestVersion = await prisma.emailTemplate.aggregate({
+          where: { teamId: ctx.teamId, versionGroupId: existing.versionGroupId },
+          _max: { versionNumber: true },
+        })
+        const nextId = randomUUID()
+        const template = await prisma.emailTemplate.create({
+          select: templateDetailSelect,
+          data: {
+            id: nextId,
+            teamId: ctx.teamId,
+            createdBy: ctx.profileId,
+            versionGroupId: existing.versionGroupId,
+            versionNumber: (latestVersion._max.versionNumber ?? existing.versionNumber) + 1,
+            isCurrentPublished: false,
+            name: data.name?.trim() ?? existing.name,
+            subject: data.subject?.trim() ?? existing.subject,
+            previewText: data.previewText !== undefined ? data.previewText?.trim() ?? null : existing.previewText,
+            mailyJson: data.mailyJson !== undefined ? data.mailyJson as object : existing.mailyJson ?? Prisma.JsonNull,
+            html: data.html !== undefined ? data.html : existing.html,
+            variables: data.variables !== undefined ? (data.variables as object) ?? Prisma.JsonNull : existing.variables ?? Prisma.JsonNull,
+            status: "draft",
+            publishedAt: null,
+            approvalStatus: "approved",
+            approvedBy: null,
+            approvedAt: null,
+            rejectedBy: null,
+            rejectedAt: null,
+            reviewNote: null,
+          },
+        })
+        await this.recordHistory({
+          templateId: template.id,
+          teamId: ctx.teamId,
+          actorProfileId: ctx.profileId,
+          eventType: "version_created",
+          description: `Versão ${template.versionNumber}.0 criada a partir da versão ${existing.versionNumber}.0`,
+          metadata: { versionNumber: template.versionNumber, sourceTemplateId: existing.id },
+        })
+        return new Output(true, ["Nova versão criada com sucesso"], [], template)
+      }
+
       const template = await prisma.emailTemplate.update({
         where: { id },
         select: templateDetailSelect,
-        data: {
-          ...(data.name !== undefined && { name: data.name.trim() }),
-          ...(data.subject !== undefined && { subject: data.subject.trim() }),
-          ...(data.previewText !== undefined && { previewText: data.previewText?.trim() ?? null }),
-          ...(data.mailyJson !== undefined && { mailyJson: data.mailyJson as object }),
-          ...(data.html !== undefined && { html: data.html }),
-          ...(data.variables !== undefined && { variables: (data.variables as object) ?? Prisma.JsonNull }),
-        },
+        data: updateData,
+      })
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "draft_saved",
+        description: "Rascunho salvo",
+        metadata: { versionNumber: template.versionNumber },
       })
 
       return new Output(true, ["Template atualizado com sucesso"], [], template)
@@ -213,6 +392,14 @@ export class EmailTemplateUseCase {
           rejectedAt: null,
           reviewNote: null,
         },
+      })
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "approved",
+        description: "Template aprovado",
+        metadata: { versionNumber: template.versionNumber },
       })
 
       return new Output(true, ["Template aprovado com sucesso"], [], template)
@@ -252,6 +439,14 @@ export class EmailTemplateUseCase {
           reviewNote: reviewNote.trim(),
         },
       })
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "rejected",
+        description: reviewNote.trim(),
+        metadata: { versionNumber: template.versionNumber },
+      })
 
       return new Output(true, ["Template rejeitado"], [], template)
     } catch (error) {
@@ -282,6 +477,14 @@ export class EmailTemplateUseCase {
         select: templateDetailSelect,
         data: { approvalStatus: "pending_approval" },
       })
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "submitted_for_approval",
+        description: "Template enviado para aprovação",
+        metadata: { versionNumber: template.versionNumber },
+      })
 
       return new Output(true, ["Template enviado para aprovação"], [], template)
     } catch (error) {
@@ -294,7 +497,7 @@ export class EmailTemplateUseCase {
     try {
       const existing = await prisma.emailTemplate.findFirst({
         where: { id, teamId: ctx.teamId, isArchived: false },
-        select: { id: true, html: true, approvalStatus: true },
+        select: { id: true, html: true, approvalStatus: true, versionGroupId: true },
       })
 
       if (!existing) {
@@ -307,10 +510,24 @@ export class EmailTemplateUseCase {
         return new Output(false, [], ["Template precisa estar aprovado antes de ser publicado"], null)
       }
 
-      const template = await prisma.emailTemplate.update({
-        where: { id },
-        select: templateDetailSelect,
-        data: { status: "published", publishedAt: new Date() },
+      const template = await prisma.$transaction(async (tx) => {
+        await tx.emailTemplate.updateMany({
+          where: { versionGroupId: existing.versionGroupId, isCurrentPublished: true },
+          data: { isCurrentPublished: false },
+        })
+        return tx.emailTemplate.update({
+          where: { id },
+          select: templateDetailSelect,
+          data: { status: "published", publishedAt: new Date(), isCurrentPublished: true },
+        })
+      })
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "published",
+        description: "Template publicado",
+        metadata: { versionNumber: template.versionNumber },
       })
 
       return new Output(true, ["Template publicado com sucesso"], [], template)
@@ -334,7 +551,15 @@ export class EmailTemplateUseCase {
       const template = await prisma.emailTemplate.update({
         where: { id },
         select: templateDetailSelect,
-        data: { status: "draft", publishedAt: null },
+        data: { status: "draft", publishedAt: null, isCurrentPublished: false },
+      })
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "unpublished",
+        description: "Template despublicado",
+        metadata: { versionNumber: template.versionNumber },
       })
 
       return new Output(true, ["Template movido para rascunho"], [], template)

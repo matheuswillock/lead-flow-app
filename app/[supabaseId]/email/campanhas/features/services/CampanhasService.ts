@@ -77,12 +77,12 @@ export class CampanhasService implements ICampanhasService {
   }
 
   async getTemplates() {
-    const res = await fetch(`${this.baseUrl}/templates`)
+    const res = await fetch(`${this.baseUrl}/templates?scope=campaign`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    // Only published templates can be used in campaigns.
-    return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published')
+    // Only the current published version can be used in new campaigns.
+    return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published' && t.isCurrentPublished)
   }
 
   async getContactLists() {

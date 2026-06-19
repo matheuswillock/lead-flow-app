@@ -32,7 +32,8 @@ export async function GET(request: NextRequest) {
     }
 
     const useCase = makeUseCase()
-    const output = await useCase.list(teamAccess.access)
+    const scope = request.nextUrl.searchParams.get("scope") === "campaign" ? "campaign" : "workbench"
+    const output = await useCase.list(teamAccess.access, "all", scope)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[EmailTemplatesRoute][GET]", error)

@@ -3,6 +3,7 @@ import type { CreateTemplateData, ITemplatesService } from './ITemplatesService'
 
 class TemplatesService implements ITemplatesService {
   private readonly baseUrl = '/api/v1/email/templates'
+  private readonly settingsUrl = '/api/v1/email/settings'
 
   private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
     return {
@@ -26,6 +27,18 @@ class TemplatesService implements ITemplatesService {
       headers: this.buildHeaders(supabaseId, teamId),
     })
     return this.parseJson<Template[]>(response, 'Erro ao buscar templates')
+  }
+
+  async getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }> {
+    const response = await fetch(this.settingsUrl, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const settings = await this.parseJson<{ templateApprovalRequired?: boolean }>(
+      response,
+      'Erro ao buscar configurações de aprovação'
+    )
+    return { templateApprovalRequired: settings.templateApprovalRequired ?? false }
   }
 
   async create(supabaseId: string, data: CreateTemplateData, teamId?: string | null): Promise<Template> {

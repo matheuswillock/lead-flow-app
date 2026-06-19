@@ -4,6 +4,9 @@ export type TemplateTab = "all" | "draft" | "pending_approval" | "published" | "
 
 export interface Template {
   id: string
+  versionGroupId: string
+  versionNumber: number
+  isCurrentPublished: boolean
   name: string
   subject: string
   previewText: string | null
@@ -32,4 +35,5 @@ export interface TemplatesState {
   approving: string | null
   rejecting: string | null
   activeTab: TemplateTab
+  templateApprovalRequired: boolean
 }
