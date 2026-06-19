@@ -8,6 +8,7 @@ import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import {
   formatLocalDateValue,
   formatLocalTimeValue,
+  getMinutesInTz,
   parseDateKeyAndTimeToUtc,
 } from "@/lib/dates";
 
@@ -53,8 +54,8 @@ export function PreScheduleSection({
     }
     return slots.filter((slotTime) => {
       const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, timezone);
-      const utcMins = slotDate.getUTCHours() * 60 + Math.floor(slotDate.getUTCMinutes() / 30) * 30;
-      return !preScheduleOccupiedSlots.includes(utcMins);
+      const localMins = Math.floor(getMinutesInTz(slotDate, timezone) / SLOT_STEP) * SLOT_STEP;
+      return !preScheduleOccupiedSlots.includes(localMins);
     });
   }, [meetingDate, meetingDateKey, preScheduleOccupiedSlots, timezone]);
 
