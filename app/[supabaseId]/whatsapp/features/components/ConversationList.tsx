@@ -1,6 +1,7 @@
 "use client"
 
-import { Search } from 'lucide-react'
+import { Loader2, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -23,7 +24,12 @@ export function ConversationList() {
     setSearchQuery,
     filterMode,
     setFilterMode,
+    hasMoreConversations,
+    loadMoreConversations,
   } = useWhatsAppInboxContext()
+
+  const isInitialLoading = isLoadingConversations && conversations.length === 0
+  const isLoadingMore = isLoadingConversations && conversations.length > 0
 
   return (
     <div className="flex w-80 shrink-0 flex-col border-r border-border">
@@ -58,7 +64,7 @@ export function ConversationList() {
 
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-0.5 p-2">
-          {isLoadingConversations ? (
+          {isInitialLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex gap-3 p-2">
                 <Skeleton className="size-10 shrink-0 rounded-full" />
@@ -73,9 +79,26 @@ export function ConversationList() {
               <p className="text-sm text-muted-foreground">Nenhuma conversa encontrada</p>
             </div>
           ) : (
-            conversations.map((conversation) => (
-              <ConversationItem key={conversation.id} conversation={conversation} />
-            ))
+            <>
+              {conversations.map((conversation) => (
+                <ConversationItem key={conversation.id} conversation={conversation} />
+              ))}
+              {hasMoreConversations && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 w-full"
+                  onClick={loadMoreConversations}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? (
+                    <Loader2 className="animate-spin" data-icon="inline-start" />
+                  ) : null}
+                  {isLoadingMore ? 'Carregando...' : 'Carregar mais'}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </ScrollArea>

@@ -8,6 +8,9 @@ import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage } from
 
 const buildRequestKey = (teamId: string): string => `whatsapp-settings:${teamId}`
 
+const QR_POLL_INTERVAL_MS = 5000
+const QR_POLL_MAX_TICKS = 24 // ~2 minutes before backing off
+
 export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContextValue {
   const { activeTeamId } = useTeamContext()
 
@@ -74,6 +77,27 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     lastSuccessKeyRef.current = null
     void loadData()
   }, [loadData])
+
+  // While awaiting the QR scan, poll for a fresh config so the QR image and the
+  // connection status update without a manual refresh. Each new QR resets the
+  // window; polling stops on a terminal status, on unmount, or after the cap.
+  const status = config?.status
+  const qrCodeText = config?.qrCodeText
+  useEffect(() => {
+    if (status !== 'QR_READY' && status !== 'PENDING') return
+
+    let ticks = 0
+    const intervalId = window.setInterval(() => {
+      ticks += 1
+      if (ticks > QR_POLL_MAX_TICKS) {
+        window.clearInterval(intervalId)
+        return
+      }
+      reload()
+    }, QR_POLL_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [status, qrCodeText, reload])
 
   const connect = useCallback(async () => {
     if (!activeTeamId) {

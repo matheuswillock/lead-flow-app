@@ -31,12 +31,20 @@ export interface WhatsAppConversation {
   updatedAt: string
 }
 
+export type WhatsAppMessageStatus =
+  | 'PENDING'
+  | 'SENT'
+  | 'DELIVERED'
+  | 'READ'
+  | 'FAILED'
+  | 'RECEIVED'
+
 export interface WhatsAppMessage {
   id: string
   conversationId: string
   direction: 'INBOUND' | 'OUTBOUND'
   messageType: string
-  status: string
+  status: WhatsAppMessageStatus | string
   contentText: string | null
   sentByProfileId: string | null
   senderPhone: string | null
@@ -73,6 +81,7 @@ export interface InboxState {
   searchQuery: string
   filterMode: ConversationFilterMode
   page: number
+  hasMoreConversations: boolean
   isAssigning: boolean
   isLinkingLead: boolean
   teamMembers: TeamMember[]
@@ -85,6 +94,7 @@ export interface InboxActions {
   selectConversation: (id: string) => void
   loadMoreConversations: () => void
   sendMessage: (text: string) => void
+  resendMessage: (messageId: string) => void
   setSearchQuery: (q: string) => void
   setFilterMode: (mode: ConversationFilterMode) => void
   assignConversation: (conversationId: string, profileId: string) => void

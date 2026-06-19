@@ -22,6 +22,14 @@ const CONVERSATIONS_LIMIT = 20
 const MESSAGES_LIMIT = 50
 const SEARCH_DEBOUNCE_MS = 400
 
+function dedupeConversationsById(items: WhatsAppConversation[]): WhatsAppConversation[] {
+  const byId = new Map<string, WhatsAppConversation>()
+  for (const item of items) {
+    byId.set(item.id, item)
+  }
+  return Array.from(byId.values())
+}
+
 const configInFlightByKey = new Map<string, Promise<WhatsAppConfig | null>>()
 const conversationsInFlightByKey = new Map<
   string,
@@ -69,10 +77,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSearchRef = useRef<string>('')
 
+  const messagesRef = useRef<WhatsAppMessage[]>([])
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
   const selectedConversation = conversations.find((c) => c.id === selectedConversationId) ?? null
 
   const currentProfileId = user?.id ?? null
   const canManageAssignment = isTeamMaster || isManagerLikeRole(activeTeam?.role)
+  const hasMoreConversations = conversations.length < totalConversations
 
   // Load config
   const loadConfig = useCallback(async () => {
@@ -182,7 +196,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       try {
         const result = await promise
         if (currentConvsKeyRef.current !== key) return
-        setConversations(result.conversations)
+        setConversations((prev) =>
+          pageNum > 1
+            ? dedupeConversationsById([...prev, ...result.conversations])
+            : result.conversations
+        )
         setTotalConversations(result.total)
       } catch (error) {
         if (currentConvsKeyRef.current === key) {
@@ -283,10 +301,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   )
 
   const loadMoreConversations = useCallback(() => {
+    if (isLoadingConversations) return
     const nextPage = page + 1
     setPage(nextPage)
     void loadConversations(nextPage, pendingSearchRef.current, filterModeRef.current)
-  }, [page, loadConversations])
+  }, [page, loadConversations, isLoadingConversations])
 
   const setSearchQuery = useCallback(
     (q: string) => {
@@ -315,6 +334,46 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [loadConversations]
   )
 
+  // Shared send routine used by sendMessage (new optimistic message) and
+  // resendMessage (existing FAILED message reused by id).
+  const performSend = useCallback(
+    async (conversationId: string, text: string, optimisticId: string) => {
+      if (!activeTeamId) return
+      setIsSending(true)
+      try {
+        const result = await whatsAppInboxService.sendMessage(
+          activeTeamId,
+          supabaseId,
+          conversationId,
+          text
+        )
+        // Promote the optimistic bubble to the real message id so the realtime
+        // INSERT for the same id is de-duplicated by handleMessageInserted.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId
+              ? { ...m, id: result.messageId, status: 'SENT', sentAt: m.sentAt ?? new Date().toISOString() }
+              : m
+          )
+        )
+        toast.success('Mensagem enviada')
+      } catch (error) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId
+              ? { ...m, status: 'FAILED', failedAt: new Date().toISOString() }
+              : m
+          )
+        )
+        console.error('[useWhatsAppInbox] Erro ao enviar mensagem:', error)
+        toast.error(error instanceof Error ? error.message : 'Não foi possível enviar a mensagem')
+      } finally {
+        setIsSending(false)
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
   const sendMessage = useCallback(
     (text: string) => {
       if (!activeTeamId || !selectedConversationId || isSending) return
@@ -322,46 +381,53 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       const trimmedText = text.trim()
       if (!trimmedText) return
 
-      const executeSend = async () => {
-        setIsSending(true)
-
-        const optimisticMessage: WhatsAppMessage = {
-          id: `optimistic-${Date.now()}`,
-          conversationId: selectedConversationId,
-          direction: 'OUTBOUND',
-          messageType: 'text',
-          status: 'pending',
-          contentText: trimmedText,
-          sentByProfileId: null,
-          senderPhone: null,
-          recipientPhone: null,
-          sentAt: new Date().toISOString(),
-          deliveredAt: null,
-          readAt: null,
-          failedAt: null,
-          createdAt: new Date().toISOString(),
-        }
-
-        setMessages((prev) => [...prev, optimisticMessage])
-
-        try {
-          await whatsAppInboxService.sendMessage(activeTeamId, supabaseId, selectedConversationId, trimmedText)
-          toast.success('Mensagem enviada')
-        } catch (error) {
-          setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id))
-          console.error('[useWhatsAppInbox] Erro ao enviar mensagem:', error)
-          toast.error(error instanceof Error ? error.message : 'Não foi possível enviar a mensagem')
-        } finally {
-          setIsSending(false)
-        }
+      const optimisticId = `optimistic-${Date.now()}`
+      const optimisticMessage: WhatsAppMessage = {
+        id: optimisticId,
+        conversationId: selectedConversationId,
+        direction: 'OUTBOUND',
+        messageType: 'text',
+        status: 'PENDING',
+        contentText: trimmedText,
+        sentByProfileId: null,
+        senderPhone: null,
+        recipientPhone: null,
+        sentAt: new Date().toISOString(),
+        deliveredAt: null,
+        readAt: null,
+        failedAt: null,
+        createdAt: new Date().toISOString(),
       }
 
-      executeSend().catch((error) => {
+      setMessages((prev) => [...prev, optimisticMessage])
+
+      performSend(selectedConversationId, trimmedText, optimisticId).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao enviar mensagem:', error)
         setIsSending(false)
       })
     },
-    [activeTeamId, selectedConversationId, isSending, supabaseId]
+    [activeTeamId, selectedConversationId, isSending, performSend]
+  )
+
+  const resendMessage = useCallback(
+    (messageId: string) => {
+      if (isSending) return
+
+      const target = messagesRef.current.find((m) => m.id === messageId)
+      if (!target || !target.contentText) return
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, status: 'PENDING', failedAt: null } : m
+        )
+      )
+
+      performSend(target.conversationId, target.contentText, messageId).catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao reenviar mensagem:', error)
+        setIsSending(false)
+      })
+    },
+    [isSending, performSend]
   )
 
   const loadTeamMembers = useCallback(async () => {
@@ -539,6 +605,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     searchQuery,
     filterMode,
     page,
+    hasMoreConversations,
     isAssigning,
     isLinkingLead,
     teamMembers,
@@ -548,6 +615,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     selectConversation,
     loadMoreConversations,
     sendMessage,
+    resendMessage,
     setSearchQuery,
     setFilterMode,
     assignConversation,

@@ -1,8 +1,20 @@
 "use client"
 
-import { FileText, Image, Mic, Sticker, Video } from 'lucide-react'
+import {
+  AlertCircle,
+  Check,
+  CheckCheck,
+  Clock,
+  FileText,
+  Image,
+  Mic,
+  Sticker,
+  Video,
+} from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import type { WhatsAppMessage } from '../context/WhatsAppInboxTypes'
 
 interface MessageBubbleProps {
@@ -40,9 +52,31 @@ function getMediaMeta(messageType: string): MediaMeta | null {
   return null
 }
 
+function StatusIndicator({ status }: { status: string }) {
+  const normalized = status.toUpperCase()
+  if (normalized === 'PENDING') {
+    return <Clock className="size-3 text-primary-foreground/70" aria-label="Enviando" />
+  }
+  if (normalized === 'SENT') {
+    return <Check className="size-3 text-primary-foreground/70" aria-label="Enviada" />
+  }
+  if (normalized === 'DELIVERED') {
+    return <CheckCheck className="size-3 text-primary-foreground/70" aria-label="Entregue" />
+  }
+  if (normalized === 'READ') {
+    return <CheckCheck className="size-3 text-semantic-info" aria-label="Lida" />
+  }
+  if (normalized === 'FAILED') {
+    return <AlertCircle className="size-3 text-destructive" aria-label="Falha no envio" />
+  }
+  return null
+}
+
 export function MessageBubble({ message }: MessageBubbleProps) {
+  const { resendMessage } = useWhatsAppInboxContext()
   const isOutbound = message.direction === 'OUTBOUND'
   const time = formatMessageTime(message.sentAt ?? message.createdAt)
+  const isFailed = isOutbound && message.status.toUpperCase() === 'FAILED'
 
   const hasText = Boolean(message.contentText)
   const media = !hasText ? getMediaMeta(message.messageType) : null
@@ -91,7 +125,19 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               {time}
             </span>
           )}
+          {isOutbound && <StatusIndicator status={message.status} />}
         </div>
+        {isFailed && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto self-end px-1.5 py-0.5 text-xs text-destructive hover:text-destructive"
+            onClick={() => resendMessage(message.id)}
+          >
+            Reenviar
+          </Button>
+        )}
       </div>
     </div>
   )
