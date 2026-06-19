@@ -28,7 +28,7 @@ function StatusBadge({ approvalStatus, status }: { approvalStatus: string | unde
     return (
       <Badge variant="outline" className="gap-1 border-semantic-success/30 bg-semantic-success/10 text-semantic-success">
         <Check className="size-3" />
-        Template aprovado pronto para publicar
+        Template aprovado e pronto para publicar
       </Badge>
     );
   }
