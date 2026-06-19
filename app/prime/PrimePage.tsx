@@ -779,7 +779,7 @@ export function PrimePage() {
             100 dias. Equipe montada. Processo rodando. Garantia de retorno.
           </p>
           <a
-            href="https://wa.me/5511"
+            href="https://wa.me/5511939534668"
             className={cn(
               "prime-btn-cta inline-block px-9 py-3.5 rounded-full text-white font-medium text-[14px] no-underline relative z-[2]",
               "transition-[filter,transform] duration-200"
