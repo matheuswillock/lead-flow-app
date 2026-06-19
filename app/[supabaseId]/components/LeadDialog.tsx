@@ -81,6 +81,9 @@ import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
 } from "@/lib/services/leadStatusTransitionClient";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
+import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
 
 interface LeadDialogProps {
   open: boolean;
@@ -240,6 +243,7 @@ export default function LeadDialog({
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeTeam, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const { hasAccess } = useFeatureAccess();
   const canTransferBetweenTeams =
     isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
   const hasTransferTargets = allowedTransferTargetIds.length > 0;
@@ -2574,6 +2578,14 @@ export default function LeadDialog({
               <p className="mt-1 text-xs text-muted-foreground">
                 Registro de criação, comentários e mudanças importantes.
               </p>
+
+              {currentLead && activeTeamId && hasAccess(FEATURE_SLUGS.WHATSAPP) && (
+                <LeadWhatsAppCard
+                  leadId={currentLead.id}
+                  supabaseId={supabaseId ?? ''}
+                  teamId={activeTeamId}
+                />
+              )}
 
               <div className="mt-4 flex-1 min-h-0 w-full">
                 {!currentLead ? (

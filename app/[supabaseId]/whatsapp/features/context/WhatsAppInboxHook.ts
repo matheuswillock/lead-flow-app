@@ -8,6 +8,7 @@ import { isManagerLikeRole } from '@/lib/roles'
 import { useWhatsAppRealtime } from '@/hooks/useWhatsAppRealtime'
 import { whatsAppInboxService } from '../services/WhatsAppInboxService'
 import type {
+  ConversationFilterMode,
   InboxActions,
   InboxState,
   LeadSearchResult,
@@ -51,6 +52,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [isLinkingLead, setIsLinkingLead] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
+  const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
 
   const currentConfigKeyRef = useRef<string | null>(null)
   const inFlightConfigKeyRef = useRef<string | null>(null)
@@ -130,9 +132,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     }
   }, [activeTeamId, supabaseId])
 
+  const filterModeRef = useRef<ConversationFilterMode>('all')
+
   // Load conversations
   const loadConversations = useCallback(
-    async (pageNum: number, search: string) => {
+    async (pageNum: number, search: string, filter?: ConversationFilterMode) => {
       if (!activeTeamId) {
         setConversations([])
         setTotalConversations(0)
@@ -142,7 +146,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         return
       }
 
-      const key = `${supabaseId}:${activeTeamId}:${pageNum}:${search}`
+      const effectiveFilter = filter ?? filterModeRef.current
+      const key = `${supabaseId}:${activeTeamId}:${pageNum}:${search}:${effectiveFilter}`
       currentConvsKeyRef.current = key
 
       if (inFlightConvsKeyRef.current === key) {
@@ -152,6 +157,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setIsLoadingConversations(true)
       inFlightConvsKeyRef.current = key
 
+      const hasUnread = effectiveFilter === 'unread' ? true : undefined
+      const assignedProfileId = effectiveFilter === 'mine' ? (user?.id ?? undefined) : undefined
+
       const existing = conversationsInFlightByKey.get(key)
       const promise =
         existing ??
@@ -160,6 +168,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             page: pageNum,
             limit: CONVERSATIONS_LIMIT,
             search: search || undefined,
+            hasUnread,
+            assignedProfileId,
           })
           .finally(() => {
             conversationsInFlightByKey.delete(key)
@@ -247,7 +257,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [loadConfig])
 
   useEffect(() => {
-    void loadConversations(1, '')
+    void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
     setPage(1)
   }, [loadConversations, activeTeamId])
 
@@ -275,7 +285,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const loadMoreConversations = useCallback(() => {
     const nextPage = page + 1
     setPage(nextPage)
-    void loadConversations(nextPage, pendingSearchRef.current)
+    void loadConversations(nextPage, pendingSearchRef.current, filterModeRef.current)
   }, [page, loadConversations])
 
   const setSearchQuery = useCallback(
@@ -289,8 +299,18 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
       searchDebounceRef.current = setTimeout(() => {
         setPage(1)
-        void loadConversations(1, q)
+        void loadConversations(1, q, filterModeRef.current)
       }, SEARCH_DEBOUNCE_MS)
+    },
+    [loadConversations]
+  )
+
+  const setFilterMode = useCallback(
+    (mode: ConversationFilterMode) => {
+      filterModeRef.current = mode
+      setFilterModeState(mode)
+      setPage(1)
+      void loadConversations(1, pendingSearchRef.current, mode)
     },
     [loadConversations]
   )
@@ -517,6 +537,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isLoadingMessages,
     isSending,
     searchQuery,
+    filterMode,
     page,
     isAssigning,
     isLinkingLead,
@@ -528,6 +549,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     loadMoreConversations,
     sendMessage,
     setSearchQuery,
+    setFilterMode,
     assignConversation,
     loadTeamMembers,
     linkLead,

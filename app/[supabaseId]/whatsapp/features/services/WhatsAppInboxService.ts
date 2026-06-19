@@ -35,12 +35,15 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   async fetchConversations(
     teamId: string,
     supabaseId: string,
-    params: { page?: number; limit?: number; search?: string }
+    params: { page?: number; limit?: number; search?: string; hasUnread?: boolean; assignedProfileId?: string; leadId?: string }
   ): Promise<{ conversations: WhatsAppConversation[]; total: number }> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set('page', String(params.page))
     if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
     if (params.search) searchParams.set('search', params.search)
+    if (params.hasUnread !== undefined) searchParams.set('hasUnread', String(params.hasUnread))
+    if (params.assignedProfileId) searchParams.set('assignedProfileId', params.assignedProfileId)
+    if (params.leadId) searchParams.set('leadId', params.leadId)
 
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations?${searchParams.toString()}`,

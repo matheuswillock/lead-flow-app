@@ -57,6 +57,8 @@ export interface WhatsAppConfig {
   configId?: string
 }
 
+export type ConversationFilterMode = 'all' | 'unread' | 'mine'
+
 export interface InboxState {
   config: WhatsAppConfig | null
   conversations: WhatsAppConversation[]
@@ -69,6 +71,7 @@ export interface InboxState {
   isLoadingMessages: boolean
   isSending: boolean
   searchQuery: string
+  filterMode: ConversationFilterMode
   page: number
   isAssigning: boolean
   isLinkingLead: boolean
@@ -83,6 +86,7 @@ export interface InboxActions {
   loadMoreConversations: () => void
   sendMessage: (text: string) => void
   setSearchQuery: (q: string) => void
+  setFilterMode: (mode: ConversationFilterMode) => void
   assignConversation: (conversationId: string, profileId: string) => void
   loadTeamMembers: () => void
   linkLead: (conversationId: string, leadId: string) => void

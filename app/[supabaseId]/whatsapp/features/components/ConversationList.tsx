@@ -4,16 +4,30 @@ import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { ConversationItem } from './ConversationItem'
+import type { ConversationFilterMode } from '../context/WhatsAppInboxTypes'
+
+const FILTER_TABS: { label: string; value: ConversationFilterMode }[] = [
+  { label: 'Todas', value: 'all' },
+  { label: 'Não lidas', value: 'unread' },
+  { label: 'Minhas', value: 'mine' },
+]
 
 export function ConversationList() {
-  const { conversations, isLoadingConversations, searchQuery, setSearchQuery } =
-    useWhatsAppInboxContext()
+  const {
+    conversations,
+    isLoadingConversations,
+    searchQuery,
+    setSearchQuery,
+    filterMode,
+    setFilterMode,
+  } = useWhatsAppInboxContext()
 
   return (
     <div className="flex w-80 shrink-0 flex-col border-r border-border">
-      <div className="p-3">
+      <div className="flex flex-col gap-2 p-3">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -22,6 +36,23 @@ export function ConversationList() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-8"
           />
+        </div>
+        <div className="flex gap-1">
+          {FILTER_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setFilterMode(tab.value)}
+              className={cn(
+                'flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                filterMode === tab.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
