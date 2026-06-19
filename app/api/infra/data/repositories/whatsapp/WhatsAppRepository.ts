@@ -303,6 +303,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
     return { outboundCount, inboundCount }
   }
+
+  async deleteConversation(id: string): Promise<void> {
+    await prisma.whatsAppConversation.delete({ where: { id } })
+  }
 }
 
 export const whatsAppRepository = new WhatsAppRepository()

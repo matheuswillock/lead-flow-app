@@ -86,6 +86,8 @@ export interface InboxState {
   hasMoreConversations: boolean
   isAssigning: boolean
   isLinkingLead: boolean
+  isArchiving: boolean
+  isDeleting: boolean
   teamMembers: TeamMember[]
   isLoadingTeamMembers: boolean
   currentProfileId: string | null
@@ -104,5 +106,8 @@ export interface InboxActions {
   loadTeamMembers: () => void
   linkLead: (conversationId: string, leadId: string) => void
   searchLeads: (query: string) => Promise<LeadSearchResult[]>
+  archiveConversation: (conversationId: string) => void
+  unarchiveConversation: (conversationId: string) => void
+  deleteConversation: (conversationId: string) => void
 }
 

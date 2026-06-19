@@ -212,6 +212,51 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     }
   }
 
+  async archiveConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/archive`,
+      {
+        method: 'POST',
+        headers: { 'x-supabase-user-id': supabaseId },
+      }
+    )
+
+    if (!response.ok) {
+      const output: unknown = await response.json().catch(() => null)
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível arquivar a conversa'))
+    }
+  }
+
+  async unarchiveConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/unarchive`,
+      {
+        method: 'POST',
+        headers: { 'x-supabase-user-id': supabaseId },
+      }
+    )
+
+    if (!response.ok) {
+      const output: unknown = await response.json().catch(() => null)
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível desarquivar a conversa'))
+    }
+  }
+
+  async deleteConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}`,
+      {
+        method: 'DELETE',
+        headers: { 'x-supabase-user-id': supabaseId },
+      }
+    )
+
+    if (!response.ok && response.status !== 204) {
+      const output: unknown = await response.json().catch(() => null)
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível excluir a conversa'))
+    }
+  }
+
   async searchLeads(teamId: string, supabaseId: string, query: string): Promise<LeadSearchResult[]> {
     const params = new URLSearchParams({ search: query, teamId, limit: '10' })
     const response = await fetch(`/api/v1/leads?${params.toString()}`, {

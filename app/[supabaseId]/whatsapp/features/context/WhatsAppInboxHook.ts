@@ -61,6 +61,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [page, setPage] = useState(1)
   const [isAssigning, setIsAssigning] = useState(false)
   const [isLinkingLead, setIsLinkingLead] = useState(false)
+  const [isArchiving, setIsArchiving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
   const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
@@ -623,6 +625,87 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [activeTeamId, supabaseId]
   )
 
+  const archiveConversation = useCallback(
+    (conversationId: string) => {
+      if (!activeTeamId || isArchiving) return
+
+      const execute = async () => {
+        setIsArchiving(true)
+        try {
+          await whatsAppInboxService.archiveConversation(activeTeamId, supabaseId, conversationId)
+          setConversations((prev) => prev.filter((c) => c.id !== conversationId))
+          if (selectedConversationId === conversationId) setSelectedConversationId(null)
+          toast.success('Conversa arquivada com sucesso')
+        } catch (error) {
+          console.error('[useWhatsAppInbox] Erro ao arquivar conversa:', error)
+          toast.error(error instanceof Error ? error.message : 'Não foi possível arquivar a conversa')
+        } finally {
+          setIsArchiving(false)
+        }
+      }
+
+      execute().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao arquivar conversa:', error)
+        setIsArchiving(false)
+      })
+    },
+    [activeTeamId, supabaseId, isArchiving, selectedConversationId]
+  )
+
+  const unarchiveConversation = useCallback(
+    (conversationId: string) => {
+      if (!activeTeamId || isArchiving) return
+
+      const execute = async () => {
+        setIsArchiving(true)
+        try {
+          await whatsAppInboxService.unarchiveConversation(activeTeamId, supabaseId, conversationId)
+          setConversations((prev) => prev.filter((c) => c.id !== conversationId))
+          if (selectedConversationId === conversationId) setSelectedConversationId(null)
+          toast.success('Conversa desarquivada com sucesso')
+        } catch (error) {
+          console.error('[useWhatsAppInbox] Erro ao desarquivar conversa:', error)
+          toast.error(error instanceof Error ? error.message : 'Não foi possível desarquivar a conversa')
+        } finally {
+          setIsArchiving(false)
+        }
+      }
+
+      execute().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao desarquivar conversa:', error)
+        setIsArchiving(false)
+      })
+    },
+    [activeTeamId, supabaseId, isArchiving, selectedConversationId]
+  )
+
+  const deleteConversation = useCallback(
+    (conversationId: string) => {
+      if (!activeTeamId || isDeleting) return
+
+      const execute = async () => {
+        setIsDeleting(true)
+        try {
+          await whatsAppInboxService.deleteConversation(activeTeamId, supabaseId, conversationId)
+          setConversations((prev) => prev.filter((c) => c.id !== conversationId))
+          if (selectedConversationId === conversationId) setSelectedConversationId(null)
+          toast.success('Conversa excluída com sucesso')
+        } catch (error) {
+          console.error('[useWhatsAppInbox] Erro ao excluir conversa:', error)
+          toast.error(error instanceof Error ? error.message : 'Não foi possível excluir a conversa')
+        } finally {
+          setIsDeleting(false)
+        }
+      }
+
+      execute().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao excluir conversa:', error)
+        setIsDeleting(false)
+      })
+    },
+    [activeTeamId, supabaseId, isDeleting, selectedConversationId]
+  )
+
   return {
     config,
     conversations,
@@ -642,6 +725,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     hasMoreConversations,
     isAssigning,
     isLinkingLead,
+    isArchiving,
+    isDeleting,
     teamMembers,
     isLoadingTeamMembers,
     currentProfileId,
@@ -657,5 +742,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     loadTeamMembers,
     linkLead,
     searchLeads,
+    archiveConversation,
+    unarchiveConversation,
+    deleteConversation,
   }
 }

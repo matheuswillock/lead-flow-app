@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { AssignmentControl } from './AssignmentControl'
+import { ConversationActionsMenu } from './ConversationActionsMenu'
 import { LinkLeadDialog } from './LinkLeadDialog'
 import { MessageBubble } from './MessageBubble'
 import { MessageComposer } from './MessageComposer'
@@ -86,6 +87,9 @@ export function MessagePanel() {
             <LinkLeadDialog selectedConversation={selectedConversation} />
           )}
           <AssignmentControl selectedConversation={selectedConversation} />
+          {canManageAssignment && (
+            <ConversationActionsMenu conversation={selectedConversation} />
+          )}
           <Badge
             variant={isConnected ? 'default' : 'secondary'}
             className="gap-1"
