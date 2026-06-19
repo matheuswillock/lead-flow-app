@@ -54,6 +54,7 @@ Componentes previstos:
 
 Principios:
 
+- A CDP v1 deve permanecer no PostgreSQL/Supabase relacional do projeto, em tabelas dedicadas, sem criar um segundo banco nao relacional.
 - A resolucao primaria de perfil usa `teamId + normalizedPhone + normalizedName`.
 - E-mail nao e chave primaria obrigatoria; ele e uma identidade auxiliar e um canal de comunicacao.
 - Documento/CNPJ e usado como enriquecimento e apoio para deduplicacao futura.
@@ -62,9 +63,18 @@ Principios:
 - Consentimento por canal deve bloquear segmentos de campanha quando houver unsubscribe, bounce ou complaint.
 - Dados de CDP devem permanecer isolados por `teamId`.
 
+Racional de armazenamento:
+
+- O dominio da CDP v1 e altamente relacional: perfis, identidades, fontes, eventos, consentimentos, times, leads, carteira e contatos de e-mail precisam de integridade, joins, constraints e indices compostos.
+- Manter a CDP no mesmo PostgreSQL/Supabase reduz duplicacao operacional, evita sincronizacao entre dois bancos e preserva transacoes entre leitura de origem e escrita CDP.
+- Campos flexiveis como `metadata`, `sourceMetadata` e payloads de evento devem usar `Json`/JSONB dentro do Postgres, em vez de justificar um banco nao relacional separado.
+- Um banco nao relacional separado so deve ser reavaliado em fase futura se volume, latencia ou workloads analiticos deixarem de caber no Postgres relacional com indices, particionamento e materializacoes adequadas.
+
 ### Data Model
 
 Os nomes abaixo representam modelos conceituais para a implementacao futura. A implementacao deve criar migrations pelo fluxo oficial do projeto, usando `bun run db:migrate:new <migration-name>`.
+
+A implementacao deve usar tabelas relacionais dedicadas no PostgreSQL/Supabase atual. A SPEC nao recomenda criar uma base CDP separada em banco nao relacional para a v1.
 
 #### `CustomerProfile`
 
@@ -344,6 +354,9 @@ Esta SPEC e o artefato base. Se a equipe decidir levar o trabalho ao Notion, o f
 
 > **Q:** A entrega de WhatsApp bloqueia a CDP de e-mail?
 > **A:** Nao. O modelo fica preparado para WhatsApp, mas a v1 de e-mail deve funcionar sem essa integracao.
+
+> **Q:** A CDP v1 deve usar um banco nao relacional separado?
+> **A:** Nao. A v1 deve usar o PostgreSQL/Supabase relacional atual, com tabelas dedicadas e campos JSONB apenas para metadados flexiveis. Isso preserva integridade, joins, transacoes, RLS e reduz complexidade operacional.
 
 > **Q:** Devemos implementar codigo agora?
 > **A:** Nao. Esta etapa cria a SPEC primeiro; a implementacao vem depois da revisao/aprovacao do documento.

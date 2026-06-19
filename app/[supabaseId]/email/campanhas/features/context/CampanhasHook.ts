@@ -7,6 +7,7 @@ import type { Campaign, CreditStatus, Template, ContactList } from "./CampanhasT
 import { parseLocalToUtc, formatLocalInputValue } from "@/lib/dates"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { useTeamContext } from "@/app/context/TeamContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const PAGE_SIZE = 20
@@ -67,6 +68,7 @@ export type CampanhasHookReturn = {
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
+  const { activeTeamId, isLoading: teamLoading } = useTeamContext()
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
@@ -102,12 +104,20 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const fetchingRef = useRef(false)
 
   const fetchCampaigns = useCallback(async (nextPage: number, nextStatus: string) => {
+    if (teamLoading) return
+    if (!activeTeamId) {
+      setCampaigns([])
+      setTotal(0)
+      setPage(1)
+      setTotalPages(1)
+      return
+    }
     if (fetchingRef.current) return
     fetchingRef.current = true
     setLoading(true)
     console.info("[useCampanhas] fetchCampaigns", { nextPage, nextStatus })
     try {
-      const result = await service.list(nextPage, PAGE_SIZE, nextStatus || undefined)
+      const result = await service.list(supabaseId, activeTeamId, nextPage, PAGE_SIZE, nextStatus || undefined)
       setCampaigns(result.campaigns)
       setTotal(result.total)
       setPage(result.page)
@@ -119,24 +129,26 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setLoading(false)
       fetchingRef.current = false
     }
-  }, [])
+  }, [activeTeamId, supabaseId, teamLoading])
 
   const fetchCredits = useCallback(async () => {
+    if (teamLoading || !activeTeamId) return
     setLoadingCredits(true)
     try {
-      const result = await service.getCreditStatus()
+      const result = await service.getCreditStatus(supabaseId, activeTeamId)
       setCredits(result)
     } catch (err) {
       console.error("[useCampanhas] fetchCredits error", err)
     } finally {
       setLoadingCredits(false)
     }
-  }, [])
+  }, [activeTeamId, supabaseId, teamLoading])
 
   useEffect(() => {
+    if (teamLoading) return
     void fetchCampaigns(1, "")
     void fetchCredits()
-  }, [supabaseId])
+  }, [fetchCampaigns, fetchCredits, teamLoading])
 
   const handleStatusFilter = useCallback((status: string) => {
     setStatusFilter(status)
@@ -157,7 +169,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setSendingId(id)
     console.info("[useCampanhas] handleSend", id)
     try {
-      const result = await service.send(id)
+      const result = await service.send(supabaseId, activeTeamId, id)
       toast.success(`Campanha disparada: ${result.sent} emails enviados`)
       void fetchCampaigns(page, statusFilter)
       void fetchCredits()
@@ -167,13 +179,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setSendingId(null)
     }
-  }, [credits?.hasSubscription, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter])
+  }, [activeTeamId, credits?.hasSubscription, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter, supabaseId])
 
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)
     console.info("[useCampanhas] handleCancel", id)
     try {
-      await service.cancel(id)
+      await service.cancel(supabaseId, activeTeamId, id)
       toast.success("Campanha cancelada")
       void fetchCampaigns(page, statusFilter)
     } catch (err) {
@@ -182,13 +194,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setCancelingId(null)
     }
-  }, [fetchCampaigns, page, statusFilter])
+  }, [activeTeamId, fetchCampaigns, page, statusFilter, supabaseId])
 
   const handleDeleteDraft = useCallback(async (id: string) => {
     setDeletingId(id)
     console.info("[useCampanhas] handleDeleteDraft", id)
     try {
-      await service.deleteDraft(id)
+      await service.deleteDraft(supabaseId, activeTeamId, id)
       setCampaigns((prev) => prev.filter((c) => c.id !== id))
       setTotal((prev) => Math.max(0, prev - 1))
       toast.success("Rascunho excluído")
@@ -198,7 +210,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setDeletingId(null)
     }
-  }, [])
+  }, [activeTeamId, supabaseId])
 
   const openWizard = useCallback(async () => {
     setWizardStep(1)
@@ -209,15 +221,15 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardOpen(true)
     try {
       const [tmpl, lists] = await Promise.all([
-        service.getTemplates(),
-        service.getContactLists(),
+        service.getTemplates(supabaseId, activeTeamId),
+        service.getContactLists(supabaseId, activeTeamId),
       ])
       setTemplates(tmpl)
       setContactLists(lists)
     } catch (err) {
       console.error("[useCampanhas] openWizard fetch error", err)
     }
-  }, [])
+  }, [activeTeamId, supabaseId])
 
   const closeWizard = useCallback(() => {
     if (wizardCreating) return
@@ -232,7 +244,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardCreating(true)
     console.info("[useCampanhas] handleCreateCampaign")
     try {
-      await service.create({
+      await service.create(supabaseId, activeTeamId, {
         name: wizardName.trim(),
         templateId: wizardTemplateId,
         contactListId: wizardContactListId,
@@ -250,7 +262,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setWizardCreating(false)
     }
-  }, [wizardName, wizardTemplateId, wizardContactListId, wizardScheduledAt, tz, fetchCampaigns, statusFilter])
+  }, [activeTeamId, wizardName, wizardTemplateId, wizardContactListId, wizardScheduledAt, tz, fetchCampaigns, statusFilter, supabaseId])
 
   const openEdit = useCallback(async (campaign: Campaign) => {
     setEditingCampaign(campaign)
@@ -260,15 +272,15 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setEditScheduledAt(campaign.scheduledAt ? formatLocalInputValue(new Date(campaign.scheduledAt), tz) : "")
     try {
       const [tmpl, lists] = await Promise.all([
-        service.getTemplates(),
-        service.getContactLists(),
+        service.getTemplates(supabaseId, activeTeamId),
+        service.getContactLists(supabaseId, activeTeamId),
       ])
       setTemplates(tmpl)
       setContactLists(lists)
     } catch (err) {
       console.error("[useCampanhas] openEdit fetch error", err)
     }
-  }, [tz])
+  }, [activeTeamId, supabaseId, tz])
 
   const closeEdit = useCallback(() => {
     if (editSaving) return
@@ -283,7 +295,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setEditSaving(true)
     console.info("[useCampanhas] handleUpdateCampaign", editingCampaign.id)
     try {
-      const updated = await service.update(editingCampaign.id, {
+      const updated = await service.update(supabaseId, activeTeamId, editingCampaign.id, {
         name: editName.trim(),
         templateId: editTemplateId || undefined,
         contactListId: editContactListId || undefined,
@@ -300,7 +312,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setEditSaving(false)
     }
-  }, [editingCampaign, editName, editTemplateId, editContactListId, editScheduledAt, tz])
+  }, [activeTeamId, editingCampaign, editName, editTemplateId, editContactListId, editScheduledAt, supabaseId, tz])
 
   return {
     campaigns,
