@@ -76,7 +76,15 @@ export function ConversationList() {
             ))
           ) : conversations.length === 0 ? (
             <div className="py-8 text-center">
-              <p className="text-sm text-muted-foreground">Nenhuma conversa encontrada</p>
+              <p className="text-sm text-muted-foreground">
+                {filterMode === 'unread'
+                  ? 'Nenhuma mensagem não lida'
+                  : filterMode === 'mine'
+                  ? 'Você não tem conversas atribuídas'
+                  : searchQuery.trim()
+                  ? 'Nenhuma conversa encontrada'
+                  : 'Nenhuma conversa ainda'}
+              </p>
             </div>
           ) : (
             <>

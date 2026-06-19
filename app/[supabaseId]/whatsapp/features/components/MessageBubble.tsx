@@ -73,10 +73,14 @@ function StatusIndicator({ status }: { status: string }) {
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
-  const { resendMessage } = useWhatsAppInboxContext()
+  const { resendMessage, teamMembers } = useWhatsAppInboxContext()
   const isOutbound = message.direction === 'OUTBOUND'
   const time = formatMessageTime(message.sentAt ?? message.createdAt)
   const isFailed = isOutbound && message.status.toUpperCase() === 'FAILED'
+
+  const operatorName = isOutbound && message.sentByProfileId
+    ? (teamMembers.find((m) => m.id === message.sentByProfileId)?.name ?? 'Operador')
+    : null
 
   const hasText = Boolean(message.contentText)
   const media = !hasText ? getMediaMeta(message.messageType) : null
@@ -112,8 +116,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             isOutbound ? 'justify-end' : 'justify-start'
           )}
         >
-          {isOutbound && message.sentByProfileId && (
-            <span className="text-xs opacity-70">Operador</span>
+          {operatorName && (
+            <span className="text-xs opacity-70">{operatorName}</span>
           )}
           {time && (
             <span

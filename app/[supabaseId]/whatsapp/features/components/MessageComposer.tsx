@@ -18,6 +18,10 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
 
   const isDisconnected = config?.status !== 'CONNECTED'
   const isDisabled = disabled || isSending || isDisconnected
+  const MAX_CHARS = 4096
+  const charCount = text.length
+  const isNearLimit = charCount >= MAX_CHARS * 0.8
+  const isAtLimit = charCount >= MAX_CHARS
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim()
@@ -45,19 +49,31 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
         </p>
       )}
       <div className="flex items-end gap-2">
-        <Textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Digite uma mensagem..."
-          disabled={isDisabled}
-          rows={1}
-          className={cn(
-            'max-h-24 flex-1 resize-none',
-            isDisabled && 'cursor-not-allowed opacity-50'
+        <div className="relative flex-1">
+          <Textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value.slice(0, MAX_CHARS))}
+            onKeyDown={handleKeyDown}
+            placeholder="Digite uma mensagem..."
+            disabled={isDisabled}
+            rows={1}
+            className={cn(
+              'max-h-24 w-full resize-none',
+              isDisabled && 'cursor-not-allowed opacity-50'
+            )}
+          />
+          {isNearLimit && (
+            <span
+              className={cn(
+                'pointer-events-none absolute bottom-1.5 right-2 text-[10px]',
+                isAtLimit ? 'text-destructive' : 'text-muted-foreground'
+              )}
+            >
+              {MAX_CHARS - charCount}
+            </span>
           )}
-        />
+        </div>
         <Button
           type="button"
           size="icon"

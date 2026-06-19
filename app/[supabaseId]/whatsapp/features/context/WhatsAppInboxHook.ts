@@ -53,6 +53,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [isLoadingConfig, setIsLoadingConfig] = useState(false)
   const [isLoadingConversations, setIsLoadingConversations] = useState(false)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
+  const [totalMessages, setTotalMessages] = useState(0)
+  const [messagePage, setMessagePage] = useState(1)
   const [isSending, setIsSending] = useState(false)
   const [searchQuery, setSearchQueryState] = useState('')
   const [page, setPage] = useState(1)
@@ -87,6 +90,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const currentProfileId = user?.id ?? null
   const canManageAssignment = isTeamMaster || isManagerLikeRole(activeTeam?.role)
   const hasMoreConversations = conversations.length < totalConversations
+  const hasMoreMessages = messages.length < totalMessages
 
   // Load config
   const loadConfig = useCallback(async () => {
@@ -223,46 +227,60 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   // Load messages for selected conversation
   const loadMessages = useCallback(
-    async (conversationId: string) => {
+    async (conversationId: string, pageNum = 1) => {
       if (!activeTeamId) return
 
       currentMessagesConvIdRef.current = conversationId
 
-      if (inFlightMessagesConvIdRef.current === conversationId) {
-        return
+      const msgKey = `${conversationId}:${pageNum}`
+      if (inFlightMessagesConvIdRef.current === msgKey) return
+
+      if (pageNum === 1) {
+        setIsLoadingMessages(true)
+      } else {
+        setIsLoadingOlderMessages(true)
       }
+      inFlightMessagesConvIdRef.current = msgKey
 
-      setIsLoadingMessages(true)
-      inFlightMessagesConvIdRef.current = conversationId
-
-      const existing = messagesInFlightByKey.get(conversationId)
+      const existing = messagesInFlightByKey.get(msgKey)
       const promise =
         existing ??
         whatsAppInboxService
-          .fetchMessages(activeTeamId, supabaseId, conversationId, { limit: MESSAGES_LIMIT })
+          .fetchMessages(activeTeamId, supabaseId, conversationId, { page: pageNum, limit: MESSAGES_LIMIT })
           .finally(() => {
-            messagesInFlightByKey.delete(conversationId)
+            messagesInFlightByKey.delete(msgKey)
           })
 
       if (!existing) {
-        messagesInFlightByKey.set(conversationId, promise)
+        messagesInFlightByKey.set(msgKey, promise)
       }
 
       try {
         const result = await promise
         if (currentMessagesConvIdRef.current !== conversationId) return
-        setMessages(result.messages)
+        setTotalMessages(result.total)
+        if (pageNum === 1) {
+          setMessages(result.messages)
+        } else {
+          // Older messages go at the top; API returns newest-first so reverse before prepending
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id))
+            const fresh = result.messages.filter((m) => !existingIds.has(m.id))
+            return [...fresh, ...prev]
+          })
+        }
       } catch (error) {
         if (currentMessagesConvIdRef.current === conversationId) {
-          setMessages([])
+          if (pageNum === 1) setMessages([])
         }
         console.error('[useWhatsAppInbox] Erro ao carregar mensagens:', error)
         toast.error(error instanceof Error ? error.message : 'Não foi possível carregar as mensagens')
       } finally {
         if (currentMessagesConvIdRef.current === conversationId) {
-          setIsLoadingMessages(false)
+          if (pageNum === 1) setIsLoadingMessages(false)
+          else setIsLoadingOlderMessages(false)
         }
-        if (inFlightMessagesConvIdRef.current === conversationId) {
+        if (inFlightMessagesConvIdRef.current === msgKey) {
           inFlightMessagesConvIdRef.current = null
         }
       }
@@ -283,7 +301,12 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     (id: string) => {
       setSelectedConversationId(id)
       setMessages([])
-      void loadMessages(id)
+      setTotalMessages(0)
+      setMessagePage(1)
+      void loadMessages(id, 1)
+
+      // Lazy-load team members on first conversation open for operator name display
+      if (teamMembers.length === 0) void loadTeamMembersInternal()
 
       // Zero the unread count locally and fire-and-forget the server update
       setConversations((prev) =>
@@ -297,8 +320,15 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           })
       }
     },
-    [loadMessages, activeTeamId, supabaseId]
+    [loadMessages, activeTeamId, supabaseId, teamMembers.length]
   )
+
+  const loadOlderMessages = useCallback(() => {
+    if (!selectedConversationId || isLoadingOlderMessages) return
+    const nextPage = messagePage + 1
+    setMessagePage(nextPage)
+    void loadMessages(selectedConversationId, nextPage)
+  }, [selectedConversationId, messagePage, isLoadingOlderMessages, loadMessages])
 
   const loadMoreConversations = useCallback(() => {
     if (isLoadingConversations) return
@@ -430,7 +460,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [isSending, performSend]
   )
 
-  const loadTeamMembers = useCallback(async () => {
+  const loadTeamMembersInternal = useCallback(async () => {
     if (!activeTeamId) return
 
     const key = `${supabaseId}:${activeTeamId}`
@@ -464,6 +494,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       }
     }
   }, [activeTeamId, supabaseId])
+
+  const loadTeamMembers = loadTeamMembersInternal
 
   // Realtime callbacks
   const handleMessageInserted = useCallback(
@@ -601,6 +633,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isLoadingConfig,
     isLoadingConversations,
     isLoadingMessages,
+    isLoadingOlderMessages,
+    hasMoreMessages,
     isSending,
     searchQuery,
     filterMode,
@@ -614,6 +648,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     canManageAssignment,
     selectConversation,
     loadMoreConversations,
+    loadOlderMessages,
     sendMessage,
     resendMessage,
     setSearchQuery,

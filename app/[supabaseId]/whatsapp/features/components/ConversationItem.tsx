@@ -2,6 +2,7 @@
 
 import { formatDistanceToNow, parseISO, isToday, isYesterday, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { Link2 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -84,6 +85,9 @@ export function ConversationItem({ conversation }: ConversationItemProps) {
             {conversation.lastMessagePreview ?? ''}
           </span>
           <div className="flex shrink-0 items-center gap-1">
+            {conversation.leadId && (
+              <Link2 className="size-3 text-primary" aria-label="Lead vinculado" />
+            )}
             {conversation.assignedProfileId && (
               conversation.assignedProfileId === user?.id ? (
                 <Badge variant="outline" className="h-4 px-1.5 text-[10px]">Você</Badge>

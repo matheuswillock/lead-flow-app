@@ -77,6 +77,8 @@ export interface InboxState {
   isLoadingConfig: boolean
   isLoadingConversations: boolean
   isLoadingMessages: boolean
+  isLoadingOlderMessages: boolean
+  hasMoreMessages: boolean
   isSending: boolean
   searchQuery: string
   filterMode: ConversationFilterMode
@@ -93,6 +95,7 @@ export interface InboxState {
 export interface InboxActions {
   selectConversation: (id: string) => void
   loadMoreConversations: () => void
+  loadOlderMessages: () => void
   sendMessage: (text: string) => void
   resendMessage: (messageId: string) => void
   setSearchQuery: (q: string) => void

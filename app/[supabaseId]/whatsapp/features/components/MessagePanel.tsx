@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Phone } from 'lucide-react'
+import { Loader2, Phone, Wifi, WifiOff } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -38,6 +39,9 @@ export function MessagePanel() {
     selectedConversation,
     messages,
     isLoadingMessages,
+    isLoadingOlderMessages,
+    hasMoreMessages,
+    loadOlderMessages,
     config,
     canManageAssignment,
   } = useWhatsAppInboxContext()
@@ -115,9 +119,28 @@ export function MessagePanel() {
               <p className="text-sm text-muted-foreground">Nenhuma mensagem nesta conversa</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))
+            <>
+              {hasMoreMessages && (
+                <div className="flex justify-center pb-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={loadOlderMessages}
+                    disabled={isLoadingOlderMessages}
+                    className="text-xs"
+                  >
+                    {isLoadingOlderMessages ? (
+                      <Loader2 className="animate-spin" data-icon="inline-start" />
+                    ) : null}
+                    {isLoadingOlderMessages ? 'Carregando...' : 'Carregar mensagens anteriores'}
+                  </Button>
+                </div>
+              )}
+              {messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))}
+            </>
           )}
           <div ref={scrollBottomRef} />
         </div>
