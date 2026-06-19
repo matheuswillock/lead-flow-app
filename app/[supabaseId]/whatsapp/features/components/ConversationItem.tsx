@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
+import { useUserContext } from '@/app/context/UserContext'
 import type { WhatsAppConversation } from '../context/WhatsAppInboxTypes'
 
 interface ConversationItemProps {
@@ -51,6 +52,7 @@ function formatPhone(phone: string): string {
 
 export function ConversationItem({ conversation }: ConversationItemProps) {
   const { selectedConversationId, selectConversation } = useWhatsAppInboxContext()
+  const { user } = useUserContext()
   const isSelected = selectedConversationId === conversation.id
 
   const displayName = conversation.contactName ?? formatPhone(conversation.contactPhone)
@@ -81,11 +83,20 @@ export function ConversationItem({ conversation }: ConversationItemProps) {
           <span className="truncate text-xs text-muted-foreground">
             {conversation.lastMessagePreview ?? ''}
           </span>
-          {conversation.unreadCount > 0 && (
-            <Badge variant="default" className="h-4 shrink-0 px-1.5 text-xs">
-              {conversation.unreadCount}
-            </Badge>
-          )}
+          <div className="flex shrink-0 items-center gap-1">
+            {conversation.assignedProfileId && (
+              conversation.assignedProfileId === user?.id ? (
+                <Badge variant="outline" className="h-4 px-1.5 text-[10px]">Você</Badge>
+              ) : (
+                <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">Atribuída</Badge>
+              )
+            )}
+            {conversation.unreadCount > 0 && (
+              <Badge variant="default" className="h-4 px-1.5 text-xs">
+                {conversation.unreadCount}
+              </Badge>
+            )}
+          </div>
         </div>
       </div>
     </button>

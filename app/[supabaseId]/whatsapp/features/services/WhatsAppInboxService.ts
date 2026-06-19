@@ -1,5 +1,5 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
-import type { WhatsAppConfig, WhatsAppConversation, WhatsAppMessage } from '../context/WhatsAppInboxTypes'
+import type { WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember } from '../context/WhatsAppInboxTypes'
 
 class WhatsAppInboxService implements IWhatsAppInboxService {
   private extractErrorMessage(output: unknown, fallback: string): string {
@@ -137,6 +137,57 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       const output: unknown = await response.json().catch(() => null)
       throw new Error(this.extractErrorMessage(output, 'Não foi possível marcar a conversa como lida'))
     }
+  }
+
+  async assignConversation(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    profileId: string
+  ): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/assign`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+        },
+        body: JSON.stringify({ profileId }),
+      }
+    )
+
+    if (!response.ok) {
+      const output: unknown = await response.json().catch(() => null)
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível atribuir o responsável'))
+    }
+  }
+
+  async fetchTeamMembers(teamId: string, supabaseId: string): Promise<TeamMember[]> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/members`,
+      {
+        method: 'GET',
+        headers: {
+          'x-supabase-user-id': supabaseId,
+        },
+      }
+    )
+
+    const output: unknown = await response.json()
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar os membros do time'))
+    }
+
+    const result = (output as Record<string, unknown>).result as Array<Record<string, unknown>>
+    if (!Array.isArray(result)) return []
+
+    return result.map((member) => ({
+      id: (member.profileId ?? member.id) as string,
+      name: (member.name ?? member.fullName ?? 'Usuário') as string,
+      role: (member.role ?? '') as string,
+      functions: (Array.isArray(member.functions) ? member.functions : []) as string[],
+    }))
   }
 }
 

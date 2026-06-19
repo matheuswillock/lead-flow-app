@@ -1,4 +1,4 @@
-import type { WhatsAppConfig, WhatsAppConversation, WhatsAppMessage } from '../context/WhatsAppInboxTypes'
+import type { WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember } from '../context/WhatsAppInboxTypes'
 
 export interface IWhatsAppInboxService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
@@ -20,4 +20,11 @@ export interface IWhatsAppInboxService {
     text: string
   ): Promise<{ messageId: string }>
   markConversationRead(teamId: string, supabaseId: string, conversationId: string): Promise<void>
+  assignConversation(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    profileId: string
+  ): Promise<void>
+  fetchTeamMembers(teamId: string, supabaseId: string): Promise<TeamMember[]>
 }

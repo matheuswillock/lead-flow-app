@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { listConversationsUseCase } from "@/app/api/useCases/whatsapp/ListConversationsUseCase"
+import { isManagerLikeRole } from "@/lib/roles"
 
 export async function GET(
   request: NextRequest,
@@ -20,6 +21,9 @@ export async function GET(
     )
   }
 
+  const { teamMember, profileId: callerProfileId, isMaster } = teamAccess.access
+  const canSeeAll = isMaster || isManagerLikeRole(teamMember.role)
+
   const url = new URL(request.url)
   const leadId = url.searchParams.get("leadId") ?? undefined
   const assignedProfileId = url.searchParams.get("assignedProfileId") ?? undefined
@@ -29,10 +33,12 @@ export async function GET(
   const page = parseInt(url.searchParams.get("page") ?? "1", 10)
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 100)
 
+  const scopedAssignedProfileId = canSeeAll ? (assignedProfileId ?? undefined) : callerProfileId
+
   const output = await listConversationsUseCase.execute({
     teamId,
     leadId,
-    assignedProfileId,
+    assignedProfileId: scopedAssignedProfileId,
     hasUnread,
     search,
     page,

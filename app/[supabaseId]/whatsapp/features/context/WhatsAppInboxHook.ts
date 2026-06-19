@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useTeamContext } from '@/app/context/TeamContext'
+import { useUserContext } from '@/app/context/UserContext'
+import { isManagerLikeRole } from '@/lib/roles'
 import { whatsAppInboxService } from '../services/WhatsAppInboxService'
 import type {
   InboxActions,
   InboxState,
+  TeamMember,
   WhatsAppConfig,
   WhatsAppConversation,
   WhatsAppMessage,
@@ -25,9 +28,11 @@ const messagesInFlightByKey = new Map<
   string,
   Promise<{ messages: WhatsAppMessage[]; total: number }>
 >()
+const teamMembersInFlightByKey = new Map<string, Promise<TeamMember[]>>()
 
 export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions {
-  const { activeTeamId } = useTeamContext()
+  const { activeTeamId, activeTeam, isTeamMaster } = useTeamContext()
+  const { user } = useUserContext()
 
   const [config, setConfig] = useState<WhatsAppConfig | null>(null)
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([])
@@ -40,6 +45,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [isSending, setIsSending] = useState(false)
   const [searchQuery, setSearchQueryState] = useState('')
   const [page, setPage] = useState(1)
+  const [isAssigning, setIsAssigning] = useState(false)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
 
   const currentConfigKeyRef = useRef<string | null>(null)
   const inFlightConfigKeyRef = useRef<string | null>(null)
@@ -51,10 +59,15 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const currentMessagesConvIdRef = useRef<string | null>(null)
   const inFlightMessagesConvIdRef = useRef<string | null>(null)
 
+  const inFlightTeamMembersKeyRef = useRef<string | null>(null)
+
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSearchRef = useRef<string>('')
 
   const selectedConversation = conversations.find((c) => c.id === selectedConversationId) ?? null
+
+  const currentProfileId = user?.id ?? null
+  const canManageAssignment = isTeamMaster || isManagerLikeRole(activeTeam?.role)
 
   // Load config
   const loadConfig = useCallback(async () => {
@@ -328,6 +341,69 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [activeTeamId, selectedConversationId, isSending, supabaseId]
   )
 
+  const loadTeamMembers = useCallback(async () => {
+    if (!activeTeamId) return
+
+    const key = `${supabaseId}:${activeTeamId}`
+
+    if (inFlightTeamMembersKeyRef.current === key) return
+
+    setIsLoadingTeamMembers(true)
+    inFlightTeamMembersKeyRef.current = key
+
+    const existing = teamMembersInFlightByKey.get(key)
+    const promise =
+      existing ??
+      whatsAppInboxService.fetchTeamMembers(activeTeamId, supabaseId).finally(() => {
+        teamMembersInFlightByKey.delete(key)
+      })
+
+    if (!existing) {
+      teamMembersInFlightByKey.set(key, promise)
+    }
+
+    try {
+      const result = await promise
+      setTeamMembers(result)
+    } catch (error) {
+      console.error('[useWhatsAppInbox] Erro ao carregar membros do time:', error)
+      toast.error(error instanceof Error ? error.message : 'Não foi possível carregar os membros do time')
+    } finally {
+      setIsLoadingTeamMembers(false)
+      if (inFlightTeamMembersKeyRef.current === key) {
+        inFlightTeamMembersKeyRef.current = null
+      }
+    }
+  }, [activeTeamId, supabaseId])
+
+  const assignConversation = useCallback(
+    (conversationId: string, profileId: string) => {
+      if (!activeTeamId || isAssigning) return
+
+      const executeAssign = async () => {
+        setIsAssigning(true)
+        try {
+          await whatsAppInboxService.assignConversation(activeTeamId, supabaseId, conversationId, profileId)
+          setConversations((prev) =>
+            prev.map((c) => (c.id === conversationId ? { ...c, assignedProfileId: profileId } : c))
+          )
+          toast.success('Responsável atribuído com sucesso')
+        } catch (error) {
+          console.error('[useWhatsAppInbox] Erro ao atribuir conversa:', error)
+          toast.error(error instanceof Error ? error.message : 'Não foi possível atribuir o responsável')
+        } finally {
+          setIsAssigning(false)
+        }
+      }
+
+      executeAssign().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao atribuir conversa:', error)
+        setIsAssigning(false)
+      })
+    },
+    [activeTeamId, supabaseId, isAssigning]
+  )
+
   return {
     config,
     conversations,
@@ -341,9 +417,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isSending,
     searchQuery,
     page,
+    isAssigning,
+    teamMembers,
+    isLoadingTeamMembers,
+    currentProfileId,
+    canManageAssignment,
     selectConversation,
     loadMoreConversations,
     sendMessage,
     setSearchQuery,
+    assignConversation,
+    loadTeamMembers,
   }
 }

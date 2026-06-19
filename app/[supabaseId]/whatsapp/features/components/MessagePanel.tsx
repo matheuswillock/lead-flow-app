@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
+import { AssignmentControl } from './AssignmentControl'
 import { MessageBubble } from './MessageBubble'
 import { MessageComposer } from './MessageComposer'
 
@@ -74,17 +75,20 @@ export function MessagePanel() {
             {formatPhone(selectedConversation.contactPhone)}
           </span>
         </div>
-        <Badge
-          variant={isConnected ? 'default' : 'secondary'}
-          className="gap-1"
-        >
-          {isConnected ? (
-            <Wifi className="size-3" />
-          ) : (
-            <WifiOff className="size-3" />
-          )}
-          {isConnected ? 'Conectado' : 'Desconectado'}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <AssignmentControl selectedConversation={selectedConversation} />
+          <Badge
+            variant={isConnected ? 'default' : 'secondary'}
+            className="gap-1"
+          >
+            {isConnected ? (
+              <Wifi className="size-3" />
+            ) : (
+              <WifiOff className="size-3" />
+            )}
+            {isConnected ? 'Conectado' : 'Desconectado'}
+          </Badge>
+        </div>
       </div>
 
       <Separator />

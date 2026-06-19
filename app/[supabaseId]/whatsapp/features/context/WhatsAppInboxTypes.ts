@@ -1,3 +1,10 @@
+export interface TeamMember {
+  id: string
+  name: string
+  role: string
+  functions: string[]
+}
+
 export interface WhatsAppConversation {
   id: string
   teamId: string
@@ -54,6 +61,11 @@ export interface InboxState {
   isSending: boolean
   searchQuery: string
   page: number
+  isAssigning: boolean
+  teamMembers: TeamMember[]
+  isLoadingTeamMembers: boolean
+  currentProfileId: string | null
+  canManageAssignment: boolean
 }
 
 export interface InboxActions {
@@ -61,4 +73,6 @@ export interface InboxActions {
   loadMoreConversations: () => void
   sendMessage: (text: string) => void
   setSearchQuery: (q: string) => void
+  assignConversation: (conversationId: string, profileId: string) => void
+  loadTeamMembers: () => void
 }
