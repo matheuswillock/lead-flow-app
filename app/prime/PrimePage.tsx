@@ -416,6 +416,13 @@ export function PrimePage() {
               bg="linear-gradient(135deg,#C44010,#E8601C)"
             />
             <MeetingRow
+              abbr="quin"
+              day="15/15"
+              title="One a One — Quinzenal"
+              desc="Sessão individual com Bruno Marcelino a cada quinze dias. Diagnóstico da operação, ajuste de rota, revisão de métricas e estratégia personalizada para o seu negócio."
+              bg="linear-gradient(135deg,#1A6FC4,#0C447C)"
+            />
+            <MeetingRow
               abbr="men"
               day="Mensal"
               title="HotSeats"
