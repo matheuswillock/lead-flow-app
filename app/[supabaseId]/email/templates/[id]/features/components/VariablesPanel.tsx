@@ -7,6 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldTitle,
+} from "@/components/ui/field";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -15,10 +23,16 @@ import {
 } from "@/components/ui/select";
 import {
   BUILTIN_EMAIL_VARIABLES,
+  BUILTIN_EMAIL_FUNCTIONS,
+  BUILTIN_EMAIL_FUNCTION_KEYS,
   extractTemplateVariableKeys,
 } from "@/lib/email/interpolate";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
-import type { TemplateVariable } from "../context/TemplateEditorTypes";
+import type {
+  TemplateFunctionDefinition,
+  TemplateFunctionOperator,
+  TemplateVariable,
+} from "../context/TemplateEditorTypes";
 
 type GlobalVariable = {
   id: string;
@@ -29,6 +43,72 @@ type GlobalVariable = {
 
 function sanitizeKey(value: string) {
   return value.replace(/[^a-zA-Z0-9_]/g, "");
+}
+
+function createDefaultFunctionDefinition(operator: TemplateFunctionOperator): TemplateFunctionDefinition {
+  return {
+    operator,
+    arguments: [],
+    separator: null,
+    timezone: null,
+  };
+}
+
+function createDefaultFunctionVariable(): TemplateVariable {
+  return {
+    key: "resultado_funcao",
+    kind: "function",
+    type: "number",
+    fallbackValue: "",
+    reviewStatus: "pending",
+    definition: createDefaultFunctionDefinition("sum"),
+  };
+}
+
+function createUniqueFunctionVariable(existingKeys: string[]): TemplateVariable {
+  const base = "resultado_funcao";
+  const normalizedKeys = new Set(existingKeys.map((key) => key.toLowerCase()));
+  let suffix = 1;
+  let key = base;
+
+  while (normalizedKeys.has(key.toLowerCase())) {
+    suffix += 1;
+    key = `${base}_${suffix}`;
+  }
+
+  return {
+    ...createDefaultFunctionVariable(),
+    key,
+  };
+}
+
+function getFunctionTypeLabel(operator: TemplateFunctionOperator) {
+  switch (operator) {
+    case "current_year":
+      return "Ano atual";
+    case "current_month":
+      return "Mês atual";
+    case "current_day":
+      return "Dia atual";
+    case "current_date":
+      return "Data atual";
+    case "current_time":
+      return "Horário atual";
+    case "current_date_time":
+      return "Data e horário";
+    case "sum":
+      return "Soma";
+    case "subtract":
+      return "Subtração";
+    case "multiply":
+      return "Multiplicação";
+    case "divide":
+      return "Divisão";
+    case "concat":
+      return "Concatenação";
+    default:
+      return operator;
+  }
 }
 
 async function copyToken(key: string) {
@@ -81,6 +161,7 @@ export function VariablesPanel() {
   const knownKeys = useMemo(() => {
     const set = new Set<string>();
     BUILTIN_EMAIL_VARIABLES.forEach((v) => set.add(v.key.toLowerCase()));
+    BUILTIN_EMAIL_FUNCTION_KEYS.forEach((key) => set.add(key));
     globalVariables.forEach((v) => set.add(v.key.toLowerCase()));
     declared.forEach((v) => set.add(v.key.toLowerCase()));
     return set;
@@ -96,9 +177,20 @@ export function VariablesPanel() {
     [usedKeys, knownKeys]
   );
 
+  const declaredEntries = useMemo(
+    () => declared.map((variable, index) => ({ variable, index })),
+    [declared]
+  );
+  const variableEntries = declaredEntries.filter(({ variable }) => variable.kind !== "function");
+  const functionEntries = declaredEntries.filter(({ variable }) => variable.kind === "function");
+
   function addVariable() {
-    const next: TemplateVariable = { key: "", type: "string", fallbackValue: "" };
+    const next: TemplateVariable = { key: "", kind: "variable", type: "string", fallbackValue: "" };
     updateDraft({ variables: [next, ...declared] });
+  }
+
+  function addFunction() {
+    updateDraft({ variables: [createUniqueFunctionVariable(declared.map((variable) => variable.key)), ...declared] });
   }
 
   function updateVariable(index: number, patch: Partial<TemplateVariable>) {
@@ -107,12 +199,28 @@ export function VariablesPanel() {
     });
   }
 
+  function updateFunction(index: number, patch: Partial<TemplateVariable>) {
+    const entry = functionEntries[index]
+    if (!entry) return
+    updateVariable(entry.index, patch)
+  }
+
   function removeVariable(index: number) {
     updateDraft({ variables: declared.filter((_, i) => i !== index) });
   }
 
+  function removeFunction(index: number) {
+    const entry = functionEntries[index]
+    if (!entry) return
+    removeVariable(entry.index)
+  }
+
   function markVariableReviewed(index: number) {
     updateVariable(index, { reviewStatus: "reviewed" });
+  }
+
+  function markFunctionReviewed(index: number) {
+    updateFunction(index, { reviewStatus: "reviewed" });
   }
 
   return (
@@ -190,14 +298,14 @@ export function VariablesPanel() {
           </Button>
         </div>
 
-        {declared.length === 0 ? (
+        {variableEntries.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             Nenhuma variável declarada. Declare variáveis específicas deste template com um valor
             padrão usado no preview e no envio de teste.
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            {declared.map((variable, index) => (
+            {variableEntries.map(({ variable, index }) => (
               <div key={index} className="flex flex-col gap-2 rounded-md border p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
@@ -254,6 +362,185 @@ export function VariablesPanel() {
                 ) : null}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Funções predefinidas
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Estas funções resolvem data e hora automaticamente no backend. Use os tokens abaixo no HTML.
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {BUILTIN_EMAIL_FUNCTIONS.map((fn) => (
+            <VariableChip key={fn.key} label={fn.key} hint={fn.description} />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Funções do template
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Monte funções com base em variáveis, como somas, subtrações, concatenação e outros cálculos.
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={addFunction}>
+            <Plus data-icon="inline-start" />
+            Adicionar função
+          </Button>
+        </div>
+
+        {functionEntries.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Nenhuma função customizada declarada. Adicione uma função quando precisar combinar variáveis.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {functionEntries.map(({ variable, index }) => {
+              const definition = variable.definition ?? createDefaultFunctionDefinition("sum")
+              const operator = definition.operator
+              const isConcat = operator === "concat"
+
+              return (
+                <div key={index} className="flex flex-col gap-3 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      value={variable.key}
+                      onChange={(event) => updateFunction(index, { key: sanitizeKey(event.target.value) })}
+                      placeholder="resultado_funcao"
+                      className="min-w-40 flex-1 font-mono text-xs"
+                    />
+                    <Select
+                      value={operator}
+                      onValueChange={(value) =>
+                        updateFunction(index, {
+                          kind: "function",
+                          type: value === "concat" ? "string" : value.startsWith("current_") ? "string" : "number",
+                          definition: {
+                            ...definition,
+                            operator: value as TemplateFunctionOperator,
+                            separator: value === "concat" ? definition.separator ?? "" : null,
+                          },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-44 shrink-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sum">Soma</SelectItem>
+                        <SelectItem value="subtract">Subtração</SelectItem>
+                        <SelectItem value="multiply">Multiplicação</SelectItem>
+                        <SelectItem value="divide">Divisão</SelectItem>
+                        <SelectItem value="concat">Concatenação</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={variable.type}
+                      onValueChange={(value) => updateFunction(index, { type: value as "string" | "number" })}
+                    >
+                      <SelectTrigger className="w-28 shrink-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="string">Texto</SelectItem>
+                        <SelectItem value="number">Número</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0"
+                      onClick={() => removeFunction(index)}
+                      aria-label="Remover função"
+                    >
+                      <Trash2 />
+                    </Button>
+                    {variable.reviewStatus === "pending" ? (
+                      <Badge variant="outline" className="border-semantic-warning/30 text-semantic-warning">
+                        Revisão pendente
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  <FieldGroup className="gap-3">
+                    <Field>
+                      <FieldContent>
+                        <FieldTitle>Argumentos</FieldTitle>
+                        <Input
+                          value={(definition.arguments ?? []).join(", ")}
+                          onChange={(event) =>
+                            updateFunction(index, {
+                              definition: {
+                                ...definition,
+                                arguments: event.target.value
+                                  .split(",")
+                                  .map((item) => item.trim())
+                                  .filter(Boolean),
+                                separator: isConcat ? definition.separator ?? "" : definition.separator ?? null,
+                              },
+                            })
+                          }
+                          placeholder="valor1, valor2, valor3"
+                        />
+                        <FieldDescription>
+                          Use nomes de variáveis, tokens ou valores literais separados por vírgula.
+                        </FieldDescription>
+                        <FieldError />
+                      </FieldContent>
+                    </Field>
+
+                    {isConcat ? (
+                      <Field>
+                        <FieldContent>
+                          <FieldTitle>Separador</FieldTitle>
+                          <Input
+                            value={definition.separator ?? ""}
+                            onChange={(event) =>
+                              updateFunction(index, {
+                                definition: {
+                                  ...definition,
+                                  separator: event.target.value,
+                                },
+                              })
+                            }
+                            placeholder="Ex.: espaço, hífen ou /"
+                          />
+                          <FieldDescription>
+                            Opcional. Deixe vazio para concatenar os valores diretamente.
+                          </FieldDescription>
+                          <FieldError />
+                        </FieldContent>
+                      </Field>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {getFunctionTypeLabel(operator)} será resolvida no backend com base nos argumentos informados.
+                      </p>
+                    )}
+                  </FieldGroup>
+
+                  {variable.reviewStatus === "pending" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="self-start"
+                      onClick={() => markFunctionReviewed(index)}
+                    >
+                      <CheckCircle2 data-icon="inline-start" />
+                      Marcar como revisada
+                    </Button>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

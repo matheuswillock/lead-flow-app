@@ -4,6 +4,14 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isManagerLikeRole } from "@/lib/roles"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
+import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
+import {
+  type EmailTemplateFunctionDefinition,
+  type EmailTemplateVariableKind,
+  extractTemplateVariableKeys,
+  interpolateEmailTemplate,
+} from "@/lib/email/interpolate"
 
 const templateDetailSelect = {
   id: true,
@@ -47,8 +55,28 @@ export type TemplateListScope = "workbench" | "campaign"
 
 export interface TemplateVariableInput {
   key: string
+  kind?: EmailTemplateVariableKind
   type?: "string" | "number"
   fallbackValue?: string | null
+  reviewStatus?: "pending" | "reviewed"
+  definition?: EmailTemplateFunctionDefinition | null
+}
+
+export interface TemplateTestVariableInput {
+  key: string
+  kind?: EmailTemplateVariableKind
+  type?: "string" | "number"
+  fallbackValue?: string | null
+  reviewStatus?: "pending" | "reviewed"
+  definition?: EmailTemplateFunctionDefinition | null
+  value?: string
+}
+
+export interface TemplateTestInput {
+  to: string
+  subject: string
+  html: string
+  variables?: TemplateTestVariableInput[]
 }
 
 export interface CreateTemplateInput {
@@ -406,6 +434,103 @@ export class EmailTemplateUseCase {
     } catch (error) {
       console.error("[EmailTemplateUseCase][approve]", error)
       return new Output(false, [], ["Erro ao aprovar template"], null)
+    }
+  }
+
+  async sendTest(id: string, data: TemplateTestInput, ctx: TeamContext): Promise<Output> {
+    try {
+      if (!data.to?.trim()) {
+        return new Output(false, [], ["E-mail de teste é obrigatório"], null)
+      }
+      if (!data.subject?.trim()) {
+        return new Output(false, [], ["Assunto do teste é obrigatório"], null)
+      }
+      if (!data.html?.trim()) {
+        return new Output(false, [], ["HTML do teste é obrigatório"], null)
+      }
+
+      const variableInputs = (data.variables ?? []).map((variable) => ({
+        key: variable.key.trim(),
+        kind: variable.kind ?? "variable",
+        type: variable.type ?? "string",
+        fallbackValue: variable.fallbackValue?.trim() ? variable.fallbackValue.trim() : null,
+        reviewStatus: variable.reviewStatus ?? "reviewed",
+        definition: variable.definition
+          ? {
+              operator: variable.definition.operator,
+              arguments: variable.definition.arguments ?? [],
+              separator: variable.definition.separator ?? null,
+              timezone: variable.definition.timezone ?? null,
+            }
+          : null,
+        value: variable.value ?? "",
+      }))
+
+      const recipientEmail = data.to.trim().toLowerCase()
+      const recipient = {
+        email: recipientEmail,
+        name: recipientEmail.split("@")[0] || recipientEmail,
+        customFields: variableInputs.reduce<Record<string, string>>((acc, variable) => {
+          if (variable.kind === "function") return acc
+          const value = variable.value.trim()
+          if (value) {
+            acc[variable.key] = value
+          }
+          return acc
+        }, {}),
+      }
+      const defaultsUseCase = new EmailTeamVariablesUseCase()
+      const defaultsOutput = await defaultsUseCase.getDefaultsMap(ctx)
+      const globalDefaults = defaultsOutput.isValid
+        ? { ...(defaultsOutput.result as Record<string, string>) }
+        : {}
+
+      const renderedSubject = interpolateEmailTemplate(data.subject, recipient, globalDefaults, variableInputs)
+      const renderedHtml = interpolateEmailTemplate(data.html, recipient, globalDefaults, variableInputs)
+      const unresolvedTokens = extractTemplateVariableKeys(`${renderedSubject}\n${renderedHtml}`).filter(
+        (token) => !["nome", "nome_do_lead", "name", "email"].includes(token.toLowerCase())
+      )
+
+      if (unresolvedTokens.length > 0) {
+        return new Output(
+          false,
+          [],
+          [`Variáveis sem valor suficiente: ${unresolvedTokens.map((token) => `{{${token}}}`).join(", ")}`],
+          null
+        )
+      }
+
+      const requestId = randomUUID()
+
+      const resend = assertResend()
+      const { error } = await resend.emails.send(
+        {
+          from: "Corretor Studio <no-reply@corretorstudio.com>",
+          to: recipientEmail,
+          subject: renderedSubject,
+          html: renderedHtml,
+          tags: [
+            { name: "templateId", value: id },
+            { name: "purpose", value: "template-test" },
+          ],
+        },
+        {
+          idempotencyKey: buildResendIdempotencyKey("template-test", `${id}/${requestId}`),
+        }
+      )
+
+      if (error) {
+        console.error("[EmailTemplateUseCase][sendTest] Resend error", error)
+        return new Output(false, [], [error.message ?? "Erro ao enviar e-mail de teste"], null)
+      }
+
+      return new Output(true, [`E-mail de teste enviado para ${recipientEmail}`], [], {
+        to: recipientEmail,
+        creditsConsumed: 0,
+      })
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][sendTest]", error)
+      return new Output(false, [], ["Erro ao enviar e-mail de teste"], null)
     }
   }
 

@@ -5,10 +5,32 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
 
+const functionDefinitionSchema = z.object({
+  operator: z.enum([
+    "current_year",
+    "current_month",
+    "current_day",
+    "current_date",
+    "current_time",
+    "current_date_time",
+    "sum",
+    "subtract",
+    "multiply",
+    "divide",
+    "concat",
+  ]),
+  arguments: z.array(z.string()).optional(),
+  separator: z.string().nullable().optional(),
+  timezone: z.string().nullable().optional(),
+})
+
 const variableSchema = z.object({
   key: z.string().min(1),
+  kind: z.enum(["variable", "function"]).optional(),
   type: z.enum(["string", "number"]).optional(),
   fallbackValue: z.string().nullable().optional(),
+  reviewStatus: z.enum(["pending", "reviewed"]).optional(),
+  definition: functionDefinitionSchema.nullable().optional(),
 })
 
 const createSchema = z.object({

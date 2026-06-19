@@ -1,11 +1,26 @@
+import type {
+  EmailTemplateFunctionDefinition,
+  EmailTemplateFunctionOperator,
+  EmailTemplateVariableDefinition,
+} from "@/lib/email/interpolate";
+
 export type TemplateStatus = "draft" | "published";
 export type TemplateApprovalStatus = "pending_approval" | "approved" | "rejected";
 
-export interface TemplateVariable {
-  key: string;
-  type: "string" | "number";
-  fallbackValue?: string | null;
-  reviewStatus?: "pending" | "reviewed";
+export type TemplateVariableKind = "variable" | "function";
+export type TemplateFunctionDefinition = EmailTemplateFunctionDefinition;
+export type TemplateFunctionOperator = EmailTemplateFunctionOperator;
+export type TemplateVariable = EmailTemplateVariableDefinition;
+
+export interface TemplateTestVariableValue extends TemplateVariable {
+  value: string;
+}
+
+export interface TemplateTestRequest {
+  to: string;
+  subject: string;
+  html: string;
+  variables: TemplateTestVariableValue[];
 }
 
 export interface Template {

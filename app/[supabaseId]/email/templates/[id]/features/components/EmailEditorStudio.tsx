@@ -40,6 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   BUILTIN_EMAIL_VARIABLES,
+  BUILTIN_EMAIL_FUNCTION_KEYS,
   extractTemplateVariableKeys,
 } from "@/lib/email/interpolate";
 import { cn } from "@/lib/utils";
@@ -69,6 +70,7 @@ export interface EmailEditorStudioRef {
   publish: () => Promise<void>;
   saveAndPublish: () => Promise<void>;
   openHtmlEditor: () => Promise<void>;
+  getCurrentSnapshot: () => Promise<EditorSnapshot | null>;
 }
 
 interface EmailEditorStudioProps {
@@ -315,6 +317,32 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
     }
   }, [draft.html, htmlEditorOpening, setHtml, syncEditorDraft, visualEditorTouched]);
 
+  const getCurrentSnapshot = useCallback(async (): Promise<EditorSnapshot | null> => {
+    const ref = editorRef.current;
+    const editor = ref?.editor;
+
+    if (htmlEditorOpen || (htmlSourceActive && !visualEditorTouched)) {
+      return {
+        html: htmlEditorValue || draft.html,
+        mailyJson: draft.mailyJson,
+        previewText: draft.previewText,
+      };
+    }
+
+    if (!ref || !editor) {
+      return null;
+    }
+
+    const { html } = await composeReactEmail({ editor });
+    const mailyJson = ref.getJSON();
+
+    return {
+      html,
+      mailyJson,
+      previewText: draft.previewText,
+    };
+  }, [draft.html, draft.mailyJson, draft.previewText, htmlEditorOpen, htmlEditorValue, htmlSourceActive, visualEditorTouched]);
+
   const handleHtmlEditorChange = useCallback(
     (value: string) => {
       setHtmlEditorValue(value);
@@ -328,6 +356,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
     const declaredKeys = new Set(draft.variables.map((variable) => variable.key.toLowerCase()));
     const discoveredVariables = extractTemplateVariableKeys(htmlEditorValue)
       .filter((key) => !builtinVariableKeys.has(key.toLowerCase()))
+      .filter((key) => !BUILTIN_EMAIL_FUNCTION_KEYS.has(key.toLowerCase()))
       .filter((key) => !declaredKeys.has(key.toLowerCase()))
       .map((key) => ({
         key,
@@ -359,8 +388,9 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
       publish: handlePublish,
       saveAndPublish: handleSaveAndPublish,
       openHtmlEditor: handleOpenHtmlEditor,
+      getCurrentSnapshot,
     }),
-    [handleOpenHtmlEditor, handlePublish, handleSaveAndPublish]
+    [getCurrentSnapshot, handleOpenHtmlEditor, handlePublish, handleSaveAndPublish]
   );
 
   const handleImportImage = useCallback(() => {

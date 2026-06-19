@@ -8,6 +8,7 @@ import type {
   Template,
   TemplateEditorDraft,
   TemplateEditorState,
+  TemplateTestRequest,
   TemplateVariable,
 } from "./TemplateEditorTypes";
 import { createTemplateEditorService } from "../services/TemplateEditorService";
@@ -32,6 +33,7 @@ interface UseTemplateEditorReturn extends TemplateEditorState {
   submitForApproval: () => Promise<void>;
   approveTemplate: () => Promise<void>;
   rejectTemplate: (reviewNote: string) => Promise<void>;
+  sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
   setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
@@ -312,6 +314,29 @@ export function useTemplateEditor(
     }
   }, [activeTeamId, saving, supabaseId, template?.id]);
 
+  const sendTestTemplate = useCallback(async (input: TemplateTestRequest) => {
+    if (saving) return;
+    if (!activeTeamId) {
+      toast.error("Selecione um time para enviar o teste.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      await service.sendTest(supabaseId, templateId, activeTeamId, input);
+      toast.success(`Email de teste enviado para ${input.to}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao enviar email de teste";
+      console.error("[useTemplateEditor] Failed to send test email", err);
+      setError(message);
+      toast.error("Erro ao enviar email de teste", { description: message });
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, templateId]);
+
   return {
     template,
     draft,
@@ -329,6 +354,7 @@ export function useTemplateEditor(
     submitForApproval,
     approveTemplate,
     rejectTemplate,
+    sendTestTemplate,
     updateDraft,
     setMailyJson,
     setHtml,

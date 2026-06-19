@@ -1,4 +1,4 @@
-import type { Template, TemplateEditorDraft } from "../context/TemplateEditorTypes";
+import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../context/TemplateEditorTypes";
 import type { ITemplateEditorService } from "./ITemplateEditorService";
 
 type ApiOutput<T> = {
@@ -161,6 +161,22 @@ class TemplateEditorService implements ITemplateEditorService {
     });
 
     return this.parseResponse<Template>(response, "Erro ao recusar template");
+  }
+
+  async sendTest(
+    supabaseId: string,
+    templateId: string,
+    teamId: string | null | undefined,
+    input: TemplateTestRequest
+  ): Promise<void> {
+    console.info("[TemplateEditorService] Sending test email", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/test`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify(input),
+    });
+
+    await this.parseResponse<null>(response, "Erro ao enviar email de teste");
   }
 
   private toPayload(draft: TemplateEditorDraft) {

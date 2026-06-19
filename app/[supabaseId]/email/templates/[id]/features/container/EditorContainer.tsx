@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, Check, Clock3, Code2, FileText, Save, Send, Undo2, X } from "lucide-react";
+import { useParams } from "next/navigation";
+import { AlertCircle, ArrowRight, Check, Clock3, Code2, FileText, Mail, Save, Send, Undo2, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,8 +18,10 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
+import { TemplateTestDialog } from "../components/TemplateTestDialog";
 import { VariablesPanel } from "../components/VariablesPanel";
 import type { TemplateHistoryItem } from "../context/TemplateEditorTypes";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
@@ -120,6 +123,7 @@ function TemplateHistoryPanel({ history }: { history: TemplateHistoryItem[] }) {
 }
 
 export function EditorContainer() {
+  const params = useParams<{ supabaseId: string; id: string }>();
   const {
     draft,
     template,
@@ -133,6 +137,7 @@ export function EditorContainer() {
     submitForApproval,
     approveTemplate,
     rejectTemplate,
+    sendTestTemplate,
   } = useTemplateEditorContext();
 
   const isPublished = template?.status === "published";
@@ -145,6 +150,8 @@ export function EditorContainer() {
   const { setOverride } = usePageBreadcrumb();
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
+  const [testOpen, setTestOpen] = useState(false);
+  const [testHtml, setTestHtml] = useState("");
 
   useEffect(() => {
     if (loading) return;
@@ -158,6 +165,22 @@ export function EditorContainer() {
     await rejectTemplate(reviewNote.trim());
     setRejectOpen(false);
     setReviewNote("");
+  };
+
+  const handleOpenTestDialog = async () => {
+    try {
+      const snapshot = await editorRef.current?.getCurrentSnapshot();
+      if (!snapshot?.html?.trim()) {
+        toast.error("Não foi possível capturar o HTML atual do template.");
+        return;
+      }
+
+      setTestHtml(snapshot.html);
+      setTestOpen(true);
+    } catch (error) {
+      console.error("[EditorContainer][handleOpenTestDialog]", error);
+      toast.error("Erro ao preparar o teste de envio.");
+    }
   };
 
   if (loading) {
@@ -201,6 +224,10 @@ export function EditorContainer() {
             >
               <Code2 data-icon="inline-start" />
               HTML
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleOpenTestDialog()} disabled={saving}>
+              <Mail data-icon="inline-start" />
+              Testar envio
             </Button>
             <Button
               type="button"
@@ -337,6 +364,18 @@ export function EditorContainer() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateTestDialog
+        open={testOpen}
+        onOpenChange={setTestOpen}
+        supabaseId={typeof params.supabaseId === "string" ? params.supabaseId : ""}
+        templateId={typeof params.id === "string" ? params.id : template?.id ?? ""}
+        subject={draft.subject}
+        html={testHtml}
+        variables={draft.variables}
+        sending={saving}
+        onSend={sendTestTemplate}
+      />
     </>
   );
 }

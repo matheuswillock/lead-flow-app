@@ -5,6 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
@@ -395,7 +396,7 @@ export class EmailCampaignUseCase {
       const campaign = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
         include: {
-          template: { select: { id: true, subject: true, html: true } },
+          template: { select: { id: true, subject: true, html: true, variables: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
           team: { select: { master: { select: { id: true } } } },
         },
@@ -494,6 +495,9 @@ export class EmailCampaignUseCase {
 
       // Team global variables (default values) used as interpolation fallback
       const globalDefaults = await this.getGlobalDefaults(ctx.teamId)
+      const templateVariables = Array.isArray(campaign.template.variables)
+        ? (campaign.template.variables as unknown as EmailTemplateVariableDefinition[])
+        : []
 
       // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({
@@ -505,6 +509,7 @@ export class EmailCampaignUseCase {
         campaignId: campaign.id,
         teamId: ctx.teamId,
         globalDefaults,
+        templateVariables,
       })
 
       // Criar EmailLog para cada email enviado com mapeamento explícito email→resendId
