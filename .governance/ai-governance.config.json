@@ -139,7 +139,8 @@
       "app/backoffice/(app)",
       "app/backoffice/(app)/clients",
       "app/backoffice/(app)/payments",
-      "app/backoffice/(app)/users"
+      "app/backoffice/(app)/users",
+      "app/prime"
     ],
     "nonTypeScriptFileAllowlist": [
       "eslint.config.mjs",
