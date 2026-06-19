@@ -24,6 +24,14 @@ import type { TemplateHistoryItem } from "../context/TemplateEditorTypes";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
 
 function StatusBadge({ approvalStatus, status }: { approvalStatus: string | undefined; status: string | undefined }) {
+  if (approvalStatus === "approved" && status !== "published") {
+    return (
+      <Badge variant="outline" className="gap-1 border-semantic-success/30 bg-semantic-success/10 text-semantic-success">
+        <Check className="size-3" />
+        Template aprovado pronto para publicar
+      </Badge>
+    );
+  }
   if (status === "published") {
     return (
       <Badge variant="outline" className="gap-1 border-semantic-success/30 bg-semantic-success/10 text-semantic-success">
