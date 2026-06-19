@@ -39,7 +39,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-[clamp(18px,4vw,26px)] font-medium leading-[1.2] tracking-[-0.015em] mb-2.5">
+    <h2
+      className="text-[clamp(18px,4vw,26px)] font-medium leading-[1.2] tracking-[-0.015em] mb-2.5"
+      style={{ color: "var(--prime-text)" }}
+    >
       {children}
     </h2>
   )
@@ -55,7 +58,7 @@ function ItemList({ items }: { items: { title: string; sub: string }[] }) {
             style={{ background: "var(--prime-o2)" }}
           />
           <div>
-            <p className="text-[13px] font-medium mb-0.5">{item.title}</p>
+            <p className="text-[13px] font-medium mb-0.5" style={{ color: "var(--prime-text)" }}>{item.title}</p>
             <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--prime-text2)" }}>
               {item.sub}
             </p>
@@ -72,7 +75,7 @@ function BbCard({ title, desc, tag }: { title: string; desc: string; tag: string
       className="rounded-[14px] p-5 mb-3 border"
       style={{ background: "var(--prime-bg2)", borderColor: "var(--prime-border)", borderTopWidth: "3px", borderTopColor: "var(--prime-o2)" }}
     >
-      <p className="text-[14px] font-medium mb-1.5">{title}</p>
+      <p className="text-[14px] font-medium mb-1.5" style={{ color: "var(--prime-text)" }}>{title}</p>
       <p className="text-[12px] font-light leading-[1.6]" style={{ color: "var(--prime-text2)" }}>
         {desc}
       </p>
@@ -109,7 +112,7 @@ function MeetingRow({
         <span className="text-[13px] font-medium text-white">{day}</span>
       </div>
       <div>
-        <p className="text-[13px] font-medium mb-0.5">{title}</p>
+        <p className="text-[13px] font-medium mb-0.5" style={{ color: "var(--prime-text)" }}>{title}</p>
         <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--prime-text2)" }}>
           {desc}
         </p>
@@ -136,7 +139,7 @@ function AnexoCard({
         {icon}
       </div>
       <div>
-        <p className="text-[13px] font-medium mb-0.5">{title}</p>
+        <p className="text-[13px] font-medium mb-0.5" style={{ color: "var(--prime-text)" }}>{title}</p>
         <p className="text-[12px] font-light leading-[1.55]" style={{ color: "var(--prime-text2)" }}>
           {sub}
         </p>
@@ -203,7 +206,7 @@ export function PrimePage() {
 
       <div
         className="overflow-x-hidden"
-        style={{ fontFamily: "'Poppins', sans-serif", maxWidth: 680, margin: "0 auto" }}
+        style={{ fontFamily: "'Poppins', sans-serif", maxWidth: 680, margin: "0 auto", color: "var(--prime-text)", background: "var(--prime-bg)" }}
       >
         {/* HERO */}
         <div
@@ -285,7 +288,7 @@ export function PrimePage() {
 
           <h1
             className="relative z-[2] font-medium leading-[1.15] tracking-[-0.025em] mb-3"
-            style={{ fontSize: "clamp(26px,6vw,44px)" }}
+            style={{ fontSize: "clamp(26px,6vw,44px)", color: "var(--prime-text)" }}
           >
             Proposta <GradText>Prime</GradText>
           </h1>
@@ -312,7 +315,7 @@ export function PrimePage() {
             <p className="text-[12px] my-1.5" style={{ color: "var(--prime-text3)" }}>
               ou
             </p>
-            <p className="text-[15px] font-medium">
+            <p className="text-[15px] font-medium" style={{ color: "var(--prime-text)" }}>
               R$ 14.000 <span style={{ color: "var(--prime-o2)" }}>no Pix</span>
             </p>
             <p className="text-[12px] font-light mt-1" style={{ color: "var(--prime-text3)" }}>
@@ -541,7 +544,7 @@ export function PrimePage() {
             >
               65%
             </p>
-            <p className="text-[14px] font-medium mt-2 mb-1.5">taxa de conversão média</p>
+            <p className="text-[14px] font-medium mt-2 mb-1.5" style={{ color: "var(--prime-text)" }}>taxa de conversão média</p>
             <p
               className="text-[12px] font-light max-w-[340px] mx-auto"
               style={{ color: "var(--prime-text3)" }}
@@ -630,6 +633,7 @@ export function PrimePage() {
               <div
                 key={i}
                 className="flex items-center gap-3 py-[11px] border-b border-[var(--prime-border)] last:border-0 text-[13px]"
+                style={{ color: "var(--prime-text)" }}
               >
                 <div
                   className="size-[22px] rounded-full flex items-center justify-center flex-shrink-0"
