@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Sparkles, Trash2, X } from "lucide-react"
+import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Sparkles, Trash2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,6 +49,7 @@ import type {
   BackofficeAllUsersUserTypeFilter,
 } from "../context/BackofficeAllUsersTypes"
 import { BackofficeAllUsersDetailSheet } from "../components/BackofficeAllUsersDetailSheet"
+import { BackofficeAllUsersSchedulesDialog } from "../components/BackofficeAllUsersSchedulesDialog"
 import { BackofficeProfileUserTypeDialog } from "../components/BackofficeProfileUserTypeDialog"
 
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
@@ -130,6 +131,7 @@ export function BackofficeAllUsersContainer() {
     setUsersPageSize,
     clearFilters,
     openUserSheet,
+    openSchedulesDialog,
   } = useBackofficeAllUsers()
 
   const [localFilters, setLocalFilters] = useState<BackofficeAllUsersFilters>(filters)
@@ -490,6 +492,18 @@ export function BackofficeAllUsersContainer() {
                           <Eye />
                           Visualizar
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            openSchedulesDialog({
+                              id: item.id,
+                              fullName: item.fullName,
+                              email: item.email,
+                            })
+                          }
+                        >
+                          <CalendarRange />
+                          Ver agendamentos
+                        </DropdownMenuItem>
                         {canManage && (
                           <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
                             <Pencil />
@@ -585,6 +599,7 @@ export function BackofficeAllUsersContainer() {
       </div>
 
       <BackofficeAllUsersDetailSheet />
+      <BackofficeAllUsersSchedulesDialog />
       <BackofficeMemberEditDialog
         open={memberEditOpen}
         onOpenChange={setMemberEditOpen}

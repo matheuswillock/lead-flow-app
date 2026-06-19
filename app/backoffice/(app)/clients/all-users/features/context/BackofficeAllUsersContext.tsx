@@ -15,6 +15,7 @@ import type {
   BackofficeAllUsersFilters,
   BackofficeAllUsersItem,
   BackofficePagination,
+  BackofficeAllUsersScheduleTarget,
 } from "./BackofficeAllUsersTypes"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
@@ -43,9 +44,11 @@ interface BackofficeAllUsersContextValue {
   canManage: boolean
   filters: BackofficeAllUsersFilters
   selectedDetail: BackofficeAllUsersDetail | null
+  scheduleTarget: BackofficeAllUsersScheduleTarget | null
   isDetailLoading: boolean
   detailError: string | null
   sheetOpen: boolean
+  scheduleDialogOpen: boolean
   setFilters: (next: BackofficeAllUsersFilters) => void
   fetchUsers: (options?: {
     filters?: Partial<BackofficeAllUsersFilters>
@@ -57,6 +60,8 @@ interface BackofficeAllUsersContextValue {
   clearFilters: () => Promise<void>
   openUserSheet: (profileId: string) => Promise<void>
   closeUserSheet: () => void
+  openSchedulesDialog: (target: BackofficeAllUsersScheduleTarget) => void
+  closeSchedulesDialog: () => void
 }
 
 const BackofficeAllUsersContext = createContext<BackofficeAllUsersContextValue | undefined>(undefined)
@@ -75,9 +80,11 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<BackofficeAllUsersFilters>(DEFAULT_FILTERS)
   const [selectedDetail, setSelectedDetail] = useState<BackofficeAllUsersDetail | null>(null)
+  const [scheduleTarget, setScheduleTarget] = useState<BackofficeAllUsersScheduleTarget | null>(null)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
   const inFlight = useRef(false)
   const queuedRequest = useRef<{
     filters: BackofficeAllUsersFilters
@@ -187,6 +194,15 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
     setDetailError(null)
   }, [])
 
+  const openSchedulesDialog = useCallback((target: BackofficeAllUsersScheduleTarget) => {
+    setScheduleTarget(target)
+    setScheduleDialogOpen(true)
+  }, [])
+
+  const closeSchedulesDialog = useCallback(() => {
+    setScheduleDialogOpen(false)
+  }, [])
+
   const openUserSheet = useCallback(async (profileId: string) => {
     const requestId = ++detailRequestId.current
     setSheetOpen(true)
@@ -226,9 +242,11 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         canManage,
         filters,
         selectedDetail,
+        scheduleTarget,
         isDetailLoading,
         detailError,
         sheetOpen,
+        scheduleDialogOpen,
         setFilters,
         fetchUsers,
         setUsersPage,
@@ -236,6 +254,8 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         clearFilters,
         openUserSheet,
         closeUserSheet,
+        openSchedulesDialog,
+        closeSchedulesDialog,
       }}
     >
       {children}

@@ -8713,6 +8713,40 @@
               }
             },
             {
+              "name": "GET All Users Schedules",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users/:profileId/schedules?page=1&pageSize=10&q=&function=&meetingStatus=&leadStatus=&dateFrom=&dateTo=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "clients",
+                    "all-users",
+                    ":profileId",
+                    "schedules"
+                  ],
+                  "variable": [
+                    {
+                      "key": "profileId",
+                      "value": "{{profileId}}"
+                    }
+                  ]
+                },
+                "description": "Lista paginada dos agendamentos do usuário no produto Corretor Studio (LeadsSchedule), com filtros por nome do lead, papel (SDR/Closer), status da reunião, status do lead e intervalo de datas. Inclui SDR, Closer e origem de transferência quando aplicável."
+              }
+            },
+            {
               "name": "PATCH User Type (convert to Member PRO / Comum)",
               "request": {
                 "method": "PATCH",

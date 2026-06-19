@@ -1,15 +1,193 @@
-import type { Prisma } from "@prisma/client"
+import type { LeadStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import {
+  getScheduleMeetingStatus,
+  type ScheduleMeetingStatus,
+} from "@/lib/lead-meeting"
 import type {
   BackofficeAllUsersDetailRecord,
   BackofficeAllUsersFiltersInput,
   BackofficeAllUsersListRecord,
   BackofficeAllUsersListResult,
   BackofficeAllUsersPaginationInput,
+  BackofficeAllUsersScheduleFiltersInput,
+  BackofficeAllUsersScheduleListResult,
+  BackofficeAllUsersScheduleMemberRef,
+  BackofficeAllUsersScheduleRecord,
+  BackofficeAllUsersScheduleTransferRef,
   BackofficeAllUsersUserTypeRef,
   BackofficeUpsertUserTypeAssignmentInput,
   IBackofficeAllUsersRepository,
 } from "./IBackofficeAllUsersRepository"
+
+const SCHEDULE_LEAD_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  phone: true,
+  status: true,
+  meetingHeald: true,
+  assignedTo: true,
+  closerId: true,
+  isTransfer: true,
+  assignee: {
+    select: { id: true, fullName: true, email: true },
+  },
+  closer: {
+    select: { id: true, fullName: true, email: true },
+  },
+  team: {
+    select: { name: true },
+  },
+  manager: {
+    select: { fullName: true },
+  },
+  transfers: {
+    take: 1,
+    orderBy: { createdAt: "desc" as const },
+    select: {
+      fromTeam: { select: { name: true } },
+      transferredByProfile: { select: { fullName: true } },
+      fromManagerId: true,
+      scheduledAtTransfer: true,
+      createdAt: true,
+    },
+  },
+} satisfies Prisma.LeadSelect
+
+type ScheduleLeadRow = Prisma.LeadGetPayload<{ select: typeof SCHEDULE_LEAD_SELECT }>
+
+function mapScheduleMember(
+  profile: { id: string; fullName: string | null; email: string } | null | undefined
+): BackofficeAllUsersScheduleMemberRef | null {
+  if (!profile) return null
+  return {
+    id: profile.id,
+    fullName: profile.fullName,
+    email: profile.email,
+  }
+}
+
+function mapScheduleTransfer(
+  lead: ScheduleLeadRow,
+  fromManagerNames: Map<string, string | null>
+): BackofficeAllUsersScheduleTransferRef | null {
+  const latestTransfer = lead.transfers[0]
+
+  if (latestTransfer) {
+    return {
+      kind: "completed",
+      fromTeamName: latestTransfer.fromTeam.name,
+      fromManagerName: fromManagerNames.get(latestTransfer.fromManagerId) ?? null,
+      transferredByName: latestTransfer.transferredByProfile.fullName,
+      transferredAt: latestTransfer.createdAt,
+      scheduledAtTransfer: latestTransfer.scheduledAtTransfer,
+    }
+  }
+
+  if (lead.isTransfer) {
+    return {
+      kind: "pending",
+      fromTeamName: lead.team?.name ?? "—",
+      fromManagerName: lead.manager?.fullName ?? null,
+      transferredByName: null,
+      transferredAt: null,
+      scheduledAtTransfer: false,
+    }
+  }
+
+  return null
+}
+
+function buildMeetingStatusWhere(
+  status: ScheduleMeetingStatus,
+  now: Date
+): Prisma.LeadsScheduleWhereInput {
+  if (status === "canceled") {
+    return { id: { in: [] } }
+  }
+  if (status === "scheduled") {
+    return { date: { gt: now } }
+  }
+  if (status === "realized") {
+    return {
+      date: { lte: now },
+      lead: { meetingHeald: "yes" },
+    }
+  }
+  return {
+    date: { lte: now },
+    OR: [{ lead: { meetingHeald: "no" } }, { lead: { meetingHeald: null } }],
+  }
+}
+
+function buildScheduleWhere(
+  profileId: string,
+  filters: BackofficeAllUsersScheduleFiltersInput
+): Prisma.LeadsScheduleWhereInput {
+  const now = new Date()
+  const and: Prisma.LeadsScheduleWhereInput[] = []
+
+  const functions = filters.functions ?? []
+  if (functions.length === 0) {
+    and.push({
+      OR: [
+        { lead: { assignedTo: profileId } },
+        { lead: { closerId: profileId } },
+      ],
+    })
+  } else {
+    const roleConditions: Prisma.LeadsScheduleWhereInput[] = []
+    if (functions.includes("sdr")) {
+      roleConditions.push({ lead: { assignedTo: profileId } })
+    }
+    if (functions.includes("closer")) {
+      roleConditions.push({ lead: { closerId: profileId } })
+    }
+    if (roleConditions.length === 1) {
+      and.push(roleConditions[0]!)
+    } else if (roleConditions.length > 1) {
+      and.push({ OR: roleConditions })
+    }
+  }
+
+  const query = filters.query?.trim()
+  if (query) {
+    and.push({
+      lead: {
+        name: { contains: query, mode: "insensitive" },
+      },
+    })
+  }
+
+  if (filters.leadStatuses && filters.leadStatuses.length > 0) {
+    and.push({
+      lead: {
+        status: { in: filters.leadStatuses as LeadStatus[] },
+      },
+    })
+  }
+
+  if (filters.dateFrom || filters.dateTo) {
+    and.push({
+      date: {
+        ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { lte: filters.dateTo } : {}),
+      },
+    })
+  }
+
+  const meetingStatuses = filters.meetingStatuses
+  if (meetingStatuses && meetingStatuses.length > 0) {
+    and.push({
+      OR: meetingStatuses.map((status) => buildMeetingStatusWhere(status, now)),
+    })
+  }
+
+  if (and.length === 0) return {}
+  if (and.length === 1) return and[0]!
+  return { AND: and }
+}
 
 function mapUserType(assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null): BackofficeAllUsersUserTypeRef {
   const slug: "common" | "member_pro" = assignment?.userType.slug === "member_pro" ? "member_pro" : "common"
@@ -290,6 +468,91 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
         masterFullName: membership.team.master?.fullName ?? null,
       })),
     }
+  }
+
+  async findSchedulesByProfileId(
+    profileId: string,
+    filters: BackofficeAllUsersScheduleFiltersInput,
+    pagination: BackofficeAllUsersPaginationInput
+  ): Promise<BackofficeAllUsersScheduleListResult> {
+    const where = buildScheduleWhere(profileId, filters)
+    const skip = (pagination.page - 1) * pagination.pageSize
+
+    const [productSchedules, totalItems] = await Promise.all([
+      prisma.leadsSchedule.findMany({
+        where,
+        select: {
+          id: true,
+          date: true,
+          meetingTitle: true,
+          meetingLink: true,
+          notes: true,
+          createdAt: true,
+          lead: {
+            select: SCHEDULE_LEAD_SELECT,
+          },
+        },
+        orderBy: { date: "desc" },
+        skip,
+        take: pagination.pageSize,
+      }),
+      prisma.leadsSchedule.count({ where }),
+    ])
+
+    const fromManagerIds = [
+      ...new Set(
+        productSchedules.flatMap((schedule) =>
+          schedule.lead.transfers.map((transfer) => transfer.fromManagerId)
+        )
+      ),
+    ]
+
+    const fromManagers =
+      fromManagerIds.length > 0
+        ? await prisma.profile.findMany({
+            where: { id: { in: fromManagerIds } },
+            select: { id: true, fullName: true },
+          })
+        : []
+
+    const fromManagerNames = new Map(
+      fromManagers.map((manager) => [manager.id, manager.fullName])
+    )
+
+    const items: BackofficeAllUsersScheduleRecord[] = productSchedules.map((schedule) => {
+      const isCanceled = false
+      const meetingStatus = getScheduleMeetingStatus({
+        date: schedule.date,
+        meetingHeald: schedule.lead.meetingHeald,
+        isCanceled,
+      })
+
+      return {
+        id: schedule.id,
+        source: "product" as const,
+        role: schedule.lead.closerId === profileId ? ("closer" as const) : ("sdr" as const),
+        date: schedule.date,
+        meetingTitle: schedule.meetingTitle,
+        meetingLink: schedule.meetingLink,
+        notes: schedule.notes,
+        isCanceled,
+        meetingStatus,
+        createdAt: schedule.createdAt,
+        sdr: mapScheduleMember(schedule.lead.assignee),
+        closer: mapScheduleMember(schedule.lead.closer),
+        transfer: mapScheduleTransfer(schedule.lead, fromManagerNames),
+        lead: {
+          id: schedule.lead.id,
+          name: schedule.lead.name,
+          email: schedule.lead.email,
+          phone: schedule.lead.phone,
+          status: schedule.lead.status,
+          meetingHeald: schedule.lead.meetingHeald,
+        },
+      }
+    })
+
+    return { items, totalItems }
   }
 
   async findIsMaster(profileId: string): Promise<boolean | null> {

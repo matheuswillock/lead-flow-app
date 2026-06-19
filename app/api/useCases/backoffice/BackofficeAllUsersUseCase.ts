@@ -1,5 +1,8 @@
 import type { SubscriptionPlan } from "@prisma/client"
 import { Output } from "@/lib/output"
+import {
+  getScheduleMeetingStatusLabel,
+} from "@/lib/lead-meeting"
 import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
 import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import type {
@@ -8,6 +11,8 @@ import type {
   BackofficeAllUsersMasterRef,
   BackofficeAllUsersPlanFilter,
   BackofficeAllUsersRoleFilter,
+  BackofficeAllUsersScheduleFiltersInput,
+  BackofficeAllUsersScheduleRecord,
   BackofficeAllUsersUserTypeFilter,
   IBackofficeAllUsersRepository,
 } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/IBackofficeAllUsersRepository"
@@ -69,6 +74,38 @@ function serializeListItem(record: BackofficeAllUsersListRecord) {
         }
       : null,
     userType: record.userType,
+  }
+}
+
+function serializeScheduleItem(record: BackofficeAllUsersScheduleRecord) {
+  return {
+    id: record.id,
+    source: record.source,
+    role: record.role,
+    date: record.date.toISOString(),
+    meetingTitle: record.meetingTitle,
+    meetingLink: record.meetingLink,
+    notes: record.notes,
+    isCanceled: record.isCanceled,
+    meetingStatus: record.meetingStatus,
+    meetingStatusLabel: getScheduleMeetingStatusLabel(record.meetingStatus),
+    createdAt: record.createdAt.toISOString(),
+    sdr: record.sdr,
+    closer: record.closer,
+    transfer: record.transfer
+      ? {
+          ...record.transfer,
+          transferredAt: record.transfer.transferredAt?.toISOString() ?? null,
+        }
+      : null,
+    lead: {
+      id: record.lead.id,
+      name: record.lead.name,
+      email: record.lead.email,
+      phone: record.lead.phone,
+      status: record.lead.status,
+      meetingHeald: record.lead.meetingHeald,
+    },
   }
 }
 
@@ -161,6 +198,48 @@ export class BackofficeAllUsersUseCase {
     } catch (error) {
       console.error("[BackofficeAllUsersUseCase][getDetail]", error)
       return new Output(false, [], ["Erro ao carregar detalhes do usuário"], null)
+    }
+  }
+
+  async getSchedules(
+    profileId: string,
+    input: {
+      filters?: BackofficeAllUsersScheduleFiltersInput
+      page?: number
+      pageSize?: number
+    }
+  ): Promise<Output> {
+    try {
+      const detail = await this.repository.findDetailById(profileId)
+      if (!detail) {
+        return new Output(false, [], ["Usuário não encontrado"], null)
+      }
+
+      const page = Math.max(input.page ?? 1, 1)
+      const pageSize = Math.min(Math.max(input.pageSize ?? 10, 5), 100)
+
+      const result = await this.repository.findSchedulesByProfileId(
+        profileId,
+        input.filters ?? {},
+        { page, pageSize }
+      )
+
+      const totalPages = Math.max(1, Math.ceil(result.totalItems / pageSize))
+
+      return new Output(true, [], [], {
+        items: result.items.map(serializeScheduleItem),
+        pagination: {
+          page,
+          pageSize,
+          totalItems: result.totalItems,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
+      })
+    } catch (error) {
+      console.error("[BackofficeAllUsersUseCase][getSchedules]", error)
+      return new Output(false, [], ["Erro ao carregar agendamentos do usuário"], null)
     }
   }
 }
