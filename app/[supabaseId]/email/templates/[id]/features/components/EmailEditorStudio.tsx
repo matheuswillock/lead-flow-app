@@ -18,7 +18,7 @@ import {
   Copy,
   ImagePlus,
   Link2,
-  Send,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MonacoCodeEditor } from "@/components/editors/MonacoCodeEditor";
@@ -38,6 +38,10 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  BUILTIN_EMAIL_VARIABLES,
+  extractTemplateVariableKeys,
+} from "@/lib/email/interpolate";
 import { cn } from "@/lib/utils";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import type { TemplateEditorDraft } from "../context/TemplateEditorTypes";
@@ -117,6 +121,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
     saving,
     saveTemplate,
     publishTemplate,
+    updateDraft,
     setHtml,
     setMailyJson,
   } = useTemplateEditorContext();
@@ -134,12 +139,13 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
   const [uploadingImage, setUploadingImage] = useState(false);
   const [eventStatus, setEventStatus] = useState("Pronto");
   const htmlPreviewContent = htmlEditorValue.trim() ? htmlEditorValue : getFallbackPreviewHtml();
+  const shouldPreviewHtmlSource = htmlSourceActive && !visualEditorTouched && draft.html.trim().length > 0;
   const editorContent = useMemo(() => {
     if (draft.mailyJson && !isEditorJsonEmpty(draft.mailyJson)) {
       return draft.mailyJson;
     }
-    return draft.html || undefined;
-  }, [draft.html, draft.mailyJson]);
+    return undefined;
+  }, [draft.mailyJson]);
   const editorContentKey = `${template?.id ?? "new"}:${template?.versionNumber ?? 1}:${visualContentRevision}`;
   const htmlEditorOptions = useMemo(
     () => ({
@@ -151,6 +157,10 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
     }),
     []
   );
+  const builtinVariableKeys = useMemo(
+    () => new Set(BUILTIN_EMAIL_VARIABLES.map((variable) => variable.key.toLowerCase())),
+    []
+  );
 
   useEffect(() => {
     const subscription = editorEventBus.on("bubble-menu:add-link", () => {
@@ -159,6 +169,12 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!draft.mailyJson && draft.html.trim().length > 0 && !visualEditorTouched) {
+      setHtmlSourceActive(true);
+    }
+  }, [draft.html, draft.mailyJson, visualEditorTouched]);
 
   const uploadImage = useCallback(async (file: File) => {
     setUploadingImage(true);
@@ -287,7 +303,6 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
       }
 
       setHtmlEditorValue(nextHtml);
-      setHtml(nextHtml);
       setHtmlSourceActive(true);
       setVisualEditorTouched(false);
       setHtmlEditorOpen(true);
@@ -303,28 +318,40 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
   const handleHtmlEditorChange = useCallback(
     (value: string) => {
       setHtmlEditorValue(value);
-      setHtml(value);
-      setMailyJson(null);
-      setHtmlSourceActive(true);
-      setVisualEditorTouched(false);
     },
-    [setHtml, setMailyJson]
+    []
   );
 
-  const handlePublishHtml = useCallback(async () => {
-    if (saving) return;
+  const handleSaveHtml = useCallback(() => {
+    if (saving || htmlEditorOpening) return;
 
-    setHtml(htmlEditorValue);
-    setMailyJson(null);
-    const saved = await saveTemplate({ html: htmlEditorValue });
-    if (saved) {
-      setHtmlSourceActive(true);
-      setVisualEditorTouched(false);
-      setHtmlEditorOpen(false);
-      setVisualContentRevision((current) => current + 1);
-      setEventStatus(`HTML publicado com ${htmlEditorValue.length} caracteres`);
-    }
-  }, [htmlEditorValue, saveTemplate, saving, setHtml, setMailyJson]);
+    const declaredKeys = new Set(draft.variables.map((variable) => variable.key.toLowerCase()));
+    const discoveredVariables = extractTemplateVariableKeys(htmlEditorValue)
+      .filter((key) => !builtinVariableKeys.has(key.toLowerCase()))
+      .filter((key) => !declaredKeys.has(key.toLowerCase()))
+      .map((key) => ({
+        key,
+        type: "string" as const,
+        fallbackValue: "",
+        reviewStatus: "pending" as const,
+      }));
+
+    updateDraft({
+      html: htmlEditorValue,
+      mailyJson: null,
+      variables: [...draft.variables, ...discoveredVariables],
+    });
+    setHtmlSourceActive(true);
+    setVisualEditorTouched(false);
+    setHtmlEditorOpen(false);
+    setVisualContentRevision((current) => current + 1);
+    setEventStatus(`HTML salvo no rascunho com ${htmlEditorValue.length} caracteres`);
+    toast.success(
+      discoveredVariables.length > 0
+        ? `${discoveredVariables.length} variável(is) adicionada(s) para revisão`
+        : "HTML salvo no rascunho"
+    );
+  }, [builtinVariableKeys, draft.variables, htmlEditorOpening, htmlEditorValue, saving, updateDraft]);
 
   useImperativeHandle(
     ref,
@@ -372,29 +399,42 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
           onAddLink={handleAddLink}
           bottomSlot={bottomSlot}
         />
-        <EmailEditor
-          key={editorContentKey}
-          ref={editorRef}
-          content={editorContent}
-          onUpdate={handleEditorUpdate}
-          onUploadImage={uploadImage}
-          bubbleMenu={{
-            hideWhenActiveNodes: ["image", "button"],
-            hideWhenActiveMarks: ["link"],
-          }}
-          className={cn(
-            "min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6",
-            "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-150",
-            "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
-            "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
-            "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
-            "[&_.ProseMirror]:outline-none"
-          )}
-          placeholder="Pressione '/&#39; para usar comandos rápidos"
-          theme="basic"
-        >
-          <CustomInspector />
-        </EmailEditor>
+        {shouldPreviewHtmlSource ? (
+          <div className="min-w-0 flex-1 overflow-hidden bg-muted/20 p-6">
+            <div className="mx-auto h-full max-w-3xl overflow-hidden rounded-lg border bg-background shadow-sm">
+              <iframe
+                srcDoc={draft.html}
+                title="Prévia do HTML do e-mail"
+                sandbox="allow-same-origin"
+                className="h-full w-full border-0 bg-white"
+              />
+            </div>
+          </div>
+        ) : (
+          <EmailEditor
+            key={editorContentKey}
+            ref={editorRef}
+            content={editorContent}
+            onUpdate={handleEditorUpdate}
+            onUploadImage={uploadImage}
+            bubbleMenu={{
+              hideWhenActiveNodes: ["image", "button"],
+              hideWhenActiveMarks: ["link"],
+            }}
+            className={cn(
+              "min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6",
+              "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-150",
+              "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
+              "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
+              "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
+              "[&_.ProseMirror]:outline-none"
+            )}
+            placeholder="Pressione '/&#39; para usar comandos rápidos"
+            theme="basic"
+          >
+            <CustomInspector />
+          </EmailEditor>
+        )}
       </div>
 
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
@@ -486,11 +526,11 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
           <DialogFooter className="gap-2 sm:space-x-0">
             <Button
               type="button"
-              onClick={handlePublishHtml}
+              onClick={handleSaveHtml}
               disabled={saving || htmlEditorOpening}
             >
-              {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
-              {saving ? "Publicando..." : "Publicar HTML"}
+              {saving ? <Spinner data-icon="inline-start" /> : <Save data-icon="inline-start" />}
+              {saving ? "Salvando..." : "Salvar HTML"}
             </Button>
             <DialogClose asChild>
               <Button type="button" variant="secondary">

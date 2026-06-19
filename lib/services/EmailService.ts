@@ -11,6 +11,8 @@ export interface EmailOptions {
   text?: string;
   from?: string;
   attachments?: Attachment[];
+  /** Prevents duplicate delivery on retry (Resend idempotency, 24h window). */
+  idempotencyKey?: string;
 }
 
 export interface LeadProposalPendingUrgentEmailData {
@@ -470,7 +472,20 @@ export class EmailService {
         emailData.attachments = options.attachments;
       }
 
-      const result = await resend.emails.send(emailData);
+      const result = await resend.emails.send(
+        emailData,
+        options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
+      );
+
+      if (result.error) {
+        console.error("Erro ao enviar email:", result.error);
+        return {
+          success: false,
+          error: result.error.message || "Erro ao enviar email",
+          errorObject: result.error,
+        };
+      }
+
       return { success: true, data: result };
     } catch (error: any) {
       console.error("Erro ao enviar email:", error);

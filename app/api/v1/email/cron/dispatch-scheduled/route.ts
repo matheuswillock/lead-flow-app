@@ -10,6 +10,71 @@ const FALLBACK_FROM_NAME = "Corretor Studio"
 const FALLBACK_FROM_EMAIL = "no-reply@corretorstudio.com"
 const MAX_CAMPAIGNS_PER_RUN = 5
 
+type CampaignRecipient = {
+  email: string
+  name: string | null
+}
+
+function dedupeRecipients(recipients: CampaignRecipient[]): CampaignRecipient[] {
+  const uniqueRecipients = new Map<string, CampaignRecipient>()
+
+  for (const recipient of recipients) {
+    const normalizedEmail = recipient.email.trim().toLowerCase()
+    if (!uniqueRecipients.has(normalizedEmail)) {
+      uniqueRecipients.set(normalizedEmail, {
+        email: normalizedEmail,
+        name: recipient.name,
+      })
+    }
+  }
+
+  return Array.from(uniqueRecipients.values())
+}
+
+async function listActiveRecipients(teamId: string, contactListId: string): Promise<CampaignRecipient[]> {
+  const contactList = await prisma.emailContactList.findFirst({
+    where: { id: contactListId, teamId, isArchived: false },
+    select: { id: true, isSystemDefault: true },
+  })
+
+  if (!contactList) {
+    return []
+  }
+
+  if (contactList.isSystemDefault) {
+    const recipients = await prisma.emailContact.findMany({
+      where: {
+        isUnsubscribed: false,
+        isBounced: false,
+        list: {
+          teamId,
+          isArchived: false,
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        email: true,
+        name: true,
+      },
+    })
+
+    return dedupeRecipients(recipients)
+  }
+
+  return prisma.emailContact.findMany({
+    where: {
+      listId: contactListId,
+      isUnsubscribed: false,
+      isBounced: false,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      email: true,
+      name: true,
+    },
+  })
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization")
@@ -116,14 +181,7 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        const contacts = await prisma.emailContact.findMany({
-          where: {
-            listId: campaign.contactListId,
-            isUnsubscribed: false,
-            isBounced: false,
-          },
-          select: { email: true, name: true },
-        })
+        const contacts = await listActiveRecipients(campaign.teamId, campaign.contactListId)
 
         if (contacts.length === 0) {
           await prisma.emailCampaign.update({
@@ -186,7 +244,9 @@ export async function GET(request: NextRequest) {
           data: {
             status: "sent",
             sentAt: new Date(),
+            totalRecipients: recipientsList.length,
             totalSent: result.sent,
+            dispatchCount: { increment: 1 },
           },
         })
 

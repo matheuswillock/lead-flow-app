@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Braces, Copy, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Braces, CheckCircle2, Copy, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,7 @@ export function VariablesPanel() {
   }, []);
 
   const declared = draft.variables;
+  const pendingReviewCount = declared.filter((variable) => variable.reviewStatus === "pending").length;
 
   const knownKeys = useMemo(() => {
     const set = new Set<string>();
@@ -110,6 +111,10 @@ export function VariablesPanel() {
     updateDraft({ variables: declared.filter((_, i) => i !== index) });
   }
 
+  function markVariableReviewed(index: number) {
+    updateVariable(index, { reviewStatus: "reviewed" });
+  }
+
   return (
     <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
       <div className="flex items-center gap-2">
@@ -119,6 +124,18 @@ export function VariablesPanel() {
           {usedKeys.length} {usedKeys.length === 1 ? "usada" : "usadas"}
         </Badge>
       </div>
+
+      {pendingReviewCount > 0 ? (
+        <div className="flex items-start gap-2 rounded-md border border-semantic-warning/30 bg-semantic-warning/10 p-3 text-xs text-semantic-warning">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="flex flex-col gap-1">
+            <span className="font-medium">
+              {pendingReviewCount} variável(is) pendente(s) de revisão.
+            </span>
+            <span>Revise chave, tipo e valor padrão antes de enviar para aprovação ou publicar.</span>
+          </div>
+        </div>
+      ) : null}
 
       <p className="text-xs text-muted-foreground">
         Use <code className="rounded bg-muted px-1 font-mono text-[11px]">{"{{chave}}"}</code> no
@@ -182,12 +199,12 @@ export function VariablesPanel() {
           <div className="flex flex-col gap-2">
             {declared.map((variable, index) => (
               <div key={index} className="flex flex-col gap-2 rounded-md border p-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     value={variable.key}
                     onChange={(event) => updateVariable(index, { key: sanitizeKey(event.target.value) })}
                     placeholder="NOME_DA_VARIAVEL"
-                    className="flex-1 font-mono text-xs"
+                    className="min-w-40 flex-1 font-mono text-xs"
                   />
                   <Select
                     value={variable.type}
@@ -211,6 +228,11 @@ export function VariablesPanel() {
                   >
                     <Trash2 />
                   </Button>
+                  {variable.reviewStatus === "pending" ? (
+                    <Badge variant="outline" className="border-semantic-warning/30 text-semantic-warning">
+                      Revisão pendente
+                    </Badge>
+                  ) : null}
                 </div>
                 <Input
                   value={variable.fallbackValue ?? ""}
@@ -218,6 +240,18 @@ export function VariablesPanel() {
                   placeholder="Valor padrão (usado no preview e no teste)"
                   className="text-xs"
                 />
+                {variable.reviewStatus === "pending" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => markVariableReviewed(index)}
+                  >
+                    <CheckCircle2 data-icon="inline-start" />
+                    Marcar como revisada
+                  </Button>
+                ) : null}
               </div>
             ))}
           </div>

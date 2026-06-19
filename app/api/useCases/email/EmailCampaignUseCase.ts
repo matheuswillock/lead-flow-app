@@ -17,9 +17,94 @@ export interface CreateCampaignInput {
   scheduledAt?: string | null
 }
 
+type CampaignRecipient = {
+  email: string
+  name: string | null
+  customFields: Record<string, unknown> | null
+}
+
 export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
   private creditService = new EmailCreditService()
+
+  private dedupeRecipients(recipients: CampaignRecipient[]): CampaignRecipient[] {
+    const uniqueRecipients = new Map<string, CampaignRecipient>()
+
+    for (const recipient of recipients) {
+      const normalizedEmail = recipient.email.trim().toLowerCase()
+      if (!uniqueRecipients.has(normalizedEmail)) {
+        uniqueRecipients.set(normalizedEmail, {
+          ...recipient,
+          email: normalizedEmail,
+        })
+      }
+    }
+
+    return Array.from(uniqueRecipients.values())
+  }
+
+  private async listActiveRecipients(teamId: string, contactListId: string): Promise<CampaignRecipient[]> {
+    const contactList = await prisma.emailContactList.findFirst({
+      where: { id: contactListId, teamId, isArchived: false },
+      select: { id: true, isSystemDefault: true },
+    })
+
+    if (!contactList) {
+      return []
+    }
+
+    if (contactList.isSystemDefault) {
+      const recipients = await prisma.emailContact.findMany({
+        where: {
+          isUnsubscribed: false,
+          isBounced: false,
+          list: {
+            teamId,
+            isArchived: false,
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          email: true,
+          name: true,
+          customFields: true,
+        },
+      })
+
+      return this.dedupeRecipients(
+        recipients.map((recipient) => ({
+          email: recipient.email,
+          name: recipient.name,
+          customFields: recipient.customFields as Record<string, unknown> | null,
+        }))
+      )
+    }
+
+    const recipients = await prisma.emailContact.findMany({
+      where: {
+        listId: contactListId,
+        isUnsubscribed: false,
+        isBounced: false,
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        email: true,
+        name: true,
+        customFields: true,
+      },
+    })
+
+    return recipients.map((recipient) => ({
+      email: recipient.email,
+      name: recipient.name,
+      customFields: recipient.customFields as Record<string, unknown> | null,
+    }))
+  }
+
+  private async countActiveRecipients(teamId: string, contactListId: string): Promise<number> {
+    const recipients = await this.listActiveRecipients(teamId, contactListId)
+    return recipients.length
+  }
 
   private async resolveEffectiveCampaignFeature() {
     type CampaignFeatureNode = {
@@ -147,6 +232,18 @@ export class EmailCampaignUseCase {
         }),
       ])
 
+      const dynamicRecipientCounts = new Map(
+        await Promise.all(
+          Array.from(
+            new Set(
+              campaigns
+                .filter((campaign) => ["draft", "scheduled", "sending"].includes(campaign.status))
+                .map((campaign) => campaign.contactListId)
+            )
+          ).map(async (contactListId) => [contactListId, await this.countActiveRecipients(ctx.teamId, contactListId)] as const)
+        )
+      )
+
       const creatorsById = new Map(creators.map((creator) => [creator.id, creator]))
       const templatesById = new Map(templates.map((template) => [template.id, template]))
       const contactListsById = new Map(contactLists.map((contactList) => [contactList.id, contactList]))
@@ -158,7 +255,7 @@ export class EmailCampaignUseCase {
           status: campaign.status,
           scheduledAt: campaign.scheduledAt,
           sentAt: campaign.sentAt,
-          totalRecipients: campaign.totalRecipients,
+          totalRecipients: dynamicRecipientCounts.get(campaign.contactListId) ?? campaign.totalRecipients,
           totalSent: campaign.totalSent,
           totalDelivered: campaign.totalDelivered,
           totalOpened: campaign.totalOpened,
@@ -234,6 +331,8 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Data de agendamento deve ser no futuro"], null)
       }
 
+      const totalRecipients = await this.countActiveRecipients(ctx.teamId, data.contactListId)
+
       const campaign = await prisma.emailCampaign.create({
         data: {
           id: randomUUID(),
@@ -244,7 +343,7 @@ export class EmailCampaignUseCase {
           contactListId: data.contactListId,
           status: scheduledAt ? "scheduled" : "draft",
           scheduledAt,
-          totalRecipients: contactList.totalContacts,
+          totalRecipients,
         },
       })
 
@@ -265,12 +364,18 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser editada"], null)
       }
 
+      let totalRecipients: number | undefined
+      if (data.contactListId !== undefined) {
+        totalRecipients = await this.countActiveRecipients(ctx.teamId, data.contactListId)
+      }
+
       const campaign = await prisma.emailCampaign.update({
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
           ...(data.templateId !== undefined && { templateId: data.templateId }),
           ...(data.contactListId !== undefined && { contactListId: data.contactListId }),
+          ...(totalRecipients !== undefined && { totalRecipients }),
           ...(data.scheduledAt !== undefined && {
             scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
             status: data.scheduledAt ? "scheduled" : "draft",
@@ -366,10 +471,7 @@ export class EmailCampaignUseCase {
       }
 
       // Buscar contatos ativos
-      const contacts = await prisma.emailContact.findMany({
-        where: { listId: campaign.contactListId, isUnsubscribed: false, isBounced: false },
-        select: { email: true, name: true, customFields: true },
-      })
+      const contacts = await this.listActiveRecipients(ctx.teamId, campaign.contactListId)
 
       if (contacts.length === 0) {
         await prisma.emailCampaign.update({
@@ -434,6 +536,7 @@ export class EmailCampaignUseCase {
         data: {
           status: "sent",
           sentAt: new Date(),
+          totalRecipients: recipientsList.length,
           totalSent: dispatchResult.sent,
           dispatchCount: { increment: 1 },
         },

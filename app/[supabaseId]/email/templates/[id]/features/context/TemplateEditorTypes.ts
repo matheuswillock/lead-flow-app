@@ -5,6 +5,7 @@ export interface TemplateVariable {
   key: string;
   type: "string" | "number";
   fallbackValue?: string | null;
+  reviewStatus?: "pending" | "reviewed";
 }
 
 export interface Template {

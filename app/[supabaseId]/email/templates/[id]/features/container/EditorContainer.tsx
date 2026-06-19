@@ -166,6 +166,8 @@ export function EditorContainer() {
   const showSubmitButton = templateApprovalRequired && !isPublished && !isPending && (isApproved || isRejected);
   const showApproveReject = isManager && isPending;
   const showPublish = !isPublished && isApproved && !isPending && (!templateApprovalRequired || Boolean(template?.approvedAt));
+  const pendingVariableReviewCount = draft.variables.filter((variable) => variable.reviewStatus === "pending").length;
+  const hasPendingVariableReview = pendingVariableReviewCount > 0;
 
   return (
     <>
@@ -229,7 +231,7 @@ export function EditorContainer() {
                 </Button>
               </>
             ) : showPublish ? (
-              <Button onClick={() => void editorRef.current?.saveAndPublish()} disabled={saving}>
+              <Button onClick={() => void editorRef.current?.saveAndPublish()} disabled={saving || hasPendingVariableReview}>
                 {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
                 {saving ? "Publicando..." : "Publicar"}
               </Button>
@@ -237,7 +239,7 @@ export function EditorContainer() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={saving}
+                disabled={saving || hasPendingVariableReview}
                 onClick={() => void submitForApproval()}
               >
                 {saving ? <Spinner data-icon="inline-start" /> : <ArrowRight data-icon="inline-start" />}
@@ -251,6 +253,15 @@ export function EditorContainer() {
             <AlertCircle />
             <AlertTitle>Erro no template</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+        {hasPendingVariableReview ? (
+          <Alert>
+            <AlertCircle />
+            <AlertTitle>Variáveis pendentes de revisão</AlertTitle>
+            <AlertDescription>
+              Revise {pendingVariableReviewCount} variável(is) no painel lateral antes de enviar para aprovação ou publicar.
+            </AlertDescription>
           </Alert>
         ) : null}
         {template?.approvalStatus === "rejected" && template.reviewNote ? (

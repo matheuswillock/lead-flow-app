@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type { Attachment, CreateEmailOptions } from "resend"
-import { assertResend } from "@/lib/email"
+import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type {
@@ -16,6 +16,7 @@ interface BackofficeScheduleEmailOptions {
   subject: string
   html: string
   attachments?: Attachment[]
+  idempotencyKey?: string
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -230,7 +231,20 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
       },
     }
 
-    const result = await resend.emails.send(payload)
+    const result = await resend.emails.send(
+      payload,
+      options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
+    )
+
+    if (result.error) {
+      console.error("[BackofficeLeadScheduleInviteService][sendEmail]", result.error)
+      return {
+        success: false,
+        data: null,
+        error: result.error.message || "Erro ao enviar e-mail",
+      }
+    }
+
     return { success: true, data: result, error: null }
   } catch (error) {
     console.error("[BackofficeLeadScheduleInviteService][sendEmail]", error)
@@ -270,6 +284,10 @@ export class BackofficeLeadScheduleInviteService
       if (participantRecipients.length > 0) {
         const participantResult = await sendBackofficeScheduleEmail({
           to: participantRecipients,
+          idempotencyKey: buildResendIdempotencyKey(
+            "schedule-invite-participants",
+            input.eventUid
+          ),
           subject: `Corretor Studio: ${input.leadName}`,
           html: buildEmailShell(
             "Você foi convidado para a demonstração do Corretor Studio",
@@ -299,6 +317,7 @@ export class BackofficeLeadScheduleInviteService
 
       const closerResult = await sendBackofficeScheduleEmail({
         to: [closerRecipient],
+        idempotencyKey: buildResendIdempotencyKey("schedule-invite-closer", input.eventUid),
         subject: `Corretor Studio: ${input.leadName}`,
         html: buildEmailShell(
           `Foi agendada uma apresentação para ${input.leadName}`,

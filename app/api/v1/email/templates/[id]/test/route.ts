@@ -4,7 +4,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
 import { EmailTeamVariablesUseCase } from "@/app/api/useCases/email/EmailTeamVariablesUseCase"
-import { assertResend } from "@/lib/email"
+import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 
 const bodySchema = z.object({
@@ -64,12 +64,20 @@ export async function POST(
     const recipient = { email: validation.data.to, name: validation.data.to.split("@")[0] }
 
     const resend = assertResend()
-    const { error } = await resend.emails.send({
-      from: FROM,
-      to: validation.data.to,
-      subject: `[Teste] ${interpolateEmailTemplate(template.subject, recipient, defaults)}`,
-      html: interpolateEmailTemplate(template.html, recipient, defaults),
-    })
+    const { error } = await resend.emails.send(
+      {
+        from: FROM,
+        to: validation.data.to,
+        subject: `[Teste] ${interpolateEmailTemplate(template.subject, recipient, defaults)}`,
+        html: interpolateEmailTemplate(template.html, recipient, defaults),
+      },
+      {
+        idempotencyKey: buildResendIdempotencyKey(
+          "template-test",
+          `${id}/${validation.data.to.toLowerCase()}`
+        ),
+      }
+    )
 
     if (error) {
       console.error("[EmailTemplateTestRoute][POST] Resend error", error)

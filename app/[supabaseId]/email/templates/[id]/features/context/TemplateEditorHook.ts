@@ -8,6 +8,7 @@ import type {
   Template,
   TemplateEditorDraft,
   TemplateEditorState,
+  TemplateVariable,
 } from "./TemplateEditorTypes";
 import { createTemplateEditorService } from "../services/TemplateEditorService";
 
@@ -45,6 +46,10 @@ function createDraftFromTemplate(template: Template): TemplateEditorDraft {
     mailyJson: template.mailyJson ?? null,
     variables: template.variables ?? [],
   };
+}
+
+function hasPendingVariableReview(variables: TemplateVariable[]) {
+  return variables.some((variable) => variable.reviewStatus === "pending");
 }
 
 export function useTemplateEditor(
@@ -177,6 +182,10 @@ export function useTemplateEditor(
   }, [activeTeamId, draft, isNewTemplate, router, saving, supabaseId, templateId]);
 
   const publishTemplate = useCallback(async (id?: string) => {
+    if (hasPendingVariableReview(draft.variables)) {
+      toast.error("Revise as variáveis pendentes antes de publicar.");
+      return null;
+    }
     if (!activeTeamId) {
       toast.error("Selecione um time para publicar templates.");
       return null;
@@ -206,7 +215,7 @@ export function useTemplateEditor(
     } finally {
       setSaving(false);
     }
-  }, [activeTeamId, supabaseId, template?.id]);
+  }, [activeTeamId, draft.variables, supabaseId, template?.id]);
 
   const unpublishTemplate = useCallback(async () => {
     if (saving) return null;
@@ -238,6 +247,10 @@ export function useTemplateEditor(
 
   const submitForApproval = useCallback(async () => {
     if (saving || !activeTeamId || !template?.id) return;
+    if (hasPendingVariableReview(draft.variables)) {
+      toast.error("Revise as variáveis pendentes antes de enviar para aprovação.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -255,7 +268,7 @@ export function useTemplateEditor(
     } finally {
       setSaving(false);
     }
-  }, [activeTeamId, saving, supabaseId, template?.id]);
+  }, [activeTeamId, draft.variables, saving, supabaseId, template?.id]);
 
   const approveTemplate = useCallback(async () => {
     if (saving || !activeTeamId || !template?.id) return;

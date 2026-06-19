@@ -1,4 +1,4 @@
-import { resend } from "@/lib/email"
+import { buildResendBatchIdempotencyKey, resend } from "@/lib/email"
 import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 import type { IEmailCampaignDispatchService, DispatchBatchResult } from "./IEmailCampaignDispatchService"
 
@@ -22,7 +22,8 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     const result: DispatchBatchResult = { sent: 0, failed: 0, dispatched: [] }
     const chunks = this.chunkArray(params.recipients, BATCH_SIZE)
 
-    for (const chunk of chunks) {
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex]
       try {
         const batchPayload = chunk.map((recipient) => ({
           from: params.from,
@@ -36,7 +37,12 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           ],
         }))
 
-        const batchResult = await resend.batch.send(batchPayload)
+        const batchResult = await resend.batch.send(batchPayload, {
+          idempotencyKey: buildResendBatchIdempotencyKey(
+            "campaign",
+            `${params.campaignId}/${chunkIndex}`
+          ),
+        })
 
         if (batchResult.data) {
           const items = Array.isArray(batchResult.data) ? batchResult.data : []
