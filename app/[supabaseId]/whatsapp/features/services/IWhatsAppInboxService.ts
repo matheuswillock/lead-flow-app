@@ -19,4 +19,5 @@ export interface IWhatsAppInboxService {
     conversationId: string,
     text: string
   ): Promise<{ messageId: string }>
+  markConversationRead(teamId: string, supabaseId: string, conversationId: string): Promise<void>
 }

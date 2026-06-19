@@ -121,6 +121,23 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
     return (output as Record<string, unknown>).result as { messageId: string }
   }
+
+  async markConversationRead(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/read`,
+      {
+        method: 'POST',
+        headers: {
+          'x-supabase-user-id': supabaseId,
+        },
+      }
+    )
+
+    if (!response.ok) {
+      const output: unknown = await response.json().catch(() => null)
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível marcar a conversa como lida'))
+    }
+  }
 }
 
 export const whatsAppInboxService = new WhatsAppInboxService()

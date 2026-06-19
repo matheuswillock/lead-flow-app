@@ -240,8 +240,20 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setSelectedConversationId(id)
       setMessages([])
       void loadMessages(id)
+
+      // Zero the unread count locally and fire-and-forget the server update
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
+      )
+      if (activeTeamId) {
+        whatsAppInboxService
+          .markConversationRead(activeTeamId, supabaseId, id)
+          .catch((err: unknown) => {
+            console.error('[useWhatsAppInbox] Erro ao marcar como lida:', err)
+          })
+      }
     },
-    [loadMessages]
+    [loadMessages, activeTeamId, supabaseId]
   )
 
   const loadMoreConversations = useCallback(() => {
