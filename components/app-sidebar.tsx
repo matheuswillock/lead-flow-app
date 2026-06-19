@@ -48,6 +48,7 @@ import { SupportRequestDialog } from "@/components/support-request-dialog"
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
 import { useTeamPresence } from "@/hooks/useTeamPresence"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { useWhatsAppUnreadCount } from "@/hooks/useWhatsAppUnreadCount"
 
 type SidebarItem = {
   title: string
@@ -60,6 +61,7 @@ type SidebarItem = {
   requiresIntegrationsAccess?: boolean
   featureSlug?: string
   status?: "beta" | "comingSoon"
+  unreadCount?: number
 }
 
 function getSidebarStatusBadge(status?: SidebarItem["status"]) {
@@ -109,6 +111,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isEmailCollapsed, setIsEmailCollapsed] = useState(false);
   const [isWhatsAppCollapsed, setIsWhatsAppCollapsed] = useState(false);
+  const { unreadConversations } = useWhatsAppUnreadCount({ enabled: hasAccess(FEATURE_SLUGS.WHATSAPP) });
   const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
@@ -130,7 +133,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   ];
 
   const whatsAppItems: SidebarItem[] = [
-    { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP },
+    { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP, unreadCount: unreadConversations },
     { title: "Configurações", url: `/${supabaseId}/whatsapp/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
   ];
 
@@ -378,7 +381,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                   onClick={toggleWhatsAppVisibility}
                 >
                   <span className="flex items-center justify-between w-full">
-                    WhatsApp
+                    <span className="flex items-center gap-2">
+                      WhatsApp
+                      {isWhatsAppCollapsed && unreadConversations > 0 && (
+                        <span className="flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 h-[16px] text-[10px] font-semibold leading-none text-destructive-foreground">
+                          {unreadConversations > 99 ? "99+" : unreadConversations}
+                        </span>
+                      )}
+                    </span>
                     {isWhatsAppCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </span>
                 </SidebarGroupLabel>
@@ -387,6 +397,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     <SidebarMenu>
                       {visibleWhatsAppItems.map((item) => {
                         const statusBadge = getItemBadge(item)
+                        const hasUnread = (item.unreadCount ?? 0) > 0
                         return (
                           <SidebarMenuItem key={item.title}>
                             <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
@@ -395,11 +406,15 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                                   <item.icon className="size-4 shrink-0" />
                                   <span>{item.title}</span>
                                 </span>
-                                {statusBadge && (
+                                {hasUnread ? (
+                                  <span className="flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 h-[16px] text-[10px] font-semibold leading-none text-destructive-foreground">
+                                    {(item.unreadCount ?? 0) > 99 ? "99+" : item.unreadCount}
+                                  </span>
+                                ) : statusBadge ? (
                                   <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
                                     {statusBadge.label}
                                   </span>
-                                )}
+                                ) : null}
                               </Link>
                             </SidebarMenuButton>
                           </SidebarMenuItem>
