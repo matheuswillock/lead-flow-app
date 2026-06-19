@@ -2,6 +2,7 @@
 
 import { LeadFormIntegration } from "../components/LeadFormIntegration";
 import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
+import { WhatsAppIntegration } from "../components/WhatsAppIntegration";
 import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess";
@@ -51,6 +52,7 @@ export function IntegrationsContainer() {
 
       <LeadFormIntegration />
       <StudioWebhookIntegration />
+      <WhatsAppIntegration />
     </div>
   );
 }

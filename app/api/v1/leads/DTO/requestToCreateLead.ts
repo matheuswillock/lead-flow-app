@@ -51,6 +51,7 @@ export const CreateLeadRequestSchema = z.object({
   soldPlan: z.string().trim().min(1, "Plano vendido deve ser válido").nullish().transform(val => val || undefined),
   // Meeting type & referral fields
   meetingType: z.enum(["online", "call", "whatsapp"]).optional(),
+  isTransfer: z.boolean().optional(),
   isReferral: z.boolean().optional(),
   referrerLeadId: z.string().uuid("ID do lead indicador deve ser um UUID válido").optional(),
   referrerName: z.string().optional(),

@@ -10,7 +10,7 @@ import { BackofficeCrmFiltersBar } from "../components/BackofficeCrmFiltersBar"
 import { BackofficeLeadFormDialog } from "../components/BackofficeLeadFormDialog"
 
 export function BackofficeCrmContainer() {
-  const { isLoading, error, leads, filteredLeads, openCreateDialog } = useBackofficeCrm()
+  const { isLoading, error, leads, filteredLeads, canManage, openCreateDialog } = useBackofficeCrm()
   const leadCountLabel = isLoading
     ? "Carregando..."
     : filteredLeads.length === leads.length
@@ -30,10 +30,12 @@ export function BackofficeCrmContainer() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={openCreateDialog}>
-            <Plus data-icon="inline-start" />
-            Adicionar novo lead
-          </Button>
+          {canManage && (
+            <Button onClick={openCreateDialog}>
+              <Plus data-icon="inline-start" />
+              Adicionar novo lead
+            </Button>
+          )}
           <BackofficeCrmColumnSettingsButton />
         </div>
       </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Crown, Eye, MoreHorizontal, Pencil, Sparkles, Trash2, X } from "lucide-react"
+import { AlertCircle, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Sparkles, Trash2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -117,10 +117,12 @@ export function BackofficeAllUsersContainer() {
   const { tz } = useTimezone()
   const clientDetailsService = useMemo(() => new BackofficeClientDetailsService(), [])
   const {
+    service,
     items,
     pagination,
     isLoading,
     error,
+    canManage,
     filters,
     setFilters,
     fetchUsers,
@@ -137,6 +139,7 @@ export function BackofficeAllUsersContainer() {
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
   const [userTypeDialogItem, setUserTypeDialogItem] = useState<BackofficeAllUsersItem | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [accessActionKey, setAccessActionKey] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -230,6 +233,7 @@ export function BackofficeAllUsersContainer() {
   function buildFallbackMember(item: BackofficeAllUsersItem): BackofficeClientTeamMember {
     return {
       id: item.id,
+      teamMemberId: "",
       fullName: item.fullName,
       email: item.email,
       phone: item.phone,
@@ -241,6 +245,10 @@ export function BackofficeAllUsersContainer() {
       isMaster: item.isMaster,
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
+      canTransferAccountLeads: false,
+      accessStatus: item.accessStatus,
+      hasCompletedFirstAccess: item.hasCompletedFirstAccess,
+      lastSignInAt: item.lastSignInAt,
     }
   }
 
@@ -315,6 +323,36 @@ export function BackofficeAllUsersContainer() {
       pageSize: pagination.pageSize,
       filters,
     })
+  }
+
+  async function handleSendAccessEmail(
+    item: BackofficeAllUsersItem,
+    mode: "invite" | "reset_password"
+  ) {
+    if (accessActionKey) return
+
+    const key = `${item.id}:${mode}`
+    setAccessActionKey(key)
+    const toastId = toast.loading(
+      mode === "invite" ? "Reenviando convite..." : "Enviando reset de senha..."
+    )
+
+    try {
+      const result = await service.sendAccessEmail(item.id, mode)
+      toast.success(
+        mode === "invite"
+          ? `Convite reenviado para ${result.email}.`
+          : `Reset de senha enviado para ${result.email}.`,
+        { id: toastId }
+      )
+    } catch (error) {
+      console.error("[BackofficeAllUsersContainer][handleSendAccessEmail]", error)
+      toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.", {
+        id: toastId,
+      })
+    } finally {
+      setAccessActionKey(null)
+    }
   }
 
   return (
@@ -439,7 +477,11 @@ export function BackofficeAllUsersContainer() {
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" disabled={actionLoadingId === item.id}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={actionLoadingId === item.id || accessActionKey !== null}
+                        >
                           <MoreHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
@@ -448,17 +490,31 @@ export function BackofficeAllUsersContainer() {
                           <Eye />
                           Visualizar
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
-                          <Pencil />
-                          Editar
-                        </DropdownMenuItem>
-                        {item.isMaster ? (
+                        {canManage && (
+                          <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
+                            <Pencil />
+                            Editar
+                          </DropdownMenuItem>
+                        )}
+                        {canManage && item.accessStatus === "pending_first_access" ? (
+                          <DropdownMenuItem onClick={() => void handleSendAccessEmail(item, "invite")}>
+                            <Mail />
+                            Reenviar convite
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canManage && item.accessStatus === "active" ? (
+                          <DropdownMenuItem onClick={() => void handleSendAccessEmail(item, "reset_password")}>
+                            <KeyRound />
+                            Enviar reset de senha
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canManage && item.isMaster ? (
                           <DropdownMenuItem onClick={() => setUserTypeDialogItem(item)}>
                             <Sparkles />
                             Gerenciar tipo de usuário
                           </DropdownMenuItem>
                         ) : null}
-                        {!item.isMaster ? (
+                        {canManage && !item.isMaster ? (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive focus:bg-destructive/10"
                             onClick={() => void handleOpenDelete(item)}
@@ -533,6 +589,7 @@ export function BackofficeAllUsersContainer() {
         open={memberEditOpen}
         onOpenChange={setMemberEditOpen}
         member={selectedMember}
+        teamId={null}
         details={selectedDetails}
         service={clientDetailsService}
         onSuccess={() => void handleActionSuccess()}

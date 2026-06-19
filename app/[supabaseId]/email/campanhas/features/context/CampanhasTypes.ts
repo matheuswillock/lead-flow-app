@@ -10,9 +10,11 @@ export type Campaign = {
   totalOpened: number
   totalClicked: number
   totalBounced: number
+  dispatchCount: number
   createdAt: string
-  template: { id: string; name: string }
-  contactList: { id: string; name: string }
+  creator: { fullName: string | null; email: string | null } | null
+  template: { id: string; name: string } | null
+  contactList: { id: string; name: string } | null
 }
 
 export type CreditStatus = {
@@ -28,6 +30,7 @@ export type Template = {
   id: string
   name: string
   subject: string
+  status?: 'draft' | 'published'
 }
 
 export type ContactList = {
@@ -58,4 +61,11 @@ export type CampanhasState = {
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
+  // Edit draft state
+  editingCampaign: Campaign | null
+  editName: string
+  editTemplateId: string
+  editContactListId: string
+  editScheduledAt: string
+  editSaving: boolean
 }

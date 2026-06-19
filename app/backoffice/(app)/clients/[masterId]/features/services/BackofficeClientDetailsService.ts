@@ -6,6 +6,22 @@ import type {
 } from "../context/BackofficeClientDetailsTypes"
 
 export class BackofficeClientDetailsService implements IBackofficeClientDetailsService {
+  async sendAccessEmail(
+    memberId: string,
+    mode: "invite" | "reset_password"
+  ): Promise<{ email: string }> {
+    const res = await fetch(`/api/v1/backoffice/members/${memberId}/access-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    })
+    const json = await res.json()
+    if (!json.isValid || !json.result) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao enviar e-mail de acesso")
+    }
+    return json.result as { email: string }
+  }
+
   async getByMasterId(
     masterId: string,
     options?: {
@@ -149,6 +165,8 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       functions?: ("SDR" | "CLOSER")[]
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      teamId?: string
     }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {
@@ -207,6 +225,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/members`, {
@@ -232,7 +251,11 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
-  async updateTeam(masterId: string, teamId: string, data: { name: string }): Promise<void> {
+  async updateTeam(
+    masterId: string,
+    teamId: string,
+    data: { name?: string; transferTargetTeamIds?: string[] }
+  ): Promise<void> {
     const res = await fetch(
       `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}`,
       {

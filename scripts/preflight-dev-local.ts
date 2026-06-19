@@ -17,6 +17,7 @@ const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const args = process.argv.slice(2);
 const skipClone = args.includes("--skip-clone");
 const noStart = args.includes("--no-start");
+type EnvOverrides = Partial<NodeJS.ProcessEnv>;
 
 function step(label: string) {
   console.info(`\n▶ ${label}`);
@@ -34,12 +35,19 @@ function fail(msg: string): never {
 function run(
   cmd: string,
   cmdArgs: string[],
-  opts: { stdio?: "inherit" | "pipe" } = {},
+  opts: {
+    stdio?: "inherit" | "pipe";
+    env?: EnvOverrides;
+  } = {},
 ): { status: number; stdout: string; stderr: string } {
   const result = spawnSync(cmd, cmdArgs, {
     stdio: opts.stdio ?? "pipe",
     shell: process.platform === "win32",
     encoding: "utf8",
+    env: {
+      ...process.env,
+      ...opts.env,
+    },
   });
   return {
     status: result.status ?? 1,
@@ -50,7 +58,11 @@ function run(
 
 function ensureSupabaseRunning() {
   step("Checking Supabase local stack");
-  const probe = run("supabase", ["status"]);
+  const supabaseEnv: EnvOverrides = {
+    SUPABASE_DISABLE_TELEMETRY: "1",
+    DO_NOT_TRACK: "1",
+  };
+  const probe = run("supabase", ["status"], { env: supabaseEnv });
   if (probe.status === 0) {
     info("✓ Running");
     return;
@@ -59,7 +71,10 @@ function ensureSupabaseRunning() {
     fail("Supabase local stack is not running (--no-start passed).");
   }
   info("⚠ Not running — starting it (`supabase start`)…");
-  const start = run("supabase", ["start"], { stdio: "inherit" });
+  const start = run("supabase", ["start"], {
+    stdio: "inherit",
+    env: supabaseEnv,
+  });
   if (start.status !== 0) {
     fail("`supabase start` failed. Check Docker Desktop is running.");
   }

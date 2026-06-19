@@ -78,7 +78,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const useCase = makeUseCase()
-    const output = await useCase.archive(id, teamAccess.access)
+    const output = await useCase.deleteList(id, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[EmailContactListByIdRoute][DELETE]", error)

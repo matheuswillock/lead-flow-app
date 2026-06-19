@@ -12,7 +12,12 @@ export class TeamMembersRepository implements ITeamMembersRepository {
   async findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null> {
     return prisma.profile.findUnique({
       where: { supabaseId },
-      select: { id: true, email: true, fullName: true, isMaster: true },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        isMaster: true,
+      },
     });
   }
 
@@ -23,10 +28,14 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
-  async findMembership(teamId: string, profileId: string): Promise<{ id: string } | null> {
+  async findMembership(teamId: string, profileId: string) {
     return prisma.teamMember.findUnique({
       where: { teamId_profileId: { teamId, profileId } },
-      select: { id: true },
+      select: {
+        id: true,
+        role: true,
+        canManageAccountTeams: true,
+      },
     });
   }
 
@@ -54,7 +63,7 @@ export class TeamMembersRepository implements ITeamMembersRepository {
           },
         },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { profile: { fullName: "asc" } },
     });
   }
 
@@ -94,6 +103,26 @@ export class TeamMembersRepository implements ITeamMembersRepository {
         supabaseId: true,
       },
     });
+  }
+
+  async findTransferTargets(teamId: string) {
+    const routes = await prisma.teamTransferRoute.findMany({
+      where: { sourceTeamId: teamId },
+      select: {
+        targetTeamId: true,
+        targetTeam: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { targetTeam: { name: "asc" } },
+    });
+
+    return routes.map((item) => ({
+      teamId: item.targetTeamId,
+      teamName: item.targetTeam.name,
+    }));
   }
 
   async findExistingMember(teamId: string, profileId: string): Promise<{ id: string } | null> {

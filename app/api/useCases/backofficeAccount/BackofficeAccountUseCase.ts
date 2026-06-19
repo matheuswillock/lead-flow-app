@@ -63,6 +63,7 @@ function mapAccount(
     profileIconId: profile.profileIconId,
     profileIconUrl: profile.profileIconUrl,
     fullAccess: user.fullAccess,
+    isOperator: !user.fullAccess,
     isActive: user.isActive,
     isSdr: user.isSdr,
     isCloser: user.isCloser,

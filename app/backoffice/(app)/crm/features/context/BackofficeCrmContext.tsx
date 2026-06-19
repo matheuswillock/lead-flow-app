@@ -36,6 +36,7 @@ interface UpdateLeadStatusOptions {
 interface ContextValue {
   isLoading: boolean
   error: string | null
+  canManage: boolean
   leads: BackofficeLeadItem[]
   filteredLeads: BackofficeLeadItem[]
   users: BackofficeCrmUserOption[]
@@ -147,6 +148,7 @@ function leadMatchesFilters(
 
 export function BackofficeCrmProvider({ children, service }: ProviderProps) {
   const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [leads, setLeads] = useState<BackofficeLeadItem[]>([])
   const [users, setUsers] = useState<BackofficeCrmUserOption[]>([])
   const [filters, setFiltersState] = useState<BackofficeCrmFiltersState>(
@@ -428,6 +430,7 @@ export function BackofficeCrmProvider({ children, service }: ProviderProps) {
     () => ({
       isLoading,
       error,
+      canManage,
       leads,
       filteredLeads,
       users,
@@ -455,6 +458,7 @@ export function BackofficeCrmProvider({ children, service }: ProviderProps) {
     [
       isLoading,
       error,
+      canManage,
       leads,
       filteredLeads,
       users,

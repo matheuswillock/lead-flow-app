@@ -15,6 +15,8 @@ export interface CreateLeadScheduleDTO {
   inviteDispatchLastAttemptAt?: Date | null;
   inviteDispatchLastError?: string | null;
   inviteDispatchLastPayload?: Prisma.InputJsonValue | null;
+  publicShareTokenHash?: string | null;
+  publicShareExpiresAt?: Date | null;
 }
 
 export interface UpdateLeadScheduleDTO {
@@ -30,6 +32,8 @@ export interface UpdateLeadScheduleDTO {
   inviteDispatchLastAttemptAt?: Date | null;
   inviteDispatchLastError?: string | null;
   inviteDispatchLastPayload?: Prisma.InputJsonValue | null;
+  publicShareTokenHash?: string | null;
+  publicShareExpiresAt?: Date | null;
 }
 
 export interface ILeadScheduleRepository {

@@ -16,6 +16,7 @@ import type {
   BackofficeAllUsersItem,
   BackofficePagination,
 } from "./BackofficeAllUsersTypes"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 const DEFAULT_FILTERS: BackofficeAllUsersFilters = {
   query: "",
@@ -39,6 +40,7 @@ interface BackofficeAllUsersContextValue {
   pagination: BackofficePagination
   isLoading: boolean
   error: string | null
+  canManage: boolean
   filters: BackofficeAllUsersFilters
   selectedDetail: BackofficeAllUsersDetail | null
   isDetailLoading: boolean
@@ -65,6 +67,8 @@ interface Props {
 }
 
 export function BackofficeAllUsersProvider({ children, service }: Props) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [items, setItems] = useState<BackofficeAllUsersItem[]>([])
   const [pagination, setPagination] = useState<BackofficePagination>(DEFAULT_PAGINATION)
   const [isLoading, setIsLoading] = useState(true)
@@ -219,6 +223,7 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         pagination,
         isLoading,
         error,
+        canManage,
         filters,
         selectedDetail,
         isDetailLoading,

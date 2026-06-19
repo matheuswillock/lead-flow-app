@@ -9,6 +9,7 @@ import { Output } from "@/lib/output";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
+import { getScheduleShareExpiry } from "@/lib/schedule-share";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import type { Attachment } from "resend";
@@ -533,32 +534,6 @@ export class LeadScheduleService implements ILeadScheduleService {
       }
     }
 
-    if (isOnlineMeeting && inviteDispatchStatus !== "failed") {
-      try {
-        const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
-
-        await emailService.sendCloserScheduleNotificationEmail({
-          to: closerEmail,
-          closerName: closerProfile.fullName || closerProfile.email,
-          leadName,
-          meetingTitle: resolvedMeetingTitle,
-          meetingDate,
-          meetingLink: resolvedMeetingLink,
-          leadCode,
-          isReschedule: !!existingSchedule,
-          attendees: attendeeEmails,
-          notes: meetingNotes ?? null,
-          attachments: scheduleAttachments,
-          timezone: closerProfile.timezone,
-        });
-      } catch (closerNotificationError) {
-        console.warn(
-          `${LOG_PREFIX} Falha ao enviar notificação ao closer (não-bloqueante):`,
-          closerNotificationError
-        );
-      }
-    }
-
     if (isOnlineMeeting && inviteDispatchStatus === "failed") {
       const reason = inviteDispatchLastError || googleDispatchError || "Falha no envio do convite";
       return new Output(
@@ -570,6 +545,10 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
 
     // --- Persist schedule + update lead ---
+    const refreshedPublicShareExpiresAt = existingSchedule?.publicShareTokenHash
+      ? getScheduleShareExpiry(meetingDate)
+      : undefined;
+
     const persisted = await prisma.$transaction(async (tx) => {
       const inviteDispatchLastPayloadForDb =
         inviteDispatchLastPayload === null ? Prisma.JsonNull : (inviteDispatchLastPayload ?? undefined);
@@ -592,6 +571,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           inviteDispatchLastAttemptAt,
           inviteDispatchLastError,
           inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
+          publicShareExpiresAt: refreshedPublicShareExpiresAt,
         },
         update: {
           date: meetingDate,
@@ -607,6 +587,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           inviteDispatchLastAttemptAt,
           inviteDispatchLastError,
           inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
+          publicShareExpiresAt: refreshedPublicShareExpiresAt,
         },
       });
 
@@ -651,100 +632,123 @@ export class LeadScheduleService implements ILeadScheduleService {
       };
     });
 
-    // --- Activity log for schedule creation ---
-    try {
-      const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
-
-      const participants = buildUniqueEmails([
-        leadEmail,
-        closerProfile.email,
-        leadAssigneeEmail,
-        ...(extraGuests ?? []),
-      ]);
-      const meetingTimezone = resolveTimezone(closerProfile.timezone);
-      const participantLines = participants.map((email) => `• ${email}`);
-
-      const bodyLines = [
-        `${actionLabel} ${schedulerLabel} para ${formatMeetingDate(meetingDate, meetingTimezone)}.`,
-      ];
-      if (participantLines.length > 0) {
-        bodyLines.push("Participantes:", ...participantLines);
+    // --- Fire-and-forget: closer notification + activity logs + platform notifications ---
+    void (async () => {
+      // Closer schedule notification email (with attachment downloads — non-critical path)
+      if (isOnlineMeeting && inviteDispatchStatus !== "failed") {
+        try {
+          const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
+          await emailService.sendCloserScheduleNotificationEmail({
+            to: closerEmail,
+            closerName: closerProfile.fullName || closerProfile.email,
+            leadName,
+            meetingTitle: resolvedMeetingTitle,
+            meetingDate,
+            meetingLink: resolvedMeetingLink,
+            leadCode,
+            isReschedule: !!existingSchedule,
+            attendees: attendeeEmails,
+            notes: meetingNotes ?? null,
+            attachments: scheduleAttachments,
+            timezone: closerProfile.timezone,
+          });
+        } catch (closerNotificationError) {
+          console.warn(`${LOG_PREFIX} Falha ao enviar notificação ao closer (não-bloqueante):`, closerNotificationError);
+        }
       }
 
-      await prisma.leadActivity.create({
-        data: {
-          leadId,
-          type: "note",
-          body: bodyLines.join("\n"),
-          payload: {
-            kind: "schedule",
-            meetingDate: meetingDate.toISOString(),
-            meetingTitle: resolvedMeetingTitle,
-            participants,
-          },
-          createdBy: createdByProfileId,
-        },
-      });
-    } catch (activityError) {
-      console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de agendamento:`, activityError);
-    }
-
-    // --- Closer change activity ---
-    if (shouldLogCloserChange) {
+      // Activity log for schedule creation
       try {
-        const closerLabel = closerProfile.fullName || closerProfile.email || "Closer";
+        const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
+        const participants = buildUniqueEmails([
+          leadEmail,
+          closerProfile.email,
+          leadAssigneeEmail,
+          ...(extraGuests ?? []),
+        ]);
+        const meetingTimezone = resolveTimezone(closerProfile.timezone);
+        const participantLines = participants.map((email) => `• ${email}`);
+        const bodyLines = [
+          `${actionLabel} ${schedulerLabel} para ${formatMeetingDate(meetingDate, meetingTimezone)}.`,
+        ];
+        if (participantLines.length > 0) {
+          bodyLines.push("Participantes:", ...participantLines);
+        }
         await prisma.leadActivity.create({
           data: {
             leadId,
             type: "note",
-            body: `Closer alterado para ${closerLabel}`,
+            body: bodyLines.join("\n"),
             payload: {
-              previousCloserId: leadCurrentCloserId,
-              closerId,
+              kind: "schedule",
+              meetingDate: meetingDate.toISOString(),
+              meetingTitle: resolvedMeetingTitle,
+              participants,
             },
             createdBy: createdByProfileId,
           },
         });
       } catch (activityError) {
-        console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de alteração de closer:`, activityError);
+        console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de agendamento:`, activityError);
       }
-    }
 
-    // --- Notifications ---
-    try {
-      const candidateRecipientProfileIds = Array.from(
-        new Set(
-          [leadManagerId, leadAssignedTo, closerId]
-            .filter((profileId): profileId is string => !!profileId)
-            .filter((profileId) => profileId !== createdByProfileId)
-        )
-      );
+      // Closer change activity
+      if (shouldLogCloserChange) {
+        try {
+          const closerLabel = closerProfile.fullName || closerProfile.email || "Closer";
+          await prisma.leadActivity.create({
+            data: {
+              leadId,
+              type: "note",
+              body: `Closer alterado para ${closerLabel}`,
+              payload: {
+                previousCloserId: leadCurrentCloserId,
+                closerId,
+              },
+              createdBy: createdByProfileId,
+            },
+          });
+        } catch (activityError) {
+          console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de alteração de closer:`, activityError);
+        }
+      }
 
-      const teamRecipients = await prisma.teamMember.findMany({
-        where: {
-          teamId,
-          profileId: { in: candidateRecipientProfileIds },
-        },
-        select: { profileId: true },
-      });
-      const recipientProfileIds = teamRecipients.map((member) => member.profileId);
-
-      if (recipientProfileIds.length > 0) {
-        await notificationService.createScheduleNotification({
-          teamId,
-          actorProfileId: createdByProfileId,
-          actorName: schedulerLabel,
-          leadId,
-          leadCode: leadCode ?? null,
-          leadName,
-          meetingDate,
-          recipientProfileIds,
-          isReschedule: !!existingSchedule,
+      // Platform notifications
+      try {
+        const candidateRecipientProfileIds = Array.from(
+          new Set(
+            [leadManagerId, leadAssignedTo, closerId]
+              .filter((profileId): profileId is string => !!profileId)
+              .filter((profileId) => profileId !== createdByProfileId)
+          )
+        );
+        const teamRecipients = await prisma.teamMember.findMany({
+          where: {
+            teamId,
+            profileId: { in: candidateRecipientProfileIds },
+          },
+          select: { profileId: true },
         });
+        const recipientProfileIds = teamRecipients.map((member) => member.profileId);
+        if (recipientProfileIds.length > 0) {
+          await notificationService.createScheduleNotification({
+            teamId,
+            actorProfileId: createdByProfileId,
+            actorName: schedulerLabel,
+            leadId,
+            leadCode: leadCode ?? null,
+            leadName,
+            meetingDate,
+            recipientProfileIds,
+            isReschedule: !!existingSchedule,
+          });
+        }
+      } catch (notificationError) {
+        console.error(`${LOG_PREFIX} Erro ao criar notificações de agendamento:`, notificationError);
       }
-    } catch (notificationError) {
-      console.error(`${LOG_PREFIX} Erro ao criar notificações de agendamento:`, notificationError);
-    }
+    })().catch((err) => {
+      console.error(`${LOG_PREFIX} Background dispatch error:`, err);
+    });
 
     // --- Build response ---
     const successMessages = [persisted.message];

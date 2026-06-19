@@ -22,55 +22,103 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     const base: Prisma.ProfileWhereInput = { isMaster: true, role: "manager" }
 
-    if (!q && !normalizedTeam) return base
+    const andClauses: Prisma.ProfileWhereInput[] = []
 
-    const orClauses: Prisma.ProfileWhereInput[] = []
+    if (q || normalizedTeam) {
+      const orClauses: Prisma.ProfileWhereInput[] = []
 
-    if (q) {
-      orClauses.push(
-        { fullName: { contains: q, mode: "insensitive" } },
-        { email: { contains: q, mode: "insensitive" } },
-        {
-          operators: {
-            some: {
-              OR: [
-                { fullName: { contains: q, mode: "insensitive" } },
-                { email: { contains: q, mode: "insensitive" } },
-              ],
+      if (q) {
+        orClauses.push(
+          { fullName: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+          {
+            operators: {
+              some: {
+                OR: [
+                  { fullName: { contains: q, mode: "insensitive" } },
+                  { email: { contains: q, mode: "insensitive" } },
+                ],
+              },
             },
           },
-        },
-        {
-          teamsOwned: {
-            some: {
-              members: {
-                some: {
-                  profile: {
-                    OR: [
-                      { fullName: { contains: q, mode: "insensitive" } },
-                      { email: { contains: q, mode: "insensitive" } },
-                    ],
+          {
+            teamsOwned: {
+              some: {
+                members: {
+                  some: {
+                    profile: {
+                      OR: [
+                        { fullName: { contains: q, mode: "insensitive" } },
+                        { email: { contains: q, mode: "insensitive" } },
+                      ],
+                    },
                   },
                 },
               },
             },
+          }
+        )
+      }
+
+      if (normalizedTeam && normalizedTeam !== q) {
+        orClauses.push({
+          teamsOwned: {
+            some: { name: { contains: normalizedTeam, mode: "insensitive" } },
           },
-        }
-      )
+        })
+      }
+
+      if (orClauses.length > 0) {
+        andClauses.push({ OR: orClauses })
+      }
     }
 
-    if (normalizedTeam && normalizedTeam !== q) {
-      orClauses.push({
-        teamsOwned: {
-          some: { name: { contains: normalizedTeam, mode: "insensitive" } },
-        },
-      })
+    if (filters?.plan) {
+      const plan = filters.plan
+      if (plan === "lifetime") {
+        andClauses.push({ hasPermanentSubscription: true })
+      } else if (plan === "trial") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: { subscriptionPlan: "free_trial" } },
+        })
+      } else if (plan === "monthly") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: { subscriptionPlan: { in: ["manager_base", "with_operators"] } } },
+        })
+      } else if (plan === "none") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: null },
+        })
+      }
     }
 
-    return {
-      ...base,
-      ...(orClauses.length > 0 ? { OR: orClauses } : {}),
+    if (filters?.userType) {
+      if (filters.userType === "member_pro") {
+        andClauses.push({
+          userTypeAssignment: {
+            is: { userType: { is: { slug: "member_pro" } } },
+          },
+        })
+      } else {
+        andClauses.push({
+          OR: [
+            { userTypeAssignment: { is: null } },
+            {
+              userTypeAssignment: {
+                is: { userType: { is: { slug: "common" } } },
+              },
+            },
+          ],
+        })
+      }
     }
+
+    return andClauses.length > 0
+      ? { ...base, AND: andClauses }
+      : base
   }
 
   async findMasterUsersWithFilters(
@@ -292,10 +340,14 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
               id: true,
               role: true,
               functions: true,
+              canCreateAccountUsers: true,
+              canManageAccountTeams: true,
+              canTransferAccountLeads: true,
               createdAt: true,
               profile: {
                 select: {
                   id: true,
+                  supabaseId: true,
                   fullName: true,
                   email: true,
                   phone: true,
@@ -307,12 +359,16 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                     },
                   },
                   isMaster: true,
-                  canCreateAccountUsers: true,
-                  canManageAccountTeams: true,
                 },
               },
             },
             orderBy: { createdAt: "desc" },
+          },
+          transferRoutesFrom: {
+            select: {
+              targetTeamId: true,
+              targetTeam: { select: { name: true } },
+            },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -370,6 +426,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         membersCount: team._count.members,
         members: team.members.map((member) => ({
           id: member.profile.id,
+          teamMemberId: member.id,
+          supabaseId: member.profile.supabaseId,
           fullName: member.profile.fullName,
           email: member.profile.email,
           phone: member.profile.phone,
@@ -379,8 +437,13 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           googleEmail: member.profile.googleConnection?.googleEmail ?? null,
           functions: member.functions,
           isMaster: member.profile.isMaster,
-          canCreateAccountUsers: member.profile.canCreateAccountUsers,
-          canManageAccountTeams: member.profile.canManageAccountTeams,
+          canCreateAccountUsers: member.canCreateAccountUsers,
+          canManageAccountTeams: member.canManageAccountTeams,
+          canTransferAccountLeads: member.canTransferAccountLeads,
+        })),
+        transferRoutes: team.transferRoutesFrom.map((r) => ({
+          teamId: r.targetTeamId,
+          teamName: r.targetTeam.name,
         })),
       })),
     }
@@ -601,6 +664,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       functions: ("SDR" | "CLOSER")[]
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     },
     teamId: string
   ): Promise<{ profileId: string; teamMemberId: string }> {
@@ -614,8 +678,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           functions: data.functions as UserFunction[],
           managerId: masterProfileId,
           isMaster: false,
-          canCreateAccountUsers: data.canCreateAccountUsers ?? false,
-          canManageAccountTeams: data.canManageAccountTeams ?? false,
         },
         select: { id: true },
       })
@@ -626,6 +688,11 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           profileId: profile.id,
           role: data.role as UserRole,
           functions: data.functions as UserFunction[],
+          canCreateAccountUsers: data.role === "manager" && data.canCreateAccountUsers === true,
+          canManageAccountTeams: data.role === "manager" && data.canManageAccountTeams === true,
+          canTransferAccountLeads:
+            (data.role === "manager" || data.role === "backoffice") &&
+            data.canTransferAccountLeads === true,
         },
         select: { id: true },
       })
@@ -639,26 +706,28 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     teamId: string,
     role: "manager" | "backoffice" | "operator",
     functions: ("SDR" | "CLOSER")[],
-    permissions?: { canCreateAccountUsers: boolean; canManageAccountTeams: boolean }
+    permissions?: {
+      canCreateAccountUsers: boolean
+      canManageAccountTeams: boolean
+      canTransferAccountLeads: boolean
+    }
   ): Promise<{ teamMemberId: string }> {
-    return prisma.$transaction(async (tx) => {
-      if (permissions) {
-        await tx.profile.update({
-          where: { id: profileId },
-          data: {
-            canCreateAccountUsers: permissions.canCreateAccountUsers,
-            canManageAccountTeams: permissions.canManageAccountTeams,
-          },
-        })
-      }
-
-      const teamMember = await tx.teamMember.create({
-        data: { profileId, teamId, role: role as UserRole, functions: functions as UserFunction[] },
-        select: { id: true },
-      })
-
-      return { teamMemberId: teamMember.id }
+    const teamMember = await prisma.teamMember.create({
+      data: {
+        profileId,
+        teamId,
+        role: role as UserRole,
+        functions: functions as UserFunction[],
+        canCreateAccountUsers: role === "manager" && permissions?.canCreateAccountUsers === true,
+        canManageAccountTeams: role === "manager" && permissions?.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (role === "manager" || role === "backoffice") &&
+          permissions?.canTransferAccountLeads === true,
+      },
+      select: { id: true },
     })
+
+    return { teamMemberId: teamMember.id }
   }
 
   async createTeamForMaster(masterProfileId: string, name: string): Promise<{ id: string; name: string }> {
@@ -695,6 +764,27 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     } catch {
       return null
     }
+  }
+
+  async syncTeamTransferRoutes(
+    teamId: string,
+    masterId: string,
+    targetTeamIds: string[],
+    createdBy: string
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.teamTransferRoute.deleteMany({ where: { sourceTeamId: teamId } })
+      if (targetTeamIds.length > 0) {
+        await tx.teamTransferRoute.createMany({
+          data: targetTeamIds.map((tid) => ({
+            sourceTeamId: teamId,
+            targetTeamId: tid,
+            createdBy,
+          })),
+          skipDuplicates: true,
+        })
+      }
+    })
   }
 
   async deleteTeam(teamId: string, masterId: string): Promise<void> {

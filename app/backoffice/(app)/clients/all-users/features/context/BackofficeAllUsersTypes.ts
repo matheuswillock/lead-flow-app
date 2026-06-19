@@ -37,6 +37,9 @@ export interface BackofficeAllUsersItem {
   isMaster: boolean
   googleCalendarConnected: boolean
   createdAt: string
+  accessStatus: "pending_first_access" | "active"
+  hasCompletedFirstAccess: boolean
+  lastSignInAt: string | null
   master: BackofficeAllUsersMasterRef | null
   userType: BackofficeAllUsersUserType
 }

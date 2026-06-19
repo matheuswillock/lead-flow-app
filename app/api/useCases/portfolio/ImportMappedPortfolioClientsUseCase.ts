@@ -135,6 +135,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
         holderName && holderBirthDate && holderDocument
           ? { name: holderName, birthDate: holderBirthDate, document: holderDocument }
           : null;
+      const rowContractType = row.contractType ?? 'individual';
 
       try {
         await this.portfolioService.createPortfolioEntryFromImport(
@@ -147,6 +148,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
             phone,
             cnpj: cnpj || null,
             source: input.source,
+            contractType: rowContractType as 'individual' | 'corporate' | 'adhesion',
             amount,
             startDateAt,
             finalizedDateAt,

@@ -203,6 +203,7 @@ export function useManagerUsers({
           hasPermanentSubscription,
           canCreateAccountUsers: userData.canCreateAccountUsers,
           canManageAccountTeams: userData.canManageAccountTeams,
+          canTransferAccountLeads: userData.canTransferAccountLeads,
         }),
       });
 

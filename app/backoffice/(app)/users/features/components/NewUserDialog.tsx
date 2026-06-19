@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import type { CreateUserFormData } from "../services/IBackofficeUsersService"
 import { BackofficeEmailInput } from "./BackofficeEmailInput"
 
@@ -97,13 +97,29 @@ export function NewUserDialog({
                   </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="fullAccess"
-                  checked={form.fullAccess}
-                  onCheckedChange={(value) => onChange("fullAccess", value)}
-                />
-                <Label htmlFor="fullAccess">Acesso total</Label>
+              <div className="flex flex-col gap-2">
+                <Label>Tipo de usuário</Label>
+                <RadioGroup
+                  value={form.fullAccess ? "master" : "operator"}
+                  onValueChange={(value) => onChange("fullAccess", value === "master")}
+                  disabled={isCreating}
+                  className="flex flex-col gap-2"
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="master" id="role-master" className="mt-0.5" />
+                    <div>
+                      <Label htmlFor="role-master" className="font-medium cursor-pointer">Master</Label>
+                      <p className="text-xs text-muted-foreground">Acesso total ao backoffice</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="operator" id="role-operator" className="mt-0.5" />
+                    <div>
+                      <Label htmlFor="role-operator" className="font-medium cursor-pointer">Operador</Label>
+                      <p className="text-xs text-muted-foreground">Apenas visualização</p>
+                    </div>
+                  </div>
+                </RadioGroup>
               </div>
             </div>
           </div>

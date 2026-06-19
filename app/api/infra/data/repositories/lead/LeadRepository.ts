@@ -26,6 +26,7 @@ const CRM_LEAD_LIST_SELECT = {
   meetingLink: true,
   meetingHeald: true,
   meetingType: true,
+  isTransfer: true,
   followUpAt: true,
   followUpNotes: true,
   followUpSourceStatus: true,
@@ -185,6 +186,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[]; total: number }> {
     const {
@@ -195,12 +197,14 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const where: Prisma.LeadWhereInput = {
       managerId,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -483,6 +487,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -491,12 +496,14 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const where: any = {
       managerId,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -532,6 +539,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -540,12 +548,14 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const where: any = {
       teamId,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -580,6 +590,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -587,6 +598,7 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const where: Prisma.LeadWhereInput = {
@@ -595,6 +607,7 @@ export class LeadRepository implements ILeadRepository {
         { createdBy: operatorId },   // Leads criados pelo operator
       ],
       ...(status && { status }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -652,6 +665,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -660,6 +674,7 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const filters: Prisma.LeadWhereInput[] = [];
@@ -670,6 +685,10 @@ export class LeadRepository implements ILeadRepository {
 
     if (assignedTo) {
       filters.push({ assignedTo });
+    }
+
+    if (onlyTransfer) {
+      filters.push({ isTransfer: true });
     }
 
     if (search) {

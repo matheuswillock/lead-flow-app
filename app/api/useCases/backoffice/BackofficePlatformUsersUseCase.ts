@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import { createEmailService } from "@/lib/services/EmailService"
+import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import { getAppUrl, getFullUrl } from "@/lib/utils/app-url"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
@@ -319,7 +320,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
   }
 
   async listMasterUsers(
-    filters: { name?: string; email?: string; team?: string } | undefined,
+    filters: { name?: string; email?: string; team?: string; plan?: "lifetime" | "monthly" | "trial" | "none"; userType?: "common" | "member_pro" } | undefined,
     pagination: { page: number; pageSize: number }
   ): Promise<Output> {
     try {
@@ -401,6 +402,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         master.hasPermanentSubscription ||
         (!!master.subscriptionId && master.subscriptionStatus === "active")
 
+      const accessByProfileId = await resolveBackofficeMemberAccess(
+        master.teams.flatMap((team) =>
+          team.members.map((member) => ({
+            profileId: member.id,
+            supabaseId: member.supabaseId,
+            email: member.email,
+            fullName: member.fullName,
+            role: member.role as "manager" | "backoffice" | "operator",
+            isMaster: member.isMaster,
+            managerName: master.fullName ?? master.email,
+          }))
+        )
+      )
+
       return new Output(true, [], [], {
         id: master.id,
         fullName: master.fullName,
@@ -423,7 +438,34 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           hasAccess,
           status: master.subscriptionStatus,
         },
-        teams: master.teams,
+        teams: master.teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          createdAt: team.createdAt,
+          membersCount: team.membersCount,
+          transferRoutes: team.transferRoutes,
+          members: team.members.map((member) => ({
+            id: member.id,
+            teamMemberId: member.teamMemberId,
+            fullName: member.fullName,
+            email: member.email,
+            phone: member.phone,
+            addedAt: member.addedAt,
+            role: member.role,
+            googleCalendarConnected: member.googleCalendarConnected,
+            googleEmail: member.googleEmail,
+            functions: member.functions,
+            isMaster: member.isMaster,
+            canCreateAccountUsers: member.canCreateAccountUsers,
+            canManageAccountTeams: member.canManageAccountTeams,
+            canTransferAccountLeads: member.canTransferAccountLeads,
+            ...(accessByProfileId.get(member.id) ?? {
+              accessStatus: "pending_first_access",
+              hasCompletedFirstAccess: false,
+              lastSignInAt: null,
+            }),
+          })),
+        })),
         teamsPagination: {
           page,
           pageSize,
@@ -853,6 +895,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     }
   ): Promise<Output> {
     try {
@@ -891,9 +934,13 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       }
       const roleLabel = roleLabels[data.role] ?? data.role
 
-      const delegatedPermissions = data.role === "manager"
-        ? { canCreateAccountUsers: data.canCreateAccountUsers ?? false, canManageAccountTeams: data.canManageAccountTeams ?? false }
-        : { canCreateAccountUsers: false, canManageAccountTeams: false }
+      const delegatedPermissions = {
+        canCreateAccountUsers: data.role === "manager" && data.canCreateAccountUsers === true,
+        canManageAccountTeams: data.role === "manager" && data.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (data.role === "manager" || data.role === "backoffice") &&
+          data.canTransferAccountLeads === true,
+      }
 
       if (existingProfile) {
         if (existingProfile.isMaster) {
@@ -1007,22 +1054,32 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
   async updateTeamForMasterUser(
     masterProfileId: string,
     teamId: string,
-    data: { name: string }
+    data: { name?: string; transferTargetTeamIds?: string[]; updatedBy?: string }
   ): Promise<Output> {
     try {
-      const name = data.name.trim()
-      if (name.length < 2) {
-        return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
-      }
-
       const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
       if (!master) {
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      const updated = await this.platformUsersRepository.updateTeam(teamId, masterProfileId, { name })
-      if (!updated) {
-        return new Output(false, [], ["Time não encontrado"], null)
+      if (data.name !== undefined) {
+        const name = data.name.trim()
+        if (name.length < 2) {
+          return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
+        }
+        const updated = await this.platformUsersRepository.updateTeam(teamId, masterProfileId, { name })
+        if (!updated) {
+          return new Output(false, [], ["Time não encontrado"], null)
+        }
+      }
+
+      if (data.transferTargetTeamIds !== undefined) {
+        await this.platformUsersRepository.syncTeamTransferRoutes(
+          teamId,
+          masterProfileId,
+          data.transferTargetTeamIds,
+          data.updatedBy ?? masterProfileId
+        )
       }
 
       console.info("[BackofficePlatformUsersUseCase][updateTeamForMasterUser] Time atualizado:", teamId)

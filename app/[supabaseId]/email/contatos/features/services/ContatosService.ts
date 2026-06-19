@@ -23,6 +23,7 @@ export interface IContatosService {
     file: File
   ): Promise<{ imported: number; updated: number; total: number }>
   deleteContact(listId: string, contactId: string): Promise<void>
+  addContact(listId: string, email: string, name?: string): Promise<void>
 }
 
 export class ContatosService implements IContatosService {
@@ -161,6 +162,22 @@ export class ContatosService implements IContatosService {
       const data = await response.json().catch(() => null);
       throw new Error(
         data?.errorMessages?.join(", ") || "Erro ao excluir contato"
+      );
+    }
+  }
+
+  async addContact(listId: string, email: string, name?: string): Promise<void> {
+    console.info("[ContatosService] addContact", { listId, email });
+    const response = await fetch(`${this.baseUrl}/${listId}/contacts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.isValid) {
+      throw new Error(
+        data?.errorMessages?.join(", ") || "Erro ao adicionar contato"
       );
     }
   }

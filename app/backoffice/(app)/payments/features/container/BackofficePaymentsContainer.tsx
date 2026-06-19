@@ -117,7 +117,7 @@ const initialForm: CreatePaymentFormData = {
 }
 
 export function BackofficePaymentsContainer() {
-  const { payments, clients, isLoading, isCreating, createPayment } = useBackofficePayments()
+  const { payments, clients, isLoading, isCreating, canManage, createPayment } = useBackofficePayments()
   const { tz } = useTimezone()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CreatePaymentFormData>(initialForm)
@@ -164,10 +164,12 @@ export function BackofficePaymentsContainer() {
     <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Pagamentos</h1>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Nova Cobrança
-        </Button>
+        {canManage && (
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nova Cobrança
+          </Button>
+        )}
       </div>
 
       <div className="rounded-md border">

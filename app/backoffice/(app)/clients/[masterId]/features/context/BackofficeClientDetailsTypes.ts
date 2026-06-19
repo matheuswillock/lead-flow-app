@@ -1,5 +1,6 @@
 export interface BackofficeClientTeamMember {
   id: string
+  teamMemberId: string
   fullName: string | null
   email: string
   phone: string | null
@@ -11,6 +12,10 @@ export interface BackofficeClientTeamMember {
   isMaster: boolean
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
+  canTransferAccountLeads: boolean
+  accessStatus: "pending_first_access" | "active"
+  hasCompletedFirstAccess: boolean
+  lastSignInAt: string | null
 }
 
 export interface BackofficeClientTeam {
@@ -19,6 +24,7 @@ export interface BackofficeClientTeam {
   createdAt: string
   membersCount: number
   members: BackofficeClientTeamMember[]
+  transferRoutes: Array<{ teamId: string; teamName: string }>
 }
 
 export interface BackofficeClientDetails {

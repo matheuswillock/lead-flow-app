@@ -334,6 +334,58 @@ CI **MUST** fail when governance checks fail.
 - Check: `bun run governance:check`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 
+## Feature Registration Policy (FOR NEW FEATURES)
+
+Every new feature that uses a `featureSlug` (visible in the sidebar via `FEATURE_SLUGS.*`) **MUST** be registered in the database. Defining the constant in `lib/features/feature-slugs.ts` alone is **not sufficient** — without a corresponding row in `backoffice_features`, `hasAccess(slug)` returns `false` for all users and the feature is invisible.
+
+### Registration is two-step (MUST)
+
+**1. Data migration** — `bun run db:migrate:new seed-<feature-slug>`
+
+The generated file **MUST** contain idempotent SQL that inserts the feature and its access rules:
+
+```sql
+-- Insert feature (child of parent slug, or top-level if no parentSlug)
+INSERT INTO "public"."backoffice_features"
+  ("id","slug","name","accessMode","defaultAccessLevel","betaEnabled","sortOrder","productSlug","parentId","isActive","createdAt","updatedAt")
+SELECT gen_random_uuid(), '<slug>', '<Name>', '<MODE>', '<LEVEL>', false, <sortOrder>, '<productSlug>',
+       (SELECT "id" FROM "public"."backoffice_features" WHERE "slug" = '<parentSlug>'),
+       true, now(), now()
+ON CONFLICT ("slug") DO NOTHING;
+
+-- Insert access rules
+DO $$
+DECLARE v_id uuid;
+BEGIN
+  SELECT "id" INTO v_id FROM "public"."backoffice_features" WHERE "slug" = '<slug>';
+  IF v_id IS NOT NULL THEN
+    INSERT INTO "public"."backoffice_feature_access_rules"
+      ("id","featureId","principal","accessLevel","createdAt","updatedAt")
+    VALUES
+      (gen_random_uuid(), v_id, 'MASTER',           '<LEVEL>', now(), now()),
+      (gen_random_uuid(), v_id, 'MANAGER',          '<LEVEL>', now(), now()),
+      -- ... remaining principals with appropriate levels
+    ON CONFLICT ("featureId","principal") DO NOTHING;
+  END IF;
+END $$;
+```
+
+**2. Seed file update** — `prisma/seed-backoffice-products.ts`
+
+Add the feature to both:
+- `FEATURES` array (slug, name, accessMode, defaultAccessLevel, betaEnabled, sortOrder, parentSlug, productSlug)
+- `ACCESS_RULES_BY_SLUG` record using `completeRuleSet([...])` with the intended principals
+
+Run `bun run db:seed:backoffice-products` locally after editing to verify correctness.
+
+### Why both?
+
+The migration guarantees the row reaches production via the tracked migration pipeline. The seed file ensures local dev environments and CI database resets stay consistent with production.
+
+### PR checklist item
+
+The PR checklist entry below covers this: "Criou nova feature com featureSlug? Registrou em backoffice_features via migration de dados e atualizou seed-backoffice-products.ts?"
+
 ## Feature Scaffolding
 
 Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline. Agents **SHOULD** start from scaffold and then adapt business logic.
@@ -344,6 +396,7 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 - [ ] Criou migration? Gerou com `bun run prisma:migrate -- <name>`, revisou `migration.sql` e aplicou somente com autorização?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
 - [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
+- [ ] Criou nova feature com `featureSlug`? Registrou em `backoffice_features` via migration de dados (`bun run db:migrate:new seed-<slug>`) **e** atualizou `prisma/seed-backoffice-products.ts`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
 

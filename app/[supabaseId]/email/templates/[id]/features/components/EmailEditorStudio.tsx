@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  type ReactNode,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -62,7 +63,12 @@ type ImageUploadCommand = { commands: { uploadImage: () => boolean } };
 
 export interface EmailEditorStudioRef {
   publish: () => Promise<void>;
+  saveAndPublish: () => Promise<void>;
   openHtmlEditor: () => Promise<void>;
+}
+
+interface EmailEditorStudioProps {
+  bottomSlot?: ReactNode;
 }
 
 function getFallbackPreviewHtml() {
@@ -89,8 +95,8 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function EmailEditorStudio(
-  _props,
+export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStudioProps>(function EmailEditorStudio(
+  { bottomSlot },
   ref
 ) {
   const {
@@ -98,6 +104,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
     isDirty,
     saving,
     saveTemplate,
+    publishTemplate,
     setHtml,
     setMailyJson,
   } = useTemplateEditorContext();
@@ -221,15 +228,30 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
 
   const handlePublish = useCallback(async () => {
     if (saving) return;
-    if (htmlSourceActive && !visualEditorTouched) {
-      await saveTemplate({ html: draft.html });
+    if (!visualEditorTouched) {
+      await saveTemplate();
       return;
     }
 
     const snapshot = await syncEditorDraft();
     if (!snapshot) return;
     await saveTemplate(snapshot);
-  }, [draft.html, htmlSourceActive, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
+  }, [saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
+
+  const handleSaveAndPublish = useCallback(async () => {
+    if (saving) return;
+    let saved;
+    if (!visualEditorTouched) {
+      saved = await saveTemplate();
+    } else {
+      const snapshot = await syncEditorDraft();
+      if (!snapshot) return;
+      saved = await saveTemplate(snapshot);
+    }
+    if (saved) {
+      await publishTemplate(saved.id);
+    }
+  }, [publishTemplate, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
 
   const handleOpenHtmlEditor = useCallback(async () => {
     if (htmlEditorOpening) return;
@@ -285,9 +307,10 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
     ref,
     () => ({
       publish: handlePublish,
+      saveAndPublish: handleSaveAndPublish,
       openHtmlEditor: handleOpenHtmlEditor,
     }),
-    [handleOpenHtmlEditor, handlePublish]
+    [handleOpenHtmlEditor, handlePublish, handleSaveAndPublish]
   );
 
   const handleImportImage = useCallback(() => {
@@ -324,6 +347,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
           onExportHtml={handleExportHtml}
           onImportImage={handleImportImage}
           onAddLink={handleAddLink}
+          bottomSlot={bottomSlot}
         />
         <EmailEditor
           ref={editorRef}
@@ -335,7 +359,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
           }}
           className={cn(
             "min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6",
-            "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-[600px]",
+            "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-150",
             "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
             "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
             "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
@@ -463,6 +487,7 @@ function EditorBlocksPanel({
   onExportHtml,
   onImportImage,
   onAddLink,
+  bottomSlot,
 }: {
   isDirty: boolean;
   eventStatus: string;
@@ -471,6 +496,7 @@ function EditorBlocksPanel({
   onExportHtml: () => void;
   onImportImage: () => void;
   onAddLink: () => void;
+  bottomSlot?: ReactNode;
 }) {
   return (
     <aside className="w-72 shrink-0 overflow-y-auto border-r bg-background p-4">
@@ -526,6 +552,13 @@ function EditorBlocksPanel({
         </Badge>
         <Badge variant="outline">{eventStatus}</Badge>
       </div>
+
+      {bottomSlot ? (
+        <>
+          <Separator className="my-4" />
+          {bottomSlot}
+        </>
+      ) : null}
     </aside>
   );
 }

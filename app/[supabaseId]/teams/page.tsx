@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { useParams } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
 import { Check, ShieldAlert, Trash2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,11 @@ type EligibleProfile = {
   id: string;
   name: string;
   email: string;
+};
+
+type TeamTransferTarget = {
+  teamId: string;
+  teamName: string;
 };
 
 const STATUS_OPTIONS = [
@@ -138,7 +144,7 @@ const buildTeamStatusRulesSnapshot = (input: {
 
 export default function TeamsPage() {
   const { user } = useUser();
-  const { teams, activeTeamId, activeRole, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
+  const { teams, activeTeamId, activeRole, activeTeam, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const [switchingTeamId, setSwitchingTeamId] = useState<string | null>(null);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -163,6 +169,9 @@ export default function TeamsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [transferCandidateId, setTransferCandidateId] = useState("");
+  const [transferTargets, setTransferTargets] = useState<TeamTransferTarget[]>([]);
+  const [canManageTransferRoutes, setCanManageTransferRoutes] = useState(false);
+  const [savingTransferTargets, setSavingTransferTargets] = useState(false);
   const [disabledStatuses, setDisabledStatuses] = useState<string[]>([]);
   const [leadTimeRules, setLeadTimeRules] = useState<Record<string, LeadTimeRuleDraft>>({});
   const [combinedRules, setCombinedRules] = useState<CombinedRuleDraft[]>([]);
@@ -171,6 +180,7 @@ export default function TeamsPage() {
   );
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesSaving, setRulesSaving] = useState(false);
+  const [cancelingPendingTeamId, setCancelingPendingTeamId] = useState<string | null>(null);
   const [isEditPendingPaymentOpen, setIsEditPendingPaymentOpen] = useState(false);
   const [pendingPaymentLoading, setPendingPaymentLoading] = useState(false);
   const [pendingPaymentSubmitting, setPendingPaymentSubmitting] = useState(false);
@@ -187,7 +197,7 @@ export default function TeamsPage() {
 
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && user?.canManageAccountTeams));
+  const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && activeTeam?.canManageAccountTeams));
   const { hasAvailableTeamSlot } = useBillingSlots(supabaseId, !!user?.isMaster);
   const isOnlyMasterTeam = user?.id
     ? teams.filter((team) => team.masterId === user.id).length <= 1
@@ -383,6 +393,30 @@ export default function TeamsPage() {
       setPendingPaymentTarget(null);
     } finally {
       setPendingPaymentLoading(false);
+    }
+  };
+
+  const handleCancelPendingTeam = async (team: ManagerTeamTableRow) => {
+    const pendingActionId = team.pendingPayment?.id;
+    if (!pendingActionId) return;
+
+    setCancelingPendingTeamId(team.id);
+    try {
+      const response = await fetch(`/api/v1/teams/pending-actions/${pendingActionId}`, {
+        method: "DELETE",
+        headers: { "x-supabase-user-id": supabaseId },
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.[0] || "Erro ao cancelar criação do time.");
+      }
+      toast.success("Criação do time cancelada com sucesso.");
+      await refreshTeams();
+    } catch (error: any) {
+      Sentry.captureException(error);
+      toast.error(error?.message || "Erro ao cancelar criação do time.");
+    } finally {
+      setCancelingPendingTeamId(null);
     }
   };
 
@@ -626,11 +660,15 @@ export default function TeamsPage() {
         members: TeamMember[];
         eligibleProfiles: EligibleProfile[];
         transferCandidates: EligibleProfile[];
+        transferTargets?: TeamTransferTarget[];
+        canManageTransferRoutes?: boolean;
       };
 
       setMembers(payload.members || []);
       setEligibleProfiles(payload.eligibleProfiles || []);
       setTransferCandidates(payload.transferCandidates || []);
+      setTransferTargets(payload.transferTargets || []);
+      setCanManageTransferRoutes(payload.canManageTransferRoutes === true);
       setRenameValue(payload.team.name || "");
       setManageTeamName(payload.team.name || "");
       if (payload.transferCandidates?.length) {
@@ -689,6 +727,46 @@ export default function TeamsPage() {
       toast.error(error?.message || "Erro ao atualizar time.");
     } finally {
       setIsRenaming(false);
+    }
+  };
+
+  const handleToggleTransferTarget = async (targetTeamId: string, checked: boolean) => {
+    if (!manageTeamId || !canManageTransferRoutes) return;
+
+    const nextTargets = checked
+      ? Array.from(new Set([...transferTargets.map((item) => item.teamId), targetTeamId]))
+      : transferTargets.filter((item) => item.teamId !== targetTeamId).map((item) => item.teamId);
+
+    setSavingTransferTargets(true);
+    try {
+      const response = await fetch(`/api/v1/teams/${manageTeamId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": manageTeamId,
+        },
+        body: JSON.stringify({
+          name: renameValue.trim() || manageTeamName,
+          transferTargetTeamIds: nextTargets,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar os destinos de transferência.");
+      }
+
+      const nextTransferTargets = teams
+        .filter((team) => nextTargets.includes(team.id))
+        .map((team) => ({ teamId: team.id, teamName: team.name }));
+      setTransferTargets(nextTransferTargets);
+      toast.success("Destinos de transferência atualizados.");
+    } catch (error: any) {
+      Sentry.captureException(error);
+      console.error("Erro ao atualizar destinos de transferência:", error);
+      toast.error(error?.message || "Erro ao atualizar destinos de transferência.");
+    } finally {
+      setSavingTransferTargets(false);
     }
   };
 
@@ -824,12 +902,14 @@ export default function TeamsPage() {
         teams={teams}
         activeTeamId={activeTeamId}
         switchingTeamId={switchingTeamId}
+        cancelingPendingTeamId={cancelingPendingTeamId}
         onSetActiveTeam={(teamId) => {
           void handleSetActiveTeam(teamId);
         }}
         onManageTeam={handleOpenManageTeam}
         onViewPendingCheckout={handleViewPendingCheckout}
         onEditPendingPayment={handleOpenEditPendingPayment}
+        onCancelPendingTeam={handleCancelPendingTeam}
         onRefreshTeams={refreshTeams}
         onOpenCreateTeam={() => setIsCreateTeamOpen(true)}
         canManageTeams={canManageTeams}
@@ -923,6 +1003,8 @@ export default function TeamsPage() {
             setTransferCandidates([])
             setConfirmAction(null)
             setConfirmPassword("")
+            setTransferTargets([])
+            setCanManageTransferRoutes(false)
             setDisabledStatuses([])
             setLeadTimeRules({})
             setCombinedRules([])
@@ -982,6 +1064,39 @@ export default function TeamsPage() {
                   </Button>
                 </div>
               </div>
+
+              {canManageTransferRoutes ? (
+                <div className="space-y-3 rounded-lg border border-border/60 p-3">
+                  <div>
+                    <h3 className="text-sm font-medium">Times que recebem transferência</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Só master e manager delegado visualizam esta configuração.
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    {teams
+                      .filter((team) => team.id !== manageTeamId && !team.isPending)
+                      .map((team) => {
+                        const checked = transferTargets.some((item) => item.teamId === team.id);
+                        return (
+                          <label
+                            key={team.id}
+                            className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2 text-sm"
+                          >
+                            <span>{team.name}</span>
+                            <Checkbox
+                              checked={checked}
+                              disabled={savingTransferTargets}
+                              onCheckedChange={(value) =>
+                                void handleToggleTransferTarget(team.id, value === true)
+                              }
+                            />
+                          </label>
+                        );
+                      })}
+                  </div>
+                </div>
+              ) : null}
 
               <Separator />
 

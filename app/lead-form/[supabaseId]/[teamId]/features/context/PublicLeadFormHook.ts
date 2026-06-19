@@ -12,6 +12,7 @@ import type { PublicLeadFormState, PublicLeadFormActions, BootstrapStatus } from
 import { DEFAULT_TZ } from "@/lib/dates";
 
 export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): PublicLeadFormState & PublicLeadFormActions {
+  const [teamName, setTeamName] = useState("");
   const [healthPlans, setHealthPlans] = useState<HealthPlanOption[]>([]);
   const [healthPlansLoading, setHealthPlansLoading] = useState(true);
   const [closers, setClosers] = useState<CloserOption[]>([]);
@@ -19,10 +20,13 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
   const [sdrs, setSdrs] = useState<SdrOption[]>([]);
   const [guestCandidates, setGuestCandidates] = useState<GuestCandidateOption[]>([]);
   const [timezone, setTimezone] = useState(DEFAULT_TZ);
+  const [hasTransferTargets, setHasTransferTargets] = useState(false);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("loading");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [preScheduleOccupiedSlots, setPreScheduleOccupiedSlots] = useState<number[]>([]);
+  const [preScheduleSlotsLoading, setPreScheduleSlotsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0);
@@ -30,6 +34,8 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
   const bootstrapInFlightKeyRef = useRef<string | null>(null);
   const availabilityInFlightKeyRef = useRef<string | null>(null);
   const lastAvailabilitySuccessKeyRef = useRef<string | null>(null);
+  const preScheduleSlotsInFlightKeyRef = useRef<string | null>(null);
+  const lastPreScheduleSlotsSuccessKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!teamId) {
@@ -57,22 +63,26 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
           return;
         }
 
+        setTeamName(bootstrapData.teamName);
         setHealthPlans(bootstrapData.healthPlans);
         setClosers(bootstrapData.closers);
         setSdrs(bootstrapData.sdrs);
         setGuestCandidates(bootstrapData.guestCandidates);
         setTimezone(bootstrapData.timezone);
+        setHasTransferTargets(bootstrapData.hasTransferTargets);
         setBootstrapStatus("ready");
       } catch (error) {
         if (bootstrapInFlightKeyRef.current !== requestKey) {
           return;
         }
         console.error("[usePublicLeadForm] Erro ao carregar bootstrap inicial:", error);
+        setTeamName("");
         setHealthPlans([]);
         setClosers([]);
         setSdrs([]);
         setGuestCandidates([]);
         setTimezone(DEFAULT_TZ);
+        setHasTransferTargets(false);
         setBootstrapStatus("error");
         setBootstrapError(
           error instanceof Error ? error.message : "Erro ao carregar dados iniciais do formulário."
@@ -153,6 +163,50 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
     [teamId, legacySupabaseId]
   );
 
+  const fetchPreScheduleSlots = useCallback(
+    async (date: string) => {
+      if (!date) {
+        preScheduleSlotsInFlightKeyRef.current = null;
+        setPreScheduleSlotsLoading(false);
+        setPreScheduleOccupiedSlots([]);
+        lastPreScheduleSlotsSuccessKeyRef.current = null;
+        return;
+      }
+
+      const requestKey = `${teamId}:${date}`;
+      if (lastPreScheduleSlotsSuccessKeyRef.current === requestKey) {
+        return;
+      }
+      if (preScheduleSlotsInFlightKeyRef.current === requestKey) {
+        return;
+      }
+
+      preScheduleSlotsInFlightKeyRef.current = requestKey;
+      setPreScheduleSlotsLoading(true);
+
+      try {
+        const result = await publicLeadFormService.getPreScheduleSlots(teamId, date, legacySupabaseId);
+        if (preScheduleSlotsInFlightKeyRef.current !== requestKey) {
+          return;
+        }
+        setPreScheduleOccupiedSlots(result.occupiedSlots);
+        lastPreScheduleSlotsSuccessKeyRef.current = requestKey;
+      } catch (error) {
+        if (preScheduleSlotsInFlightKeyRef.current !== requestKey) {
+          return;
+        }
+        console.error("[usePublicLeadForm] Erro ao buscar slots de pré-agendamento:", error);
+        setPreScheduleOccupiedSlots([]);
+      } finally {
+        if (preScheduleSlotsInFlightKeyRef.current === requestKey) {
+          preScheduleSlotsInFlightKeyRef.current = null;
+          setPreScheduleSlotsLoading(false);
+        }
+      }
+    },
+    [teamId, legacySupabaseId]
+  );
+
   const retryBootstrap = useCallback(() => {
     setBootstrapRetryCount((previous) => previous + 1);
   }, []);
@@ -160,10 +214,13 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
   const resetForm = useCallback(() => {
     setIsSubmitted(false);
     setAvailableTimes([]);
+    setPreScheduleOccupiedSlots([]);
+    lastPreScheduleSlotsSuccessKeyRef.current = null;
   }, []);
 
   return {
     teamId,
+    teamName,
     legacySupabaseId,
     bootstrapStatus,
     bootstrapError,
@@ -174,11 +231,15 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
     sdrs,
     guestCandidates,
     timezone,
+    hasTransferTargets,
     availableTimes,
     availabilityLoading,
+    preScheduleOccupiedSlots,
+    preScheduleSlotsLoading,
     isSubmitting,
     isSubmitted,
     fetchAvailability,
+    fetchPreScheduleSlots,
     submitLead,
     retryBootstrap,
     resetForm,

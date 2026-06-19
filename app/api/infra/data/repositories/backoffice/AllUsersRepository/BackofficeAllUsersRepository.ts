@@ -26,6 +26,7 @@ function mapUserType(assignment: { accessExpiresAt: Date | null; userType: { slu
 
 const PROFILE_LIST_SELECT = {
   id: true,
+  supabaseId: true,
   fullName: true,
   email: true,
   phone: true,
@@ -87,6 +88,7 @@ function mapRow(profile: ProfileListRow): BackofficeAllUsersListRecord {
 
   return {
     id: profile.id,
+    supabaseId: profile.supabaseId,
     fullName: profile.fullName,
     email: profile.email,
     phone: profile.phone,

@@ -15,6 +15,7 @@ export interface ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[]; total: number }>;
   findAllByManagerId(
@@ -25,6 +26,7 @@ export interface ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }>;
   findAllByTeamId(
@@ -35,6 +37,7 @@ export interface ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }>;
   findAllByOperatorId(
@@ -44,6 +47,7 @@ export interface ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }>;
   findAllByOperatorIdInTeam(
@@ -55,6 +59,7 @@ export interface ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }>;
   update(id: string, data: Prisma.LeadUpdateInput): Promise<Lead>;

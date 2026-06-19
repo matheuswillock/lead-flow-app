@@ -8,6 +8,7 @@ export interface ProfileInfo {
   isMaster: boolean;
   fullName: string | null;
   email: string;
+  canTransferAccountLeads?: boolean;
   activeTeamId?: string | null;
 }
 

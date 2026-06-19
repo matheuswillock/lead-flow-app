@@ -1,0 +1,349 @@
+"use client"
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { useTeamContext } from '@/app/context/TeamContext'
+import { whatsAppInboxService } from '../services/WhatsAppInboxService'
+import type {
+  InboxActions,
+  InboxState,
+  WhatsAppConfig,
+  WhatsAppConversation,
+  WhatsAppMessage,
+} from './WhatsAppInboxTypes'
+
+const CONVERSATIONS_LIMIT = 20
+const MESSAGES_LIMIT = 50
+const SEARCH_DEBOUNCE_MS = 400
+
+const configInFlightByKey = new Map<string, Promise<WhatsAppConfig | null>>()
+const conversationsInFlightByKey = new Map<
+  string,
+  Promise<{ conversations: WhatsAppConversation[]; total: number }>
+>()
+const messagesInFlightByKey = new Map<
+  string,
+  Promise<{ messages: WhatsAppMessage[]; total: number }>
+>()
+
+export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions {
+  const { activeTeamId } = useTeamContext()
+
+  const [config, setConfig] = useState<WhatsAppConfig | null>(null)
+  const [conversations, setConversations] = useState<WhatsAppConversation[]>([])
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<WhatsAppMessage[]>([])
+  const [totalConversations, setTotalConversations] = useState(0)
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false)
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false)
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const [searchQuery, setSearchQueryState] = useState('')
+  const [page, setPage] = useState(1)
+
+  const currentConfigKeyRef = useRef<string | null>(null)
+  const inFlightConfigKeyRef = useRef<string | null>(null)
+  const lastSuccessConfigKeyRef = useRef<string | null>(null)
+
+  const currentConvsKeyRef = useRef<string | null>(null)
+  const inFlightConvsKeyRef = useRef<string | null>(null)
+
+  const currentMessagesConvIdRef = useRef<string | null>(null)
+  const inFlightMessagesConvIdRef = useRef<string | null>(null)
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSearchRef = useRef<string>('')
+
+  const selectedConversation = conversations.find((c) => c.id === selectedConversationId) ?? null
+
+  // Load config
+  const loadConfig = useCallback(async () => {
+    if (!activeTeamId) {
+      setConfig(null)
+      setIsLoadingConfig(false)
+      currentConfigKeyRef.current = null
+      inFlightConfigKeyRef.current = null
+      lastSuccessConfigKeyRef.current = null
+      return
+    }
+
+    const key = `${supabaseId}:${activeTeamId}`
+    currentConfigKeyRef.current = key
+
+    if (lastSuccessConfigKeyRef.current === key) {
+      setIsLoadingConfig(false)
+      return
+    }
+
+    if (inFlightConfigKeyRef.current === key) {
+      return
+    }
+
+    setIsLoadingConfig(true)
+    inFlightConfigKeyRef.current = key
+
+    const existing = configInFlightByKey.get(key)
+    const promise =
+      existing ??
+      whatsAppInboxService.fetchConfig(activeTeamId, supabaseId).finally(() => {
+        configInFlightByKey.delete(key)
+      })
+
+    if (!existing) {
+      configInFlightByKey.set(key, promise)
+    }
+
+    try {
+      const result = await promise
+      if (currentConfigKeyRef.current !== key) return
+      setConfig(result)
+      lastSuccessConfigKeyRef.current = key
+    } catch (error) {
+      if (currentConfigKeyRef.current === key) {
+        setConfig(null)
+      }
+      console.error('[useWhatsAppInbox] Erro ao carregar configuração do WhatsApp:', error)
+      toast.error(error instanceof Error ? error.message : 'Não foi possível carregar a configuração do WhatsApp')
+    } finally {
+      if (currentConfigKeyRef.current === key) {
+        setIsLoadingConfig(false)
+      }
+      if (inFlightConfigKeyRef.current === key) {
+        inFlightConfigKeyRef.current = null
+      }
+    }
+  }, [activeTeamId, supabaseId])
+
+  // Load conversations
+  const loadConversations = useCallback(
+    async (pageNum: number, search: string) => {
+      if (!activeTeamId) {
+        setConversations([])
+        setTotalConversations(0)
+        setIsLoadingConversations(false)
+        currentConvsKeyRef.current = null
+        inFlightConvsKeyRef.current = null
+        return
+      }
+
+      const key = `${supabaseId}:${activeTeamId}:${pageNum}:${search}`
+      currentConvsKeyRef.current = key
+
+      if (inFlightConvsKeyRef.current === key) {
+        return
+      }
+
+      setIsLoadingConversations(true)
+      inFlightConvsKeyRef.current = key
+
+      const existing = conversationsInFlightByKey.get(key)
+      const promise =
+        existing ??
+        whatsAppInboxService
+          .fetchConversations(activeTeamId, supabaseId, {
+            page: pageNum,
+            limit: CONVERSATIONS_LIMIT,
+            search: search || undefined,
+          })
+          .finally(() => {
+            conversationsInFlightByKey.delete(key)
+          })
+
+      if (!existing) {
+        conversationsInFlightByKey.set(key, promise)
+      }
+
+      try {
+        const result = await promise
+        if (currentConvsKeyRef.current !== key) return
+        setConversations(result.conversations)
+        setTotalConversations(result.total)
+      } catch (error) {
+        if (currentConvsKeyRef.current === key) {
+          setConversations([])
+          setTotalConversations(0)
+        }
+        console.error('[useWhatsAppInbox] Erro ao carregar conversas:', error)
+        toast.error(error instanceof Error ? error.message : 'Não foi possível carregar as conversas')
+      } finally {
+        if (currentConvsKeyRef.current === key) {
+          setIsLoadingConversations(false)
+        }
+        if (inFlightConvsKeyRef.current === key) {
+          inFlightConvsKeyRef.current = null
+        }
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
+  // Load messages for selected conversation
+  const loadMessages = useCallback(
+    async (conversationId: string) => {
+      if (!activeTeamId) return
+
+      currentMessagesConvIdRef.current = conversationId
+
+      if (inFlightMessagesConvIdRef.current === conversationId) {
+        return
+      }
+
+      setIsLoadingMessages(true)
+      inFlightMessagesConvIdRef.current = conversationId
+
+      const existing = messagesInFlightByKey.get(conversationId)
+      const promise =
+        existing ??
+        whatsAppInboxService
+          .fetchMessages(activeTeamId, supabaseId, conversationId, { limit: MESSAGES_LIMIT })
+          .finally(() => {
+            messagesInFlightByKey.delete(conversationId)
+          })
+
+      if (!existing) {
+        messagesInFlightByKey.set(conversationId, promise)
+      }
+
+      try {
+        const result = await promise
+        if (currentMessagesConvIdRef.current !== conversationId) return
+        setMessages(result.messages)
+      } catch (error) {
+        if (currentMessagesConvIdRef.current === conversationId) {
+          setMessages([])
+        }
+        console.error('[useWhatsAppInbox] Erro ao carregar mensagens:', error)
+        toast.error(error instanceof Error ? error.message : 'Não foi possível carregar as mensagens')
+      } finally {
+        if (currentMessagesConvIdRef.current === conversationId) {
+          setIsLoadingMessages(false)
+        }
+        if (inFlightMessagesConvIdRef.current === conversationId) {
+          inFlightMessagesConvIdRef.current = null
+        }
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
+  useEffect(() => {
+    void loadConfig()
+  }, [loadConfig])
+
+  useEffect(() => {
+    void loadConversations(1, '')
+    setPage(1)
+  }, [loadConversations, activeTeamId])
+
+  const selectConversation = useCallback(
+    (id: string) => {
+      setSelectedConversationId(id)
+      setMessages([])
+      void loadMessages(id)
+
+      // Zero the unread count locally and fire-and-forget the server update
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
+      )
+      if (activeTeamId) {
+        whatsAppInboxService
+          .markConversationRead(activeTeamId, supabaseId, id)
+          .catch((err: unknown) => {
+            console.error('[useWhatsAppInbox] Erro ao marcar como lida:', err)
+          })
+      }
+    },
+    [loadMessages, activeTeamId, supabaseId]
+  )
+
+  const loadMoreConversations = useCallback(() => {
+    const nextPage = page + 1
+    setPage(nextPage)
+    void loadConversations(nextPage, pendingSearchRef.current)
+  }, [page, loadConversations])
+
+  const setSearchQuery = useCallback(
+    (q: string) => {
+      setSearchQueryState(q)
+      pendingSearchRef.current = q
+
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+      }
+
+      searchDebounceRef.current = setTimeout(() => {
+        setPage(1)
+        void loadConversations(1, q)
+      }, SEARCH_DEBOUNCE_MS)
+    },
+    [loadConversations]
+  )
+
+  const sendMessage = useCallback(
+    (text: string) => {
+      if (!activeTeamId || !selectedConversationId || isSending) return
+
+      const trimmedText = text.trim()
+      if (!trimmedText) return
+
+      const executeSend = async () => {
+        setIsSending(true)
+
+        const optimisticMessage: WhatsAppMessage = {
+          id: `optimistic-${Date.now()}`,
+          conversationId: selectedConversationId,
+          direction: 'OUTBOUND',
+          messageType: 'text',
+          status: 'pending',
+          contentText: trimmedText,
+          sentByProfileId: null,
+          senderPhone: null,
+          recipientPhone: null,
+          sentAt: new Date().toISOString(),
+          deliveredAt: null,
+          readAt: null,
+          failedAt: null,
+          createdAt: new Date().toISOString(),
+        }
+
+        setMessages((prev) => [...prev, optimisticMessage])
+
+        try {
+          await whatsAppInboxService.sendMessage(activeTeamId, supabaseId, selectedConversationId, trimmedText)
+          toast.success('Mensagem enviada')
+        } catch (error) {
+          setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id))
+          console.error('[useWhatsAppInbox] Erro ao enviar mensagem:', error)
+          toast.error(error instanceof Error ? error.message : 'Não foi possível enviar a mensagem')
+        } finally {
+          setIsSending(false)
+        }
+      }
+
+      executeSend().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao enviar mensagem:', error)
+        setIsSending(false)
+      })
+    },
+    [activeTeamId, selectedConversationId, isSending, supabaseId]
+  )
+
+  return {
+    config,
+    conversations,
+    selectedConversationId,
+    selectedConversation,
+    messages,
+    totalConversations,
+    isLoadingConfig,
+    isLoadingConversations,
+    isLoadingMessages,
+    isSending,
+    searchQuery,
+    page,
+    selectConversation,
+    loadMoreConversations,
+    sendMessage,
+    setSearchQuery,
+  }
+}

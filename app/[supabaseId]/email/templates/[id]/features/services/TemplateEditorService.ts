@@ -74,6 +74,78 @@ class TemplateEditorService implements ITemplateEditorService {
     return this.parseResponse<Template>(response, "Erro ao atualizar template");
   }
 
+  async publishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Publishing template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/publish`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao publicar template");
+  }
+
+  async unpublishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Unpublishing template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/publish`, {
+      method: "DELETE",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao despublicar template");
+  }
+
+  async submitForApproval(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Submitting for approval", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/submit`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao enviar para aprovação");
+  }
+
+  async approveTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Approving template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/approve`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao aprovar template");
+  }
+
+  async rejectTemplate(
+    supabaseId: string,
+    templateId: string,
+    reviewNote: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Rejecting template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/reject`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify({ reviewNote }),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao recusar template");
+  }
+
   private toPayload(draft: TemplateEditorDraft) {
     return {
       name: draft.name,
@@ -81,6 +153,7 @@ class TemplateEditorService implements ITemplateEditorService {
       previewText: draft.previewText,
       html: draft.html,
       mailyJson: draft.mailyJson,
+      variables: draft.variables,
     };
   }
 }

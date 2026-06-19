@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
 
 export async function POST(
@@ -12,6 +13,8 @@ export async function POST(
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireMasterAccess(access.access)
+    if (denied) return denied
 
     const { id } = await params
     const output = await backofficeAdhesionUseCase.resend(id)

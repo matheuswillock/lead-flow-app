@@ -327,6 +327,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           profileId: createdProfile.id,
           role: "manager",
           functions: createdProfile.functions ?? [],
+          canCreateAccountUsers: true,
+          canManageAccountTeams: true,
         },
       })
 
@@ -347,8 +349,6 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       subscriptionEndDate: Date
       subscriptionCycle: string
       subscriptionNextDueDate: Date
-      canCreateAccountUsers: boolean
-      canManageAccountTeams: boolean
     }
   ): Promise<void> {
     await prisma.profile.update({

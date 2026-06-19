@@ -14,10 +14,12 @@ interface ManagerTeamsContainerProps {
   teams: TeamSummary[];
   activeTeamId: string | null;
   switchingTeamId: string | null;
+  cancelingPendingTeamId: string | null;
   onSetActiveTeam: (teamId: string) => void;
   onManageTeam: (teamId: string, teamName: string) => void;
   onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
   onEditPendingPayment: (team: ManagerTeamTableRow) => void;
+  onCancelPendingTeam: (team: ManagerTeamTableRow) => void;
   onRefreshTeams: () => void;
   onOpenCreateTeam: () => void;
   canManageTeams: boolean;
@@ -29,10 +31,12 @@ export function ManagerTeamsContainer({
   teams,
   activeTeamId,
   switchingTeamId,
+  cancelingPendingTeamId,
   onSetActiveTeam,
   onManageTeam,
   onViewPendingCheckout,
   onEditPendingPayment,
+  onCancelPendingTeam,
   onRefreshTeams,
   onOpenCreateTeam,
   canManageTeams,
@@ -49,6 +53,7 @@ export function ManagerTeamsContainer({
     role: team.role,
     functions: team.functions ?? [],
     createdAt: team.membershipCreatedAt,
+    isPending: team.isPending ?? false,
     pendingPayment: team.pendingPayment ?? null,
   }));
   const pendingCount = tableData.filter((team) => {
@@ -60,10 +65,12 @@ export function ManagerTeamsContainer({
     tz,
     activeTeamId,
     switchingTeamId,
+    cancelingPendingTeamId,
     onSetActiveTeam,
     onManageTeam,
     onViewPendingCheckout,
     onEditPendingPayment,
+    onCancelPendingTeam,
     canManageTeams,
   });
 
@@ -130,6 +137,7 @@ export function ManagerTeamsContainer({
             columns={columns}
             data={tableData}
             loading={loading}
+            getRowClassName={(row) => (row.isPending ? "opacity-50" : "")}
             toolbar={{
               search: { columnId: "name", placeholder: "Buscar por nome ou e-mail..." },
               selectFilters: [

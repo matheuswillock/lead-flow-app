@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Send, X, Trash2 } from "lucide-react"
+import { MoreHorizontal, Send, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -15,6 +15,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Table,
   TableBody,
   TableCell,
@@ -27,34 +35,78 @@ import { useCampanhasContext } from "../context/CampanhasContext"
 import type { Campaign } from "../context/CampanhasTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
-function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConfirm: () => Promise<void> }) {
-  const [open, setOpen] = useState(false)
+function CampaignActionsMenu({
+  campaign,
+  canSendCampaign,
+  deletingId,
+  openEdit,
+  handleSend,
+  handleDeleteDraft,
+}: {
+  campaign: Campaign
+  canSendCampaign: boolean
+  deletingId: string | null
+  openEdit: (campaign: Campaign) => void
+  handleSend: (id: string) => Promise<void>
+  handleDeleteDraft: (id: string) => Promise<void>
+}) {
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
+  const canSendByStatus = campaign.status === "draft" || campaign.status === "scheduled"
+  const canEdit = true
+  const canDelete = true
 
-  async function handleConfirm() {
+  async function handleSendConfirm() {
     setSending(true)
     try {
-      await onConfirm()
+      await handleSend(campaign.id)
     } finally {
       setSending(false)
-      setOpen(false)
+      setSendConfirmOpen(false)
     }
   }
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => setOpen(true)}
-        disabled={sending}
-        className="h-7 px-2 text-xs"
-      >
-        <Send className="mr-1 h-3 w-3" />
-        Disparar
-      </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Abrir menu</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+
+          <DropdownMenuItem
+            onClick={() => setSendConfirmOpen(true)}
+            disabled={!canSendCampaign || !canSendByStatus}
+            title={!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined}
+          >
+            <Send className="mr-2 h-4 w-4" />
+            Disparar
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => handleDeleteDraft(campaign.id)}
+            disabled={deletingId === campaign.id || !canDelete}
+            className="text-red-600"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
+          </DropdownMenuItem>
+
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar disparo?</AlertDialogTitle>
@@ -66,7 +118,7 @@ function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConf
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm} disabled={sending}>
+            <AlertDialogAction onClick={handleSendConfirm} disabled={sending}>
               {sending ? "Disparando..." : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -78,19 +130,22 @@ function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConf
 
 export function CampaignList() {
   const { tz } = useTimezone()
+  const { isBeta } = useFeatureAccess()
   const {
     campaigns,
     total,
     page,
     totalPages,
     loading,
-    cancelingId,
     deletingId,
     handleSend,
-    handleCancel,
     handleDeleteDraft,
     handlePageChange,
+    openEdit,
+    credits,
   } = useCampanhasContext()
+  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  const canSendCampaign = !!credits?.hasSubscription || isCampaignsBetaAccess
 
   return (
     <div className="space-y-3">
@@ -99,10 +154,13 @@ export function CampaignList() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
+              <TableHead>Criado por</TableHead>
               <TableHead>Template / Lista</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Destinatários</TableHead>
-              <TableHead>Data</TableHead>
+              <TableHead>Qtd. disparos</TableHead>
+              <TableHead>Data de criação</TableHead>
+              <TableHead>Último disparo</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -110,72 +168,58 @@ export function CampaignList() {
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 6 }).map((__, j) => (
+                  {Array.from({ length: 9 }).map((__, j) => (
                     <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                   ))}
                 </TableRow>
               ))
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
                   Nenhuma campanha encontrada
                 </TableCell>
               </TableRow>
             ) : (
               campaigns.map((campaign) => (
                 <TableRow key={campaign.id}>
-                  <TableCell className="font-medium">{campaign.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <div>{campaign.template.name}</div>
-                    <div className="text-xs">{campaign.contactList.name}</div>
+                  <TableCell className="align-middle font-medium">{campaign.name}</TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
+                    {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
+                    <div>{campaign.template?.name ?? '—'}</div>
+                    <div className="text-xs">{campaign.contactList?.name ?? '—'}</div>
+                  </TableCell>
+                  <TableCell className="align-middle">
                     <CampaignStatusBadge status={campaign.status} />
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="align-middle text-sm">
                     {campaign.totalRecipients.toLocaleString("pt-BR")}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {campaign.sentAt
-                      ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy", tz)
-                      : campaign.scheduledAt
-                      ? formatIntimezone(new Date(campaign.scheduledAt), "dd/MM/yyyy", tz)
-                      : formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
+                  <TableCell className="align-middle text-sm text-muted-foreground">
+                    {campaign.dispatchCount.toLocaleString("pt-BR")}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
+                    {formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
+                  </TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
+                    {campaign.sentAt
+                      ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy HH:mm", tz)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="align-middle">
                     <div className="flex items-center justify-end gap-1">
-                      {(campaign.status === "draft" || campaign.status === "scheduled") && (
-                        <SendConfirmDialog
-                          campaign={campaign}
-                          onConfirm={() => handleSend(campaign.id)}
-                        />
-                      )}
-                      {campaign.status === "sending" && (
+                      {campaign.status === "sending" ? (
                         <span className="text-xs text-muted-foreground">Enviando...</span>
-                      )}
-                      {campaign.status === "scheduled" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleCancel(campaign.id)}
-                          disabled={cancelingId === campaign.id}
-                          className="h-7 px-2 text-xs text-muted-foreground"
-                        >
-                          <X className="mr-1 h-3 w-3" />
-                          {cancelingId === campaign.id ? "..." : "Cancelar"}
-                        </Button>
-                      )}
-                      {campaign.status === "draft" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteDraft(campaign.id)}
-                          disabled={deletingId === campaign.id}
-                          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="mr-1 h-3 w-3" />
-                          {deletingId === campaign.id ? "..." : "Excluir"}
-                        </Button>
+                      ) : (
+                        <CampaignActionsMenu
+                          campaign={campaign}
+                          canSendCampaign={canSendCampaign}
+                          deletingId={deletingId}
+                          openEdit={openEdit}
+                          handleSend={handleSend}
+                          handleDeleteDraft={handleDeleteDraft}
+                        />
                       )}
                     </div>
                   </TableCell>

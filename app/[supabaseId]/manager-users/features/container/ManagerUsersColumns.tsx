@@ -192,6 +192,10 @@ export function createColumns({
           badges.push("Gerenciar times");
         }
 
+        if ((user.role === "manager" || user.role === "backoffice") && user.canTransferAccountLeads) {
+          badges.push("Transferir leads");
+        }
+
         if (!badges.length) {
           return <div className="text-center text-muted-foreground">-</div>;
         }

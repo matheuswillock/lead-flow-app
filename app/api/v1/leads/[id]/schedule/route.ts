@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/app/api/infra/data/prisma";
@@ -7,6 +9,13 @@ import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+
+async function getCachedLeadSchedule(leadId: string) {
+  "use cache";
+  cacheTag(cacheTags.leadSchedules(leadId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  return leadScheduleRepository.findByLeadId(leadId);
+}
 
 const scheduleSchema = z.object({
   date: z.string().datetime().optional(),
@@ -86,13 +95,82 @@ export async function POST(
       return NextResponse.json(output, { status: 404 });
     }
 
+    const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
     const resolvedCloserId = closerId || lead.closerId;
+    if (!resolvedCloserId) {
+      if (lead.isTransfer !== true) {
+        const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      if (!date) {
+        const output = new Output(false, [], ["Data do pré-agendamento é obrigatória."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      const meetingDate = new Date(date);
+      if (Number.isNaN(meetingDate.getTime())) {
+        const output = new Output(false, [], ["Data do pré-agendamento inválida."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      const resolvedMeetingTitle = meetingTitle?.trim() || `Estudo Plano de Saúde: ${lead.name}`;
+      const resolvedMeetingType =
+        meetingType ??
+        ((lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
+          ? lead.meetingType
+          : "online");
+
+      const [preSchedule] = await prisma.$transaction([
+        prisma.leadsSchedule.upsert({
+          where: { leadId },
+          create: {
+            leadId,
+            date: meetingDate,
+            meetingTitle: resolvedMeetingTitle,
+            notes,
+            meetingLink: null,
+            meetingType: resolvedMeetingType,
+            extraGuests: extraGuests ?? [],
+            publicShareTokenHash: null,
+            publicShareExpiresAt: null,
+          },
+          update: {
+            date: meetingDate,
+            meetingTitle: resolvedMeetingTitle,
+            notes,
+            meetingLink: null,
+            meetingType: resolvedMeetingType,
+            extraGuests: extraGuests ?? [],
+            publicShareTokenHash: null,
+            publicShareExpiresAt: null,
+          },
+        }),
+        prisma.lead.update({
+          where: { id: leadId },
+          data: {
+            meetingDate,
+            meetingTitle: resolvedMeetingTitle,
+            meetingNotes: notes || null,
+            meetingLink: null,
+            meetingType: resolvedMeetingType,
+          },
+        }),
+      ]);
+
+      invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
+      const output = new Output(true, ["Pré-agendamento salvo com sucesso"], [], {
+        ...preSchedule,
+        status: lead.status,
+      });
+      return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
+    }
+
     if (!resolvedCloserId) {
       const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
       return NextResponse.json(output, { status: 400 });
     }
 
-    const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
     const result = await leadScheduleService.createSchedule({
       leadId: lead.id,
       leadName: lead.name,
@@ -163,7 +241,7 @@ export async function GET(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const schedules = await leadScheduleRepository.findByLeadId(leadId);
+    const schedules = await getCachedLeadSchedule(leadId);
 
     const output = new Output(true, [], [], schedules);
     return NextResponse.json(output, { status: 200 });

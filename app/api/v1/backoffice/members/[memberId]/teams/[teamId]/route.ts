@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeMemberUseCase } from "@/app/api/useCases/backoffice/BackofficeMemberUseCase"
 
 export async function DELETE(
@@ -12,6 +13,8 @@ export async function DELETE(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
+    const denied = requireMasterAccess(accessResult.access)
+    if (denied) return denied
 
     const { memberId, teamId } = await params
     const output = await backofficeMemberUseCase.removeFromTeam(memberId, teamId)

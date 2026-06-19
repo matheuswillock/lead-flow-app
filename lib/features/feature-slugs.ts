@@ -14,7 +14,9 @@ export const FEATURE_SLUGS = {
   EMAIL_CAMPAIGNS: "email-campaigns",
   EMAIL_HISTORY: "email-history",
   EMAIL_ANALYTICS: "email-analytics",
+  EMAIL_SETTINGS: "email-settings",
   CONFIGURATION: "integration",
+  WHATSAPP: "whatsapp",
 } as const
 
 export type FeatureSlug = (typeof FEATURE_SLUGS)[keyof typeof FEATURE_SLUGS]

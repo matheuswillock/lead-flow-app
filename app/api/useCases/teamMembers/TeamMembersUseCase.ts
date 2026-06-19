@@ -113,14 +113,26 @@ export class TeamMembersUseCase {
             id: member.profile.id,
             name: getDisplayName(member.profile),
             email: member.profile.email,
-          }));
+          }))
+          .sort((a, b) => {
+            const aKey = (a.name || a.email || "").toLowerCase();
+            const bKey = (b.name || b.email || "").toLowerCase();
+            return aKey.localeCompare(bKey, "pt-BR");
+          });
       }
+
+      const canManageTransferRoutes =
+        profile.isMaster || (membership.role === "manager" && membership.canManageAccountTeams === true);
+
+      const transferTargets = await this.repository.findTransferTargets(teamId);
 
       return new Output(true, [], [], {
         team: { id: team.id, name: team.name, masterId: team.masterId },
         members: filteredMembers,
         eligibleProfiles,
         transferCandidates,
+        transferTargets,
+        canManageTransferRoutes,
       });
     } catch (error) {
       console.error("[TeamMembersUseCase][listMembers] Erro ao listar membros do time:", error);

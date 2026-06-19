@@ -20,5 +20,10 @@ export interface IBackofficeAllUsersService {
 
   getDetail(profileId: string): Promise<BackofficeAllUsersDetail>
 
+  sendAccessEmail(
+    memberId: string,
+    mode: "invite" | "reset_password"
+  ): Promise<{ email: string }>
+
   updateUserType(profileId: string, data: BackofficeAllUsersUpdateUserTypeInput): Promise<BackofficeAllUsersUserType>
 }

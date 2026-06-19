@@ -88,6 +88,8 @@ interface IPipelineContextState {
   setQuery: (query: string) => void;
   onlyMeetingsHeld: boolean;
   setOnlyMeetingsHeld: (value: boolean) => void;
+  onlyTransfer: boolean;
+  setOnlyTransfer: (value: boolean) => void;
   allLeads: Lead[]; // Todos os leads em um array flat
   filtered: Lead[]; // Leads filtrados
   periodStart: string; 
@@ -178,6 +180,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
+  const [onlyTransfer, setOnlyTransfer] = useState(false);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [periodStart, setPeriodStart] = useState<string>("");
   const [periodEnd, setPeriodEnd] = useState<string>("");
@@ -643,6 +646,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       externalFilters !== undefined ? externalFilters.scheduledPeriodEnd : "";
     const activeMeetingsHeld =
       externalFilters !== undefined ? externalFilters.onlyMeetingsHeld : onlyMeetingsHeld;
+    const activeTransfer =
+      externalFilters !== undefined ? externalFilters.onlyTransfer : onlyTransfer;
 
     const q = activeQuery.trim().toLowerCase();
     
@@ -691,6 +696,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       }
 
       const matchesMeetingsHeld = !activeMeetingsHeld || lead.meetingHeald === "yes";
+      const matchesTransfer = !activeTransfer || lead.isTransfer === true;
 
       return (
         matchesQuery &&
@@ -698,11 +704,12 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         matchesResponsible &&
         matchesCloser &&
         matchesMeetingsHeld &&
+        matchesTransfer &&
         matchesPeriod &&
         matchesScheduledPeriod
       );
     });
-  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd, tz]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, periodStart, periodEnd, tz]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
@@ -721,6 +728,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setQuery,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
+    onlyTransfer,
+    setOnlyTransfer,
     allLeads,
     filtered,
     periodStart,

@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import type { IBackofficePricingService } from "../services/IBackofficePricingService"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import type {
   BackofficeAdhesionBillingCycleKey,
   BackofficeProductFormData,
@@ -17,6 +18,7 @@ interface PricingContextValue {
   products: BackofficeProductItem[]
   availableFeatureSlugs: string[]
   isLoading: boolean
+  canManage: boolean
 
   dialogOpen: boolean
   dialogMode: "create" | "edit"
@@ -50,6 +52,8 @@ interface Props {
 }
 
 export function BackofficePricingProvider({ children, pricingService }: Props) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [products, setProducts] = useState<BackofficeProductItem[]>([])
   const [availableFeatureSlugs, setAvailableFeatureSlugs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -217,6 +221,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
         products,
         availableFeatureSlugs,
         isLoading,
+        canManage,
         dialogOpen,
         dialogMode,
         dialogProduct,

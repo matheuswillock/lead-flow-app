@@ -12,6 +12,7 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 
 const updateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
+  transferTargetTeamIds: z.array(z.string().uuid("Time de transferência inválido")).optional(),
 });
 
 const deleteTeamSchema = z.object({
@@ -80,10 +81,42 @@ export async function PATCH(
       );
     }
 
-    const updated = await prisma.team.update({
-      where: { id: teamId },
-      data: { name: payload.name.trim() },
-      select: { id: true, name: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      const team = await tx.team.update({
+        where: { id: teamId },
+        data: { name: payload.name.trim() },
+        select: { id: true, name: true },
+      });
+
+      if (payload.transferTargetTeamIds) {
+        const validTargets = await tx.team.findMany({
+          where: {
+            id: { in: payload.transferTargetTeamIds },
+            masterId: teamAccess.access.managerId,
+            NOT: { id: teamId },
+          },
+          select: { id: true },
+        });
+
+        const validTargetIds = validTargets.map((item) => item.id);
+
+        await tx.teamTransferRoute.deleteMany({
+          where: { sourceTeamId: teamId },
+        });
+
+        if (validTargetIds.length > 0) {
+          await tx.teamTransferRoute.createMany({
+            data: validTargetIds.map((targetTeamId) => ({
+              sourceTeamId: teamId,
+              targetTeamId,
+              createdBy: teamAccess.access.profileId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return team;
     });
 
     return NextResponse.json(
