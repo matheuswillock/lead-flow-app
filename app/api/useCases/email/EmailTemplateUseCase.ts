@@ -97,6 +97,38 @@ export interface UpdateTemplateInput {
   variables?: TemplateVariableInput[]
 }
 
+function resolveTemplateApprovalSeed(
+  requiresApproval: boolean,
+  isManager: boolean,
+  profileId: string
+): {
+  approvalStatus: "pending_approval" | "approved"
+  approvedBy: string | null
+  approvedAt: Date | null
+} {
+  if (requiresApproval && !isManager) {
+    return {
+      approvalStatus: "pending_approval",
+      approvedBy: null,
+      approvedAt: null,
+    }
+  }
+
+  if (requiresApproval && isManager) {
+    return {
+      approvalStatus: "approved",
+      approvedBy: profileId,
+      approvedAt: new Date(),
+    }
+  }
+
+  return {
+    approvalStatus: "approved",
+    approvedBy: null,
+    approvedAt: null,
+  }
+}
+
 export class EmailTemplateUseCase {
   private async recordHistory(params: {
     templateId: string
@@ -225,7 +257,7 @@ export class EmailTemplateUseCase {
 
       const requiresApproval = teamSettings?.templateApprovalRequired ?? false
       const isManager = isManagerLikeRole(ctx.teamMember.role)
-      const approvalStatus = requiresApproval && !isManager ? "pending_approval" : "approved"
+      const approvalSeed = resolveTemplateApprovalSeed(requiresApproval, isManager, ctx.profileId)
 
       const templateId = randomUUID()
       const template = await prisma.emailTemplate.create({
@@ -241,7 +273,9 @@ export class EmailTemplateUseCase {
           mailyJson: (data.mailyJson as object) ?? null,
           html: data.html ?? null,
           variables: (data.variables as object) ?? undefined,
-          approvalStatus,
+          approvalStatus: approvalSeed.approvalStatus,
+          approvedBy: approvalSeed.approvedBy,
+          approvedAt: approvalSeed.approvedAt,
         },
       })
       await this.recordHistory({
@@ -258,7 +292,7 @@ export class EmailTemplateUseCase {
       })
 
       const message =
-        approvalStatus === "pending_approval"
+        approvalSeed.approvalStatus === "pending_approval"
           ? "Template criado e enviado para aprovação"
           : "Template criado com sucesso"
 
@@ -336,6 +370,13 @@ export class EmailTemplateUseCase {
           where: { teamId: ctx.teamId, versionGroupId: existing.versionGroupId },
           _max: { versionNumber: true },
         })
+        const teamSettings = await prisma.emailTeamSettings.findUnique({
+          where: { teamId: ctx.teamId },
+          select: { templateApprovalRequired: true },
+        }).catch(() => null)
+        const requiresApproval = teamSettings?.templateApprovalRequired ?? false
+        const isManager = isManagerLikeRole(ctx.teamMember.role)
+        const approvalSeed = resolveTemplateApprovalSeed(requiresApproval, isManager, ctx.profileId)
         const nextId = randomUUID()
         const template = await prisma.emailTemplate.create({
           select: templateDetailSelect,
@@ -354,9 +395,9 @@ export class EmailTemplateUseCase {
             variables: data.variables !== undefined ? (data.variables as object) ?? Prisma.JsonNull : existing.variables ?? Prisma.JsonNull,
             status: "draft",
             publishedAt: null,
-            approvalStatus: "approved",
-            approvedBy: null,
-            approvedAt: null,
+            approvalStatus: approvalSeed.approvalStatus,
+            approvedBy: approvalSeed.approvedBy,
+            approvedAt: approvalSeed.approvedAt,
             rejectedBy: null,
             rejectedAt: null,
             reviewNote: null,
@@ -620,10 +661,16 @@ export class EmailTemplateUseCase {
 
   async publish(id: string, ctx: TeamContext): Promise<Output> {
     try {
-      const existing = await prisma.emailTemplate.findFirst({
-        where: { id, teamId: ctx.teamId, isArchived: false },
-        select: { id: true, html: true, approvalStatus: true, versionGroupId: true },
-      })
+      const [existing, teamSettings] = await Promise.all([
+        prisma.emailTemplate.findFirst({
+          where: { id, teamId: ctx.teamId, isArchived: false },
+          select: { id: true, html: true, approvalStatus: true, approvedAt: true, versionGroupId: true },
+        }),
+        prisma.emailTeamSettings.findUnique({
+          where: { teamId: ctx.teamId },
+          select: { templateApprovalRequired: true },
+        }).catch(() => null),
+      ])
 
       if (!existing) {
         return new Output(false, [], ["Template não encontrado"], null)
@@ -633,6 +680,16 @@ export class EmailTemplateUseCase {
       }
       if (existing.approvalStatus !== "approved") {
         return new Output(false, [], ["Template precisa estar aprovado antes de ser publicado"], null)
+      }
+
+      const requiresApproval = teamSettings?.templateApprovalRequired ?? false
+      if (requiresApproval && !existing.approvedAt) {
+        return new Output(
+          false,
+          [],
+          ["Template precisa passar por aprovação antes de ser publicado"],
+          null
+        )
       }
 
       const template = await prisma.$transaction(async (tx) => {

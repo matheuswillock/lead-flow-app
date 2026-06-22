@@ -102,6 +102,20 @@ export class EmailCampaignUseCase {
     }))
   }
 
+  private async findCurrentPublishedTemplate(templateId: string, teamId: string) {
+    return prisma.emailTemplate.findFirst({
+      where: {
+        id: templateId,
+        teamId,
+        isArchived: false,
+        approvalStatus: "approved",
+        status: "published",
+        isCurrentPublished: true,
+      },
+      select: { id: true },
+    })
+  }
+
   private async countActiveRecipients(teamId: string, contactListId: string): Promise<number> {
     const recipients = await this.listActiveRecipients(teamId, contactListId)
     return recipients.length
@@ -307,21 +321,17 @@ export class EmailCampaignUseCase {
       }
 
       const [template, contactList] = await Promise.all([
-        prisma.emailTemplate.findFirst({
-          where: {
-            id: data.templateId,
-            teamId: ctx.teamId,
-            isArchived: false,
-            approvalStatus: "approved",
-            status: "published",
-          },
-          select: { id: true },
-        }),
+        this.findCurrentPublishedTemplate(data.templateId, ctx.teamId),
         prisma.emailContactList.findFirst({ where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false } }),
       ])
 
       if (!template) {
-        return new Output(false, [], ["Template não encontrado ou não está publicado. Apenas templates publicados podem ser usados em campanhas"], null)
+        return new Output(
+          false,
+          [],
+          ["Template não encontrado ou não é a versão publicada atual. Selecione a versão vigente do template"],
+          null
+        )
       }
       if (!contactList) {
         return new Output(false, [], ["Lista de contatos não encontrada ou não pertence ao time"], null)
@@ -363,6 +373,18 @@ export class EmailCampaignUseCase {
 
       if (!existing) {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser editada"], null)
+      }
+
+      if (data.templateId !== undefined) {
+        const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
+        if (!template) {
+          return new Output(
+            false,
+            [],
+            ["Template não encontrado ou não é a versão publicada atual. Selecione a versão vigente do template"],
+            null
+          )
+        }
       }
 
       let totalRecipients: number | undefined
@@ -411,6 +433,16 @@ export class EmailCampaignUseCase {
 
       if (!campaign) {
         return new Output(false, [], ["Campanha não encontrada ou já foi enviada"], null)
+      }
+
+      const currentTemplate = await this.findCurrentPublishedTemplate(campaign.templateId, ctx.teamId)
+      if (!currentTemplate) {
+        return new Output(
+          false,
+          [],
+          ["O template vinculado à campanha não é mais a versão publicada atual. Atualize a campanha antes de disparar"],
+          null
+        )
       }
 
       // Enforce dispatch restrictions from team settings
