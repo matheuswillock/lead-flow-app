@@ -485,6 +485,7 @@ export class LeadScheduleService implements ILeadScheduleService {
         organizerEmail: closerEmail,
         eventUid: scheduleId,
         timezone: closerProfile.timezone,
+        teamId,
         sourceType: "leads_schedule",
         sourceId: scheduleId,
       });

@@ -235,6 +235,7 @@ complained complained
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 suppressed suppressed
+failed failed
         }
     
 
@@ -437,6 +438,16 @@ failed failed
     
 
 
+        email_log_category {
+            campaign campaign
+meeting_invite meeting_invite
+schedule_notification schedule_notification
+transactional transactional
+other other
+        }
+    
+
+
         email_event_type {
             sent sent
 delivered delivered
@@ -446,6 +457,7 @@ bounced bounced
 complained complained
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
+failed failed
         }
     
   "corretor_studio_profiles" {
@@ -1143,6 +1155,9 @@ unsubscribed unsubscribed
     String recipientEmail 
     String recipientName "❓"
     String subject 
+    EmailLogCategory category 
+    String sourceType "❓"
+    String sourceId "❓"
     EmailLogStatus status 
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
@@ -1469,6 +1484,7 @@ unsubscribed unsubscribed
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_logs" |o--|| "EmailLogCategory" : "enum:category"
     "corretor_studio_email_logs" |o--|| "EmailLogStatus" : "enum:status"
     "corretor_studio_email_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_logs" }o--|o corretor_studio_email_campaigns : "campaign"

@@ -405,6 +405,7 @@ export async function POST(
             organizerEmail: closerProfile.email,
             eventUid: schedule.id,
             timezone: closerProfile.timezone,
+            teamId: teamAccess.access.teamId,
             sourceType: "leads_schedule",
             sourceId: schedule.id,
           });
@@ -508,6 +509,7 @@ export async function POST(
           organizerEmail: closerProfile.email,
           eventUid: schedule.id,
           timezone: closerProfile.timezone,
+          teamId: teamAccess.access.teamId,
           sourceType: "leads_schedule",
           sourceId: schedule.id,
         });
@@ -594,6 +596,7 @@ export async function POST(
           organizerEmail: closerProfile.email,
           eventUid: schedule.id,
           timezone: closerProfile.timezone,
+          teamId: teamAccess.access.teamId,
           sourceType: "leads_schedule",
           sourceId: schedule.id,
         });

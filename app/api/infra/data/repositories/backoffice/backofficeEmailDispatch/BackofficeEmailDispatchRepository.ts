@@ -121,6 +121,19 @@ export class BackofficeEmailDispatchRepository implements IBackofficeEmailDispat
 
   async applyWebhookEvent(input: ApplyBackofficeEmailDispatchWebhookRepositoryInput): Promise<void> {
     await prisma.$transaction(async (tx) => {
+      const duplicate = await tx.backofficeEmailDispatchEvent.findFirst({
+        where: {
+          dispatchId: input.dispatchId,
+          type: input.eventType,
+          occurredAt: input.occurredAt,
+        },
+        select: { id: true },
+      })
+
+      if (duplicate) {
+        return
+      }
+
       await tx.backofficeEmailDispatchEvent.create({
         data: {
           id: input.eventId,

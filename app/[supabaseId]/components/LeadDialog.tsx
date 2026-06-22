@@ -271,6 +271,15 @@ export default function LeadDialog({
     () => (currentLead ? sdrsByTeam : newLeadSdrs),
     [currentLead, sdrsByTeam, newLeadSdrs]
   );
+  const scheduleCloserName = useMemo(() => {
+    if (!currentLead || currentLead.isTransfer === true) return null;
+    if (currentLead.closer?.fullName || currentLead.closer?.email) {
+      return currentLead.closer.fullName || currentLead.closer.email || null;
+    }
+    if (!currentLead.closerId) return null;
+    const closerMember = closersByTeam.find((member) => member.id === currentLead.closerId);
+    return closerMember?.name || closerMember?.email || null;
+  }, [closersByTeam, currentLead]);
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
   const currentActivitiesLead =
@@ -292,30 +301,6 @@ export default function LeadDialog({
       void refreshLeadDetails();
     }
   }, [currentLead?.id, open, refreshLeadDetails]);
-
-  useEffect(() => {
-    const detailedLead = leadDetails?.lead;
-    if (!open || !currentLead || !detailedLead || detailedLead.id !== currentLead.id) return;
-    if (
-      detailedLead.meetingDate === currentLead.meetingDate &&
-      detailedLead.meetingTitle === currentLead.meetingTitle &&
-      detailedLead.meetingType === currentLead.meetingType
-    ) {
-      return;
-    }
-
-    // isTransfer is intentionally excluded: handleTransferToggle manages it
-    // via its own optimistic + server-confirmation flow. Spreading detailedLead
-    // here would revert the optimistic update before the API response arrives.
-    const { isTransfer: _isTransferIgnored, ...detailedLeadWithoutTransfer } = detailedLead;
-    setLocalLead((prev) =>
-      prev && prev.id === detailedLead.id ? ({ ...prev, ...detailedLeadWithoutTransfer } as Lead) : prev,
-    );
-  }, [
-    currentLead,
-    leadDetails?.lead,
-    open,
-  ]);
 
   useEffect(() => {
     if (!open) {
@@ -1883,11 +1868,20 @@ export default function LeadDialog({
   const handleTransferToggle = async () => {
     if (!currentLead || !supabaseId || isTransferToggling) return;
     const next = !currentLead.isTransfer;
+    const shouldClearCloser = next && !!currentLead.closerId;
+    const previousCloserId = currentLead.closerId ?? null;
+    const transferPatch: Partial<Lead> = {
+      isTransfer: next,
+      ...(shouldClearCloser ? { closerId: null, closer: undefined } : {}),
+    };
     setIsTransferToggling(true);
-    patchLead?.(currentLead.id, { isTransfer: next });
+    patchLead?.(currentLead.id, transferPatch);
     setLocalLead((prev) =>
-      prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: next } as Lead) : prev
+      prev && prev.id === currentLead.id ? ({ ...prev, ...transferPatch } as Lead) : prev
     );
+    if (shouldClearCloser) {
+      form.setValue("closerId", "", { shouldDirty: false });
+    }
     try {
       const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
         method: "PUT",
@@ -1896,22 +1890,40 @@ export default function LeadDialog({
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId || "",
         },
-        body: JSON.stringify({ isTransfer: next }),
+        body: JSON.stringify({
+          isTransfer: next,
+          ...(shouldClearCloser ? { closerId: null } : {}),
+        }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.isValid) {
         throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar a transferência.");
       }
       const serverValue = result?.result?.isTransfer ?? next;
-      patchLead?.(currentLead.id, { isTransfer: serverValue });
+      const serverCloserId =
+        shouldClearCloser ? null : (result?.result?.closerId ?? currentLead.closerId ?? null);
+      const confirmedPatch: Partial<Lead> = {
+        isTransfer: serverValue,
+        ...(shouldClearCloser ? { closerId: null, closer: undefined } : { closerId: serverCloserId }),
+      };
+      patchLead?.(currentLead.id, confirmedPatch);
       setLocalLead((prev) =>
-        prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: serverValue } as Lead) : prev
+        prev && prev.id === currentLead.id ? ({ ...prev, ...confirmedPatch } as Lead) : prev
       );
     } catch (error) {
-      patchLead?.(currentLead.id, { isTransfer: !next });
+      const rollbackPatch: Partial<Lead> = {
+        isTransfer: !next,
+        ...(shouldClearCloser && previousCloserId
+          ? { closerId: previousCloserId }
+          : {}),
+      };
+      patchLead?.(currentLead.id, rollbackPatch);
       setLocalLead((prev) =>
-        prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: !next } as Lead) : prev
+        prev && prev.id === currentLead.id ? ({ ...prev, ...rollbackPatch } as Lead) : prev
       );
+      if (shouldClearCloser && previousCloserId) {
+        form.setValue("closerId", previousCloserId, { shouldDirty: false });
+      }
       toast.warning(error instanceof Error ? error.message : "Não foi possível atualizar a transferência.");
     } finally {
       setIsTransferToggling(false);
@@ -1993,26 +2005,37 @@ export default function LeadDialog({
   };
 
   const handleScheduleStatusSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
-    if (!currentLead) return;
+    if (!currentLead || !payload) return;
 
-    if (payload) {
-      await applySchedulePayload(payload);
+    await applySchedulePayload(payload);
+    setLocalLead((prev) =>
+      prev && prev.id === payload.leadId
+        ? ({
+            ...prev,
+            email: payload.leadEmail,
+            status: payload.status,
+            meetingDate: payload.meetingDate,
+            meetingTitle: payload.meetingTitle,
+            meetingNotes: payload.meetingNotes,
+            meetingLink: payload.meetingLink,
+            closerId: payload.closerId,
+            meetingType: payload.meetingType,
+            ...(payload.closerId ? {} : { closer: undefined }),
+          } as Lead)
+        : prev,
+    );
+
+    const refreshedDetails = await refreshLeadDetails({ silent: true });
+    if (refreshedDetails?.lead && refreshedDetails.lead.id === payload.leadId) {
       setLocalLead((prev) =>
         prev && prev.id === payload.leadId
           ? ({
               ...prev,
-              email: payload.leadEmail,
-              status: payload.status,
-              meetingDate: payload.meetingDate,
-              meetingTitle: payload.meetingTitle,
-              meetingNotes: payload.meetingNotes,
-              meetingLink: payload.meetingLink,
-              closerId: payload.closerId,
-              meetingType: payload.meetingType,
+              ...refreshedDetails.lead,
+              isTransfer: prev.isTransfer,
             } as Lead)
           : prev,
       );
-      refreshLeadDetails({ silent: true });
     }
   };
 
@@ -2395,10 +2418,7 @@ export default function LeadDialog({
                           ? {
                               status: currentLead.status,
                               meetingDate: currentLead.meetingDate,
-                              closerName:
-                                currentLead.closer?.fullName ||
-                                currentLead.closer?.email ||
-                                null,
+                              closerName: scheduleCloserName,
                               meetingTitle: currentLead.meetingTitle,
                               meetingNotes: currentLead.meetingNotes,
                               meetingLink: currentLead.meetingLink,

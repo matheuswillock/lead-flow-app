@@ -5,6 +5,7 @@ type ListParams = {
   pageSize: number
   search?: string
   status?: string
+  category?: string
   from?: string
   to?: string
 }
@@ -32,6 +33,7 @@ export class HistoricoService implements IHistoricoService {
     })
     if (params.search) query.set('search', params.search)
     if (params.status) query.set('status', params.status)
+    if (params.category) query.set('category', params.category)
     if (params.from) query.set('from', params.from)
     if (params.to) query.set('to', params.to)
 

@@ -604,16 +604,28 @@ export class LeadUseCase implements ILeadUseCase {
       const actorLabel = profileInfo.fullName || profileInfo.email || "Usuário";
 
       const shouldTrackAssignment = data.assignedTo !== undefined;
-      const shouldTrackCloser = data.closerId !== undefined;
       const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
       const shouldTrackStatus = data.status !== undefined;
       const shouldCheckCnpj = data.cnpj !== undefined && !!data.cnpj;
       const shouldTrackTransfer = data.isTransfer === true;
-      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus || shouldCheckCnpj || shouldTrackTransfer;
+      const shouldTrackChanges =
+        shouldTrackAssignment ||
+        data.closerId !== undefined ||
+        shouldTrackMeetingHeald ||
+        shouldTrackStatus ||
+        shouldCheckCnpj ||
+        shouldTrackTransfer;
       const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
       if (shouldTrackChanges && !existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
+
+      const autoClearCloserOnTransfer =
+        data.isTransfer === true &&
+        !!existingLead &&
+        existingLead.isTransfer !== true &&
+        !!existingLead.closerId;
+      const shouldTrackCloser = data.closerId !== undefined || autoClearCloserOnTransfer;
 
       if (shouldCheckCnpj && existingLead) {
         const cnpjConflict = await prisma.lead.findFirst({
@@ -690,6 +702,9 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
       if (data.isTransfer !== undefined) updateData.isTransfer = data.isTransfer === true;
+      if (autoClearCloserOnTransfer && data.closerId === undefined) {
+        updateData.closer = { disconnect: true };
+      }
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.status !== undefined) updateData.status = data.status;
       // Novos campos de venda
@@ -755,8 +770,14 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
-      if (shouldTrackCloser && existingLead?.closerId !== data.closerId) {
-        const closerLabel = data.closerId
+      const resolvedCloserId =
+        data.closerId !== undefined ? data.closerId ?? null : autoClearCloserOnTransfer ? null : undefined;
+      if (
+        shouldTrackCloser &&
+        resolvedCloserId !== undefined &&
+        existingLead?.closerId !== resolvedCloserId
+      ) {
+        const closerLabel = resolvedCloserId
           ? (leadWithRelations.closer?.fullName || leadWithRelations.closer?.email || "Closer")
           : "Nenhum closer";
         try {
@@ -767,7 +788,7 @@ export class LeadUseCase implements ILeadUseCase {
               body: `Closer alterado para ${closerLabel}`,
               payload: {
                 previousCloserId: existingLead?.closerId ?? null,
-                closerId: data.closerId ?? null,
+                closerId: resolvedCloserId,
               },
               createdBy: profileInfo.id,
             },

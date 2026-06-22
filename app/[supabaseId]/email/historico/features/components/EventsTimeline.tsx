@@ -13,6 +13,7 @@ const EVENT_LABELS: Record<string, string> = {
   complained: "Reclamação",
   delivery_delayed: "Atraso na entrega",
   unsubscribed: "Descadastrado",
+  failed: "Falhou",
 }
 
 interface EventsTimelineProps {

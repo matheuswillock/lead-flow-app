@@ -557,6 +557,7 @@ export class EmailCampaignUseCase {
             recipientEmail: email,
             recipientName: emailToContact.get(email)?.name ?? null,
             subject: campaign.template.subject,
+            category: "campaign" as const,
             status: "sent" as const,
             sentAt: now,
           })),

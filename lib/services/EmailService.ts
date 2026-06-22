@@ -2,11 +2,22 @@ import { assertResend } from "@/lib/email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
 import { DEFAULT_TZ, formatIntimezone, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
-import type { BackofficeEmailDispatchCategory, BackofficeEmailRecipientKind } from "@prisma/client";
+import type { BackofficeEmailDispatchCategory, BackofficeEmailRecipientKind, EmailLogCategory } from "@prisma/client";
 import { backofficeEmailDispatchService } from "@/app/api/services/backofficeEmailDispatch/BackofficeEmailDispatchService";
 import { inferRecipientKind } from "@/lib/email/resolve-profile-recipient-emails";
 import { sendTrackedEmailToProfileRecipients } from "@/lib/email/send-tracked-profile-email";
 import { logResendDispatchesForRecipients } from "@/lib/email/log-profile-email-dispatches";
+import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags";
+import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger";
+
+export interface EmailTrackingMeta {
+  teamId: string;
+  category: EmailLogCategory;
+  sourceType?: string;
+  sourceId?: string;
+  recipientName?: string;
+  campaignId?: string;
+}
 
 export interface EmailDispatchMeta {
   profileId: string;
@@ -28,6 +39,8 @@ export interface EmailOptions {
   idempotencyKey?: string;
   /** When set, creates BackofficeEmailDispatch rows and sends one Resend request per recipient. */
   dispatch?: EmailDispatchMeta;
+  /** When set, creates EmailLog rows for team historico and Resend tags for webhook backfill. */
+  tracking?: EmailTrackingMeta;
 }
 
 export interface LeadProposalPendingUrgentEmailData {
@@ -139,6 +152,7 @@ export interface MeetingInviteEmailData {
   notes?: string | null;
   eventUid?: string | null;
   timezone?: string | null;
+  teamId?: string;
   sourceType?: string;
   sourceId?: string;
 }
@@ -449,10 +463,81 @@ export class EmailService {
       return this.sendEmailWithDispatchTracking(options);
     }
 
+    if (options.tracking && options.to.filter(Boolean).length > 1) {
+      return this.sendEmailWithTeamTrackingPerRecipient(options);
+    }
+
     return this.sendEmailDirect(options);
   }
 
+  private async sendEmailWithTeamTrackingPerRecipient(options: EmailOptions) {
+    const recipients = options.to.filter(Boolean);
+    const tracking = options.tracking;
+    if (!tracking) {
+      return this.sendEmailDirect(options);
+    }
+
+    let lastResult: Awaited<ReturnType<EmailService["sendEmailDirect"]>> | undefined;
+    let successCount = 0;
+    let lastError: string | undefined;
+
+    for (const [index, recipient] of recipients.entries()) {
+      const idempotencyKey =
+        options.idempotencyKey && recipients.length > 1
+          ? `${options.idempotencyKey}/${index}`
+          : options.idempotencyKey;
+
+      const result = await this.sendEmailDirect({
+        ...options,
+        to: [recipient],
+        tracking: {
+          ...tracking,
+          recipientName: tracking.recipientName,
+        },
+        idempotencyKey,
+      });
+
+      lastResult = result;
+      if (result.success) {
+        successCount += 1;
+      } else {
+        lastError = result.error;
+      }
+    }
+
+    if (successCount === 0) {
+      return { success: false, error: lastError || "Erro ao enviar email" };
+    }
+
+    if (successCount < recipients.length) {
+      return {
+        success: false,
+        error: lastError || "Falha ao enviar para um ou mais destinatários",
+        data: lastResult?.data,
+      };
+    }
+
+    return lastResult ?? { success: false, error: "Erro ao enviar email" };
+  }
+
   private async sendEmailDirect(options: Omit<EmailOptions, "dispatch">) {
+    const tracking = options.tracking;
+    const recipientEmail = options.to.filter(Boolean)[0];
+    let teamLogId: string | undefined;
+
+    if (tracking && recipientEmail) {
+      teamLogId = await teamEmailDispatchLogger.createQueuedTeamEmailLog({
+        teamId: tracking.teamId,
+        recipientEmail,
+        recipientName: tracking.recipientName ?? null,
+        subject: options.subject,
+        category: tracking.category,
+        sourceType: tracking.sourceType,
+        sourceId: tracking.sourceId,
+        campaignId: tracking.campaignId,
+      });
+    }
+
     try {
       const resend = this.getResend();
       
@@ -464,7 +549,17 @@ export class EmailService {
       const isTestMode = process.env.EMAIL_TEST_MODE === 'true';
       const resendOwnerEmail = process.env.RESEND_OWNER_EMAIL || 'matheuswillock@gmail.com';
       
-      const emailData: any = {
+      const emailData: {
+        from: string
+        to: string[]
+        subject: string
+        headers: Record<string, string>
+        cc?: string[]
+        html?: string
+        text?: string
+        attachments?: Attachment[]
+        tags?: Array<{ name: string; value: string }>
+      } = {
         from: options.from || "Corretor Studio <no-reply@corretorstudio.com>",
         to: isTestMode ? [resendOwnerEmail] : options.to,
         subject: isTestMode 
@@ -478,21 +573,23 @@ export class EmailService {
         },
       };
 
+      if (tracking) {
+        emailData.tags = buildResendTrackingTags({
+          teamId: tracking.teamId,
+          category: tracking.category,
+          sourceType: tracking.sourceType,
+          sourceId: tracking.sourceId,
+        });
+      }
+
       if (!isTestMode && options.cc?.length) {
         emailData.cc = options.cc;
       }
 
       if (options.html) {
-        let htmlContent = options.html;
-
-        if (isTestMode) {
-          htmlContent = this.injectHtmlAfterBodyOpen(
-            htmlContent,
-            this.buildTestBannerSnippet(options.to)
-          );
-        }
-
-        emailData.html = htmlContent;
+        emailData.html = isTestMode
+          ? this.injectHtmlAfterBodyOpen(options.html, this.buildTestBannerSnippet(options.to))
+          : options.html;
       }
       if (options.text) {
         emailData.text = options.text;
@@ -502,12 +599,18 @@ export class EmailService {
       }
 
       const result = await resend.emails.send(
-        emailData,
+        emailData as Parameters<typeof resend.emails.send>[0],
         options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
       );
 
       if (result.error) {
         console.error("Erro ao enviar email:", result.error);
+        if (teamLogId) {
+          await teamEmailDispatchLogger.markTeamEmailLogFailed(
+            teamLogId,
+            result.error.message || "Erro ao enviar email"
+          );
+        }
         return {
           success: false,
           error: result.error.message || "Erro ao enviar email",
@@ -515,12 +618,26 @@ export class EmailService {
         };
       }
 
+      const resendEmailId = result.data?.id;
+      if (teamLogId && resendEmailId) {
+        await teamEmailDispatchLogger.markTeamEmailLogSent(teamLogId, resendEmailId);
+      } else if (teamLogId) {
+        await teamEmailDispatchLogger.markTeamEmailLogFailed(
+          teamLogId,
+          "Resend não retornou identificador do e-mail"
+        );
+      }
+
       return { success: true, data: result };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erro ao enviar email:", error);
+      const message = error instanceof Error ? error.message : "Erro ao enviar email";
+      if (teamLogId) {
+        await teamEmailDispatchLogger.markTeamEmailLogFailed(teamLogId, message);
+      }
       return {
         success: false,
-        error: error?.message || "Erro ao enviar email",
+        error: message,
         errorObject: error,
       };
     }
@@ -1555,6 +1672,16 @@ export class EmailService {
           },
         ],
         idempotencyKey: data.eventUid ? `meeting-invite/${data.eventUid}/${index}` : undefined,
+        ...(data.teamId
+          ? {
+              tracking: {
+                teamId: data.teamId,
+                category: "meeting_invite" as const,
+                sourceType: data.sourceType,
+                sourceId: data.sourceId,
+              },
+            }
+          : {}),
       });
 
       const resendEmailId =

@@ -26,6 +26,7 @@ const RESEND_EVENT_TYPE_MAP: Record<string, BackofficeEmailDispatchEventType> = 
   "email.delivery_delayed": "delivery_delayed",
   "email.unsubscribed": "unsubscribed",
   "email.suppressed": "suppressed",
+  "email.failed": "failed",
 }
 
 const DISPATCH_STATUS_EVENT_TYPES = new Set<BackofficeEmailDispatchStatus>([

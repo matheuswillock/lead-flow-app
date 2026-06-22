@@ -12,8 +12,17 @@ import {
 import { useHistoricoContext } from "../context/HistoricoContext"
 
 export function LogFiltersBar() {
-  const { search, statusFilter, dateFrom, dateTo, handleSearch, handleStatusFilter, handleDateFilter } =
-    useHistoricoContext()
+  const {
+    search,
+    statusFilter,
+    categoryFilter,
+    dateFrom,
+    dateTo,
+    handleSearch,
+    handleStatusFilter,
+    handleCategoryFilter,
+    handleDateFilter,
+  } = useHistoricoContext()
 
   return (
     <div className="flex flex-wrap gap-3">
@@ -26,6 +35,20 @@ export function LogFiltersBar() {
           className="pl-9"
         />
       </div>
+
+      <Select value={categoryFilter || "__all"} onValueChange={(v) => handleCategoryFilter(v === "__all" ? "" : v)}>
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="Tipo" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all">Todos os tipos</SelectItem>
+          <SelectItem value="campaign">Campanha</SelectItem>
+          <SelectItem value="meeting_invite">Convite de reunião</SelectItem>
+          <SelectItem value="schedule_notification">Notificação de agenda</SelectItem>
+          <SelectItem value="transactional">Transacional</SelectItem>
+          <SelectItem value="other">Outro</SelectItem>
+        </SelectContent>
+      </Select>
 
       <Select value={statusFilter || "__all"} onValueChange={(v) => handleStatusFilter(v === "__all" ? "" : v)}>
         <SelectTrigger className="w-44">
