@@ -14,7 +14,6 @@ import { composeReactEmail, editorEventBus } from "@react-email/editor/core";
 import { Inspector, getNodeMeta } from "@react-email/editor/ui";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +37,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import type { TemplateEditorDraft } from "../context/TemplateEditorTypes";
-import { EditorHtmlModeAside } from "./EditorHtmlModeAside";
 import { EditorHtmlWorkspace } from "./EditorHtmlWorkspace";
 import { EditorModeSwitchDialog } from "./EditorModeSwitchDialog";
 import { EditorSidebar } from "./EditorSidebar";
@@ -181,6 +179,12 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
     useEffect(() => {
       onModeChange?.(editorMode);
     }, [editorMode, onModeChange]);
+
+    useEffect(() => {
+      if (editorMode === "html" && sidebarSection === "blocks") {
+        setSidebarSection("menu");
+      }
+    }, [editorMode, sidebarSection]);
 
     const uploadImage = useCallback(async (file: File) => {
       setUploadingImage(true);
@@ -489,7 +493,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
 
     return (
       <div className="flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
-        <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+        <div className="relative flex h-full min-h-0 flex-1 gap-3 overflow-hidden bg-muted/20 p-3">
           <EditorSidebar
             editorMode={editorMode}
             section={sidebarSection}
@@ -504,36 +508,35 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
             onAddLink={handleAddLink}
           />
 
-          {editorMode === "html" ? (
-            <>
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl">
+            {editorMode === "html" ? (
               <EditorHtmlWorkspace value={htmlModeValue || draft.html} onChange={handleHtmlModeChange} />
-              <EditorHtmlModeAside />
-            </>
-          ) : (
-            <EmailEditor
-              key={editorContentKey}
-              ref={editorRef}
-              content={editorContent}
-              onUpdate={handleEditorUpdate}
-              onUploadImage={uploadImage}
-              bubbleMenu={{
-                hideWhenActiveNodes: ["image", "button"],
-                hideWhenActiveMarks: ["link"],
-              }}
-              className={cn(
-                "min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6",
-                "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-150",
-                "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
-                "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
-                "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
-                "[&_.ProseMirror]:outline-none"
-              )}
-              placeholder="Pressione '/&#39; para usar comandos rápidos"
-              theme="basic"
-            >
-              <CustomInspector />
-            </EmailEditor>
-          )}
+            ) : (
+              <EmailEditor
+                key={editorContentKey}
+                ref={editorRef}
+                content={editorContent}
+                onUpdate={handleEditorUpdate}
+                onUploadImage={uploadImage}
+                bubbleMenu={{
+                  hideWhenActiveNodes: ["image", "button"],
+                  hideWhenActiveMarks: ["link"],
+                }}
+                className={cn(
+                  "relative h-full min-w-0 overflow-y-auto bg-muted/20 p-6 pr-88",
+                  "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-150",
+                  "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
+                  "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
+                  "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
+                  "[&_.ProseMirror]:outline-none"
+                )}
+                placeholder="Pressione '/&#39; para usar comandos rápidos"
+                theme="basic"
+              >
+                <CustomInspector />
+              </EmailEditor>
+            )}
+          </div>
         </div>
 
         <EditorModeSwitchDialog
@@ -583,11 +586,8 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
 
 function CustomInspector() {
   return (
-    <Inspector.Root className="h-full min-h-0 w-80 shrink-0 overflow-y-auto border-l bg-background p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Ajustes</h2>
-        <Badge variant="secondary">Editor</Badge>
-      </div>
+    <Inspector.Root className="absolute top-3 right-3 bottom-3 z-10 flex w-80 flex-col overflow-y-auto rounded-xl border bg-card p-4 shadow-md">
+      <h2 className="text-sm font-semibold">Ajustes</h2>
 
       <div className="mt-3">
         <Inspector.Breadcrumb>

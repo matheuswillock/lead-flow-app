@@ -2,7 +2,20 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { AlertCircle, ArrowRight, Check, FileText, LayoutGrid, Mail, Save, Send, Undo2, X, Code2 } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  CodeXml,
+  Ellipsis,
+  FileText,
+  Mail,
+  PencilLine,
+  Save,
+  Send,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,12 +26,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
@@ -173,26 +198,57 @@ export function EditorContainer() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ToggleGroup
-              type="single"
-              value={editorMode}
-              onValueChange={handleEditorModeToggle}
-              disabled={saving}
-              className="border bg-background"
-            >
-              <ToggleGroupItem value="blocks" className="gap-1.5 px-3">
-                <LayoutGrid />
-                Blocos
-              </ToggleGroupItem>
-              <ToggleGroupItem value="html" className="gap-1.5 px-3">
-                <Code2 />
-                HTML
-              </ToggleGroupItem>
-            </ToggleGroup>
-            <Button type="button" variant="outline" onClick={() => void handleOpenTestDialog()} disabled={saving}>
-              <Mail data-icon="inline-start" />
-              Testar envio
-            </Button>
+            <TooltipProvider delayDuration={0}>
+              <Tabs value={editorMode} onValueChange={handleEditorModeToggle}>
+                <TabsList className="h-9">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger
+                        value="blocks"
+                        className="size-9 p-0"
+                        aria-label="Blocos"
+                        disabled={saving}
+                      >
+                        <PencilLine />
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Blocos</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger
+                        value="html"
+                        className="size-9 p-0"
+                        aria-label="HTML"
+                        disabled={saving}
+                      >
+                        <CodeXml />
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>HTML</TooltipContent>
+                  </Tooltip>
+                </TabsList>
+              </Tabs>
+            </TooltipProvider>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={saving}
+                  aria-label="Mais ações"
+                >
+                  <Ellipsis />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void handleOpenTestDialog()} disabled={saving}>
+                  <Mail data-icon="inline-start" />
+                  Testar envio
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               type="button"
               variant="outline"

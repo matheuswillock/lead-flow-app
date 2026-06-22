@@ -27,7 +27,7 @@ export function EditorHtmlWorkspace({ value, onChange }: EditorHtmlWorkspaceProp
   );
 
   return (
-    <div className="grid min-h-0 flex-1 gap-4 overflow-hidden bg-muted/20 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+    <div className="grid h-full min-h-0 flex-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
       <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
           <div className="min-w-0">
