@@ -185,7 +185,8 @@ export function LeadForm({
     );
     const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
-    const isPreSchedule = scheduleSummary?.isPreSchedule === true;
+    const isPreSchedule =
+        watchedValues.isTransfer === true || scheduleSummary?.isPreSchedule === true;
     const scheduleSectionTitle = isPreSchedule ? "Pré-agendamento" : "Agendamento";
     const manageScheduleLabel = scheduleSummary?.meetingDate
         ? isPreSchedule
@@ -431,67 +432,19 @@ export function LeadForm({
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
-                    <div className="flex items-center gap-2">
-                        {!!canToggleMeetingHeald && (
-                            <Button
-                                type="button"
-                                variant={meetingHealdValue === "yes" ? "default" : "outline"}
-                                disabled={isLoading || isUpdating || meetingHealdSaving}
-                                onClick={() => {
-                                    const next = meetingHealdValue === "yes" ? "no" : "yes";
-                                    onMeetingHealdChange?.(next);
-                                }}
-                            >
-                                {meetingHealdSaving ? (
-                                    <span className="inline-flex items-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Salvando...
-                                    </span>
-                                ) : meetingHealdValue === "yes" ? (
-                                    <>
-                                        <BadgeCheck className="h-4 w-4" />
-                                        Reunião realizada
-                                    </>
-                                ) : (
-                                    <>
-                                        <BadgeIcon className="h-4 w-4" />
-                                        Reunião realizada
-                                    </>
-                                )}
-                            </Button>
-                        )}
-                        {!!canMarkNoShow && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                disabled={isLoading || isUpdating}
-                                onClick={() => {
-                                    void onMarkNoShow?.();
-                                }}
-                            >
-                                <CalendarX2 className="h-4 w-4" />
-                                No-show
-                            </Button>
-                        )}
                         <Button type="button" variant="outline" onClick={onManageSchedule} disabled={!onManageSchedule}>
                             {scheduleSummary?.meetingDate ? (
-                                <><CalendarSync className="h-4 w-4" />{manageScheduleLabel}</>
+                                <>
+                                    <CalendarSync data-icon="inline-start" />
+                                    {manageScheduleLabel}
+                                </>
                             ) : (
-                                <><CalendarClock className="h-4 w-4" />{manageScheduleLabel}</>
+                                <>
+                                    <CalendarClock data-icon="inline-start" />
+                                    {manageScheduleLabel}
+                                </>
                             )}
                         </Button>
-                        {canResendScheduleInvite && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={onResendScheduleInvite}
-                                disabled={isLoading || isUpdating}
-                            >
-                                <Mail className="h-4 w-4" />
-                                Reenviar convite
-                            </Button>
-                        )}
-                    </div>
                     </div>
                     {isPreSchedule && (
                         <p className="text-xs text-muted-foreground">
@@ -515,7 +468,7 @@ export function LeadForm({
                             )}
                             {!!scheduleSummary?.meetingTitle && (
                                 <div className="grid gap-1">
-                                    <span className="text-foreground">Titulo</span>
+                                    <span className="text-foreground">Título</span>
                                     <span>{scheduleSummary.meetingTitle}</span>
                                 </div>
                             )}
@@ -576,6 +529,62 @@ export function LeadForm({
                                         className="resize-none text-muted-foreground bg-transparent cursor-default"
                                         rows={3}
                                     />
+                                </div>
+                            )}
+                            {(!!canToggleMeetingHeald || !!canMarkNoShow || canResendScheduleInvite) && (
+                                <div className="flex flex-wrap gap-2 pt-2">
+                                    {!!canToggleMeetingHeald && (
+                                        <Button
+                                            type="button"
+                                            variant={meetingHealdValue === "yes" ? "default" : "outline"}
+                                            disabled={isLoading || isUpdating || meetingHealdSaving}
+                                            onClick={() => {
+                                                const next = meetingHealdValue === "yes" ? "no" : "yes";
+                                                onMeetingHealdChange?.(next);
+                                            }}
+                                        >
+                                            {meetingHealdSaving ? (
+                                                <>
+                                                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                                                    Salvando...
+                                                </>
+                                            ) : meetingHealdValue === "yes" ? (
+                                                <>
+                                                    <BadgeCheck data-icon="inline-start" />
+                                                    Reunião realizada
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BadgeIcon data-icon="inline-start" />
+                                                    Reunião realizada
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
+                                    {!!canMarkNoShow && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={isLoading || isUpdating}
+                                            onClick={() => {
+                                                void onMarkNoShow?.();
+                                            }}
+                                        >
+                                            <CalendarX2 data-icon="inline-start" />
+                                            No-show
+                                        </Button>
+                                    )}
+                                    {canResendScheduleInvite && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={onResendScheduleInvite}
+                                            disabled={isLoading || isUpdating}
+                                        >
+                                            <Mail data-icon="inline-start" />
+                                            Reenviar convite
+                                        </Button>
+                                    )}
                                 </div>
                             )}
                         </>

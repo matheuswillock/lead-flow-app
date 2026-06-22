@@ -2403,7 +2403,7 @@ export default function LeadDialog({
                               meetingNotes: currentLead.meetingNotes,
                               meetingLink: currentLead.meetingLink,
                               meetingHeald: currentLead.meetingHeald,
-                              isPreSchedule: currentLead.isTransfer === true && !!currentLead.meetingDate,
+                              isPreSchedule: currentLead.isTransfer === true,
                             }
                           : undefined
                       }
