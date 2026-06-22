@@ -96,13 +96,8 @@ export async function POST(
     }
 
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
-    const resolvedCloserId = closerId || lead.closerId;
-    if (!resolvedCloserId) {
-      if (lead.isTransfer !== true) {
-        const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
-        return NextResponse.json(output, { status: 400 });
-      }
 
+    if (lead.isTransfer === true) {
       if (!date) {
         const output = new Output(false, [], ["Data do pré-agendamento é obrigatória."], null);
         return NextResponse.json(output, { status: 400 });
@@ -166,6 +161,7 @@ export async function POST(
       return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
     }
 
+    const resolvedCloserId = closerId || lead.closerId;
     if (!resolvedCloserId) {
       const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
       return NextResponse.json(output, { status: 400 });

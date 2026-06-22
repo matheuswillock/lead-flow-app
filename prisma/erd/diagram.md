@@ -181,6 +181,64 @@ failed failed
     
 
 
+        backoffice_email_dispatch_provider {
+            resend resend
+google_calendar google_calendar
+        }
+    
+
+
+        backoffice_email_recipient_kind {
+            account account
+google google
+external external
+        }
+    
+
+
+        backoffice_email_dispatch_category {
+            access_invite access_invite
+access_reset access_reset
+invoice_notification invoice_notification
+adhesion_invite adhesion_invite
+schedule_invite schedule_invite
+welcome welcome
+operator_invite operator_invite
+meeting_invite meeting_invite
+other other
+        }
+    
+
+
+        backoffice_email_dispatch_status {
+            queued queued
+sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+failed failed
+delivery_delayed delivery_delayed
+suppressed suppressed
+        }
+    
+
+
+        backoffice_email_dispatch_event_type {
+            sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+delivery_delayed delivery_delayed
+unsubscribed unsubscribed
+suppressed suppressed
+        }
+    
+
+
         backoffice_product_type {
             PLAN PLAN
 ADDON ADDON
@@ -426,7 +484,7 @@ unsubscribed unsubscribed
     DateTime createdAt 
     DateTime updatedAt 
     }
-
+  
 
   "corretor_studio_health_plan_options" {
     String id "🗝️"
@@ -601,6 +659,38 @@ unsubscribed unsubscribed
     String createdByProfileId "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_dispatches" {
+    String id "🗝️"
+    String recipientEmail 
+    BackofficeEmailRecipientKind recipientKind 
+    BackofficeEmailDispatchProvider provider 
+    BackofficeEmailDispatchCategory category 
+    String subject 
+    BackofficeEmailDispatchStatus status 
+    String resendEmailId "❓"
+    String sourceType "❓"
+    String sourceId "❓"
+    String errorMessage "❓"
+    DateTime sentAt "❓"
+    DateTime deliveredAt "❓"
+    DateTime openedAt "❓"
+    DateTime clickedAt "❓"
+    DateTime bouncedAt "❓"
+    DateTime complainedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_dispatch_events" {
+    String id "🗝️"
+    BackofficeEmailDispatchEventType type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -978,8 +1068,8 @@ unsubscribed unsubscribed
     Json mailyJson "❓"
     String html "❓"
     Json variables "❓"
-    Int versionNumber
-    Boolean isCurrentPublished
+    Int versionNumber 
+    Boolean isCurrentPublished 
     String status 
     DateTime publishedAt "❓"
     Boolean isArchived 
@@ -994,12 +1084,12 @@ unsubscribed unsubscribed
 
   "corretor_studio_email_template_history" {
     String id "🗝️"
-    String eventType
+    String eventType 
     String description "❓"
     Json metadata "❓"
-    DateTime createdAt
+    DateTime createdAt 
     }
-
+  
 
   "corretor_studio_email_contact_lists" {
     String id "🗝️"
@@ -1273,6 +1363,13 @@ unsubscribed unsubscribed
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailRecipientKind" : "enum:recipientKind"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailDispatchProvider" : "enum:provider"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailDispatchCategory" : "enum:category"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailDispatchStatus" : "enum:status"
+    "backoffice_email_dispatches" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_email_dispatch_events" |o--|| "BackofficeEmailDispatchEventType" : "enum:type"
+    "backoffice_email_dispatch_events" }o--|| backoffice_email_dispatches : "dispatch"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookSource" : "enum:source"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookEventStatus" : "enum:status"
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookSource" : "enum:source"

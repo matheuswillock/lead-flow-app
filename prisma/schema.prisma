@@ -191,6 +191,64 @@ enum BackofficeInviteDispatchStatus {
   failed
 }
 
+enum BackofficeEmailDispatchProvider {
+  resend
+  google_calendar
+
+  @@map("backoffice_email_dispatch_provider")
+}
+
+enum BackofficeEmailRecipientKind {
+  account
+  google
+  external
+
+  @@map("backoffice_email_recipient_kind")
+}
+
+enum BackofficeEmailDispatchCategory {
+  access_invite
+  access_reset
+  invoice_notification
+  adhesion_invite
+  schedule_invite
+  welcome
+  operator_invite
+  meeting_invite
+  other
+
+  @@map("backoffice_email_dispatch_category")
+}
+
+enum BackofficeEmailDispatchStatus {
+  queued
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  failed
+  delivery_delayed
+  suppressed
+
+  @@map("backoffice_email_dispatch_status")
+}
+
+enum BackofficeEmailDispatchEventType {
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  delivery_delayed
+  unsubscribed
+  suppressed
+
+  @@map("backoffice_email_dispatch_event_type")
+}
+
 enum BackofficeProductType {
   PLAN
   ADDON
@@ -488,6 +546,7 @@ model Profile {
   finalizedContracts          LeadFinalized[]           @relation("LeadFinalizedCloser")
   createdTasks                Task[]                    @relation("TaskCreator")
   taskAssignments             TaskAssignee[]            @relation("TaskAssigneeProfile")
+  backofficeEmailDispatches   BackofficeEmailDispatch[] @relation("ProfileBackofficeEmailDispatches")
 
   // Email campaigns relations
   emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
@@ -797,6 +856,52 @@ model BackofficeLeadSchedule {
   @@index([date], map: "backoffice_leads_schedule_date_idx")
   @@index([isCanceled], map: "backoffice_leads_schedule_is_canceled_idx")
   @@map("backoffice_leads_schedule")
+}
+
+model BackofficeEmailDispatch {
+  id             String                          @id @default(uuid()) @db.Uuid
+  profileId      String                          @map("profileId") @db.Uuid
+  recipientEmail String                          @map("recipientEmail") @db.Text
+  recipientKind  BackofficeEmailRecipientKind    @map("recipientKind")
+  provider       BackofficeEmailDispatchProvider
+  category       BackofficeEmailDispatchCategory
+  subject        String                          @db.Text
+  status         BackofficeEmailDispatchStatus   @default(queued)
+  resendEmailId  String?                         @unique @map("resendEmailId") @db.Text
+  sourceType     String?                         @map("sourceType") @db.Text
+  sourceId       String?                         @map("sourceId") @db.Text
+  errorMessage   String?                         @map("errorMessage") @db.Text
+  sentAt         DateTime?                       @map("sentAt") @db.Timestamptz(6)
+  deliveredAt    DateTime?                       @map("deliveredAt") @db.Timestamptz(6)
+  openedAt       DateTime?                       @map("openedAt") @db.Timestamptz(6)
+  clickedAt      DateTime?                       @map("clickedAt") @db.Timestamptz(6)
+  bouncedAt      DateTime?                       @map("bouncedAt") @db.Timestamptz(6)
+  complainedAt   DateTime?                       @map("complainedAt") @db.Timestamptz(6)
+  createdAt      DateTime                        @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt      DateTime                        @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile Profile                       @relation("ProfileBackofficeEmailDispatches", fields: [profileId], references: [id], onDelete: Cascade)
+  events  BackofficeEmailDispatchEvent[]
+
+  @@index([profileId, createdAt(sort: Desc)], map: "backoffice_email_dispatches_profile_created_idx")
+  @@index([profileId, status], map: "backoffice_email_dispatches_profile_status_idx")
+  @@index([recipientEmail], map: "backoffice_email_dispatches_recipient_email_idx")
+  @@index([resendEmailId], map: "backoffice_email_dispatches_resend_email_id_idx")
+  @@map("backoffice_email_dispatches")
+}
+
+model BackofficeEmailDispatchEvent {
+  id         String                           @id @default(uuid()) @db.Uuid
+  dispatchId String                           @map("dispatchId") @db.Uuid
+  type       BackofficeEmailDispatchEventType
+  occurredAt DateTime                         @map("occurredAt") @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime                         @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  dispatch BackofficeEmailDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+
+  @@index([dispatchId, occurredAt(sort: Desc)], map: "backoffice_email_dispatch_events_dispatch_occurred_idx")
+  @@map("backoffice_email_dispatch_events")
 }
 
 model BackofficeWebhookEvent {

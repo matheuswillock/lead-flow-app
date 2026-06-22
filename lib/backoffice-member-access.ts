@@ -181,6 +181,9 @@ export async function sendBackofficeMemberAccessEmail(input: {
       operatorRole: input.profile.role === "operator" ? "operator" : "manager",
       managerName: input.profile.managerName || "Equipe Corretor Studio",
       inviteUrl: buildSetPasswordEmailAuthLink(data, "invite"),
+      profileId: input.profile.profileId,
+      sourceType: "member_access",
+      sourceId: input.profile.profileId,
     })
 
     return { email: input.profile.email, access }
@@ -203,7 +206,12 @@ export async function sendBackofficeMemberAccessEmail(input: {
   await emailService.sendPasswordResetEmail(
     input.profile.email,
     displayName,
-    buildSetPasswordEmailAuthLink(data, "recovery")
+    buildSetPasswordEmailAuthLink(data, "recovery"),
+    {
+      profileId: input.profile.profileId,
+      sourceType: "member_access",
+      sourceId: input.profile.profileId,
+    }
   )
 
   return { email: input.profile.email, access }

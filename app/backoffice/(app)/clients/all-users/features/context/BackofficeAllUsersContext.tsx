@@ -16,6 +16,7 @@ import type {
   BackofficeAllUsersItem,
   BackofficePagination,
   BackofficeAllUsersScheduleTarget,
+  BackofficeEmailDispatchTarget,
 } from "./BackofficeAllUsersTypes"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
@@ -45,10 +46,12 @@ interface BackofficeAllUsersContextValue {
   filters: BackofficeAllUsersFilters
   selectedDetail: BackofficeAllUsersDetail | null
   scheduleTarget: BackofficeAllUsersScheduleTarget | null
+  emailDispatchTarget: BackofficeEmailDispatchTarget | null
   isDetailLoading: boolean
   detailError: string | null
   sheetOpen: boolean
   scheduleDialogOpen: boolean
+  emailDispatchDialogOpen: boolean
   setFilters: (next: BackofficeAllUsersFilters) => void
   fetchUsers: (options?: {
     filters?: Partial<BackofficeAllUsersFilters>
@@ -62,6 +65,8 @@ interface BackofficeAllUsersContextValue {
   closeUserSheet: () => void
   openSchedulesDialog: (target: BackofficeAllUsersScheduleTarget) => void
   closeSchedulesDialog: () => void
+  openEmailDispatchesDialog: (target: BackofficeEmailDispatchTarget) => void
+  closeEmailDispatchesDialog: () => void
 }
 
 const BackofficeAllUsersContext = createContext<BackofficeAllUsersContextValue | undefined>(undefined)
@@ -81,10 +86,12 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
   const [filters, setFilters] = useState<BackofficeAllUsersFilters>(DEFAULT_FILTERS)
   const [selectedDetail, setSelectedDetail] = useState<BackofficeAllUsersDetail | null>(null)
   const [scheduleTarget, setScheduleTarget] = useState<BackofficeAllUsersScheduleTarget | null>(null)
+  const [emailDispatchTarget, setEmailDispatchTarget] = useState<BackofficeEmailDispatchTarget | null>(null)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [emailDispatchDialogOpen, setEmailDispatchDialogOpen] = useState(false)
   const inFlight = useRef(false)
   const queuedRequest = useRef<{
     filters: BackofficeAllUsersFilters
@@ -203,6 +210,15 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
     setScheduleDialogOpen(false)
   }, [])
 
+  const openEmailDispatchesDialog = useCallback((target: BackofficeEmailDispatchTarget) => {
+    setEmailDispatchTarget(target)
+    setEmailDispatchDialogOpen(true)
+  }, [])
+
+  const closeEmailDispatchesDialog = useCallback(() => {
+    setEmailDispatchDialogOpen(false)
+  }, [])
+
   const openUserSheet = useCallback(async (profileId: string) => {
     const requestId = ++detailRequestId.current
     setSheetOpen(true)
@@ -243,10 +259,12 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         filters,
         selectedDetail,
         scheduleTarget,
+        emailDispatchTarget,
         isDetailLoading,
         detailError,
         sheetOpen,
         scheduleDialogOpen,
+        emailDispatchDialogOpen,
         setFilters,
         fetchUsers,
         setUsersPage,
@@ -256,6 +274,8 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         closeUserSheet,
         openSchedulesDialog,
         closeSchedulesDialog,
+        openEmailDispatchesDialog,
+        closeEmailDispatchesDialog,
       }}
     >
       {children}

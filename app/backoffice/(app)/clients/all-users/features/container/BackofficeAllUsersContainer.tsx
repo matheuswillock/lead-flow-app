@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Sparkles, Trash2, X } from "lucide-react"
+import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Send, Sparkles, Trash2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,6 +50,7 @@ import type {
 } from "../context/BackofficeAllUsersTypes"
 import { BackofficeAllUsersDetailSheet } from "../components/BackofficeAllUsersDetailSheet"
 import { BackofficeAllUsersSchedulesDialog } from "../components/BackofficeAllUsersSchedulesDialog"
+import { BackofficeAllUsersEmailDispatchesDialog } from "../components/BackofficeAllUsersEmailDispatchesDialog"
 import { BackofficeProfileUserTypeDialog } from "../components/BackofficeProfileUserTypeDialog"
 
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
@@ -132,6 +133,7 @@ export function BackofficeAllUsersContainer() {
     clearFilters,
     openUserSheet,
     openSchedulesDialog,
+    openEmailDispatchesDialog,
   } = useBackofficeAllUsers()
 
   const [localFilters, setLocalFilters] = useState<BackofficeAllUsersFilters>(filters)
@@ -504,6 +506,18 @@ export function BackofficeAllUsersContainer() {
                           <CalendarRange />
                           Ver agendamentos
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            openEmailDispatchesDialog({
+                              id: item.id,
+                              fullName: item.fullName,
+                              email: item.email,
+                            })
+                          }
+                        >
+                          <Send />
+                          Ver e-mails disparados
+                        </DropdownMenuItem>
                         {canManage && (
                           <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
                             <Pencil />
@@ -600,6 +614,7 @@ export function BackofficeAllUsersContainer() {
 
       <BackofficeAllUsersDetailSheet />
       <BackofficeAllUsersSchedulesDialog />
+      <BackofficeAllUsersEmailDispatchesDialog />
       <BackofficeMemberEditDialog
         open={memberEditOpen}
         onOpenChange={setMemberEditOpen}

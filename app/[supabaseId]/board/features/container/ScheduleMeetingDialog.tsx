@@ -705,7 +705,15 @@ export function ScheduleMeetingDialog({
                   : "Agendar Reunião"}
             </DialogTitle>
             <DialogDescription>
-              {mode === "reschedule" ? "Reagendar reunião com " : "Agendar reunião com "}<strong>{lead.name}</strong>
+              {isPreSchedule
+                ? mode === "reschedule"
+                  ? "Editar reserva de horário de "
+                  : "Reservar horário para "
+                : mode === "reschedule"
+                  ? "Reagendar reunião com "
+                  : "Agendar reunião com "}
+              <strong>{lead.name}</strong>
+              {isPreSchedule && " — o lead permanece em Nova oportunidade até a transferência ser concluída."}
             </DialogDescription>
           </DialogHeader>
 

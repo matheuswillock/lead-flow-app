@@ -2,6 +2,19 @@ import { assertResend } from "@/lib/email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
 import { DEFAULT_TZ, formatIntimezone, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
+import type { BackofficeEmailDispatchCategory, BackofficeEmailRecipientKind } from "@prisma/client";
+import { backofficeEmailDispatchService } from "@/app/api/services/backofficeEmailDispatch/BackofficeEmailDispatchService";
+import { inferRecipientKind } from "@/lib/email/resolve-profile-recipient-emails";
+import { sendTrackedEmailToProfileRecipients } from "@/lib/email/send-tracked-profile-email";
+import { logResendDispatchesForRecipients } from "@/lib/email/log-profile-email-dispatches";
+
+export interface EmailDispatchMeta {
+  profileId: string;
+  category: BackofficeEmailDispatchCategory;
+  recipientKind?: BackofficeEmailRecipientKind;
+  sourceType?: string;
+  sourceId?: string;
+}
 
 export interface EmailOptions {
   to: string[];
@@ -13,6 +26,8 @@ export interface EmailOptions {
   attachments?: Attachment[];
   /** Prevents duplicate delivery on retry (Resend idempotency, 24h window). */
   idempotencyKey?: string;
+  /** When set, creates BackofficeEmailDispatch rows and sends one Resend request per recipient. */
+  dispatch?: EmailDispatchMeta;
 }
 
 export interface LeadProposalPendingUrgentEmailData {
@@ -44,6 +59,7 @@ export interface WelcomeEmailData {
   userName: string;
   userEmail: string;
   loginUrl?: string;
+  profileId?: string;
 }
 
 export interface LeadNotificationData {
@@ -77,6 +93,9 @@ export interface OperatorInviteEmailData {
   operatorRole: string;
   managerName: string;
   inviteUrl: string;
+  profileId?: string;
+  sourceType?: string;
+  sourceId?: string;
 }
 
 export interface PendingAccountUserPaymentEmailData {
@@ -120,6 +139,8 @@ export interface MeetingInviteEmailData {
   notes?: string | null;
   eventUid?: string | null;
   timezone?: string | null;
+  sourceType?: string;
+  sourceId?: string;
 }
 
 export interface AccountDeletionFarewellEmailData {
@@ -424,6 +445,14 @@ export class EmailService {
 
   // Método genérico para enviar emails
   async sendEmail(options: EmailOptions) {
+    if (options.dispatch) {
+      return this.sendEmailWithDispatchTracking(options);
+    }
+
+    return this.sendEmailDirect(options);
+  }
+
+  private async sendEmailDirect(options: Omit<EmailOptions, "dispatch">) {
     try {
       const resend = this.getResend();
       
@@ -495,6 +524,94 @@ export class EmailService {
         errorObject: error,
       };
     }
+  }
+
+  private async sendEmailWithDispatchTracking(options: EmailOptions) {
+    const dispatch = options.dispatch;
+    if (!dispatch) {
+      return this.sendEmailDirect(options);
+    }
+
+    const profileRecipients = await backofficeEmailDispatchService.resolveProfileRecipients(
+      dispatch.profileId
+    );
+    const recipients = options.to.filter(Boolean);
+    const dispatchIds: string[] = [];
+    let lastError: string | undefined;
+    let lastData: unknown;
+    let successCount = 0;
+
+    for (const [index, recipient] of recipients.entries()) {
+      const recipientKind =
+        dispatch.recipientKind ??
+        inferRecipientKind(recipient, profileRecipients);
+
+      const dispatchId = await backofficeEmailDispatchService.createQueuedDispatch({
+        profileId: dispatch.profileId,
+        recipientEmail: recipient,
+        recipientKind,
+        provider: "resend",
+        category: dispatch.category,
+        subject: options.subject,
+        sourceType: dispatch.sourceType,
+        sourceId: dispatch.sourceId,
+      });
+      dispatchIds.push(dispatchId);
+
+      const idempotencyKey =
+        options.idempotencyKey && recipients.length > 1
+          ? `${options.idempotencyKey}/${index}`
+          : options.idempotencyKey;
+
+      const result = await this.sendEmailDirect({
+        ...options,
+        to: [recipient],
+        idempotencyKey,
+      });
+
+      if (!result.success) {
+        await backofficeEmailDispatchService.markFailed(
+          dispatchId,
+          result.error || "Erro ao enviar email"
+        );
+        lastError = result.error;
+        continue;
+      }
+
+      const resendEmailId = (result.data as { data?: { id?: string } } | undefined)?.data?.id;
+      if (resendEmailId) {
+        await backofficeEmailDispatchService.markSent(dispatchId, resendEmailId);
+      } else {
+        await backofficeEmailDispatchService.markFailed(
+          dispatchId,
+          "Resend não retornou identificador do e-mail"
+        );
+        lastError = "Resend não retornou identificador do e-mail";
+        continue;
+      }
+
+      lastData = result.data;
+      successCount += 1;
+    }
+
+    if (dispatchIds.length === 0) {
+      return { success: false, error: "Nenhum destinatário informado" };
+    }
+
+    if (successCount === 0) {
+      return { success: false, error: lastError || "Erro ao enviar email", dispatchIds };
+    }
+
+    if (successCount < recipients.length) {
+      return {
+        success: false,
+        error: lastError || "Falha ao enviar para um ou mais destinatários",
+        data: lastData,
+        dispatchIds,
+      };
+    }
+
+    return { success: true, data: lastData, dispatchIds };
   }
 
   // Email de boas-vindas para novos usuários
@@ -593,6 +710,15 @@ export class EmailService {
       to: [data.userEmail],
       subject: "Bem-vindo ao Corretor Studio - Sua conta foi criada!",
       html,
+      ...(data.profileId
+        ? {
+            dispatch: {
+              profileId: data.profileId,
+              category: "welcome",
+              sourceType: "welcome",
+            },
+          }
+        : {}),
     });
   }
 
@@ -1028,6 +1154,18 @@ export class EmailService {
       </html>
     `;
 
+    if (data.profileId) {
+      return sendTrackedEmailToProfileRecipients({
+        profileId: data.profileId,
+        category: "operator_invite",
+        subject: `Convite: Você foi adicionado ao Corretor Studio por ${data.managerName}`,
+        html,
+        sourceType: data.sourceType ?? "member_access",
+        sourceId: data.sourceId,
+        idempotencyKey: data.sourceId ? `operator-invite/${data.sourceId}` : undefined,
+      });
+    }
+
     return this.sendEmail({
       to: [data.operatorEmail],
       subject: `Convite: Você foi adicionado ao Corretor Studio por ${data.managerName}`,
@@ -1139,7 +1277,12 @@ export class EmailService {
   }
 
   // Email de recuperação de senha
-  async sendPasswordResetEmail(userEmail: string, userName: string, resetUrl: string) {
+  async sendPasswordResetEmail(
+    userEmail: string,
+    userName: string,
+    resetUrl: string,
+    options?: { profileId?: string; sourceType?: string; sourceId?: string }
+  ) {
     const html = `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -1224,6 +1367,18 @@ export class EmailService {
       </body>
       </html>
     `;
+
+    if (options?.profileId) {
+      return sendTrackedEmailToProfileRecipients({
+        profileId: options.profileId,
+        category: "access_reset",
+        subject: "Redefinição de Senha - Corretor Studio",
+        html,
+        sourceType: options.sourceType ?? "member_access",
+        sourceId: options.sourceId,
+        idempotencyKey: options.sourceId ? `password-reset/${options.sourceId}` : undefined,
+      });
+    }
 
     return this.sendEmail({
       to: [userEmail],
@@ -1380,18 +1535,52 @@ export class EmailService {
       </html>
     `;
 
-    return this.sendEmail({
-      to: data.to,
-      subject: title,
-      html,
-      attachments: [
-        {
-          filename: "invite.ics",
-          content: Buffer.from(this.buildMeetingInviteIcs(data), "utf8"),
-          contentType: "text/calendar; charset=utf-8; method=REQUEST",
-        },
-      ],
-    });
+    const recipients = data.to.filter(Boolean);
+    if (recipients.length === 0) {
+      return { success: false, error: "Nenhum destinatário informado" };
+    }
+
+    let lastResult: Awaited<ReturnType<EmailService["sendEmail"]>> | undefined;
+
+    for (const [index, recipient] of recipients.entries()) {
+      const result = await this.sendEmail({
+        to: [recipient],
+        subject: title,
+        html,
+        attachments: [
+          {
+            filename: "invite.ics",
+            content: Buffer.from(this.buildMeetingInviteIcs({ ...data, to: [recipient] }), "utf8"),
+            contentType: "text/calendar; charset=utf-8; method=REQUEST",
+          },
+        ],
+        idempotencyKey: data.eventUid ? `meeting-invite/${data.eventUid}/${index}` : undefined,
+      });
+
+      const resendEmailId =
+        result.success && result.data && typeof result.data === "object"
+          ? ((result.data as { data?: { id?: string } }).data?.id ?? null)
+          : null;
+
+      if (data.sourceType || data.sourceId) {
+        await logResendDispatchesForRecipients({
+          recipients: [recipient],
+          subject: title,
+          category: "meeting_invite",
+          sourceType: data.sourceType,
+          sourceId: data.sourceId,
+          resendEmailId,
+          errorMessage: result.success ? null : result.error,
+        });
+      }
+
+      lastResult = result;
+      if (!result.success) {
+        return result;
+      }
+    }
+
+    return lastResult ?? { success: false, error: "Falha ao enviar convite de reunião" };
   }
 
   async sendCloserScheduleNotificationEmail(data: CloserScheduleNotificationEmailData) {

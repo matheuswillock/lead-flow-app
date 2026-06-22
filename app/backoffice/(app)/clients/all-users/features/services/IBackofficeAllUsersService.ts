@@ -4,6 +4,8 @@ import type {
   BackofficeAllUsersListResult,
   BackofficeAllUsersScheduleFilters,
   BackofficeAllUsersScheduleListResult,
+  BackofficeAllUsersEmailDispatchFilters,
+  BackofficeAllUsersEmailDispatchListResult,
   BackofficeAllUsersUserType,
   BackofficeAllUsersUserTypeFilter,
 } from "../context/BackofficeAllUsersTypes"
@@ -30,6 +32,15 @@ export interface IBackofficeAllUsersService {
       pageSize?: number
     }
   ): Promise<BackofficeAllUsersScheduleListResult>
+
+  getEmailDispatches(
+    profileId: string,
+    params?: {
+      filters?: Partial<BackofficeAllUsersEmailDispatchFilters>
+      page?: number
+      pageSize?: number
+    }
+  ): Promise<BackofficeAllUsersEmailDispatchListResult>
 
   sendAccessEmail(
     memberId: string,

@@ -6,6 +6,7 @@ import {
 } from "@/lib/lead-meeting"
 import type {
   BackofficeAllUsersDetailRecord,
+  BackofficeAllUsersEmailDispatchFiltersInput,
   BackofficeAllUsersFiltersInput,
   BackofficeAllUsersListRecord,
   BackofficeAllUsersListResult,
@@ -553,6 +554,95 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
     })
 
     return { items, totalItems }
+  }
+
+  async findEmailDispatchesByProfileId(
+    profileId: string,
+    filters: BackofficeAllUsersEmailDispatchFiltersInput,
+    pagination: BackofficeAllUsersPaginationInput
+  ) {
+    const andClauses: Prisma.BackofficeEmailDispatchWhereInput[] = [{ profileId }]
+
+    if (filters.query?.trim()) {
+      const query = filters.query.trim()
+      andClauses.push({
+        OR: [
+          { subject: { contains: query, mode: "insensitive" } },
+          { recipientEmail: { contains: query, mode: "insensitive" } },
+        ],
+      })
+    }
+
+    if (filters.statuses?.length) {
+      andClauses.push({
+        status: { in: filters.statuses as Prisma.EnumBackofficeEmailDispatchStatusFilter["in"] },
+      })
+    }
+
+    if (filters.providers?.length) {
+      andClauses.push({
+        provider: { in: filters.providers as Prisma.EnumBackofficeEmailDispatchProviderFilter["in"] },
+      })
+    }
+
+    if (filters.categories?.length) {
+      andClauses.push({
+        category: { in: filters.categories as Prisma.EnumBackofficeEmailDispatchCategoryFilter["in"] },
+      })
+    }
+
+    if (filters.dateFrom || filters.dateTo) {
+      andClauses.push({
+        createdAt: {
+          ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+          ...(filters.dateTo ? { lte: filters.dateTo } : {}),
+        },
+      })
+    }
+
+    const where: Prisma.BackofficeEmailDispatchWhereInput = { AND: andClauses }
+    const skip = (pagination.page - 1) * pagination.pageSize
+
+    const [rows, totalItems] = await Promise.all([
+      prisma.backofficeEmailDispatch.findMany({
+        where,
+        select: {
+          id: true,
+          recipientEmail: true,
+          recipientKind: true,
+          provider: true,
+          category: true,
+          subject: true,
+          status: true,
+          errorMessage: true,
+          sentAt: true,
+          deliveredAt: true,
+          openedAt: true,
+          clickedAt: true,
+          bouncedAt: true,
+          complainedAt: true,
+          createdAt: true,
+          events: {
+            select: {
+              id: true,
+              type: true,
+              occurredAt: true,
+            },
+            orderBy: { occurredAt: "desc" },
+            take: 10,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pagination.pageSize,
+      }),
+      prisma.backofficeEmailDispatch.count({ where }),
+    ])
+
+    return {
+      items: rows,
+      totalItems,
+    }
   }
 
   async findIsMaster(profileId: string): Promise<boolean | null> {

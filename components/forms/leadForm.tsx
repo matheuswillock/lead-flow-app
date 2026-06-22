@@ -421,8 +421,9 @@ export function LeadForm({
             <LeadAdditionalNotesField control={form.control} disabled={isLoading || isUpdating} />
 
             <div className="sm:col-span-2 pt-4 border-t">
-                <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
                     <div className="flex items-center gap-2">
                         {!!canToggleMeetingHeald && (
                             <Button
@@ -473,6 +474,12 @@ export function LeadForm({
                             )}
                         </Button>
                     </div>
+                    </div>
+                    {isPreSchedule && (
+                        <p className="text-xs text-muted-foreground">
+                            Aguardando transferência — ainda não está no status Agendado.
+                        </p>
+                    )}
                 </div>
 
                 <div className="mt-3 rounded-md border border-dashed border-border/70 bg-muted/30 p-3 grid gap-2 text-sm text-muted-foreground">

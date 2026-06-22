@@ -8747,6 +8747,74 @@
               }
             },
             {
+              "name": "GET All Users Email Dispatches",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users/:profileId/email-dispatches?page=1&pageSize=10&q=&status=&provider=&category=&dateFrom=&dateTo=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "clients",
+                    "all-users",
+                    ":profileId",
+                    "email-dispatches"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "10"
+                    },
+                    {
+                      "key": "q",
+                      "value": ""
+                    },
+                    {
+                      "key": "status",
+                      "value": ""
+                    },
+                    {
+                      "key": "provider",
+                      "value": ""
+                    },
+                    {
+                      "key": "category",
+                      "value": ""
+                    },
+                    {
+                      "key": "dateFrom",
+                      "value": ""
+                    },
+                    {
+                      "key": "dateTo",
+                      "value": ""
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "profileId",
+                      "value": "{{profileId}}"
+                    }
+                  ]
+                },
+                "description": "Lista paginada dos e-mails transacionais disparados para um profile (Resend e Google Calendar), com filtros por status, provedor, categoria, intervalo de datas e busca textual (assunto ou destinatário)."
+              }
+            },
+            {
               "name": "PATCH User Type (convert to Member PRO / Comum)",
               "request": {
                 "method": "PATCH",

@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { AlertCircle, ArrowRight, Check, Clock3, Code2, FileText, Mail, Save, Send, Undo2, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, FileText, LayoutGrid, Mail, Save, Send, Undo2, X, Code2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,12 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "sonner";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
 import { TemplateTestDialog } from "../components/TemplateTestDialog";
-import { VariablesPanel } from "../components/VariablesPanel";
-import type { TemplateHistoryItem } from "../context/TemplateEditorTypes";
+import type { EditorMode } from "../components/EditorStudioTypes";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
 
 function StatusBadge({ approvalStatus, status }: { approvalStatus: string | undefined; status: string | undefined }) {
@@ -67,61 +67,6 @@ function StatusBadge({ approvalStatus, status }: { approvalStatus: string | unde
   );
 }
 
-const HISTORY_LABELS: Record<string, string> = {
-  created: "Criado",
-  draft_saved: "Rascunho salvo",
-  submitted_for_approval: "Enviado para aprovação",
-  approved: "Aprovado",
-  rejected: "Recusado",
-  published: "Publicado",
-  unpublished: "Despublicado",
-  version_created: "Nova versão",
-};
-
-function formatHistoryDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function TemplateHistoryPanel({ history }: { history: TemplateHistoryItem[] }) {
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Clock3 className="size-4 text-primary" />
-          <h2 className="text-sm font-semibold">Histórico</h2>
-        </div>
-        <Badge variant="outline">{history.length}</Badge>
-      </div>
-      {history.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Nenhum evento registrado.</p>
-      ) : (
-        <div className="flex max-h-64 flex-col gap-3 overflow-y-auto pr-1">
-          {history.map((item) => {
-            const actor = item.actor?.fullName?.trim() || item.actor?.email || "Sistema";
-            return (
-              <div key={item.id} className="flex flex-col gap-1 border-l pl-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold">
-                    {HISTORY_LABELS[item.eventType] ?? item.eventType}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {formatHistoryDate(item.createdAt)}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">{item.description || "Sem descrição"}</p>
-                <p className="text-[10px] text-muted-foreground">Por {actor}</p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
 export function EditorContainer() {
   const params = useParams<{ supabaseId: string; id: string }>();
   const {
@@ -152,6 +97,7 @@ export function EditorContainer() {
   const [reviewNote, setReviewNote] = useState("");
   const [testOpen, setTestOpen] = useState(false);
   const [testHtml, setTestHtml] = useState("");
+  const [editorMode, setEditorMode] = useState<EditorMode>("blocks");
 
   useEffect(() => {
     if (loading) return;
@@ -159,6 +105,17 @@ export function EditorContainer() {
     setOverride({ label });
     return () => setOverride(null);
   }, [loading, template, draft.name, setOverride]);
+
+  const handleEditorModeChange = useCallback((mode: EditorMode) => {
+    setEditorMode(mode);
+  }, []);
+
+  const handleEditorModeToggle = useCallback((value: string) => {
+    if (value !== "blocks" && value !== "html") return;
+    const nextMode = value as EditorMode;
+    if (nextMode === editorMode) return;
+    editorRef.current?.requestModeSwitch(nextMode);
+  }, [editorMode]);
 
   const handleConfirmReject = async () => {
     if (!reviewNote.trim()) return;
@@ -215,16 +172,23 @@ export function EditorContainer() {
               Configure os metadados e o conteúdo visual do e-mail. Apenas templates publicados podem ser usados em campanhas.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void editorRef.current?.openHtmlEditor()}
+          <div className="flex flex-wrap items-center gap-2">
+            <ToggleGroup
+              type="single"
+              value={editorMode}
+              onValueChange={handleEditorModeToggle}
               disabled={saving}
+              className="border bg-background"
             >
-              <Code2 data-icon="inline-start" />
-              HTML
-            </Button>
+              <ToggleGroupItem value="blocks" className="gap-1.5 px-3">
+                <LayoutGrid />
+                Blocos
+              </ToggleGroupItem>
+              <ToggleGroupItem value="html" className="gap-1.5 px-3">
+                <Code2 />
+                HTML
+              </ToggleGroupItem>
+            </ToggleGroup>
             <Button type="button" variant="outline" onClick={() => void handleOpenTestDialog()} disabled={saving}>
               <Mail data-icon="inline-start" />
               Testar envio
@@ -322,15 +286,7 @@ export function EditorContainer() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          <EmailEditorStudio
-            ref={editorRef}
-            bottomSlot={
-              <div className="flex flex-col gap-4">
-                <VariablesPanel />
-                <TemplateHistoryPanel history={template?.history ?? []} />
-              </div>
-            }
-          />
+          <EmailEditorStudio ref={editorRef} onModeChange={handleEditorModeChange} />
         </div>
       </div>
 

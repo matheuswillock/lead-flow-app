@@ -66,6 +66,81 @@ export interface BackofficeAllUsersScheduleTarget {
   email: string
 }
 
+export type BackofficeEmailDispatchTarget = BackofficeAllUsersScheduleTarget
+
+export type BackofficeEmailDispatchStatusFilter =
+  | "queued"
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "clicked"
+  | "bounced"
+  | "complained"
+  | "failed"
+  | "delivery_delayed"
+  | "suppressed"
+
+export type BackofficeEmailDispatchProviderFilter = "resend" | "google_calendar"
+
+export type BackofficeEmailDispatchCategoryFilter =
+  | "access_invite"
+  | "access_reset"
+  | "invoice_notification"
+  | "adhesion_invite"
+  | "schedule_invite"
+  | "welcome"
+  | "operator_invite"
+  | "meeting_invite"
+  | "other"
+
+export interface BackofficeAllUsersEmailDispatchEventItem {
+  id: string
+  type: string
+  occurredAt: string
+}
+
+export interface BackofficeAllUsersEmailDispatchItem {
+  id: string
+  recipientEmail: string
+  recipientKind: string
+  provider: string
+  category: string
+  subject: string
+  status: string
+  errorMessage: string | null
+  sentAt: string | null
+  deliveredAt: string | null
+  openedAt: string | null
+  clickedAt: string | null
+  bouncedAt: string | null
+  complainedAt: string | null
+  createdAt: string
+  events: BackofficeAllUsersEmailDispatchEventItem[]
+}
+
+export interface BackofficeAllUsersEmailDispatchFilters {
+  query: string
+  statuses: BackofficeEmailDispatchStatusFilter[]
+  providers: BackofficeEmailDispatchProviderFilter[]
+  categories: BackofficeEmailDispatchCategoryFilter[]
+  dateFrom: string | null
+  dateTo: string | null
+}
+
+export const DEFAULT_BACKOFFICE_EMAIL_DISPATCH_FILTERS: BackofficeAllUsersEmailDispatchFilters = {
+  query: "",
+  statuses: [],
+  providers: [],
+  categories: [],
+  dateFrom: null,
+  dateTo: null,
+}
+
+export interface BackofficeAllUsersEmailDispatchListResult {
+  items: BackofficeAllUsersEmailDispatchItem[]
+  pagination: BackofficePagination
+}
+
 export type BackofficeScheduleFunction = "sdr" | "closer"
 
 export type BackofficeAllUsersScheduleRoleFilter = "all" | BackofficeScheduleFunction

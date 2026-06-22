@@ -33,6 +33,10 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import {
+  resolveTransferScheduleInput,
+  type ResolvedTransferSchedule,
+} from "./utils/resolveTransferSchedule";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -301,6 +305,30 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      const isTransferLead = data.isTransfer === true;
+      if (isTransferLead) {
+        if (data.closerId) {
+          return new Output(
+            false,
+            [],
+            ["Não é possível atribuir closer em lead com transferência ativa na criação."],
+            null
+          );
+        }
+        if (data.status === LeadStatus.scheduled) {
+          return new Output(
+            false,
+            [],
+            ["Lead com transferência ativa não pode ser criado com status Agendado."],
+            null
+          );
+        }
+      }
+
+      const leadStatus = isTransferLead
+        ? LeadStatus.new_opportunity
+        : data.status || LeadStatus.new_opportunity;
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
         team: { connect: { id: teamId } },
@@ -320,8 +348,8 @@ export class LeadUseCase implements ILeadUseCase {
         meetingLink: data.meetingLink || null,
         meetingHeald: data.meetingHeald || null,
         notes: data.notes || null,
-        status: data.status || LeadStatus.new_opportunity,
-        isTransfer: data.isTransfer === true,
+        status: leadStatus,
+        isTransfer: isTransferLead,
         // Novos campos de venda (sempre null na criação)
         ticket: data.ticket || null,
         contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
@@ -339,7 +367,7 @@ export class LeadUseCase implements ILeadUseCase {
         ...(assignedTo && {
           assignee: { connect: { id: assignedTo } }
         }),
-        ...(data.closerId && {
+        ...(data.closerId && !isTransferLead && {
           closer: { connect: { id: data.closerId } }
         }),
         activities: {
@@ -354,6 +382,10 @@ export class LeadUseCase implements ILeadUseCase {
           }
         }
       });
+
+      if (lead.isTransfer === true && lead.meetingDate) {
+        await this.ensureTransferPreSchedule(lead);
+      }
 
       if (lead.isTransfer === true) {
         this.handleTransferActivationAlert(lead).catch((err) =>
@@ -593,6 +625,39 @@ export class LeadUseCase implements ILeadUseCase {
             false,
             [],
             [`Já existe um lead com este CNPJ neste time (${cnpjConflict.leadCode ?? cnpjConflict.name})`],
+            null
+          );
+        }
+      }
+
+      if (existingLead) {
+        const effectiveIsTransfer =
+          data.isTransfer !== undefined ? data.isTransfer === true : existingLead.isTransfer === true;
+
+        if (effectiveIsTransfer) {
+          if (data.status === LeadStatus.scheduled) {
+            return new Output(
+              false,
+              [],
+              ["Lead com transferência ativa não pode ser marcado como Agendado. Conclua a transferência primeiro."],
+              null
+            );
+          }
+          if (data.closerId !== undefined && data.closerId) {
+            return new Output(
+              false,
+              [],
+              ["Não é possível atribuir closer enquanto a transferência estiver ativa. Conclua a transferência primeiro."],
+              null
+            );
+          }
+        }
+
+        if (data.isTransfer === true && existingLead.status === LeadStatus.scheduled) {
+          return new Output(
+            false,
+            [],
+            ["Não é possível ativar transferência em lead com status Agendado."],
             null
           );
         }
@@ -1721,6 +1786,20 @@ export class LeadUseCase implements ILeadUseCase {
         assigneeEmail = sdrProfile?.email ?? null;
       }
 
+      const existingPreSchedule = data.schedule
+        ? await leadScheduleRepository.findLatestByLeadId(id)
+        : null;
+
+      let resolvedTransferSchedule: ResolvedTransferSchedule | null = null;
+
+      if (data.schedule) {
+        const scheduleResolution = resolveTransferScheduleInput(data.schedule, lead, existingPreSchedule);
+        if (!scheduleResolution.ok) {
+          return new Output(false, [], [scheduleResolution.error], null);
+        }
+        resolvedTransferSchedule = scheduleResolution.value;
+      }
+
       const transferredLead = await this.leadRepository.transferToTeam(
         id,
         data.targetTeamId,
@@ -1741,7 +1820,10 @@ export class LeadUseCase implements ILeadUseCase {
         },
       });
 
-      if (data.schedule) {
+      let scheduleSucceeded = false;
+      const scheduleWarnings: string[] = [];
+
+      if (resolvedTransferSchedule) {
         const scheduleOutput = await leadScheduleService.createSchedule({
           leadId: transferredLead.id,
           leadName: transferredLead.name,
@@ -1750,18 +1832,18 @@ export class LeadUseCase implements ILeadUseCase {
           leadManagerId: transferredLead.managerId,
           leadAssignedTo: transferredLead.assignedTo ?? null,
           leadAssigneeEmail: assigneeEmail,
-          leadCurrentCloserId: data.closerId,
+          leadCurrentCloserId: null,
           leadCode: transferredLead.leadCode ?? null,
           closerId: data.closerId,
           teamId: data.targetTeamId,
-          meetingDate: data.schedule.date,
-          meetingTitle: data.schedule.meetingTitle ?? "",
-          meetingNotes: data.schedule.meetingNotes,
-          meetingLink: data.schedule.meetingLink,
-          meetingType: data.schedule.meetingType ?? null,
-          extraGuests: data.schedule.extraGuests,
+          meetingDate: resolvedTransferSchedule.meetingDateIso,
+          meetingTitle: resolvedTransferSchedule.meetingTitle,
+          meetingNotes: resolvedTransferSchedule.meetingNotes,
+          meetingLink: resolvedTransferSchedule.meetingLink,
+          meetingType: resolvedTransferSchedule.meetingType,
+          extraGuests: resolvedTransferSchedule.extraGuests,
           createdByProfileId: profileInfo.id,
-          transitionStatusToScheduled: data.schedule.transitionStatusToScheduled,
+          transitionStatusToScheduled: resolvedTransferSchedule.transitionStatusToScheduled,
         });
 
         if (!scheduleOutput.isValid) {
@@ -1772,6 +1854,10 @@ export class LeadUseCase implements ILeadUseCase {
             this.transformToDTO(transferStateLead)
           );
         }
+
+        scheduleSucceeded = true;
+        const [, ...warnings] = scheduleOutput.successMessages;
+        scheduleWarnings.push(...warnings);
       }
 
       await prisma.leadTransfer.create({
@@ -1785,15 +1871,15 @@ export class LeadUseCase implements ILeadUseCase {
           toManagerId: transferredLead.managerId,
           transferTagUsed: lead.isTransfer === true,
           preScheduledAt: lead.meetingDate ?? null,
-          scheduledAtTransfer: !!data.schedule,
+          scheduledAtTransfer: scheduleSucceeded,
         },
       });
 
       const finalLead = await this.leadRepository.findById(transferredLead.id);
       return new Output(
         true,
-        [],
         ["Lead transferido entre times com sucesso"],
+        scheduleWarnings,
         this.transformToDTO(finalLead ?? transferStateLead)
       );
     } catch (error) {

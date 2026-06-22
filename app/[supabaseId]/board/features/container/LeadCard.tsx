@@ -138,8 +138,11 @@ function LeadCardComponent({
                         </CardTitle>
                     )}
                     {showId && (
-                        <div className="mt-1 flex items-center gap-2 text-xs text-accent-foreground">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-accent-foreground">
                             <span>ID: {lead.leadCode}</span>
+                            {lead.isTransfer && (
+                                <Badge variant="secondary">Transferência ativa</Badge>
+                            )}
                             <button
                                 type="button"
                                 onClick={handleCopyLeadCode}
@@ -166,7 +169,7 @@ function LeadCardComponent({
                         onClick={handleScheduleClick}
                     >
                         <Calendar className="mr-2 h-4 w-4" />
-                        Agendar Reunião
+                        {lead.isTransfer ? "Pré-agendar reunião" : "Agendar Reunião"}
                     </Button>
                 )}
                 {isNoShow && (

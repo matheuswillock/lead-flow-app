@@ -134,7 +134,11 @@ function VariableChip({ label, hint }: { label: string; hint?: string }) {
   );
 }
 
-export function VariablesPanel() {
+interface VariablesPanelProps {
+  embedded?: boolean;
+}
+
+export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
   const { draft, updateDraft } = useTemplateEditorContext();
   const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>([]);
 
@@ -224,14 +228,16 @@ export function VariablesPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
-      <div className="flex items-center gap-2">
-        <Braces className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold">Variáveis</h2>
-        <Badge variant="outline" className="ml-auto text-muted-foreground">
-          {usedKeys.length} {usedKeys.length === 1 ? "usada" : "usadas"}
-        </Badge>
-      </div>
+    <div className={embedded ? "flex flex-col gap-4" : "flex flex-col gap-4 rounded-lg border bg-background p-4"}>
+      {!embedded ? (
+        <div className="flex items-center gap-2">
+          <Braces className="size-4 text-primary" />
+          <h2 className="text-sm font-semibold">Variáveis</h2>
+          <Badge variant="outline" className="ml-auto text-muted-foreground">
+            {usedKeys.length} {usedKeys.length === 1 ? "usada" : "usadas"}
+          </Badge>
+        </div>
+      ) : null}
 
       {pendingReviewCount > 0 ? (
         <div className="flex items-start gap-2 rounded-md border border-semantic-warning/30 bg-semantic-warning/10 p-3 text-xs text-semantic-warning">

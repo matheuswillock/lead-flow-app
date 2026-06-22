@@ -5,6 +5,8 @@ import type {
   BackofficeAllUsersListResult,
   BackofficeAllUsersScheduleFilters,
   BackofficeAllUsersScheduleListResult,
+  BackofficeAllUsersEmailDispatchFilters,
+  BackofficeAllUsersEmailDispatchListResult,
   BackofficeAllUsersUserType,
 } from "../context/BackofficeAllUsersTypes"
 
@@ -133,6 +135,65 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
         { cache: "no-store" }
       ),
       "Erro ao carregar agendamentos do usuário"
+    )
+
+    const fallbackPagination = {
+      page,
+      pageSize,
+      totalItems: 0,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    }
+
+    return {
+      items: result.items ?? [],
+      pagination: result.pagination ?? fallbackPagination,
+    }
+  }
+
+  async getEmailDispatches(
+    profileId: string,
+    params?: {
+      filters?: Partial<BackofficeAllUsersEmailDispatchFilters>
+      page?: number
+      pageSize?: number
+    }
+  ): Promise<BackofficeAllUsersEmailDispatchListResult> {
+    const page = Math.max(params?.page ?? 1, 1)
+    const pageSize = Math.max(params?.pageSize ?? 10, 5)
+    const search = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    })
+
+    const query = params?.filters?.query?.trim()
+    if (query) search.set("q", query)
+
+    for (const status of params?.filters?.statuses ?? []) {
+      if (status) search.append("status", status)
+    }
+
+    for (const provider of params?.filters?.providers ?? []) {
+      if (provider) search.append("provider", provider)
+    }
+
+    for (const category of params?.filters?.categories ?? []) {
+      if (category) search.append("category", category)
+    }
+
+    if (params?.filters?.dateFrom) search.set("dateFrom", params.filters.dateFrom)
+    if (params?.filters?.dateTo) search.set("dateTo", params.filters.dateTo)
+
+    const result = await parseOutput<{
+      items?: BackofficeAllUsersEmailDispatchListResult["items"]
+      pagination?: BackofficeAllUsersEmailDispatchListResult["pagination"]
+    }>(
+      await fetch(
+        `/api/v1/backoffice/clients/all-users/${profileId}/email-dispatches?${search.toString()}`,
+        { cache: "no-store" }
+      ),
+      "Erro ao carregar e-mails disparados do usuário"
     )
 
     const fallbackPagination = {

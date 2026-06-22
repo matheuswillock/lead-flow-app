@@ -75,7 +75,10 @@ export function PreScheduleSection({
   }, [availableTimes, meetingDate, onMeetingDateChange, timezone]);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        Reserva de horário enquanto aguarda transferência. O lead permanece em Nova oportunidade até a transferência ser concluída.
+      </p>
       <DateTimePicker
         date={meetingDate}
         onDateChange={onMeetingDateChange}

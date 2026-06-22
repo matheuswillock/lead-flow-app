@@ -120,6 +120,45 @@ export interface BackofficeAllUsersScheduleListResult {
   totalItems: number
 }
 
+export interface BackofficeAllUsersEmailDispatchFiltersInput {
+  query?: string
+  statuses?: string[]
+  providers?: string[]
+  categories?: string[]
+  dateFrom?: Date
+  dateTo?: Date
+}
+
+export interface BackofficeAllUsersEmailDispatchEventRecord {
+  id: string
+  type: string
+  occurredAt: Date
+}
+
+export interface BackofficeAllUsersEmailDispatchRecord {
+  id: string
+  recipientEmail: string
+  recipientKind: string
+  provider: string
+  category: string
+  subject: string
+  status: string
+  errorMessage: string | null
+  sentAt: Date | null
+  deliveredAt: Date | null
+  openedAt: Date | null
+  clickedAt: Date | null
+  bouncedAt: Date | null
+  complainedAt: Date | null
+  createdAt: Date
+  events: BackofficeAllUsersEmailDispatchEventRecord[]
+}
+
+export interface BackofficeAllUsersEmailDispatchListResult {
+  items: BackofficeAllUsersEmailDispatchRecord[]
+  totalItems: number
+}
+
 export interface BackofficeAllUsersListResult {
   items: BackofficeAllUsersListRecord[]
   totalItems: number
@@ -138,6 +177,12 @@ export interface IBackofficeAllUsersRepository {
     filters: BackofficeAllUsersScheduleFiltersInput,
     pagination: BackofficeAllUsersPaginationInput
   ): Promise<BackofficeAllUsersScheduleListResult>
+
+  findEmailDispatchesByProfileId(
+    profileId: string,
+    filters: BackofficeAllUsersEmailDispatchFiltersInput,
+    pagination: BackofficeAllUsersPaginationInput
+  ): Promise<BackofficeAllUsersEmailDispatchListResult>
 
   findIsMaster(profileId: string): Promise<boolean | null>
 
