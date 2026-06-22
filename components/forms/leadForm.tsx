@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Share2 } from "lucide-react";
+import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Mail, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -74,6 +74,7 @@ export interface ILeadFormProps {
     };
     onManageSchedule?: () => void;
     onShareSchedule?: () => void;
+    onResendScheduleInvite?: () => void;
     canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
@@ -129,6 +130,7 @@ export function LeadForm({
     currentUserIsSdr = false,
     currentUserIsCloser = false,
     onShareSchedule,
+    onResendScheduleInvite,
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -190,6 +192,11 @@ export function LeadForm({
             ? "Editar pré-agendamento"
             : "Editar agendamento"
         : "Agendar lead";
+    const canResendScheduleInvite =
+        !!onResendScheduleInvite &&
+        !!scheduleSummary?.meetingDate &&
+        scheduleSummary?.status === "scheduled" &&
+        !isPreSchedule;
 
     useEffect(() => {
         if (!initialData) {
@@ -473,6 +480,17 @@ export function LeadForm({
                                 <><CalendarClock className="h-4 w-4" />{manageScheduleLabel}</>
                             )}
                         </Button>
+                        {canResendScheduleInvite && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={onResendScheduleInvite}
+                                disabled={isLoading || isUpdating}
+                            >
+                                <Mail className="h-4 w-4" />
+                                Reenviar convite
+                            </Button>
+                        )}
                     </div>
                     </div>
                     {isPreSchedule && (

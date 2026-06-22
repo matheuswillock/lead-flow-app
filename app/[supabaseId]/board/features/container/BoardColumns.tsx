@@ -15,9 +15,10 @@ interface BoardColumnsProps {
     onFinalizeContract: (lead: Lead) => void;
     onScheduleMeeting: (lead: Lead) => void;
     onNoShow: (lead: Lead) => void;
+    onResendScheduleInvite: (lead: Lead) => void;
 }
 
-export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, onNoShow }: BoardColumnsProps) {
+export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, onNoShow, onResendScheduleInvite }: BoardColumnsProps) {
     const {
         filtered,
         isLoading,
@@ -158,6 +159,7 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
                                         onFinalizeContract={onFinalizeContract}
                                         onScheduleMeeting={onScheduleMeeting}
                                         onNoShow={onNoShow}
+                                        onResendScheduleInvite={onResendScheduleInvite}
                                         attachmentCount={lead.attachmentCount || 0}
                                     />
                                 ))}

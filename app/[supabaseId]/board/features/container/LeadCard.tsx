@@ -7,7 +7,7 @@ import { formatDate } from "../context/BoardContext";
 import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { CheckCircle, Calendar, Video } from "lucide-react";
+import { CheckCircle, Calendar, Video, Mail } from "lucide-react";
 import { Paperclip } from "@/components/ui/paperclip";
 import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/copy";
@@ -27,6 +27,7 @@ interface LeadCardProps {
     onFinalizeContract?: (lead: LeadResponseDTO) => void;
     onScheduleMeeting?: (lead: LeadResponseDTO) => void;
     onNoShow?: (lead: LeadResponseDTO) => void;
+    onResendScheduleInvite?: (lead: LeadResponseDTO) => void;
     attachmentCount?: number;
 }
 
@@ -39,6 +40,7 @@ function LeadCardComponent({
     onFinalizeContract,
     onScheduleMeeting,
     onNoShow,
+    onResendScheduleInvite,
     attachmentCount = 0,
 }: LeadCardProps) {
     const { leadCardDisplay } = useBoardContext();
@@ -82,6 +84,13 @@ function LeadCardComponent({
         e.stopPropagation();
         if (onNoShow) {
             onNoShow(lead);
+        }
+    };
+
+    const handleResendInviteClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onResendScheduleInvite) {
+            onResendScheduleInvite(lead);
         }
     };
 
@@ -181,6 +190,17 @@ function LeadCardComponent({
                     >
                         <Calendar className="mr-2 h-4 w-4" />
                         Reagendar Reunião
+                    </Button>
+                )}
+                {isScheduled && lead.meetingDate && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full cursor-pointer"
+                        onClick={handleResendInviteClick}
+                    >
+                        <Mail className="mr-2 h-4 w-4" />
+                        Reenviar convite
                     </Button>
                 )}
                 {canMarkNoShow && (

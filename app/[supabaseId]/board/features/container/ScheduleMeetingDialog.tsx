@@ -38,7 +38,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Copy, Loader2, Share2, X } from "lucide-react";
+import { Copy, Loader2, Mail, Share2, X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -92,6 +92,7 @@ interface ScheduleMeetingDialogProps {
   teamMembers?: UserAssociated[];
   mode?: "create" | "reschedule";
   initialExtraGuests?: string[];
+  onResendScheduleInvite?: (leadId: string) => void;
 }
 
 export function ScheduleMeetingDialog({
@@ -104,6 +105,7 @@ export function ScheduleMeetingDialog({
   mode = "create",
   initialExtraGuests,
   currentProfileId,
+  onResendScheduleInvite,
 }: ScheduleMeetingDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -603,7 +605,18 @@ export function ScheduleMeetingDialog({
         : meetingType === "call"
           ? "Ligação agendada com sucesso."
           : "Agendamento por WhatsApp criado com sucesso.";
-      toast.success(successMessage, { id: loadingToast, duration: 4000 })
+      toast.success(successMessage, {
+        id: loadingToast,
+        duration: 4000,
+        ...( !isPreSchedule && onResendScheduleInvite
+          ? {
+              action: {
+                label: "Reenviar convite",
+                onClick: () => onResendScheduleInvite(lead.id),
+              },
+            }
+          : {}),
+      });
 
       if (inviteDispatch?.status === "failed") {
         const errorText = inviteDispatch.error
@@ -683,7 +696,7 @@ export function ScheduleMeetingDialog({
     } finally {
       setIsSubmitting(false);
     }
-  }, [SCHEDULE_TIMEZONE, activeTeamId, closerId, lead.closerId, lead.email, lead.id, lead.name, lead.status, meetingDate, meetingLink, meetingLinkValidation, meetingTitle, meetingType, notes, onOpenChange, onScheduleSuccess, requestPublicShare, requiresManualMeetingLink, supabaseId, extraGuests, isOnlineMeeting, isPreSchedule]);
+  }, [SCHEDULE_TIMEZONE, activeTeamId, closerId, lead.closerId, lead.email, lead.id, lead.name, lead.status, meetingDate, meetingLink, meetingLinkValidation, meetingTitle, meetingType, notes, onOpenChange, onResendScheduleInvite, onScheduleSuccess, requestPublicShare, requiresManualMeetingLink, supabaseId, extraGuests, isOnlineMeeting, isPreSchedule]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -956,6 +969,17 @@ export function ScheduleMeetingDialog({
           </div>
 
           <DialogFooter className="shrink-0 pt-2">
+            {mode === "reschedule" && lead.meetingDate && !isPreSchedule && onResendScheduleInvite && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onResendScheduleInvite(lead.id)}
+                disabled={isSubmitting}
+              >
+                <Mail data-icon="inline-start" />
+                Reenviar convite
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
