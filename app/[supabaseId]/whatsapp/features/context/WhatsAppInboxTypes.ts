@@ -64,7 +64,6 @@ export interface WhatsAppConfig {
   status: WhatsAppConnectionStatus
   phoneNumber: string | null
   instanceName: string
-  configId?: string
 }
 
 export type ConversationFilterMode = 'all' | 'unread' | 'mine' | 'archived'
