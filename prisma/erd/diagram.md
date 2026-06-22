@@ -181,6 +181,65 @@ failed failed
     
 
 
+        backoffice_email_dispatch_provider {
+            resend resend
+google_calendar google_calendar
+        }
+    
+
+
+        backoffice_email_recipient_kind {
+            account account
+google google
+external external
+        }
+    
+
+
+        backoffice_email_dispatch_category {
+            access_invite access_invite
+access_reset access_reset
+invoice_notification invoice_notification
+adhesion_invite adhesion_invite
+schedule_invite schedule_invite
+welcome welcome
+operator_invite operator_invite
+meeting_invite meeting_invite
+other other
+        }
+    
+
+
+        backoffice_email_dispatch_status {
+            queued queued
+sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+failed failed
+delivery_delayed delivery_delayed
+suppressed suppressed
+        }
+    
+
+
+        backoffice_email_dispatch_event_type {
+            sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+delivery_delayed delivery_delayed
+unsubscribed unsubscribed
+suppressed suppressed
+failed failed
+        }
+    
+
+
         backoffice_product_type {
             PLAN PLAN
 ADDON ADDON
@@ -379,6 +438,16 @@ failed failed
     
 
 
+        email_log_category {
+            campaign campaign
+meeting_invite meeting_invite
+schedule_notification schedule_notification
+transactional transactional
+other other
+        }
+    
+
+
         email_event_type {
             sent sent
 delivered delivered
@@ -388,6 +457,7 @@ bounced bounced
 complained complained
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
+failed failed
         }
     
 
@@ -659,6 +729,38 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     String createdByProfileId "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_dispatches" {
+    String id "🗝️"
+    String recipientEmail 
+    BackofficeEmailRecipientKind recipientKind 
+    BackofficeEmailDispatchProvider provider 
+    BackofficeEmailDispatchCategory category 
+    String subject 
+    BackofficeEmailDispatchStatus status 
+    String resendEmailId "❓"
+    String sourceType "❓"
+    String sourceId "❓"
+    String errorMessage "❓"
+    DateTime sentAt "❓"
+    DateTime deliveredAt "❓"
+    DateTime openedAt "❓"
+    DateTime clickedAt "❓"
+    DateTime bouncedAt "❓"
+    DateTime complainedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_dispatch_events" {
+    String id "🗝️"
+    BackofficeEmailDispatchEventType type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -1036,6 +1138,8 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     Json mailyJson "❓"
     String html "❓"
     Json variables "❓"
+    Int versionNumber 
+    Boolean isCurrentPublished 
     String status 
     DateTime publishedAt "❓"
     Boolean isArchived 
@@ -1045,6 +1149,15 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     String reviewNote "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_email_template_history" {
+    String id "🗝️"
+    String eventType 
+    String description "❓"
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -1100,6 +1213,9 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     String recipientEmail 
     String recipientName "❓"
     String subject 
+    EmailLogCategory category 
+    String sourceType "❓"
+    String sourceId "❓"
     EmailLogStatus status 
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
@@ -1399,6 +1515,13 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailRecipientKind" : "enum:recipientKind"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailDispatchProvider" : "enum:provider"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailDispatchCategory" : "enum:category"
+    "backoffice_email_dispatches" |o--|| "BackofficeEmailDispatchStatus" : "enum:status"
+    "backoffice_email_dispatches" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_email_dispatch_events" |o--|| "BackofficeEmailDispatchEventType" : "enum:type"
+    "backoffice_email_dispatch_events" }o--|| backoffice_email_dispatches : "dispatch"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookSource" : "enum:source"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookEventStatus" : "enum:status"
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookSource" : "enum:source"
@@ -1486,6 +1609,10 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "approver"
     "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "rejecter"
+    "corretor_studio_email_templates" ||--|| corretor_studio_email_templates : "versionGroup"
+    "corretor_studio_email_template_history" }o--|| corretor_studio_email_templates : "template"
+    "corretor_studio_email_template_history" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_template_history" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
@@ -1494,6 +1621,7 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_logs" |o--|| "EmailLogCategory" : "enum:category"
     "corretor_studio_email_logs" |o--|| "EmailLogStatus" : "enum:status"
     "corretor_studio_email_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_logs" }o--|o corretor_studio_email_campaigns : "campaign"

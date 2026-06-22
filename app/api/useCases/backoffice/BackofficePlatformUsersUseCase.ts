@@ -758,11 +758,15 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         </html>
       `
 
-      const emailService = createEmailService()
-      const emailResult = await emailService.sendEmail({
-        to: [master.email],
+      const { sendTrackedEmailToProfileRecipients } = await import("@/lib/email/send-tracked-profile-email")
+      const emailResult = await sendTrackedEmailToProfileRecipients({
+        profileId: master.id,
+        category: "invoice_notification",
         subject,
         html,
+        sourceType: "backoffice_invoice",
+        sourceId: payment.id,
+        idempotencyKey: `invoice-notification/${payment.id}`,
       })
 
       if (!emailResult.success) {

@@ -1,94 +1,123 @@
 import type { Campaign, CreditStatus, Template, ContactList } from '../context/CampanhasTypes'
 
 export interface ICampanhasService {
-  list(page: number, pageSize: number, status?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
-  create(data: { name: string; templateId: string; contactListId: string; scheduledAt?: string }): Promise<Campaign>
-  send(id: string): Promise<{ sent: number; failed: number }>
-  cancel(id: string): Promise<void>
-  deleteDraft(id: string): Promise<void>
-  getCreditStatus(): Promise<CreditStatus>
-  getTemplates(): Promise<Template[]>
-  getContactLists(): Promise<ContactList[]>
+  list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
+  create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId: string; scheduledAt?: string }): Promise<Campaign>
+  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{ sent: number; failed: number }>
+  cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
+  deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
+  getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
+  getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
+  getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
 }
 
 export class CampanhasService implements ICampanhasService {
   private readonly baseUrl = '/api/v1/email'
 
-  async list(page: number, pageSize: number, status?: string) {
+  private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
+    return {
+      'x-supabase-user-id': supabaseId,
+      ...(teamId ? { 'x-team-id': teamId } : {}),
+    }
+  }
+
+  async list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string) {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     if (status) params.set('status', status)
-    const res = await fetch(`${this.baseUrl}/campaigns?${params}`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
+    const res = await fetch(`${this.baseUrl}/campaigns?${params}`, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return json.result as { campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }
   }
 
-  async create(data: { name: string; templateId: string; contactListId: string; scheduledAt?: string }) {
+  async create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId: string; scheduledAt?: string }) {
     const res = await fetch(`${this.baseUrl}/campaigns`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
       body: JSON.stringify(data),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return json.result as Campaign
   }
 
-  async send(id: string) {
-    const res = await fetch(`${this.baseUrl}/campaigns/${id}/send`, { method: 'POST' })
+  async send(supabaseId: string, teamId: string | null | undefined, id: string) {
+    const res = await fetch(`${this.baseUrl}/campaigns/${id}/send`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
     const json = await res.json().catch(() => null)
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json?.isValid) throw new Error(json?.errorMessages?.join(', ') ?? 'Erro')
     return json.result as { sent: number; failed: number }
   }
 
-  async cancel(id: string) {
-    const res = await fetch(`${this.baseUrl}/campaigns/${id}/cancel`, { method: 'POST' })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
+  async cancel(supabaseId: string, teamId: string | null | undefined, id: string) {
+    const res = await fetch(`${this.baseUrl}/campaigns/${id}/cancel`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
   }
 
-  async update(id: string, data: { name?: string; templateId?: string; contactListId?: string; scheduledAt?: string | null }) {
+  async update(supabaseId: string, teamId: string | null | undefined, id: string, data: { name?: string; templateId?: string; contactListId?: string; scheduledAt?: string | null }) {
     const res = await fetch(`${this.baseUrl}/campaigns/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
       body: JSON.stringify(data),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return json.result as Campaign
   }
 
-  async deleteDraft(id: string) {
-    const res = await fetch(`${this.baseUrl}/campaigns/${id}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  async deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string) {
+    const res = await fetch(`${this.baseUrl}/campaigns/${id}`, {
+      method: 'DELETE',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
   }
 
-  async getCreditStatus() {
-    const res = await fetch(`${this.baseUrl}/credits/status`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
+  async getCreditStatus(supabaseId: string, teamId: string | null | undefined) {
+    const res = await fetch(`${this.baseUrl}/credits/status`, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return json.result as CreditStatus
   }
 
-  async getTemplates() {
-    const res = await fetch(`${this.baseUrl}/templates`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
+  async getTemplates(supabaseId: string, teamId: string | null | undefined) {
+    const res = await fetch(`${this.baseUrl}/templates?scope=campaign`, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    // Only published templates can be used in campaigns.
-    return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published')
+    // Only the current published version can be used in new campaigns.
+    return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published' && t.isCurrentPublished)
   }
 
-  async getContactLists() {
-    const res = await fetch(`${this.baseUrl}/contact-lists`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
+  async getContactLists(supabaseId: string, teamId: string | null | undefined) {
+    const res = await fetch(`${this.baseUrl}/contact-lists`, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return (json.result ?? []) as ContactList[]
   }

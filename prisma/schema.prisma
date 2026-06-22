@@ -191,6 +191,65 @@ enum BackofficeInviteDispatchStatus {
   failed
 }
 
+enum BackofficeEmailDispatchProvider {
+  resend
+  google_calendar
+
+  @@map("backoffice_email_dispatch_provider")
+}
+
+enum BackofficeEmailRecipientKind {
+  account
+  google
+  external
+
+  @@map("backoffice_email_recipient_kind")
+}
+
+enum BackofficeEmailDispatchCategory {
+  access_invite
+  access_reset
+  invoice_notification
+  adhesion_invite
+  schedule_invite
+  welcome
+  operator_invite
+  meeting_invite
+  other
+
+  @@map("backoffice_email_dispatch_category")
+}
+
+enum BackofficeEmailDispatchStatus {
+  queued
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  failed
+  delivery_delayed
+  suppressed
+
+  @@map("backoffice_email_dispatch_status")
+}
+
+enum BackofficeEmailDispatchEventType {
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  delivery_delayed
+  unsubscribed
+  suppressed
+  failed
+
+  @@map("backoffice_email_dispatch_event_type")
+}
+
 enum BackofficeProductType {
   PLAN
   ADDON
@@ -391,6 +450,16 @@ enum EmailLogStatus {
   @@map("email_log_status")
 }
 
+enum EmailLogCategory {
+  campaign
+  meeting_invite
+  schedule_notification
+  transactional
+  other
+
+  @@map("email_log_category")
+}
+
 enum EmailEventType {
   sent
   delivered
@@ -400,6 +469,7 @@ enum EmailEventType {
   complained
   delivery_delayed
   unsubscribed
+  failed
 
   @@map("email_event_type")
 }
@@ -488,12 +558,14 @@ model Profile {
   finalizedContracts          LeadFinalized[]           @relation("LeadFinalizedCloser")
   createdTasks                Task[]                    @relation("TaskCreator")
   taskAssignments             TaskAssignee[]            @relation("TaskAssigneeProfile")
+  backofficeEmailDispatches   BackofficeEmailDispatch[] @relation("ProfileBackofficeEmailDispatches")
 
   // Email campaigns relations
   emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
   emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
   emailTemplatesApproved   EmailTemplate[]          @relation("EmailTemplateApprover")
   emailTemplatesRejected   EmailTemplate[]          @relation("EmailTemplateRejecter")
+  emailTemplateHistory     EmailTemplateHistory[]   @relation("EmailTemplateHistoryActor")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
@@ -802,6 +874,52 @@ model BackofficeLeadSchedule {
   @@index([date], map: "backoffice_leads_schedule_date_idx")
   @@index([isCanceled], map: "backoffice_leads_schedule_is_canceled_idx")
   @@map("backoffice_leads_schedule")
+}
+
+model BackofficeEmailDispatch {
+  id             String                          @id @default(uuid()) @db.Uuid
+  profileId      String                          @map("profileId") @db.Uuid
+  recipientEmail String                          @map("recipientEmail") @db.Text
+  recipientKind  BackofficeEmailRecipientKind    @map("recipientKind")
+  provider       BackofficeEmailDispatchProvider
+  category       BackofficeEmailDispatchCategory
+  subject        String                          @db.Text
+  status         BackofficeEmailDispatchStatus   @default(queued)
+  resendEmailId  String?                         @unique @map("resendEmailId") @db.Text
+  sourceType     String?                         @map("sourceType") @db.Text
+  sourceId       String?                         @map("sourceId") @db.Text
+  errorMessage   String?                         @map("errorMessage") @db.Text
+  sentAt         DateTime?                       @map("sentAt") @db.Timestamptz(6)
+  deliveredAt    DateTime?                       @map("deliveredAt") @db.Timestamptz(6)
+  openedAt       DateTime?                       @map("openedAt") @db.Timestamptz(6)
+  clickedAt      DateTime?                       @map("clickedAt") @db.Timestamptz(6)
+  bouncedAt      DateTime?                       @map("bouncedAt") @db.Timestamptz(6)
+  complainedAt   DateTime?                       @map("complainedAt") @db.Timestamptz(6)
+  createdAt      DateTime                        @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt      DateTime                        @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile Profile                       @relation("ProfileBackofficeEmailDispatches", fields: [profileId], references: [id], onDelete: Cascade)
+  events  BackofficeEmailDispatchEvent[]
+
+  @@index([profileId, createdAt(sort: Desc)], map: "backoffice_email_dispatches_profile_created_idx")
+  @@index([profileId, status], map: "backoffice_email_dispatches_profile_status_idx")
+  @@index([recipientEmail], map: "backoffice_email_dispatches_recipient_email_idx")
+  @@index([resendEmailId], map: "backoffice_email_dispatches_resend_email_id_idx")
+  @@map("backoffice_email_dispatches")
+}
+
+model BackofficeEmailDispatchEvent {
+  id         String                           @id @default(uuid()) @db.Uuid
+  dispatchId String                           @map("dispatchId") @db.Uuid
+  type       BackofficeEmailDispatchEventType
+  occurredAt DateTime                         @map("occurredAt") @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime                         @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  dispatch BackofficeEmailDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+
+  @@index([dispatchId, occurredAt(sort: Desc)], map: "backoffice_email_dispatch_events_dispatch_occurred_idx")
+  @@map("backoffice_email_dispatch_events")
 }
 
 model BackofficeWebhookEvent {
@@ -1244,6 +1362,7 @@ model Team {
   emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
   emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
+  emailTemplateHistory EmailTemplateHistory[]
 
   // WhatsApp relations
   whatsappConfig        TeamWhatsAppConfig?
@@ -1501,6 +1620,9 @@ model EmailTemplate {
   mailyJson   Json?
   html        String?  @db.Text
   variables   Json?
+  versionGroupId String   @db.Uuid
+  versionNumber  Int      @default(1)
+  isCurrentPublished Boolean @default(false)
   status         String   @default("draft") @db.Text
   publishedAt    DateTime? @db.Timestamptz(6)
   isArchived     Boolean  @default(false)
@@ -1517,13 +1639,38 @@ model EmailTemplate {
   creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   approver  Profile?        @relation("EmailTemplateApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   rejecter  Profile?        @relation("EmailTemplateRejecter", fields: [rejectedBy], references: [id], onDelete: SetNull)
+  versionGroup EmailTemplate @relation("EmailTemplateVersionGroup", fields: [versionGroupId], references: [id], onDelete: Restrict)
+  versions     EmailTemplate[] @relation("EmailTemplateVersionGroup")
+  history      EmailTemplateHistory[]
   campaigns EmailCampaign[]
 
   @@index([teamId, isArchived])
   @@index([teamId, approvalStatus])
   @@index([teamId, status])
+  @@index([teamId, versionGroupId, versionNumber])
+  @@index([teamId, isCurrentPublished])
+  @@unique([versionGroupId, versionNumber])
   @@index([createdBy])
   @@map("corretor_studio_email_templates")
+}
+
+model EmailTemplateHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  templateId     String   @db.Uuid
+  teamId         String   @db.Uuid
+  actorProfileId String?  @db.Uuid
+  eventType      String   @db.Text
+  description    String?  @db.Text
+  metadata       Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  template EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  team     Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  actor    Profile?      @relation("EmailTemplateHistoryActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([templateId, createdAt(sort: Desc)])
+  @@index([teamId, createdAt(sort: Desc)])
+  @@map("corretor_studio_email_template_history")
 }
 
 model EmailContactList {
@@ -1604,22 +1751,25 @@ model EmailCampaign {
 }
 
 model EmailLog {
-  id             String         @id @default(uuid()) @db.Uuid
-  teamId         String         @db.Uuid
-  campaignId     String?        @db.Uuid
-  resendEmailId  String?        @unique @db.Text
-  recipientEmail String         @db.Text
-  recipientName  String?        @db.Text
-  subject        String         @db.Text
-  status         EmailLogStatus @default(queued)
-  sentAt         DateTime?      @db.Timestamptz(6)
-  deliveredAt    DateTime?      @db.Timestamptz(6)
-  openedAt       DateTime?      @db.Timestamptz(6)
-  clickedAt      DateTime?      @db.Timestamptz(6)
-  bouncedAt      DateTime?      @db.Timestamptz(6)
-  complainedAt   DateTime?      @db.Timestamptz(6)
-  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime       @updatedAt @db.Timestamptz(6)
+  id             String           @id @default(uuid()) @db.Uuid
+  teamId         String           @db.Uuid
+  campaignId     String?          @db.Uuid
+  resendEmailId  String?          @unique @db.Text
+  recipientEmail String           @db.Text
+  recipientName  String?          @db.Text
+  subject        String           @db.Text
+  category       EmailLogCategory @default(other)
+  sourceType     String?          @map("sourceType") @db.Text
+  sourceId       String?          @map("sourceId") @db.Text
+  status         EmailLogStatus   @default(queued)
+  sentAt         DateTime?        @db.Timestamptz(6)
+  deliveredAt    DateTime?        @db.Timestamptz(6)
+  openedAt       DateTime?        @db.Timestamptz(6)
+  clickedAt      DateTime?        @db.Timestamptz(6)
+  bouncedAt      DateTime?        @db.Timestamptz(6)
+  complainedAt   DateTime?        @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
 
   team     Team           @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
   campaign EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
@@ -1627,6 +1777,7 @@ model EmailLog {
 
   @@index([teamId, status])
   @@index([teamId, campaignId])
+  @@index([teamId, category, sentAt(sort: Desc)], map: "corretor_studio_email_logs_team_category_sent_idx")
   @@index([recipientEmail])
   @@index([sentAt(sort: Desc)])
   @@map("corretor_studio_email_logs")

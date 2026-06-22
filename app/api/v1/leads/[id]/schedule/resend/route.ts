@@ -405,10 +405,14 @@ export async function POST(
             organizerEmail: closerProfile.email,
             eventUid: schedule.id,
             timezone: closerProfile.timezone,
+            teamId: teamAccess.access.teamId,
+            sourceType: "leads_schedule",
+            sourceId: schedule.id,
           });
 
         if (emailResult.success) {
-          const resendMessageId = extractResendMessageId(emailResult.data);
+          const resendMessageId =
+            "data" in emailResult ? extractResendMessageId(emailResult.data) : null;
           if (!canUseGoogleCalendar) {
             inviteDispatchStatus = "sent_resend";
             inviteDispatchProvider = "resend";
@@ -505,10 +509,14 @@ export async function POST(
           organizerEmail: closerProfile.email,
           eventUid: schedule.id,
           timezone: closerProfile.timezone,
+          teamId: teamAccess.access.teamId,
+          sourceType: "leads_schedule",
+          sourceId: schedule.id,
         });
 
       if (emailResult.success) {
-        const resendMessageId = extractResendMessageId(emailResult.data);
+        const resendMessageId =
+          "data" in emailResult ? extractResendMessageId(emailResult.data) : null;
         inviteDispatchStatus = "sent_resend";
         inviteDispatchProvider = "resend";
         inviteDispatchLastPayload = {
@@ -588,10 +596,14 @@ export async function POST(
           organizerEmail: closerProfile.email,
           eventUid: schedule.id,
           timezone: closerProfile.timezone,
+          teamId: teamAccess.access.teamId,
+          sourceType: "leads_schedule",
+          sourceId: schedule.id,
         });
 
       if (emailResult.success) {
-        const resendMessageId = extractResendMessageId(emailResult.data);
+        const resendMessageId =
+          "data" in emailResult ? extractResendMessageId(emailResult.data) : null;
         inviteDispatchStatus = "sent_resend";
         inviteDispatchProvider = "resend";
         inviteDispatchLastPayload = {

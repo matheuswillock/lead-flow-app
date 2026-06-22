@@ -7,6 +7,7 @@ BEGIN
     "activeTeamId" = v_team_id,
     "updatedAt" = now()
   WHERE "id" IN (
+    '1b1cc33f-1aea-4877-bc53-ca49d52ee764',
     '84183a6a-71f1-48b5-a6a7-4b3ccbc7e16b',
     '26b6c2d6-6377-45ac-a760-9705984ac6f8',
     '05750ae8-e9bd-4635-8988-b042b3b83c40',
@@ -48,6 +49,7 @@ BEGIN
     now()
   FROM "public"."corretor_studio_profiles" p
   WHERE p."id" IN (
+    '1b1cc33f-1aea-4877-bc53-ca49d52ee764',
     '84183a6a-71f1-48b5-a6a7-4b3ccbc7e16b',
     '26b6c2d6-6377-45ac-a760-9705984ac6f8',
     '05750ae8-e9bd-4635-8988-b042b3b83c40',

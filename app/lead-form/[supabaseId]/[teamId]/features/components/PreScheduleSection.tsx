@@ -8,6 +8,7 @@ import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import {
   formatLocalDateValue,
   formatLocalTimeValue,
+  getMinutesInTz,
   parseDateKeyAndTimeToUtc,
 } from "@/lib/dates";
 
@@ -53,8 +54,8 @@ export function PreScheduleSection({
     }
     return slots.filter((slotTime) => {
       const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, timezone);
-      const utcMins = slotDate.getUTCHours() * 60 + Math.floor(slotDate.getUTCMinutes() / 30) * 30;
-      return !preScheduleOccupiedSlots.includes(utcMins);
+      const localMins = Math.floor(getMinutesInTz(slotDate, timezone) / SLOT_STEP) * SLOT_STEP;
+      return !preScheduleOccupiedSlots.includes(localMins);
     });
   }, [meetingDate, meetingDateKey, preScheduleOccupiedSlots, timezone]);
 
@@ -74,7 +75,10 @@ export function PreScheduleSection({
   }, [availableTimes, meetingDate, onMeetingDateChange, timezone]);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        Reserva de horário enquanto aguarda transferência. O lead permanece em Nova oportunidade até a transferência ser concluída.
+      </p>
       <DateTimePicker
         date={meetingDate}
         onDateChange={onMeetingDateChange}

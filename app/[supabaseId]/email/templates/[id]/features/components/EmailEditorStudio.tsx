@@ -2,7 +2,6 @@
 
 import {
   forwardRef,
-  type ReactNode,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -13,16 +12,8 @@ import {
 import { EmailEditor, type EmailEditorRef } from "@react-email/editor";
 import { composeReactEmail, editorEventBus } from "@react-email/editor/core";
 import { Inspector, getNodeMeta } from "@react-email/editor/ui";
-import {
-  Code2,
-  Copy,
-  ImagePlus,
-  Link2,
-  Send,
-} from "lucide-react";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
-import { MonacoCodeEditor } from "@/components/editors/MonacoCodeEditor";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,9 +29,18 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  BUILTIN_EMAIL_VARIABLES,
+  BUILTIN_EMAIL_FUNCTION_KEYS,
+  extractTemplateVariableKeys,
+} from "@/lib/email/interpolate";
 import { cn } from "@/lib/utils";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import type { TemplateEditorDraft } from "../context/TemplateEditorTypes";
+import { EditorHtmlWorkspace } from "./EditorHtmlWorkspace";
+import { EditorModeSwitchDialog } from "./EditorModeSwitchDialog";
+import { EditorSidebar } from "./EditorSidebar";
+import type { EditorMode, SidebarSection } from "./EditorStudioTypes";
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
@@ -64,20 +64,29 @@ type ImageUploadCommand = { commands: { uploadImage: () => boolean } };
 export interface EmailEditorStudioRef {
   publish: () => Promise<void>;
   saveAndPublish: () => Promise<void>;
-  openHtmlEditor: () => Promise<void>;
+  getCurrentSnapshot: () => Promise<EditorSnapshot | null>;
+  requestModeSwitch: (mode: EditorMode) => void;
+  getEditorMode: () => EditorMode;
 }
 
 interface EmailEditorStudioProps {
-  bottomSlot?: ReactNode;
-}
-
-function getFallbackPreviewHtml() {
-  return '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:360px;color:#8a8a8a;font-family:sans-serif;font-size:14px;">Sem HTML para renderizar</div>';
+  onModeChange?: (mode: EditorMode) => void;
 }
 
 function normalizeColor(value: unknown, fallback: string): string {
   const raw = String(value ?? "").trim();
   return /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
+}
+
+function isEditorJsonEmpty(value: unknown): boolean {
+  if (!value || typeof value !== "object") return true;
+  const content = (value as { content?: unknown }).content;
+  if (!Array.isArray(content) || content.length === 0) return true;
+  return content.every((node) => {
+    if (!node || typeof node !== "object") return true;
+    const childContent = (node as { content?: unknown }).content;
+    return !Array.isArray(childContent) || childContent.length === 0;
+  });
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -95,481 +104,490 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStudioProps>(function EmailEditorStudio(
-  { bottomSlot },
-  ref
+function discoverTemplateVariables(
+  html: string,
+  existingVariables: TemplateEditorDraft["variables"],
+  builtinVariableKeys: Set<string>
 ) {
-  const {
-    draft,
-    isDirty,
-    saving,
-    saveTemplate,
-    publishTemplate,
-    setHtml,
-    setMailyJson,
-  } = useTemplateEditorContext();
-  const editorRef = useRef<EmailEditorRef>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [exportedHtml, setExportedHtml] = useState("");
-  const [exporting, setExporting] = useState(false);
-  const [copying, setCopying] = useState(false);
-  const [htmlEditorOpen, setHtmlEditorOpen] = useState(false);
-  const [htmlEditorValue, setHtmlEditorValue] = useState("");
-  const [htmlEditorOpening, setHtmlEditorOpening] = useState(false);
-  const [visualEditorTouched, setVisualEditorTouched] = useState(false);
-  const [htmlSourceActive, setHtmlSourceActive] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [eventStatus, setEventStatus] = useState("Pronto");
-  const htmlPreviewContent = htmlEditorValue.trim() ? htmlEditorValue : getFallbackPreviewHtml();
-  const htmlEditorOptions = useMemo(
-    () => ({
-      formatOnPaste: true,
-      formatOnType: true,
-      minimap: { enabled: false },
-      tabSize: 2,
-      wordWrap: "on" as const,
-    }),
-    []
-  );
+  const declaredKeys = new Set(existingVariables.map((variable) => variable.key.toLowerCase()));
+  return extractTemplateVariableKeys(html)
+    .filter((key) => !builtinVariableKeys.has(key.toLowerCase()))
+    .filter((key) => !BUILTIN_EMAIL_FUNCTION_KEYS.has(key.toLowerCase()))
+    .filter((key) => !declaredKeys.has(key.toLowerCase()))
+    .map((key) => ({
+      key,
+      type: "string" as const,
+      fallbackValue: "",
+      reviewStatus: "pending" as const,
+    }));
+}
 
-  useEffect(() => {
-    const subscription = editorEventBus.on("bubble-menu:add-link", () => {
-      setEventStatus("Link acionado");
-    });
+export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStudioProps>(
+  function EmailEditorStudio({ onModeChange }, ref) {
+    const {
+      template,
+      draft,
+      isDirty,
+      saving,
+      saveTemplate,
+      publishTemplate,
+      updateDraft,
+      setHtml,
+      setMailyJson,
+    } = useTemplateEditorContext();
 
-    return () => subscription.unsubscribe();
-  }, []);
+    const editorRef = useRef<EmailEditorRef>(null);
+    const [exportOpen, setExportOpen] = useState(false);
+    const [exportedHtml, setExportedHtml] = useState("");
+    const [exporting, setExporting] = useState(false);
+    const [copying, setCopying] = useState(false);
+    const [editorMode, setEditorMode] = useState<EditorMode>("blocks");
+    const [sidebarSection, setSidebarSection] = useState<SidebarSection>("menu");
+    const [pendingMode, setPendingMode] = useState<EditorMode | null>(null);
+    const [modeSwitchOpen, setModeSwitchOpen] = useState(false);
+    const [modeSwitching, setModeSwitching] = useState(false);
+    const [htmlModeValue, setHtmlModeValue] = useState("");
+    const [visualEditorTouched, setVisualEditorTouched] = useState(false);
+    const [visualContentRevision, setVisualContentRevision] = useState(0);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [eventStatus, setEventStatus] = useState("Pronto");
 
-  const uploadImage = useCallback(async (file: File) => {
-    setUploadingImage(true);
-    try {
-      if (!file.type.startsWith("image/")) {
-        throw new Error("Selecione um arquivo de imagem.");
+    const builtinVariableKeys = useMemo(
+      () => new Set(BUILTIN_EMAIL_VARIABLES.map((variable) => variable.key.toLowerCase())),
+      []
+    );
+
+    const editorContent = useMemo(() => {
+      if (draft.mailyJson && !isEditorJsonEmpty(draft.mailyJson)) {
+        return draft.mailyJson;
       }
-      if (file.size > MAX_IMAGE_SIZE) {
-        throw new Error("A imagem deve ter no máximo 5MB.");
+      if (draft.html.trim()) {
+        return draft.html;
+      }
+      return undefined;
+    }, [draft.mailyJson, draft.html]);
+
+    const editorContentKey = `${template?.id ?? "new"}:${template?.versionNumber ?? 1}:${visualContentRevision}:${editorMode}`;
+
+    useEffect(() => {
+      const subscription = editorEventBus.on("bubble-menu:add-link", () => {
+        setEventStatus("Link acionado");
+      });
+      return () => subscription.unsubscribe();
+    }, []);
+
+    useEffect(() => {
+      onModeChange?.(editorMode);
+    }, [editorMode, onModeChange]);
+
+    useEffect(() => {
+      if (editorMode === "html" && sidebarSection === "blocks") {
+        setSidebarSection("menu");
+      }
+    }, [editorMode, sidebarSection]);
+
+    const uploadImage = useCallback(async (file: File) => {
+      setUploadingImage(true);
+      try {
+        if (!file.type.startsWith("image/")) {
+          throw new Error("Selecione um arquivo de imagem.");
+        }
+        if (file.size > MAX_IMAGE_SIZE) {
+          throw new Error("A imagem deve ter no máximo 5MB.");
+        }
+        const url = await fileToDataUrl(file);
+        toast.success("Imagem importada");
+        return { url };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao importar imagem";
+        toast.error("Erro ao importar imagem", { description: message });
+        throw error;
+      } finally {
+        setUploadingImage(false);
+      }
+    }, []);
+
+    const handleEditorUpdate = useCallback(
+      (editorStudioRef: EmailEditorRef) => {
+        setVisualEditorTouched(true);
+        setMailyJson(editorStudioRef.getJSON());
+      },
+      [setMailyJson]
+    );
+
+    const syncEditorDraft = useCallback(async (): Promise<EditorSnapshot | null> => {
+      const studioRef = editorRef.current;
+      const editor = studioRef?.editor;
+      if (!studioRef || !editor) {
+        toast.error("Editor ainda não está pronto.");
+        return null;
       }
 
-      const url = await fileToDataUrl(file);
-      toast.success("Imagem importada");
-      return { url };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao importar imagem";
-      toast.error("Erro ao importar imagem", { description: message });
-      throw error;
-    } finally {
-      setUploadingImage(false);
-    }
-  }, []);
+      const { html } = await composeReactEmail({ editor });
+      const mailyJson = studioRef.getJSON();
+      setHtml(html);
+      setMailyJson(mailyJson);
+      return { html, mailyJson, previewText: draft.previewText };
+    }, [draft.previewText, setHtml, setMailyJson]);
 
-  const handleEditorUpdate = useCallback(
-    (ref: EmailEditorRef) => {
-      setVisualEditorTouched(true);
-      setHtmlSourceActive(false);
-      setMailyJson(ref.getJSON());
-    },
-    [setMailyJson]
-  );
+    const mergeHtmlDraft = useCallback(
+      (html: string, options?: { clearMailyJson?: boolean }) => {
+        const discoveredVariables = discoverTemplateVariables(
+          html,
+          draft.variables,
+          builtinVariableKeys
+        );
+        updateDraft({
+          html,
+          ...(options?.clearMailyJson ? { mailyJson: null } : {}),
+          ...(discoveredVariables.length > 0
+            ? { variables: [...draft.variables, ...discoveredVariables] }
+            : {}),
+        });
+        if (discoveredVariables.length > 0) {
+          toast.success(
+            `${discoveredVariables.length} variável(is) adicionada(s) para revisão`
+          );
+        }
+      },
+      [builtinVariableKeys, draft.variables, updateDraft]
+    );
 
-  const syncEditorDraft = useCallback(async (): Promise<EditorSnapshot | null> => {
-    const ref = editorRef.current;
-    const editor = ref?.editor;
-    if (!ref || !editor) {
-      toast.error("Editor ainda não está pronto.");
-      return null;
-    }
+    const applyModeSwitch = useCallback(
+      async (targetMode: EditorMode) => {
+        if (targetMode === editorMode) return;
 
-    const { html } = await composeReactEmail({ editor });
-    const mailyJson = ref.getJSON();
+        setModeSwitching(true);
+        try {
+          if (targetMode === "html") {
+            let nextHtml = draft.html;
+            if (editorMode === "blocks" && visualEditorTouched) {
+              const snapshot = await syncEditorDraft();
+              if (!snapshot) return;
+              nextHtml = snapshot.html;
+            }
+            setHtmlModeValue(nextHtml);
+            setEditorMode("html");
+            setSidebarSection("menu");
+            setEventStatus(`Modo HTML com ${nextHtml.length} caracteres`);
+            return;
+          }
 
-    setHtml(html);
-    setMailyJson(mailyJson);
-    return { html, mailyJson, previewText: "" };
-  }, [setHtml, setMailyJson]);
+          const htmlToImport = htmlModeValue || draft.html;
+          mergeHtmlDraft(htmlToImport, { clearMailyJson: true });
+          setVisualEditorTouched(false);
+          setVisualContentRevision((current) => current + 1);
+          setEditorMode("blocks");
+          setSidebarSection("menu");
+          setEventStatus("Modo blocos ativo");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Erro ao alternar modo";
+          toast.error("Erro ao alternar modo", { description: message });
+        } finally {
+          setModeSwitching(false);
+          setModeSwitchOpen(false);
+          setPendingMode(null);
+        }
+      },
+      [
+        draft.html,
+        editorMode,
+        htmlModeValue,
+        mergeHtmlDraft,
+        syncEditorDraft,
+        visualEditorTouched,
+      ]
+    );
 
-  const handleExportHtml = useCallback(async () => {
-    if (exporting) return;
-    setExporting(true);
-    try {
-      if (htmlSourceActive && !visualEditorTouched) {
-        setExportedHtml(draft.html);
+    const requestModeSwitch = useCallback(
+      (mode: EditorMode) => {
+        if (mode === editorMode || modeSwitching) return;
+        setPendingMode(mode);
+        setModeSwitchOpen(true);
+      },
+      [editorMode, modeSwitching]
+    );
+
+    const handleExportHtml = useCallback(async () => {
+      if (exporting) return;
+      setExporting(true);
+      try {
+        if (editorMode === "html") {
+          const html = htmlModeValue || draft.html;
+          setExportedHtml(html);
+          setExportOpen(true);
+          setEventStatus(`HTML exportado com ${html.length} caracteres`);
+          return;
+        }
+
+        if (!visualEditorTouched && draft.html.trim()) {
+          setExportedHtml(draft.html);
+          setExportOpen(true);
+          setEventStatus(`HTML exportado com ${draft.html.length} caracteres`);
+          return;
+        }
+
+        const snapshot = await syncEditorDraft();
+        if (!snapshot) return;
+        setExportedHtml(snapshot.html);
         setExportOpen(true);
-        setEventStatus(`HTML exportado com ${draft.html.length} caracteres`);
+        setEventStatus(`HTML exportado com ${snapshot.html.length} caracteres`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao exportar HTML";
+        toast.error("Erro ao exportar HTML", { description: message });
+      } finally {
+        setExporting(false);
+      }
+    }, [draft.html, editorMode, exporting, htmlModeValue, syncEditorDraft, visualEditorTouched]);
+
+    const handleCopyHtml = useCallback(async () => {
+      if (!exportedHtml || copying) return;
+      setCopying(true);
+      try {
+        await navigator.clipboard.writeText(exportedHtml);
+        toast.success("HTML copiado");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível copiar o HTML";
+        toast.error("Erro ao copiar", { description: message });
+      } finally {
+        setCopying(false);
+      }
+    }, [copying, exportedHtml]);
+
+    const buildHtmlModeSnapshot = useCallback((): EditorSnapshot => {
+      const html = htmlModeValue || draft.html;
+      return {
+        html,
+        mailyJson: draft.mailyJson,
+        previewText: draft.previewText,
+      };
+    }, [draft.mailyJson, draft.html, draft.previewText, htmlModeValue]);
+
+    const handlePublish = useCallback(async () => {
+      if (saving) return;
+
+      if (editorMode === "html") {
+        const snapshot = buildHtmlModeSnapshot();
+        mergeHtmlDraft(snapshot.html);
+        await saveTemplate(snapshot);
+        return;
+      }
+
+      if (!visualEditorTouched) {
+        await saveTemplate();
         return;
       }
 
       const snapshot = await syncEditorDraft();
       if (!snapshot) return;
+      await saveTemplate(snapshot);
+    }, [
+      buildHtmlModeSnapshot,
+      editorMode,
+      mergeHtmlDraft,
+      saveTemplate,
+      saving,
+      syncEditorDraft,
+      visualEditorTouched,
+    ]);
 
-      setExportedHtml(snapshot.html);
-      setExportOpen(true);
-      setEventStatus(`HTML exportado com ${snapshot.html.length} caracteres`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao exportar HTML";
-      toast.error("Erro ao exportar HTML", { description: message });
-    } finally {
-      setExporting(false);
-    }
-  }, [draft.html, exporting, htmlSourceActive, syncEditorDraft, visualEditorTouched]);
+    const handleSaveAndPublish = useCallback(async () => {
+      if (saving) return;
 
-  const handleCopyHtml = useCallback(async () => {
-    if (!exportedHtml || copying) return;
-    setCopying(true);
-    try {
-      await navigator.clipboard.writeText(exportedHtml);
-      toast.success("HTML copiado");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Não foi possível copiar o HTML";
-      toast.error("Erro ao copiar", { description: message });
-    } finally {
-      setCopying(false);
-    }
-  }, [copying, exportedHtml]);
-
-  const handlePublish = useCallback(async () => {
-    if (saving) return;
-    if (!visualEditorTouched) {
-      await saveTemplate();
-      return;
-    }
-
-    const snapshot = await syncEditorDraft();
-    if (!snapshot) return;
-    await saveTemplate(snapshot);
-  }, [saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
-
-  const handleSaveAndPublish = useCallback(async () => {
-    if (saving) return;
-    let saved;
-    if (!visualEditorTouched) {
-      saved = await saveTemplate();
-    } else {
-      const snapshot = await syncEditorDraft();
-      if (!snapshot) return;
-      saved = await saveTemplate(snapshot);
-    }
-    if (saved) {
-      await publishTemplate(saved.id);
-    }
-  }, [publishTemplate, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
-
-  const handleOpenHtmlEditor = useCallback(async () => {
-    if (htmlEditorOpening) return;
-
-    setHtmlEditorOpening(true);
-    try {
-      let nextHtml = draft.html;
-
-      if (visualEditorTouched) {
+      let saved;
+      if (editorMode === "html") {
+        const snapshot = buildHtmlModeSnapshot();
+        mergeHtmlDraft(snapshot.html);
+        saved = await saveTemplate(snapshot);
+      } else if (!visualEditorTouched) {
+        saved = await saveTemplate();
+      } else {
         const snapshot = await syncEditorDraft();
         if (!snapshot) return;
-        nextHtml = snapshot.html;
+        saved = await saveTemplate(snapshot);
       }
 
-      setHtmlEditorValue(nextHtml);
-      setHtml(nextHtml);
-      setHtmlSourceActive(true);
-      setVisualEditorTouched(false);
-      setHtmlEditorOpen(true);
-      setEventStatus(`HTML pronto com ${nextHtml.length} caracteres`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao abrir editor HTML";
-      toast.error("Erro ao abrir editor HTML", { description: message });
-    } finally {
-      setHtmlEditorOpening(false);
-    }
-  }, [draft.html, htmlEditorOpening, setHtml, syncEditorDraft, visualEditorTouched]);
+      if (saved) {
+        await publishTemplate(saved.id);
+      }
+    }, [
+      buildHtmlModeSnapshot,
+      editorMode,
+      mergeHtmlDraft,
+      publishTemplate,
+      saveTemplate,
+      saving,
+      syncEditorDraft,
+      visualEditorTouched,
+    ]);
 
-  const handleHtmlEditorChange = useCallback(
-    (value: string) => {
-      setHtmlEditorValue(value);
-      setHtml(value);
-      setHtmlSourceActive(true);
-      setVisualEditorTouched(false);
-    },
-    [setHtml]
-  );
+    const getCurrentSnapshot = useCallback(async (): Promise<EditorSnapshot | null> => {
+      if (editorMode === "html") {
+        return buildHtmlModeSnapshot();
+      }
 
-  const handlePublishHtml = useCallback(async () => {
-    if (saving) return;
+      const studioRef = editorRef.current;
+      const editor = studioRef?.editor;
+      if (!studioRef || !editor) {
+        if (draft.html.trim()) {
+          return {
+            html: draft.html,
+            mailyJson: draft.mailyJson,
+            previewText: draft.previewText,
+          };
+        }
+        return null;
+      }
 
-    setHtml(htmlEditorValue);
-    const saved = await saveTemplate({ html: htmlEditorValue });
-    if (saved) {
-      setHtmlSourceActive(true);
-      setVisualEditorTouched(false);
-      setHtmlEditorOpen(false);
-      setEventStatus(`HTML publicado com ${htmlEditorValue.length} caracteres`);
-    }
-  }, [htmlEditorValue, saveTemplate, saving, setHtml]);
+      const { html } = await composeReactEmail({ editor });
+      const mailyJson = studioRef.getJSON();
+      return { html, mailyJson, previewText: draft.previewText };
+    }, [buildHtmlModeSnapshot, draft.html, draft.mailyJson, draft.previewText, editorMode]);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      publish: handlePublish,
-      saveAndPublish: handleSaveAndPublish,
-      openHtmlEditor: handleOpenHtmlEditor,
-    }),
-    [handleOpenHtmlEditor, handlePublish, handleSaveAndPublish]
-  );
+    const handleHtmlModeChange = useCallback(
+      (value: string) => {
+        setHtmlModeValue(value);
+        updateDraft({ html: value });
+      },
+      [updateDraft]
+    );
 
-  const handleImportImage = useCallback(() => {
-    const editor = editorRef.current?.editor;
-    if (!editor) {
-      toast.error("Editor ainda não está pronto.");
-      return;
-    }
+    useImperativeHandle(
+      ref,
+      () => ({
+        publish: handlePublish,
+        saveAndPublish: handleSaveAndPublish,
+        getCurrentSnapshot,
+        requestModeSwitch,
+        getEditorMode: () => editorMode,
+      }),
+      [
+        editorMode,
+        getCurrentSnapshot,
+        handlePublish,
+        handleSaveAndPublish,
+        requestModeSwitch,
+      ]
+    );
 
-    editor.chain().focus().run();
-    (editor as typeof editor & ImageUploadCommand).commands.uploadImage();
-    setEventStatus("Upload de imagem acionado");
-  }, []);
+    const handleImportImage = useCallback(() => {
+      const editor = editorRef.current?.editor;
+      if (!editor) {
+        toast.error("Editor ainda não está pronto.");
+        return;
+      }
+      editor.chain().focus().run();
+      (editor as typeof editor & ImageUploadCommand).commands.uploadImage();
+      setEventStatus("Upload de imagem acionado");
+    }, []);
 
-  const handleAddLink = useCallback(() => {
-    const editor = editorRef.current?.editor;
-    if (!editor) {
-      toast.error("Editor ainda não está pronto.");
-      return;
-    }
+    const handleAddLink = useCallback(() => {
+      const editor = editorRef.current?.editor;
+      if (!editor) {
+        toast.error("Editor ainda não está pronto.");
+        return;
+      }
+      editor.chain().focus().run();
+      editorEventBus.dispatch("bubble-menu:add-link", undefined);
+    }, []);
 
-    editor.chain().focus().run();
-    editorEventBus.dispatch("bubble-menu:add-link", undefined);
-  }, []);
+    return (
+      <div className="flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
+        <div className="relative flex h-full min-h-0 flex-1 gap-3 overflow-hidden bg-muted/20 p-3">
+          <EditorSidebar
+            editorMode={editorMode}
+            section={sidebarSection}
+            history={template?.history ?? []}
+            isDirty={isDirty}
+            eventStatus={eventStatus}
+            exporting={exporting}
+            uploadingImage={uploadingImage}
+            onSectionChange={setSidebarSection}
+            onExportHtml={() => void handleExportHtml()}
+            onImportImage={handleImportImage}
+            onAddLink={handleAddLink}
+          />
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
-      <div className="flex min-h-0 flex-1">
-        <EditorBlocksPanel
-          isDirty={isDirty}
-          eventStatus={eventStatus}
-          exporting={exporting}
-          uploadingImage={uploadingImage}
-          onExportHtml={handleExportHtml}
-          onImportImage={handleImportImage}
-          onAddLink={handleAddLink}
-          bottomSlot={bottomSlot}
-        />
-        <EmailEditor
-          ref={editorRef}
-          onUpdate={handleEditorUpdate}
-          onUploadImage={uploadImage}
-          bubbleMenu={{
-            hideWhenActiveNodes: ["image", "button"],
-            hideWhenActiveMarks: ["link"],
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl">
+            {editorMode === "html" ? (
+              <EditorHtmlWorkspace value={htmlModeValue || draft.html} onChange={handleHtmlModeChange} />
+            ) : (
+              <EmailEditor
+                key={editorContentKey}
+                ref={editorRef}
+                content={editorContent}
+                onUpdate={handleEditorUpdate}
+                onUploadImage={uploadImage}
+                bubbleMenu={{
+                  hideWhenActiveNodes: ["image", "button"],
+                  hideWhenActiveMarks: ["link"],
+                }}
+                className={cn(
+                  "relative h-full min-w-0 overflow-y-auto bg-muted/20 p-6 pr-88",
+                  "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-150",
+                  "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
+                  "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
+                  "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
+                  "[&_.ProseMirror]:outline-none"
+                )}
+                placeholder="Pressione '/&#39; para usar comandos rápidos"
+                theme="basic"
+              >
+                <CustomInspector />
+              </EmailEditor>
+            )}
+          </div>
+        </div>
+
+        <EditorModeSwitchDialog
+          open={modeSwitchOpen}
+          targetMode={pendingMode}
+          switching={modeSwitching}
+          onOpenChange={(open) => {
+            setModeSwitchOpen(open);
+            if (!open) setPendingMode(null);
           }}
-          className={cn(
-            "min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6",
-            "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-150",
-            "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
-            "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
-            "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
-            "[&_.ProseMirror]:outline-none"
-          )}
-          placeholder="Pressione '/&#39; para usar comandos rápidos"
-          theme="basic"
-        >
-          <CustomInspector />
-        </EmailEditor>
-      </div>
+          onConfirm={() => {
+            if (pendingMode) void applyModeSwitch(pendingMode);
+          }}
+        />
 
-      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
-        <DialogContent className="max-h-[90vh] max-w-5xl flex flex-col">
-          <DialogHeader>
-            <DialogTitle>HTML exportado</DialogTitle>
-            <DialogDescription>
-              Conteúdo pronto para envio pelo módulo de campanhas.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <Textarea
-              readOnly
-              value={exportedHtml}
-              className="min-h-[55vh] resize-none font-mono text-xs"
-              aria-label="HTML exportado"
-            />
-          </div>
-
-          <DialogFooter className="gap-2 sm:space-x-0">
-            <Button variant="outline" onClick={handleCopyHtml} disabled={!exportedHtml || copying}>
-              {copying ? <Spinner data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-              {copying ? "Copiando..." : "Copiar"}
-            </Button>
-            <DialogClose asChild>
-              <Button variant="secondary">Voltar</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={htmlEditorOpen} onOpenChange={setHtmlEditorOpen}>
-        <DialogContent className="max-h-[90vh] w-[96vw] max-w-7xl flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Editor HTML</DialogTitle>
-            <DialogDescription>
-              Edite o código do e-mail e acompanhe a renderização ao lado.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="grid min-h-[64vh] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
-              <section className="flex min-h-[52vh] flex-col overflow-hidden rounded-md border bg-background">
-                <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-medium">Código HTML</h3>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {htmlEditorOpening ? "Sincronizando editor visual" : "Fonte manual do template"}
-                    </p>
-                  </div>
-                  <Badge variant="secondary">HTML</Badge>
-                </div>
-                <div className="min-h-0 flex-1">
-                  <MonacoCodeEditor
-                    value={htmlEditorValue}
-                    onChange={handleHtmlEditorChange}
-                    language="html"
-                    height="100%"
-                    themeVariant="resend-dark"
-                    placeholder="Cole ou edite o HTML do e-mail..."
-                    options={htmlEditorOptions}
-                  />
-                </div>
-              </section>
-
-              <section className="flex min-h-[52vh] flex-col overflow-hidden rounded-md border bg-background">
-                <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-medium">Prévia do e-mail</h3>
-                    <p className="truncate text-xs text-muted-foreground">
-                      Atualizada em tempo real
-                    </p>
-                  </div>
-                  <Badge variant="outline">Preview</Badge>
-                </div>
-                <div className="min-h-0 flex-1 bg-white">
-                  <iframe
-                    srcDoc={htmlPreviewContent}
-                    title="Prévia do HTML do e-mail"
-                    sandbox="allow-same-origin"
-                    className="h-full w-full border-0 bg-white"
-                  />
-                </div>
-              </section>
+        <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+          <DialogContent className="max-h-[90vh] max-w-5xl flex flex-col">
+            <DialogHeader>
+              <DialogTitle>HTML exportado</DialogTitle>
+              <DialogDescription>
+                Conteúdo pronto para envio pelo módulo de campanhas.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <Textarea
+                readOnly
+                value={exportedHtml}
+                className="min-h-[55vh] resize-none font-mono text-xs"
+                aria-label="HTML exportado"
+              />
             </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:space-x-0">
-            <Button
-              type="button"
-              onClick={handlePublishHtml}
-              disabled={saving || htmlEditorOpening}
-            >
-              {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
-              {saving ? "Publicando..." : "Publicar HTML"}
-            </Button>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">
-                Voltar
+            <DialogFooter className="gap-2 sm:space-x-0">
+              <Button variant="outline" onClick={() => void handleCopyHtml()} disabled={!exportedHtml || copying}>
+                {copying ? <Spinner data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+                {copying ? "Copiando..." : "Copiar"}
               </Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-});
-
-function EditorBlocksPanel({
-  isDirty,
-  eventStatus,
-  exporting,
-  uploadingImage,
-  onExportHtml,
-  onImportImage,
-  onAddLink,
-  bottomSlot,
-}: {
-  isDirty: boolean;
-  eventStatus: string;
-  exporting: boolean;
-  uploadingImage: boolean;
-  onExportHtml: () => void;
-  onImportImage: () => void;
-  onAddLink: () => void;
-  bottomSlot?: ReactNode;
-}) {
-  return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-r bg-background p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Blocos</h2>
-        <Badge variant="secondary">Editor</Badge>
+              <DialogClose asChild>
+                <Button variant="secondary">Voltar</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-
-      <Separator className="my-4" />
-
-      <div className="flex flex-col gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="justify-start"
-          onClick={onImportImage}
-          disabled={uploadingImage}
-        >
-          {uploadingImage ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <ImagePlus data-icon="inline-start" />
-          )}
-          {uploadingImage ? "Importando..." : "Importar imagem"}
-        </Button>
-        <Button type="button" variant="outline" className="justify-start" onClick={onAddLink}>
-          <Link2 data-icon="inline-start" />
-          Link
-        </Button>
-      </div>
-
-      <Separator className="my-4" />
-
-      <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">Exportação</h3>
-        <Button
-          type="button"
-          variant="outline"
-          className="justify-start"
-          onClick={onExportHtml}
-          disabled={exporting}
-        >
-          {exporting ? <Spinner data-icon="inline-start" /> : <Code2 data-icon="inline-start" />}
-          {exporting ? "Exportando..." : "Exportar HTML"}
-        </Button>
-      </div>
-
-      <Separator className="my-4" />
-
-      <div className="flex flex-wrap gap-2">
-        <Badge variant={isDirty ? "default" : "secondary"}>
-          {isDirty ? "Alterado" : "Sincronizado"}
-        </Badge>
-        <Badge variant="outline">{eventStatus}</Badge>
-      </div>
-
-      {bottomSlot ? (
-        <>
-          <Separator className="my-4" />
-          {bottomSlot}
-        </>
-      ) : null}
-    </aside>
-  );
-}
+    );
+  }
+);
 
 function CustomInspector() {
   return (
-    <Inspector.Root className="w-80 shrink-0 overflow-y-auto border-l bg-background p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Ajustes</h2>
-        <Badge variant="secondary">Editor</Badge>
-      </div>
+    <Inspector.Root className="absolute top-3 right-3 bottom-3 z-10 flex w-80 flex-col overflow-y-auto rounded-xl border bg-card p-4 shadow-md">
+      <h2 className="text-sm font-semibold">Ajustes</h2>
 
       <div className="mt-3">
         <Inspector.Breadcrumb>

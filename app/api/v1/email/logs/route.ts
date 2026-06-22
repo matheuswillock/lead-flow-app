@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), 20), 100)
     const search = searchParams.get("search") ?? undefined
     const campaignId = searchParams.get("campaignId") ?? undefined
+    const category = searchParams.get("category") ?? undefined
     const status = searchParams.get("status") ?? undefined
     const from = searchParams.get("from") ?? undefined
     const to = searchParams.get("to") ?? undefined
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
         ],
       }),
       ...(campaignId && { campaignId }),
+      ...(category && { category: category as never }),
       ...(status && { status: status as never }),
       ...((from || to) && {
         sentAt: {
@@ -50,6 +52,9 @@ export async function GET(request: NextRequest) {
           recipientEmail: true,
           recipientName: true,
           subject: true,
+          category: true,
+          sourceType: true,
+          sourceId: true,
           status: true,
           sentAt: true,
           deliveredAt: true,

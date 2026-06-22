@@ -25,13 +25,13 @@ export type ListCampaignsResult = {
 export type SendResult = { sent: number; failed: number }
 
 export interface ICampanhasService {
-  list(page: number, pageSize: number, status?: string): Promise<ListCampaignsResult>
-  create(data: CreateCampaignData): Promise<Campaign>
-  update(id: string, data: UpdateCampaignData): Promise<Campaign>
-  send(id: string): Promise<SendResult>
-  cancel(id: string): Promise<void>
-  deleteDraft(id: string): Promise<void>
-  getCreditStatus(): Promise<CreditStatus>
-  getTemplates(): Promise<Template[]>
-  getContactLists(): Promise<ContactList[]>
+  list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string): Promise<ListCampaignsResult>
+  create(supabaseId: string, teamId: string | null | undefined, data: CreateCampaignData): Promise<Campaign>
+  update(supabaseId: string, teamId: string | null | undefined, id: string, data: UpdateCampaignData): Promise<Campaign>
+  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<SendResult>
+  cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
+  deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
+  getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
+  getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
+  getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
 }

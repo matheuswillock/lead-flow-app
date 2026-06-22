@@ -7,6 +7,8 @@ import BoardFooter from "./BoardFooter";
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
 import { FinalizeContractDialog, type FinalizeContractData } from "./FinalizeContractDialog";
 import { ScheduleMeetingDialog, type ScheduleMeetingSuccessPayload } from "./ScheduleMeetingDialog";
+import { ResendScheduleInviteDialog } from "../components/ResendScheduleInviteDialog";
+import { createBoardService } from "../services/BoardService";
 import { LeadStatusTriggerDialog, type LeadStatusTriggerPayload } from "./LeadStatusTriggerDialog";
 import {
   AlertDialog,
@@ -74,7 +76,9 @@ export function BoardContainer({
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [resendInviteLead, setResendInviteLead] = useState<Lead | null>(null);
   const scheduleSucceededRef = useRef(false);
+  const boardService = useMemo(() => createBoardService(), []);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
@@ -110,6 +114,26 @@ export function BoardContainer({
     setScheduleDialogMode(lead.status === "no_show" ? "reschedule" : "create");
     setShowScheduleDialog(true);
   }, []);
+
+  const handleResendScheduleInvite = useCallback((lead: Lead) => {
+    setResendInviteLead(lead);
+  }, []);
+
+  const handleResendScheduleInviteById = useCallback(
+    (leadId: string) => {
+      for (const column of Object.values(data)) {
+        const found = column.find((item) => item.id === leadId);
+        if (found) {
+          setResendInviteLead(found);
+          return;
+        }
+      }
+      if (selectedLead?.id === leadId) {
+        setResendInviteLead(selectedLead);
+      }
+    },
+    [data, selectedLead]
+  );
 
   useEffect(() => {
     if (!pendingScheduledDrop || !pendingDropLead) return;
@@ -303,6 +327,7 @@ export function BoardContainer({
         onFinalizeContract={handleFinalizeContract}
         onScheduleMeeting={handleScheduleMeeting}
         onNoShow={handleNoShow}
+        onResendScheduleInvite={handleResendScheduleInvite}
       />
 
       <BoardFooter />
@@ -357,6 +382,7 @@ export function BoardContainer({
             closers={closers}
             teamMembers={[]}
             mode={scheduleDialogMode}
+            onResendScheduleInvite={handleResendScheduleInviteById}
           />
         </>
       )}
@@ -454,6 +480,34 @@ export function BoardContainer({
           isSaving={salesInfoSaving}
           initialValues={pendingSalesInfoGateDrop.currentSalesInfo}
           missingFields={pendingSalesInfoGateDrop.missingFields}
+        />
+      )}
+
+      {resendInviteLead && supabaseId && (
+        <ResendScheduleInviteDialog
+          open={!!resendInviteLead}
+          onOpenChange={(open) => {
+            if (!open) setResendInviteLead(null);
+          }}
+          leadId={resendInviteLead.id}
+          supabaseId={supabaseId}
+          teamId={activeTeamId}
+          participants={{
+            leadEmail: resendInviteLead.email,
+            leadName: resendInviteLead.name,
+            closerEmail: resendInviteLead.closer?.email,
+            closerName: resendInviteLead.closer?.fullName ?? undefined,
+            assigneeEmail: resendInviteLead.assignee?.email,
+            assigneeName: resendInviteLead.assignee?.fullName ?? undefined,
+          }}
+          submitResend={(payload) =>
+            boardService.resendScheduleInvite(
+              resendInviteLead.id,
+              supabaseId,
+              payload,
+              activeTeamId
+            )
+          }
         />
       )}
     </div>

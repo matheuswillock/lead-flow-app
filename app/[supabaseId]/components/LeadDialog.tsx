@@ -35,7 +35,6 @@ import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app
 import { useParams, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { EmojiStyle, Theme } from "emoji-picker-react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +60,7 @@ import { isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 import { TransferBetweenTeamsDialog } from "@/app/[supabaseId]/board/features/container/TransferBetweenTeamsDialog";
+import { ResendScheduleInviteDialog } from "@/app/[supabaseId]/board/features/components/ResendScheduleInviteDialog";
 import {
   SalesInfoRequirementDialog,
   type MissingSalesField,
@@ -181,13 +181,8 @@ export default function LeadDialog({
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
   const [resendDialogOpen, setResendDialogOpen] = useState(false);
-  const [resendTarget, setResendTarget] = useState<"all" | "single" | "new">("all");
-  const [resendEmail, setResendEmail] = useState<string>("");
-  const [newParticipantDraft, setNewParticipantDraft] = useState("");
-  const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
   const [_pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [scheduleShareDialogOpen, setScheduleShareDialogOpen] = useState(false);
   const [scheduleShareUrl, setScheduleShareUrl] = useState("");
@@ -280,6 +275,15 @@ export default function LeadDialog({
     () => (currentLead ? sdrsByTeam : newLeadSdrs),
     [currentLead, sdrsByTeam, newLeadSdrs]
   );
+  const scheduleCloserName = useMemo(() => {
+    if (!currentLead || currentLead.isTransfer === true) return null;
+    if (currentLead.closer?.fullName || currentLead.closer?.email) {
+      return currentLead.closer.fullName || currentLead.closer.email || null;
+    }
+    if (!currentLead.closerId) return null;
+    const closerMember = closersByTeam.find((member) => member.id === currentLead.closerId);
+    return closerMember?.name || closerMember?.email || null;
+  }, [closersByTeam, currentLead]);
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
   const currentActivitiesLead =
@@ -301,30 +305,6 @@ export default function LeadDialog({
       void refreshLeadDetails();
     }
   }, [currentLead?.id, open, refreshLeadDetails]);
-
-  useEffect(() => {
-    const detailedLead = leadDetails?.lead;
-    if (!open || !currentLead || !detailedLead || detailedLead.id !== currentLead.id) return;
-    if (
-      detailedLead.meetingDate === currentLead.meetingDate &&
-      detailedLead.meetingTitle === currentLead.meetingTitle &&
-      detailedLead.meetingType === currentLead.meetingType
-    ) {
-      return;
-    }
-
-    // isTransfer is intentionally excluded: handleTransferToggle manages it
-    // via its own optimistic + server-confirmation flow. Spreading detailedLead
-    // here would revert the optimistic update before the API response arrives.
-    const { isTransfer: _isTransferIgnored, ...detailedLeadWithoutTransfer } = detailedLead;
-    setLocalLead((prev) =>
-      prev && prev.id === detailedLead.id ? ({ ...prev, ...detailedLeadWithoutTransfer } as Lead) : prev,
-    );
-  }, [
-    currentLead,
-    leadDetails?.lead,
-    open,
-  ]);
 
   useEffect(() => {
     if (!open) {
@@ -793,37 +773,6 @@ export default function LeadDialog({
       parts.push(body.slice(lastIndex));
     }
     return parts.length > 0 ? parts : body;
-  };
-
-  const buildParticipantOptions = () => {
-    const options: { label: string; email: string }[] = [];
-    if (currentLead?.email) {
-      options.push({ label: `${currentLead.name} (Lead)`, email: currentLead.email });
-    }
-    if (currentLead?.closer?.email) {
-      options.push({
-        label: `${currentLead.closer.fullName || currentLead.closer.email} (Closer)`,
-        email: currentLead.closer.email,
-      });
-    }
-    if (user?.email) {
-      options.push({
-        label: `${user.fullName || user.email} (Master)`,
-        email: user.email,
-      });
-    }
-    scheduleGuests.forEach((guestEmail) => {
-      if (!options.some((option) => option.email === guestEmail)) {
-        options.push({ label: guestEmail, email: guestEmail });
-      }
-    });
-    const seen = new Set<string>();
-    return options.filter((option) => {
-      const normalized = option.email.toLowerCase();
-      if (seen.has(normalized)) return false;
-      seen.add(normalized);
-      return true;
-    });
   };
 
   const handleCopyLeadCode = async (code: string) => {
@@ -1923,11 +1872,20 @@ export default function LeadDialog({
   const handleTransferToggle = async () => {
     if (!currentLead || !supabaseId || isTransferToggling) return;
     const next = !currentLead.isTransfer;
+    const shouldClearCloser = next && !!currentLead.closerId;
+    const previousCloserId = currentLead.closerId ?? null;
+    const transferPatch: Partial<Lead> = {
+      isTransfer: next,
+      ...(shouldClearCloser ? { closerId: null, closer: undefined } : {}),
+    };
     setIsTransferToggling(true);
-    patchLead?.(currentLead.id, { isTransfer: next });
+    patchLead?.(currentLead.id, transferPatch);
     setLocalLead((prev) =>
-      prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: next } as Lead) : prev
+      prev && prev.id === currentLead.id ? ({ ...prev, ...transferPatch } as Lead) : prev
     );
+    if (shouldClearCloser) {
+      form.setValue("closerId", "", { shouldDirty: false });
+    }
     try {
       const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
         method: "PUT",
@@ -1936,22 +1894,40 @@ export default function LeadDialog({
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId || "",
         },
-        body: JSON.stringify({ isTransfer: next }),
+        body: JSON.stringify({
+          isTransfer: next,
+          ...(shouldClearCloser ? { closerId: null } : {}),
+        }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.isValid) {
         throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar a transferência.");
       }
       const serverValue = result?.result?.isTransfer ?? next;
-      patchLead?.(currentLead.id, { isTransfer: serverValue });
+      const serverCloserId =
+        shouldClearCloser ? null : (result?.result?.closerId ?? currentLead.closerId ?? null);
+      const confirmedPatch: Partial<Lead> = {
+        isTransfer: serverValue,
+        ...(shouldClearCloser ? { closerId: null, closer: undefined } : { closerId: serverCloserId }),
+      };
+      patchLead?.(currentLead.id, confirmedPatch);
       setLocalLead((prev) =>
-        prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: serverValue } as Lead) : prev
+        prev && prev.id === currentLead.id ? ({ ...prev, ...confirmedPatch } as Lead) : prev
       );
     } catch (error) {
-      patchLead?.(currentLead.id, { isTransfer: !next });
+      const rollbackPatch: Partial<Lead> = {
+        isTransfer: !next,
+        ...(shouldClearCloser && previousCloserId
+          ? { closerId: previousCloserId }
+          : {}),
+      };
+      patchLead?.(currentLead.id, rollbackPatch);
       setLocalLead((prev) =>
-        prev && prev.id === currentLead.id ? ({ ...prev, isTransfer: !next } as Lead) : prev
+        prev && prev.id === currentLead.id ? ({ ...prev, ...rollbackPatch } as Lead) : prev
       );
+      if (shouldClearCloser && previousCloserId) {
+        form.setValue("closerId", previousCloserId, { shouldDirty: false });
+      }
       toast.warning(error instanceof Error ? error.message : "Não foi possível atualizar a transferência.");
     } finally {
       setIsTransferToggling(false);
@@ -2033,26 +2009,37 @@ export default function LeadDialog({
   };
 
   const handleScheduleStatusSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
-    if (!currentLead) return;
+    if (!currentLead || !payload) return;
 
-    if (payload) {
-      await applySchedulePayload(payload);
+    await applySchedulePayload(payload);
+    setLocalLead((prev) =>
+      prev && prev.id === payload.leadId
+        ? ({
+            ...prev,
+            email: payload.leadEmail,
+            status: payload.status,
+            meetingDate: payload.meetingDate,
+            meetingTitle: payload.meetingTitle,
+            meetingNotes: payload.meetingNotes,
+            meetingLink: payload.meetingLink,
+            closerId: payload.closerId,
+            meetingType: payload.meetingType,
+            ...(payload.closerId ? {} : { closer: undefined }),
+          } as Lead)
+        : prev,
+    );
+
+    const refreshedDetails = await refreshLeadDetails({ silent: true });
+    if (refreshedDetails?.lead && refreshedDetails.lead.id === payload.leadId) {
       setLocalLead((prev) =>
         prev && prev.id === payload.leadId
           ? ({
               ...prev,
-              email: payload.leadEmail,
-              status: payload.status,
-              meetingDate: payload.meetingDate,
-              meetingTitle: payload.meetingTitle,
-              meetingNotes: payload.meetingNotes,
-              meetingLink: payload.meetingLink,
-              closerId: payload.closerId,
-              meetingType: payload.meetingType,
+              ...refreshedDetails.lead,
+              isTransfer: prev.isTransfer,
             } as Lead)
           : prev,
       );
-      refreshLeadDetails({ silent: true });
     }
   };
 
@@ -2197,9 +2184,6 @@ export default function LeadDialog({
         setScheduleGuests([]);
         return;
       }
-      if (isActive) {
-        setScheduleLoading(true);
-      }
       try {
         const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
           headers: {
@@ -2243,10 +2227,6 @@ export default function LeadDialog({
           setScheduleGuests([]);
         }
         console.warn("Falha ao carregar convidados extras:", error);
-      } finally {
-        if (isActive) {
-          setScheduleLoading(false);
-        }
       }
     };
 
@@ -2257,96 +2237,6 @@ export default function LeadDialog({
       controller.abort();
     };
   }, [currentLead?.id, open, supabaseId, activeTeamId, form, patchLead]);
-
-  const handleResendInvite = async () => {
-    if (!currentLead || !supabaseId) return;
-    if (resendTarget === "single" && !resendEmail) {
-      toast.error("Selecione um participante para reenviar o convite");
-      return;
-    }
-    if (resendTarget === "new" && newParticipants.length === 0) {
-      toast.error("Informe pelo menos um participante");
-      return;
-    }
-
-    const loadingToast = toast.loading("Reenviando convite...");
-    try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule/resend`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId,
-        },
-        body: JSON.stringify({
-          target: resendTarget,
-          email: resendTarget === "single" ? resendEmail : undefined,
-          emails: resendTarget === "new" ? newParticipants : undefined,
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Erro ao reenviar convite");
-      }
-
-      const warningMessage = Array.isArray(result?.successMessages)
-        ? result.successMessages.find((message: string) => message.toLowerCase().startsWith("aviso"))
-        : undefined;
-      const successMessage =
-        Array.isArray(result?.successMessages) && result.successMessages.length > 0
-          ? result.successMessages[0]
-          : "Convite reenviado com sucesso!";
-
-      const toastHandler = warningMessage && successMessage.toLowerCase().includes("não reenviados")
-        ? toast.info
-        : toast.success;
-
-      toastHandler(successMessage, {
-        id: loadingToast,
-        duration: 3000,
-      });
-      if (warningMessage) {
-        toast.info(warningMessage, { duration: 5000 });
-      }
-      setResendDialogOpen(false);
-      setNewParticipants([]);
-      setNewParticipantDraft("");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao reenviar convite";
-      toast.error(message, { id: loadingToast });
-    }
-  };
-
-  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-  const addNewParticipants = (values: string[]) => {
-    const normalized = values
-      .map((item) => item.trim().toLowerCase())
-      .filter(Boolean)
-      .filter(isValidEmail);
-    if (normalized.length === 0) return;
-    setNewParticipants((prev) => Array.from(new Set([...prev, ...normalized])));
-  };
-
-  const handleNewParticipantInput = (value: string) => {
-    if (!value) {
-      setNewParticipantDraft("");
-      return;
-    }
-    const parts = value.split(/[,;\s]+/);
-    if (parts.length === 1) {
-      setNewParticipantDraft(value);
-      return;
-    }
-    const last = value.match(/[,\s;]$/) ? "" : parts.pop() || "";
-    addNewParticipants(parts);
-    setNewParticipantDraft(last);
-  };
-
-  const commitNewParticipantDraft = () => {
-    if (!newParticipantDraft.trim()) return;
-    handleNewParticipantInput(`${newParticipantDraft} `);
-  };
 
   return (
     <>
@@ -2532,19 +2422,21 @@ export default function LeadDialog({
                           ? {
                               status: currentLead.status,
                               meetingDate: currentLead.meetingDate,
-                              closerName:
-                                currentLead.closer?.fullName ||
-                                currentLead.closer?.email ||
-                                null,
+                              closerName: scheduleCloserName,
                               meetingTitle: currentLead.meetingTitle,
                               meetingNotes: currentLead.meetingNotes,
                               meetingLink: currentLead.meetingLink,
                               meetingHeald: currentLead.meetingHeald,
-                              isPreSchedule: currentLead.isTransfer === true && !!currentLead.meetingDate,
+                              isPreSchedule: currentLead.isTransfer === true,
                             }
                           : undefined
                       }
                       onManageSchedule={currentLead ? () => setShowScheduleDialog(true) : undefined}
+                      onResendScheduleInvite={
+                        currentLead?.meetingDate && currentLead.status === "scheduled" && currentLead.isTransfer !== true
+                          ? () => setResendDialogOpen(true)
+                          : undefined
+                      }
                       onShareSchedule={
                         currentLead?.meetingDate && currentLead.isTransfer !== true
                           ? () => void handleShareSchedule()
@@ -2916,103 +2808,23 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={resendDialogOpen} onOpenChange={setResendDialogOpen}>
-        <DialogContent className="sm:max-w-105">
-          <DialogHeader>
-            <DialogTitle>Reenviar convite</DialogTitle>
-            <DialogDescription>
-              Escolha se deseja reenviar o convite para todos ou para um participante.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <RadioGroup
-              value={resendTarget}
-              onValueChange={(value) => setResendTarget(value as "all" | "single" | "new")}
-              className="grid gap-3"
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="all" id="resend-all" />
-                <Label htmlFor="resend-all">Todos os participantes</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="single" id="resend-single" />
-                <Label htmlFor="resend-single">Somente um participante</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="new" id="resend-new" />
-                <Label htmlFor="resend-new">Novo participante</Label>
-              </div>
-            </RadioGroup>
-
-            {resendTarget === "single" && (
-              <div className="grid gap-2">
-                <Label>Participante</Label>
-                <Select value={resendEmail} onValueChange={setResendEmail}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={scheduleLoading ? "Carregando..." : "Selecione o e-mail"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {buildParticipantOptions().map((option) => (
-                      <SelectItem key={option.email} value={option.email}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {resendTarget === "new" && (
-              <div className="grid gap-2">
-                <Label>Novo participante</Label>
-                <div className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2">
-                  {newParticipants.map((email) => (
-                    <Badge key={email} variant="secondary" className="gap-1 pr-1">
-                      <span>{email}</span>
-                      <button
-                        type="button"
-                        className="rounded-sm px-1 text-muted-foreground transition hover:text-foreground"
-                        onClick={() =>
-                          setNewParticipants((prev) => prev.filter((item) => item !== email))
-                        }
-                        aria-label={`Remover ${email}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                  <input
-                    type="text"
-                    value={newParticipantDraft}
-                    onChange={(event) => handleNewParticipantInput(event.target.value)}
-                    onBlur={commitNewParticipantDraft}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        commitNewParticipantDraft();
-                      }
-                    }}
-                    placeholder="ex: participante@email.com"
-                    className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Separe os emails por virgula ou espaco.
-                </p>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setResendDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleResendInvite}>
-                Reenviar convite
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {currentLead && supabaseId && (
+        <ResendScheduleInviteDialog
+          open={resendDialogOpen}
+          onOpenChange={setResendDialogOpen}
+          leadId={currentLead.id}
+          supabaseId={supabaseId}
+          teamId={activeTeamId}
+          participants={{
+            leadEmail: currentLead.email,
+            leadName: currentLead.name,
+            closerEmail: currentLead.closer?.email,
+            closerName: currentLead.closer?.fullName ?? undefined,
+            assigneeEmail: currentLead.assignee?.email,
+            assigneeName: currentLead.assignee?.fullName ?? undefined,
+          }}
+        />
+      )}
 
       <Dialog
         open={statusDialogOpen}
@@ -3100,6 +2912,7 @@ export default function LeadDialog({
           mode={currentLead.meetingDate ? "reschedule" : "create"}
           initialExtraGuests={scheduleGuests}
           currentProfileId={user?.id}
+          onResendScheduleInvite={() => setResendDialogOpen(true)}
         />
       )}
 

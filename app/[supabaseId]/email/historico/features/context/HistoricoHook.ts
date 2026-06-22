@@ -11,6 +11,7 @@ const service = new HistoricoService()
 export type HistoricoActions = {
   handleSearch: (query: string) => void
   handleStatusFilter: (status: string) => void
+  handleCategoryFilter: (category: string) => void
   handleDateFilter: (from: string, to: string) => void
   handlePageChange: (page: number) => void
   handleOpenDetail: (logId: string) => Promise<void>
@@ -24,6 +25,7 @@ export type HistoricoHookReturn = {
   totalPages: number
   search: string
   statusFilter: string
+  categoryFilter: string
   dateFrom: string
   dateTo: string
   loading: boolean
@@ -39,6 +41,7 @@ export function useHistorico(supabaseId: string): HistoricoHookReturn {
   const [totalPages, setTotalPages] = useState(1)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [loading, setLoading] = useState(false)
@@ -53,6 +56,7 @@ export function useHistorico(supabaseId: string): HistoricoHookReturn {
     page: number
     search: string
     status: string
+    category: string
     from: string
     to: string
   }) => {
@@ -66,6 +70,7 @@ export function useHistorico(supabaseId: string): HistoricoHookReturn {
         pageSize: PAGE_SIZE,
         search: opts.search || undefined,
         status: opts.status || undefined,
+        category: opts.category || undefined,
         from: opts.from || undefined,
         to: opts.to || undefined,
       })
@@ -83,35 +88,41 @@ export function useHistorico(supabaseId: string): HistoricoHookReturn {
   }, [])
 
   useEffect(() => {
-    void fetchLogs({ page: 1, search: "", status: "", from: "", to: "" })
-  }, [supabaseId])
+    void fetchLogs({ page: 1, search: "", status: "", category: "", from: "", to: "" })
+  }, [supabaseId, fetchLogs])
 
   const handleSearch = useCallback((query: string) => {
     setSearch(query)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     searchDebounceRef.current = setTimeout(() => {
       setPage(1)
-      void fetchLogs({ page: 1, search: query, status: statusFilter, from: dateFrom, to: dateTo })
+      void fetchLogs({ page: 1, search: query, status: statusFilter, category: categoryFilter, from: dateFrom, to: dateTo })
     }, 300)
-  }, [fetchLogs, statusFilter, dateFrom, dateTo])
+  }, [fetchLogs, statusFilter, categoryFilter, dateFrom, dateTo])
 
   const handleStatusFilter = useCallback((status: string) => {
     setStatusFilter(status)
     setPage(1)
-    void fetchLogs({ page: 1, search, status, from: dateFrom, to: dateTo })
-  }, [fetchLogs, search, dateFrom, dateTo])
+    void fetchLogs({ page: 1, search, status, category: categoryFilter, from: dateFrom, to: dateTo })
+  }, [fetchLogs, search, categoryFilter, dateFrom, dateTo])
+
+  const handleCategoryFilter = useCallback((category: string) => {
+    setCategoryFilter(category)
+    setPage(1)
+    void fetchLogs({ page: 1, search, status: statusFilter, category, from: dateFrom, to: dateTo })
+  }, [fetchLogs, search, statusFilter, dateFrom, dateTo])
 
   const handleDateFilter = useCallback((from: string, to: string) => {
     setDateFrom(from)
     setDateTo(to)
     setPage(1)
-    void fetchLogs({ page: 1, search, status: statusFilter, from, to })
-  }, [fetchLogs, search, statusFilter])
+    void fetchLogs({ page: 1, search, status: statusFilter, category: categoryFilter, from, to })
+  }, [fetchLogs, search, statusFilter, categoryFilter])
 
   const handlePageChange = useCallback((nextPage: number) => {
     setPage(nextPage)
-    void fetchLogs({ page: nextPage, search, status: statusFilter, from: dateFrom, to: dateTo })
-  }, [fetchLogs, search, statusFilter, dateFrom, dateTo])
+    void fetchLogs({ page: nextPage, search, status: statusFilter, category: categoryFilter, from: dateFrom, to: dateTo })
+  }, [fetchLogs, search, statusFilter, categoryFilter, dateFrom, dateTo])
 
   const handleOpenDetail = useCallback(async (logId: string) => {
     setSelectedLogId(logId)
@@ -141,6 +152,7 @@ export function useHistorico(supabaseId: string): HistoricoHookReturn {
     totalPages,
     search,
     statusFilter,
+    categoryFilter,
     dateFrom,
     dateTo,
     loading,
@@ -149,6 +161,7 @@ export function useHistorico(supabaseId: string): HistoricoHookReturn {
     loadingDetail,
     handleSearch,
     handleStatusFilter,
+    handleCategoryFilter,
     handleDateFilter,
     handlePageChange,
     handleOpenDetail,

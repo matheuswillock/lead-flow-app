@@ -31,6 +31,7 @@ export type Template = {
   name: string
   subject: string
   status?: 'draft' | 'published'
+  isCurrentPublished?: boolean
 }
 
 export type ContactList = {

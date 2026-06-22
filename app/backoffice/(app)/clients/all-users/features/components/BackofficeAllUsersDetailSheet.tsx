@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { CircleCheckBig, CircleX, Crown, ExternalLink, KeyRound, Mail } from "lucide-react"
+import { CalendarRange, CircleCheckBig, CircleX, Crown, ExternalLink, KeyRound, Mail, Send } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -63,6 +63,8 @@ export function BackofficeAllUsersDetailSheet() {
     selectedDetail,
     openUserSheet,
     closeUserSheet,
+    openSchedulesDialog,
+    openEmailDispatchesDialog,
   } = useBackofficeAllUsers()
   const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | null>(null)
 
@@ -187,6 +189,34 @@ export function BackofficeAllUsersDetailSheet() {
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    openSchedulesDialog({
+                      id: selectedDetail.id,
+                      fullName: selectedDetail.fullName,
+                      email: selectedDetail.email,
+                    })
+                  }
+                >
+                  <CalendarRange data-icon="inline-start" />
+                  Ver agendamentos
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    openEmailDispatchesDialog({
+                      id: selectedDetail.id,
+                      fullName: selectedDetail.fullName,
+                      email: selectedDetail.email,
+                    })
+                  }
+                >
+                  <Send data-icon="inline-start" />
+                  Ver e-mails disparados
+                </Button>
                 {selectedDetail.accessStatus === "pending_first_access" ? (
                   <Button
                     type="button"

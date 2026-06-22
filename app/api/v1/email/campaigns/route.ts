@@ -12,6 +12,8 @@ const createSchema = z.object({
   scheduledAt: z.string().datetime().nullable().optional(),
 })
 
+const campaignStatusSchema = z.enum(["draft", "scheduled", "sending", "sent", "canceled", "failed"])
+
 function makeUseCase() {
   return new EmailCampaignUseCase()
 }
@@ -31,10 +33,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const page = parsePositiveInt(searchParams.get("page"), 1)
     const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), 20), 100)
-    const status = searchParams.get("status") ?? undefined
+    const statusParam = searchParams.get("status")
+    const status = statusParam ? campaignStatusSchema.safeParse(statusParam) : null
+
+    if (statusParam && !status?.success) {
+      return NextResponse.json(new Output(false, [], ["Status de campanha inválido"], null), { status: 400 })
+    }
 
     const useCase = makeUseCase()
-    const output = await useCase.list(teamAccess.access, { status, page, pageSize })
+    const output = await useCase.list(teamAccess.access, { status: status?.data, page, pageSize })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[EmailCampaignsRoute][GET]", error)

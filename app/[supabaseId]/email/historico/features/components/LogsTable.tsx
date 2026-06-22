@@ -12,9 +12,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useHistoricoContext } from "../context/HistoricoContext"
-import type { EmailLog, EmailLogStatus } from "../context/HistoricoTypes"
+import type { EmailLog, EmailLogCategory, EmailLogStatus } from "../context/HistoricoTypes"
+import { getEmailLogCategoryLabel } from "@/lib/email/email-log-category-labels"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
+
+function getLogOriginLabel(log: EmailLog): string {
+  if (log.campaign?.name) return log.campaign.name
+  return getEmailLogCategoryLabel(log.category as EmailLogCategory)
+}
 
 const STATUS_CONFIG: Record<EmailLogStatus, { label: string; className: string }> = {
   queued: { label: "Na fila", className: "border bg-transparent text-muted-foreground" },
@@ -47,7 +53,7 @@ function LogRow({ log }: { log: EmailLog }) {
       <TableCell className="max-w-48 truncate text-sm">{log.subject}</TableCell>
       <TableCell><LogStatusBadge status={log.status} /></TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {log.campaign?.name ?? "—"}
+        {getLogOriginLabel(log)}
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
         {log.sentAt ? formatIntimezone(new Date(log.sentAt), "dd/MM/yyyy HH:mm", tz) : "—"}
@@ -78,7 +84,7 @@ export function LogsTable() {
               <TableHead>Destinatário</TableHead>
               <TableHead>Assunto</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Campanha</TableHead>
+              <TableHead>Origem</TableHead>
               <TableHead>Enviado em</TableHead>
               <TableHead className="w-28" />
             </TableRow>

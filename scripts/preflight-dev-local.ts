@@ -13,7 +13,7 @@
 
 import { spawnSync } from "node:child_process";
 
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
 const args = process.argv.slice(2);
 const skipClone = args.includes("--skip-clone");
 const noStart = args.includes("--no-start");
