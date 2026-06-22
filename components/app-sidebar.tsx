@@ -22,6 +22,7 @@ import {
   BarChart3,
   Calculator,
   Settings,
+  MessageCircle,
 } from "lucide-react"
 
 import {
@@ -47,6 +48,7 @@ import { SupportRequestDialog } from "@/components/support-request-dialog"
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
 import { useTeamPresence } from "@/hooks/useTeamPresence"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { useWhatsAppUnreadCount } from "@/hooks/useWhatsAppUnreadCount"
 
 type SidebarItem = {
   title: string
@@ -59,6 +61,7 @@ type SidebarItem = {
   requiresIntegrationsAccess?: boolean
   featureSlug?: string
   status?: "beta" | "comingSoon"
+  unreadCount?: number
 }
 
 function getSidebarStatusBadge(status?: SidebarItem["status"]) {
@@ -100,9 +103,15 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     () => `sidebar-email-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
   );
+  const whatsAppStorageKey = useMemo(
+    () => `sidebar-whatsapp-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
+    [supabaseId, activeTeamId]
+  );
   const [isTeamActivityCollapsed, setIsTeamActivityCollapsed] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isEmailCollapsed, setIsEmailCollapsed] = useState(false);
+  const [isWhatsAppCollapsed, setIsWhatsAppCollapsed] = useState(false);
+  const { unreadConversations } = useWhatsAppUnreadCount({ enabled: hasAccess(FEATURE_SLUGS.WHATSAPP) });
   const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
@@ -121,6 +130,11 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL_HISTORY },
     { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_ANALYTICS },
     { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
+  ];
+
+  const whatsAppItems: SidebarItem[] = [
+    { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP, unreadCount: unreadConversations },
+    { title: "Configurações", url: `/${supabaseId}/whatsapp/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -195,7 +209,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     setIsTeamActivityCollapsed(window.localStorage.getItem(teamActivityStorageKey) === "true");
     setIsNavCollapsed(window.localStorage.getItem(navStorageKey) === "true");
     setIsEmailCollapsed(window.localStorage.getItem(emailStorageKey) === "true");
-  }, [teamActivityStorageKey, navStorageKey, emailStorageKey]);
+    setIsWhatsAppCollapsed(window.localStorage.getItem(whatsAppStorageKey) === "true");
+  }, [teamActivityStorageKey, navStorageKey, emailStorageKey, whatsAppStorageKey]);
 
   const toggleTeamActivityVisibility = () => {
     setIsTeamActivityCollapsed((previous) => {
@@ -221,6 +236,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     });
   };
 
+  const toggleWhatsAppVisibility = () => {
+    setIsWhatsAppCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") window.localStorage.setItem(whatsAppStorageKey, String(next));
+      return next;
+    });
+  };
+
   const formatInitials = (fullName: string) =>
     fullName
       .split(" ")
@@ -237,6 +260,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
 
   const visibleNavigationItems = navigationItems.filter(canShowItem)
   const visibleEmailItems = emailItems.filter(canShowItem)
+  const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)
 
   return (
@@ -344,6 +368,57 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                             </SidebarMenuButton>
                           </SidebarMenuItem>
                         );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
+              </SidebarGroup>
+            )}
+            {hasAccess(FEATURE_SLUGS.WHATSAPP) && visibleWhatsAppItems.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel
+                  className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors"
+                  onClick={toggleWhatsAppVisibility}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    <span className="flex items-center gap-2">
+                      WhatsApp
+                      {isWhatsAppCollapsed && unreadConversations > 0 && (
+                        <span className="flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 h-[16px] text-[10px] font-semibold leading-none text-destructive-foreground">
+                          {unreadConversations > 99 ? "99+" : unreadConversations}
+                        </span>
+                      )}
+                    </span>
+                    {isWhatsAppCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </span>
+                </SidebarGroupLabel>
+                {!isWhatsAppCollapsed && (
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {visibleWhatsAppItems.map((item) => {
+                        const statusBadge = getItemBadge(item)
+                        const hasUnread = (item.unreadCount ?? 0) > 0
+                        return (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                              <Link href={item.url} className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <item.icon className="size-4 shrink-0" />
+                                  <span>{item.title}</span>
+                                </span>
+                                {hasUnread ? (
+                                  <span className="flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 h-[16px] text-[10px] font-semibold leading-none text-destructive-foreground">
+                                    {(item.unreadCount ?? 0) > 99 ? "99+" : item.unreadCount}
+                                  </span>
+                                ) : statusBadge ? (
+                                  <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                    {statusBadge.label}
+                                  </span>
+                                ) : null}
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        )
                       })}
                     </SidebarMenu>
                   </SidebarGroupContent>
