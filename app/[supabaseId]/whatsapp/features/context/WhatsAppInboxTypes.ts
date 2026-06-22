@@ -46,6 +46,7 @@ export interface WhatsAppMessage {
   messageType: string
   status: WhatsAppMessageStatus | string
   contentText: string | null
+  mediaUrl: string | null
   sentByProfileId: string | null
   senderPhone: string | null
   recipientPhone: string | null

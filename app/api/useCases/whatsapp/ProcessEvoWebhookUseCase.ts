@@ -151,6 +151,7 @@ class ProcessEvoWebhookUseCase {
     await this.repository.updateConversation(conversation.id, {
       lastMessageAt: now,
       lastMessagePreview: contentText ? contentText.slice(0, 100) : null,
+      ...(pushName && pushName !== conversation.contactName ? { contactName: pushName } : {}),
       ...(fromMe ? { lastOutboundAt: now } : { lastInboundAt: now, unreadCount: { increment: 1 } }),
     })
   }

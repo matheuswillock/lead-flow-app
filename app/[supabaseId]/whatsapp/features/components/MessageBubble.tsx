@@ -83,9 +83,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     : null
 
   const hasText = Boolean(message.contentText)
-  const media = !hasText ? getMediaMeta(message.messageType) : null
+  const type = message.messageType.toLowerCase()
+  const isAudioType = type === 'audio' || type === 'audiomessage' || type === 'ptt'
+  const isAudioWithUrl = !hasText && isAudioType && Boolean(message.mediaUrl)
+  const media = !hasText && !isAudioWithUrl ? getMediaMeta(message.messageType) : null
 
-  if (!hasText && !media) return null
+  if (!hasText && !isAudioWithUrl && !media) return null
 
   return (
     <div className={cn('flex w-full', isOutbound ? 'justify-end' : 'justify-start')}>
@@ -99,6 +102,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       >
         {hasText ? (
           <p className="text-sm leading-relaxed">{message.contentText}</p>
+        ) : isAudioWithUrl ? (
+          <audio
+            controls
+            src={message.mediaUrl!}
+            className="w-full max-w-xs"
+          />
         ) : (
           <div
             className={cn(

@@ -421,6 +421,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         messageType: 'text',
         status: 'PENDING',
         contentText: trimmedText,
+        mediaUrl: null,
         sentByProfileId: null,
         senderPhone: null,
         recipientPhone: null,
@@ -501,7 +502,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   // Realtime callbacks
   const handleMessageInserted = useCallback(
-    (row: { id: string; conversationId: string; direction: string; messageType: string; status: string; contentText: string | null; sentByProfileId: string | null; senderPhone: string | null; recipientPhone: string | null; sentAt: string | null; deliveredAt: string | null; readAt: string | null; failedAt: string | null; createdAt: string }) => {
+    (row: { id: string; conversationId: string; direction: string; messageType: string; status: string; contentText: string | null; mediaUrl: string | null; sentByProfileId: string | null; senderPhone: string | null; recipientPhone: string | null; sentAt: string | null; deliveredAt: string | null; readAt: string | null; failedAt: string | null; createdAt: string }) => {
       if (row.conversationId !== currentMessagesConvIdRef.current) return
       setMessages((prev) => {
         if (prev.some((m) => m.id === row.id)) return prev
@@ -512,6 +513,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           messageType: row.messageType,
           status: row.status,
           contentText: row.contentText,
+          mediaUrl: row.mediaUrl,
           sentByProfileId: row.sentByProfileId,
           senderPhone: row.senderPhone,
           recipientPhone: row.recipientPhone,
