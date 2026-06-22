@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
 import type {
   Template,
   TemplateEditorDraft,
   TemplateEditorState,
+  TemplateTestRequest,
+  TemplateVariable,
 } from "./TemplateEditorTypes";
 import { createTemplateEditorService } from "../services/TemplateEditorService";
 
@@ -30,6 +33,7 @@ interface UseTemplateEditorReturn extends TemplateEditorState {
   submitForApproval: () => Promise<void>;
   approveTemplate: () => Promise<void>;
   rejectTemplate: (reviewNote: string) => Promise<void>;
+  sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
   setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
@@ -46,10 +50,15 @@ function createDraftFromTemplate(template: Template): TemplateEditorDraft {
   };
 }
 
+function hasPendingVariableReview(variables: TemplateVariable[]) {
+  return variables.some((variable) => variable.reviewStatus === "pending");
+}
+
 export function useTemplateEditor(
   supabaseId: string,
   templateId: string
 ): UseTemplateEditorReturn {
+  const router = useRouter();
   const { activeTeamId, activeRole, isLoading: teamLoading } = useTeamContext();
   const isNewTemplate = templateId === "new";
   const [template, setTemplate] = useState<Template | null>(null);
@@ -57,6 +66,7 @@ export function useTemplateEditor(
   const [loading, setLoading] = useState(!isNewTemplate);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templateApprovalRequired, setTemplateApprovalRequired] = useState(false);
   const initialDraftRef = useRef<TemplateEditorDraft>(EMPTY_DRAFT);
 
   const isFetchingRef = useRef(false);
@@ -75,7 +85,16 @@ export function useTemplateEditor(
       return;
     }
 
+    const loadApprovalSettings = async () => {
+      const settings = await service.getApprovalSettings(supabaseId, activeTeamId);
+      setTemplateApprovalRequired(settings.templateApprovalRequired);
+    };
+
     if (isNewTemplate) {
+      await loadApprovalSettings().catch((err) => {
+        console.error("[useTemplateEditor] Failed to load approval settings", err);
+        setTemplateApprovalRequired(false);
+      });
       setTemplate(null);
       setDraft(EMPTY_DRAFT);
       initialDraftRef.current = EMPTY_DRAFT;
@@ -89,7 +108,10 @@ export function useTemplateEditor(
     setLoading(true);
     setError(null);
     try {
-      const nextTemplate = await service.getTemplate(supabaseId, templateId, activeTeamId);
+      const [nextTemplate] = await Promise.all([
+        service.getTemplate(supabaseId, templateId, activeTeamId),
+        loadApprovalSettings(),
+      ]);
       const nextDraft = createDraftFromTemplate(nextTemplate);
       setTemplate(nextTemplate);
       setDraft(nextDraft);
@@ -145,6 +167,9 @@ export function useTemplateEditor(
       setTemplate(saved);
       setDraft(savedDraft);
       initialDraftRef.current = savedDraft;
+      if (saved.id !== templateId) {
+        router.replace(`/${supabaseId}/email/templates/${saved.id}`);
+      }
       toast.success("Rascunho salvo com sucesso");
       return saved;
     } catch (err) {
@@ -156,9 +181,13 @@ export function useTemplateEditor(
     } finally {
       setSaving(false);
     }
-  }, [activeTeamId, draft, isNewTemplate, saving, supabaseId, templateId]);
+  }, [activeTeamId, draft, isNewTemplate, router, saving, supabaseId, templateId]);
 
   const publishTemplate = useCallback(async (id?: string) => {
+    if (hasPendingVariableReview(draft.variables)) {
+      toast.error("Revise as variáveis pendentes antes de publicar.");
+      return null;
+    }
     if (!activeTeamId) {
       toast.error("Selecione um time para publicar templates.");
       return null;
@@ -188,7 +217,7 @@ export function useTemplateEditor(
     } finally {
       setSaving(false);
     }
-  }, [activeTeamId, supabaseId, template?.id]);
+  }, [activeTeamId, draft.variables, supabaseId, template?.id]);
 
   const unpublishTemplate = useCallback(async () => {
     if (saving) return null;
@@ -220,6 +249,10 @@ export function useTemplateEditor(
 
   const submitForApproval = useCallback(async () => {
     if (saving || !activeTeamId || !template?.id) return;
+    if (hasPendingVariableReview(draft.variables)) {
+      toast.error("Revise as variáveis pendentes antes de enviar para aprovação.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -237,7 +270,7 @@ export function useTemplateEditor(
     } finally {
       setSaving(false);
     }
-  }, [activeTeamId, saving, supabaseId, template?.id]);
+  }, [activeTeamId, draft.variables, saving, supabaseId, template?.id]);
 
   const approveTemplate = useCallback(async () => {
     if (saving || !activeTeamId || !template?.id) return;
@@ -281,6 +314,29 @@ export function useTemplateEditor(
     }
   }, [activeTeamId, saving, supabaseId, template?.id]);
 
+  const sendTestTemplate = useCallback(async (input: TemplateTestRequest) => {
+    if (saving) return;
+    if (!activeTeamId) {
+      toast.error("Selecione um time para enviar o teste.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      await service.sendTest(supabaseId, templateId, activeTeamId, input);
+      toast.success(`Email de teste enviado para ${input.to}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao enviar email de teste";
+      console.error("[useTemplateEditor] Failed to send test email", err);
+      setError(message);
+      toast.error("Erro ao enviar email de teste", { description: message });
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  }, [activeTeamId, saving, supabaseId, templateId]);
+
   return {
     template,
     draft,
@@ -289,6 +345,7 @@ export function useTemplateEditor(
     error,
     isDirty,
     isNewTemplate,
+    templateApprovalRequired,
     activeRole,
     reloadTemplate,
     saveTemplate,
@@ -297,6 +354,7 @@ export function useTemplateEditor(
     submitForApproval,
     approveTemplate,
     rejectTemplate,
+    sendTestTemplate,
     updateDraft,
     setMailyJson,
     setHtml,

@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Share2 } from "lucide-react";
+import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Mail, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -74,6 +74,7 @@ export interface ILeadFormProps {
     };
     onManageSchedule?: () => void;
     onShareSchedule?: () => void;
+    onResendScheduleInvite?: () => void;
     canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
@@ -129,6 +130,7 @@ export function LeadForm({
     currentUserIsSdr = false,
     currentUserIsCloser = false,
     onShareSchedule,
+    onResendScheduleInvite,
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -183,13 +185,19 @@ export function LeadForm({
     );
     const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
-    const isPreSchedule = scheduleSummary?.isPreSchedule === true;
+    const isPreSchedule =
+        watchedValues.isTransfer === true || scheduleSummary?.isPreSchedule === true;
     const scheduleSectionTitle = isPreSchedule ? "Pré-agendamento" : "Agendamento";
     const manageScheduleLabel = scheduleSummary?.meetingDate
         ? isPreSchedule
             ? "Editar pré-agendamento"
             : "Editar agendamento"
         : "Agendar lead";
+    const canResendScheduleInvite =
+        !!onResendScheduleInvite &&
+        !!scheduleSummary?.meetingDate &&
+        scheduleSummary?.status === "scheduled" &&
+        !isPreSchedule;
 
     useEffect(() => {
         if (!initialData) {
@@ -421,58 +429,28 @@ export function LeadForm({
             <LeadAdditionalNotesField control={form.control} disabled={isLoading || isUpdating} />
 
             <div className="sm:col-span-2 pt-4 border-t">
-                <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
-                    <div className="flex items-center gap-2">
-                        {!!canToggleMeetingHeald && (
-                            <Button
-                                type="button"
-                                variant={meetingHealdValue === "yes" ? "default" : "outline"}
-                                disabled={isLoading || isUpdating || meetingHealdSaving}
-                                onClick={() => {
-                                    const next = meetingHealdValue === "yes" ? "no" : "yes";
-                                    onMeetingHealdChange?.(next);
-                                }}
-                            >
-                                {meetingHealdSaving ? (
-                                    <span className="inline-flex items-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Salvando...
-                                    </span>
-                                ) : meetingHealdValue === "yes" ? (
-                                    <>
-                                        <BadgeCheck className="h-4 w-4" />
-                                        Reunião realizada
-                                    </>
-                                ) : (
-                                    <>
-                                        <BadgeIcon className="h-4 w-4" />
-                                        Reunião realizada
-                                    </>
-                                )}
-                            </Button>
-                        )}
-                        {!!canMarkNoShow && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                disabled={isLoading || isUpdating}
-                                onClick={() => {
-                                    void onMarkNoShow?.();
-                                }}
-                            >
-                                <CalendarX2 className="h-4 w-4" />
-                                No-show
-                            </Button>
-                        )}
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
                         <Button type="button" variant="outline" onClick={onManageSchedule} disabled={!onManageSchedule}>
                             {scheduleSummary?.meetingDate ? (
-                                <><CalendarSync className="h-4 w-4" />{manageScheduleLabel}</>
+                                <>
+                                    <CalendarSync data-icon="inline-start" />
+                                    {manageScheduleLabel}
+                                </>
                             ) : (
-                                <><CalendarClock className="h-4 w-4" />{manageScheduleLabel}</>
+                                <>
+                                    <CalendarClock data-icon="inline-start" />
+                                    {manageScheduleLabel}
+                                </>
                             )}
                         </Button>
                     </div>
+                    {isPreSchedule && (
+                        <p className="text-xs text-muted-foreground">
+                            Aguardando transferência — ainda não está no status Agendado.
+                        </p>
+                    )}
                 </div>
 
                 <div className="mt-3 rounded-md border border-dashed border-border/70 bg-muted/30 p-3 grid gap-2 text-sm text-muted-foreground">
@@ -490,7 +468,7 @@ export function LeadForm({
                             )}
                             {!!scheduleSummary?.meetingTitle && (
                                 <div className="grid gap-1">
-                                    <span className="text-foreground">Titulo</span>
+                                    <span className="text-foreground">Título</span>
                                     <span>{scheduleSummary.meetingTitle}</span>
                                 </div>
                             )}
@@ -551,6 +529,62 @@ export function LeadForm({
                                         className="resize-none text-muted-foreground bg-transparent cursor-default"
                                         rows={3}
                                     />
+                                </div>
+                            )}
+                            {(!!canToggleMeetingHeald || !!canMarkNoShow || canResendScheduleInvite) && (
+                                <div className="flex flex-wrap gap-2 pt-2">
+                                    {!!canToggleMeetingHeald && (
+                                        <Button
+                                            type="button"
+                                            variant={meetingHealdValue === "yes" ? "default" : "outline"}
+                                            disabled={isLoading || isUpdating || meetingHealdSaving}
+                                            onClick={() => {
+                                                const next = meetingHealdValue === "yes" ? "no" : "yes";
+                                                onMeetingHealdChange?.(next);
+                                            }}
+                                        >
+                                            {meetingHealdSaving ? (
+                                                <>
+                                                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                                                    Salvando...
+                                                </>
+                                            ) : meetingHealdValue === "yes" ? (
+                                                <>
+                                                    <BadgeCheck data-icon="inline-start" />
+                                                    Reunião realizada
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BadgeIcon data-icon="inline-start" />
+                                                    Reunião realizada
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
+                                    {!!canMarkNoShow && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={isLoading || isUpdating}
+                                            onClick={() => {
+                                                void onMarkNoShow?.();
+                                            }}
+                                        >
+                                            <CalendarX2 data-icon="inline-start" />
+                                            No-show
+                                        </Button>
+                                    )}
+                                    {canResendScheduleInvite && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={onResendScheduleInvite}
+                                            disabled={isLoading || isUpdating}
+                                        >
+                                            <Mail data-icon="inline-start" />
+                                            Reenviar convite
+                                        </Button>
+                                    )}
                                 </div>
                             )}
                         </>

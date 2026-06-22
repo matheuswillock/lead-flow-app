@@ -262,7 +262,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         currentTreatment: data.currentTreatment,
         notes: data.notes,
         assignedTo: data.assignedTo,
-        closerId: data.closerId,
+        closerId: data.isTransfer === true ? undefined : data.closerId,
         meetingDate: data.meetingDate,
         meetingTitle: data.meetingTitle,
         meetingNotes: data.meetingNotes,

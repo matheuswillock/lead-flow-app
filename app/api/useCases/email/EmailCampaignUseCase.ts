@@ -1,9 +1,11 @@
 import { randomUUID } from "crypto"
+import type { EmailCampaignStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
@@ -16,9 +18,108 @@ export interface CreateCampaignInput {
   scheduledAt?: string | null
 }
 
+type CampaignRecipient = {
+  email: string
+  name: string | null
+  customFields: Record<string, unknown> | null
+}
+
 export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
   private creditService = new EmailCreditService()
+
+  private dedupeRecipients(recipients: CampaignRecipient[]): CampaignRecipient[] {
+    const uniqueRecipients = new Map<string, CampaignRecipient>()
+
+    for (const recipient of recipients) {
+      const normalizedEmail = recipient.email.trim().toLowerCase()
+      if (!uniqueRecipients.has(normalizedEmail)) {
+        uniqueRecipients.set(normalizedEmail, {
+          ...recipient,
+          email: normalizedEmail,
+        })
+      }
+    }
+
+    return Array.from(uniqueRecipients.values())
+  }
+
+  private async listActiveRecipients(teamId: string, contactListId: string): Promise<CampaignRecipient[]> {
+    const contactList = await prisma.emailContactList.findFirst({
+      where: { id: contactListId, teamId, isArchived: false },
+      select: { id: true, isSystemDefault: true },
+    })
+
+    if (!contactList) {
+      return []
+    }
+
+    if (contactList.isSystemDefault) {
+      const recipients = await prisma.emailContact.findMany({
+        where: {
+          isUnsubscribed: false,
+          isBounced: false,
+          list: {
+            teamId,
+            isArchived: false,
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          email: true,
+          name: true,
+          customFields: true,
+        },
+      })
+
+      return this.dedupeRecipients(
+        recipients.map((recipient) => ({
+          email: recipient.email,
+          name: recipient.name,
+          customFields: recipient.customFields as Record<string, unknown> | null,
+        }))
+      )
+    }
+
+    const recipients = await prisma.emailContact.findMany({
+      where: {
+        listId: contactListId,
+        isUnsubscribed: false,
+        isBounced: false,
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        email: true,
+        name: true,
+        customFields: true,
+      },
+    })
+
+    return recipients.map((recipient) => ({
+      email: recipient.email,
+      name: recipient.name,
+      customFields: recipient.customFields as Record<string, unknown> | null,
+    }))
+  }
+
+  private async findCurrentPublishedTemplate(templateId: string, teamId: string) {
+    return prisma.emailTemplate.findFirst({
+      where: {
+        id: templateId,
+        teamId,
+        isArchived: false,
+        approvalStatus: "approved",
+        status: "published",
+        isCurrentPublished: true,
+      },
+      select: { id: true },
+    })
+  }
+
+  private async countActiveRecipients(teamId: string, contactListId: string): Promise<number> {
+    const recipients = await this.listActiveRecipients(teamId, contactListId)
+    return recipients.length
+  }
 
   private async resolveEffectiveCampaignFeature() {
     type CampaignFeatureNode = {
@@ -96,7 +197,7 @@ export class EmailCampaignUseCase {
     try {
       const where = {
         teamId: ctx.teamId,
-        ...(options.status && { status: options.status as never }),
+        ...(options.status && { status: options.status as EmailCampaignStatus }),
       }
 
       const [campaigns, total] = await prisma.$transaction([
@@ -116,9 +217,9 @@ export class EmailCampaignUseCase {
             totalBounced: true,
             dispatchCount: true,
             createdAt: true,
-            creator: { select: { fullName: true, email: true } },
-            template: { select: { id: true, name: true } },
-            contactList: { select: { id: true, name: true } },
+            createdBy: true,
+            templateId: true,
+            contactListId: true,
           },
           orderBy: { createdAt: "desc" },
           skip: (options.page - 1) * options.pageSize,
@@ -127,8 +228,60 @@ export class EmailCampaignUseCase {
         prisma.emailCampaign.count({ where }),
       ])
 
+      const creatorIds = Array.from(new Set(campaigns.map((campaign) => campaign.createdBy)))
+      const templateIds = Array.from(new Set(campaigns.map((campaign) => campaign.templateId)))
+      const contactListIds = Array.from(new Set(campaigns.map((campaign) => campaign.contactListId)))
+
+      const [creators, templates, contactLists] = await prisma.$transaction([
+        prisma.profile.findMany({
+          where: { id: { in: creatorIds } },
+          select: { id: true, fullName: true, email: true },
+        }),
+        prisma.emailTemplate.findMany({
+          where: { id: { in: templateIds }, teamId: ctx.teamId },
+          select: { id: true, name: true },
+        }),
+        prisma.emailContactList.findMany({
+          where: { id: { in: contactListIds }, teamId: ctx.teamId },
+          select: { id: true, name: true },
+        }),
+      ])
+
+      const dynamicRecipientCounts = new Map(
+        await Promise.all(
+          Array.from(
+            new Set(
+              campaigns
+                .filter((campaign) => ["draft", "scheduled", "sending"].includes(campaign.status))
+                .map((campaign) => campaign.contactListId)
+            )
+          ).map(async (contactListId) => [contactListId, await this.countActiveRecipients(ctx.teamId, contactListId)] as const)
+        )
+      )
+
+      const creatorsById = new Map(creators.map((creator) => [creator.id, creator]))
+      const templatesById = new Map(templates.map((template) => [template.id, template]))
+      const contactListsById = new Map(contactLists.map((contactList) => [contactList.id, contactList]))
+
       return new Output(true, [], [], {
-        campaigns,
+        campaigns: campaigns.map((campaign) => ({
+          id: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          scheduledAt: campaign.scheduledAt,
+          sentAt: campaign.sentAt,
+          totalRecipients: dynamicRecipientCounts.get(campaign.contactListId) ?? campaign.totalRecipients,
+          totalSent: campaign.totalSent,
+          totalDelivered: campaign.totalDelivered,
+          totalOpened: campaign.totalOpened,
+          totalClicked: campaign.totalClicked,
+          totalBounced: campaign.totalBounced,
+          dispatchCount: campaign.dispatchCount,
+          createdAt: campaign.createdAt,
+          creator: creatorsById.get(campaign.createdBy) ?? null,
+          template: templatesById.get(campaign.templateId) ?? null,
+          contactList: contactListsById.get(campaign.contactListId) ?? null,
+        })),
         total,
         page: options.page,
         pageSize: options.pageSize,
@@ -168,21 +321,17 @@ export class EmailCampaignUseCase {
       }
 
       const [template, contactList] = await Promise.all([
-        prisma.emailTemplate.findFirst({
-          where: {
-            id: data.templateId,
-            teamId: ctx.teamId,
-            isArchived: false,
-            approvalStatus: "approved",
-            status: "published",
-          },
-          select: { id: true },
-        }),
+        this.findCurrentPublishedTemplate(data.templateId, ctx.teamId),
         prisma.emailContactList.findFirst({ where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false } }),
       ])
 
       if (!template) {
-        return new Output(false, [], ["Template não encontrado ou não está publicado. Apenas templates publicados podem ser usados em campanhas"], null)
+        return new Output(
+          false,
+          [],
+          ["Template não encontrado ou não é a versão publicada atual. Selecione a versão vigente do template"],
+          null
+        )
       }
       if (!contactList) {
         return new Output(false, [], ["Lista de contatos não encontrada ou não pertence ao time"], null)
@@ -192,6 +341,8 @@ export class EmailCampaignUseCase {
       if (scheduledAt && scheduledAt <= new Date()) {
         return new Output(false, [], ["Data de agendamento deve ser no futuro"], null)
       }
+
+      const totalRecipients = await this.countActiveRecipients(ctx.teamId, data.contactListId)
 
       const campaign = await prisma.emailCampaign.create({
         data: {
@@ -203,7 +354,7 @@ export class EmailCampaignUseCase {
           contactListId: data.contactListId,
           status: scheduledAt ? "scheduled" : "draft",
           scheduledAt,
-          totalRecipients: contactList.totalContacts,
+          totalRecipients,
         },
       })
 
@@ -224,12 +375,30 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser editada"], null)
       }
 
+      if (data.templateId !== undefined) {
+        const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
+        if (!template) {
+          return new Output(
+            false,
+            [],
+            ["Template não encontrado ou não é a versão publicada atual. Selecione a versão vigente do template"],
+            null
+          )
+        }
+      }
+
+      let totalRecipients: number | undefined
+      if (data.contactListId !== undefined) {
+        totalRecipients = await this.countActiveRecipients(ctx.teamId, data.contactListId)
+      }
+
       const campaign = await prisma.emailCampaign.update({
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
           ...(data.templateId !== undefined && { templateId: data.templateId }),
           ...(data.contactListId !== undefined && { contactListId: data.contactListId }),
+          ...(totalRecipients !== undefined && { totalRecipients }),
           ...(data.scheduledAt !== undefined && {
             scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
             status: data.scheduledAt ? "scheduled" : "draft",
@@ -249,7 +418,7 @@ export class EmailCampaignUseCase {
       const campaign = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
         include: {
-          template: { select: { id: true, subject: true, html: true } },
+          template: { select: { id: true, subject: true, html: true, variables: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
           team: { select: { master: { select: { id: true } } } },
         },
@@ -264,6 +433,16 @@ export class EmailCampaignUseCase {
 
       if (!campaign) {
         return new Output(false, [], ["Campanha não encontrada ou já foi enviada"], null)
+      }
+
+      const currentTemplate = await this.findCurrentPublishedTemplate(campaign.templateId, ctx.teamId)
+      if (!currentTemplate) {
+        return new Output(
+          false,
+          [],
+          ["O template vinculado à campanha não é mais a versão publicada atual. Atualize a campanha antes de disparar"],
+          null
+        )
       }
 
       // Enforce dispatch restrictions from team settings
@@ -325,10 +504,7 @@ export class EmailCampaignUseCase {
       }
 
       // Buscar contatos ativos
-      const contacts = await prisma.emailContact.findMany({
-        where: { listId: campaign.contactListId, isUnsubscribed: false, isBounced: false },
-        select: { email: true, name: true, customFields: true },
-      })
+      const contacts = await this.listActiveRecipients(ctx.teamId, campaign.contactListId)
 
       if (contacts.length === 0) {
         await prisma.emailCampaign.update({
@@ -351,6 +527,9 @@ export class EmailCampaignUseCase {
 
       // Team global variables (default values) used as interpolation fallback
       const globalDefaults = await this.getGlobalDefaults(ctx.teamId)
+      const templateVariables = Array.isArray(campaign.template.variables)
+        ? (campaign.template.variables as unknown as EmailTemplateVariableDefinition[])
+        : []
 
       // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({
@@ -362,6 +541,7 @@ export class EmailCampaignUseCase {
         campaignId: campaign.id,
         teamId: ctx.teamId,
         globalDefaults,
+        templateVariables,
       })
 
       // Criar EmailLog para cada email enviado com mapeamento explícito email→resendId
@@ -377,6 +557,7 @@ export class EmailCampaignUseCase {
             recipientEmail: email,
             recipientName: emailToContact.get(email)?.name ?? null,
             subject: campaign.template.subject,
+            category: "campaign" as const,
             status: "sent" as const,
             sentAt: now,
           })),
@@ -393,6 +574,7 @@ export class EmailCampaignUseCase {
         data: {
           status: "sent",
           sentAt: new Date(),
+          totalRecipients: recipientsList.length,
           totalSent: dispatchResult.sent,
           dispatchCount: { increment: 1 },
         },

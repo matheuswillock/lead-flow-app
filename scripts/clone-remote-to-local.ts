@@ -19,7 +19,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
 const DUMP_DIR = resolve(process.cwd(), "tmp", "db-clone");
 const POST_CLONE_MIGRATIONS = [
   resolve(

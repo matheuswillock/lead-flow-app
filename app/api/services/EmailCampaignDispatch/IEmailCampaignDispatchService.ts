@@ -1,3 +1,5 @@
+import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
+
 export interface DispatchBatchResult {
   sent: number
   failed: number
@@ -14,5 +16,6 @@ export interface IEmailCampaignDispatchService {
     campaignId: string
     teamId: string
     globalDefaults?: Record<string, string | null | undefined> | null
+    templateVariables?: EmailTemplateVariableDefinition[] | null
   }): Promise<DispatchBatchResult>
 }

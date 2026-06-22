@@ -1,7 +1,21 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, Check, Code2, FileText, Save, Send, Undo2, X } from "lucide-react";
+import { useRef, useEffect, useState, useCallback } from "react";
+import { useParams } from "next/navigation";
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  CodeXml,
+  Ellipsis,
+  FileText,
+  Mail,
+  PencilLine,
+  Save,
+  Send,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,17 +26,46 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
-import { VariablesPanel } from "../components/VariablesPanel";
+import { TemplateTestDialog } from "../components/TemplateTestDialog";
+import type { EditorMode } from "../components/EditorStudioTypes";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
 
+const editorModeTabTriggerClassName = cn(
+  "size-9 p-0 text-muted-foreground",
+  "data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+);
+
 function StatusBadge({ approvalStatus, status }: { approvalStatus: string | undefined; status: string | undefined }) {
+  if (approvalStatus === "approved" && status !== "published") {
+    return (
+      <Badge variant="outline" className="gap-1 border-semantic-success/30 bg-semantic-success/10 text-semantic-success">
+        <Check className="size-3" />
+        Template aprovado e pronto para publicar
+      </Badge>
+    );
+  }
   if (status === "published") {
     return (
       <Badge variant="outline" className="gap-1 border-semantic-success/30 bg-semantic-success/10 text-semantic-success">
@@ -56,18 +99,21 @@ function StatusBadge({ approvalStatus, status }: { approvalStatus: string | unde
 }
 
 export function EditorContainer() {
+  const params = useParams<{ supabaseId: string; id: string }>();
   const {
     draft,
     template,
     error,
     loading,
     saving,
+    templateApprovalRequired,
     activeRole,
     updateDraft,
     unpublishTemplate,
     submitForApproval,
     approveTemplate,
     rejectTemplate,
+    sendTestTemplate,
   } = useTemplateEditorContext();
 
   const isPublished = template?.status === "published";
@@ -80,6 +126,9 @@ export function EditorContainer() {
   const { setOverride } = usePageBreadcrumb();
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
+  const [testOpen, setTestOpen] = useState(false);
+  const [testHtml, setTestHtml] = useState("");
+  const [editorMode, setEditorMode] = useState<EditorMode>("blocks");
 
   useEffect(() => {
     if (loading) return;
@@ -88,11 +137,38 @@ export function EditorContainer() {
     return () => setOverride(null);
   }, [loading, template, draft.name, setOverride]);
 
+  const handleEditorModeChange = useCallback((mode: EditorMode) => {
+    setEditorMode(mode);
+  }, []);
+
+  const handleEditorModeToggle = useCallback((value: string) => {
+    if (value !== "blocks" && value !== "html") return;
+    const nextMode = value as EditorMode;
+    if (nextMode === editorMode) return;
+    editorRef.current?.requestModeSwitch(nextMode);
+  }, [editorMode]);
+
   const handleConfirmReject = async () => {
     if (!reviewNote.trim()) return;
     await rejectTemplate(reviewNote.trim());
     setRejectOpen(false);
     setReviewNote("");
+  };
+
+  const handleOpenTestDialog = async () => {
+    try {
+      const snapshot = await editorRef.current?.getCurrentSnapshot();
+      if (!snapshot?.html?.trim()) {
+        toast.error("Não foi possível capturar o HTML atual do template.");
+        return;
+      }
+
+      setTestHtml(snapshot.html);
+      setTestOpen(true);
+    } catch (error) {
+      console.error("[EditorContainer][handleOpenTestDialog]", error);
+      toast.error("Erro ao preparar o teste de envio.");
+    }
   };
 
   if (loading) {
@@ -106,13 +182,15 @@ export function EditorContainer() {
     );
   }
 
-  const showSubmitButton = !isManager && !isPublished && !isPending && (isApproved === false || isRejected);
+  const showSubmitButton = templateApprovalRequired && !isPublished && !isPending && (isApproved || isRejected);
   const showApproveReject = isManager && isPending;
-  const showPublish = !isPublished && isApproved && !isPending;
+  const showPublish = !isPublished && isApproved && !isPending && (!templateApprovalRequired || Boolean(template?.approvedAt));
+  const pendingVariableReviewCount = draft.variables.filter((variable) => variable.reviewStatus === "pending").length;
+  const hasPendingVariableReview = pendingVariableReviewCount > 0;
 
   return (
     <>
-      <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-background p-6">
+      <div className="flex h-full max-h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-background p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -125,16 +203,58 @@ export function EditorContainer() {
               Configure os metadados e o conteúdo visual do e-mail. Apenas templates publicados podem ser usados em campanhas.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void editorRef.current?.openHtmlEditor()}
-              disabled={saving}
-            >
-              <Code2 data-icon="inline-start" />
-              HTML
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <TooltipProvider delayDuration={0}>
+              <Tabs value={editorMode} onValueChange={handleEditorModeToggle}>
+                <TabsList className="h-9">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger
+                        value="blocks"
+                        className={editorModeTabTriggerClassName}
+                        aria-label="Blocos"
+                        disabled={saving}
+                      >
+                        <PencilLine />
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Blocos</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger
+                        value="html"
+                        className={editorModeTabTriggerClassName}
+                        aria-label="HTML"
+                        disabled={saving}
+                      >
+                        <CodeXml />
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>HTML</TooltipContent>
+                  </Tooltip>
+                </TabsList>
+              </Tabs>
+            </TooltipProvider>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={saving}
+                  aria-label="Mais ações"
+                >
+                  <Ellipsis />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void handleOpenTestDialog()} disabled={saving}>
+                  <Mail data-icon="inline-start" />
+                  Testar envio
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               type="button"
               variant="outline"
@@ -172,7 +292,7 @@ export function EditorContainer() {
                 </Button>
               </>
             ) : showPublish ? (
-              <Button onClick={() => void editorRef.current?.saveAndPublish()} disabled={saving}>
+              <Button onClick={() => void editorRef.current?.saveAndPublish()} disabled={saving || hasPendingVariableReview}>
                 {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
                 {saving ? "Publicando..." : "Publicar"}
               </Button>
@@ -180,7 +300,7 @@ export function EditorContainer() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={saving}
+                disabled={saving || hasPendingVariableReview}
                 onClick={() => void submitForApproval()}
               >
                 {saving ? <Spinner data-icon="inline-start" /> : <ArrowRight data-icon="inline-start" />}
@@ -194,6 +314,15 @@ export function EditorContainer() {
             <AlertCircle />
             <AlertTitle>Erro no template</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+        {hasPendingVariableReview ? (
+          <Alert>
+            <AlertCircle />
+            <AlertTitle>Variáveis pendentes de revisão</AlertTitle>
+            <AlertDescription>
+              Revise {pendingVariableReviewCount} variável(is) no painel lateral antes de enviar para aprovação ou publicar.
+            </AlertDescription>
           </Alert>
         ) : null}
         {template?.approvalStatus === "rejected" && template.reviewNote ? (
@@ -218,8 +347,8 @@ export function EditorContainer() {
           />
         </div>
 
-        <div className="min-h-0 flex-1">
-          <EmailEditorStudio ref={editorRef} bottomSlot={<VariablesPanel />} />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <EmailEditorStudio ref={editorRef} onModeChange={handleEditorModeChange} />
         </div>
       </div>
 
@@ -253,6 +382,18 @@ export function EditorContainer() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateTestDialog
+        open={testOpen}
+        onOpenChange={setTestOpen}
+        supabaseId={typeof params.supabaseId === "string" ? params.supabaseId : ""}
+        templateId={typeof params.id === "string" ? params.id : template?.id ?? ""}
+        subject={draft.subject}
+        html={testHtml}
+        variables={draft.variables}
+        sending={saving}
+        onSend={sendTestTemplate}
+      />
     </>
   );
 }

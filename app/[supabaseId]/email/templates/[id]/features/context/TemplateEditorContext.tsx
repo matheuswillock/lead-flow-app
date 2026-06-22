@@ -1,7 +1,12 @@
 "use client";
 
 import { createContext, ReactNode, useContext } from "react";
-import type { Template, TemplateEditorDraft, TemplateEditorState } from "./TemplateEditorTypes";
+import type {
+  Template,
+  TemplateEditorDraft,
+  TemplateEditorState,
+  TemplateTestRequest,
+} from "./TemplateEditorTypes";
 import { useTemplateEditor } from "./TemplateEditorHook";
 
 interface ITemplateEditorContext extends TemplateEditorState {
@@ -13,6 +18,7 @@ interface ITemplateEditorContext extends TemplateEditorState {
   submitForApproval: () => Promise<void>;
   approveTemplate: () => Promise<void>;
   rejectTemplate: (reviewNote: string) => Promise<void>;
+  sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
   setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;

@@ -30,6 +30,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
   const [approving, setApproving] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TemplateTab>('all')
+  const [templateApprovalRequired, setTemplateApprovalRequired] = useState(false)
 
   const isFetchingRef = useRef(false)
 
@@ -53,8 +54,12 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
 
     try {
       console.info('[useTemplates] Fetching templates')
-      const data = await service.list(supabaseId, activeTeamId)
+      const [data, settings] = await Promise.all([
+        service.list(supabaseId, activeTeamId),
+        service.getApprovalSettings(supabaseId, activeTeamId),
+      ])
       setTemplates(data)
+      setTemplateApprovalRequired(settings.templateApprovalRequired)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar templates'
       console.error('[useTemplates] Failed to fetch templates', err)
@@ -193,6 +198,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
     approving,
     rejecting,
     activeTab,
+    templateApprovalRequired,
     setActiveTab,
     activeRole,
     fetchTemplates,

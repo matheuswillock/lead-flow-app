@@ -8,6 +8,13 @@ export type EmailLogStatus =
   | "complained"
   | "failed"
 
+export type EmailLogCategory =
+  | "campaign"
+  | "meeting_invite"
+  | "schedule_notification"
+  | "transactional"
+  | "other"
+
 export type EmailEventType =
   | "sent"
   | "delivered"
@@ -17,12 +24,16 @@ export type EmailEventType =
   | "complained"
   | "delivery_delayed"
   | "unsubscribed"
+  | "failed"
 
 export type EmailLog = {
   id: string
   recipientEmail: string
   recipientName: string | null
   subject: string
+  category: EmailLogCategory
+  sourceType: string | null
+  sourceId: string | null
   status: EmailLogStatus
   sentAt: string | null
   deliveredAt: string | null

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { Info, Loader2 } from "lucide-react";
 import { formatLocalTimeValue } from "@/lib/dates";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 interface TeamMemberOption {
   id: string;
@@ -63,7 +64,7 @@ export function TransferBetweenTeamsDialog({
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [meetingDate, setMeetingDate] = useState<Date | undefined>(undefined);
   const [meetingTitle, setMeetingTitle] = useState("");
-  const [meetingType, setMeetingType] = useState<"online" | "call" | "whatsapp">("call");
+  const [meetingLink, setMeetingLink] = useState("");
 
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -73,6 +74,15 @@ export function TransferBetweenTeamsDialog({
   const targetTeams = teams.filter((t) => t.id !== activeTeamId && allowedTargetTeamIds.includes(t.id));
   const closers = teamMembers.filter((m) => m.functions.includes("CLOSER"));
   const sdrs = teamMembers.filter((m) => m.functions.includes("SDR"));
+  const selectedCloser = closers.find((member) => member.profileId === closerId) ?? null;
+  const requiresManualMeetingLink = !!selectedCloser && !selectedCloser.googleCalendarConnected;
+  const meetingLinkValidation = useMemo(
+    () =>
+      validateMeetingLinkValue(meetingLink, {
+        required: scheduleEnabled && requiresManualMeetingLink,
+      }),
+    [meetingLink, requiresManualMeetingLink, scheduleEnabled]
+  );
   const selectedMeetingTime =
     meetingDate && !Number.isNaN(meetingDate.getTime())
       ? formatLocalTimeValue(meetingDate, tz)
@@ -91,13 +101,7 @@ export function TransferBetweenTeamsDialog({
     setScheduleEnabled(open && lead.isTransfer === true && !!lead.meetingDate);
     setMeetingDate(open && lead.isTransfer && lead.meetingDate ? new Date(lead.meetingDate) : undefined);
     setMeetingTitle(open && lead.isTransfer ? lead.meetingTitle ?? "" : "");
-    setMeetingType(
-      open &&
-        lead.isTransfer &&
-        (lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
-        ? lead.meetingType
-        : "call"
-    );
+    setMeetingLink("");
     setAvailableTimes([]);
     setAvailabilityLoading(false);
   }, [open, lead]);
@@ -233,7 +237,11 @@ export function TransferBetweenTeamsDialog({
     !!targetTeamId &&
     !!closerId &&
     !submitting &&
-    (!scheduleEnabled || (!!meetingDate && !availabilityLoading && availableTimes.length > 0));
+    (!scheduleEnabled ||
+      (!!meetingDate &&
+        !availabilityLoading &&
+        availableTimes.length > 0 &&
+        (!requiresManualMeetingLink || meetingLinkValidation.isValid)));
 
   const handleSubmit = async () => {
     if (!canSubmit || !supabaseId) return;
@@ -242,11 +250,15 @@ export function TransferBetweenTeamsDialog({
     try {
       let schedulePayload: Record<string, unknown> | null = null;
       if (scheduleEnabled && meetingDate) {
+        const normalizedMeetingLink = meetingLinkValidation.isValid
+          ? meetingLinkValidation.normalized
+          : undefined;
         schedulePayload = {
           date: meetingDate.toISOString(),
-          meetingTitle: meetingTitle || undefined,
-          meetingLink: undefined,
-          meetingType,
+          meetingTitle: meetingTitle || lead.meetingTitle || undefined,
+          meetingNotes: lead.meetingNotes || undefined,
+          meetingLink: requiresManualMeetingLink ? normalizedMeetingLink : undefined,
+          meetingType: "online",
           transitionStatusToScheduled: true,
         };
       }
@@ -294,7 +306,7 @@ export function TransferBetweenTeamsDialog({
         <DialogHeader>
           <DialogTitle>Transferir Lead Entre Times</DialogTitle>
           <DialogDescription>
-            Selecione o time destino e atribua um closer. O SDR é opcional.
+            Selecione o time destino e atribua um closer. O agendamento é opcional — desative o toggle para transferir sem reunião.
           </DialogDescription>
         </DialogHeader>
 
@@ -354,7 +366,7 @@ export function TransferBetweenTeamsDialog({
 
           <Separator />
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <Label htmlFor="scheduleToggle">Agendar no ato da transferência</Label>
             <Switch
               id="scheduleToggle"
@@ -362,6 +374,12 @@ export function TransferBetweenTeamsDialog({
               onCheckedChange={setScheduleEnabled}
             />
           </div>
+
+          {closerId && requiresManualMeetingLink && (
+            <p className="text-xs text-muted-foreground">
+              Este closer não possui Google Calendar conectado. Informe o link da reunião para enviar os convites.
+            </p>
+          )}
 
           {scheduleEnabled && (
             <div className="flex flex-col gap-4">
@@ -404,26 +422,34 @@ export function TransferBetweenTeamsDialog({
                 />
               </div>
 
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="meetingType">Tipo</Label>
-                <Select value={meetingType} onValueChange={(v) => setMeetingType(v as "online" | "call" | "whatsapp")}>
-                  <SelectTrigger id="meetingType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="online">Reunião online</SelectItem>
-                    <SelectItem value="call">Ligação</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {meetingType === "online" && (
-                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                  <Info className="size-4 shrink-0" />
-                  <span>O link do Google Meet será gerado automaticamente após a transferência.</span>
+              {requiresManualMeetingLink && (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="meetingLink">Link da reunião (obrigatório para este closer)</Label>
+                  <Input
+                    id="meetingLink"
+                    value={meetingLink}
+                    onChange={(e) => setMeetingLink(e.target.value)}
+                    placeholder="https://meet.google.com/..."
+                  />
+                  {meetingLink.trim() && !meetingLinkValidation.isValid && (
+                    <p className="text-xs text-destructive">{meetingLinkValidation.error}</p>
+                  )}
                 </div>
               )}
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  <Info className="size-4 shrink-0" />
+                  <span>
+                    {requiresManualMeetingLink
+                      ? "Os convites serão enviados por e-mail com o link informado."
+                      : "O link do Google Meet será gerado automaticamente após a transferência."}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  O lead e os convidados receberão o convite do Meet. O closer receberá o e-mail do Corretor Studio.
+                </p>
+              </div>
             </div>
           )}
         </div>

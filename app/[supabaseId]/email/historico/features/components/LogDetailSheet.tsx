@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { useHistoricoContext } from "../context/HistoricoContext"
+import { getEmailLogCategoryLabel } from "@/lib/email/email-log-category-labels"
+import type { EmailLogCategory } from "../context/HistoricoTypes"
 import { EventsTimeline } from "./EventsTimeline"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
@@ -66,10 +68,26 @@ export function LogDetailSheet() {
                 <p className="text-sm">{selectedLog.subject}</p>
               </div>
 
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipo</p>
+                <p className="text-sm">
+                  {getEmailLogCategoryLabel(selectedLog.category as EmailLogCategory)}
+                </p>
+              </div>
+
               {selectedLog.campaign && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Campanha</p>
                   <p className="text-sm">{selectedLog.campaign.name}</p>
+                </div>
+              )}
+
+              {(selectedLog.sourceType || selectedLog.sourceId) && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Referência</p>
+                  <p className="text-sm font-mono text-xs break-all">
+                    {[selectedLog.sourceType, selectedLog.sourceId].filter(Boolean).join(" · ")}
+                  </p>
                 </div>
               )}
 

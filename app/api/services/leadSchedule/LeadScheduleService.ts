@@ -191,6 +191,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
     const scheduleId = existingSchedule?.id ?? randomUUID();
     const noShowCount = existingSchedule?.noShowCount ?? 0;
+    const isReschedule = !!(existingSchedule?.googleEventId);
 
     if (
       leadStatus === LeadStatus.no_show &&
@@ -370,6 +371,18 @@ export class LeadScheduleService implements ILeadScheduleService {
           error: null,
           metadata: inviteDispatchLastPayload,
         });
+
+        const { logGoogleCalendarDispatchesForRecipients } = await import(
+          "@/lib/email/log-profile-email-dispatches"
+        );
+        await logGoogleCalendarDispatchesForRecipients({
+          recipients: googleRecipients,
+          subject: resolvedMeetingTitle,
+          category: "schedule_invite",
+          sourceType: "leads_schedule",
+          sourceId: scheduleId,
+          success: true,
+        });
       } catch (calendarError) {
         const rawGoogleDispatchError = getErrorMessage(
           calendarError,
@@ -404,6 +417,19 @@ export class LeadScheduleService implements ILeadScheduleService {
           recipients: googleRecipients,
           error: googleDispatchError,
           metadata: inviteDispatchLastPayload,
+        });
+
+        const { logGoogleCalendarDispatchesForRecipients } = await import(
+          "@/lib/email/log-profile-email-dispatches"
+        );
+        await logGoogleCalendarDispatchesForRecipients({
+          recipients: googleRecipients,
+          subject: resolvedMeetingTitle,
+          category: "schedule_invite",
+          sourceType: "leads_schedule",
+          sourceId: scheduleId,
+          success: false,
+          errorMessage: googleDispatchError,
         });
 
         return new Output(
@@ -459,6 +485,9 @@ export class LeadScheduleService implements ILeadScheduleService {
         organizerEmail: closerEmail,
         eventUid: scheduleId,
         timezone: closerProfile.timezone,
+        teamId,
+        sourceType: "leads_schedule",
+        sourceId: scheduleId,
       });
 
       if (emailResult.success) {
@@ -628,38 +657,60 @@ export class LeadScheduleService implements ILeadScheduleService {
       return {
         schedule,
         lead: updatedLead,
-        message: existingSchedule ? "Agendamento atualizado com sucesso" : "Agendamento criado com sucesso",
+        message: isReschedule ? "Agendamento atualizado com sucesso" : "Agendamento criado com sucesso",
       };
     });
 
-    // --- Fire-and-forget: closer notification + activity logs + platform notifications ---
-    void (async () => {
-      // Closer schedule notification email (with attachment downloads — non-critical path)
-      if (isOnlineMeeting && inviteDispatchStatus !== "failed") {
+    const scheduleWarnings: string[] = [];
+    if (isOnlineMeeting && inviteDispatchStatus !== "failed") {
+      try {
+        const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
+        await emailService.sendCloserScheduleNotificationEmail({
+          to: closerEmail,
+          closerName: closerProfile.fullName || closerProfile.email,
+          leadName,
+          meetingTitle: resolvedMeetingTitle,
+          meetingDate,
+          meetingLink: resolvedMeetingLink,
+          leadCode,
+          isReschedule,
+          attendees: attendeeEmails,
+          notes: meetingNotes ?? null,
+          attachments: scheduleAttachments,
+          timezone: closerProfile.timezone,
+        });
+      } catch (closerNotificationError) {
+        const closerNotificationMessage =
+          "Agendamento criado, mas o e-mail de confirmação ao closer não foi enviado.";
+        scheduleWarnings.push(closerNotificationMessage);
+        console.warn(`${LOG_PREFIX} Falha ao enviar notificação ao closer:`, closerNotificationError);
         try {
-          const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
-          await emailService.sendCloserScheduleNotificationEmail({
-            to: closerEmail,
-            closerName: closerProfile.fullName || closerProfile.email,
-            leadName,
-            meetingTitle: resolvedMeetingTitle,
-            meetingDate,
-            meetingLink: resolvedMeetingLink,
-            leadCode,
-            isReschedule: !!existingSchedule,
-            attendees: attendeeEmails,
-            notes: meetingNotes ?? null,
-            attachments: scheduleAttachments,
-            timezone: closerProfile.timezone,
+          await prisma.leadActivity.create({
+            data: {
+              leadId,
+              type: "note",
+              body: closerNotificationMessage,
+              payload: {
+                kind: "schedule",
+                action: "closer_notification_failed",
+                error:
+                  closerNotificationError instanceof Error
+                    ? closerNotificationError.message
+                    : String(closerNotificationError),
+              },
+              createdBy: createdByProfileId,
+            },
           });
-        } catch (closerNotificationError) {
-          console.warn(`${LOG_PREFIX} Falha ao enviar notificação ao closer (não-bloqueante):`, closerNotificationError);
+        } catch (activityError) {
+          console.warn(`${LOG_PREFIX} Falha ao registrar atividade de erro do closer:`, activityError);
         }
       }
+    }
 
-      // Activity log for schedule creation
+    // --- Fire-and-forget: activity logs + platform notifications ---
+    void (async () => {
       try {
-        const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
+        const actionLabel = isReschedule ? "Reagendamento feito por" : "Agendamento feito por";
         const participants = buildUniqueEmails([
           leadEmail,
           closerProfile.email,
@@ -740,7 +791,7 @@ export class LeadScheduleService implements ILeadScheduleService {
             leadName,
             meetingDate,
             recipientProfileIds,
-            isReschedule: !!existingSchedule,
+            isReschedule,
           });
         }
       } catch (notificationError) {
@@ -751,7 +802,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     });
 
     // --- Build response ---
-    const successMessages = [persisted.message];
+    const successMessages = [persisted.message, ...scheduleWarnings];
     if (canUseGoogleCalendar && resendRecipients.length > 0) {
       successMessages.push(
         "Aviso: Participantes sem Google conectado receberam convite via e-mail (Resend)."
