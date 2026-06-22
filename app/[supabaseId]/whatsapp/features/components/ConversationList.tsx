@@ -14,6 +14,7 @@ const FILTER_TABS: { label: string; value: ConversationFilterMode }[] = [
   { label: 'Todas', value: 'all' },
   { label: 'Não lidas', value: 'unread' },
   { label: 'Minhas', value: 'mine' },
+  { label: 'Arquivadas', value: 'archived' },
 ]
 
 export function ConversationList() {
@@ -81,6 +82,8 @@ export function ConversationList() {
                   ? 'Nenhuma mensagem não lida'
                   : filterMode === 'mine'
                   ? 'Você não tem conversas atribuídas'
+                  : filterMode === 'archived'
+                  ? 'Nenhuma conversa arquivada'
                   : searchQuery.trim()
                   ? 'Nenhuma conversa encontrada'
                   : 'Nenhuma conversa ainda'}

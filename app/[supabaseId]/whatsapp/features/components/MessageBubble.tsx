@@ -103,21 +103,27 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {hasText ? (
           <p className="text-sm leading-relaxed">{message.contentText}</p>
         ) : isAudioWithUrl ? (
-          <audio
-            controls
-            src={message.mediaUrl!}
-            className="w-full max-w-xs"
-          />
-        ) : (
-          <div
-            className={cn(
-              'flex items-center gap-2 text-sm',
-              isOutbound ? 'text-primary-foreground/80' : 'text-muted-foreground'
+          <>
+            <audio controls src={message.mediaUrl!} className="w-full max-w-xs" />
+            {message.caption && (
+              <p className="text-sm leading-relaxed">{message.caption}</p>
             )}
-          >
-            {media!.icon}
-            <span className="italic">{media!.label}</span>
-          </div>
+          </>
+        ) : (
+          <>
+            <div
+              className={cn(
+                'flex items-center gap-2 text-sm',
+                isOutbound ? 'text-primary-foreground/80' : 'text-muted-foreground'
+              )}
+            >
+              {media!.icon}
+              <span className="italic">{media!.label}</span>
+            </div>
+            {message.caption && (
+              <p className="text-sm leading-relaxed">{message.caption}</p>
+            )}
+          </>
         )}
         <div
           className={cn(

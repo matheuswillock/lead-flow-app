@@ -148,6 +148,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
     leadId?: string
     assignedProfileId?: string
     hasUnread?: boolean
+    isArchived?: boolean
     search?: string
     page?: number
     limit?: number
@@ -158,6 +159,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
     const where: Prisma.WhatsAppConversationWhereInput = {
       teamId: params.teamId,
+      isArchived: params.isArchived ?? false,
       ...(params.leadId !== undefined ? { leadId: params.leadId } : {}),
       ...(params.assignedProfileId !== undefined
         ? { assignedProfileId: params.assignedProfileId }
@@ -262,7 +264,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
       prisma.whatsAppMessage.findMany({
         where,
         select: MESSAGE_SELECT,
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),

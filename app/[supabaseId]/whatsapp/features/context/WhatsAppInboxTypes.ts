@@ -47,6 +47,7 @@ export interface WhatsAppMessage {
   status: WhatsAppMessageStatus | string
   contentText: string | null
   mediaUrl: string | null
+  caption: string | null
   sentByProfileId: string | null
   senderPhone: string | null
   recipientPhone: string | null
@@ -66,7 +67,7 @@ export interface WhatsAppConfig {
   configId?: string
 }
 
-export type ConversationFilterMode = 'all' | 'unread' | 'mine'
+export type ConversationFilterMode = 'all' | 'unread' | 'mine' | 'archived'
 
 export interface InboxState {
   config: WhatsAppConfig | null

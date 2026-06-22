@@ -6,6 +6,7 @@ interface ListConversationsInput {
   leadId?: string
   assignedProfileId?: string
   hasUnread?: boolean
+  isArchived?: boolean
   search?: string
   page?: number
   limit?: number

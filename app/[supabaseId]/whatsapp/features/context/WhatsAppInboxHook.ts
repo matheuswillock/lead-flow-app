@@ -179,6 +179,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
       const hasUnread = effectiveFilter === 'unread' ? true : undefined
       const assignedProfileId = effectiveFilter === 'mine' ? (user?.id ?? undefined) : undefined
+      const isArchived = effectiveFilter === 'archived' ? true : false
 
       const existing = conversationsInFlightByKey.get(key)
       const promise =
@@ -190,6 +191,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             search: search || undefined,
             hasUnread,
             assignedProfileId,
+            isArchived,
           })
           .finally(() => {
             conversationsInFlightByKey.delete(key)
@@ -262,12 +264,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         if (currentMessagesConvIdRef.current !== conversationId) return
         setTotalMessages(result.total)
         if (pageNum === 1) {
-          setMessages(result.messages)
+          // API returns newest-first (DESC); reverse so oldest is at top, newest at bottom
+          setMessages(result.messages.slice().reverse())
         } else {
           // Older messages go at the top; API returns newest-first so reverse before prepending
           setMessages((prev) => {
             const existingIds = new Set(prev.map((m) => m.id))
-            const fresh = result.messages.filter((m) => !existingIds.has(m.id))
+            const fresh = result.messages.filter((m) => !existingIds.has(m.id)).slice().reverse()
             return [...fresh, ...prev]
           })
         }
@@ -422,6 +425,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         status: 'PENDING',
         contentText: trimmedText,
         mediaUrl: null,
+        caption: null,
         sentByProfileId: null,
         senderPhone: null,
         recipientPhone: null,
@@ -502,7 +506,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   // Realtime callbacks
   const handleMessageInserted = useCallback(
-    (row: { id: string; conversationId: string; direction: string; messageType: string; status: string; contentText: string | null; mediaUrl: string | null; sentByProfileId: string | null; senderPhone: string | null; recipientPhone: string | null; sentAt: string | null; deliveredAt: string | null; readAt: string | null; failedAt: string | null; createdAt: string }) => {
+    (row: { id: string; conversationId: string; direction: string; messageType: string; status: string; contentText: string | null; mediaUrl: string | null; caption: string | null; sentByProfileId: string | null; senderPhone: string | null; recipientPhone: string | null; sentAt: string | null; deliveredAt: string | null; readAt: string | null; failedAt: string | null; createdAt: string }) => {
       if (row.conversationId !== currentMessagesConvIdRef.current) return
       setMessages((prev) => {
         if (prev.some((m) => m.id === row.id)) return prev
@@ -514,6 +518,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           status: row.status,
           contentText: row.contentText,
           mediaUrl: row.mediaUrl,
+          caption: row.caption,
           sentByProfileId: row.sentByProfileId,
           senderPhone: row.senderPhone,
           recipientPhone: row.recipientPhone,

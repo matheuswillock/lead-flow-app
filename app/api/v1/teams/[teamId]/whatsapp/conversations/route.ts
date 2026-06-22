@@ -29,6 +29,8 @@ export async function GET(
   const assignedProfileId = url.searchParams.get("assignedProfileId") ?? undefined
   const hasUnreadParam = url.searchParams.get("hasUnread")
   const hasUnread = hasUnreadParam === "true" ? true : hasUnreadParam === "false" ? false : undefined
+  const isArchivedParam = url.searchParams.get("isArchived")
+  const isArchived = isArchivedParam === "true" ? true : isArchivedParam === "false" ? false : undefined
   const search = url.searchParams.get("search") ?? undefined
   const page = parseInt(url.searchParams.get("page") ?? "1", 10)
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 100)
@@ -40,6 +42,7 @@ export async function GET(
     leadId,
     assignedProfileId: scopedAssignedProfileId,
     hasUnread,
+    isArchived,
     search,
     page,
     limit,

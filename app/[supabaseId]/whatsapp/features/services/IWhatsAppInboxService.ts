@@ -5,7 +5,7 @@ export interface IWhatsAppInboxService {
   fetchConversations(
     teamId: string,
     supabaseId: string,
-    params: { page?: number; limit?: number; search?: string; hasUnread?: boolean; assignedProfileId?: string; leadId?: string }
+    params: { page?: number; limit?: number; search?: string; hasUnread?: boolean; assignedProfileId?: string; leadId?: string; isArchived?: boolean }
   ): Promise<{ conversations: WhatsAppConversation[]; total: number }>
   fetchMessages(
     teamId: string,

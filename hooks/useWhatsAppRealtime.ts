@@ -9,6 +9,7 @@ export type WhatsAppMessageRealtimeRow = {
   status: string
   contentText: string | null
   mediaUrl: string | null
+  caption: string | null
   sentByProfileId: string | null
   senderPhone: string | null
   recipientPhone: string | null
@@ -169,6 +170,7 @@ export function useWhatsAppRealtime({
                   status: row.status ?? 'RECEIVED',
                   contentText: row.contentText ?? null,
                   mediaUrl: row.mediaUrl ?? null,
+                  caption: row.caption ?? null,
                   sentByProfileId: row.sentByProfileId ?? null,
                   senderPhone: row.senderPhone ?? null,
                   recipientPhone: row.recipientPhone ?? null,
