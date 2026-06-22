@@ -45,11 +45,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
 import { TemplateTestDialog } from "../components/TemplateTestDialog";
 import type { EditorMode } from "../components/EditorStudioTypes";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
+
+const editorModeTabTriggerClassName = cn(
+  "size-9 p-0 text-muted-foreground",
+  "data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+);
 
 function StatusBadge({ approvalStatus, status }: { approvalStatus: string | undefined; status: string | undefined }) {
   if (approvalStatus === "approved" && status !== "published") {
@@ -205,7 +211,7 @@ export function EditorContainer() {
                     <TooltipTrigger asChild>
                       <TabsTrigger
                         value="blocks"
-                        className="size-9 p-0"
+                        className={editorModeTabTriggerClassName}
                         aria-label="Blocos"
                         disabled={saving}
                       >
@@ -218,7 +224,7 @@ export function EditorContainer() {
                     <TooltipTrigger asChild>
                       <TabsTrigger
                         value="html"
-                        className="size-9 p-0"
+                        className={editorModeTabTriggerClassName}
                         aria-label="HTML"
                         disabled={saving}
                       >
