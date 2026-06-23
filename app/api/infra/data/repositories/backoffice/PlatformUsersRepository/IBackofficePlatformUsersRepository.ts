@@ -65,6 +65,7 @@ export interface MasterPlatformUserDetailsRecord {
   googleCalendarConnected: boolean
   linkedUsersCount: number
   teamsTotalItems: number
+  allTeams: Array<{ id: string; name: string }>
   teams: Array<{
     id: string
     name: string

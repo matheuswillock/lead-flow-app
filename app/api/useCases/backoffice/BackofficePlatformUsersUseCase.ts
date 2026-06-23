@@ -438,6 +438,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           hasAccess,
           status: master.subscriptionStatus,
         },
+        allTeams: master.allTeams,
         teams: master.teams.map((team) => ({
           id: team.id,
           name: team.name,

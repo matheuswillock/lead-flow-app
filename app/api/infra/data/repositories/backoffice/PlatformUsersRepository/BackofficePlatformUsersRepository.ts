@@ -323,7 +323,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     const skip = (options.page - 1) * options.pageSize
 
-    const [teams, teamsTotalItems, memberships] = await Promise.all([
+    const [teams, teamsTotalItems, allTeams, memberships] = await Promise.all([
       prisma.team.findMany({
         where: teamsWhere,
         select: {
@@ -376,6 +376,11 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         take: options.pageSize,
       }),
       prisma.team.count({ where: teamsWhere }),
+      prisma.team.findMany({
+        where: { masterId: master.id },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
       prisma.teamMember.findMany({
         where: {
           team: {
@@ -419,6 +424,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: linkedUsers.size,
       teamsTotalItems,
+      allTeams,
       teams: teams.map((team) => ({
         id: team.id,
         name: team.name,
