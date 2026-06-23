@@ -1,5 +1,10 @@
 /**
- * Preflight for `bun run dev:local`.
+ * Standalone preflight for local dev (clone check only).
+ *
+ * Prefer `bun run dev` or `bun run dev:local` — both use `scripts/dev-local.ts`,
+ * which starts Supabase + Evolution API + Next.js with local env overrides.
+ *
+ * This script only runs the Supabase/clone portion (no Evolution, no Next.js).
  *
  * 1. Ensures the Supabase local stack is up (starts it if needed).
  * 2. Counts rows in `auth.users` on the local DB.
@@ -103,7 +108,9 @@ function cloneRemote() {
   info("⚠ 0 users found — running `bun run db:clone:remote`…");
   const clone = run("bun", ["run", "db:clone:remote"], { stdio: "inherit" });
   if (clone.status !== 0) {
-    fail("Clone failed. Inspect output above.");
+    info("⚠ Clone falhou — encerrando preflight sem dados remotos.");
+    info("  Confira DIRECT_URL/DATABASE_URL no .env ou use `bun run dev -- --skip-clone`.");
+    return;
   }
   info("✓ Clone done");
 }

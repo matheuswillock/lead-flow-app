@@ -518,6 +518,55 @@ CONNECTION_EVENT CONNECTION_EVENT
 RECONNECTION_EVENT RECONNECTION_EVENT
         }
     
+
+
+        customer_identity_type {
+            phone phone
+email email
+document document
+lead_id lead_id
+email_contact_id email_contact_id
+portfolio_id portfolio_id
+whatsapp_contact_id whatsapp_contact_id
+        }
+    
+
+
+        customer_source_type {
+            crm_lead crm_lead
+portfolio portfolio
+email_contact email_contact
+email_campaign email_campaign
+whatsapp_contact whatsapp_contact
+        }
+    
+
+
+        customer_channel {
+            email email
+whatsapp whatsapp
+        }
+    
+
+
+        customer_consent_status {
+            allowed allowed
+blocked blocked
+unknown unknown
+        }
+    
+
+
+        customer_consent_reason {
+            manual manual
+imported imported
+unsubscribe unsubscribe
+bounce bounce
+complaint complaint
+opt_out opt_out
+missing_identity missing_identity
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -1484,6 +1533,67 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     DateTime createdAt 
     }
   
+
+  "corretor_studio_cdp_profiles" {
+    String id "🗝️"
+    String normalizedName 
+    String displayName 
+    String normalizedPhone 
+    String displayPhone 
+    String primaryEmail "❓"
+    String normalizedPrimaryEmail "❓"
+    String primaryDocument "❓"
+    String normalizedPrimaryDocument "❓"
+    DateTime lastSeenAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_cdp_identities" {
+    String id "🗝️"
+    CustomerIdentityType type 
+    String value "❓"
+    String normalizedValue 
+    String source 
+    Boolean isPrimary 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_cdp_source_links" {
+    String id "🗝️"
+    CustomerSourceType sourceType 
+    String sourceId 
+    Json sourceMetadata "❓"
+    DateTime firstLinkedAt 
+    DateTime lastSyncedAt 
+    }
+  
+
+  "corretor_studio_cdp_events" {
+    String id "🗝️"
+    String eventType 
+    String sourceType 
+    String sourceId "❓"
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_cdp_channel_consents" {
+    String id "🗝️"
+    CustomerChannel channel 
+    CustomerConsentStatus status 
+    CustomerConsentReason reason "❓"
+    String sourceType "❓"
+    String sourceId "❓"
+    DateTime updatedAt 
+    DateTime createdAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -1681,4 +1791,18 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_usage_events" }o--|| corretor_studio_teams : "team"
     "whatsapp_usage_events" }o--|| team_whatsapp_configs : "config"
+    "corretor_studio_cdp_profiles" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_cdp_identities" |o--|| "CustomerIdentityType" : "enum:type"
+    "corretor_studio_cdp_identities" }o--|| corretor_studio_cdp_profiles : "profile"
+    "corretor_studio_cdp_identities" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_cdp_source_links" |o--|| "CustomerSourceType" : "enum:sourceType"
+    "corretor_studio_cdp_source_links" }o--|| corretor_studio_cdp_profiles : "profile"
+    "corretor_studio_cdp_source_links" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_cdp_events" }o--|| corretor_studio_cdp_profiles : "profile"
+    "corretor_studio_cdp_events" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_cdp_channel_consents" |o--|| "CustomerChannel" : "enum:channel"
+    "corretor_studio_cdp_channel_consents" |o--|| "CustomerConsentStatus" : "enum:status"
+    "corretor_studio_cdp_channel_consents" |o--|o "CustomerConsentReason" : "enum:reason"
+    "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_cdp_profiles : "profile"
+    "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_teams : "team"
 ```

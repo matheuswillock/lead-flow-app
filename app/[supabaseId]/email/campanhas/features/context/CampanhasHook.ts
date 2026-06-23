@@ -303,7 +303,20 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
           ? parseLocalToUtc(editScheduledAt, tz).toISOString()
           : null,
       })
-      setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === updated.id
+            ? {
+                ...c,
+                ...updated,
+                totalRecipients: updated.totalRecipients,
+                template: c.template,
+                contactList: c.contactList,
+                creator: c.creator,
+              }
+            : c
+        )
+      )
       toast.success("Campanha atualizada")
       setEditingCampaign(null)
     } catch (err) {

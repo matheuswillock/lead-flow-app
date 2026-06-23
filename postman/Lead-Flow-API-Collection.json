@@ -1461,13 +1461,80 @@
                 "description": "Transfere um lead para outro time do mesmo master. O closer é obrigatório; o SDR é opcional. Pode incluir agendamento no ato da transferência."
               },
               "response": []
+            },
+            {
+              "name": "14. Listar Transferências de Leads",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/lead-transfers?status=all&page=1&pageSize=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lead-transfers"
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "all"
+                    },
+                    {
+                      "key": "leadStatus",
+                      "value": "new_opportunity",
+                      "disabled": true
+                    },
+                    {
+                      "key": "toTeamId",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "transferredByProfileId",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "dateFrom",
+                      "value": "2024-01-01",
+                      "disabled": true
+                    },
+                    {
+                      "key": "dateTo",
+                      "value": "2024-12-31",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Lista leads pendentes de transferência e histórico concluído do time de origem. Acesso: Master, Manager ou Backoffice."
+              },
+              "response": []
             }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Manager Users",
       "item": [
         {
           "name": "Requests",
@@ -11133,6 +11200,90 @@
               ]
             },
             "description": "Retorna contagem do período: limite, uso atual, percentual consumido e status de alerta."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CDP",
+      "item": [
+        {
+          "name": "Sync CRM",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/sync/crm",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "sync", "crm"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Carteira",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/sync/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "sync", "portfolio"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/sync/email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "sync", "email"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar Perfis",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/profiles?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "profiles"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Segmentos",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/segments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "segments"]
+            }
           },
           "response": []
         }

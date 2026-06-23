@@ -67,8 +67,10 @@ export interface IWhatsAppRepository {
   // Config
   findConfigByTeamId(teamId: string): Promise<WhatsAppConfigSelect | null>
   findConfigByWebhookSecret(secret: string): Promise<WhatsAppConfigSelect | null>
+  findConfigById(id: string): Promise<WhatsAppConfigSelect | null>
   createConfig(data: Prisma.TeamWhatsAppConfigCreateInput): Promise<WhatsAppConfigSelect>
   updateConfig(id: string, data: Prisma.TeamWhatsAppConfigUpdateInput): Promise<WhatsAppConfigSelect>
+  deleteConfig(id: string): Promise<void>
 
   // Conversations
   findOrCreateConversation(params: {

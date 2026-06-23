@@ -18,6 +18,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolvePostgresPassword } from "./lib/resolve-postgres-password";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
 const DUMP_DIR = resolve(process.cwd(), "tmp", "db-clone");
@@ -46,16 +47,36 @@ function step(label: string) {
   console.info(`\n▶ ${label}`);
 }
 
-function run(cmd: string, args: string[], opts: { stdio?: "inherit" | "pipe"; outFile?: string } = {}) {
+function run(
+  cmd: string,
+  args: string[],
+  opts: { stdio?: "inherit" | "pipe"; outFile?: string; env?: NodeJS.ProcessEnv } = {},
+) {
   const result = spawnSync(cmd, args, {
     stdio: opts.stdio ?? "inherit",
     shell: process.platform === "win32",
     encoding: "utf8",
+    env: opts.env ?? process.env,
   });
   if (result.status !== 0) {
     throw new Error(`Command failed (exit ${result.status}): ${cmd} ${args.join(" ")}`);
   }
   return result;
+}
+
+function getSupabaseCliEnv(): NodeJS.ProcessEnv {
+  const password = resolvePostgresPassword();
+  return {
+    ...process.env,
+    SUPABASE_DISABLE_TELEMETRY: "1",
+    DO_NOT_TRACK: "1",
+    // Supabase CLI exige SUPABASE_DB_PASSWORD; mapeamos de POSTGRES_PASSWORD ou connection URL.
+    ...(password ? { SUPABASE_DB_PASSWORD: password } : {}),
+  };
+}
+
+function runSupabase(args: string[]) {
+  run("supabase", args, { env: getSupabaseCliEnv() });
 }
 
 function normalizeSqlIdentifier(identifier: string) {
@@ -213,19 +234,25 @@ function ensureDumpDir() {
 }
 
 function dumpRemote() {
+  const supabaseEnv = getSupabaseCliEnv();
+  if (!supabaseEnv.SUPABASE_DB_PASSWORD) {
+    console.warn(
+      "\n⚠ Senha do Postgres remoto não encontrada — defina POSTGRES_PASSWORD ou DIRECT_URL/DATABASE_URL no .env.",
+    );
+  }
+
   for (const schema of SCHEMAS) {
     const outPath = resolve(DUMP_DIR, schema.file);
     step(`Dump remote schema "${schema.name}" → ${outPath}`);
-    const args = ["db", "dump", "--linked", "--data-only", "-f", outPath];
-    args.push("--schema", schema.name);
-    run("supabase", args);
+    const args = ["db", "dump", "--linked", "--data-only", "-f", outPath, "--schema", schema.name];
+    run("supabase", args, { env: supabaseEnv });
   }
   sanitizePublicDumpForLocalSchema();
 }
 
 function resetLocal() {
   step("Reset local Supabase DB (re-apply migrations)");
-  run("supabase", ["db", "reset", "--local", "--no-seed"]);
+  runSupabase(["db", "reset", "--local", "--no-seed"]);
 }
 
 function preparePublicRestore() {
@@ -296,6 +323,12 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("\n❌ Clone failed:", err instanceof Error ? err.message : err);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("\n❌ Clone failed:", message);
+  if (message.includes("connection slots are reserved")) {
+    console.error(
+      "\nO Postgres remoto está sem conexões livres. Feche conexões extras, aguarde alguns minutos e tente de novo.",
+    );
+  }
   process.exit(1);
 });

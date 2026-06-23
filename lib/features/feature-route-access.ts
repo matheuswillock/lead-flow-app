@@ -8,6 +8,7 @@ type RouteMatcher = {
 const routeMatchers: RouteMatcher[] = [
   { prefix: "/dashboard", slug: FEATURE_SLUGS.CRM_DASHBOARD },
   { prefix: "/crm", slug: FEATURE_SLUGS.CRM },
+  { prefix: "/lead-transfers", slug: FEATURE_SLUGS.CRM_LEAD_TRANSFERS },
   { prefix: "/calendar", slug: FEATURE_SLUGS.CRM_CALENDAR },
   { prefix: "/performance", slug: FEATURE_SLUGS.CRM_PERFORMANCE },
   { prefix: "/pme-simulador", slug: FEATURE_SLUGS.CRM_SIMULATOR },
@@ -17,6 +18,7 @@ const routeMatchers: RouteMatcher[] = [
   { prefix: "/integrations", slug: FEATURE_SLUGS.CONFIGURATION },
   { prefix: "/whatsapp/configuracoes", slug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
   { prefix: "/whatsapp", slug: FEATURE_SLUGS.WHATSAPP },
+  { prefix: "/cdp", slug: FEATURE_SLUGS.CDP },
   { prefix: "/email/templates", slug: FEATURE_SLUGS.EMAIL_TEMPLATES },
   { prefix: "/email/contatos", slug: FEATURE_SLUGS.EMAIL_CONTACTS },
   { prefix: "/email/campanhas", slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },

@@ -19,6 +19,12 @@ import {
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, formatLocalInputValue, parseLocalToUtc } from "@/lib/dates"
+import type { ContactList } from "../context/CampanhasTypes"
+
+function formatContactListLabel(list: ContactList): string {
+  const activeCount = list.activeContacts ?? list.totalContacts
+  return `${list.name} (${activeCount.toLocaleString("pt-BR")} ativos)`
+}
 
 export function CampaignCreateWizard() {
   const { tz } = useTimezone()
@@ -107,7 +113,7 @@ export function CampaignCreateWizard() {
                   ) : (
                     contactLists.map((l) => (
                       <SelectItem key={l.id} value={l.id}>
-                        {l.name} ({l.totalContacts.toLocaleString("pt-BR")} contatos)
+                        {formatContactListLabel(l)}
                       </SelectItem>
                     ))
                   )}
@@ -130,6 +136,18 @@ export function CampaignCreateWizard() {
 
         {wizardStep === 3 && (
           <div className="space-y-4">
+            {(() => {
+              const selectedList = contactLists.find((list) => list.id === wizardContactListId)
+              const activeCount = selectedList?.activeContacts ?? selectedList?.totalContacts ?? 0
+              return (
+                <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  A campanha será enviada para{" "}
+                  <strong className="text-foreground">{activeCount.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s) ativo(s) da lista{" "}
+                  <strong className="text-foreground">{selectedList?.name ?? "selecionada"}</strong>.
+                </p>
+              )
+            })()}
             <div className="space-y-2">
               <Label htmlFor="wizard-schedule">Agendamento</Label>
               <Input

@@ -1,5 +1,5 @@
 import { assertResend } from "@/lib/email"
-import { parseResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
+import { mergeResendTrackingTags, parseResendTrackingTags, type ResendTrackingTagsInput } from "@/lib/email/build-resend-tracking-tags"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import type { EmailLogCategory } from "@prisma/client"
 
@@ -8,14 +8,15 @@ export type ResendEmailMetadata = {
   to: string | string[]
   from?: string | null
   subject?: string | null
-  tags?: Array<{ name: string; value: string }> | null
+  tags?: ResendTrackingTagsInput
 }
 
 export interface IResendEmailEnrichmentService {
   fetchEmailMetadata(resendEmailId: string): Promise<ResendEmailMetadata | null>
   createOrphanTeamEmailLogFromResendEmail(
     resendEmailId: string,
-    occurredAt: Date
+    occurredAt: Date,
+    tagsHint?: ResendTrackingTagsInput
   ): Promise<string | null>
 }
 
@@ -45,12 +46,13 @@ export class ResendEmailEnrichmentService implements IResendEmailEnrichmentServi
 
   async createOrphanTeamEmailLogFromResendEmail(
     resendEmailId: string,
-    occurredAt: Date
+    occurredAt: Date,
+    tagsHint?: ResendTrackingTagsInput
   ): Promise<string | null> {
     const metadata = await this.fetchEmailMetadata(resendEmailId)
     if (!metadata) return null
 
-    const parsedTags = parseResendTrackingTags(metadata.tags)
+    const parsedTags = parseResendTrackingTags(mergeResendTrackingTags(tagsHint, metadata.tags))
     if (!parsedTags.teamId) {
       console.info(
         "[ResendEmailEnrichmentService] E-mail órfão sem team_id nas tags:",
@@ -62,6 +64,8 @@ export class ResendEmailEnrichmentService implements IResendEmailEnrichmentServi
     const recipientEmail = Array.isArray(metadata.to) ? metadata.to[0] : metadata.to
     if (!recipientEmail) return null
 
+    const isCampaign = parsedTags.sourceType === "campaign" && !!parsedTags.sourceId
+
     const logId = await teamEmailDispatchLogger.createQueuedTeamEmailLog({
       teamId: parsedTags.teamId,
       recipientEmail,
@@ -69,6 +73,7 @@ export class ResendEmailEnrichmentService implements IResendEmailEnrichmentServi
       category: (parsedTags.category ?? "other") as EmailLogCategory,
       sourceType: parsedTags.sourceType,
       sourceId: parsedTags.sourceId,
+      campaignId: isCampaign ? parsedTags.sourceId : null,
     })
 
     await teamEmailDispatchLogger.markTeamEmailLogSent(logId, resendEmailId)

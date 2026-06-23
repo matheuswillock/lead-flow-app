@@ -81,6 +81,11 @@ export function ConnectionCard() {
 
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
 
+  const showQrCode =
+    Boolean(config?.qrCodeImageUrl) &&
+    config?.status !== 'CONNECTED' &&
+    config?.status !== 'DISCONNECTED'
+
   if (isLoading) {
     return (
       <Card>
@@ -157,7 +162,7 @@ export function ConnectionCard() {
               </div>
             </div>
 
-            {config.status === 'QR_READY' && config.qrCodeImageUrl ? (
+            {showQrCode ? (
               <>
                 <Separator />
                 <div className="flex flex-col items-center gap-4 py-2">
@@ -166,17 +171,14 @@ export function ConnectionCard() {
                     <p className="text-sm font-semibold">Escaneie o QR Code</p>
                   </div>
                   <img
-                    src={config.qrCodeImageUrl}
+                    src={config.qrCodeImageUrl!}
                     alt="QR Code WhatsApp"
-                    className="size-48 rounded-lg border object-contain"
+                    className="size-48 rounded-lg border bg-background object-contain"
                   />
                   <p className="max-w-sm text-center text-sm text-muted-foreground">
-                    Escaneie com o WhatsApp Business do número do time para conectar.
+                    No celular: WhatsApp → Aparelhos conectados → Conectar aparelho. Escaneie em até 60
+                    segundos. Se falhar, clique em Atualizar QR Code e tente de novo.
                   </p>
-                  <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
-                    <RefreshCw className={cn(isReconnecting && 'animate-spin')} />
-                    {isReconnecting ? 'Atualizando...' : 'Atualizar QR Code'}
-                  </Button>
                 </div>
               </>
             ) : null}
@@ -219,7 +221,12 @@ export function ConnectionCard() {
             <Separator />
 
             <div className="flex flex-wrap gap-2">
-              {config.status !== 'CONNECTED' ? (
+              {showQrCode ? (
+                <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
+                  <RefreshCw className={cn(isReconnecting && 'animate-spin')} />
+                  {isReconnecting ? 'Atualizando...' : 'Atualizar QR Code'}
+                </Button>
+              ) : config.status !== 'CONNECTED' ? (
                 <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
                   <RefreshCw className={cn(isReconnecting && 'animate-spin')} />
                   {isReconnecting ? 'Reconectando...' : 'Reconectar'}

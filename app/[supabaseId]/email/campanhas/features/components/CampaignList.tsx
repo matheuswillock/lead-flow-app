@@ -112,7 +112,8 @@ function CampaignActionsMenu({
             <AlertDialogTitle>Confirmar disparo?</AlertDialogTitle>
             <AlertDialogDescription>
               A campanha <strong>"{campaign.name}"</strong> será enviada para{" "}
-              <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong> destinatário(s).
+              <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+              destinatário(s) ativo(s).
               Os créditos correspondentes serão deduzidos.
             </AlertDialogDescription>
           </AlertDialogHeader>

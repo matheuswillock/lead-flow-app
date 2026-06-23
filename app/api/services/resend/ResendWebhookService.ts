@@ -1,7 +1,7 @@
 import type { EmailEventType } from "@prisma/client"
 import { randomUUID } from "crypto"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
-import type { IEmailLogRepository } from "@/app/api/infra/data/repositories/emailLog/IEmailLogRepository"
+import type { IEmailLogRepository, EmailLogWebhookRecord } from "@/app/api/infra/data/repositories/emailLog/IEmailLogRepository"
 
 const EVENT_TYPE_MAP: Record<string, EmailEventType> = {
   "email.sent": "sent",
@@ -23,7 +23,7 @@ export class ResendWebhookService {
   }
 
   async processEmailLogWebhook(input: {
-    log: { id: string; status: string; recipientEmail: string; campaignId: string | null }
+    log: EmailLogWebhookRecord
     eventType: EmailEventType
     occurredAt: Date
     metadata: Record<string, unknown>

@@ -38,6 +38,7 @@ export type ContactList = {
   id: string
   name: string
   totalContacts: number
+  activeContacts?: number
 }
 
 export type CampanhasState = {

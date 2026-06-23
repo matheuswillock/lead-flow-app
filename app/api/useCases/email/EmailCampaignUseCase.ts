@@ -3,10 +3,12 @@ import type { EmailCampaignStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
+import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
-import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
+import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 
 const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
 const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretorstudio.com"
@@ -18,89 +20,10 @@ export interface CreateCampaignInput {
   scheduledAt?: string | null
 }
 
-type CampaignRecipient = {
-  email: string
-  name: string | null
-  customFields: Record<string, unknown> | null
-}
-
 export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
+  private recipientService = new EmailCampaignRecipientService()
   private creditService = new EmailCreditService()
-
-  private dedupeRecipients(recipients: CampaignRecipient[]): CampaignRecipient[] {
-    const uniqueRecipients = new Map<string, CampaignRecipient>()
-
-    for (const recipient of recipients) {
-      const normalizedEmail = recipient.email.trim().toLowerCase()
-      if (!uniqueRecipients.has(normalizedEmail)) {
-        uniqueRecipients.set(normalizedEmail, {
-          ...recipient,
-          email: normalizedEmail,
-        })
-      }
-    }
-
-    return Array.from(uniqueRecipients.values())
-  }
-
-  private async listActiveRecipients(teamId: string, contactListId: string): Promise<CampaignRecipient[]> {
-    const contactList = await prisma.emailContactList.findFirst({
-      where: { id: contactListId, teamId, isArchived: false },
-      select: { id: true, isSystemDefault: true },
-    })
-
-    if (!contactList) {
-      return []
-    }
-
-    if (contactList.isSystemDefault) {
-      const recipients = await prisma.emailContact.findMany({
-        where: {
-          isUnsubscribed: false,
-          isBounced: false,
-          list: {
-            teamId,
-            isArchived: false,
-          },
-        },
-        orderBy: { updatedAt: "desc" },
-        select: {
-          email: true,
-          name: true,
-          customFields: true,
-        },
-      })
-
-      return this.dedupeRecipients(
-        recipients.map((recipient) => ({
-          email: recipient.email,
-          name: recipient.name,
-          customFields: recipient.customFields as Record<string, unknown> | null,
-        }))
-      )
-    }
-
-    const recipients = await prisma.emailContact.findMany({
-      where: {
-        listId: contactListId,
-        isUnsubscribed: false,
-        isBounced: false,
-      },
-      orderBy: { updatedAt: "desc" },
-      select: {
-        email: true,
-        name: true,
-        customFields: true,
-      },
-    })
-
-    return recipients.map((recipient) => ({
-      email: recipient.email,
-      name: recipient.name,
-      customFields: recipient.customFields as Record<string, unknown> | null,
-    }))
-  }
 
   private async findCurrentPublishedTemplate(templateId: string, teamId: string) {
     return prisma.emailTemplate.findFirst({
@@ -117,7 +40,7 @@ export class EmailCampaignUseCase {
   }
 
   private async countActiveRecipients(teamId: string, contactListId: string): Promise<number> {
-    const recipients = await this.listActiveRecipients(teamId, contactListId)
+    const recipients = await this.recipientService.listActiveRecipients(teamId, contactListId)
     return recipients.length
   }
 
@@ -148,22 +71,6 @@ export class EmailCampaignUseCase {
     }
 
     return current
-  }
-
-  private async getGlobalDefaults(teamId: string): Promise<Record<string, string>> {
-    try {
-      const variables = await prisma.emailTeamVariable.findMany({
-        where: { teamId, isActive: true, defaultValue: { not: null } },
-        select: { key: true, defaultValue: true },
-      })
-      return variables.reduce<Record<string, string>>((acc, v) => {
-        if (v.defaultValue != null) acc[v.key] = v.defaultValue
-        return acc
-      }, {})
-    } catch (error) {
-      console.error("[EmailCampaignUseCase][getGlobalDefaults]", error)
-      return {}
-    }
   }
 
   private async hasCampaignsBetaAccess(profileId: string): Promise<boolean> {
@@ -307,7 +214,14 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada"], null)
       }
 
-      return new Output(true, [], [], campaign)
+      const activeRecipientCount = await this.countActiveRecipients(ctx.teamId, campaign.contactListId)
+
+      return new Output(true, [], [], {
+        ...campaign,
+        totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
+          ? activeRecipientCount
+          : campaign.totalRecipients,
+      })
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar campanha"], null)
@@ -406,7 +320,14 @@ export class EmailCampaignUseCase {
         },
       })
 
-      return new Output(true, ["Campanha atualizada com sucesso"], [], campaign)
+      const resolvedRecipientCount = await this.countActiveRecipients(ctx.teamId, campaign.contactListId)
+
+      return new Output(true, ["Campanha atualizada com sucesso"], [], {
+        ...campaign,
+        totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
+          ? resolvedRecipientCount
+          : campaign.totalRecipients,
+      })
     } catch (error) {
       console.error("[EmailCampaignUseCase][update]", error)
       return new Output(false, [], ["Erro ao atualizar campanha"], null)
@@ -420,7 +341,7 @@ export class EmailCampaignUseCase {
         include: {
           template: { select: { id: true, subject: true, html: true, variables: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
-          team: { select: { master: { select: { id: true } } } },
+          team: { select: { master: { select: { id: true, timezone: true } } } },
         },
       })
 
@@ -486,11 +407,48 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Template não possui HTML. Edite o template antes de disparar"], null)
       }
 
+      const templateHtml = campaign.template.html
+
       const masterId = campaign.team.master.id
       const hasCredits = await this.creditService.hasEnoughCredits(masterId)
       const hasCampaignsBetaAccess = await this.hasCampaignsBetaAccess(ctx.profileId)
       if (!hasCredits && !hasCampaignsBetaAccess) {
         return new Output(false, [], ["Sem assinatura de créditos de email ativa. Ative um plano em Assinaturas"], null)
+      }
+
+      const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
+        teamId: ctx.teamId,
+        contactListId: campaign.contactListId,
+        template: {
+          subject: campaign.template.subject,
+          html: templateHtml,
+          variables: campaign.template.variables,
+        },
+        teamSettings,
+        masterTimezone: campaign.team.master.timezone,
+        fallbackFromName: FALLBACK_FROM_NAME,
+        fallbackFromEmail: FALLBACK_FROM_EMAIL,
+      })
+
+      if (dispatchInput.recipients.length === 0) {
+        return new Output(false, [], ["Nenhum contato ativo na lista para envio"], null)
+      }
+
+      const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({
+        subject: dispatchInput.subject,
+        html: dispatchInput.html,
+        recipients: dispatchInput.recipients,
+        globalDefaults: dispatchInput.globalDefaults,
+        templateVariables: dispatchInput.templateVariables,
+      })
+
+      if (unresolvedTokens.length > 0) {
+        return new Output(
+          false,
+          [],
+          [`Variáveis sem valor suficiente: ${unresolvedTokens.map((token) => `{{${token}}}`).join(", ")}`],
+          null
+        )
       }
 
       // Marcar como sending de forma atômica para evitar envios duplicados concorrentes
@@ -503,70 +461,64 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou já está sendo enviada"], null)
       }
 
-      // Buscar contatos ativos
-      const contacts = await this.listActiveRecipients(ctx.teamId, campaign.contactListId)
+      const recipientsList = dispatchInput.recipients
+      const { globalDefaults, templateVariables, from, replyTo } = dispatchInput
 
-      if (contacts.length === 0) {
-        await prisma.emailCampaign.update({
-          where: { id },
-          data: { status: "failed", errorMessage: "Nenhum contato ativo na lista" },
+      const logIdsByEmail = new Map<string, string>()
+      await Promise.all(
+        recipientsList.map(async (recipient) => {
+          const renderedSubject = interpolateEmailTemplate(
+            dispatchInput.subject,
+            recipient,
+            globalDefaults,
+            templateVariables
+          )
+          const logId = await teamEmailDispatchLogger.createQueuedTeamEmailLog({
+            teamId: ctx.teamId,
+            campaignId: campaign.id,
+            recipientEmail: recipient.email,
+            recipientName: recipient.name,
+            subject: renderedSubject,
+            category: "campaign",
+            sourceType: "campaign",
+            sourceId: campaign.id,
+          })
+          logIdsByEmail.set(recipient.email, logId)
         })
-        return new Output(false, [], ["Nenhum contato ativo na lista para envio"], null)
-      }
+      )
 
-      const recipientsList = contacts.map((c) => ({
-        email: c.email,
-        name: c.name,
-        customFields: c.customFields as Record<string, unknown> | null,
-      }))
-
-      const fromName = teamSettings?.fromName ?? FALLBACK_FROM_NAME
-      const fromEmail = teamSettings?.fromEmail ?? FALLBACK_FROM_EMAIL
-      const from = `${fromName} <${fromEmail}>`
-      const replyTo = teamSettings?.replyTo ?? null
-
-      // Team global variables (default values) used as interpolation fallback
-      const globalDefaults = await this.getGlobalDefaults(ctx.teamId)
-      const templateVariables = Array.isArray(campaign.template.variables)
-        ? (campaign.template.variables as unknown as EmailTemplateVariableDefinition[])
-        : []
-
-      // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({
         from,
         replyTo,
         recipients: recipientsList,
-        subject: campaign.template.subject,
-        html: campaign.template.html,
+        subject: dispatchInput.subject,
+        html: dispatchInput.html,
         campaignId: campaign.id,
         teamId: ctx.teamId,
         globalDefaults,
         templateVariables,
       })
 
-      // Criar EmailLog para cada email enviado com mapeamento explícito email→resendId
-      if (dispatchResult.dispatched.length > 0) {
-        const now = new Date()
-        const emailToContact = new Map(recipientsList.map((c) => [c.email, c]))
-        await prisma.emailLog.createMany({
-          data: dispatchResult.dispatched.map(({ email, resendId }) => ({
-            id: randomUUID(),
-            teamId: ctx.teamId,
-            campaignId: campaign.id,
-            resendEmailId: resendId,
-            recipientEmail: email,
-            recipientName: emailToContact.get(email)?.name ?? null,
-            subject: campaign.template.subject,
-            category: "campaign" as const,
-            status: "sent" as const,
-            sentAt: now,
-          })),
-          skipDuplicates: true,
+      const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
+      await Promise.all(
+        dispatchResult.dispatched.map(({ email, resendId }) => {
+          const logId = logIdsByEmail.get(email)
+          if (!logId) return Promise.resolve()
+          return teamEmailDispatchLogger.markTeamEmailLogSent(logId, resendId)
         })
+      )
+      await Promise.all(
+        recipientsList
+          .filter((recipient) => !dispatchedEmails.has(recipient.email))
+          .map((recipient) => {
+            const logId = logIdsByEmail.get(recipient.email)
+            if (!logId) return Promise.resolve()
+            return teamEmailDispatchLogger.markTeamEmailLogFailed(logId, "Falha no envio via Resend")
+          })
+      )
 
-        if (hasCredits) {
-          await this.creditService.deductCredits(masterId, dispatchResult.sent)
-        }
+      if (dispatchResult.dispatched.length > 0 && hasCredits) {
+        await this.creditService.deductCredits(masterId, dispatchResult.sent)
       }
 
       await prisma.emailCampaign.update({

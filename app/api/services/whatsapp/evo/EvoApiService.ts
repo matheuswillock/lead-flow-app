@@ -123,6 +123,7 @@ export class EvoApiService implements IEvoApiService {
             url: params.webhookUrl,
             events: [
               "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
               "CONNECTION_UPDATE",
               "QRCODE_UPDATED",
               "SEND_MESSAGE",

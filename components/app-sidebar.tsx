@@ -19,10 +19,12 @@ import {
   BookUser,
   Send,
   History,
+  ArrowRightLeft,
   BarChart3,
   Calculator,
   Settings,
   MessageCircle,
+  Database,
 } from "lucide-react"
 
 import {
@@ -117,10 +119,12 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const navigationItems: SidebarItem[] = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard, featureSlug: FEATURE_SLUGS.CRM_DASHBOARD },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: Users, featureSlug: FEATURE_SLUGS.CRM },
+    { title: "Transferências", url: `/${supabaseId}/lead-transfers`, icon: ArrowRightLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_LEAD_TRANSFERS },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
+    { title: "CDP", url: `/${supabaseId}/cdp`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.CDP },
   ];
 
   const emailItems: SidebarItem[] = [

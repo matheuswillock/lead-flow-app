@@ -362,3 +362,37 @@ export function getBuiltinEmailFunctionDefinition(
   const builtin = BUILTIN_EMAIL_FUNCTIONS.find((fn) => normalizeKey(fn.key) === normalizeKey(key))
   return builtin ? { ...builtin.definition } : null
 }
+
+const BUILTIN_RECIPIENT_KEYS = new Set(["nome", "nome_do_lead", "name", "email"])
+
+export function applyMasterTimezoneToTemplateVariables(
+  definitions: EmailTemplateVariableDefinition[],
+  timezone: string
+): EmailTemplateVariableDefinition[] {
+  return definitions.map((definition) => {
+    if (definition.kind !== "function" || !definition.definition) return definition
+    if (!definition.definition.operator.startsWith("current_")) return definition
+    if (definition.definition.timezone?.trim()) return definition
+    return {
+      ...definition,
+      definition: {
+        ...definition.definition,
+        timezone,
+      },
+    }
+  })
+}
+
+export function findUnresolvedEmailTemplateTokens(
+  subject: string,
+  html: string,
+  recipient: EmailTemplateRecipient,
+  globalDefaults?: Record<string, string | null | undefined> | null,
+  definitions?: EmailTemplateVariableDefinition[] | null
+): string[] {
+  const renderedSubject = interpolateEmailTemplate(subject, recipient, globalDefaults, definitions)
+  const renderedHtml = interpolateEmailTemplate(html, recipient, globalDefaults, definitions)
+  return extractTemplateVariableKeys(`${renderedSubject}\n${renderedHtml}`).filter(
+    (token) => !BUILTIN_RECIPIENT_KEYS.has(token.toLowerCase())
+  )
+}

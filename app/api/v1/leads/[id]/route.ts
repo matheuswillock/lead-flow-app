@@ -6,6 +6,7 @@ import { UpdateLeadRequestSchema } from "../DTO/requestToUpdateLead";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { invalidateLeadCache, invalidateLeadFullCache } from "@/lib/cache/invalidation";
+import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -64,15 +65,31 @@ export async function GET(
       return NextResponse.json(output, { status: 403 });
     }
 
-    if (!lead || lead.teamId !== teamId) {
-      console.warn("[LeadByIdRoute][GET] team mismatch ou lead inexistente", {
-        requestedLeadId: id,
-        requestTeamId: teamId,
-        leadTeamId: lead?.teamId ?? null,
-        profileId: profile.id,
-      });
+    if (!lead) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
+    }
+
+    if (lead.teamId !== teamId) {
+      const teamAccess = await getTeamAccess(request);
+      const canViewTransferredLead =
+        !teamAccess.error &&
+        isManagerOrMaster(teamAccess.access) &&
+        (await prisma.leadTransfer.findFirst({
+          where: { leadId: id, fromTeamId: teamId },
+          select: { id: true },
+        }));
+
+      if (!canViewTransferredLead) {
+        console.warn("[LeadByIdRoute][GET] team mismatch ou lead inexistente", {
+          requestedLeadId: id,
+          requestTeamId: teamId,
+          leadTeamId: lead.teamId,
+          profileId: profile.id,
+        });
+        const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+        return NextResponse.json(output, { status: 404 });
+      }
     }
 
     const output = await leadUseCase.getLeadById(supabaseId, id);

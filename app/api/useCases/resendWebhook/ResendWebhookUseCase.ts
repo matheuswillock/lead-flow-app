@@ -10,7 +10,17 @@ import {
   resendWebhookService,
   type ResendWebhookService,
 } from "@/app/api/services/resend/ResendWebhookService"
+import {
+  customerDataPlatformService,
+} from "@/app/api/services/cdp/CustomerDataPlatformService"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
+
+const ORPHAN_BACKFILL_EVENTS = new Set(["email.sent", "email.delivered"])
+const LOG_LOOKUP_RETRY_MS = 400
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export type HandleResendWebhookInput = {
   event: ResendWebhookPayload
@@ -52,10 +62,16 @@ export class ResendWebhookUseCase {
     if (eventType) {
       let log = await emailLogRepository.findByResendEmailId(resendEmailId)
 
-      if (!log && event.type === "email.sent") {
+      if (!log) {
+        await sleep(LOG_LOOKUP_RETRY_MS)
+        log = await emailLogRepository.findByResendEmailId(resendEmailId)
+      }
+
+      if (!log && ORPHAN_BACKFILL_EVENTS.has(event.type)) {
         await this.enrichmentService.createOrphanTeamEmailLogFromResendEmail(
           resendEmailId,
-          occurredAt
+          occurredAt,
+          event.data.tags
         )
         log = await emailLogRepository.findByResendEmailId(resendEmailId)
       }
@@ -69,6 +85,21 @@ export class ResendWebhookUseCase {
           resendEventType: event.type,
           svixId,
         })
+
+        try {
+          await customerDataPlatformService.handleEmailWebhookEvent({
+            teamId: log.teamId,
+            recipientEmail: log.recipientEmail,
+            recipientName: log.recipientName,
+            logId: log.id,
+            eventType,
+            occurredAt,
+            metadata,
+          })
+        } catch (cdpError) {
+          console.error("[ResendWebhookUseCase][cdp]", cdpError)
+        }
+
         return new Output(true, ["Evento de email processado"], [], { handled: true, target: "email_log" })
       }
     }

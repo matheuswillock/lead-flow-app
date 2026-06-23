@@ -2,8 +2,10 @@ import type { EmailEventType, EmailLogCategory, Prisma } from "@prisma/client"
 
 export type EmailLogWebhookRecord = {
   id: string
+  teamId: string
   status: string
   recipientEmail: string
+  recipientName: string | null
   campaignId: string | null
 }
 

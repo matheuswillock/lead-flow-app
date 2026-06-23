@@ -34,11 +34,19 @@ export function EventsTimeline({ events }: EventsTimelineProps) {
   )
 
   return (
-    <ol className="relative space-y-4 border-l border-border pl-5">
-      {sorted.map((event) => (
-        <li key={event.id} className="relative">
-          <span className="absolute -left-[1.4rem] flex h-5 w-5 items-center justify-center rounded-full bg-background border-2 border-primary" />
-          <div>
+    <ol>
+      {sorted.map((event, index) => (
+        <li
+          key={event.id}
+          className={`flex gap-3 ${index < sorted.length - 1 ? "pb-4" : ""}`}
+        >
+          <div className="flex w-5 shrink-0 flex-col items-center">
+            <span className="z-10 flex size-5 shrink-0 rounded-full border-2 border-primary bg-background" />
+            {index < sorted.length - 1 ? (
+              <span className="w-px flex-1 bg-border" aria-hidden />
+            ) : null}
+          </div>
+          <div className="min-w-0 flex-1 pt-0.5">
             <p className="text-sm font-medium">
               {EVENT_LABELS[event.type] ?? event.type}
             </p>

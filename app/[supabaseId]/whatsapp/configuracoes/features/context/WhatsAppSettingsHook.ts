@@ -8,8 +8,8 @@ import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage } from
 
 const buildRequestKey = (teamId: string): string => `whatsapp-settings:${teamId}`
 
-const QR_POLL_INTERVAL_MS = 5000
-const QR_POLL_MAX_TICKS = 24 // ~2 minutes before backing off
+const QR_POLL_INTERVAL_MS = 8000
+const QR_POLL_MAX_TICKS = 30 // ~4 minutes before backing off
 
 export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContextValue {
   const { activeTeamId } = useTeamContext()
@@ -24,6 +24,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
   const inFlightKeyRef = useRef<string | null>(null)
   const lastSuccessKeyRef = useRef<string | null>(null)
   const currentKeyRef = useRef<string | null>(null)
+  const lastQrCodeTextRef = useRef<string | null>(null)
 
   const loadData = useCallback(async () => {
     if (!activeTeamId) {
@@ -78,11 +79,8 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     void loadData()
   }, [loadData])
 
-  // While awaiting the QR scan, poll for a fresh config so the QR image and the
-  // connection status update without a manual refresh. Each new QR resets the
-  // window; polling stops on a terminal status, on unmount, or after the cap.
+  // Poll only connection status (GET config syncs with Evolution without regenerating QR).
   const status = config?.status
-  const qrCodeText = config?.qrCodeText
   useEffect(() => {
     if (status !== 'QR_READY' && status !== 'PENDING') return
 
@@ -97,7 +95,19 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }, QR_POLL_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
-  }, [status, qrCodeText, reload])
+  }, [status, reload])
+
+  useEffect(() => {
+    const qrCodeText = config?.qrCodeText
+    if (!qrCodeText) {
+      lastQrCodeTextRef.current = null
+      return
+    }
+    if (lastQrCodeTextRef.current && lastQrCodeTextRef.current !== qrCodeText) {
+      toast.info('QR Code atualizado. Escaneie o código mais recente em até 60 segundos.')
+    }
+    lastQrCodeTextRef.current = qrCodeText
+  }, [config?.qrCodeText])
 
   const connect = useCallback(async () => {
     if (!activeTeamId) {
@@ -109,7 +119,11 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       const result = await whatsAppSettingsService.createConfig(activeTeamId, supabaseId)
       setConfig(result)
       lastSuccessKeyRef.current = null
-      toast.success('WhatsApp conectado com sucesso')
+      if (result.status === 'CONNECTED') {
+        toast.success('WhatsApp conectado com sucesso')
+      } else {
+        toast.success('Integração iniciada. Escaneie o QR Code para conectar.')
+      }
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao conectar:', error)
       toast.error(error instanceof Error ? error.message : 'Não foi possível conectar o WhatsApp')

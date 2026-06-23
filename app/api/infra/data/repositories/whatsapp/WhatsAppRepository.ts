@@ -85,6 +85,13 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
   }
 
+  async findConfigById(id: string): Promise<WhatsAppConfigSelect | null> {
+    return prisma.teamWhatsAppConfig.findUnique({
+      where: { id },
+      select: CONFIG_SELECT,
+    })
+  }
+
   async createConfig(data: Prisma.TeamWhatsAppConfigCreateInput): Promise<WhatsAppConfigSelect> {
     return prisma.teamWhatsAppConfig.create({
       data,
@@ -101,6 +108,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
       data,
       select: CONFIG_SELECT,
     })
+  }
+
+  async deleteConfig(id: string): Promise<void> {
+    await prisma.teamWhatsAppConfig.delete({ where: { id } })
   }
 
   async findConversationById(conversationId: string): Promise<WhatsAppConversationSelect | null> {
