@@ -366,9 +366,18 @@ export function PublicLeadForm() {
                       size="sm"
                       variant={isTransfer ? "default" : "outline"}
                       onClick={() => {
-                        setIsTransfer((previous) => !previous);
-                        setMeetingDate(undefined);
-                        setCloserId("");
+                        setIsTransfer((previous) => {
+                          const next = !previous;
+                          if (next) {
+                            setCloserId("");
+                            setMeetingTitle("");
+                            setMeetingNotes("");
+                            setMeetingDate(undefined);
+                          } else {
+                            setMeetingDate(undefined);
+                          }
+                          return next;
+                        });
                       }}
                       disabled={isLoading}
                     >

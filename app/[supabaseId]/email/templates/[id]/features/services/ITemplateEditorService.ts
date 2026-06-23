@@ -1,6 +1,7 @@
-import type { Template, TemplateEditorDraft } from "../context/TemplateEditorTypes";
+import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../context/TemplateEditorTypes";
 
 export interface ITemplateEditorService {
+  getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }>;
   getTemplate(
     supabaseId: string,
     templateId: string,
@@ -43,4 +44,10 @@ export interface ITemplateEditorService {
     reviewNote: string,
     teamId?: string | null
   ): Promise<Template>;
+  sendTest(
+    supabaseId: string,
+    templateId: string,
+    teamId: string | null | undefined,
+    input: TemplateTestRequest
+  ): Promise<void>;
 }

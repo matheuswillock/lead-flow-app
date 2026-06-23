@@ -149,7 +149,7 @@ export function useLeadDetails(
   details: LeadDetails | null;
   loading: boolean;
   error: string | null;
-  refresh: (options?: { silent?: boolean }) => void;
+  refresh: (options?: { silent?: boolean }) => Promise<LeadDetails | null>;
 } {
   const [details, setDetails] = useState<LeadDetails | null>(null);
   const [loading, setLoading] = useState(false);
@@ -157,7 +157,7 @@ export function useLeadDetails(
   const latestKeyRef = useRef<string | null>(null);
 
   const load = useCallback(
-    async (options?: { force?: boolean; silent?: boolean }) => {
+    async (options?: { force?: boolean; silent?: boolean }): Promise<LeadDetails | null> => {
       const force = options?.force ?? false;
       const silent = options?.silent ?? false;
 
@@ -165,7 +165,7 @@ export function useLeadDetails(
         setDetails(null);
         setError(null);
         latestKeyRef.current = null;
-        return;
+        return null;
       }
 
       const key = buildCacheKey(supabaseId, teamId, leadId);
@@ -180,7 +180,7 @@ export function useLeadDetails(
         ) {
           setDetails(cached.details);
           setError(null);
-          return;
+          return cached.details;
         }
       }
 
@@ -197,17 +197,19 @@ export function useLeadDetails(
           force
         );
 
-        if (latestKeyRef.current !== key) return;
+        if (latestKeyRef.current !== key) return null;
 
         setDetails(result);
         setError(null);
+        return result;
       } catch (loadError) {
-        if (latestKeyRef.current !== key) return;
+        if (latestKeyRef.current !== key) return null;
         setError(
           loadError instanceof Error
             ? loadError.message
             : "Erro ao carregar detalhes do lead"
         );
+        return null;
       } finally {
         if (!silent && latestKeyRef.current === key) {
           setLoading(false);
@@ -229,7 +231,7 @@ export function useLeadDetails(
       if (leadId && teamId && supabaseId) {
         invalidateLeadDetailsCache(supabaseId, teamId, leadId);
       }
-      void load({ force: true, silent: options?.silent });
+      return load({ force: true, silent: options?.silent });
     },
     [load, leadId, teamId, supabaseId]
   );

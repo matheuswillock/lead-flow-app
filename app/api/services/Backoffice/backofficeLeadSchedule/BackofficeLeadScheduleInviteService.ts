@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type { Attachment, CreateEmailOptions } from "resend"
-import { assertResend } from "@/lib/email"
+import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type {
@@ -16,6 +16,9 @@ interface BackofficeScheduleEmailOptions {
   subject: string
   html: string
   attachments?: Attachment[]
+  idempotencyKey?: string
+  sourceType?: string
+  sourceId?: string
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -209,29 +212,82 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
     const resend = assertResend()
     const isTestMode = process.env.EMAIL_TEST_MODE === "true"
     const resendOwnerEmail = process.env.RESEND_OWNER_EMAIL || "matheuswillock@gmail.com"
-    const recipients = isTestMode ? [resendOwnerEmail] : options.to
-    const html = isTestMode
-      ? injectHtmlAfterBodyOpen(options.html, buildTestBannerSnippet(options.to))
-      : options.html
+    const { logResendDispatchesForRecipients } = await import("@/lib/email/log-profile-email-dispatches")
+    const recipients = options.to.filter(Boolean)
 
-    const payload: CreateEmailOptions = {
-      from: "Corretor Studio <no-reply@corretorstudio.com>",
-      to: recipients,
-      subject: isTestMode
-        ? `[TESTE - Para: ${options.to.join(", ")}] ${options.subject}`
-        : options.subject,
-      html,
-      attachments: options.attachments,
-      headers: {
-        Importance: "high",
-        Priority: "urgent",
-        "X-Priority": "1",
-        "X-MSMail-Priority": "High",
-      },
+    if (recipients.length === 0) {
+      return { success: false, data: null, error: "Nenhum destinatário informado" }
     }
 
-    const result = await resend.emails.send(payload)
-    return { success: true, data: result, error: null }
+    let lastResult: { success: boolean; data: unknown; error: string | null } = {
+      success: true,
+      data: null,
+      error: null,
+    }
+
+    for (const [index, recipient] of recipients.entries()) {
+      const deliveryRecipients = isTestMode ? [resendOwnerEmail] : [recipient]
+      const html = isTestMode
+        ? injectHtmlAfterBodyOpen(options.html, buildTestBannerSnippet([recipient]))
+        : options.html
+
+      const payload: CreateEmailOptions = {
+        from: "Corretor Studio <no-reply@corretorstudio.com>",
+        to: deliveryRecipients,
+        subject: isTestMode
+          ? `[TESTE - Para: ${recipient}] ${options.subject}`
+          : options.subject,
+        html,
+        attachments: options.attachments,
+        headers: {
+          Importance: "high",
+          Priority: "urgent",
+          "X-Priority": "1",
+          "X-MSMail-Priority": "High",
+        },
+      }
+
+      const idempotencyKey =
+        options.idempotencyKey && recipients.length > 1
+          ? `${options.idempotencyKey}/${index}`
+          : options.idempotencyKey
+
+      const result = await resend.emails.send(
+        payload,
+        idempotencyKey ? { idempotencyKey } : undefined
+      )
+
+      if (result.error) {
+        console.error("[BackofficeLeadScheduleInviteService][sendEmail]", result.error)
+        await logResendDispatchesForRecipients({
+          recipients: [recipient],
+          subject: options.subject,
+          category: "schedule_invite",
+          sourceType: options.sourceType,
+          sourceId: options.sourceId,
+          errorMessage: result.error.message || "Erro ao enviar e-mail",
+        })
+        return {
+          success: false,
+          data: null,
+          error: result.error.message || "Erro ao enviar e-mail",
+        }
+      }
+
+      const resendEmailId = result.data?.id ?? null
+      await logResendDispatchesForRecipients({
+        recipients: [recipient],
+        subject: options.subject,
+        category: "schedule_invite",
+        sourceType: options.sourceType,
+        sourceId: options.sourceId,
+        resendEmailId,
+      })
+
+      lastResult = { success: true, data: result, error: null }
+    }
+
+    return lastResult
   } catch (error) {
     console.error("[BackofficeLeadScheduleInviteService][sendEmail]", error)
     return {
@@ -270,6 +326,12 @@ export class BackofficeLeadScheduleInviteService
       if (participantRecipients.length > 0) {
         const participantResult = await sendBackofficeScheduleEmail({
           to: participantRecipients,
+          idempotencyKey: buildResendIdempotencyKey(
+            "schedule-invite-participants",
+            input.eventUid
+          ),
+          sourceType: "backoffice_leads_schedule",
+          sourceId: input.eventUid,
           subject: `Corretor Studio: ${input.leadName}`,
           html: buildEmailShell(
             "Você foi convidado para a demonstração do Corretor Studio",
@@ -299,6 +361,9 @@ export class BackofficeLeadScheduleInviteService
 
       const closerResult = await sendBackofficeScheduleEmail({
         to: [closerRecipient],
+        idempotencyKey: buildResendIdempotencyKey("schedule-invite-closer", input.eventUid),
+        sourceType: "backoffice_leads_schedule",
+        sourceId: input.eventUid,
         subject: `Corretor Studio: ${input.leadName}`,
         html: buildEmailShell(
           `Foi agendada uma apresentação para ${input.leadName}`,

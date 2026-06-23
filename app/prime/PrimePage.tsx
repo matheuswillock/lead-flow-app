@@ -12,14 +12,10 @@ const gradStyle: React.CSSProperties = {
 }
 
 const gradGold: React.CSSProperties = {
-  background: "linear-gradient(135deg, var(--prime-o4), #FFD180)",
+  background: "linear-gradient(135deg, var(--prime-gold-start), var(--prime-gold-end))",
   WebkitBackgroundClip: "text",
   WebkitTextFillColor: "transparent",
   backgroundClip: "text",
-}
-
-const gradBg: React.CSSProperties = {
-  background: "linear-gradient(135deg, var(--prime-o2), var(--prime-o3))",
 }
 
 function GradText({ children, gold }: { children: React.ReactNode; gold?: boolean }) {
@@ -178,6 +174,16 @@ export function PrimePage() {
           --prime-o2: color-mix(in srgb, var(--primary) 88%, oklch(0.15 0.15 28));
           --prime-o3: var(--primary);
           --prime-o4: color-mix(in srgb, var(--primary) 58%, white);
+          --prime-gold-start: color-mix(in oklab, var(--semantic-warning) 38%, var(--primary));
+          --prime-gold-end: color-mix(in oklab, var(--semantic-warning) 78%, var(--card));
+          --prime-meeting-sdr-start: color-mix(in oklab, var(--primary) 82%, var(--semantic-warning));
+          --prime-meeting-sdr-end: var(--primary);
+          --prime-meeting-broker-start: color-mix(in oklab, var(--prime-o2) 78%, var(--destructive));
+          --prime-meeting-broker-end: color-mix(in oklab, var(--primary) 86%, oklch(0.15 0.15 28));
+          --prime-meeting-1on1-start: color-mix(in oklab, var(--semantic-info) 92%, var(--card));
+          --prime-meeting-1on1-end: color-mix(in oklab, var(--semantic-info) 52%, oklch(0.2 0.04 250));
+          --prime-meeting-hotseat-start: color-mix(in oklab, var(--semantic-success) 76%, var(--card));
+          --prime-meeting-hotseat-end: color-mix(in oklab, var(--semantic-success) 48%, oklch(0.22 0.03 160));
           --prime-dark: oklch(0.11 0.04 33);
           --prime-dark2: oklch(0.17 0.055 33);
           --prime-bg: #F6F4F0;
@@ -281,7 +287,7 @@ export function PrimePage() {
           <div
             className="inline-flex items-center gap-[7px] text-[11px] font-medium tracking-[.04em] px-3.5 py-[5px] rounded-full mb-6 relative z-[2] border"
             style={{
-              background: "color-mix(in srgb, var(--prime-o2) 8%, #fff)",
+              background: "color-mix(in srgb, var(--prime-o2) 8%, var(--prime-bg2))",
               borderColor: "color-mix(in srgb, var(--prime-o2) 20%, transparent)",
               color: "var(--prime-o1)",
             }}
@@ -410,28 +416,28 @@ export function PrimePage() {
               day="Terça"
               title="Central de SDR"
               desc="Encontro semanal de suporte, treinamento e alinhamento exclusivo para SDRs. Aulas práticas, quebra de objeções ao vivo, análise de ligações e orientação de abordagem."
-              bg="linear-gradient(135deg,#E8601C,#FF6900)"
+              bg="linear-gradient(135deg, var(--prime-meeting-sdr-start), var(--prime-meeting-sdr-end))"
             />
             <MeetingRow
               abbr="sex"
               day="Sexta"
               title="Encontro de Corretores"
               desc="Encontro semanal da comunidade Backstage Club. Cases, estratégias, análise de mercado e atualizações do ecossistema PME com Bruno Marcelino e os facilitadores."
-              bg="linear-gradient(135deg,#C44010,#E8601C)"
+              bg="linear-gradient(135deg, var(--prime-meeting-broker-start), var(--prime-meeting-broker-end))"
             />
             <MeetingRow
               abbr="quin"
               day="15/15"
               title="One a One — Quinzenal"
               desc="Sessão individual com Bruno Marcelino a cada quinze dias. Diagnóstico da operação, ajuste de rota, revisão de métricas e estratégia personalizada para o seu negócio."
-              bg="linear-gradient(135deg,#1A6FC4,#0C447C)"
+              bg="linear-gradient(135deg, var(--prime-meeting-1on1-start), var(--prime-meeting-1on1-end))"
             />
             <MeetingRow
               abbr="men"
               day="Mensal"
               title="HotSeats"
               desc="Sessão mensal de análise ao vivo de operações reais. Um membro apresenta o cenário da sua corretora e recebe análise coletiva da comunidade e de Bruno."
-              bg="linear-gradient(135deg,#2B7A4B,#1A5233)"
+              bg="linear-gradient(135deg, var(--prime-meeting-hotseat-start), var(--prime-meeting-hotseat-end))"
             />
           </div>
         </div>

@@ -70,6 +70,7 @@ export function TemplatesContainer() {
     approving,
     rejecting,
     activeTab,
+    templateApprovalRequired,
     setActiveTab,
     activeRole,
     handleDelete,
@@ -171,6 +172,7 @@ export function TemplatesContainer() {
               key={template.id}
               template={template}
               activeRole={activeRole}
+              templateApprovalRequired={templateApprovalRequired}
               deleting={deleting}
               duplicating={duplicating}
               submitting={submitting}

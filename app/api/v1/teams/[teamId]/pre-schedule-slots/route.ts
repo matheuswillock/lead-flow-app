@@ -3,6 +3,9 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { LeadStatus } from "@prisma/client";
+import { DEFAULT_TZ, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
+
+const SLOT_MINUTES = 30;
 
 /**
  * GET /api/v1/teams/[teamId]/pre-schedule-slots?date=YYYY-MM-DD
@@ -33,8 +36,12 @@ export async function GET(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const startOfDay = new Date(`${dateParam}T00:00:00.000Z`);
-    const endOfDay = new Date(`${dateParam}T23:59:59.999Z`);
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { master: { select: { timezone: true } } },
+    });
+    const timezone = resolveTimezone(team?.master?.timezone) || DEFAULT_TZ;
+    const { start: startOfDay, end: endOfDay } = getDayRangeInTz(dateParam, timezone);
 
     const leads = await prisma.lead.findMany({
       where: {
@@ -58,8 +65,7 @@ export async function GET(
     const occupiedSlots = leads
       .map((lead) => {
         if (!lead.meetingDate) return null;
-        const d = lead.meetingDate;
-        return d.getUTCHours() * 60 + Math.floor(d.getUTCMinutes() / 30) * 30;
+        return Math.floor(getMinutesInTz(lead.meetingDate, timezone) / SLOT_MINUTES) * SLOT_MINUTES;
       })
       .filter((slot): slot is number => slot !== null);
 

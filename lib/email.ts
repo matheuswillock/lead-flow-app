@@ -11,3 +11,18 @@ export function assertResend(): Resend {
 	}
 	return resend
 }
+
+const RESEND_IDEMPOTENCY_KEY_MAX_LENGTH = 256
+
+/** Stable key for Resend retries — format: `<event-type>/<entity-id>` (max 256 chars). */
+export function buildResendIdempotencyKey(eventType: string, entityId: string): string {
+	const key = `${eventType}/${entityId}`
+	return key.length > RESEND_IDEMPOTENCY_KEY_MAX_LENGTH
+		? key.slice(0, RESEND_IDEMPOTENCY_KEY_MAX_LENGTH)
+		: key
+}
+
+/** Batch sends use `batch-<event-type>/<batch-id>` per Resend API contract. */
+export function buildResendBatchIdempotencyKey(eventType: string, batchId: string): string {
+	return buildResendIdempotencyKey(`batch-${eventType}`, batchId)
+}
