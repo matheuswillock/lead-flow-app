@@ -54,6 +54,7 @@ export interface BackofficeClientDetails {
     status: string | null
   }
   teams: BackofficeClientTeam[]
+  allTeams: Array<{ id: string; name: string }>
   teamsPagination: BackofficePagination
 }
 

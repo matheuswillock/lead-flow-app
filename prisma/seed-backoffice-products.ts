@@ -81,6 +81,19 @@ const PRODUCTS = [
     priceLifetime: null,
     isActive: true,
   },
+  {
+    slug: "whatsapp",
+    name: "WhatsApp",
+    description: "Módulo WhatsApp — inbox, conversas e envio de mensagens via Evolution API.",
+    type: BackofficeProductType.ADDON,
+    billingMode: BackofficeProductBillingMode.RECURRING,
+    priceMonthly: 39.9,
+    priceQuarterly: 34.9,
+    priceSemiannual: 29.9,
+    priceAnnual: 29.9,
+    priceLifetime: null,
+    isActive: true,
+  },
 ]
 
 // Features sem parentSlug são guarda-chuvas. Features com parentSlug herdam acesso do pai.
@@ -114,8 +127,29 @@ const FEATURES: Array<{
   { slug: "email-analytics",     name: "Analytics",      accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 150, parentSlug: "email", productSlug: "email" },
   { slug: "email-settings",     name: "Configurações",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 160, parentSlug: "email", productSlug: "email" },
 
+  // ── WhatsApp guarda-chuva ─────────────────────────────────────────────────
+  { slug: "whatsapp",          name: "WhatsApp",               accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true,  sortOrder: 170, productSlug: "whatsapp" },
+  { slug: "whatsapp-settings", name: "Configurações WhatsApp", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 175, parentSlug: "whatsapp", productSlug: "whatsapp" },
+
   // ── Integração guarda-chuva ───────────────────────────────────────────────
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, sortOrder: 200, productSlug: null },
+]
+
+const WHATSAPP_PAYMENT_RULES: Array<{
+  paymentMethod: BackofficePaymentMethod
+  billingCycle: BackofficeAdhesionBillingCycle
+  price: number
+  canInstallment: boolean
+  maxInstallments: number
+}> = [
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.monthly,    price: 39.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.quarterly,  price: 34.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.annual,     price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.monthly,    price: 45.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.quarterly,  price: 39.9, canInstallment: true,  maxInstallments: 3 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 34.9, canInstallment: true,  maxInstallments: 6 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.annual,     price: 34.9, canInstallment: true,  maxInstallments: 12 },
 ]
 
 const CRM_PAYMENT_RULES: Array<{
@@ -258,6 +292,18 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
   ]),
+  whatsapp: completeRuleSet([
+    { principal: "MASTER",    accessLevel: "FULL" },
+    { principal: "MANAGER",   accessLevel: "FULL" },
+    { principal: "BACKOFFICE",accessLevel: "FULL" },
+    { principal: "OPERATOR",  accessLevel: "FULL" },
+    { principal: "SDR",       accessLevel: "FULL" },
+    { principal: "CLOSER",    accessLevel: "FULL" },
+  ]),
+  "whatsapp-settings": completeRuleSet([
+    { principal: "MASTER",  accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
   integration: completeRuleSet([{ principal: "MASTER", accessLevel: "FULL" }]),
 }
 
@@ -373,6 +419,25 @@ async function main() {
       })
     }
     console.info("[seed:backoffice-products] Regras de pagamento CRM prontas")
+  }
+
+  // 7. WhatsApp payment rules
+  const whatsappProduct = await prisma.backofficeProduct.findUnique({ where: { slug: "whatsapp" } })
+  if (whatsappProduct) {
+    for (const rule of WHATSAPP_PAYMENT_RULES) {
+      await prisma.backofficeProductPaymentRule.upsert({
+        where: {
+          productId_paymentMethod_billingCycle: {
+            productId: whatsappProduct.id,
+            paymentMethod: rule.paymentMethod,
+            billingCycle: rule.billingCycle,
+          },
+        },
+        create: { productId: whatsappProduct.id, ...rule },
+        update: { price: rule.price, canInstallment: rule.canInstallment, maxInstallments: rule.maxInstallments },
+      })
+    }
+    console.info("[seed:backoffice-products] Regras de pagamento WhatsApp prontas")
   }
 
   console.info("[seed:backoffice-products] Concluído.")

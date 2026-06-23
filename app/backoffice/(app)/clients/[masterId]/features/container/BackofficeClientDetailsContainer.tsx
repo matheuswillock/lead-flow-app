@@ -906,7 +906,7 @@ export function BackofficeClientDetailsContainer() {
       <BackofficeAddMemberDialog
         open={addMemberOpen}
         masterId={masterId}
-        teams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
+        teams={details?.allTeams ?? []}
         service={service}
         onOpenChange={setAddMemberOpen}
         onSaved={reload}
@@ -924,7 +924,7 @@ export function BackofficeClientDetailsContainer() {
         open={editingTeam !== null}
         onOpenChange={(open) => { if (!open) setEditingTeam(null) }}
         team={editingTeam}
-        allTeams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
+        allTeams={details?.allTeams ?? []}
         masterId={masterId}
         service={service}
         onSuccess={() => { setEditingTeam(null); void reload() }}
