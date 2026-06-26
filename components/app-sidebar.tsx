@@ -123,7 +123,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
-    { title: "CDP", url: `/${supabaseId}/cdp`, icon: Database, featureSlug: FEATURE_SLUGS.CDP },
+    { title: "CDP", url: `/${supabaseId}/cdp`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.CDP },
   ];
 
   const emailItems: SidebarItem[] = [

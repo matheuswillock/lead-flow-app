@@ -102,6 +102,7 @@ export interface ILeadFormProps {
     currentUserIsCloser?: boolean;
     isFullSaveDisabled?: boolean;
     fullSaveDisabledReason?: string;
+    isCloserSelectDisabled?: boolean;
 }
 
 export function LeadForm({
@@ -139,6 +140,10 @@ export function LeadForm({
     fullSaveDisabledReason,
     onShareSchedule,
     onResendScheduleInvite,
+    closersToAssign,
+    closersLoading,
+    closersError,
+    isCloserSelectDisabled = false,
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -153,6 +158,10 @@ export function LeadForm({
     const sdrs = React.useMemo(
         () => sdrsToAssign ?? [],
         [sdrsToAssign]
+    );
+    const closers = React.useMemo(
+        () => closersToAssign ?? [],
+        [closersToAssign]
     );
     const responsibleUsers = React.useMemo(() => {
         const base = sdrs.length > 0 ? sdrs : usersToAssign ?? [];
@@ -207,6 +216,8 @@ export function LeadForm({
         !!scheduleSummary?.meetingDate &&
         scheduleSummary?.status === "scheduled" &&
         !isPreSchedule;
+    const canEditCloserField =
+        isEditMode && !!scheduleSummary?.meetingDate && !isPreSchedule;
 
     useEffect(() => {
         if (!initialData) {
@@ -507,12 +518,58 @@ export function LeadForm({
                                 <span className="text-foreground">Data/hora</span>
                                 <span>{new Date(scheduleSummary.meetingDate).toLocaleString("pt-BR")}</span>
                             </div>
-                            {!!scheduleSummary?.closerName && (
+                            {canEditCloserField ? (
+                                <FormField
+                                    control={form.control}
+                                    name="closerId"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Closer</FormLabel>
+                                            <Select
+                                                onValueChange={field.onChange}
+                                                value={field.value || ""}
+                                                disabled={
+                                                    isLoading ||
+                                                    isUpdating ||
+                                                    closersLoading ||
+                                                    isCloserSelectDisabled ||
+                                                    closers.length === 0
+                                                }
+                                            >
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue
+                                                            placeholder={
+                                                                closersLoading
+                                                                    ? "Carregando closers..."
+                                                                    : closers.length === 0
+                                                                      ? "Nenhum closer disponível"
+                                                                      : "Selecione o closer"
+                                                            }
+                                                        />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {closers.map((closer) => (
+                                                        <SelectItem key={closer.id} value={closer.id}>
+                                                            {closer.name || closer.email}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            {closersError ? (
+                                                <p className="text-xs text-destructive">{closersError}</p>
+                                            ) : null}
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            ) : scheduleSummary?.closerName ? (
                                 <div className="grid gap-1">
                                     <span className="text-foreground">Closer</span>
                                     <span>{scheduleSummary.closerName}</span>
                                 </div>
-                            )}
+                            ) : null}
                             {!!scheduleSummary?.meetingTitle && (
                                 <div className="grid gap-1">
                                     <span className="text-foreground">Título</span>

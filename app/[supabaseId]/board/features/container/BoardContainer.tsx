@@ -28,10 +28,15 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
+import { leadStatusTransitionClient } from "@/lib/services/leadStatusTransitionClient";
 import {
   SalesInfoRequirementDialog,
   type SalesInfoPayload,
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
+import {
+  CloserRequirementDialog,
+  type CloserRequirementPayload,
+} from "@/app/[supabaseId]/components/CloserRequirementDialog";
 
 interface BoardContainerProps {
   title?: string;
@@ -65,6 +70,9 @@ export function BoardContainer({
     pendingSalesInfoGateDrop,
     clearPendingSalesInfoGateDrop,
     applyPendingSalesInfoGateTransition,
+    pendingCloserGateDrop,
+    clearPendingCloserGateDrop,
+    applyPendingCloserGateTransition,
     pendingFinalizeDrop,
     clearPendingFinalizeDrop,
     data,
@@ -73,6 +81,8 @@ export function BoardContainer({
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
   const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
+  const [showCloserRequirementDialog, setShowCloserRequirementDialog] = useState(false);
+  const [closerRequirementSaving, setCloserRequirementSaving] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -176,6 +186,20 @@ export function BoardContainer({
     setShowSalesInfoDialog(true);
   }, [pendingSalesInfoGateDrop, pendingSalesInfoLead]);
 
+  const pendingCloserLead = useMemo(() => {
+    if (!pendingCloserGateDrop) return null;
+    return (
+      data[pendingCloserGateDrop.from]?.find((item) => item.id === pendingCloserGateDrop.leadId) ??
+      null
+    );
+  }, [data, pendingCloserGateDrop]);
+
+  useEffect(() => {
+    if (!pendingCloserGateDrop || !pendingCloserLead) return;
+    setSelectedLead(pendingCloserLead);
+    setShowCloserRequirementDialog(true);
+  }, [pendingCloserGateDrop, pendingCloserLead]);
+
   const handleNoShow = useCallback(
     async (lead: Lead) => {
       if (!supabaseId) {
@@ -183,31 +207,34 @@ export function BoardContainer({
         return;
       }
 
+      const loadingToast = toast.loading("Marcando no-show...");
+
       try {
-        const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "x-supabase-user-id": supabaseId,
-            "x-team-id": activeTeamId || "",
-          },
-          body: JSON.stringify({ status: "no_show" }),
+        const transitionResult = await leadStatusTransitionClient.executeStatusTransition({
+          leadId: lead.id,
+          targetStatus: "no_show",
+          supabaseId,
+          teamId: activeTeamId,
         });
 
-        const result = await response.json().catch(() => null);
+        const { output, transition } = transitionResult;
 
-        if (!response.ok || !result?.isValid) {
-          throw new Error(result?.errorMessages?.join(", ") || "Erro ao marcar no-show");
+        if (!transition.allowed || !output.isValid) {
+          throw new Error(
+            output.errorMessages?.[0] || "Não foi possível marcar no-show."
+          );
         }
 
         const payload =
-          result.result && typeof result.result === "object"
-            ? (result.result as Partial<Lead>)
+          output.result && typeof output.result === "object"
+            ? (output.result as Partial<Lead>)
             : {};
         patchLead(lead.id, { ...payload, status: "no_show" });
-        toast.success("Lead marcado como no-show");
+        toast.success("Lead marcado como no-show", { id: loadingToast });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
+        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show", {
+          id: loadingToast,
+        });
       }
     },
     [activeTeamId, patchLead, supabaseId]
@@ -292,6 +319,17 @@ export function BoardContainer({
 
     setShowSalesInfoDialog(false);
     clearPendingSalesInfoGateDrop();
+    setSelectedLead(null);
+  };
+
+  const handleCloserRequirementSave = async (payload: CloserRequirementPayload) => {
+    setCloserRequirementSaving(true);
+    const updated = await applyPendingCloserGateTransition(payload);
+    setCloserRequirementSaving(false);
+    if (!updated) return;
+
+    setShowCloserRequirementDialog(false);
+    clearPendingCloserGateDrop();
     setSelectedLead(null);
   };
 
@@ -481,6 +519,24 @@ export function BoardContainer({
           isSaving={salesInfoSaving}
           initialValues={pendingSalesInfoGateDrop.currentSalesInfo}
           missingFields={pendingSalesInfoGateDrop.missingFields}
+        />
+      )}
+
+      {pendingCloserGateDrop && selectedLead && (
+        <CloserRequirementDialog
+          open={showCloserRequirementDialog}
+          onOpenChange={(open) => {
+            setShowCloserRequirementDialog(open);
+            if (!open) {
+              clearPendingCloserGateDrop();
+              setSelectedLead(null);
+            }
+          }}
+          onSave={handleCloserRequirementSave}
+          closers={closers}
+          leadName={selectedLead.name}
+          isSaving={closerRequirementSaving}
+          initialCloserId={pendingCloserGateDrop.currentCloserId}
         />
       )}
 

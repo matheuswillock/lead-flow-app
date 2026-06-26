@@ -90,37 +90,44 @@ export class CdpRepository {
           normalizedName: input.normalizedName,
         },
       },
-      select: { id: true, primaryEmail: true, normalizedPrimaryEmail: true, primaryDocument: true, normalizedPrimaryDocument: true },
+      select: {
+        id: true,
+        primaryEmail: true,
+        normalizedPrimaryEmail: true,
+        primaryDocument: true,
+        normalizedPrimaryDocument: true,
+      },
     })
 
-    if (!existing) {
-      return prisma.customerProfile.create({
-        data: {
+    return prisma.customerProfile.upsert({
+      where: {
+        teamId_normalizedPhone_normalizedName: {
           teamId: input.teamId,
-          displayName: input.displayName,
-          normalizedName: input.normalizedName,
-          displayPhone: input.displayPhone,
           normalizedPhone: input.normalizedPhone,
-          primaryEmail: input.primaryEmail ?? null,
-          normalizedPrimaryEmail: input.normalizedPrimaryEmail ?? null,
-          primaryDocument: input.primaryDocument ?? null,
-          normalizedPrimaryDocument: input.normalizedPrimaryDocument ?? null,
-          lastSeenAt: input.lastSeenAt ?? new Date(),
+          normalizedName: input.normalizedName,
         },
-      })
-    }
-
-    return prisma.customerProfile.update({
-      where: { id: existing.id },
-      data: {
+      },
+      create: {
+        teamId: input.teamId,
+        displayName: input.displayName,
+        normalizedName: input.normalizedName,
+        displayPhone: input.displayPhone,
+        normalizedPhone: input.normalizedPhone,
+        primaryEmail: input.primaryEmail ?? null,
+        normalizedPrimaryEmail: input.normalizedPrimaryEmail ?? null,
+        primaryDocument: input.primaryDocument ?? null,
+        normalizedPrimaryDocument: input.normalizedPrimaryDocument ?? null,
+        lastSeenAt: input.lastSeenAt ?? new Date(),
+      },
+      update: {
         displayName: input.displayName || undefined,
         displayPhone: input.displayPhone || undefined,
-        primaryEmail: input.primaryEmail ?? existing.primaryEmail ?? undefined,
+        primaryEmail: input.primaryEmail ?? existing?.primaryEmail ?? undefined,
         normalizedPrimaryEmail:
-          input.normalizedPrimaryEmail ?? existing.normalizedPrimaryEmail ?? undefined,
-        primaryDocument: input.primaryDocument ?? existing.primaryDocument ?? undefined,
+          input.normalizedPrimaryEmail ?? existing?.normalizedPrimaryEmail ?? undefined,
+        primaryDocument: input.primaryDocument ?? existing?.primaryDocument ?? undefined,
         normalizedPrimaryDocument:
-          input.normalizedPrimaryDocument ?? existing.normalizedPrimaryDocument ?? undefined,
+          input.normalizedPrimaryDocument ?? existing?.normalizedPrimaryDocument ?? undefined,
         lastSeenAt: input.lastSeenAt ?? new Date(),
       },
     })

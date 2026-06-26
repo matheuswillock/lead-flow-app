@@ -34,6 +34,7 @@ const gateTypeSchema = z.enum([
   "require_trigger_loss_reason",
   "require_email_for_online_schedule",
   "require_finalize_contract_flow",
+  "require_closer",
 ]);
 
 const updateGateSchema = z.object({

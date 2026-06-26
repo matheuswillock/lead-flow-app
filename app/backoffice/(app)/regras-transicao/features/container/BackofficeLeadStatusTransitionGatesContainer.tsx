@@ -97,6 +97,7 @@ export function BackofficeLeadStatusTransitionGatesContainer() {
         return "exemptTargetStatuses";
       case "require_sales_info":
       case "require_finalize_contract":
+      case "require_closer":
         return "targetStatuses";
       default:
         return null;

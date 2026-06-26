@@ -149,6 +149,7 @@ require_trigger_future_sale require_trigger_future_sale
 require_trigger_loss_reason require_trigger_loss_reason
 require_email_for_online_schedule require_email_for_online_schedule
 require_finalize_contract_flow require_finalize_contract_flow
+require_closer require_closer
         }
     
 

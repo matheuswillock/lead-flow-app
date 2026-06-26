@@ -9,6 +9,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { cdpService } from "@/app/[supabaseId]/cdp/features/services/CdpService"
 
 const PAGE_SIZE = 20
 const service = new CampanhasService()
@@ -230,17 +231,20 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardScheduledAt("")
     setWizardOpen(true)
     try {
-      const [tmpl, lists, segmentsRes] = await Promise.all([
+      const [tmpl, lists] = await Promise.all([
         service.getTemplates(supabaseId, activeTeamId),
         service.getContactLists(supabaseId, activeTeamId),
-        fetch("/api/v1/cdp/segments", { cache: "no-store" }).then((res) => res.json()),
       ])
       setTemplates(tmpl)
       setContactLists(lists)
-      if (segmentsRes?.isValid) {
-        const segments = (segmentsRes.result as { segments?: CdpSegmentOption[] })?.segments ?? []
-        setCdpSegments(segments)
-      } else {
+      try {
+        if (activeTeamId) {
+          const segmentsRes = await cdpService.listSegments(supabaseId, activeTeamId)
+          setCdpSegments(segmentsRes.segments as CdpSegmentOption[])
+        } else {
+          setCdpSegments([])
+        }
+      } catch {
         setCdpSegments([])
       }
     } catch (err) {

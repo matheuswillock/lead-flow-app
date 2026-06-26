@@ -11,7 +11,8 @@ export type LeadStatusTransitionGateBlockerType =
   | "future_sale_trigger"
   | "loss_reason_trigger"
   | "validation_error"
-  | "email_required";
+  | "email_required"
+  | "closer_required";
 
 export type LeadStatusTransitionGateRow = {
   id: string;
@@ -53,6 +54,10 @@ export type RequireFinalizeContractFlowConfig = {
   validateModeOnly?: boolean;
 };
 
+export type RequireCloserConfig = {
+  targetStatuses: LeadStatus[];
+};
+
 export const GATE_TYPE_LABELS: Record<BackofficeLeadTransitionGateType, string> = {
   allowed_target_statuses: "Destinos permitidos (whitelist)",
   block_targets_when_field_equals: "Bloquear destinos quando campo igual",
@@ -65,6 +70,7 @@ export const GATE_TYPE_LABELS: Record<BackofficeLeadTransitionGateType, string> 
   require_trigger_loss_reason: "Exigir motivo de perda",
   require_email_for_online_schedule: "Exigir e-mail para agendamento online",
   require_finalize_contract_flow: "Usar fluxo de fechamento de contrato",
+  require_closer: "Exigir closer do time",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -125,6 +131,14 @@ export function parseRequireFinalizeContractFlowConfig(
   if (!isRecord(config)) return {};
   return {
     validateModeOnly: config.validateModeOnly === true,
+  };
+}
+
+export function parseRequireCloserConfig(config: unknown): RequireCloserConfig {
+  if (!isRecord(config)) return { targetStatuses: ["offerSubmission"] };
+  const targetStatuses = readStringArray(config.targetStatuses);
+  return {
+    targetStatuses: targetStatuses.length > 0 ? targetStatuses : ["offerSubmission"],
   };
 }
 

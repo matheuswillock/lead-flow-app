@@ -80,6 +80,7 @@ type LeadStatusTransitionBlockerType =
   | "validation_error"
   | "email_required"
   | "lead_info_required"
+  | "closer_required"
   | "none";
 
 const defaultLeadRepository = new LeadRepository();
@@ -1102,7 +1103,7 @@ export class LeadUseCase implements ILeadUseCase {
         ...extra,
       });
 
-      if (mode === "validate" && status === LeadStatus.contract_finalized) {
+      if (status === LeadStatus.contract_finalized) {
         const earlyGate = await leadStatusTransitionGateEvaluatorService.evaluate({
           lead: existingLead,
           targetStatus: status,
@@ -1334,24 +1335,6 @@ export class LeadUseCase implements ILeadUseCase {
       // Atualizar o status do lead
       const lead = await this.leadRepository.updateStatus(id, status, statusUpdateExtraData);
 
-      // Se o status for contract_finalized, criar registro na tabela LeadFinalized
-      if (status === LeadStatus.contract_finalized) {
-        const createdAt = new Date(existingLead.createdAt);
-        const finalizedAt = new Date();
-        const durationInDays = Math.floor(
-          (finalizedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        await leadFinalizedRepository.create({
-          leadId: id,
-          finalizedAt: finalizedAt,
-          startDateAt: finalizedAt,
-          duration: durationInDays,
-          amount: Number(existingLead.currentValue || 0),
-          notes: `Venda finalizada. Valor: R$ ${existingLead.currentValue || 0}`,
-        });
-      }
-
       if (existingLead.status && existingLead.status !== status) {
         const fromLabel = getStatusLabel(existingLead.status);
         const toLabel = getStatusLabel(status);
@@ -1441,9 +1424,6 @@ export class LeadUseCase implements ILeadUseCase {
         }
 
         if (existingLead.status) {
-          // #region agent log
-          fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:updateLeadStatus:triggerAlert',message:'scheduling handleOfferSubmissionAlert from updateLeadStatus',data:{leadId:id,previousStatus:existingLead.status,nextStatus:status},timestamp:Date.now(),hypothesisId:'H4,H5'})}).catch(()=>{});
-          // #endregion
           await this.handleOfferSubmissionAlert({
             lead,
             previousStatus: existingLead.status,
@@ -2159,24 +2139,15 @@ export class LeadUseCase implements ILeadUseCase {
     actorProfileId: string;
     actorName: string;
   }) {
-    // #region agent log
-    fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:entry',message:'handleOfferSubmissionAlert invoked',data:{leadId:input.lead?.id,previousStatus:input.previousStatus,nextStatus:input.nextStatus,teamId:input.lead?.teamId??null,closerId:input.lead?.closerId??null},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
-    // #endregion
     if (
       input.nextStatus !== LeadStatus.offerSubmission
       || input.previousStatus === LeadStatus.offerSubmission
     ) {
-      // #region agent log
-      fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:earlyExit',message:'skipped alert guard',data:{previousStatus:input.previousStatus,nextStatus:input.nextStatus},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
     const teamId = input.lead.teamId as string | null;
     if (!teamId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:noTeamId',message:'skipped no teamId',data:{leadId:input.lead?.id},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
@@ -2210,9 +2181,6 @@ export class LeadUseCase implements ILeadUseCase {
       ]);
 
       if (!team?.masterId) {
-        // #region agent log
-        fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:noMasterId',message:'skipped no team.masterId',data:{teamId,hasTeam:!!team},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         return;
       }
 
@@ -2229,10 +2197,6 @@ export class LeadUseCase implements ILeadUseCase {
         [masterProfile?.email],
         input.lead.email
       );
-
-      // #region agent log
-      fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:recipients',message:'resolved proposal alert recipients',data:{teamId,masterId:team.masterId,backofficeCount:backofficeMembers.length,hasCloser:!!input.lead.closerId,hasMasterEmail:!!masterProfile?.email,toCount:emailRecipients.to.length,ccCount:emailRecipients.cc.length,toEmptyWithCcOnly:emailRecipients.to.length===0&&emailRecipients.cc.length>0},timestamp:Date.now(),hypothesisId:'H1,H3'})}).catch(()=>{});
-      // #endregion
 
       const sdrName = input.lead.assignee?.fullName || input.lead.assignee?.email || "Nao informado";
       const closerName = input.lead.closer?.fullName || input.lead.closer?.email || "Nao informado";
@@ -2260,19 +2224,9 @@ export class LeadUseCase implements ILeadUseCase {
               emailResult?.error
             );
           }
-          // #region agent log
-          fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:emailResult',message:'proposal pending email send result',data:{leadId:input.lead.id,success:!!(emailResult as {success?:boolean})?.success,error:(emailResult as {error?:string})?.error??null,toCount:emailRecipients.to.length,ccCount:emailRecipients.cc.length},timestamp:Date.now(),hypothesisId:'H1,H6'})}).catch(()=>{});
-          // #endregion
         } catch (emailError) {
-          // #region agent log
-          fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:emailThrow',message:'proposal pending email threw',data:{leadId:input.lead.id,error:emailError instanceof Error?emailError.message:String(emailError)},timestamp:Date.now(),hypothesisId:'H6'})}).catch(()=>{});
-          // #endregion
           console.error("Erro ao enviar e-mail de proposta pendente:", emailError);
         }
-      } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7301/ingest/48dee14c-43ab-444a-b1e9-1c47df61bdb7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3259c3'},body:JSON.stringify({sessionId:'3259c3',location:'LeadUseCase.ts:handleOfferSubmissionAlert:noRecipients',message:'no email recipients resolved',data:{leadId:input.lead.id,backofficeCount:backofficeMembers.length,hasCloser:!!input.lead.closerId,hasMasterEmail:!!masterProfile?.email},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
       }
 
       const notificationRecipients = Array.from(

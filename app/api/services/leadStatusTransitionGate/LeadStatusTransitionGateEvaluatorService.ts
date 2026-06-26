@@ -9,6 +9,7 @@ import {
   gateMatchesTransition,
   parseAllowedTargetStatusesConfig,
   parseBlockTargetsWhenFieldEqualsConfig,
+  parseRequireCloserConfig,
   parseRequireFinalizeContractConfig,
   parseRequireFinalizeContractFlowConfig,
   parseRequireMeetingHealdOnExitConfig,
@@ -45,7 +46,8 @@ export type TransitionGateBlockerType =
   | "future_sale_trigger"
   | "loss_reason_trigger"
   | "validation_error"
-  | "email_required";
+  | "email_required"
+  | "closer_required";
 
 export type TransitionGateEvaluationBlock = {
   errorMessages: string[];
@@ -74,6 +76,7 @@ function asBlockerType(value: string): TransitionGateBlockerType {
     "loss_reason_trigger",
     "validation_error",
     "email_required",
+    "closer_required",
   ];
   return allowed.includes(value as TransitionGateBlockerType)
     ? (value as TransitionGateBlockerType)
@@ -147,8 +150,6 @@ export class LeadStatusTransitionGateEvaluatorService {
 
     switch (gate.gateType) {
       case "require_finalize_contract_flow": {
-        const config = parseRequireFinalizeContractFlowConfig(gate.config);
-        if (config.validateModeOnly && mode !== "validate") return null;
         if (targetStatus !== "contract_finalized") return null;
         return {
           errorMessages: [message],
@@ -225,6 +226,26 @@ export class LeadStatusTransitionGateEvaluatorService {
             transition: createTransition(false, blockerType, {
               missingFields,
               currentSalesInfo,
+            }),
+          },
+        };
+      }
+
+      case "require_closer": {
+        const config = parseRequireCloserConfig(gate.config);
+        if (!config.targetStatuses.includes(targetStatus)) return null;
+        if (lead.closerId) return null;
+
+        return {
+          errorMessages: [message],
+          blockerType: "closer_required",
+          result: {
+            requiresCloser: true,
+            sourceStatus: lead.status,
+            targetStatus,
+            currentCloserId: null,
+            transition: createTransition(false, "closer_required", {
+              currentCloserId: null,
             }),
           },
         };

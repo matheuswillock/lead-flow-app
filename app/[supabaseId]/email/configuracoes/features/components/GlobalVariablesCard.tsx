@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useParams } from "next/navigation"
+import { useTeamContext } from "@/app/context/TeamContext"
+import { cdpService } from "@/app/[supabaseId]/cdp/features/services/CdpService"
 import { Braces, ChevronDown, ChevronUp, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react"
 import {
   AlertDialog,
@@ -47,16 +50,19 @@ function sanitizeKey(value: string) {
 }
 
 function useCdpFieldOptions() {
+  const params = useParams()
+  const supabaseId = params.supabaseId as string
+  const { activeTeamId } = useTeamContext()
   const [fields, setFields] = useState<CdpFieldOption[]>([])
 
   useEffect(() => {
+    if (!supabaseId || !activeTeamId) return
+
     let active = true
-    void fetch("/api/v1/cdp/available-fields", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!active || !json.isValid) return
-        const items = (json.result as { fields?: CdpFieldOption[] })?.fields ?? []
-        setFields(items)
+    void cdpService
+      .listAvailableFields(supabaseId, activeTeamId)
+      .then((items) => {
+        if (active) setFields(items)
       })
       .catch(() => {
         if (active) setFields([])
@@ -64,7 +70,7 @@ function useCdpFieldOptions() {
     return () => {
       active = false
     }
-  }, [])
+  }, [activeTeamId, supabaseId])
 
   const grouped = useMemo(() => {
     const groups = new Map<string, CdpFieldOption[]>()
@@ -82,16 +88,26 @@ function useCdpFieldOptions() {
 type CdpProfileOption = { id: string; displayName: string; primaryEmail: string | null }
 
 function useCdpProfileOptions() {
+  const params = useParams()
+  const supabaseId = params.supabaseId as string
+  const { activeTeamId } = useTeamContext()
   const [profiles, setProfiles] = useState<CdpProfileOption[]>([])
 
   useEffect(() => {
+    if (!supabaseId || !activeTeamId) return
+
     let active = true
-    void fetch("/api/v1/cdp/profiles?page=1&pageSize=20", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!active || !json.isValid) return
-        const items = (json.result as { items?: CdpProfileOption[] })?.items ?? []
-        setProfiles(items)
+    void cdpService
+      .listProfiles(supabaseId, activeTeamId, { page: 1, pageSize: 20 })
+      .then((result) => {
+        if (!active) return
+        setProfiles(
+          result.items.map((item) => ({
+            id: item.id,
+            displayName: item.displayName,
+            primaryEmail: item.primaryEmail,
+          }))
+        )
       })
       .catch(() => {
         if (active) setProfiles([])
@@ -99,12 +115,15 @@ function useCdpProfileOptions() {
     return () => {
       active = false
     }
-  }, [])
+  }, [activeTeamId, supabaseId])
 
   return profiles
 }
 
 function CdpInterpolationPreview({ variableKey }: { variableKey: string }) {
+  const params = useParams()
+  const supabaseId = params.supabaseId as string
+  const { activeTeamId } = useTeamContext()
   const profiles = useCdpProfileOptions()
   const [profileId, setProfileId] = useState("")
   const [open, setOpen] = useState(false)
@@ -145,20 +164,18 @@ function CdpInterpolationPreview({ variableKey }: { variableKey: string }) {
             variant="outline"
             disabled={!profileId || loading}
             onClick={() => {
+              if (!supabaseId || !activeTeamId) return
               setLoading(true)
-              void fetch("/api/v1/cdp/interpolation-preview", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ profileId, variableKeys: [variableKey] }),
-              })
-                .then((res) => res.json())
-                .then((json) => {
-                  if (!json.isValid) {
-                    setResolvedValue(null)
-                    return
-                  }
-                  const values = (json.result as { values?: Record<string, string> })?.values ?? {}
-                  setResolvedValue(values[variableKey] ?? "")
+              void cdpService
+                .previewInterpolation(supabaseId, activeTeamId, {
+                  profileId,
+                  variableKeys: [variableKey],
+                })
+                .then((result) => {
+                  setResolvedValue(result.values[variableKey] ?? "")
+                })
+                .catch(() => {
+                  setResolvedValue(null)
                 })
                 .finally(() => setLoading(false))
             }}

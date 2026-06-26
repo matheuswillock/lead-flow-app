@@ -12,6 +12,7 @@ export type LeadStatusTransitionBlockerType =
   | "validation_error"
   | "email_required"
   | "lead_info_required"
+  | "closer_required"
   | "none";
 
 export interface LeadStatusTransitionResultPayload {
@@ -41,6 +42,7 @@ export interface LeadStatusTransitionResultPayload {
       contractDueDate: string | null;
       soldPlan: string | null;
     };
+    currentCloserId?: string | null;
     message?: string;
   };
   [key: string]: unknown;

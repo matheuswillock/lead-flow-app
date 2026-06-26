@@ -22,6 +22,7 @@ import type {
   SalesInfoInitialValues,
   SalesInfoPayload,
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
+import type { CloserRequirementPayload } from "@/app/[supabaseId]/components/CloserRequirementDialog";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
   createLeadTimeRulesVersion,
@@ -93,6 +94,14 @@ type PendingSalesInfoGateDrop = {
   currentSalesInfo: SalesInfoInitialValues;
 };
 
+type PendingCloserGateDrop = {
+  leadId: string;
+  from: ColumnKey;
+  to: ColumnKey;
+  trigger?: LeadStatusTransitionTrigger;
+  currentCloserId: string | null;
+};
+
 interface IBoardContextState {
   isLoading: boolean;
   query: string;
@@ -151,6 +160,9 @@ interface IBoardContextState {
   pendingSalesInfoGateDrop: PendingSalesInfoGateDrop | null;
   clearPendingSalesInfoGateDrop: () => void;
   applyPendingSalesInfoGateTransition: (payload: SalesInfoPayload) => Promise<boolean>;
+  pendingCloserGateDrop: PendingCloserGateDrop | null;
+  clearPendingCloserGateDrop: () => void;
+  applyPendingCloserGateTransition: (payload: CloserRequirementPayload) => Promise<boolean>;
   pendingFinalizeDrop: PendingFinalizeDrop | null;
   clearPendingFinalizeDrop: () => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
@@ -250,6 +262,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     useState<PendingMeetingHealdGateDrop | null>(null);
   const [pendingSalesInfoGateDrop, setPendingSalesInfoGateDrop] =
     useState<PendingSalesInfoGateDrop | null>(null);
+  const [pendingCloserGateDrop, setPendingCloserGateDrop] =
+    useState<PendingCloserGateDrop | null>(null);
   const [transitionGates, setTransitionGates] = useState<ProductLeadStatusTransitionGate[]>([]);
 
   // Sync external CRM filters into board filter state whenever they change.
@@ -843,6 +857,28 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
             return output;
           }
 
+          if (transition.blockerType === "closer_required") {
+            const sourceLead =
+              fallbackContext
+                ? dataRef.current[fallbackContext.from]?.find((lead) => lead.id === leadId) ?? null
+                : null;
+
+            if (fallbackContext) {
+              setPendingCloserGateDrop({
+                leadId,
+                from: fallbackContext.from,
+                to: fallbackContext.to,
+                trigger: trigger ? { ...trigger } : undefined,
+                currentCloserId: sourceLead?.closerId ?? null,
+              });
+            } else {
+              setPendingCloserGateDrop(null);
+            }
+
+            toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+            return output;
+          }
+
           if (
             transition.blockerType === "confirmation" ||
             transition.blockerType === "future_sale_trigger" ||
@@ -1067,6 +1103,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setPendingSalesInfoGateDrop(null);
   }, []);
 
+  const clearPendingCloserGateDrop = useCallback(() => {
+    setPendingCloserGateDrop(null);
+  }, []);
+
   const clearPendingFinalizeDrop = useCallback(() => {
     setPendingFinalizeDrop(null);
   }, []);
@@ -1157,6 +1197,65 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       }
     },
     [activeTeamId, moveLeadBetweenColumns, patchLead, pendingSalesInfoGateDrop, supabaseId, updateLeadStatusInAPI]
+  );
+
+  const applyPendingCloserGateTransition = useCallback(
+    async (payload: CloserRequirementPayload): Promise<boolean> => {
+      if (!pendingCloserGateDrop) return false;
+
+      try {
+        const response = await fetch(`/api/v1/leads/${pendingCloserGateDrop.leadId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify({ closerId: payload.closerId }),
+        });
+
+        const closerResult = await response.json().catch(() => null);
+        if (!response.ok || !closerResult?.isValid) {
+          throw new Error(
+            closerResult?.errorMessages?.[0] || "Erro ao salvar closer do lead."
+          );
+        }
+
+        const closerPatch =
+          closerResult.result && typeof closerResult.result === "object"
+            ? (closerResult.result as Partial<Lead>)
+            : {};
+        patchLead(pendingCloserGateDrop.leadId, closerPatch);
+
+        const statusResult = await updateLeadStatusInAPI(
+          pendingCloserGateDrop.leadId,
+          pendingCloserGateDrop.to,
+          pendingCloserGateDrop.trigger,
+          { from: pendingCloserGateDrop.from, to: pendingCloserGateDrop.to }
+        );
+        if (!statusResult?.isValid) return false;
+
+        const statusPatch =
+          statusResult.result && typeof statusResult.result === "object"
+            ? (statusResult.result as Partial<Lead>)
+            : {};
+
+        moveLeadBetweenColumns(
+          pendingCloserGateDrop.leadId,
+          pendingCloserGateDrop.from,
+          pendingCloserGateDrop.to,
+          statusPatch
+        );
+        setPendingCloserGateDrop(null);
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao salvar closer do lead."
+        );
+        return false;
+      }
+    },
+    [activeTeamId, moveLeadBetweenColumns, patchLead, pendingCloserGateDrop, supabaseId, updateLeadStatusInAPI]
   );
 
   const applyPendingStatusTriggerTransition = useCallback(
@@ -1358,6 +1457,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingSalesInfoGateDrop,
       clearPendingSalesInfoGateDrop,
       applyPendingSalesInfoGateTransition,
+      pendingCloserGateDrop,
+      clearPendingCloserGateDrop,
+      applyPendingCloserGateTransition,
       pendingFinalizeDrop,
       clearPendingFinalizeDrop,
       finalizeContract,
@@ -1405,6 +1507,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingSalesInfoGateDrop,
       clearPendingSalesInfoGateDrop,
       applyPendingSalesInfoGateTransition,
+      pendingCloserGateDrop,
+      clearPendingCloserGateDrop,
+      applyPendingCloserGateTransition,
       pendingFinalizeDrop,
       clearPendingFinalizeDrop,
       finalizeContract,

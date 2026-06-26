@@ -71,6 +71,10 @@ import {
   type SalesInfoPayload,
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 import {
+  CloserRequirementDialog,
+  type CloserRequirementPayload,
+} from "@/app/[supabaseId]/components/CloserRequirementDialog";
+import {
   LeadInfoRequirementDialog,
   type LeadInfoInitialValues,
   type LeadInfoPayload,
@@ -111,6 +115,12 @@ type PendingSalesInfoGate = {
   trigger?: LeadStatusTransitionTrigger;
   missingFields: MissingSalesField[];
   currentSalesInfo: SalesInfoInitialValues;
+};
+
+type PendingCloserGate = {
+  status: string;
+  trigger?: LeadStatusTransitionTrigger;
+  currentCloserId: string | null;
 };
 
 type PendingLeadInfoGate = {
@@ -209,6 +219,9 @@ export default function LeadDialog({
   const [salesInfoDialogOpen, setSalesInfoDialogOpen] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
+  const [closerRequirementDialogOpen, setCloserRequirementDialogOpen] = useState(false);
+  const [closerRequirementSaving, setCloserRequirementSaving] = useState(false);
+  const [pendingCloserGate, setPendingCloserGate] = useState<PendingCloserGate | null>(null);
   const [leadInfoDialogOpen, setLeadInfoDialogOpen] = useState(false);
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
@@ -1469,6 +1482,50 @@ export default function LeadDialog({
         );
 
         const updateData = transformToUpdateRequest(data, saveAsDraft);
+        const previousCloserId = currentLead.closerId ?? "";
+        const nextCloserId = data.closerId ?? "";
+        const closerChanged = nextCloserId !== previousCloserId;
+        const hasScheduledMeeting =
+          !!currentLead.meetingDate && currentLead.isTransfer !== true;
+        const shouldRescheduleCloser =
+          closerChanged &&
+          hasScheduledMeeting &&
+          !saveAsDraft &&
+          (currentLead.status === "scheduled" || currentLead.status === "no_show");
+
+        if (shouldRescheduleCloser) {
+          if (!supabaseId) {
+            toast.error("Usuário não identificado", { id: loadingToast });
+            return;
+          }
+
+          const scheduleResponse = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-supabase-user-id": supabaseId,
+              "x-team-id": activeTeamId || "",
+            },
+            body: JSON.stringify({
+              date: new Date(currentLead.meetingDate as string).toISOString(),
+              meetingTitle: currentLead.meetingTitle || undefined,
+              notes: currentLead.meetingNotes || undefined,
+              meetingLink: currentLead.meetingLink || undefined,
+              meetingType: currentLead.meetingType || undefined,
+              closerId: nextCloserId || undefined,
+              extraGuests: scheduleGuests.length ? scheduleGuests : undefined,
+              transitionStatusToScheduled: false,
+            }),
+          });
+
+          const scheduleResult = await scheduleResponse.json().catch(() => null);
+          if (!scheduleResponse.ok || !scheduleResult?.isValid) {
+            throw new Error(
+              scheduleResult?.errorMessages?.join(", ") || "Erro ao reagendar closer da reunião"
+            );
+          }
+        }
+
         const result = await updateLead(currentLead.id, updateData);
 
         if (result.success) {
@@ -1687,6 +1744,17 @@ export default function LeadDialog({
             currentSalesInfo,
           });
           setSalesInfoDialogOpen(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        if (transition.blockerType === "closer_required") {
+          setPendingCloserGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            currentCloserId: currentLead.closerId ?? null,
+          });
+          setCloserRequirementDialogOpen(true);
           toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
           return false;
         }
@@ -2047,6 +2115,53 @@ export default function LeadDialog({
       toast.error(error instanceof Error ? error.message : "Erro ao salvar informações de venda");
     } finally {
       setSalesInfoSaving(false);
+    }
+  };
+
+  const handleCloserRequirementSave = async (payload: CloserRequirementPayload) => {
+    if (!currentLead || !supabaseId || !pendingCloserGate) return;
+
+    setCloserRequirementSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({ closerId: payload.closerId }),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao salvar closer do lead");
+      }
+
+      const closerPatch =
+        result.result && typeof result.result === "object"
+          ? (result.result as Partial<Lead>)
+          : {};
+      await applyLocalLeadPatch(currentLead.id, closerPatch);
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, ...closerPatch } as Lead) : prev,
+      );
+
+      const updated = await updateLeadStatus(
+        pendingCloserGate.status,
+        pendingCloserGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setCloserRequirementDialogOpen(false);
+      setPendingCloserGate(null);
+      setStatusDialogOpen(false);
+      setShowStatusTriggerDialog(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao salvar closer do lead");
+    } finally {
+      setCloserRequirementSaving(false);
     }
   };
 
@@ -2503,6 +2618,7 @@ export default function LeadDialog({
                       currentProfileId={user.id}
                       currentUserIsSdr={isOperatorSdr}
                       currentUserIsCloser={isCloserOperator}
+                      isCloserSelectDisabled={isCloserOperator}
                       isFullSaveDisabled={isTransferWithoutPreSchedule}
                       fullSaveDisabledReason="Selecione uma data para o pré-agendamento da transferência."
                       supabaseId={supabaseId}
@@ -3061,6 +3177,25 @@ export default function LeadDialog({
           isSaving={salesInfoSaving}
           initialValues={pendingSalesInfoGate?.currentSalesInfo}
           missingFields={pendingSalesInfoGate?.missingFields}
+        />
+      )}
+
+      {currentLead && (
+        <CloserRequirementDialog
+          open={closerRequirementDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setCloserRequirementDialogOpen(nextOpen);
+            if (!nextOpen) {
+              setPendingCloserGate(null);
+            }
+          }}
+          onSave={handleCloserRequirementSave}
+          closers={availableScheduleClosers}
+          closersLoading={leadDetailsLoading}
+          closersError={leadDetailsError}
+          leadName={currentLead.name}
+          isSaving={closerRequirementSaving}
+          initialCloserId={pendingCloserGate?.currentCloserId}
         />
       )}
 

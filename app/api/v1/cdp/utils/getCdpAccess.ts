@@ -1,19 +1,17 @@
 import type { NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import { getTeamAccess, type TeamAccess, type TeamAccessResult } from "@/app/api/v1/utils/teamAccess"
+import {
+  getTeamAccess,
+  isManagerOrMaster,
+  type TeamAccess,
+  type TeamAccessResult,
+} from "@/app/api/v1/utils/teamAccess"
 import { featureAccessUseCase } from "@/app/api/useCases/featureAccess/FeatureAccessUseCase"
-
-const CDP_ALLOWED_ROLES = new Set(["manager", "backoffice"])
 
 export type CdpAccessResult =
   | { access: TeamAccess; error?: never; status?: never }
   | { access?: never; error: Output; status: number }
-
-function hasCdpRole(access: TeamAccess): boolean {
-  if (access.isMaster) return true
-  return CDP_ALLOWED_ROLES.has(access.teamMember.role)
-}
 
 export async function getCdpAccess(request: NextRequest): Promise<CdpAccessResult> {
   const teamAccess: TeamAccessResult = await getTeamAccess(request)
@@ -21,7 +19,7 @@ export async function getCdpAccess(request: NextRequest): Promise<CdpAccessResul
     return { error: teamAccess.error, status: teamAccess.status }
   }
 
-  if (!hasCdpRole(teamAccess.access)) {
+  if (!isManagerOrMaster(teamAccess.access)) {
     return {
       error: new Output(false, [], ["Acesso negado à CDP"], null),
       status: 403,

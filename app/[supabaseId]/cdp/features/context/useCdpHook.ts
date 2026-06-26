@@ -1,13 +1,19 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useParams } from "next/navigation"
 import { toast } from "sonner"
+import { useTeamContext } from "@/app/context/TeamContext"
 import { cdpService } from "../services/CdpService"
 import type { CdpMetrics, CdpProfileDetail, CdpProfileListItem, CdpSegment } from "./CdpTypes"
 
 export type CdpHookReturn = ReturnType<typeof useCdp>
 
 export function useCdp() {
+  const params = useParams()
+  const supabaseId = params.supabaseId as string
+  const { activeTeamId } = useTeamContext()
+
   const [profiles, setProfiles] = useState<CdpProfileListItem[]>([])
   const [segments, setSegments] = useState<CdpSegment[]>([])
   const [metrics, setMetrics] = useState<CdpMetrics | null>(null)
@@ -39,6 +45,8 @@ export function useCdp() {
   const inFlightRef = useRef(false)
 
   const loadDashboard = useCallback(async () => {
+    if (!supabaseId || !activeTeamId) return
+
     const key = `${page}:${search}:${consentFilter}:${sourceFilter}:${channelFilter}:${segmentFilter}:${lastSeenFrom}:${lastSeenTo}`
     if (inFlightRef.current && loadKeyRef.current === key) return
     inFlightRef.current = true
@@ -48,8 +56,8 @@ export function useCdp() {
 
     try {
       const [segmentsResult, profilesResult] = await Promise.all([
-        cdpService.listSegments(),
-        cdpService.listProfiles({
+        cdpService.listSegments(supabaseId, activeTeamId),
+        cdpService.listProfiles(supabaseId, activeTeamId, {
           page,
           pageSize,
           search: search || undefined,
@@ -72,37 +80,61 @@ export function useCdp() {
       setIsLoading(false)
       inFlightRef.current = false
     }
-  }, [page, search, consentFilter, sourceFilter, channelFilter, segmentFilter, lastSeenFrom, lastSeenTo])
+  }, [
+    activeTeamId,
+    page,
+    search,
+    consentFilter,
+    sourceFilter,
+    channelFilter,
+    segmentFilter,
+    lastSeenFrom,
+    lastSeenTo,
+    supabaseId,
+  ])
 
   useEffect(() => {
     void loadDashboard()
   }, [loadDashboard])
 
-  const openProfile = useCallback(async (profileId: string) => {
-    setIsDetailLoading(true)
-    setDetailEventsPage(1)
-    try {
-      const [detail, eventsResult] = await Promise.all([
-        cdpService.getProfile(profileId),
-        cdpService.listProfileEvents(profileId, 1, detailEventsPageSize),
-      ])
-      setSelectedProfile(detail)
-      setDetailEvents(eventsResult.items)
-      setDetailEventsTotal(eventsResult.total)
-    } catch (detailError) {
-      console.error("[useCdp][openProfile]", detailError)
-      toast.error("Não foi possível carregar o detalhe do perfil.")
-    } finally {
-      setIsDetailLoading(false)
-    }
-  }, [detailEventsPageSize])
+  const openProfile = useCallback(
+    async (profileId: string) => {
+      if (!supabaseId || !activeTeamId) return
+
+      setIsDetailLoading(true)
+      setDetailEventsPage(1)
+      try {
+        const [detail, eventsResult] = await Promise.all([
+          cdpService.getProfile(supabaseId, activeTeamId, profileId),
+          cdpService.listProfileEvents(
+            supabaseId,
+            activeTeamId,
+            profileId,
+            1,
+            detailEventsPageSize
+          ),
+        ])
+        setSelectedProfile(detail)
+        setDetailEvents(eventsResult.items)
+        setDetailEventsTotal(eventsResult.total)
+      } catch (detailError) {
+        console.error("[useCdp][openProfile]", detailError)
+        toast.error("Não foi possível carregar o detalhe do perfil.")
+      } finally {
+        setIsDetailLoading(false)
+      }
+    },
+    [activeTeamId, detailEventsPageSize, supabaseId]
+  )
 
   const loadMoreProfileEvents = useCallback(async () => {
-    if (!selectedProfile || isLoadingMoreEvents) return
+    if (!selectedProfile || isLoadingMoreEvents || !supabaseId || !activeTeamId) return
     const nextPage = detailEventsPage + 1
     setIsLoadingMoreEvents(true)
     try {
       const eventsResult = await cdpService.listProfileEvents(
+        supabaseId,
+        activeTeamId,
         selectedProfile.id,
         nextPage,
         detailEventsPageSize
@@ -116,7 +148,14 @@ export function useCdp() {
     } finally {
       setIsLoadingMoreEvents(false)
     }
-  }, [detailEventsPage, detailEventsPageSize, isLoadingMoreEvents, selectedProfile])
+  }, [
+    activeTeamId,
+    detailEventsPage,
+    detailEventsPageSize,
+    isLoadingMoreEvents,
+    selectedProfile,
+    supabaseId,
+  ])
 
   const closeProfile = useCallback(() => {
     setSelectedProfile(null)
@@ -126,14 +165,12 @@ export function useCdp() {
   }, [])
 
   const runSync = useCallback(async () => {
-    if (isSyncing) return
+    if (isSyncing || !supabaseId || !activeTeamId) return
     setIsSyncing(true)
     try {
-      const [crm, portfolio, email] = await Promise.all([
-        cdpService.syncCrm(),
-        cdpService.syncPortfolio(),
-        cdpService.syncEmail(),
-      ])
+      const crm = await cdpService.syncCrm(supabaseId, activeTeamId)
+      const portfolio = await cdpService.syncPortfolio(supabaseId, activeTeamId)
+      const email = await cdpService.syncEmail(supabaseId, activeTeamId)
       setLastSyncAt(new Date())
       toast.success(
         `Sincronização concluída. Criados: ${crm.created + portfolio.created + email.created}, enriquecidos: ${crm.enriched + portfolio.enriched + email.enriched}.`
@@ -145,13 +182,13 @@ export function useCdp() {
     } finally {
       setIsSyncing(false)
     }
-  }, [isSyncing, loadDashboard])
+  }, [activeTeamId, isSyncing, loadDashboard, supabaseId])
 
   const runWhatsappSync = useCallback(async () => {
-    if (isSyncingWhatsapp) return
+    if (isSyncingWhatsapp || !supabaseId || !activeTeamId) return
     setIsSyncingWhatsapp(true)
     try {
-      await cdpService.syncWhatsapp()
+      await cdpService.syncWhatsapp(supabaseId, activeTeamId)
       setLastSyncAt(new Date())
       toast.success("Sincronização do WhatsApp concluída.")
       await loadDashboard()
@@ -161,10 +198,10 @@ export function useCdp() {
     } finally {
       setIsSyncingWhatsapp(false)
     }
-  }, [isSyncingWhatsapp, loadDashboard])
+  }, [activeTeamId, isSyncingWhatsapp, loadDashboard, supabaseId])
 
   const syncLeadProfile = useCallback(async () => {
-    if (!selectedProfile || isSyncingLead) return
+    if (!selectedProfile || isSyncingLead || !supabaseId || !activeTeamId) return
     const leadIdentity = selectedProfile.identities.find((identity) => identity.type === "lead_id")
     if (!leadIdentity?.normalizedValue) {
       toast.error("Este perfil não possui vínculo com lead do CRM.")
@@ -173,7 +210,7 @@ export function useCdp() {
 
     setIsSyncingLead(true)
     try {
-      await cdpService.syncCrm({ leadId: leadIdentity.normalizedValue })
+      await cdpService.syncCrm(supabaseId, activeTeamId, { leadId: leadIdentity.normalizedValue })
       setLastSyncAt(new Date())
       toast.success("Lead sincronizado com sucesso.")
       await openProfile(selectedProfile.id)
@@ -184,7 +221,7 @@ export function useCdp() {
     } finally {
       setIsSyncingLead(false)
     }
-  }, [isSyncingLead, loadDashboard, openProfile, selectedProfile])
+  }, [activeTeamId, isSyncingLead, loadDashboard, openProfile, selectedProfile, supabaseId])
 
   const applySegment = useCallback((slug: string) => {
     setSegmentFilter(slug)

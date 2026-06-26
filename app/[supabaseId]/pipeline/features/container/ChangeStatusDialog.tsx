@@ -47,6 +47,10 @@ import {
   type SalesInfoPayload,
 } from '@/app/[supabaseId]/components/SalesInfoRequirementDialog';
 import {
+  CloserRequirementDialog,
+  type CloserRequirementPayload,
+} from '@/app/[supabaseId]/components/CloserRequirementDialog';
+import {
   LeadInfoRequirementDialog,
   type LeadInfoInitialValues,
   type LeadInfoPayload,
@@ -88,6 +92,12 @@ type PendingSalesInfoGate = {
   currentSalesInfo: SalesInfoInitialValues;
 };
 
+type PendingCloserGate = {
+  status: string;
+  trigger?: LeadStatusTransitionTrigger;
+  currentCloserId: string | null;
+};
+
 type PendingLeadInfoGate = {
   status: string;
   trigger?: LeadStatusTransitionTrigger;
@@ -120,6 +130,9 @@ export function ChangeStatusDialog({
   const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
   const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
+  const [pendingCloserGate, setPendingCloserGate] = useState<PendingCloserGate | null>(null);
+  const [showCloserRequirementDialog, setShowCloserRequirementDialog] = useState(false);
+  const [closerRequirementSaving, setCloserRequirementSaving] = useState(false);
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showLeadInfoDialog, setShowLeadInfoDialog] = useState(false);
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
@@ -200,6 +213,17 @@ export function ChangeStatusDialog({
             currentSalesInfo,
           });
           setShowSalesInfoDialog(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        if (transition.blockerType === 'closer_required') {
+          setPendingCloserGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            currentCloserId: lead.closerId ?? null,
+          });
+          setShowCloserRequirementDialog(true);
           toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
           return false;
         }
@@ -444,6 +468,48 @@ export function ChangeStatusDialog({
     }
   };
 
+  const handleCloserRequirementSave = async (payload: CloserRequirementPayload) => {
+    if (!lead || !pendingCloserGate) return;
+
+    setCloserRequirementSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+        },
+        body: JSON.stringify({ closerId: payload.closerId }),
+      });
+
+      const closerResult = await response.json().catch(() => null);
+      if (!response.ok || !closerResult?.isValid) {
+        throw new Error(closerResult?.errorMessages?.[0] || 'Erro ao salvar closer do lead');
+      }
+
+      const closerPatch =
+        closerResult.result && typeof closerResult.result === 'object'
+          ? (closerResult.result as Partial<Lead>)
+          : {};
+      await onStatusChanged(lead.id, closerPatch);
+
+      const updated = await updateLeadStatus(
+        pendingCloserGate.status,
+        pendingCloserGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setShowCloserRequirementDialog(false);
+      setPendingCloserGate(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar closer do lead');
+    } finally {
+      setCloserRequirementSaving(false);
+    }
+  };
+
   const handleLeadInfoSave = async (payload: LeadInfoPayload) => {
     if (!lead || !pendingLeadInfoGate) return;
 
@@ -682,6 +748,21 @@ export function ChangeStatusDialog({
           isSaving={salesInfoSaving}
           initialValues={pendingSalesInfoGate.currentSalesInfo}
           missingFields={pendingSalesInfoGate.missingFields}
+        />
+      )}
+
+      {pendingCloserGate && (
+        <CloserRequirementDialog
+          open={showCloserRequirementDialog}
+          onOpenChange={(nextOpen) => {
+            setShowCloserRequirementDialog(nextOpen);
+            if (!nextOpen) setPendingCloserGate(null);
+          }}
+          onSave={handleCloserRequirementSave}
+          closers={closers}
+          leadName={lead.name}
+          isSaving={closerRequirementSaving}
+          initialCloserId={pendingCloserGate.currentCloserId}
         />
       )}
 
