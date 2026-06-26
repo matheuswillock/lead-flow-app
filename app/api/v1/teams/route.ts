@@ -11,6 +11,7 @@ import {
 } from "@/app/api/v1/utils/teamAccess";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { getAccountSubscriptionStatus } from "@/lib/subscription/isAccountSubscriptionActive";
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -125,7 +126,19 @@ export async function GET(request: NextRequest) {
 
     const memberships = await prisma.teamMember.findMany({
       where: { profileId: profile.id },
-      include: { team: true },
+      include: {
+        team: {
+          include: {
+            master: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "asc" }
     });
 
@@ -180,20 +193,39 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const activeTeams = memberships.map((membership) => ({
-      id: membership.team.id,
-      name: membership.team.name,
-      masterId: membership.team.masterId,
-      isDefault: membership.team.isDefault,
-      role: membership.role,
-      functions: membership.functions,
-      canCreateAccountUsers: membership.canCreateAccountUsers,
-      canManageAccountTeams: membership.canManageAccountTeams,
-      canTransferAccountLeads: membership.canTransferAccountLeads,
-      membershipCreatedAt: membership.createdAt,
-      isPending: false,
-      pendingPayment: pendingByName.get(membership.team.name) ?? null,
-    }));
+    const subscriptionByMasterId = new Map<string, boolean>();
+    const uniqueMasterIds = [...new Set(memberships.map((item) => item.team.masterId))];
+    await Promise.all(
+      uniqueMasterIds.map(async (masterId) => {
+        const status = await getAccountSubscriptionStatus(masterId);
+        subscriptionByMasterId.set(masterId, status.isActive);
+      })
+    );
+
+    const activeTeams = memberships.map((membership) => {
+      const accountMasterId = membership.team.masterId;
+      const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+
+      return {
+        id: membership.team.id,
+        name: membership.team.name,
+        masterId: accountMasterId,
+        accountMasterId,
+        accountName: membership.team.master.fullName ?? membership.team.master.email,
+        isOwnAccount: accountMasterId === profile.id,
+        isAccessible: accountSubscriptionActive,
+        accountSubscriptionActive,
+        isDefault: membership.team.isDefault,
+        role: membership.role,
+        functions: membership.functions,
+        canCreateAccountUsers: membership.canCreateAccountUsers,
+        canManageAccountTeams: membership.canManageAccountTeams,
+        canTransferAccountLeads: membership.canTransferAccountLeads,
+        membershipCreatedAt: membership.createdAt,
+        isPending: false,
+        pendingPayment: pendingByName.get(membership.team.name) ?? null,
+      };
+    });
 
     const pendingTeamRows = pendingActions
       .filter((action) => {
@@ -239,8 +271,28 @@ export async function GET(request: NextRequest) {
 
     const teams = [...activeTeams, ...pendingTeamRows];
 
+    let activeTeamId = profile.activeTeamId;
+    const currentTeam = teams.find((team) => team.id === activeTeamId);
+    const currentIsAccessible =
+      currentTeam &&
+      !currentTeam.isPending &&
+      ("isAccessible" in currentTeam ? currentTeam.isAccessible : true);
+
+    if (!currentIsAccessible) {
+      const fallbackTeam = activeTeams.find((team) => team.isAccessible);
+      if (fallbackTeam) {
+        activeTeamId = fallbackTeam.id;
+        await prisma.profile.update({
+          where: { id: profile.id },
+          data: { activeTeamId: fallbackTeam.id },
+        });
+      } else {
+        activeTeamId = null;
+      }
+    }
+
     return NextResponse.json(
-      new Output(true, [], [], { teams, activeTeamId: profile.activeTeamId }),
+      new Output(true, [], [], { teams, activeTeamId }),
       { status: 200 }
     );
   } catch (error) {

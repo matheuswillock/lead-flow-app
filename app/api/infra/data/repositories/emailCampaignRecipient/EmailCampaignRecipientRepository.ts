@@ -59,7 +59,7 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
 
   async findGlobalVariableDefaults(teamId: string): Promise<Record<string, string>> {
     const variables = await prisma.emailTeamVariable.findMany({
-      where: { teamId, isActive: true, defaultValue: { not: null } },
+      where: { teamId, isActive: true, valueSource: "STATIC", defaultValue: { not: null } },
       select: { key: true, defaultValue: true },
     })
 

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { ConversationItem } from './ConversationItem'
+import { NewConversationDialog } from './NewConversationDialog'
 import type { ConversationFilterMode } from '../context/WhatsAppInboxTypes'
 
 const FILTER_TABS: { label: string; value: ConversationFilterMode }[] = [
@@ -27,6 +28,7 @@ export function ConversationList() {
     setFilterMode,
     hasMoreConversations,
     loadMoreConversations,
+    unreadTotal,
   } = useWhatsAppInboxContext()
 
   const isInitialLoading = isLoadingConversations && conversations.length === 0
@@ -35,6 +37,10 @@ export function ConversationList() {
   return (
     <div className="flex w-80 shrink-0 flex-col border-r border-border">
       <div className="flex flex-col gap-2 p-3">
+        <div className="flex gap-2">
+          <NewConversationDialog triggerLabel="Nova conversa" triggerIcon="conversation" />
+          <NewConversationDialog triggerLabel="Novo contato" triggerIcon="contact" />
+        </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -58,6 +64,7 @@ export function ConversationList() {
               )}
             >
               {tab.label}
+              {tab.value === 'unread' && unreadTotal > 0 ? ` (${unreadTotal})` : ''}
             </button>
           ))}
         </div>

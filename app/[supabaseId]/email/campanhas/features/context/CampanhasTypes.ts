@@ -15,6 +15,7 @@ export type Campaign = {
   creator: { fullName: string | null; email: string | null } | null
   template: { id: string; name: string } | null
   contactList: { id: string; name: string } | null
+  cdpSegmentSlug?: string | null
 }
 
 export type CreditStatus = {
@@ -41,6 +42,12 @@ export type ContactList = {
   activeContacts?: number
 }
 
+export type CdpSegmentOption = {
+  slug: string
+  name: string
+  count: number
+}
+
 export type CampanhasState = {
   campaigns: Campaign[]
   total: number
@@ -59,10 +66,13 @@ export type CampanhasState = {
   wizardName: string
   wizardTemplateId: string
   wizardContactListId: string
+  wizardRecipientSource: "contact_list" | "cdp_segment"
+  wizardCdpSegmentSlug: string
   wizardScheduledAt: string
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
+  cdpSegments: CdpSegmentOption[]
   // Edit draft state
   editingCampaign: Campaign | null
   editName: string

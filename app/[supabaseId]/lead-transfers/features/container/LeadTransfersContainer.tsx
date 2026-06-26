@@ -22,7 +22,7 @@ export function LeadTransfersContainer() {
   const { activeTeamId } = useTeamContext();
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const { data, error, refresh } = useLeadTransfersContext();
+  const { data, isLoading, error, refresh } = useLeadTransfersContext();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -106,21 +106,31 @@ export function LeadTransfersContainer() {
   }
 
   return (
-    <div className="container mx-auto flex flex-col gap-6 px-6 py-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold tracking-tight">Transferências</h1>
-        <p className="text-muted-foreground">
-          {data ? `${data.total} transferência${data.total === 1 ? "" : "s"}` : "Carregando..."}
-        </p>
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <ArrowRightLeft className="size-6" />
+          <div>
+            <h1 className="text-2xl font-semibold">Transferências</h1>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {data?.total ?? 0} transferência{(data?.total ?? 0) === 1 ? "" : "s"}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <LeadTransfersFiltersBar />
       </div>
 
-      {error ? (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      <LeadTransfersFiltersBar />
       <LeadTransfersTable onRowClick={handleRowClick} />
 
       <LeadDialog

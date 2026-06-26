@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
-import { invalidateBackofficeFeaturesCache } from "@/lib/cache/invalidation"
+import { invalidateBackofficeFeaturesCache, invalidateFeatureAccessCache } from "@/lib/cache/invalidation"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeFeatureUseCase } from "@/app/api/useCases/backofficeFeature/BackofficeFeatureUseCase"
@@ -21,6 +21,7 @@ export async function DELETE(
     const output = await backofficeFeatureUseCase.removeBetaUser(id, profileId)
     if (output.isValid) {
       invalidateBackofficeFeaturesCache()
+      invalidateFeatureAccessCache({ profileId, managerId: profileId })
     }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {

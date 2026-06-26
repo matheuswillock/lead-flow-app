@@ -4,10 +4,12 @@ import type {
   CustomerConsentStatus,
   CustomerIdentityType,
   CustomerSourceType,
+  LeadStatus,
   Prisma,
 } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
+import type { CdpSyncFilters } from "@/lib/cdp/sync-filters"
 
 export type CdpTeamScope = {
   teamId: string
@@ -255,6 +257,9 @@ export class CdpRepository {
       search?: string
       consent?: CustomerConsentStatus
       sourceType?: CustomerSourceType
+      channel?: CustomerChannel
+      lastSeenFrom?: Date
+      lastSeenTo?: Date
       skip: number
       take: number
     }
@@ -271,9 +276,24 @@ export class CdpRepository {
       ...(params.sourceType && {
         sourceLinks: { some: { sourceType: params.sourceType } },
       }),
-      ...(params.consent && {
-        consents: { some: { channel: "email", status: params.consent } },
-      }),
+      ...(params.consent || params.channel
+        ? {
+            consents: {
+              some: {
+                ...(params.channel ? { channel: params.channel } : { channel: "email" }),
+                ...(params.consent ? { status: params.consent } : {}),
+              },
+            },
+          }
+        : {}),
+      ...(params.lastSeenFrom || params.lastSeenTo
+        ? {
+            lastSeenAt: {
+              ...(params.lastSeenFrom ? { gte: params.lastSeenFrom } : {}),
+              ...(params.lastSeenTo ? { lte: params.lastSeenTo } : {}),
+            },
+          }
+        : {}),
     }
 
     const [items, total] = await Promise.all([
@@ -346,9 +366,13 @@ export class CdpRepository {
     return prisma.customerProfile.count({ where: { teamId: scope.teamId } })
   }
 
-  async findLeadsForCdpSync(teamId: string) {
+  async findLeadsForCdpSync(teamId: string, filters: CdpSyncFilters = {}) {
     return prisma.lead.findMany({
-      where: { teamId },
+      where: {
+        teamId,
+        ...(filters.leadId ? { id: filters.leadId } : {}),
+        ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
+      },
       select: {
         id: true,
         name: true,
@@ -363,14 +387,19 @@ export class CdpRepository {
     })
   }
 
-  async findPortfoliosForCdpSync(teamId: string) {
+  async findPortfoliosForCdpSync(teamId: string, filters: CdpSyncFilters = {}) {
     return prisma.leadPortfolio.findMany({
-      where: { teamId },
+      where: {
+        teamId,
+        ...(filters.leadId ? { leadId: filters.leadId } : {}),
+        ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
+      },
       select: {
         id: true,
         leadId: true,
         renewalStatus: true,
         portfolioStatus: true,
+        renewalAmount: true,
         updatedAt: true,
         createdAt: true,
         lead: {
@@ -410,9 +439,12 @@ export class CdpRepository {
     })
   }
 
-  async findEmailLogsForCdpSync(teamId: string) {
+  async findEmailLogsForCdpSync(teamId: string, filters: CdpSyncFilters = {}) {
     return prisma.emailLog.findMany({
-      where: { teamId },
+      where: {
+        teamId,
+        ...(filters.emailLogSince ? { sentAt: { gte: filters.emailLogSince } } : {}),
+      },
       select: {
         id: true,
         recipientEmail: true,
@@ -453,7 +485,7 @@ export class CdpRepository {
 
   async findLeadStatuses(teamId: string, leadIds: string[]) {
     const unique = [...new Set(leadIds.filter(Boolean))]
-    if (unique.length === 0) return new Map<string, string>()
+    if (unique.length === 0) return new Map<string, LeadStatus | null>()
 
     const leads = await prisma.lead.findMany({
       where: { teamId, id: { in: unique } },
@@ -463,11 +495,15 @@ export class CdpRepository {
     return new Map(leads.map((lead) => [lead.id, lead.status]))
   }
 
-  async listProfilesForSegmentation(teamId: string) {
+  async listProfilesForSegmentationByIds(teamId: string, profileIds: string[]) {
+    const uniqueIds = [...new Set(profileIds.filter(Boolean))]
+    if (uniqueIds.length === 0) return []
+
     return prisma.customerProfile.findMany({
-      where: { teamId },
+      where: { teamId, id: { in: uniqueIds } },
       select: {
         id: true,
+        displayName: true,
         normalizedPrimaryEmail: true,
         consents: { where: { channel: "email" }, select: { status: true, reason: true } },
         sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
@@ -476,9 +512,131 @@ export class CdpRepository {
         },
         identities: {
           where: { type: "lead_id" },
-          select: { normalizedValue: true },
+          select: { type: true, normalizedValue: true },
         },
       },
+    })
+  }
+
+  async listProfilesForSegmentation(teamId: string) {
+    return prisma.customerProfile.findMany({
+      where: { teamId },
+      select: {
+        id: true,
+        displayName: true,
+        normalizedPrimaryEmail: true,
+        consents: { where: { channel: "email" }, select: { status: true, reason: true } },
+        sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
+        events: {
+          select: { eventType: true, occurredAt: true, metadata: true, sourceType: true, sourceId: true },
+        },
+        identities: {
+          where: { type: "lead_id" },
+          select: { type: true, normalizedValue: true },
+        },
+      },
+    })
+  }
+
+  async listCdpEmailVariables(teamId: string) {
+    return prisma.emailTeamVariable.findMany({
+      where: { teamId, isActive: true, valueSource: "CDP" },
+      select: { key: true, cdpFieldKey: true, defaultValue: true },
+    })
+  }
+
+  async findLeadsForCdpFieldResolution(teamId: string, leadIds: string[]) {
+    const unique = [...new Set(leadIds.filter(Boolean))]
+    if (unique.length === 0) return new Map()
+
+    const leads = await prisma.lead.findMany({
+      where: { teamId, id: { in: unique } },
+      select: {
+        id: true,
+        status: true,
+        currentHealthPlan: true,
+        soldPlan: true,
+        contractDueDate: true,
+        referenceHospital: true,
+      },
+    })
+
+    return new Map(leads.map((lead) => [lead.id, lead]))
+  }
+
+  async listProfilesForProfileDataSync(teamId: string) {
+    return prisma.customerProfile.findMany({
+      where: { teamId },
+      select: {
+        id: true,
+        displayName: true,
+        displayPhone: true,
+        primaryEmail: true,
+        primaryDocument: true,
+        lastSeenAt: true,
+        consents: { select: { channel: true, status: true } },
+        sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
+        identities: { select: { type: true, normalizedValue: true } },
+      },
+    })
+  }
+
+  async updateProfileData(profileId: string, teamId: string, profileData: Prisma.InputJsonValue) {
+    return prisma.customerProfile.updateMany({
+      where: { id: profileId, teamId },
+      data: { profileData },
+    })
+  }
+
+  async findProfilesForInterpolationByEmails(teamId: string, normalizedEmails: string[]) {
+    const unique = [...new Set(normalizedEmails.filter(Boolean))]
+    if (unique.length === 0) return []
+
+    return prisma.customerProfile.findMany({
+      where: { teamId, normalizedPrimaryEmail: { in: unique } },
+      select: {
+        normalizedPrimaryEmail: true,
+        displayName: true,
+        displayPhone: true,
+        primaryEmail: true,
+        primaryDocument: true,
+        lastSeenAt: true,
+        consents: { select: { channel: true, status: true } },
+        sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
+        identities: { select: { type: true, normalizedValue: true } },
+      },
+    })
+  }
+
+  async findProfileDataByEmails(teamId: string, normalizedEmails: string[]) {
+    const unique = [...new Set(normalizedEmails.filter(Boolean))]
+    if (unique.length === 0) return new Map<string, Record<string, string>>()
+
+    const profiles = await prisma.customerProfile.findMany({
+      where: { teamId, normalizedPrimaryEmail: { in: unique } },
+      select: { normalizedPrimaryEmail: true, profileData: true },
+    })
+
+    const map = new Map<string, Record<string, string>>()
+    for (const profile of profiles) {
+      if (!profile.normalizedPrimaryEmail) continue
+      const data = profile.profileData
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        map.set(
+          profile.normalizedPrimaryEmail,
+          Object.fromEntries(
+            Object.entries(data as Record<string, unknown>).map(([key, value]) => [key, String(value ?? "")])
+          )
+        )
+      }
+    }
+    return map
+  }
+
+  async findCdpVariableFallbacks(teamId: string) {
+    return prisma.emailTeamVariable.findMany({
+      where: { teamId, isActive: true, valueSource: "CDP", defaultValue: { not: null } },
+      select: { key: true, defaultValue: true },
     })
   }
 }

@@ -1,9 +1,13 @@
 import type {
+  EvoChatSummary,
   EvoConnectionState,
   EvoCreateInstanceResult,
+  EvoHistoryMessage,
+  EvoInstanceInfo,
   EvoSendTextResult,
   IEvoApiService,
 } from "./IEvoApiService"
+import { normalizePhone, normalizeRemoteJid } from "../phoneUtils"
 
 function getBaseUrl(hostBaseUrl?: string): string {
   if (hostBaseUrl) return hostBaseUrl.replace(/\/$/, "")
@@ -96,6 +100,118 @@ interface EvoQrCodeResponse {
   pairingCode?: string
   code?: string
   base64?: string
+}
+
+interface EvoFetchInstancesResponse {
+  instance?: {
+    instanceName?: string
+    owner?: string
+    profileName?: string
+  }
+}
+
+type EvoFetchInstancesListResponse = Array<{
+  name?: string
+  instanceName?: string
+  owner?: string
+  profileName?: string
+}>
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null
+}
+
+function extractChatArray(data: unknown): Record<string, unknown>[] {
+  if (Array.isArray(data)) {
+    return data.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+  }
+  const record = asRecord(data)
+  if (!record) return []
+  if (Array.isArray(record.chats)) {
+    return record.chats.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+  }
+  return []
+}
+
+function extractMessageRecords(data: unknown): Record<string, unknown>[] {
+  if (Array.isArray(data)) {
+    return data.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+  }
+  const record = asRecord(data)
+  if (!record) return []
+  const messages = asRecord(record.messages)
+  if (messages && Array.isArray(messages.records)) {
+    return messages.records.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+  }
+  if (Array.isArray(record.records)) {
+    return record.records.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+  }
+  return []
+}
+
+function parseUnixTimestamp(value: unknown): Date | null {
+  if (typeof value === "number") return new Date(value > 1_000_000_000_000 ? value : value * 1000)
+  if (typeof value === "string") {
+    const parsed = Number(value)
+    if (!Number.isNaN(parsed)) return new Date(parsed > 1_000_000_000_000 ? parsed : parsed * 1000)
+  }
+  const record = asRecord(value)
+  if (record && typeof record.low === "number") {
+    return new Date(record.low * 1000)
+  }
+  return null
+}
+
+function parseEvoChatSummary(item: Record<string, unknown>): EvoChatSummary | null {
+  const remoteJid =
+    (typeof item.remoteJid === "string" ? item.remoteJid : undefined) ??
+    (typeof item.id === "string" ? item.id : undefined) ??
+    (typeof item.jid === "string" ? item.jid : undefined)
+
+  if (!remoteJid) return null
+
+  const pushName =
+    (typeof item.pushName === "string" ? item.pushName : undefined) ??
+    (typeof item.name === "string" ? item.name : undefined) ??
+    null
+
+  const subject =
+    (typeof item.subject === "string" ? item.subject : undefined) ??
+    (typeof item.groupSubject === "string" ? item.groupSubject : undefined) ??
+    null
+
+  const profilePicUrl =
+    (typeof item.profilePicUrl === "string" ? item.profilePicUrl : undefined) ??
+    (typeof item.profilePictureUrl === "string" ? item.profilePictureUrl : undefined) ??
+    null
+
+  const updatedAt =
+    parseUnixTimestamp(item.updatedAt) ??
+    parseUnixTimestamp(item.conversationTimestamp) ??
+    parseUnixTimestamp(asRecord(item.lastMessage)?.messageTimestamp)
+
+  return { remoteJid, pushName, subject, profilePicUrl, updatedAt }
+}
+
+function parseEvoHistoryMessage(item: Record<string, unknown>): EvoHistoryMessage | null {
+  const key = asRecord(item.key) ?? {}
+  const remoteJid = typeof key.remoteJid === "string" ? key.remoteJid : ""
+  const providerMessageId = typeof key.id === "string" ? key.id : ""
+  if (!remoteJid || !providerMessageId) return null
+
+  const fromMe = key.fromMe === true
+  const messageTimestamp =
+    parseUnixTimestamp(item.messageTimestamp) ??
+    parseUnixTimestamp(asRecord(item.message)?.messageTimestamp) ??
+    new Date()
+
+  return {
+    providerMessageId,
+    remoteJid,
+    fromMe,
+    messageTimestamp,
+    messagePayload: item.message ?? item,
+  }
 }
 
 export class EvoApiService implements IEvoApiService {
@@ -211,10 +327,158 @@ export class EvoApiService implements IEvoApiService {
     }
   }
 
+  async fetchInstance(instanceName: string, hostBaseUrl?: string): Promise<EvoInstanceInfo | null> {
+    const base = getBaseUrl(hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`
+
+    console.info("[EvoApiService][fetchInstance] Fetching instance", instanceName)
+
+    const data = await fetchEvo<EvoFetchInstancesResponse | EvoFetchInstancesListResponse>(
+      url,
+      {
+        method: "GET",
+        headers: buildHeaders(apiKey),
+      },
+      "fetchInstance"
+    )
+
+    if (Array.isArray(data)) {
+      const match = data.find(
+        (item) => item.instanceName === instanceName || item.name === instanceName
+      )
+      if (!match) return null
+      return {
+        instanceName: match.instanceName ?? match.name ?? instanceName,
+        owner: match.owner ?? null,
+        profileName: match.profileName ?? null,
+      }
+    }
+
+    const instance = data.instance
+    if (!instance) return null
+
+    return {
+      instanceName: instance.instanceName ?? instanceName,
+      owner: instance.owner ?? null,
+      profileName: instance.profileName ?? null,
+    }
+  }
+
+  async findChats(instanceName: string, hostBaseUrl?: string): Promise<EvoChatSummary[]> {
+    const base = getBaseUrl(hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/chat/findChats/${encodeURIComponent(instanceName)}`
+
+    console.info("[EvoApiService][findChats] Listing chats for", instanceName)
+
+    const data = await fetchEvo<unknown>(
+      url,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({}),
+      },
+      "findChats"
+    )
+
+    return extractChatArray(data)
+      .map(parseEvoChatSummary)
+      .filter((chat): chat is EvoChatSummary => chat !== null)
+  }
+
+  async findMessages(params: {
+    instanceName: string
+    remoteJid: string
+    since: Date
+    hostBaseUrl?: string
+  }): Promise<EvoHistoryMessage[]> {
+    const base = getBaseUrl(params.hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/chat/findMessages/${encodeURIComponent(params.instanceName)}`
+    const sinceMs = params.since.getTime()
+    const collected: EvoHistoryMessage[] = []
+    const pageSize = 50
+    let page = 1
+    let hasMore = true
+
+    while (hasMore && page <= 100) {
+      const data = await fetchEvo<unknown>(
+        url,
+        {
+          method: "POST",
+          headers: buildHeaders(apiKey),
+          body: JSON.stringify({
+            where: { key: { remoteJid: params.remoteJid } },
+            page,
+            offset: pageSize,
+          }),
+        },
+        "findMessages"
+      )
+
+      const records = extractMessageRecords(data)
+      if (records.length === 0) {
+        hasMore = false
+        break
+      }
+
+      let oldestInPage = Number.POSITIVE_INFINITY
+      for (const record of records) {
+        const parsed = parseEvoHistoryMessage(record)
+        if (!parsed) continue
+        const ts = parsed.messageTimestamp.getTime()
+        oldestInPage = Math.min(oldestInPage, ts)
+        if (ts >= sinceMs) {
+          collected.push(parsed)
+        }
+      }
+
+      if (oldestInPage < sinceMs || records.length < pageSize) {
+        hasMore = false
+      } else {
+        page += 1
+      }
+    }
+
+    return collected
+  }
+
+  async fetchProfilePictureUrl(params: {
+    instanceName: string
+    remoteJid: string
+    hostBaseUrl?: string
+  }): Promise<string | null> {
+    const base = getBaseUrl(params.hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/chat/fetchProfilePictureUrl/${encodeURIComponent(params.instanceName)}`
+    const number = normalizePhone(normalizeRemoteJid(params.remoteJid))
+
+    if (!number) return null
+
+    try {
+      const data = await fetchEvo<{ profilePictureUrl?: string; url?: string }>(
+        url,
+        {
+          method: "POST",
+          headers: buildHeaders(apiKey),
+          body: JSON.stringify({ number }),
+        },
+        "fetchProfilePictureUrl"
+      )
+      return data.profilePictureUrl ?? data.url ?? null
+    } catch (error) {
+      console.info("[EvoApiService][fetchProfilePictureUrl] No picture for", params.remoteJid, error)
+      return null
+    }
+  }
+
   async sendTextMessage(params: {
     instanceName: string
-    recipientPhone: string
+    recipientJid: string
     text: string
+    mentioned?: string[]
+    linkPreview?: boolean
     hostBaseUrl?: string
   }): Promise<EvoSendTextResult> {
     const base = getBaseUrl(params.hostBaseUrl)
@@ -223,20 +487,28 @@ export class EvoApiService implements IEvoApiService {
 
     console.info(
       "[EvoApiService][sendTextMessage] Sending text to",
-      params.recipientPhone,
+      params.recipientJid,
       "via",
       params.instanceName
     )
+
+    const body: Record<string, unknown> = {
+      number: params.recipientJid,
+      text: params.text,
+    }
+    if (params.mentioned && params.mentioned.length > 0) {
+      body.mentioned = params.mentioned
+    }
+    if (params.linkPreview !== undefined) {
+      body.linkPreview = params.linkPreview
+    }
 
     const data = await fetchEvo<EvoSendTextResponse>(
       url,
       {
         method: "POST",
         headers: buildHeaders(apiKey),
-        body: JSON.stringify({
-          number: params.recipientPhone,
-          text: params.text,
-        }),
+        body: JSON.stringify(body),
       },
       "sendTextMessage"
     )
@@ -252,6 +524,173 @@ export class EvoApiService implements IEvoApiService {
       providerMessageId,
       status: data.status ?? "PENDING",
     }
+  }
+
+  async sendMediaMessage(params: {
+    instanceName: string
+    recipientJid: string
+    mediatype: "image" | "document" | "audio" | "video"
+    mimeType: string
+    fileName: string
+    base64: string
+    caption?: string
+    hostBaseUrl?: string
+  }): Promise<EvoSendTextResult> {
+    const base = getBaseUrl(params.hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/message/sendMedia/${encodeURIComponent(params.instanceName)}`
+
+    console.info(
+      "[EvoApiService][sendMediaMessage] Sending",
+      params.mediatype,
+      "to",
+      params.recipientJid
+    )
+
+    const data = await fetchEvo<EvoSendTextResponse>(
+      url,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({
+          number: params.recipientJid,
+          mediatype: params.mediatype,
+          mimetype: params.mimeType,
+          fileName: params.fileName,
+          media: params.base64,
+          caption: params.caption,
+        }),
+      },
+      "sendMediaMessage"
+    )
+
+    const providerMessageId = data.key?.id
+    if (!providerMessageId) {
+      throw new Error("[EvoApiService][sendMediaMessage] Response did not include a message ID")
+    }
+
+    return {
+      providerMessageId,
+      status: data.status ?? "PENDING",
+    }
+  }
+
+  async getBase64FromMediaMessage(params: {
+    instanceName: string
+    messageKey: Record<string, unknown>
+    hostBaseUrl?: string
+  }): Promise<{ base64: string; mimeType: string } | null> {
+    const base = getBaseUrl(params.hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(params.instanceName)}`
+
+    try {
+      const data = await fetchEvo<{
+        base64?: string
+        mimetype?: string
+        mediaType?: string
+      }>(
+        url,
+        {
+          method: "POST",
+          headers: buildHeaders(apiKey),
+          body: JSON.stringify({ message: { key: params.messageKey } }),
+        },
+        "getBase64FromMediaMessage"
+      )
+
+      if (!data.base64) return null
+      return {
+        base64: data.base64,
+        mimeType: data.mimetype ?? "application/octet-stream",
+      }
+    } catch (error) {
+      console.error("[EvoApiService][getBase64FromMediaMessage]", error)
+      return null
+    }
+  }
+
+  async findContacts(
+    instanceName: string,
+    hostBaseUrl?: string
+  ): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null }>> {
+    const base = getBaseUrl(hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/chat/findContacts/${encodeURIComponent(instanceName)}`
+
+    console.info("[EvoApiService][findContacts] Listing contacts for", instanceName)
+
+    const data = await fetchEvo<unknown>(
+      url,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({}),
+      },
+      "findContacts"
+    )
+
+    const items = Array.isArray(data) ? data : []
+    return items
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map((item) => ({
+        remoteJid:
+          (typeof item.id === "string" ? item.id : undefined) ??
+          (typeof item.remoteJid === "string" ? item.remoteJid : "") ??
+          "",
+        pushName:
+          (typeof item.pushName === "string" ? item.pushName : undefined) ??
+          (typeof item.name === "string" ? item.name : null) ??
+          null,
+        phoneNumber: typeof item.phoneNumber === "string" ? item.phoneNumber : null,
+      }))
+      .filter((item) => item.remoteJid.length > 0)
+  }
+
+  async findGroupParticipants(params: {
+    instanceName: string
+    groupJid: string
+    hostBaseUrl?: string
+  }): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null; admin: string | null }>> {
+    const base = getBaseUrl(params.hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/group/participants/${encodeURIComponent(params.instanceName)}?groupJid=${encodeURIComponent(params.groupJid)}`
+
+    console.info(
+      "[EvoApiService][findGroupParticipants] Listing participants for",
+      params.groupJid
+    )
+
+    const data = await fetchEvo<unknown>(
+      url,
+      {
+        method: "GET",
+        headers: buildHeaders(apiKey),
+      },
+      "findGroupParticipants"
+    )
+
+    const participants = Array.isArray(data)
+      ? data
+      : typeof data === "object" && data !== null && Array.isArray((data as Record<string, unknown>).participants)
+        ? ((data as Record<string, unknown>).participants as unknown[])
+        : []
+
+    return participants
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map((item) => ({
+        remoteJid:
+          (typeof item.id === "string" ? item.id : undefined) ??
+          (typeof item.remoteJid === "string" ? item.remoteJid : "") ??
+          "",
+        pushName:
+          (typeof item.pushName === "string" ? item.pushName : undefined) ??
+          (typeof item.name === "string" ? item.name : null) ??
+          null,
+        phoneNumber: typeof item.phoneNumber === "string" ? item.phoneNumber : null,
+        admin: typeof item.admin === "string" ? item.admin : null,
+      }))
+      .filter((item) => item.remoteJid.length > 0)
   }
 
   async disconnectInstance(instanceName: string, hostBaseUrl?: string): Promise<void> {

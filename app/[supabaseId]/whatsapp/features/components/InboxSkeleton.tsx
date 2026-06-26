@@ -1,6 +1,7 @@
 "use client"
 
 import { Skeleton } from '@/components/ui/skeleton'
+import { MessageBubbleSkeleton } from './MessageBubbleSkeleton'
 
 export function InboxSkeleton() {
   return (
@@ -29,10 +30,7 @@ export function InboxSkeleton() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-3">
-          <Skeleton className="h-10 w-2/3 self-end rounded-lg" />
-          <Skeleton className="h-10 w-2/3 self-start rounded-lg" />
-          <Skeleton className="h-10 w-1/2 self-end rounded-lg" />
-          <Skeleton className="h-10 w-3/4 self-start rounded-lg" />
+          <MessageBubbleSkeleton />
         </div>
         <Skeleton className="h-12 w-full rounded-md" />
       </div>

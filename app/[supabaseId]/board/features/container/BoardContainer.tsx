@@ -247,7 +247,7 @@ export function BoardContainer({
   const handleScheduleSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
     scheduleSucceededRef.current = true;
 
-    if (payload && selectedLead) {
+    if (payload && selectedLead && selectedLead.status) {
       applyScheduledTransition(selectedLead.status, {
         id: payload.leadId,
         status: payload.status,
@@ -363,6 +363,7 @@ export function BoardContainer({
             initialStartDate={selectedLead.contractDueDate}
             initialOperadora={selectedLead.soldPlan}
             initialHolderCnpj={selectedLead.cnpj}
+            initialHolderRazaoSocial={selectedLead.razaoSocial}
           />
           
           <ScheduleMeetingDialog

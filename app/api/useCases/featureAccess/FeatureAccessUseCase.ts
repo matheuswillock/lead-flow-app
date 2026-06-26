@@ -7,16 +7,22 @@ import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAc
 export interface ResolveFeatureAccessUseCaseInput {
   profileId: string
   managerId: string
+  activeTeamId?: string | null
 }
 
-async function resolveCachedFeatureAccess(profileId: string, managerId: string) {
+async function resolveCachedFeatureAccess(
+  profileId: string,
+  managerId: string,
+  activeTeamId: string | null
+) {
   "use cache"
-  cacheTag(cacheTags.featureAccess(profileId))
+  cacheTag(cacheTags.featureAccess(profileId, activeTeamId))
+  cacheTag(cacheTags.featureAccessProfile(profileId))
   cacheTag(cacheTags.featureAccessOwner(managerId))
   cacheTag(cacheTags.backofficeFeatures())
   cacheLife({ revalidate: 60 })
 
-  return featureAccessService.resolveAllowedSlugs({ profileId, managerId })
+  return featureAccessService.resolveAllowedSlugs({ profileId, managerId, activeTeamId })
 }
 
 export class FeatureAccessUseCase {
@@ -26,7 +32,11 @@ export class FeatureAccessUseCase {
     try {
       const { slugs, betaSlugs, userRole } =
         this.service === featureAccessService
-          ? await resolveCachedFeatureAccess(input.profileId, input.managerId)
+          ? await resolveCachedFeatureAccess(
+              input.profileId,
+              input.managerId,
+              input.activeTeamId ?? null
+            )
           : await this.service.resolveAllowedSlugs(input)
       return new Output(true, [], [], { slugs, betaSlugs, userRole })
     } catch (error) {

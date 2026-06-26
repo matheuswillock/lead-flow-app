@@ -9,6 +9,8 @@ import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
+import { isCdpSegmentSlug } from "@/lib/cdp/segment-config"
+import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
 
 const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
 const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretorstudio.com"
@@ -16,7 +18,8 @@ const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretors
 export interface CreateCampaignInput {
   name: string
   templateId: string
-  contactListId: string
+  contactListId?: string
+  cdpSegmentSlug?: string
   scheduledAt?: string | null
 }
 
@@ -39,8 +42,16 @@ export class EmailCampaignUseCase {
     })
   }
 
-  private async countActiveRecipients(teamId: string, contactListId: string): Promise<number> {
-    const recipients = await this.recipientService.listActiveRecipients(teamId, contactListId)
+  private async countActiveRecipients(
+    teamId: string,
+    options: { contactListId?: string | null; cdpSegmentSlug?: string | null }
+  ): Promise<number> {
+    if (options.cdpSegmentSlug) {
+      const recipients = await listCdpSegmentEmailRecipients(teamId, options.cdpSegmentSlug)
+      return recipients.length
+    }
+    if (!options.contactListId) return 0
+    const recipients = await this.recipientService.listActiveRecipients(teamId, options.contactListId)
     return recipients.length
   }
 
@@ -127,6 +138,7 @@ export class EmailCampaignUseCase {
             createdBy: true,
             templateId: true,
             contactListId: true,
+            cdpSegmentSlug: true,
           },
           orderBy: { createdAt: "desc" },
           skip: (options.page - 1) * options.pageSize,
@@ -137,7 +149,9 @@ export class EmailCampaignUseCase {
 
       const creatorIds = Array.from(new Set(campaigns.map((campaign) => campaign.createdBy)))
       const templateIds = Array.from(new Set(campaigns.map((campaign) => campaign.templateId)))
-      const contactListIds = Array.from(new Set(campaigns.map((campaign) => campaign.contactListId)))
+      const contactListIds = Array.from(
+        new Set(campaigns.map((campaign) => campaign.contactListId).filter((id): id is string => Boolean(id)))
+      )
 
       const [creators, templates, contactLists] = await prisma.$transaction([
         prisma.profile.findMany({
@@ -156,13 +170,15 @@ export class EmailCampaignUseCase {
 
       const dynamicRecipientCounts = new Map(
         await Promise.all(
-          Array.from(
-            new Set(
-              campaigns
-                .filter((campaign) => ["draft", "scheduled", "sending"].includes(campaign.status))
-                .map((campaign) => campaign.contactListId)
-            )
-          ).map(async (contactListId) => [contactListId, await this.countActiveRecipients(ctx.teamId, contactListId)] as const)
+          campaigns
+            .filter((campaign) => ["draft", "scheduled", "sending"].includes(campaign.status))
+            .map(async (campaign) => {
+              const count = await this.countActiveRecipients(ctx.teamId, {
+                contactListId: campaign.contactListId,
+                cdpSegmentSlug: campaign.cdpSegmentSlug,
+              })
+              return [campaign.id, count] as const
+            })
         )
       )
 
@@ -177,7 +193,7 @@ export class EmailCampaignUseCase {
           status: campaign.status,
           scheduledAt: campaign.scheduledAt,
           sentAt: campaign.sentAt,
-          totalRecipients: dynamicRecipientCounts.get(campaign.contactListId) ?? campaign.totalRecipients,
+          totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
           totalSent: campaign.totalSent,
           totalDelivered: campaign.totalDelivered,
           totalOpened: campaign.totalOpened,
@@ -187,7 +203,8 @@ export class EmailCampaignUseCase {
           createdAt: campaign.createdAt,
           creator: creatorsById.get(campaign.createdBy) ?? null,
           template: templatesById.get(campaign.templateId) ?? null,
-          contactList: contactListsById.get(campaign.contactListId) ?? null,
+          contactList: campaign.contactListId ? contactListsById.get(campaign.contactListId) ?? null : null,
+          cdpSegmentSlug: campaign.cdpSegmentSlug,
         })),
         total,
         page: options.page,
@@ -214,7 +231,10 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada"], null)
       }
 
-      const activeRecipientCount = await this.countActiveRecipients(ctx.teamId, campaign.contactListId)
+      const activeRecipientCount = await this.countActiveRecipients(ctx.teamId, {
+        contactListId: campaign.contactListId,
+        cdpSegmentSlug: campaign.cdpSegmentSlug,
+      })
 
       return new Output(true, [], [], {
         ...campaign,
@@ -234,10 +254,22 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Nome da campanha é obrigatório"], null)
       }
 
-      const [template, contactList] = await Promise.all([
-        this.findCurrentPublishedTemplate(data.templateId, ctx.teamId),
-        prisma.emailContactList.findFirst({ where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false } }),
-      ])
+      if (!data.contactListId && !data.cdpSegmentSlug) {
+        return new Output(false, [], ["Selecione uma lista de contatos ou um segmento CDP"], null)
+      }
+      if (data.contactListId && data.cdpSegmentSlug) {
+        return new Output(false, [], ["Use apenas lista de contatos ou segmento CDP, não ambos"], null)
+      }
+      if (data.cdpSegmentSlug && !isCdpSegmentSlug(data.cdpSegmentSlug)) {
+        return new Output(false, [], ["Segmento CDP inválido"], null)
+      }
+
+      const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
+      const contactList = data.contactListId
+        ? await prisma.emailContactList.findFirst({
+            where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false },
+          })
+        : null
 
       if (!template) {
         return new Output(
@@ -247,7 +279,7 @@ export class EmailCampaignUseCase {
           null
         )
       }
-      if (!contactList) {
+      if (data.contactListId && !contactList) {
         return new Output(false, [], ["Lista de contatos não encontrada ou não pertence ao time"], null)
       }
 
@@ -256,7 +288,10 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Data de agendamento deve ser no futuro"], null)
       }
 
-      const totalRecipients = await this.countActiveRecipients(ctx.teamId, data.contactListId)
+      const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
+        contactListId: data.contactListId,
+        cdpSegmentSlug: data.cdpSegmentSlug,
+      })
 
       const campaign = await prisma.emailCampaign.create({
         data: {
@@ -265,7 +300,8 @@ export class EmailCampaignUseCase {
           createdBy: ctx.profileId,
           name: data.name.trim(),
           templateId: data.templateId,
-          contactListId: data.contactListId,
+          contactListId: data.contactListId ?? null,
+          cdpSegmentSlug: data.cdpSegmentSlug ?? null,
           status: scheduledAt ? "scheduled" : "draft",
           scheduledAt,
           totalRecipients,
@@ -302,8 +338,14 @@ export class EmailCampaignUseCase {
       }
 
       let totalRecipients: number | undefined
-      if (data.contactListId !== undefined) {
-        totalRecipients = await this.countActiveRecipients(ctx.teamId, data.contactListId)
+      if (data.contactListId !== undefined || data.cdpSegmentSlug !== undefined) {
+        const nextContactListId = data.contactListId !== undefined ? data.contactListId : existing.contactListId
+        const nextSegmentSlug =
+          data.cdpSegmentSlug !== undefined ? data.cdpSegmentSlug : existing.cdpSegmentSlug
+        totalRecipients = await this.countActiveRecipients(ctx.teamId, {
+          contactListId: nextContactListId,
+          cdpSegmentSlug: nextSegmentSlug,
+        })
       }
 
       const campaign = await prisma.emailCampaign.update({
@@ -312,6 +354,13 @@ export class EmailCampaignUseCase {
           ...(data.name !== undefined && { name: data.name.trim() }),
           ...(data.templateId !== undefined && { templateId: data.templateId }),
           ...(data.contactListId !== undefined && { contactListId: data.contactListId }),
+          ...(data.cdpSegmentSlug !== undefined && {
+            cdpSegmentSlug: data.cdpSegmentSlug,
+            ...(data.cdpSegmentSlug ? { contactListId: null } : {}),
+          }),
+          ...(data.contactListId !== undefined && data.contactListId
+            ? { cdpSegmentSlug: null }
+            : {}),
           ...(totalRecipients !== undefined && { totalRecipients }),
           ...(data.scheduledAt !== undefined && {
             scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
@@ -320,7 +369,10 @@ export class EmailCampaignUseCase {
         },
       })
 
-      const resolvedRecipientCount = await this.countActiveRecipients(ctx.teamId, campaign.contactListId)
+      const resolvedRecipientCount = await this.countActiveRecipients(ctx.teamId, {
+        contactListId: campaign.contactListId,
+        cdpSegmentSlug: campaign.cdpSegmentSlug,
+      })
 
       return new Output(true, ["Campanha atualizada com sucesso"], [], {
         ...campaign,
@@ -419,6 +471,7 @@ export class EmailCampaignUseCase {
       const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
         teamId: ctx.teamId,
         contactListId: campaign.contactListId,
+        cdpSegmentSlug: campaign.cdpSegmentSlug,
         template: {
           subject: campaign.template.subject,
           html: templateHtml,
@@ -431,7 +484,12 @@ export class EmailCampaignUseCase {
       })
 
       if (dispatchInput.recipients.length === 0) {
-        return new Output(false, [], ["Nenhum contato ativo na lista para envio"], null)
+        return new Output(
+          false,
+          [],
+          [campaign.cdpSegmentSlug ? "Nenhum perfil apto no segmento CDP" : "Nenhum contato ativo na lista para envio"],
+          null
+        )
       }
 
       const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({

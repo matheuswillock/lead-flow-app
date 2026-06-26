@@ -1,23 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
+import { getCdpAccess, teamContextFromCdpAccess } from "@/app/api/v1/cdp/utils/getCdpAccess"
 import { customerDataPlatformUseCase } from "@/app/api/useCases/cdp/CustomerDataPlatformUseCase"
-
-function teamContextFromAccess(access: NonNullable<Awaited<ReturnType<typeof getTeamAccess>>["access"]>) {
-  return {
-    profileId: access.profileId,
-    userTimezone: access.userTimezone,
-    teamMember: {
-      role: access.teamMember.role,
-      functions: access.teamMember.functions,
-    },
-  }
-}
 
 export async function GET(request: NextRequest) {
   try {
-    const teamAccess = await getTeamAccess(request)
-    if (teamAccess.error) {
-      return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+    const cdpAccess = await getCdpAccess(request)
+    if (cdpAccess.error) {
+      return NextResponse.json(cdpAccess.error, { status: cdpAccess.status })
     }
 
     const { searchParams } = new URL(request.url)
@@ -26,13 +15,19 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") ?? undefined
     const consent = searchParams.get("consent") as "allowed" | "blocked" | "unknown" | null
     const sourceType = searchParams.get("sourceType") ?? undefined
+    const channel = searchParams.get("channel") as "email" | "whatsapp" | null
+    const lastSeenFrom = searchParams.get("lastSeenFrom") ?? undefined
+    const lastSeenTo = searchParams.get("lastSeenTo") ?? undefined
 
     const result = await customerDataPlatformUseCase.listProfiles({
-      teamId: teamAccess.access.teamId,
-      ctx: teamContextFromAccess(teamAccess.access),
+      teamId: cdpAccess.access.teamId,
+      ctx: teamContextFromCdpAccess(cdpAccess.access),
       search,
       consent: consent ?? undefined,
       sourceType,
+      channel: channel ?? undefined,
+      lastSeenFrom,
+      lastSeenTo,
       page,
       pageSize,
     })

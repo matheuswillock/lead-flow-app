@@ -90,6 +90,8 @@ interface IPipelineContextState {
   setOnlyMeetingsHeld: (value: boolean) => void;
   onlyTransfer: boolean;
   setOnlyTransfer: (value: boolean) => void;
+  onlyDraft: boolean;
+  setOnlyDraft: (value: boolean) => void;
   allLeads: Lead[]; // Todos os leads em um array flat
   filtered: Lead[]; // Leads filtrados
   periodStart: string; 
@@ -181,6 +183,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [onlyTransfer, setOnlyTransfer] = useState(false);
+  const [onlyDraft, setOnlyDraft] = useState(false);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [periodStart, setPeriodStart] = useState<string>("");
   const [periodEnd, setPeriodEnd] = useState<string>("");
@@ -412,6 +415,15 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           lastLeadsLoadKeyRef.current = loadKey;
           
           const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
+            if (!lead.status) {
+              return {
+                ...lead,
+                statusEnteredAt: lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+                leadTimeDueAt: null,
+                isLeadTimeBreached: false,
+              };
+            }
+
             const state = resolveLeadTimeState(
               lead.status,
               lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
@@ -526,11 +538,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           (nextStatus !== lead.status
             ? patch.updatedAt || new Date().toISOString()
             : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
-        const leadTimeState = resolveLeadTimeState(
-          nextStatus,
-          statusEnteredAt,
-          teamStatusRules.leadTimeRules
-        );
+        const leadTimeState = nextStatus
+          ? resolveLeadTimeState(
+              nextStatus,
+              statusEnteredAt,
+              teamStatusRules.leadTimeRules
+            )
+          : { dueAt: null, isBreached: false };
 
         return {
           ...merged,
@@ -550,11 +564,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         (nextStatus !== prev.status
           ? patch.updatedAt || new Date().toISOString()
           : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
-      const leadTimeState = resolveLeadTimeState(
-        nextStatus,
-        statusEnteredAt,
-        teamStatusRules.leadTimeRules
-      );
+      const leadTimeState = nextStatus
+        ? resolveLeadTimeState(
+            nextStatus,
+            statusEnteredAt,
+            teamStatusRules.leadTimeRules
+          )
+        : { dueAt: null, isBreached: false };
 
       return {
         ...merged,
@@ -648,10 +664,19 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       externalFilters !== undefined ? externalFilters.onlyMeetingsHeld : onlyMeetingsHeld;
     const activeTransfer =
       externalFilters !== undefined ? externalFilters.onlyTransfer : onlyTransfer;
+    const activeDraft =
+      externalFilters !== undefined ? externalFilters.onlyDraft : onlyDraft;
 
     const q = activeQuery.trim().toLowerCase();
     
     return allLeads.filter((lead) => {
+      const isDraftLeadRow = lead.status === null || lead.status === undefined;
+      if (activeDraft) {
+        if (!isDraftLeadRow) return false;
+      } else if (isDraftLeadRow) {
+        return false;
+      }
+
       // Filtro por query (nome ou data)
       const matchesQuery = !q || 
         lead.name.toLowerCase().includes(q) || 
@@ -709,7 +734,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         matchesScheduledPeriod
       );
     });
-  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, periodStart, periodEnd, tz]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, onlyDraft, periodStart, periodEnd, tz]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
@@ -730,6 +755,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOnlyMeetingsHeld,
     onlyTransfer,
     setOnlyTransfer,
+    onlyDraft,
+    setOnlyDraft,
     allLeads,
     filtered,
     periodStart,

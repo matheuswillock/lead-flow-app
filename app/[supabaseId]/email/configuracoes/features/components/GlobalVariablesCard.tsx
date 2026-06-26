@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Braces, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Braces, ChevronDown, ChevronUp, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,11 +33,149 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import type { UpsertEmailVariableData } from "../services/IEmailSettingsService"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
-import type { EmailGlobalVariable } from "../context/EmailSettingsTypes"
+import type { EmailGlobalVariable, EmailVariableValueSource } from "../context/EmailSettingsTypes"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
+
+type CdpFieldOption = {
+  key: string
+  label: string
+  sourceType: string
+}
 
 function sanitizeKey(value: string) {
   return value.replace(/[^a-zA-Z0-9_]/g, "")
+}
+
+function useCdpFieldOptions() {
+  const [fields, setFields] = useState<CdpFieldOption[]>([])
+
+  useEffect(() => {
+    let active = true
+    void fetch("/api/v1/cdp/available-fields", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!active || !json.isValid) return
+        const items = (json.result as { fields?: CdpFieldOption[] })?.fields ?? []
+        setFields(items)
+      })
+      .catch(() => {
+        if (active) setFields([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, CdpFieldOption[]>()
+    for (const field of fields) {
+      const list = groups.get(field.sourceType) ?? []
+      list.push(field)
+      groups.set(field.sourceType, list)
+    }
+    return groups
+  }, [fields])
+
+  return { fields, grouped, hasCdp: fields.length > 0 }
+}
+
+type CdpProfileOption = { id: string; displayName: string; primaryEmail: string | null }
+
+function useCdpProfileOptions() {
+  const [profiles, setProfiles] = useState<CdpProfileOption[]>([])
+
+  useEffect(() => {
+    let active = true
+    void fetch("/api/v1/cdp/profiles?page=1&pageSize=20", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!active || !json.isValid) return
+        const items = (json.result as { items?: CdpProfileOption[] })?.items ?? []
+        setProfiles(items)
+      })
+      .catch(() => {
+        if (active) setProfiles([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return profiles
+}
+
+function CdpInterpolationPreview({ variableKey }: { variableKey: string }) {
+  const profiles = useCdpProfileOptions()
+  const [profileId, setProfileId] = useState("")
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [resolvedValue, setResolvedValue] = useState<string | null>(null)
+
+  if (!variableKey.trim()) return null
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 p-4">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-auto justify-between px-0"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="text-sm font-medium">Testar interpolação</span>
+        {open ? <ChevronUp data-icon="inline-end" /> : <ChevronDown data-icon="inline-end" />}
+      </Button>
+      {open ? (
+        <div className="flex flex-col gap-3">
+          <Select value={profileId || "__none"} onValueChange={(value) => setProfileId(value === "__none" ? "" : value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Perfil CDP" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">Selecione um perfil...</SelectItem>
+              {profiles.map((profile) => (
+                <SelectItem key={profile.id} value={profile.id}>
+                  {profile.displayName}
+                  {profile.primaryEmail ? ` (${profile.primaryEmail})` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!profileId || loading}
+            onClick={() => {
+              setLoading(true)
+              void fetch("/api/v1/cdp/interpolation-preview", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ profileId, variableKeys: [variableKey] }),
+              })
+                .then((res) => res.json())
+                .then((json) => {
+                  if (!json.isValid) {
+                    setResolvedValue(null)
+                    return
+                  }
+                  const values = (json.result as { values?: Record<string, string> })?.values ?? {}
+                  setResolvedValue(values[variableKey] ?? "")
+                })
+                .finally(() => setLoading(false))
+            }}
+          >
+            {loading ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : null}
+            Preview
+          </Button>
+          {resolvedValue !== null ? (
+            <div className="rounded-md border p-3 text-sm">
+              <p className="font-mono text-xs text-muted-foreground">{`{{${variableKey}}}`}</p>
+              <p className="mt-1 font-medium">{resolvedValue || "—"}</p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 type VariableFormProps = {
@@ -49,12 +187,22 @@ type VariableFormProps = {
 }
 
 function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }: VariableFormProps) {
+  const { fields, grouped, hasCdp } = useCdpFieldOptions()
   const [key, setKey] = useState(initialValue?.key ?? "")
   const [type, setType] = useState<"string" | "number">(initialValue?.type ?? "string")
+  const [valueSource, setValueSource] = useState<EmailVariableValueSource>(
+    initialValue?.valueSource ?? "STATIC"
+  )
+  const [cdpFieldKey, setCdpFieldKey] = useState(initialValue?.cdpFieldKey ?? "")
   const [defaultValue, setDefaultValue] = useState(initialValue?.defaultValue ?? "")
   const [description, setDescription] = useState(initialValue?.description ?? "")
 
-  const isDisabled = loading || !key.trim()
+  const isDisabled =
+    loading ||
+    !key.trim() ||
+    (valueSource === "CDP" && !cdpFieldKey.trim())
+
+  const selectedFieldLabel = fields.find((field) => field.key === cdpFieldKey)?.label
 
   return (
     <form
@@ -64,6 +212,8 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
         void onSubmit({
           key: sanitizeKey(key),
           type,
+          valueSource,
+          cdpFieldKey: valueSource === "CDP" ? cdpFieldKey : null,
           defaultValue: defaultValue.trim() ? defaultValue : null,
           description: description.trim() ? description : null,
         })
@@ -102,8 +252,62 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
           </FieldContent>
         </Field>
 
+        {hasCdp ? (
+          <Field>
+            <FieldLabel htmlFor="variable-source">Origem do valor</FieldLabel>
+            <FieldContent>
+              <Select
+                value={valueSource}
+                onValueChange={(value) => {
+                  const next = value as EmailVariableValueSource
+                  setValueSource(next)
+                  if (next === "STATIC") setCdpFieldKey("")
+                }}
+              >
+                <SelectTrigger id="variable-source" className="w-full" disabled={loading}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="STATIC">Estático (mesmo valor para todos)</SelectItem>
+                  <SelectItem value="CDP">CDP (por destinatário)</SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldContent>
+          </Field>
+        ) : null}
+
+        {valueSource === "CDP" && hasCdp ? (
+          <Field>
+            <FieldLabel htmlFor="variable-cdp-field">Campo da CDP</FieldLabel>
+            <FieldContent>
+              <Select value={cdpFieldKey || "__none"} onValueChange={(value) => setCdpFieldKey(value === "__none" ? "" : value)}>
+                <SelectTrigger id="variable-cdp-field" className="w-full" disabled={loading}>
+                  <SelectValue placeholder="Selecione o campo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">Selecione...</SelectItem>
+                  {[...grouped.entries()].map(([sourceType, items]) => (
+                    <div key={sourceType}>
+                      {items.map((field) => (
+                        <SelectItem key={field.key} value={field.key}>
+                          {field.label}
+                        </SelectItem>
+                      ))}
+                    </div>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedFieldLabel ? (
+                <FieldDescription>Valor vindo de: {selectedFieldLabel}</FieldDescription>
+              ) : null}
+            </FieldContent>
+          </Field>
+        ) : null}
+
         <Field>
-          <FieldLabel htmlFor="variable-default">Valor padrão</FieldLabel>
+          <FieldLabel htmlFor="variable-default">
+            {valueSource === "CDP" ? "Fallback quando vazio" : "Valor padrão"}
+          </FieldLabel>
           <FieldContent>
             <Input
               id="variable-default"
@@ -128,6 +332,8 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
           </FieldContent>
         </Field>
       </FieldGroup>
+
+      {valueSource === "CDP" && key.trim() ? <CdpInterpolationPreview variableKey={sanitizeKey(key)} /> : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={isDisabled}>
@@ -170,12 +376,21 @@ function VariableRow({
             <Badge variant="outline" className="text-muted-foreground">
               {variable.type === "number" ? "Número" : "Texto"}
             </Badge>
+            {variable.valueSource === "CDP" ? (
+              <Badge variant="secondary">CDP</Badge>
+            ) : (
+              <Badge variant="outline">Estático</Badge>
+            )}
           </div>
+          {variable.valueSource === "CDP" && variable.cdpFieldKey ? (
+            <p className="text-xs text-muted-foreground">Campo CDP: {variable.cdpFieldKey}</p>
+          ) : null}
           {variable.description ? (
             <p className="truncate text-sm text-muted-foreground">{variable.description}</p>
           ) : null}
           <p className="truncate text-xs text-muted-foreground">
-            Valor padrão: {variable.defaultValue ? variable.defaultValue : "—"}
+            {variable.valueSource === "CDP" ? "Fallback" : "Valor padrão"}:{" "}
+            {variable.defaultValue ? variable.defaultValue : "—"}
           </p>
         </div>
 
@@ -219,6 +434,8 @@ function VariableRow({
           initialValue={{
             key: variable.key,
             type: variable.type,
+            valueSource: variable.valueSource,
+            cdpFieldKey: variable.cdpFieldKey,
             defaultValue: variable.defaultValue,
             description: variable.description,
           }}

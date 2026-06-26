@@ -15,6 +15,13 @@ const managerOnlyRoutes = ["/manager-users", "/integrations"]
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   try {
+  // Sentry tunnel is production-only; stale client bundles may still POST here in dev.
+  if (pathname === "/monitoring" || pathname.startsWith("/monitoring/")) {
+    if (process.env.NODE_ENV !== "production") {
+      return new NextResponse(null, { status: 204 });
+    }
+  }
+
   // Skip Proxy completely for webhook routes
   if (pathname.startsWith('/api/webhooks')) {
     return NextResponse.next();

@@ -1,10 +1,17 @@
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
+export type TransferToTeamSanitization = {
+  leadId: string;
+  clearEmail: boolean;
+  clearCnpj: boolean;
+};
+
 export interface ILeadRepository {
   create(data: Prisma.LeadCreateInput): Promise<Lead>;
   findById(id: string): Promise<Lead | null>;
   findByLeadCode(leadCode: string): Promise<Lead | null>;
+  findLeadByPhoneInTeam(teamId: string, normalizedPhone: string): Promise<Pick<Lead, "id"> | null>;
   findByManagerId(
     managerId: string, 
     options?: {
@@ -67,7 +74,13 @@ export interface ILeadRepository {
   updateStatus(id: string, status: LeadStatus, extraData?: Prisma.LeadUpdateInput): Promise<Lead>;
   assignToOperator(id: string, operatorId: string): Promise<Lead>;
   transferToManager(id: string, newManagerId: string, reason?: string): Promise<Lead>;
-  transferToTeam(id: string, targetTeamId: string, closerId: string, sdrId: string | null): Promise<Lead>;
+  transferToTeam(
+    id: string,
+    targetTeamId: string,
+    closerId: string,
+    sdrId: string | null,
+    sanitizations?: TransferToTeamSanitization[]
+  ): Promise<Lead>;
   getLeadsByStatus(managerId: string, status: LeadStatus): Promise<Lead[]>;
   reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number>;
   /** Busca apenas os dados do closer com tokens OAuth — usado pelo calendário para RSVP do Google */
@@ -79,5 +92,5 @@ export interface ILeadRepository {
     teamId: string,
     emails: string[],
     cnpjs: string[]
-  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus }>>;
+  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }>>;
 }

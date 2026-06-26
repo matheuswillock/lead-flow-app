@@ -10,6 +10,11 @@ import {
   type LeadTransfersFiltersState,
 } from "./LeadTransfersTypes";
 
+type DateRangeField =
+  | "transferDate"
+  | "preScheduledDate"
+  | "scheduledDate";
+
 export function useLeadTransfersHook() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -70,12 +75,12 @@ export function useLeadTransfersHook() {
     []
   );
 
-  const setDateRange = useCallback((dateFrom: string, dateTo: string) => {
+  const setDateRange = useCallback((field: DateRangeField, dateFrom: string, dateTo: string) => {
     lastSuccessKeyRef.current = null;
     setFiltersState((prev) => ({
       ...prev,
-      dateFrom,
-      dateTo,
+      [`${field}From`]: dateFrom,
+      [`${field}To`]: dateTo,
       page: 1,
     }));
   }, []);

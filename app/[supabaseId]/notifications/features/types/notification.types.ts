@@ -5,7 +5,10 @@ export type NotificationTypeValue =
   | "TEAM_MEMBER_REMOVED"
   | "LEAD_SCHEDULE_CREATED"
   | "LEAD_PROPOSAL_PENDING"
-  | "LEAD_TRANSFER_ACTIVATED";
+  | "LEAD_TRANSFER_ACTIVATED"
+  | "LEAD_TRANSFER_SCHEDULE_FAILED"
+  | "MEETING_REMINDER"
+  | "MEETING_FOLLOW_UP_DIGEST";
 
 export type NotificationMetadata = {
   event?: "GOOGLE_CONNECTED" | "GOOGLE_DISCONNECTED" | "TASK_ASSIGNED" | "TASK_COMPLETED" | string;
@@ -29,6 +32,11 @@ export type NotificationMetadata = {
   previousStatus?: string;
   nextStatus?: string;
   scheduleShareUrl?: string | null;
+  meetingLink?: string | null;
+  errorMessage?: string;
+  leadCount?: number;
+  role?: "closer" | "master";
+  filter?: string;
 };
 
 export type MarkAllAsReadOptions = {

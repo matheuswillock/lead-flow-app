@@ -11,9 +11,10 @@ function getFallbackPreviewHtml() {
 interface EditorHtmlWorkspaceProps {
   value: string;
   onChange: (value: string) => void;
+  remountKey?: string;
 }
 
-export function EditorHtmlWorkspace({ value, onChange }: EditorHtmlWorkspaceProps) {
+export function EditorHtmlWorkspace({ value, onChange, remountKey }: EditorHtmlWorkspaceProps) {
   const htmlPreviewContent = value.trim() ? value : getFallbackPreviewHtml();
   const htmlEditorOptions = useMemo(
     () => ({
@@ -36,8 +37,9 @@ export function EditorHtmlWorkspace({ value, onChange }: EditorHtmlWorkspaceProp
           </div>
           <Badge variant="secondary">HTML</Badge>
         </div>
-        <div className="min-h-0 flex-1">
+        <div className="min-h-[360px] flex-1">
           <MonacoCodeEditor
+            editorKey={remountKey}
             value={value}
             onChange={onChange}
             language="html"

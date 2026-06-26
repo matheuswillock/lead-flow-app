@@ -9,6 +9,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { isPreScheduleSlotAvailable } from "@/app/api/services/preSchedule/PreScheduleSlotService";
 
 async function getCachedLeadSchedule(leadId: string) {
   "use cache";
@@ -109,6 +110,19 @@ export async function POST(
         return NextResponse.json(output, { status: 400 });
       }
 
+      if (lead.teamId) {
+        const slotCheck = await isPreScheduleSlotAvailable(
+          lead.teamId,
+          meetingDate,
+          undefined,
+          leadId
+        );
+        if (!slotCheck.available) {
+          const output = new Output(false, [], ["Este horário de pré-agendamento já está lotado."], null);
+          return NextResponse.json(output, { status: 400 });
+        }
+      }
+
       const resolvedMeetingTitle = meetingTitle?.trim() || `Estudo Plano de Saúde: ${lead.name}`;
       const resolvedMeetingType =
         meetingType ??
@@ -164,6 +178,16 @@ export async function POST(
     const resolvedCloserId = closerId || lead.closerId;
     if (!resolvedCloserId) {
       const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
+    if (!lead.status) {
+      const output = new Output(
+        false,
+        [],
+        ["Finalize o lead antes de agendar uma reunião completa."],
+        null
+      );
       return NextResponse.json(output, { status: 400 });
     }
 

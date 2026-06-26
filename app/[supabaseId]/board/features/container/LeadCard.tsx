@@ -14,7 +14,7 @@ import { CopyIcon } from "@/components/ui/copy";
 import { toast } from "sonner";
 import useBoardContext from "../context/BoardHook";
 import { cn } from "@/lib/utils";
-import { isMeetingOverdue } from "@/lib/lead-meeting";
+import { isMeetingFollowUpOverdue, isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates"
 
@@ -65,6 +65,11 @@ function LeadCardComponent({
     const isNoShow = columnKey === 'no_show';
     const canMarkNoShow =
         isScheduled && isMeetingOverdue(lead.meetingDate) && lead.meetingHeald !== "yes";
+    const isFollowUpOverdue = isMeetingFollowUpOverdue({
+        status: lead.status,
+        meetingDate: lead.meetingDate,
+        meetingHeald: lead.meetingHeald,
+    });
 
     const handleFinalizeClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Evita que o card seja clicado
@@ -136,7 +141,8 @@ function LeadCardComponent({
             onClick={() => handleCardClick(lead)}
             className={cn(
                 "cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent m-0",
-                lead.isLeadTimeBreached && "border-destructive/70 ring-1 ring-destructive/40 animate-pulse"
+                (lead.isLeadTimeBreached || isFollowUpOverdue) &&
+                    "border-destructive/70 ring-1 ring-destructive/40 animate-pulse"
             )}
         >
             {hasHeaderInfo && (
@@ -254,6 +260,11 @@ function LeadCardComponent({
                 {lead.isLeadTimeBreached && (
                     <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
                         Lead a vencer: tempo máximo neste status ultrapassado.
+                    </div>
+                )}
+                {isFollowUpOverdue && (
+                    <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+                        Confirme a reunião: aguardando há mais de 3 dias.
                     </div>
                 )}
                 {showNotesSection && (

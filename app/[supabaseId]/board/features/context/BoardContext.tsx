@@ -1,5 +1,12 @@
 import { createContext, ReactNode, useMemo, useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
+import {
+  isAllowedStatusTransitionFromProductGates,
+} from "@/lib/leadStatusTransitionRules";
+import {
+  fetchProductTransitionGates,
+  type ProductLeadStatusTransitionGate,
+} from "@/lib/services/leadStatusTransitionGatesClient";
 import { IBoardService } from "../services/IBoardServices";
 import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
@@ -210,6 +217,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [onlyTransfer, setOnlyTransfer] = useState(false);
+  const [onlyDraft, setOnlyDraft] = useState(false);
   const [leadCardDisplay, setLeadCardDisplay] = useState<LeadCardDisplaySettings>(
     DEFAULT_LEAD_CARD_DISPLAY
   );
@@ -242,6 +250,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     useState<PendingMeetingHealdGateDrop | null>(null);
   const [pendingSalesInfoGateDrop, setPendingSalesInfoGateDrop] =
     useState<PendingSalesInfoGateDrop | null>(null);
+  const [transitionGates, setTransitionGates] = useState<ProductLeadStatusTransitionGate[]>([]);
 
   // Sync external CRM filters into board filter state whenever they change.
   // Using useEffect (not lazy initializer) is safe because data loads asynchronously;
@@ -258,7 +267,13 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setScheduledPeriodEnd(externalFilters.scheduledPeriodEnd);
     setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
     setOnlyTransfer(externalFilters.onlyTransfer);
+    setOnlyDraft(externalFilters.onlyDraft);
   }, [externalFilters]);
+
+  useEffect(() => {
+    if (!supabaseId) return;
+    void fetchProductTransitionGates({ supabaseId, teamId: activeTeamId }).then(setTransitionGates);
+  }, [supabaseId, activeTeamId]);
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
@@ -435,6 +450,15 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           }
           
           const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
+            if (!lead.status) {
+              return {
+                ...lead,
+                statusEnteredAt: lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+                leadTimeDueAt: null,
+                isLeadTimeBreached: false,
+              };
+            }
+
             const state = resolveLeadTimeState(
               lead.status,
               lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
@@ -459,6 +483,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           
           // Distribui os leads nas colunas corretas baseado no status
           leadsWithLeadTimeState.forEach((lead: Lead) => {
+            if (!lead.status) return;
             if (leadsGroupedByStatus[lead.status]) {
               leadsGroupedByStatus[lead.status].push(lead);
             }
@@ -939,6 +964,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const { leadId, from } = JSON.parse(raw) as { leadId: string; from: ColumnKey };
       if (from === to) return;
 
+      if (!isAllowedStatusTransitionFromProductGates(transitionGates, from, to)) {
+        toast.error("Esta transição de status não é permitida pelas regras configuradas.");
+        return;
+      }
+
       void (async () => {
         const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
         if (!result?.isValid) return;
@@ -951,7 +981,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         moveLeadBetweenColumns(leadId, from, to, payload);
       })();
     },
-    [moveLeadBetweenColumns, updateLeadStatusInAPI]
+    [moveLeadBetweenColumns, updateLeadStatusInAPI, transitionGates]
   );
 
   const finalizeContract = useCallback(
@@ -1200,6 +1230,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
     const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
     const inTransfer = (l: Lead) => !onlyTransfer || l.isTransfer === true;
+    const inDraft = (l: Lead) => {
+      const isDraftLeadRow = l.status === null || l.status === undefined;
+      if (onlyDraft) return isDraftLeadRow;
+      return !isDraftLeadRow;
+    };
     const inPeriod = (l: Lead) => {
       const createdKey = formatDateKey(l.createdAt, tz);
       if (!createdKey) return false;
@@ -1231,6 +1266,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               inCloser(l) &&
               inMeetingsHeld(l) &&
               inTransfer(l) &&
+              inDraft(l) &&
               inPeriod(l) &&
               inScheduledPeriod(l)
           )
@@ -1245,6 +1281,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     closerFilter,
     onlyMeetingsHeld,
     onlyTransfer,
+    onlyDraft,
     periodStart,
     periodEnd,
     scheduledPeriodStart,
@@ -1275,6 +1312,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       onlyMeetingsHeld,
       setOnlyMeetingsHeld,
       onlyTransfer,
+    onlyDraft,
       setOnlyTransfer,
       leadCardDisplay,
       setLeadCardDisplay,
@@ -1329,6 +1367,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       query,
       onlyMeetingsHeld,
       onlyTransfer,
+    onlyDraft,
       leadCardDisplay,
       data,
       filtered,

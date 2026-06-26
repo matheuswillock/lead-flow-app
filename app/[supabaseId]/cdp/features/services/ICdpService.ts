@@ -12,13 +12,17 @@ export type ListProfilesParams = {
   search?: string
   consent?: string
   sourceType?: string
+  channel?: string
   segment?: string
+  lastSeenFrom?: string
+  lastSeenTo?: string
 }
 
 export interface ICdpService {
-  syncCrm(): Promise<CdpSyncResult>
+  syncCrm(body?: { leadId?: string }): Promise<CdpSyncResult>
   syncPortfolio(): Promise<CdpSyncResult>
   syncEmail(): Promise<CdpSyncResult>
+  syncWhatsapp(): Promise<CdpSyncResult>
   listProfiles(params: ListProfilesParams): Promise<{
     items: CdpProfileListItem[]
     total: number
@@ -32,4 +36,9 @@ export interface ICdpService {
     page: number,
     pageSize: number
   ): Promise<{ items: CdpProfileDetail[]; total: number }>
+  listProfileEvents(
+    profileId: string,
+    page: number,
+    pageSize: number
+  ): Promise<{ items: CdpProfileDetail["events"]; total: number }>
 }

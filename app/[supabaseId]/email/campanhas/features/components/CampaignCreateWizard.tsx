@@ -34,21 +34,34 @@ export function CampaignCreateWizard() {
     wizardName,
     wizardTemplateId,
     wizardContactListId,
+    wizardRecipientSource,
+    wizardCdpSegmentSlug,
     wizardScheduledAt,
     wizardCreating,
     templates,
     contactLists,
+    cdpSegments,
     closeWizard,
     setWizardStep,
     setWizardName,
     setWizardTemplateId,
     setWizardContactListId,
+    setWizardRecipientSource,
+    setWizardCdpSegmentSlug,
     setWizardScheduledAt,
     handleCreateCampaign,
   } = useCampanhasContext()
 
-  // Mínimo para o input datetime-local expresso no TZ do usuário
   const minDateTime = formatLocalInputValue(new Date(), tz)
+  const selectedList = contactLists.find((list) => list.id === wizardContactListId)
+  const selectedSegment = cdpSegments.find((segment) => segment.slug === wizardCdpSegmentSlug)
+  const recipientCount =
+    wizardRecipientSource === "cdp_segment"
+      ? selectedSegment?.count ?? 0
+      : selectedList?.activeContacts ?? selectedList?.totalContacts ?? 0
+
+  const canAdvanceStep2 =
+    wizardRecipientSource === "contact_list" ? Boolean(wizardContactListId) : Boolean(wizardCdpSegmentSlug)
 
   return (
     <Dialog open={wizardOpen} onOpenChange={(open) => { if (!open) closeWizard() }}>
@@ -58,8 +71,8 @@ export function CampaignCreateWizard() {
         </DialogHeader>
 
         {wizardStep === 1 && (
-          <div className="space-y-4">
-            <div className="space-y-2">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="wizard-name">Nome da campanha *</Label>
               <Input
                 id="wizard-name"
@@ -69,7 +82,7 @@ export function CampaignCreateWizard() {
                 disabled={wizardCreating}
               />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Template *</Label>
               <Select value={wizardTemplateId} onValueChange={setWizardTemplateId} disabled={wizardCreating}>
                 <SelectTrigger>
@@ -100,34 +113,73 @@ export function CampaignCreateWizard() {
         )}
 
         {wizardStep === 2 && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Lista de contatos *</Label>
-              <Select value={wizardContactListId} onValueChange={setWizardContactListId} disabled={wizardCreating}>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Origem dos destinatários *</Label>
+              <Select
+                value={wizardRecipientSource}
+                onValueChange={(value) =>
+                  setWizardRecipientSource(value as "contact_list" | "cdp_segment")
+                }
+                disabled={wizardCreating}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma lista..." />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {contactLists.length === 0 ? (
-                    <SelectItem value="__none" disabled>Nenhuma lista disponível</SelectItem>
-                  ) : (
-                    contactLists.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {formatContactListLabel(l)}
-                      </SelectItem>
-                    ))
-                  )}
+                  <SelectItem value="contact_list">Lista de contatos</SelectItem>
+                  <SelectItem value="cdp_segment">Segmento CDP</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {wizardRecipientSource === "contact_list" ? (
+              <div className="flex flex-col gap-2">
+                <Label>Lista de contatos *</Label>
+                <Select value={wizardContactListId} onValueChange={setWizardContactListId} disabled={wizardCreating}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma lista..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contactLists.length === 0 ? (
+                      <SelectItem value="__none" disabled>Nenhuma lista disponível</SelectItem>
+                    ) : (
+                      contactLists.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {formatContactListLabel(l)}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label>Segmento CDP *</Label>
+                <Select value={wizardCdpSegmentSlug} onValueChange={setWizardCdpSegmentSlug} disabled={wizardCreating}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um segmento..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cdpSegments.length === 0 ? (
+                      <SelectItem value="__none" disabled>Nenhum segmento disponível</SelectItem>
+                    ) : (
+                      cdpSegments.map((segment) => (
+                        <SelectItem key={segment.slug} value={segment.slug}>
+                          {segment.name} ({segment.count})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setWizardStep(1)} disabled={wizardCreating}>
                 ← Voltar
               </Button>
-              <Button
-                onClick={() => setWizardStep(3)}
-                disabled={!wizardContactListId}
-              >
+              <Button onClick={() => setWizardStep(3)} disabled={!canAdvanceStep2}>
                 Próximo →
               </Button>
             </div>
@@ -135,20 +187,25 @@ export function CampaignCreateWizard() {
         )}
 
         {wizardStep === 3 && (
-          <div className="space-y-4">
-            {(() => {
-              const selectedList = contactLists.find((list) => list.id === wizardContactListId)
-              const activeCount = selectedList?.activeContacts ?? selectedList?.totalContacts ?? 0
-              return (
-                <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                  A campanha será enviada para{" "}
-                  <strong className="text-foreground">{activeCount.toLocaleString("pt-BR")}</strong>{" "}
-                  destinatário(s) ativo(s) da lista{" "}
-                  <strong className="text-foreground">{selectedList?.name ?? "selecionada"}</strong>.
-                </p>
-              )
-            })()}
-            <div className="space-y-2">
+          <div className="flex flex-col gap-4">
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              A campanha será enviada para{" "}
+              <strong className="text-foreground">{recipientCount.toLocaleString("pt-BR")}</strong>{" "}
+              destinatário(s){" "}
+              {wizardRecipientSource === "cdp_segment" ? (
+                <>
+                  do segmento{" "}
+                  <strong className="text-foreground">{selectedSegment?.name ?? "selecionado"}</strong>
+                </>
+              ) : (
+                <>
+                  da lista{" "}
+                  <strong className="text-foreground">{selectedList?.name ?? "selecionada"}</strong>
+                </>
+              )}
+              .
+            </p>
+            <div className="flex flex-col gap-2">
               <Label htmlFor="wizard-schedule">Agendamento</Label>
               <Input
                 id="wizard-schedule"

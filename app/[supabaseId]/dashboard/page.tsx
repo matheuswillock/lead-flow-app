@@ -7,6 +7,7 @@ import { DashboardSkeleton } from "./features/container/components/DashboardSkel
 import { SectionCardsWithContext } from "./features/container/section-cards-with-context";
 import { ChartAreaInteractive } from "./features/container/chart-area-interactive";
 import { UpcomingMeetings } from "./features/container/upcoming-meetings";
+import { DashboardTeamScopeToggle } from "./features/components/DashboardTeamScopeToggle";
 import { SubscriptionGuard } from "@/components/subscription-guard";
 import { useUserContext } from "@/app/context/UserContext";
 
@@ -48,6 +49,12 @@ function DashboardContent() {
   // Renderiza o dashboard com guard de assinatura
   const dashboardContent = (
     <div className="container mx-auto p-6 space-y-6">
+      <div className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+        <p className="text-sm text-muted-foreground">
+          Visualize as métricas do time selecionado ou de toda a conta.
+        </p>
+        <DashboardTeamScopeToggle />
+      </div>
 
       {/* Seção de Cards com Métricas */}
       <SectionCardsWithContext />

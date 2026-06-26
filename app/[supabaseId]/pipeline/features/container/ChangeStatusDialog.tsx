@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -56,6 +56,12 @@ import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
 } from '@/lib/services/leadStatusTransitionClient';
+import { mapLeadInfoPayloadForUpdate } from '@/lib/leadStatusTransitionFields';
+import { filterSelectableStatusLabelsFromProductGates } from '@/lib/leadStatusTransitionRules';
+import {
+  fetchProductTransitionGates,
+  type ProductLeadStatusTransitionGate,
+} from '@/lib/services/leadStatusTransitionGatesClient';
 
 interface ChangeStatusDialogProps {
   open: boolean;
@@ -117,6 +123,12 @@ export function ChangeStatusDialog({
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showLeadInfoDialog, setShowLeadInfoDialog] = useState(false);
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
+  const [transitionGates, setTransitionGates] = useState<ProductLeadStatusTransitionGate[]>([]);
+
+  useEffect(() => {
+    if (!open || !supabaseId) return;
+    void fetchProductTransitionGates({ supabaseId, teamId: activeTeamId }).then(setTransitionGates);
+  }, [open, supabaseId, activeTeamId]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
@@ -213,6 +225,18 @@ export function ChangeStatusDialog({
               typeof transition.currentLeadInfo?.ongoingTreatment === 'string'
                 ? transition.currentLeadInfo.ongoingTreatment
                 : lead.currentTreatment ?? null,
+            email:
+              typeof transition.currentLeadInfo?.email === 'string'
+                ? transition.currentLeadInfo.email
+                : lead.email ?? null,
+            phone:
+              typeof transition.currentLeadInfo?.phone === 'string'
+                ? transition.currentLeadInfo.phone
+                : lead.phone ?? null,
+            cnpj:
+              typeof transition.currentLeadInfo?.cnpj === 'string'
+                ? transition.currentLeadInfo.cnpj
+                : lead.cnpj ?? null,
           };
 
           setPendingLeadInfoGate({
@@ -432,7 +456,7 @@ export function ChangeStatusDialog({
           ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
           ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(mapLeadInfoPayloadForUpdate(payload)),
       });
 
       const leadInfoResult = await response.json().catch(() => null);
@@ -525,7 +549,14 @@ export function ChangeStatusDialog({
                   <SelectValue placeholder="Selecione um status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(statusLabels).map(([value, label]) => (
+                  {(lead
+                    ? filterSelectableStatusLabelsFromProductGates(
+                        lead.status ?? '',
+                        statusLabels,
+                        transitionGates
+                      )
+                    : Object.entries(statusLabels)
+                  ).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>
@@ -568,6 +599,7 @@ export function ChangeStatusDialog({
         initialStartDate={lead.contractDueDate}
         initialOperadora={lead.soldPlan}
         initialHolderCnpj={lead.cnpj}
+        initialHolderRazaoSocial={lead.razaoSocial}
       />
 
       {selectedStatus && needsTriggerDialog(selectedStatus) && (

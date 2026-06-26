@@ -110,7 +110,7 @@ export interface BackofficeAllUsersScheduleRecord {
     name: string
     email: string | null
     phone: string | null
-    status: string
+    status: string | null
     meetingHeald: "yes" | "no" | null
   }
 }

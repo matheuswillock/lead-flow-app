@@ -22,6 +22,22 @@ if (process.env.CI !== 'true') {
   console.info('⏭️  [next.config] CI environment detected — skipping build-time env validation.\n');
 }
 
+const securityHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "X-DNS-Prefetch-Control", value: "on" },
+]
+
+const whatsAppSecurityHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
+  { key: "X-DNS-Prefetch-Control", value: "on" },
+]
+
 const nextConfig: NextConfig = {
   cacheComponents: true,
   allowedDevOrigins: (
@@ -30,11 +46,26 @@ const nextConfig: NextConfig = {
     ]
   ),
   serverExternalPackages: ['unzipper'],
+  ...(process.env.NODE_ENV !== "production"
+    ? { env: { _sentryRewritesTunnelPath: "" } }
+    : {}),
   turbopack: {
     root: path.resolve(__dirname),
     resolveAlias: {
       '@aws-sdk/client-s3': { browser: './empty-module.js', default: './empty-module.js' },
     },
+  },
+  async headers() {
+    return [
+      {
+        source: "/:supabaseId/whatsapp/:path*",
+        headers: whatsAppSecurityHeaders,
+      },
+      {
+        source: "/(.*)",
+        headers: securityHeaders,
+      },
+    ]
   },
 };
 
@@ -55,11 +86,8 @@ export default withSentryConfig(nextConfig, {
   // Upload a larger set of source maps for prettier stack traces (increases build time)
   widenClientFileUpload: true,
 
-  // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-  // This can increase your server load as well as your hosting bill.
-  // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
-  // side errors will fail.
-  tunnelRoute: "/monitoring",
+  // Tunnel only in production — local dev proxy to ingest often fails with ECONNRESET on Windows.
+  ...(process.env.NODE_ENV === "production" ? { tunnelRoute: "/monitoring" } : {}),
 
   webpack: {
     // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)

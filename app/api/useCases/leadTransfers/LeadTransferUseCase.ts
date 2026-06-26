@@ -58,30 +58,47 @@ function mapCompletedRows(
   }));
 }
 
+function resolveStatusFlags(statuses: LeadTransferListQuery["transferStatuses"]) {
+  const selected = statuses ?? [];
+  if (selected.length === 0) {
+    return { includePending: true, includeCompleted: true };
+  }
+  return {
+    includePending: selected.includes("pending"),
+    includeCompleted: selected.includes("completed"),
+  };
+}
+
 export class LeadTransferUseCase implements ILeadTransferUseCase {
   async listWithCtx(ctx: TeamAccess, query: LeadTransferListQuery): Promise<Output> {
     try {
       const page = Math.max(1, query.page ?? 1);
       const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
-      const status = query.status ?? "all";
+      const { includePending, includeCompleted } = resolveStatusFlags(query.transferStatuses);
 
       const repoFilters = {
         teamId: ctx.teamId,
         search: query.search,
         leadStatus: query.leadStatus,
-        toTeamId: query.toTeamId,
-        transferredByProfileId: query.transferredByProfileId,
-        dateFrom: query.dateFrom,
-        dateTo: query.dateTo,
+        toTeamIds: query.toTeamIds,
+        transferredByProfileIds: query.transferredByProfileIds,
+        sdrProfileIds: query.sdrProfileIds,
+        closerProfileIds: query.closerProfileIds,
+        transferDateFrom: query.transferDateFrom,
+        transferDateTo: query.transferDateTo,
+        preScheduledDateFrom: query.preScheduledDateFrom,
+        preScheduledDateTo: query.preScheduledDateTo,
+        scheduledDateFrom: query.scheduledDateFrom,
+        scheduledDateTo: query.scheduledDateTo,
       };
 
       const [pendingRows, completedRows, facets] = await Promise.all([
-        status === "completed"
-          ? Promise.resolve([])
-          : leadTransferRepository.findPendingByTeam(repoFilters),
-        status === "pending"
-          ? Promise.resolve([])
-          : leadTransferRepository.findCompletedByTeam(repoFilters),
+        includePending
+          ? leadTransferRepository.findPendingByTeam(repoFilters)
+          : Promise.resolve([]),
+        includeCompleted
+          ? leadTransferRepository.findCompletedByTeam(repoFilters)
+          : Promise.resolve([]),
         leadTransferRepository.findFacetsByTeam(ctx.teamId),
       ]);
 

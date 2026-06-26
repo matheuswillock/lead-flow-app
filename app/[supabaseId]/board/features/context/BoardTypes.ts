@@ -6,11 +6,12 @@ export type Lead = {
   managerId: string;
   teamId: string | null;
   assignedTo: string | null;
-  status: LeadStatus;
+  status: LeadStatus | null;
   name: string;
   email: string | null;
   phone: string | null;
   cnpj: string | null;
+  razaoSocial: string | null;
   age: string | null;
   currentHealthPlan: string | null;
   currentValue: number | null;

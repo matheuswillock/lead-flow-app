@@ -12,6 +12,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -45,15 +51,21 @@ function MemberCell({ member }: { member: LeadTransferMemberRef | null }) {
     return <span className="text-muted-foreground">—</span>;
   }
 
+  const displayName = member.fullName ?? member.email;
+
   return (
-    <div className="flex items-center justify-center gap-2">
-      <Avatar className="size-7">
-        <AvatarFallback className="text-xs">
-          {getInitials(member.fullName, member.email)}
-        </AvatarFallback>
-      </Avatar>
-      <span className="max-w-[120px] truncate text-sm">{member.fullName ?? member.email}</span>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="inline-flex justify-center">
+          <Avatar className="size-7">
+            <AvatarFallback className="text-xs">
+              {getInitials(member.fullName, member.email)}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{displayName}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -100,9 +112,10 @@ export function LeadTransfersTable({ onRowClick }: LeadTransfersTableProps) {
   const totalPages = data?.totalPages ?? 1;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-border/60">
-        <Table>
+    <TooltipProvider delayDuration={0}>
+      <div className="flex flex-col gap-4">
+        <div className="rounded-lg border border-border/60">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
@@ -167,9 +180,9 @@ export function LeadTransfersTable({ onRowClick }: LeadTransfersTableProps) {
             )}
           </TableBody>
         </Table>
-      </div>
+        </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Linhas por página</span>
           <SelectPageSize
@@ -223,8 +236,9 @@ export function LeadTransfersTable({ onRowClick }: LeadTransfersTableProps) {
             <ChevronsRight />
           </Button>
         </div>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 

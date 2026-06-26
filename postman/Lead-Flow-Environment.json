@@ -122,6 +122,13 @@
       "description": "ID do time ativo para endpoints de integrações e webhook studio"
     },
     {
+      "key": "whatsappConfigId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID da configuração WhatsApp (team_whatsapp_configs) para endpoints backoffice /api/v1/backoffice/whatsapp/instances/:configId"
+    },
+    {
       "key": "senderId",
       "value": "",
       "type": "default",

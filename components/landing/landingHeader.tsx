@@ -2,12 +2,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "../ui/button";
 import { ArrowRight, LogIn } from "lucide-react";
+import { MobileNavMenu } from "./MobileNavMenu";
 
 export function LandingHeader() {
     return (
         <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-lg">
             <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 h-16 flex items-center">
-                <Link href="/" className="flex items-center gap-2 font-bold tracking-tight flex-shrink-0">
+                <MobileNavMenu />
+
+                <Link href="/" className="flex items-center gap-2 font-bold tracking-tight flex-shrink-0 xl:mr-0 ml-2 xl:ml-0">
                     <Image
                         src="/corretor-studio-icon.svg"
                         alt="Corretor Studio"
@@ -29,6 +32,9 @@ export function LandingHeader() {
                         </Link>
                         <Link href="/#how-it-works" className="hover:text-foreground transition-colors">
                             Como funciona
+                        </Link>
+                        <Link href="/recursos" className="hover:text-foreground transition-colors">
+                            Recursos
                         </Link>
                         <Link href="/#demo" className="hover:text-foreground transition-colors">
                             Demonstração

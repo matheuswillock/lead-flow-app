@@ -37,7 +37,8 @@ export const CreateLeadRequestSchema = z.object({
   notes: z.string().nullish().transform(val => val || undefined),
   assignedTo: z.string().uuid("ID do operador deve ser um UUID válido").nullish().transform(val => val || undefined),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").nullish().transform(val => val || undefined),
-  status: z.nativeEnum(LeadStatus).optional().default(LeadStatus.new_opportunity),
+  status: z.nativeEnum(LeadStatus).nullable().optional(),
+  saveAsDraft: z.boolean().optional(),
   createdBy: z.string().uuid("ID do criador deve ser um UUID válido").optional(),
   updatedBy: z.string().uuid("ID do atualizador deve ser um UUID válido").optional(),
   // Novos campos de venda (sempre null/undefined na criação)

@@ -37,6 +37,7 @@ export function SiteHeader() {
   const deepSegment = pathSegments[3] ?? ''
 
   const isEmailSection = section === 'email'
+  const isPerformanceSection = section === 'performance'
   const isBackofficeClientDetails =
     pathSegments[0] === 'backoffice' && pathSegments[1] === 'clients' && Boolean(pathSegments[2])
 
@@ -62,6 +63,7 @@ export function SiteHeader() {
   const detailsTab = searchParams.get('tab') === 'invoices' ? 'Faturas' : 'Times'
 
   const emailBaseHref = `/${supabaseId}/email`
+  const performanceBaseHref = `/${supabaseId}/performance`
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b box-border transition-[height] ease-linear">
@@ -105,6 +107,22 @@ export function SiteHeader() {
                   <BreadcrumbPage>E-mail</BreadcrumbPage>
                 </BreadcrumbItem>
               )}
+            </BreadcrumbList>
+          </Breadcrumb>
+        ) : isPerformanceSection && subsection === 'reunioes-realizadas' ? (
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem className="hidden md:block">
+                <BreadcrumbLink asChild>
+                  <Link href={performanceBaseHref}>Performance</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden md:block" />
+              <BreadcrumbItem>
+                <BreadcrumbPage>
+                  {override?.label ?? 'Reuniões realizadas'}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         ) : isBackofficeClientDetails ? (

@@ -2,22 +2,29 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { isSentryEnabled } from "@/lib/sentry/is-sentry-enabled";
 
-Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+const sentryEnabled = isSentryEnabled();
 
-  tracesSampleRate: 1,
+if (sentryEnabled) {
+  Sentry.init({
+    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
+    tracesSampleRate: 1,
 
-  enableLogs: true,
-  sendDefaultPii: true,
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0,
 
-  integrations: [
-    Sentry.replayIntegration(),
-    Sentry.consoleLoggingIntegration({ levels: ["log", "info", "warn", "error", "debug"] }),
-  ],
-});
+    enableLogs: true,
+    sendDefaultPii: true,
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+    integrations: [
+      Sentry.replayIntegration(),
+      Sentry.consoleLoggingIntegration({ levels: ["log", "info", "warn", "error", "debug"] }),
+    ],
+  });
+}
+
+export const onRouterTransitionStart = sentryEnabled
+  ? Sentry.captureRouterTransitionStart
+  : () => undefined;

@@ -125,6 +125,34 @@ combined_transition combined_transition
     
 
 
+        BackofficeLeadTransitionFieldKey {
+            age age
+currentHealthPlan currentHealthPlan
+referenceHospital referenceHospital
+currentTreatment currentTreatment
+email email
+phone phone
+cnpj cnpj
+        }
+    
+
+
+        BackofficeLeadTransitionGateType {
+            allowed_target_statuses allowed_target_statuses
+block_targets_when_field_equals block_targets_when_field_equals
+require_meeting_heald_on_exit require_meeting_heald_on_exit
+require_no_show_preconditions require_no_show_preconditions
+require_sales_info require_sales_info
+require_finalize_contract require_finalize_contract
+require_schedule_artifacts require_schedule_artifacts
+require_trigger_future_sale require_trigger_future_sale
+require_trigger_loss_reason require_trigger_loss_reason
+require_email_for_online_schedule require_email_for_online_schedule
+require_finalize_contract_flow require_finalize_contract_flow
+        }
+    
+
+
         TeamLeadTimeUnit {
             hours hours
 days days
@@ -292,6 +320,13 @@ FULL FULL
     
 
 
+        backoffice_beta_team_scope {
+            ALL_TEAMS ALL_TEAMS
+SPECIFIC_TEAMS SPECIFIC_TEAMS
+        }
+    
+
+
         backoffice_access_principal {
             MASTER MASTER
 MANAGER MANAGER
@@ -351,6 +386,17 @@ LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
 LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
 GOOGLE_CONNECTION_BROKEN GOOGLE_CONNECTION_BROKEN
 LEAD_TRANSFER_ACTIVATED LEAD_TRANSFER_ACTIVATED
+MEETING_REMINDER MEETING_REMINDER
+LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
+MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
+        }
+    
+
+
+        web_push_consent_status {
+            accepted accepted
+declined declined
+dismissed dismissed
         }
     
 
@@ -520,6 +566,45 @@ RECONNECTION_EVENT RECONNECTION_EVENT
     
 
 
+        WhatsAppHistorySyncStatus {
+            IDLE IDLE
+RUNNING RUNNING
+COMPLETED COMPLETED
+FAILED FAILED
+        }
+    
+
+
+        WhatsAppHandoffMode {
+            BOT BOT
+HUMAN HUMAN
+        }
+    
+
+
+        WhatsAppAutoResponseRuleType {
+            WELCOME WELCOME
+OFF_HOURS OFF_HOURS
+KEYWORD KEYWORD
+        }
+    
+
+
+        WhatsAppAutoResponseMatchMode {
+            CONTAINS CONTAINS
+EXACT EXACT
+STARTS_WITH STARTS_WITH
+        }
+    
+
+
+        TeamWhatsAppContactSource {
+            PHONE_CONTACTS PHONE_CONTACTS
+GROUP_PARTICIPANT GROUP_PARTICIPANT
+        }
+    
+
+
         customer_identity_type {
             phone phone
 email email
@@ -565,6 +650,13 @@ bounce bounce
 complaint complaint
 opt_out opt_out
 missing_identity missing_identity
+        }
+    
+
+
+        email_variable_value_source {
+            STATIC STATIC
+CDP CDP
         }
     
   "corretor_studio_profiles" {
@@ -859,11 +951,12 @@ missing_identity missing_identity
   "corretor_studio_leads" {
     String id "🗝️"
     String leadCode 
-    LeadStatus status 
+    LeadStatus status "❓"
     String name 
     String email "❓"
     String phone "❓"
     String cnpj "❓"
+    String razaoSocial "❓"
     String age "❓"
     String currentHealthPlan "❓"
     Decimal currentValue "❓"
@@ -953,6 +1046,7 @@ missing_identity missing_identity
     Json inviteDispatchLastPayload "❓"
     String publicShareTokenHash "❓"
     DateTime publicShareExpiresAt "❓"
+    DateTime reminder30MinSentAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1112,6 +1206,41 @@ missing_identity missing_identity
     }
   
 
+  "meeting_follow_up_digest_logs" {
+    String id "🗝️"
+    DateTime digestDate 
+    DateTime sentAt 
+    Int leadCount 
+    String channel 
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_profile_web_push_subscriptions" {
+    String id "🗝️"
+    String endpoint 
+    String p256dh 
+    String auth 
+    String userAgent "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_profile_web_push_consents" {
+    String id "🗝️"
+    WebPushConsentStatus status 
+    String consentVersion 
+    DateTime consentedAt "❓"
+    DateTime declinedAt "❓"
+    DateTime dismissedAt "❓"
+    String source "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_pending_actions" {
     String id "🗝️"
     PendingActionType actionType 
@@ -1239,6 +1368,7 @@ missing_identity missing_identity
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
+    String cdpSegmentSlug "❓"
     EmailCampaignStatus status 
     DateTime scheduledAt "❓"
     DateTime sentAt "❓"
@@ -1333,9 +1463,16 @@ missing_identity missing_identity
     String id "🗝️"
     BackofficeFeatureGrantType grantType 
     BackofficeFeatureAccessLevel accessLevel 
+    BackofficeBetaTeamScope betaTeamScope 
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "backoffice_feature_grant_teams" {
+    String id "🗝️"
+    DateTime createdAt 
     }
   
 
@@ -1346,6 +1483,33 @@ missing_identity missing_identity
     Decimal price 
     Boolean canInstallment 
     Int maxInstallments 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_lead_status_transition_field_rules" {
+    String id "🗝️"
+    LeadStatus targetStatus 
+    BackofficeLeadTransitionFieldKey fieldKey 
+    Boolean isEnabled 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_lead_status_transition_gates" {
+    String id "🗝️"
+    String slug 
+    String name 
+    BackofficeLeadTransitionGateType gateType 
+    LeadStatus sourceStatus "❓"
+    LeadStatus targetStatus "❓"
+    Json config 
+    String blockerType 
+    String errorMessage "❓"
+    Boolean isEnabled 
+    Int sortOrder 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1431,6 +1595,8 @@ missing_identity missing_identity
     String defaultValue "❓"
     String description "❓"
     Boolean isActive 
+    EmailVariableValueSource valueSource 
+    String cdpFieldKey "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1455,6 +1621,20 @@ missing_identity missing_identity
     }
   
 
+  "team_whatsapp_contacts" {
+    String id "🗝️"
+    String remoteJid 
+    String opaqueId 
+    String phoneNumber "❓"
+    String displayName "❓"
+    String pushName "❓"
+    TeamWhatsAppContactSource source 
+    DateTime lastSyncedAt 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "team_whatsapp_configs" {
     String id "🗝️"
     WhatsAppProvider provider 
@@ -1470,6 +1650,10 @@ missing_identity missing_identity
     DateTime lastConnectedAt "❓"
     DateTime lastDisconnectedAt "❓"
     DateTime lastSyncAt "❓"
+    WhatsAppHistorySyncStatus historySyncStatus 
+    DateTime historySyncStartedAt "❓"
+    DateTime historySyncCompletedAt "❓"
+    String historySyncError "❓"
     Int usageLimitMonthly 
     Boolean billingEnabled 
     DateTime createdAt 
@@ -1482,6 +1666,7 @@ missing_identity missing_identity
     String externalChatId "❓"
     String contactPhone 
     String contactName "❓"
+    String contactAvatarUrl "❓"
     String normalizedPhone 
     DateTime lastMessageAt "❓"
     DateTime lastInboundAt "❓"
@@ -1489,6 +1674,8 @@ missing_identity missing_identity
     String lastMessagePreview "❓"
     Int unreadCount 
     Boolean isArchived 
+    WhatsAppHandoffMode handoffMode 
+    DateTime welcomeSentAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1504,13 +1691,17 @@ missing_identity missing_identity
     String contentText "❓"
     String mediaUrl "❓"
     String mediaMimeType "❓"
+    String mediaFileName "❓"
+    Json linkPreview "❓"
     String caption "❓"
+    String senderDisplayName "❓"
     String senderPhone "❓"
     String recipientPhone "❓"
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
     DateTime readAt "❓"
     DateTime failedAt "❓"
+    Boolean isAutoResponse 
     Json rawPayload 
     DateTime createdAt 
     DateTime updatedAt 
@@ -1534,6 +1725,31 @@ missing_identity missing_identity
     }
   
 
+  "whatsapp_auto_response_rules" {
+    String id "🗝️"
+    WhatsAppAutoResponseRuleType type 
+    String replyMessage 
+    String triggerKeywords 
+    WhatsAppAutoResponseMatchMode matchMode 
+    Json offHoursSchedule "❓"
+    Boolean isActive 
+    Int priority 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_auto_response_logs" {
+    String id "🗝️"
+    WhatsAppAutoResponseRuleType ruleType 
+    String inboundMessageId "❓"
+    String outboundMessageId "❓"
+    String triggerText "❓"
+    String sentText 
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_cdp_profiles" {
     String id "🗝️"
     String normalizedName 
@@ -1545,6 +1761,7 @@ missing_identity missing_identity
     String primaryDocument "❓"
     String normalizedPrimaryDocument "❓"
     DateTime lastSeenAt "❓"
+    Json profileData "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1639,7 +1856,7 @@ missing_identity missing_identity
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookTokenExpiryMode" : "enum:expiryMode"
     "backoffice_webhook_tokens" }o--|| backoffice_users : "generatedBy"
     "backoffice_webhook_request_logs" |o--|| "BackofficeWebhookSource" : "enum:source"
-    "corretor_studio_leads" |o--|| "LeadStatus" : "enum:status"
+    "corretor_studio_leads" |o--|o "LeadStatus" : "enum:status"
     "corretor_studio_leads" |o--|o "MeetingHeald" : "enum:meetingHeald"
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:followUpSourceStatus"
     "corretor_studio_leads" }o--|| corretor_studio_profiles : "manager"
@@ -1695,6 +1912,11 @@ missing_identity missing_identity
     "corretor_studio_notifications" }o--|| corretor_studio_profiles : "recipient"
     "corretor_studio_notifications" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_notifications" }o--|| corretor_studio_teams : "team"
+    "meeting_follow_up_digest_logs" }o--|| corretor_studio_profiles : "recipient"
+    "meeting_follow_up_digest_logs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_profile_web_push_subscriptions" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_profile_web_push_consents" |o--|| "WebPushConsentStatus" : "enum:status"
+    "corretor_studio_profile_web_push_consents" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_pending_actions" |o--|| "PendingActionType" : "enum:actionType"
     "corretor_studio_pending_actions" |o--|| "PendingActionStatus" : "enum:status"
     "corretor_studio_pending_actions" }o--|| corretor_studio_profiles : "master"
@@ -1730,7 +1952,7 @@ missing_identity missing_identity
     "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
-    "corretor_studio_email_campaigns" }o--|| corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
     "corretor_studio_email_logs" |o--|| "EmailLogCategory" : "enum:category"
     "corretor_studio_email_logs" |o--|| "EmailLogStatus" : "enum:status"
     "corretor_studio_email_logs" }o--|| corretor_studio_teams : "team"
@@ -1748,11 +1970,21 @@ missing_identity missing_identity
     "backoffice_feature_access_rules" }o--|| backoffice_features : "feature"
     "backoffice_feature_grants" |o--|| "BackofficeFeatureGrantType" : "enum:grantType"
     "backoffice_feature_grants" |o--|| "BackofficeFeatureAccessLevel" : "enum:accessLevel"
+    "backoffice_feature_grants" |o--|| "BackofficeBetaTeamScope" : "enum:betaTeamScope"
     "backoffice_feature_grants" }o--|| backoffice_features : "feature"
     "backoffice_feature_grants" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_feature_grant_teams" }o--|| backoffice_feature_grants : "grant"
+    "backoffice_feature_grant_teams" }o--|| corretor_studio_teams : "team"
     "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
     "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
     "backoffice_product_payment_rules" }o--|| backoffice_products : "product"
+    "backoffice_lead_status_transition_field_rules" |o--|| "LeadStatus" : "enum:targetStatus"
+    "backoffice_lead_status_transition_field_rules" |o--|| "BackofficeLeadTransitionFieldKey" : "enum:fieldKey"
+    "backoffice_lead_status_transition_field_rules" }o--|| corretor_studio_profiles : "updatedBy"
+    "backoffice_lead_status_transition_gates" |o--|| "BackofficeLeadTransitionGateType" : "enum:gateType"
+    "backoffice_lead_status_transition_gates" |o--|o "LeadStatus" : "enum:sourceStatus"
+    "backoffice_lead_status_transition_gates" |o--|o "LeadStatus" : "enum:targetStatus"
+    "backoffice_lead_status_transition_gates" }o--|| corretor_studio_profiles : "updatedBy"
     "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"
@@ -1765,15 +1997,20 @@ missing_identity missing_identity
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
+    "email_team_variables" |o--|| "EmailVariableValueSource" : "enum:valueSource"
     "email_team_variables" }o--|| corretor_studio_teams : "team"
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
+    "team_whatsapp_contacts" |o--|| "TeamWhatsAppContactSource" : "enum:source"
+    "team_whatsapp_contacts" }o--|| corretor_studio_teams : "team"
     "team_whatsapp_configs" |o--|| "WhatsAppProvider" : "enum:provider"
     "team_whatsapp_configs" |o--|| "WhatsAppConnectionStatus" : "enum:status"
+    "team_whatsapp_configs" |o--|| "WhatsAppHistorySyncStatus" : "enum:historySyncStatus"
     "team_whatsapp_configs" |o--|| corretor_studio_teams : "team"
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "createdBy"
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "updatedBy"
+    "whatsapp_conversations" |o--|| "WhatsAppHandoffMode" : "enum:handoffMode"
     "whatsapp_conversations" }o--|| corretor_studio_teams : "team"
     "whatsapp_conversations" }o--|| team_whatsapp_configs : "config"
     "whatsapp_conversations" }o--|o corretor_studio_leads : "lead"
@@ -1786,11 +2023,18 @@ missing_identity missing_identity
     "whatsapp_messages" }o--|| team_whatsapp_configs : "config"
     "whatsapp_messages" }o--|o corretor_studio_leads : "lead"
     "whatsapp_messages" }o--|o corretor_studio_profiles : "sentByProfile"
+    "whatsapp_messages" }o--|o whatsapp_auto_response_rules : "autoResponseRule"
     "whatsapp_usage_events" |o--|| "WhatsAppProvider" : "enum:provider"
     "whatsapp_usage_events" |o--|| "WhatsAppUsageEventType" : "enum:eventType"
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_usage_events" }o--|| corretor_studio_teams : "team"
     "whatsapp_usage_events" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseRuleType" : "enum:type"
+    "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseMatchMode" : "enum:matchMode"
+    "whatsapp_auto_response_rules" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_auto_response_logs" |o--|| "WhatsAppAutoResponseRuleType" : "enum:ruleType"
+    "whatsapp_auto_response_logs" }o--|| whatsapp_conversations : "conversation"
+    "whatsapp_auto_response_logs" }o--|o whatsapp_auto_response_rules : "rule"
     "corretor_studio_cdp_profiles" }o--|| corretor_studio_teams : "team"
     "corretor_studio_cdp_identities" |o--|| "CustomerIdentityType" : "enum:type"
     "corretor_studio_cdp_identities" }o--|| corretor_studio_cdp_profiles : "profile"

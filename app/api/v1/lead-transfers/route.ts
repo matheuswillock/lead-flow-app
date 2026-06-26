@@ -6,20 +6,46 @@ import { leadTransferUseCase } from "@/app/api/useCases/leadTransfers/LeadTransf
 import { leadStatusLabels } from "@/lib/lead-status";
 
 const leadStatusValues = Object.keys(leadStatusLabels) as [string, ...string[]];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const listSchema = z.object({
   search: z.string().optional(),
-  status: z.enum(["pending", "completed", "all"]).default("all"),
+  transferStatuses: z.string().optional(),
   leadStatus: z.enum(leadStatusValues).optional(),
-  toTeamId: z.string().uuid().optional(),
-  transferredByProfileId: z.string().uuid().optional(),
-  dateFrom: z.string().optional(),
-  dateTo: z.string().optional(),
+  toTeamIds: z.string().optional(),
+  transferredByProfileIds: z.string().optional(),
+  sdrProfileIds: z.string().optional(),
+  closerProfileIds: z.string().optional(),
+  transferDateFrom: z.string().optional(),
+  transferDateTo: z.string().optional(),
+  preScheduledDateFrom: z.string().optional(),
+  preScheduledDateTo: z.string().optional(),
+  scheduledDateFrom: z.string().optional(),
+  scheduledDateTo: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 const ISO_DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function splitCsv(value?: string): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function splitUuidCsv(value?: string): string[] {
+  return splitCsv(value).filter((item) => UUID_RE.test(item));
+}
+
+function splitTransferStatuses(value?: string): Array<"pending" | "completed"> {
+  const allowed = new Set(["pending", "completed"]);
+  return splitCsv(value).filter(
+    (item): item is "pending" | "completed" => allowed.has(item)
+  );
+}
 
 function parseDateBound(value: string | undefined, bound: "start" | "end"): Date | undefined {
   if (!value) return undefined;
@@ -67,12 +93,18 @@ export async function GET(request: NextRequest) {
 
     const output = await leadTransferUseCase.listWithCtx(teamAccess.access, {
       search: parsed.data.search,
-      status: parsed.data.status,
+      transferStatuses: splitTransferStatuses(parsed.data.transferStatuses),
       leadStatus: parsed.data.leadStatus,
-      toTeamId: parsed.data.toTeamId,
-      transferredByProfileId: parsed.data.transferredByProfileId,
-      dateFrom: parseDateBound(parsed.data.dateFrom, "start"),
-      dateTo: parseDateBound(parsed.data.dateTo, "end"),
+      toTeamIds: splitUuidCsv(parsed.data.toTeamIds),
+      transferredByProfileIds: splitUuidCsv(parsed.data.transferredByProfileIds),
+      sdrProfileIds: splitUuidCsv(parsed.data.sdrProfileIds),
+      closerProfileIds: splitUuidCsv(parsed.data.closerProfileIds),
+      transferDateFrom: parseDateBound(parsed.data.transferDateFrom, "start"),
+      transferDateTo: parseDateBound(parsed.data.transferDateTo, "end"),
+      preScheduledDateFrom: parseDateBound(parsed.data.preScheduledDateFrom, "start"),
+      preScheduledDateTo: parseDateBound(parsed.data.preScheduledDateTo, "end"),
+      scheduledDateFrom: parseDateBound(parsed.data.scheduledDateFrom, "start"),
+      scheduledDateTo: parseDateBound(parsed.data.scheduledDateTo, "end"),
       page: parsed.data.page,
       pageSize: parsed.data.pageSize,
     });

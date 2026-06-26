@@ -11,6 +11,8 @@ export interface IBackofficePlatformUsersUseCase {
     options: { query?: string; page: number; pageSize: number }
   ): Promise<Output>
 
+  listMasterUserTeams(masterProfileId: string): Promise<Output>
+
   getMasterUserInvoices(
     masterProfileId: string,
     options: {
@@ -64,12 +66,15 @@ export interface IBackofficePlatformUsersUseCase {
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      generateCharge?: boolean
     }
   ): Promise<Output>
 
+  addMasterUserToTeam(masterProfileId: string, teamId: string): Promise<Output>
+
   addTeamToMasterUser(
     masterProfileId: string,
-    data: { name: string }
+    data: { name: string; generateCharge?: boolean }
   ): Promise<Output>
 
   updateTeamForMasterUser(

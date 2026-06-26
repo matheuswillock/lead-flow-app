@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { whatsAppSettingsService } from '../services/WhatsAppSettingsService'
@@ -9,22 +10,27 @@ import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage } from
 const buildRequestKey = (teamId: string): string => `whatsapp-settings:${teamId}`
 
 const QR_POLL_INTERVAL_MS = 8000
-const QR_POLL_MAX_TICKS = 30 // ~4 minutes before backing off
+const QR_POLL_MAX_TICKS = 30
 
 export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContextValue {
+  const router = useRouter()
   const { activeTeamId } = useTeamContext()
 
   const [config, setConfig] = useState<WhatsAppConfig | null>(null)
   const [usage, setUsage] = useState<WhatsAppUsage | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [isSyncingContacts, setIsSyncingContacts] = useState(false)
 
   const inFlightKeyRef = useRef<string | null>(null)
+  const pollInFlightRef = useRef(false)
   const lastSuccessKeyRef = useRef<string | null>(null)
   const currentKeyRef = useRef<string | null>(null)
   const lastQrCodeTextRef = useRef<string | null>(null)
+  const prevStatusRef = useRef<WhatsAppConfig['status'] | null>(null)
 
   const loadData = useCallback(async () => {
     if (!activeTeamId) {
@@ -70,6 +76,23 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }
   }, [activeTeamId, supabaseId])
 
+  const refreshConfig = useCallback(async () => {
+    if (!activeTeamId || pollInFlightRef.current) return
+
+    pollInFlightRef.current = true
+    setIsRefreshing(true)
+
+    try {
+      const fetchedConfig = await whatsAppSettingsService.fetchConfig(activeTeamId, supabaseId)
+      setConfig(fetchedConfig)
+    } catch (error) {
+      console.error('[useWhatsAppSettings] Erro ao atualizar status:', error)
+    } finally {
+      setIsRefreshing(false)
+      pollInFlightRef.current = false
+    }
+  }, [activeTeamId, supabaseId])
+
   useEffect(() => {
     void loadData()
   }, [loadData])
@@ -79,7 +102,6 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     void loadData()
   }, [loadData])
 
-  // Poll only connection status (GET config syncs with Evolution without regenerating QR).
   const status = config?.status
   useEffect(() => {
     if (status !== 'QR_READY' && status !== 'PENDING') return
@@ -91,11 +113,11 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
         window.clearInterval(intervalId)
         return
       }
-      reload()
+      void refreshConfig()
     }, QR_POLL_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
-  }, [status, reload])
+  }, [status, refreshConfig])
 
   useEffect(() => {
     const qrCodeText = config?.qrCodeText
@@ -108,6 +130,22 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }
     lastQrCodeTextRef.current = qrCodeText
   }, [config?.qrCodeText])
+
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    const current = config?.status ?? null
+    prevStatusRef.current = current
+
+    if (!activeTeamId) return
+    if (!prev || (prev !== 'QR_READY' && prev !== 'PENDING')) return
+    if (current !== 'CONNECTED') return
+
+    toast.success('WhatsApp conectado com sucesso')
+    void whatsAppSettingsService.syncHistory(activeTeamId, supabaseId).catch((error) => {
+      console.error('[useWhatsAppSettings] Erro ao sincronizar histórico:', error)
+    })
+    router.push(`/${supabaseId}/whatsapp`)
+  }, [config?.status, activeTeamId, supabaseId, router])
 
   const connect = useCallback(async () => {
     if (!activeTeamId) {
@@ -171,16 +209,39 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }
   }, [activeTeamId, supabaseId])
 
+  const syncPhoneContacts = useCallback(async () => {
+    if (!activeTeamId) {
+      toast.error('Selecione um time para sincronizar os contatos')
+      return
+    }
+    if (isSyncingContacts) return
+    setIsSyncingContacts(true)
+    try {
+      const result = await whatsAppSettingsService.syncPhoneContacts(activeTeamId, supabaseId)
+      toast.success(
+        `${result.imported} contato(s) importado(s), ${result.updatedConversations} conversa(s) atualizada(s)`
+      )
+    } catch (error) {
+      console.error('[useWhatsAppSettings] Erro ao sincronizar contatos:', error)
+      toast.error(error instanceof Error ? error.message : 'Não foi possível sincronizar os contatos')
+    } finally {
+      setIsSyncingContacts(false)
+    }
+  }, [activeTeamId, supabaseId, isSyncingContacts])
+
   return {
     config,
     usage,
     isLoading,
+    isRefreshing,
     isConnecting,
     isReconnecting,
     isDisconnecting,
+    isSyncingContacts,
     connect,
     reconnect,
     disconnect,
     reload,
+    syncPhoneContacts,
   }
 }

@@ -1,9 +1,7 @@
 import type {
   CustomerConsentReason,
   CustomerConsentStatus,
-  CustomerSourceType,
   EmailEventType,
-  LeadStatus,
   Prisma,
   RenewalStatus,
 } from "@prisma/client"
@@ -12,11 +10,27 @@ import {
   type CdpTeamScope,
 } from "@/app/api/infra/data/repositories/cdp/CdpRepository"
 import {
-  CRM_CLOSED_STATUSES,
+  whatsAppRepository,
+} from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
+import type {
+  WhatsAppConversationSelect,
+  WhatsAppMessageSelect,
+} from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+import {
   PORTFOLIO_RENEWAL_WINDOW_DAYS,
   RECENT_CAMPAIGN_WINDOW_DAYS,
   type CdpSegmentSlug,
 } from "@/lib/cdp/segment-config"
+import { buildEmailEventMetadata, profileMatchesCdpSegment } from "@/lib/cdp/segment-rules"
+import type { CdpSyncFilters } from "@/lib/cdp/sync-filters"
+import { CDP_PRIMARY_SEGMENT_PRIORITY } from "@/lib/cdp/field-catalog"
+import {
+  buildProfileDataMap,
+  getLeadIdFromProfile,
+  type CdpResolvableLead,
+  type CdpResolvableProfile,
+} from "@/lib/cdp/resolve-field-value"
+import { resolveInterpolationValuesForProfile } from "@/lib/cdp/resolve-recipient-interpolation"
 import {
   formatDisplayPhone,
   isValidCdpPrimaryIdentity,
@@ -25,6 +39,13 @@ import {
   normalizeCdpName,
   normalizeCdpPhone,
 } from "@/lib/cdp/normalization"
+import type { LeadStatus } from "@prisma/client"
+
+function toSegmentLeadStatusMap(raw: Map<string, LeadStatus | null>): Map<string, string> {
+  return new Map(
+    [...raw.entries()].flatMap(([key, status]) => (status ? [[key, status] as const] : []))
+  )
+}
 
 const EMAIL_EVENT_MAP: Record<EmailEventType, string> = {
   sent: "email.sent",
@@ -95,9 +116,9 @@ function consentFromEmailFlags(flags: {
 }
 
 export class CustomerDataPlatformService {
-  async syncFromCrm(scope: CdpTeamScope): Promise<SyncCounters> {
+  async syncFromCrm(scope: CdpTeamScope, filters: CdpSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
-    const leads = await cdpRepository.findLeadsForCdpSync(scope.teamId)
+    const leads = await cdpRepository.findLeadsForCdpSync(scope.teamId, filters)
 
     for (const lead of leads) {
       try {
@@ -209,9 +230,9 @@ export class CustomerDataPlatformService {
     return counters
   }
 
-  async syncFromPortfolio(scope: CdpTeamScope): Promise<SyncCounters> {
+  async syncFromPortfolio(scope: CdpTeamScope, filters: CdpSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
-    const portfolios = await cdpRepository.findPortfoliosForCdpSync(scope.teamId)
+    const portfolios = await cdpRepository.findPortfoliosForCdpSync(scope.teamId, filters)
 
     for (const entry of portfolios) {
       try {
@@ -253,6 +274,7 @@ export class CustomerDataPlatformService {
           sourceMetadata: {
             portfolioStatus: entry.portfolioStatus,
             renewalStatus: entry.renewalStatus,
+            renewalAmount: entry.renewalAmount,
           },
         })
 
@@ -294,7 +316,7 @@ export class CustomerDataPlatformService {
     return counters
   }
 
-  async syncFromEmail(scope: CdpTeamScope): Promise<SyncCounters> {
+  async syncFromEmail(scope: CdpTeamScope, filters: CdpSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
     const lists = await cdpRepository.findEmailContactLists(scope.teamId)
 
@@ -372,7 +394,7 @@ export class CustomerDataPlatformService {
       }
     }
 
-    const logs = await cdpRepository.findEmailLogsForCdpSync(scope.teamId)
+    const logs = await cdpRepository.findEmailLogsForCdpSync(scope.teamId, filters)
 
     for (const log of logs) {
       try {
@@ -391,7 +413,10 @@ export class CustomerDataPlatformService {
             sourceType: "email_log",
             sourceId: event.id,
             occurredAt: event.occurredAt,
-            metadata: event.metadata ?? undefined,
+            metadata: buildEmailEventMetadata(
+              log.campaignId,
+              (event.metadata as Record<string, unknown> | null) ?? undefined
+            ),
           })
 
           if (event.type === "bounced" || event.type === "complained" || event.type === "unsubscribed") {
@@ -417,13 +442,208 @@ export class CustomerDataPlatformService {
     return counters
   }
 
+  async syncWhatsappMessageToCdp(input: {
+    teamId: string
+    message: WhatsAppMessageSelect
+    conversation: WhatsAppConversationSelect
+  }): Promise<void> {
+    const displayName = input.conversation.contactName ?? input.conversation.contactPhone
+    if (!isValidCdpPrimaryIdentity(input.conversation.contactPhone, displayName)) return
+
+    const normalizedPhone = normalizeCdpPhone(input.conversation.contactPhone)
+    const normalizedName = normalizeCdpName(displayName)
+
+    const profile = await cdpRepository.upsertProfile({
+      teamId: input.teamId,
+      displayName: displayName.trim(),
+      normalizedName,
+      displayPhone: formatDisplayPhone(input.conversation.contactPhone),
+      normalizedPhone,
+      lastSeenAt: input.message.sentAt ?? input.message.createdAt,
+    })
+
+    await cdpRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId: input.teamId,
+      type: "phone",
+      value: input.conversation.contactPhone,
+      normalizedValue: normalizedPhone,
+      source: "whatsapp",
+      isPrimary: true,
+    })
+
+    await cdpRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId: input.teamId,
+      type: "whatsapp_contact_id",
+      value: input.conversation.id,
+      normalizedValue: input.conversation.id,
+      source: "whatsapp",
+    })
+
+    await cdpRepository.upsertSourceLink({
+      profileId: profile.id,
+      teamId: input.teamId,
+      sourceType: "whatsapp_contact",
+      sourceId: input.conversation.id,
+    })
+
+    await cdpRepository.upsertConsent({
+      profileId: profile.id,
+      teamId: input.teamId,
+      channel: "whatsapp",
+      status: "unknown",
+      reason: null,
+      sourceType: "whatsapp_contact",
+      sourceId: input.conversation.id,
+    })
+
+    const eventType =
+      input.message.direction === "OUTBOUND" ? "whatsapp.message_sent" : "whatsapp.message_received"
+    const preview =
+      input.message.contentText ?? input.message.caption ?? input.message.messageType ?? ""
+
+    if (!input.message.providerMessageId) return
+
+    await cdpRepository.appendEventIfNew({
+      profileId: profile.id,
+      teamId: input.teamId,
+      eventType,
+      sourceType: "whatsapp_message",
+      sourceId: input.message.providerMessageId,
+      occurredAt: input.message.sentAt ?? input.message.createdAt,
+      metadata: {
+        conversationId: input.conversation.id,
+        direction: input.message.direction,
+        preview,
+        sentAt: (input.message.sentAt ?? input.message.createdAt).toISOString(),
+      },
+    })
+  }
+
+  async syncWhatsappConversationToCdp(
+    teamId: string,
+    conversation: WhatsAppConversationSelect
+  ): Promise<void> {
+    const displayName = conversation.contactName ?? conversation.contactPhone
+    if (!isValidCdpPrimaryIdentity(conversation.contactPhone, displayName)) return
+
+    const normalizedPhone = normalizeCdpPhone(conversation.contactPhone)
+    const normalizedName = normalizeCdpName(displayName)
+
+    const profile = await cdpRepository.upsertProfile({
+      teamId,
+      displayName: displayName.trim(),
+      normalizedName,
+      displayPhone: formatDisplayPhone(conversation.contactPhone),
+      normalizedPhone,
+      lastSeenAt: conversation.lastMessageAt ?? conversation.updatedAt,
+    })
+
+    await cdpRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId,
+      type: "phone",
+      value: conversation.contactPhone,
+      normalizedValue: normalizedPhone,
+      source: "whatsapp",
+      isPrimary: true,
+    })
+
+    await cdpRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId,
+      type: "whatsapp_contact_id",
+      value: conversation.id,
+      normalizedValue: conversation.id,
+      source: "whatsapp",
+    })
+
+    await cdpRepository.upsertSourceLink({
+      profileId: profile.id,
+      teamId,
+      sourceType: "whatsapp_contact",
+      sourceId: conversation.id,
+    })
+
+    await cdpRepository.upsertConsent({
+      profileId: profile.id,
+      teamId,
+      channel: "whatsapp",
+      status: "unknown",
+      reason: null,
+      sourceType: "whatsapp_contact",
+      sourceId: conversation.id,
+    })
+
+    await cdpRepository.appendEventIfNew({
+      profileId: profile.id,
+      teamId,
+      eventType: "whatsapp.contact_created",
+      sourceType: "whatsapp_contact",
+      sourceId: conversation.id,
+      occurredAt: conversation.createdAt,
+    })
+  }
+
+  async syncFromWhatsapp(
+    teamId: string,
+    options?: { since?: Date }
+  ): Promise<SyncCounters> {
+    const counters = emptyCounters()
+    const since =
+      options?.since ??
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+
+    const conversations = await whatsAppRepository.listConversationsForTeam(teamId)
+    const conversationById = new Map(conversations.map((item) => [item.id, item]))
+
+    for (const conversation of conversations) {
+      try {
+        await this.syncWhatsappConversationToCdp(teamId, conversation)
+        counters.enriched += 1
+      } catch (error) {
+        counters.errors.push(`conversation:${conversation.id}`)
+        console.error("[CustomerDataPlatformService][syncFromWhatsapp] conversation", conversation.id, error)
+      }
+    }
+
+    const messages = await whatsAppRepository.listMessagesSince({
+      teamId,
+      since,
+    })
+
+    for (const message of messages) {
+      const conversation = conversationById.get(message.conversationId)
+      if (!conversation) {
+        counters.skipped += 1
+        continue
+      }
+
+      try {
+        await this.syncWhatsappMessageToCdp({
+          teamId,
+          message,
+          conversation,
+        })
+        counters.enriched += 1
+      } catch (error) {
+        counters.errors.push(`message:${message.id}`)
+        console.error("[CustomerDataPlatformService][syncFromWhatsapp] message", message.id, error)
+      }
+    }
+
+    return counters
+  }
+
   async countSegments(scope: CdpTeamScope): Promise<SegmentCount[]> {
     const profiles = await cdpRepository.listProfilesForSegmentation(scope.teamId)
 
-    const leadStatuses = await cdpRepository.findLeadStatuses(
+    const rawLeadStatuses = await cdpRepository.findLeadStatuses(
       scope.teamId,
       profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
     )
+    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
 
     const counts: Record<CdpSegmentSlug, number> = {
       email_marketable: 0,
@@ -438,36 +658,11 @@ export class CustomerDataPlatformService {
     const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
 
     for (const profile of profiles) {
-      const emailConsent = profile.consents[0]
-      const hasEmail = Boolean(profile.normalizedPrimaryEmail)
-      const isBlocked = emailConsent?.status === "blocked"
-      const isAllowed = hasEmail && (!emailConsent || emailConsent.status === "allowed")
-
-      if (isAllowed) counts.email_marketable += 1
-      if (isBlocked) counts.email_blocked += 1
-
-      const emailEvents = profile.events.filter((e) => e.eventType.startsWith("email."))
-      const hasOpened = emailEvents.some((e) => e.eventType === "email.opened")
-      const hasClicked = emailEvents.some((e) => e.eventType === "email.clicked")
-      if (hasOpened && !hasClicked) counts.opened_not_clicked += 1
-
-      const hasPortfolio = profile.sourceLinks.some((l) => l.sourceType === "portfolio")
-      const leadId = profile.identities[0]?.normalizedValue
-      const leadStatus = leadId ? (leadStatuses.get(leadId) as LeadStatus | undefined) : undefined
-      const isClosed =
-        hasPortfolio ||
-        (leadStatus ? CRM_CLOSED_STATUSES.includes(leadStatus as LeadStatus) : false)
-      if (hasClicked && !isClosed) counts.clicked_not_closed += 1
-
-      const renewalDue = profile.events.some((e) => e.eventType === "portfolio.renewal_due")
-      if (renewalDue || this.hasPortfolioRenewalLink(profile.sourceLinks)) {
-        counts.portfolio_renewal_due += 1
+      for (const slug of Object.keys(counts) as CdpSegmentSlug[]) {
+        if (profileMatchesCdpSegment(profile, slug, leadStatuses, now, recentMs)) {
+          counts[slug] += 1
+        }
       }
-
-      const recentSent = emailEvents.some(
-        (e) => e.eventType === "email.sent" && now - e.occurredAt.getTime() <= recentMs
-      )
-      if (!recentSent) counts.inactive_recent_campaign += 1
     }
 
     return (Object.keys(SEGMENT_META) as CdpSegmentSlug[]).map((slug) => ({
@@ -483,17 +678,18 @@ export class CustomerDataPlatformService {
 
     const profiles = await cdpRepository.listProfilesForSegmentation(scope.teamId)
 
-    const leadStatuses = await cdpRepository.findLeadStatuses(
+    const rawLeadStatuses = await cdpRepository.findLeadStatuses(
       scope.teamId,
       profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
     )
+    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
 
     const now = Date.now()
     const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
     const ids: string[] = []
 
     for (const profile of profiles) {
-      if (this.profileMatchesSegment(profile, segment, leadStatuses, now, recentMs)) {
+      if (profileMatchesCdpSegment(profile, segment, leadStatuses, now, recentMs)) {
         ids.push(profile.id)
       }
     }
@@ -519,6 +715,7 @@ export class CustomerDataPlatformService {
     recipientEmail: string
     recipientName?: string | null
     logId: string
+    campaignId?: string | null
     eventType: EmailEventType
     occurredAt: Date
     metadata?: Record<string, unknown>
@@ -554,7 +751,7 @@ export class CustomerDataPlatformService {
       sourceType: "email_log",
       sourceId: input.logId,
       occurredAt: input.occurredAt,
-      metadata: input.metadata as Prisma.InputJsonValue | undefined,
+      metadata: buildEmailEventMetadata(input.campaignId, input.metadata) as Prisma.InputJsonValue,
     })
 
     if (input.eventType === "bounced" || input.eventType === "complained" || input.eventType === "unsubscribed") {
@@ -576,55 +773,6 @@ export class CustomerDataPlatformService {
     }
   }
 
-  private profileMatchesSegment(
-    profile: {
-      id: string
-      normalizedPrimaryEmail: string | null
-      consents: { status: string }[]
-      sourceLinks: { sourceType: CustomerSourceType; sourceMetadata: unknown }[]
-      events: { eventType: string; occurredAt: Date }[]
-      identities: { normalizedValue: string }[]
-    },
-    segment: CdpSegmentSlug,
-    leadStatuses: Map<string, string>,
-    now: number,
-    recentMs: number
-  ) {
-    const emailConsent = profile.consents[0]
-    const hasEmail = Boolean(profile.normalizedPrimaryEmail)
-    const emailEvents = profile.events.filter((e) => e.eventType.startsWith("email."))
-    const hasOpened = emailEvents.some((e) => e.eventType === "email.opened")
-    const hasClicked = emailEvents.some((e) => e.eventType === "email.clicked")
-    const hasPortfolio = profile.sourceLinks.some((l) => l.sourceType === "portfolio")
-    const leadId = profile.identities[0]?.normalizedValue
-    const leadStatus = leadId ? (leadStatuses.get(leadId) as LeadStatus | undefined) : undefined
-    const isClosed =
-      hasPortfolio || (leadStatus ? CRM_CLOSED_STATUSES.includes(leadStatus) : false)
-    const recentSent = emailEvents.some(
-      (e) => e.eventType === "email.sent" && now - e.occurredAt.getTime() <= recentMs
-    )
-
-    switch (segment) {
-      case "email_marketable":
-        return hasEmail && (!emailConsent || emailConsent.status === "allowed")
-      case "email_blocked":
-        return emailConsent?.status === "blocked"
-      case "opened_not_clicked":
-        return hasOpened && !hasClicked
-      case "clicked_not_closed":
-        return hasClicked && !isClosed
-      case "portfolio_renewal_due":
-        return (
-          profile.events.some((e) => e.eventType === "portfolio.renewal_due") ||
-          this.hasPortfolioRenewalLink(profile.sourceLinks)
-        )
-      case "inactive_recent_campaign":
-        return !recentSent
-      default:
-        return false
-    }
-  }
-
   private isRenewalDue(renewalStatus: RenewalStatus, contractDueDate: Date | null) {
     if (renewalStatus === "renewed" || renewalStatus === "lost") return false
     if (!contractDueDate) return renewalStatus === "to_renew" || renewalStatus === "contacted"
@@ -634,14 +782,111 @@ export class CustomerDataPlatformService {
     return diff >= 0 && diff <= windowMs
   }
 
-  private hasPortfolioRenewalLink(
-    links: { sourceType: CustomerSourceType; sourceMetadata: unknown }[]
+  async syncProfileDataForTeam(scope: CdpTeamScope) {
+    const variables = await cdpRepository.listCdpEmailVariables(scope.teamId)
+    if (variables.length === 0) return { updated: 0 }
+
+    const profiles = await cdpRepository.listProfilesForProfileDataSync(scope.teamId)
+    const leadIds = profiles
+      .map((profile) => getLeadIdFromProfile(profile as CdpResolvableProfile))
+      .filter((id): id is string => Boolean(id))
+    const leadsById = await cdpRepository.findLeadsForCdpFieldResolution(scope.teamId, leadIds)
+
+    let updated = 0
+    for (const profile of profiles) {
+      const leadId = getLeadIdFromProfile(profile as CdpResolvableProfile)
+      const lead = leadId ? (leadsById.get(leadId) as CdpResolvableLead) : null
+      const profileData = buildProfileDataMap(variables, profile as CdpResolvableProfile, lead)
+      await cdpRepository.updateProfileData(profile.id, scope.teamId, profileData)
+      updated += 1
+    }
+
+    return { updated }
+  }
+
+  async resolvePrimarySegmentSlug(
+    scope: CdpTeamScope,
+    profileId: string
+  ): Promise<CdpSegmentSlug | null> {
+    const profiles = await cdpRepository.listProfilesForSegmentationByIds(scope.teamId, [profileId])
+    const profile = profiles[0]
+    if (!profile) return null
+
+    const leadStatuses = toSegmentLeadStatusMap(
+      await cdpRepository.findLeadStatuses(
+      scope.teamId,
+      profile.identities.map((identity) => identity.normalizedValue)
+    )
+    )
+
+    const now = Date.now()
+    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+
+    for (const slug of CDP_PRIMARY_SEGMENT_PRIORITY) {
+      if (profileMatchesCdpSegment(profile, slug, leadStatuses, now, recentMs)) {
+        return slug
+      }
+    }
+
+    return null
+  }
+
+  async resolvePrimarySegmentsForProfiles(scope: CdpTeamScope, profileIds: string[]) {
+    if (profileIds.length === 0) return new Map<string, CdpSegmentSlug>()
+
+    const profiles = await cdpRepository.listProfilesForSegmentationByIds(scope.teamId, profileIds)
+    const profileMap = new Map(profiles.map((profile) => [profile.id, profile]))
+    const leadStatuses = toSegmentLeadStatusMap(
+      await cdpRepository.findLeadStatuses(
+      scope.teamId,
+      profiles.flatMap((profile) => profile.identities.map((identity) => identity.normalizedValue))
+    )
+    )
+
+    const now = Date.now()
+    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    const result = new Map<string, CdpSegmentSlug>()
+
+    for (const profileId of profileIds) {
+      const profile = profileMap.get(profileId)
+      if (!profile) continue
+
+      for (const slug of CDP_PRIMARY_SEGMENT_PRIORITY) {
+        if (profileMatchesCdpSegment(profile, slug, leadStatuses, now, recentMs)) {
+          result.set(profileId, slug)
+          break
+        }
+      }
+    }
+
+    return result
+  }
+
+  async previewInterpolation(
+    scope: CdpTeamScope,
+    profileId: string,
+    variableKeys: string[]
   ) {
-    return links.some((link) => {
-      if (link.sourceType !== "portfolio") return false
-      const meta = link.sourceMetadata as { renewalStatus?: string } | null
-      return meta?.renewalStatus === "to_renew" || meta?.renewalStatus === "contacted"
-    })
+    const profile = await cdpRepository.getProfileDetailWithCtx(scope, profileId)
+    if (!profile) return null
+
+    const variables = await cdpRepository.listCdpEmailVariables(scope.teamId)
+    const filtered =
+      variableKeys.length > 0
+        ? variables.filter((variable) => variableKeys.includes(variable.key))
+        : variables
+
+    const leadId = getLeadIdFromProfile(profile as CdpResolvableProfile)
+    const leadsById = leadId
+      ? await cdpRepository.findLeadsForCdpFieldResolution(scope.teamId, [leadId])
+      : new Map()
+    const lead = leadId ? ((leadsById.get(leadId) as CdpResolvableLead) ?? null) : null
+
+    return resolveInterpolationValuesForProfile(
+      filtered,
+      profile as CdpResolvableProfile,
+      lead
+    )
   }
 }
 

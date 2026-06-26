@@ -1,31 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
+import { getCdpAccess, teamContextFromCdpAccess } from "@/app/api/v1/cdp/utils/getCdpAccess"
 import { customerDataPlatformUseCase } from "@/app/api/useCases/cdp/CustomerDataPlatformUseCase"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
-function teamContextFromAccess(access: NonNullable<Awaited<ReturnType<typeof getTeamAccess>>["access"]>) {
-  return {
-    profileId: access.profileId,
-    userTimezone: access.userTimezone,
-    teamMember: {
-      role: access.teamMember.role,
-      functions: access.teamMember.functions,
-    },
-  }
-}
-
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const teamAccess = await getTeamAccess(request)
-    if (teamAccess.error) {
-      return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+    const cdpAccess = await getCdpAccess(request)
+    if (cdpAccess.error) {
+      return NextResponse.json(cdpAccess.error, { status: cdpAccess.status })
     }
 
     const { id } = await params
     const result = await customerDataPlatformUseCase.getProfile(
-      teamAccess.access.teamId,
-      teamContextFromAccess(teamAccess.access),
+      cdpAccess.access.teamId,
+      teamContextFromCdpAccess(cdpAccess.access),
       id
     )
 

@@ -7,7 +7,7 @@ import type {
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
-import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo } from "./IFeatureAccessRepository"
+import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo, BetaEligibilityContext } from "./IFeatureAccessRepository"
 
 export class FeatureAccessRepository implements IFeatureAccessRepository {
   async listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>> {
@@ -89,6 +89,48 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     })
   }
 
+  async resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>> {
+    const eligible = new Set<string>()
+    const grantOwnerId = ctx.isMaster ? ctx.profileId : ctx.managerId
+
+    if (!grantOwnerId) {
+      return eligible
+    }
+
+    const grants = await prisma.backofficeFeatureGrant.findMany({
+      where: {
+        profileId: grantOwnerId,
+        grantType: "BETA",
+        isActive: true,
+      },
+      select: {
+        featureId: true,
+        betaTeamScope: true,
+        teams: {
+          select: { teamId: true },
+        },
+      },
+    })
+
+    for (const grant of grants) {
+      if (grant.betaTeamScope === "ALL_TEAMS") {
+        eligible.add(grant.featureId)
+        continue
+      }
+
+      if (!ctx.activeTeamId) {
+        continue
+      }
+
+      const scopedTeamIds = grant.teams.map((item) => item.teamId)
+      if (scopedTeamIds.includes(ctx.activeTeamId)) {
+        eligible.add(grant.featureId)
+      }
+    }
+
+    return eligible
+  }
+
   async findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null> {
     const profile = await prisma.profile.findUnique({
       where: { id: profileId },
@@ -112,12 +154,20 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
             functions: true,
             canManageAccountTeams: true,
             canCreateAccountUsers: true,
+            team: {
+              select: {
+                masterId: true,
+              },
+            },
           },
         })
       : null
 
+    const isTeamMaster =
+      membership !== null && membership.team.masterId === profileId
+
     return {
-      isMaster: profile.isMaster,
+      isMaster: isTeamMaster,
       role: membership?.role ?? "operator",
       functions: (membership?.functions ?? []) as string[],
       canManageAccountTeams:
@@ -127,6 +177,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       userTypeSlug: "common",
       memberProActive: false,
       memberProExpiresAt: null,
+      activeTeamId: profile.activeTeamId,
     }
   }
 

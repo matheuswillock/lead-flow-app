@@ -65,6 +65,7 @@ export function useLeadForm() {
       phone: "",
       email: "",
       cnpj: "",
+      razaoSocial: "",
       closerId: "",
       age: "",
       currentValue: "",

@@ -3,6 +3,7 @@ export interface PerformanceSalesFilters {
   profileId: string;
   isManager: boolean;
   isCloser: boolean;
+  isSdr: boolean;
   startDate: Date;
   endDate: Date;
   sdrId?: string;
@@ -11,6 +12,8 @@ export interface PerformanceSalesFilters {
   page: number;
   pageSize: number;
 }
+
+export type PerformanceViewMode = 'team' | 'self';
 
 export interface PerformanceRankingEntry {
   profileId: string;
@@ -99,6 +102,7 @@ export interface PerformanceDrilldownEntry {
 }
 
 export interface PerformanceSalesResult {
+  viewMode: PerformanceViewMode;
   kpis: PerformanceKpis;
   highlights: {
     topCloser: PerformanceHighlight | null;

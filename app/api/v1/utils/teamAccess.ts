@@ -5,6 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
+import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -114,6 +115,21 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     };
   }
 
+  const accountMasterId = teamMember.team.masterId;
+  const accountSubscriptionActive = await isAccountSubscriptionActive(accountMasterId);
+
+  if (!accountSubscriptionActive) {
+    return {
+      error: new Output(
+        false,
+        [],
+        ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
+        null
+      ),
+      status: 403,
+    };
+  }
+
   return {
     access: {
       supabaseId,
@@ -121,8 +137,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       profileId: profile.id,
       profileEmail: profile.email,
       profileName: profile.fullName,
-      isMaster: teamMember.team.masterId === profile.id || profile.isMaster,
-      managerId: profile.managerId ?? teamMember.team.masterId ?? profile.id,
+      isMaster: accountMasterId === profile.id,
+      managerId: accountMasterId,
       canCreateAccountUsers:
         teamMember.role === "manager" && teamMember.canCreateAccountUsers === true,
       canManageAccountTeams:

@@ -617,6 +617,8 @@ export class LeadScheduleService implements ILeadScheduleService {
           inviteDispatchLastError,
           inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
           publicShareExpiresAt: refreshedPublicShareExpiresAt,
+          reminder30MinSentAt:
+            existingSchedule?.date?.getTime() !== meetingDate.getTime() ? null : existingSchedule?.reminder30MinSentAt,
         },
       });
 

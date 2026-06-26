@@ -510,7 +510,11 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef, EmailEditorStu
 
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl">
             {editorMode === "html" ? (
-              <EditorHtmlWorkspace value={htmlModeValue || draft.html} onChange={handleHtmlModeChange} />
+              <EditorHtmlWorkspace
+                remountKey={template?.id}
+                value={htmlModeValue || draft.html}
+                onChange={handleHtmlModeChange}
+              />
             ) : (
               <EmailEditor
                 key={editorContentKey}

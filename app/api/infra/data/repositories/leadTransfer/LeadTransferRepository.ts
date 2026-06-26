@@ -38,16 +38,52 @@ function buildLeadSearchFilter(search?: string): Prisma.LeadWhereInput | undefin
   };
 }
 
+function buildDateRange(
+  from?: Date,
+  to?: Date
+): { gte?: Date; lt?: Date } | undefined {
+  if (!from && !to) return undefined;
+  return {
+    ...(from ? { gte: from } : {}),
+    ...(to ? { lt: to } : {}),
+  };
+}
+
+function hasTransferDateFilter(filters: LeadTransferListFilters): boolean {
+  return Boolean(filters.transferDateFrom || filters.transferDateTo);
+}
+
 export class LeadTransferRepository implements ILeadTransferRepository {
   async findPendingByTeam(filters: LeadTransferListFilters): Promise<LeadTransferPendingRow[]> {
-    const { teamId, search, leadStatus, dateFrom, dateTo } = filters;
+    if (hasTransferDateFilter(filters)) {
+      return [];
+    }
 
-    const dateFilter: Prisma.LeadWhereInput = {};
-    if (dateFrom || dateTo) {
-      dateFilter.updatedAt = {
-        ...(dateFrom ? { gte: dateFrom } : {}),
-        ...(dateTo ? { lt: dateTo } : {}),
-      };
+    const {
+      teamId,
+      search,
+      leadStatus,
+      sdrProfileIds,
+      closerProfileIds,
+      preScheduledDateFrom,
+      preScheduledDateTo,
+      scheduledDateFrom,
+      scheduledDateTo,
+    } = filters;
+
+    const preScheduledRange = buildDateRange(preScheduledDateFrom, preScheduledDateTo);
+    const scheduledRange = buildDateRange(scheduledDateFrom, scheduledDateTo);
+
+    const meetingDateFilter: Prisma.LeadWhereInput = {};
+    if (preScheduledRange && scheduledRange) {
+      meetingDateFilter.AND = [
+        { meetingDate: preScheduledRange },
+        { meetingDate: scheduledRange },
+      ];
+    } else if (preScheduledRange) {
+      meetingDateFilter.meetingDate = preScheduledRange;
+    } else if (scheduledRange) {
+      meetingDateFilter.meetingDate = scheduledRange;
     }
 
     const leads = await prisma.lead.findMany({
@@ -55,8 +91,10 @@ export class LeadTransferRepository implements ILeadTransferRepository {
         teamId,
         isTransfer: true,
         ...(leadStatus ? { status: leadStatus as LeadStatus } : {}),
+        ...(sdrProfileIds?.length ? { assignedTo: { in: sdrProfileIds } } : {}),
+        ...(closerProfileIds?.length ? { closerId: { in: closerProfileIds } } : {}),
         ...(buildLeadSearchFilter(search) ?? {}),
-        ...dateFilter,
+        ...meetingDateFilter,
       },
       select: {
         id: true,
@@ -88,28 +126,45 @@ export class LeadTransferRepository implements ILeadTransferRepository {
   }
 
   async findCompletedByTeam(filters: LeadTransferListFilters): Promise<LeadTransferCompletedRow[]> {
-    const { teamId, search, leadStatus, toTeamId, transferredByProfileId, dateFrom, dateTo } = filters;
+    const {
+      teamId,
+      search,
+      leadStatus,
+      toTeamIds,
+      transferredByProfileIds,
+      sdrProfileIds,
+      closerProfileIds,
+      transferDateFrom,
+      transferDateTo,
+      preScheduledDateFrom,
+      preScheduledDateTo,
+      scheduledDateFrom,
+      scheduledDateTo,
+    } = filters;
 
-    const dateFilter: Prisma.LeadTransferWhereInput = {};
-    if (dateFrom || dateTo) {
-      dateFilter.createdAt = {
-        ...(dateFrom ? { gte: dateFrom } : {}),
-        ...(dateTo ? { lt: dateTo } : {}),
-      };
-    }
-
+    const transferDateRange = buildDateRange(transferDateFrom, transferDateTo);
+    const preScheduledRange = buildDateRange(preScheduledDateFrom, preScheduledDateTo);
+    const scheduledRange = buildDateRange(scheduledDateFrom, scheduledDateTo);
     const leadSearch = buildLeadSearchFilter(search);
+
+    const leadWhere: Prisma.LeadWhereInput = {
+      ...(leadStatus ? { status: leadStatus as LeadStatus } : {}),
+      ...(leadSearch ?? {}),
+      ...(sdrProfileIds?.length ? { assignedTo: { in: sdrProfileIds } } : {}),
+      ...(scheduledRange ? { meetingDate: scheduledRange } : {}),
+    };
 
     const transfers = await prisma.leadTransfer.findMany({
       where: {
         fromTeamId: teamId,
-        ...(toTeamId ? { toTeamId } : {}),
-        ...(transferredByProfileId ? { transferredByProfileId } : {}),
-        ...dateFilter,
-        lead: {
-          ...(leadStatus ? { status: leadStatus as LeadStatus } : {}),
-          ...(leadSearch ?? {}),
-        },
+        ...(toTeamIds?.length ? { toTeamId: { in: toTeamIds } } : {}),
+        ...(transferredByProfileIds?.length
+          ? { transferredByProfileId: { in: transferredByProfileIds } }
+          : {}),
+        ...(closerProfileIds?.length ? { receivedByProfileId: { in: closerProfileIds } } : {}),
+        ...(transferDateRange ? { createdAt: transferDateRange } : {}),
+        ...(preScheduledRange ? { preScheduledAt: preScheduledRange } : {}),
+        lead: leadWhere,
       },
       select: {
         id: true,
@@ -153,27 +208,32 @@ export class LeadTransferRepository implements ILeadTransferRepository {
   }
 
   async findFacetsByTeam(teamId: string) {
-    const transfers = await prisma.leadTransfer.findMany({
-      where: { fromTeamId: teamId },
-      select: {
-        toTeam: { select: { id: true, name: true } },
-        transferredByProfile: { select: PROFILE_SELECT },
-      },
-    });
+    const [transferRoutes, transfers] = await Promise.all([
+      prisma.teamTransferRoute.findMany({
+        where: { sourceTeamId: teamId },
+        select: {
+          targetTeam: { select: { id: true, name: true } },
+        },
+        orderBy: { targetTeam: { name: "asc" } },
+      }),
+      prisma.leadTransfer.findMany({
+        where: { fromTeamId: teamId },
+        select: {
+          transferredByProfile: { select: PROFILE_SELECT },
+        },
+      }),
+    ]);
 
-    const destinationTeamsMap = new Map<string, { id: string; name: string }>();
+    const destinationTeams = transferRoutes.map((route) => route.targetTeam);
     const transferredByMap = new Map<string, LeadTransferProfileRef>();
 
     for (const transfer of transfers) {
-      destinationTeamsMap.set(transfer.toTeam.id, transfer.toTeam);
       const actor = mapProfile(transfer.transferredByProfile);
       if (actor) transferredByMap.set(actor.id, actor);
     }
 
     return {
-      destinationTeams: Array.from(destinationTeamsMap.values()).sort((a, b) =>
-        a.name.localeCompare(b.name, "pt-BR")
-      ),
+      destinationTeams,
       transferredBy: Array.from(transferredByMap.values()).sort((a, b) =>
         (a.fullName ?? a.email).localeCompare(b.fullName ?? b.email, "pt-BR")
       ),

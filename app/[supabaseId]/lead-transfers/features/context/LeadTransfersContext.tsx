@@ -16,7 +16,7 @@ type LeadTransfersContextValue = {
     key: K,
     value: LeadTransfersFiltersState[K]
   ) => void;
-  setDateRange: (dateFrom: string, dateTo: string) => void;
+  setDateRange: (field: "transferDate" | "preScheduledDate" | "scheduledDate", dateFrom: string, dateTo: string) => void;
   setPage: (page: number) => void;
   clearFilters: () => void;
   refresh: () => Promise<void>;

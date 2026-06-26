@@ -18,6 +18,9 @@ import {
 } from "@/lib/dates"
 import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 import { BackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
+import { incrementalBillingService } from "../../services/billing/IncrementalBillingService"
+import type { BillingOwnerProfile } from "../../services/billing/IIncrementalBillingService"
+import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncrementalBillingCoordinator"
 
 function buildMasterNotificationEmail(params: {
   masterName: string
@@ -438,6 +441,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           hasAccess,
           status: master.subscriptionStatus,
         },
+        userType: master.userType,
         allTeams: master.allTeams,
         teams: master.teams.map((team) => ({
           id: team.id,
@@ -479,6 +483,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][getMasterUserDetails]", error)
       return new Output(false, [], ["Erro ao carregar detalhes do usuário master"], null)
+    }
+  }
+
+  async listMasterUserTeams(masterProfileId: string): Promise<Output> {
+    try {
+      const teams = await this.platformUsersRepository.listTeamsByMasterId(masterProfileId)
+      if (!teams) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      return new Output(true, [], [], teams)
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][listMasterUserTeams]", error)
+      return new Output(false, [], ["Erro ao listar times do master"], null)
     }
   }
 
@@ -901,6 +919,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      generateCharge?: boolean
     }
   ): Promise<Output> {
     try {
@@ -948,16 +967,78 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       }
 
       if (existingProfile) {
-        if (existingProfile.isMaster) {
-          return new Output(false, [], ["Este e-mail já possui uma conta master na plataforma"], null)
+        if (!existingProfile.supabaseId) {
+          return new Output(false, [], ["Usuário precisa ter conta ativa no sistema"], null)
         }
 
-        await this.platformUsersRepository.addExistingProfileToTeam(existingProfile.id, data.teamId, data.role, data.functions, delegatedPermissions)
+        const alreadyInTeam = await this.platformUsersRepository.findTeamMember(
+          data.teamId,
+          existingProfile.id
+        )
+        if (alreadyInTeam) {
+          return new Output(false, [], ["Usuário já pertence a este time"], null)
+        }
+
+        const belongsToMaster = await this.platformUsersRepository.profileBelongsToMasterAccount(
+          existingProfile.id,
+          masterProfileId
+        )
+
+        const existingDisplayName = existingProfile.fullName ?? trimmedName
+
+        if (!belongsToMaster) {
+          const billingOwner = master as BillingOwnerProfile
+          const projectedBilling = await incrementalBillingService.projectBilling(masterProfileId, {
+            additionalUsers: 1,
+          })
+
+          if (!billingOwner.hasPermanentSubscription && projectedBilling.billingDelta > 0) {
+            const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
+            if (chargeError) {
+              return new Output(false, [], [chargeError], null)
+            }
+
+            const pending = await backofficeIncrementalBillingCoordinator.createAddMemberPendingAction({
+              master: billingOwner,
+              teamId: data.teamId,
+              profileId: existingProfile.id,
+              profileEmail: existingProfile.email,
+              profileName: existingDisplayName,
+              role: data.role,
+              functions: data.functions,
+              ...delegatedPermissions,
+              initiatedBy: "backoffice",
+            })
+
+            return new Output(
+              true,
+              ["Cobrança pendente criada. O usuário será adicionado após o pagamento."],
+              [],
+              {
+                requiresPayment: true,
+                pendingActionId: pending.pendingActionId,
+                checkoutUrl: pending.checkoutUrl,
+                totalCharge: pending.totalCharge,
+                remainingMonths: pending.remainingMonths,
+              }
+            )
+          }
+
+          await this.platformUsersRepository.assertUserSubscriptionCapacity(masterProfileId)
+        }
+
+        await this.platformUsersRepository.addExistingProfileToTeam(
+          existingProfile.id,
+          data.teamId,
+          data.role,
+          data.functions,
+          delegatedPermissions
+        )
 
         await emailService.sendEmail({
           to: [email],
           subject: "Corretor Studio - Você foi adicionado a um novo time",
-          html: buildAddedToTeamEmail({ userName: trimmedName, loginUrl: `${appUrl}/sign-in` }),
+          html: buildAddedToTeamEmail({ userName: existingDisplayName, loginUrl: `${appUrl}/sign-in` }),
         }).catch((err: unknown) => {
           console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao usuário existente:", err)
         })
@@ -965,13 +1046,56 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         await emailService.sendEmail({
           to: [master.email],
           subject: "Corretor Studio - Novo usuário adicionado",
-          html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: trimmedName, userEmail: email, roleLabel }),
+          html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: existingDisplayName, userEmail: email, roleLabel }),
         }).catch((err: unknown) => {
           console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao master:", err)
         })
 
         console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Usuário existente adicionado ao time:", email)
         return new Output(true, ["Usuário adicionado ao time com sucesso"], [], { profileId: existingProfile.id })
+      }
+
+      const billingOwner = master as BillingOwnerProfile
+      const generateCharge = data.generateCharge === true
+
+      if (generateCharge && !billingOwner.hasPermanentSubscription) {
+        const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
+        if (chargeError) {
+          return new Output(false, [], [chargeError], null)
+        }
+
+        const projectedBilling = await incrementalBillingService.projectBilling(masterProfileId, {
+          additionalUsers: 1,
+        })
+
+        if (projectedBilling.billingDelta > 0) {
+          const pending = await backofficeIncrementalBillingCoordinator.createAddUserPendingAction({
+            master: billingOwner,
+            teamId: data.teamId,
+            fullName: trimmedName,
+            email,
+            role: data.role,
+            functions: data.functions,
+            canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+            canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+            canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+          })
+
+          return new Output(
+            true,
+            ["Cobrança pendente criada. O usuário será adicionado após o pagamento."],
+            [],
+            {
+              requiresPayment: true,
+              pendingActionId: pending.pendingActionId,
+              checkoutUrl: pending.checkoutUrl,
+              totalCharge: pending.totalCharge,
+              remainingMonths: pending.remainingMonths,
+            }
+          )
+        }
+
+        await this.platformUsersRepository.assertUserSubscriptionCapacity(masterProfileId)
       }
 
       const { profileId } = await this.platformUsersRepository.createMemberForMaster(
@@ -1031,9 +1155,58 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     }
   }
 
+  async addMasterUserToTeam(masterProfileId: string, teamId: string): Promise<Output> {
+    try {
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const team = await this.platformUsersRepository.findTeamByIdAndMasterId(teamId, masterProfileId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado ou não pertence ao master selecionado"], null)
+      }
+
+      const existingMember = await this.platformUsersRepository.findTeamMember(teamId, masterProfileId)
+      if (existingMember) {
+        return new Output(false, [], ["Master já pertence a este time"], null)
+      }
+
+      await this.platformUsersRepository.addExistingProfileToTeam(
+        masterProfileId,
+        teamId,
+        "manager",
+        [],
+        {
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
+          canTransferAccountLeads: false,
+        }
+      )
+
+      const emailService = createEmailService()
+      const appUrl = getAppUrl({ removeTrailingSlash: true })
+      const masterName = master.fullName ?? master.email
+
+      await emailService.sendEmail({
+        to: [master.email],
+        subject: "Corretor Studio - Você foi adicionado a um novo time",
+        html: buildAddedToTeamEmail({ userName: masterName, loginUrl: `${appUrl}/sign-in` }),
+      }).catch((err: unknown) => {
+        console.error("[BackofficePlatformUsersUseCase][addMasterUserToTeam] Erro ao enviar e-mail:", err)
+      })
+
+      console.info("[BackofficePlatformUsersUseCase][addMasterUserToTeam] Master adicionado ao time:", teamId)
+      return new Output(true, ["Master adicionado ao time com sucesso"], [], { profileId: masterProfileId, teamId })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][addMasterUserToTeam]", error)
+      return new Output(false, [], ["Erro ao adicionar master ao time"], null)
+    }
+  }
+
   async addTeamToMasterUser(
     masterProfileId: string,
-    data: { name: string }
+    data: { name: string; generateCharge?: boolean }
   ): Promise<Output> {
     try {
       const name = data.name.trim()
@@ -1044,6 +1217,42 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
       if (!master) {
         return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const billingOwner = master as BillingOwnerProfile
+      const generateCharge = data.generateCharge === true
+
+      if (generateCharge && !billingOwner.hasPermanentSubscription) {
+        const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
+        if (chargeError) {
+          return new Output(false, [], [chargeError], null)
+        }
+
+        const proportionalData = await incrementalBillingService.calculateProportionalAmount(
+          masterProfileId,
+          "team"
+        )
+
+        if (proportionalData.billingDelta > 0) {
+          const pending = await backofficeIncrementalBillingCoordinator.createCreateTeamPendingAction({
+            master: billingOwner,
+            teamName: name,
+            masterFunctions: (master.functions ?? []) as ("SDR" | "CLOSER")[],
+          })
+
+          return new Output(
+            true,
+            ["Cobrança pendente criada. O time será criado após o pagamento."],
+            [],
+            {
+              requiresPayment: true,
+              pendingActionId: pending.pendingActionId,
+              checkoutUrl: pending.checkoutUrl,
+              totalCharge: pending.totalCharge,
+              remainingMonths: pending.remainingMonths,
+            }
+          )
+        }
       }
 
       const team = await this.platformUsersRepository.createTeamForMaster(masterProfileId, name)

@@ -42,6 +42,7 @@ export interface SubmitPublicLeadPayload {
   meetingNotes?: string;
   extraGuests?: string[];
   isTransfer?: boolean;
+  saveAsDraft?: boolean;
   source?: string;
   utmSource?: string;
   utmMedium?: string;
@@ -56,6 +57,9 @@ export interface SubmitPublicLeadResult {
   isValid: boolean;
   successMessages: string[];
   errorMessages: string[];
+  lead?: {
+    razaoSocial?: string | null;
+  } | null;
 }
 
 export interface AvailabilityResult {

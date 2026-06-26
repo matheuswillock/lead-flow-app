@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { CampanhasService } from "../services/CampanhasService"
-import type { Campaign, CreditStatus, Template, ContactList } from "./CampanhasTypes"
+import type { Campaign, CreditStatus, Template, ContactList, CdpSegmentOption } from "./CampanhasTypes"
 import { parseLocalToUtc, formatLocalInputValue } from "@/lib/dates"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
@@ -25,6 +25,8 @@ export type CampanhasActions = {
   setWizardName: (v: string) => void
   setWizardTemplateId: (v: string) => void
   setWizardContactListId: (v: string) => void
+  setWizardRecipientSource: (v: "contact_list" | "cdp_segment") => void
+  setWizardCdpSegmentSlug: (v: string) => void
   setWizardScheduledAt: (v: string) => void
   handleCreateCampaign: () => Promise<void>
   openEdit: (campaign: Campaign) => void
@@ -53,10 +55,13 @@ export type CampanhasHookReturn = {
   wizardName: string
   wizardTemplateId: string
   wizardContactListId: string
+  wizardRecipientSource: "contact_list" | "cdp_segment"
+  wizardCdpSegmentSlug: string
   wizardScheduledAt: string
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
+  cdpSegments: CdpSegmentOption[]
   editingCampaign: Campaign | null
   editName: string
   editTemplateId: string
@@ -88,10 +93,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardName, setWizardName] = useState("")
   const [wizardTemplateId, setWizardTemplateId] = useState("")
   const [wizardContactListId, setWizardContactListId] = useState("")
+  const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "cdp_segment">("contact_list")
+  const [wizardCdpSegmentSlug, setWizardCdpSegmentSlug] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState("")
   const [wizardCreating, setWizardCreating] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
+  const [cdpSegments, setCdpSegments] = useState<CdpSegmentOption[]>([])
 
   // Edit draft
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
@@ -217,15 +225,24 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardName("")
     setWizardTemplateId("")
     setWizardContactListId("")
+    setWizardRecipientSource("contact_list")
+    setWizardCdpSegmentSlug("")
     setWizardScheduledAt("")
     setWizardOpen(true)
     try {
-      const [tmpl, lists] = await Promise.all([
+      const [tmpl, lists, segmentsRes] = await Promise.all([
         service.getTemplates(supabaseId, activeTeamId),
         service.getContactLists(supabaseId, activeTeamId),
+        fetch("/api/v1/cdp/segments", { cache: "no-store" }).then((res) => res.json()),
       ])
       setTemplates(tmpl)
       setContactLists(lists)
+      if (segmentsRes?.isValid) {
+        const segments = (segmentsRes.result as { segments?: CdpSegmentOption[] })?.segments ?? []
+        setCdpSegments(segments)
+      } else {
+        setCdpSegments([])
+      }
     } catch (err) {
       console.error("[useCampanhas] openWizard fetch error", err)
     }
@@ -237,8 +254,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [wizardCreating])
 
   const handleCreateCampaign = useCallback(async () => {
-    if (!wizardName.trim() || !wizardTemplateId || !wizardContactListId) {
-      toast.error("Preencha o nome, template e lista de contatos")
+    const hasContactList = wizardRecipientSource === "contact_list" && wizardContactListId
+    const hasCdpSegment = wizardRecipientSource === "cdp_segment" && wizardCdpSegmentSlug
+    if (!wizardName.trim() || !wizardTemplateId || (!hasContactList && !hasCdpSegment)) {
+      toast.error("Preencha o nome, template e origem dos destinatários")
       return
     }
     setWizardCreating(true)
@@ -247,8 +266,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       await service.create(supabaseId, activeTeamId, {
         name: wizardName.trim(),
         templateId: wizardTemplateId,
-        contactListId: wizardContactListId,
-        // Converter horário local (no TZ do usuário) para UTC antes de enviar
+        ...(hasContactList ? { contactListId: wizardContactListId } : {}),
+        ...(hasCdpSegment ? { cdpSegmentSlug: wizardCdpSegmentSlug } : {}),
         scheduledAt: wizardScheduledAt
           ? parseLocalToUtc(wizardScheduledAt, tz).toISOString()
           : undefined,
@@ -262,7 +281,19 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setWizardCreating(false)
     }
-  }, [activeTeamId, wizardName, wizardTemplateId, wizardContactListId, wizardScheduledAt, tz, fetchCampaigns, statusFilter, supabaseId])
+  }, [
+    activeTeamId,
+    wizardName,
+    wizardTemplateId,
+    wizardRecipientSource,
+    wizardContactListId,
+    wizardCdpSegmentSlug,
+    wizardScheduledAt,
+    tz,
+    fetchCampaigns,
+    statusFilter,
+    supabaseId,
+  ])
 
   const openEdit = useCallback(async (campaign: Campaign) => {
     setEditingCampaign(campaign)
@@ -344,10 +375,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardName,
     wizardTemplateId,
     wizardContactListId,
+    wizardRecipientSource,
+    wizardCdpSegmentSlug,
     wizardScheduledAt,
     wizardCreating,
     templates,
     contactLists,
+    cdpSegments,
     editingCampaign,
     editName,
     editTemplateId,
@@ -365,6 +399,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardName,
     setWizardTemplateId,
     setWizardContactListId,
+    setWizardRecipientSource,
+    setWizardCdpSegmentSlug,
     setWizardScheduledAt,
     handleCreateCampaign,
     openEdit,

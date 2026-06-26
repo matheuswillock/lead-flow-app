@@ -410,9 +410,19 @@ function startNextDev(): never {
   process.exit(result.status ?? 1);
 }
 
+async function buildServiceWorker() {
+  step("Building web push service worker");
+  const result = run("bun", ["run", "build:sw"], { stdio: "inherit" });
+
+  if (result.status !== 0) {
+    fail("Failed to build service worker (bun run build:sw)");
+  }
+}
+
 async function main() {
   try {
     await runPreflight();
+    await buildServiceWorker();
     startNextDev();
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));

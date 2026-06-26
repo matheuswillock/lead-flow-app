@@ -7,13 +7,38 @@ import type {
   BackofficeFeatureGrant,
 } from "@prisma/client"
 import type {
+  BackofficeBetaGrantWithRelations,
   BackofficeFeatureWithRelations,
   CreateBackofficeFeatureInput,
   IBackofficeFeatureRepository,
+  MasterProfileRecord,
   PlatformUserSearchResult,
   UpdateBackofficeFeatureInput,
   UpsertBackofficeFeatureBetaGrantInput,
 } from "./IBackofficeFeatureRepository"
+
+const MASTER_BETA_GRANT_WHERE = {
+  grantType: "BETA" as const,
+  profile: { isMaster: true, role: "manager" as const },
+}
+
+const BETA_GRANT_INCLUDE = {
+  profile: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      isMaster: true,
+    },
+  },
+  teams: {
+    include: {
+      team: {
+        select: { id: true, name: true },
+      },
+    },
+  },
+}
 
 export class BackofficeFeatureRepository implements IBackofficeFeatureRepository {
   async findAll(): Promise<BackofficeFeatureWithRelations[]> {
@@ -23,16 +48,8 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
           parent: { select: { id: true, slug: true, name: true } },
           children: { select: { id: true, slug: true, name: true }, orderBy: { sortOrder: "asc" } },
           grants: {
-            where: { grantType: "BETA" },
-            include: {
-              profile: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  email: true,
-                },
-              },
-            },
+            where: MASTER_BETA_GRANT_WHERE,
+            include: BETA_GRANT_INCLUDE,
             orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
           },
           accessRules: true,
@@ -46,16 +63,8 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
             parent: { select: { id: true, slug: true, name: true } },
             children: { select: { id: true, slug: true, name: true }, orderBy: { sortOrder: "asc" } },
             grants: {
-              where: { grantType: "BETA" },
-              include: {
-                profile: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    email: true,
-                  },
-                },
-              },
+              where: MASTER_BETA_GRANT_WHERE,
+              include: BETA_GRANT_INCLUDE,
               orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
             },
           },
@@ -150,9 +159,34 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
     await prisma.backofficeFeature.delete({ where: { id } })
   }
 
-  async searchUsers(query: string, page: number, pageSize: number): Promise<PlatformUserSearchResult> {
+  async findProfileById(profileId: string): Promise<MasterProfileRecord | null> {
+    return prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { id: true, isMaster: true, role: true },
+    })
+  }
+
+  async validateTeamsBelongToMaster(masterId: string, teamIds: string[]): Promise<boolean> {
+    if (teamIds.length === 0) return false
+
+    const count = await prisma.team.count({
+      where: {
+        id: { in: teamIds },
+        masterId,
+      },
+    })
+
+    return count === teamIds.length
+  }
+
+  async searchUsers(
+    query: string,
+    page: number,
+    pageSize: number,
+    options?: { mastersOnly?: boolean }
+  ): Promise<PlatformUserSearchResult> {
     const skip = (page - 1) * pageSize
-    const where = query
+    const searchFilter = query
       ? {
           OR: [
             { fullName: { contains: query, mode: "insensitive" as const } },
@@ -160,6 +194,10 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
           ],
         }
       : {}
+
+    const where = options?.mastersOnly
+      ? { isMaster: true, role: "manager" as const, ...searchFilter }
+      : searchFilter
 
     const [items, totalItems] = await Promise.all([
       prisma.profile.findMany({
@@ -186,26 +224,48 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
 
   async upsertBetaGrant(
     data: UpsertBackofficeFeatureBetaGrantInput
-  ): Promise<BackofficeFeatureGrant> {
-    return prisma.backofficeFeatureGrant.upsert({
-      where: {
-        featureId_profileId_grantType: {
+  ): Promise<BackofficeBetaGrantWithRelations> {
+    return prisma.$transaction(async (tx) => {
+      const grant = await tx.backofficeFeatureGrant.upsert({
+        where: {
+          featureId_profileId_grantType: {
+            featureId: data.featureId,
+            profileId: data.profileId,
+            grantType: "BETA",
+          },
+        },
+        update: {
+          isActive: true,
+          accessLevel: data.accessLevel ?? "FULL",
+          betaTeamScope: data.betaTeamScope,
+        },
+        create: {
           featureId: data.featureId,
           profileId: data.profileId,
           grantType: "BETA",
+          accessLevel: data.accessLevel ?? "FULL",
+          betaTeamScope: data.betaTeamScope,
+          isActive: true,
         },
-      },
-      update: {
-        isActive: true,
-        accessLevel: data.accessLevel ?? "FULL",
-      },
-      create: {
-        featureId: data.featureId,
-        profileId: data.profileId,
-        grantType: "BETA",
-        accessLevel: data.accessLevel ?? "FULL",
-        isActive: true,
-      },
+      })
+
+      await tx.backofficeFeatureGrantTeam.deleteMany({
+        where: { grantId: grant.id },
+      })
+
+      if (data.betaTeamScope === "SPECIFIC_TEAMS" && data.teamIds && data.teamIds.length > 0) {
+        await tx.backofficeFeatureGrantTeam.createMany({
+          data: data.teamIds.map((teamId) => ({
+            grantId: grant.id,
+            teamId,
+          })),
+        })
+      }
+
+      return tx.backofficeFeatureGrant.findUniqueOrThrow({
+        where: { id: grant.id },
+        include: BETA_GRANT_INCLUDE,
+      })
     })
   }
 
@@ -269,18 +329,10 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
     })
   }
 
-  async listBetaGrants(featureId: string): Promise<BackofficeFeatureWithRelations["grants"]> {
+  async listBetaGrants(featureId: string): Promise<BackofficeBetaGrantWithRelations[]> {
     return prisma.backofficeFeatureGrant.findMany({
-      where: { featureId, grantType: "BETA" },
-      include: {
-        profile: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-      },
+      where: { featureId, ...MASTER_BETA_GRANT_WHERE },
+      include: BETA_GRANT_INCLUDE,
       orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
     })
   }

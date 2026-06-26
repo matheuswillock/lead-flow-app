@@ -4,6 +4,18 @@ import type {
   BackofficeClientInvoicesResult,
 } from "../context/BackofficeClientDetailsTypes"
 
+export interface BackofficeMutationPendingPayment {
+  requiresPayment: true
+  pendingActionId: string
+  checkoutUrl: string
+  totalCharge: number
+  remainingMonths: number
+}
+
+export type BackofficeMutationResult =
+  | { kind: "completed" }
+  | ({ kind: "pending_payment" } & BackofficeMutationPendingPayment)
+
 export interface IBackofficeClientDetailsService {
   sendAccessEmail(
     memberId: string,
@@ -69,7 +81,22 @@ export interface IBackofficeClientDetailsService {
 
   removeMemberFromTeam(memberId: string, teamId: string): Promise<void>
 
+  addMemberToTeam(memberId: string, teamId: string): Promise<void>
+
   getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }>
+
+  getMemberExternalTeams(
+    memberId: string,
+    accountMasterId: string
+  ): Promise<
+    Array<{
+      teamId: string
+      teamName: string
+      accountMasterId: string
+      accountName: string
+      role: string
+    }>
+  >
 
   addMember(
     masterId: string,
@@ -83,10 +110,16 @@ export interface IBackofficeClientDetailsService {
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      generateCharge?: boolean
     }
-  ): Promise<void>
+  ): Promise<BackofficeMutationResult>
 
-  addTeam(masterId: string, data: { name: string }): Promise<void>
+  addTeam(
+    masterId: string,
+    data: { name: string; generateCharge?: boolean }
+  ): Promise<BackofficeMutationResult>
+
+  addMasterToTeam(masterId: string, teamId: string): Promise<void>
 
   updateTeam(
     masterId: string,

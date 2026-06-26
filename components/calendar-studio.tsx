@@ -33,6 +33,7 @@ import {
 } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog"
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes"
 import { getLeadStatusLabel } from "@/lib/lead-status"
+import { isMeetingFollowUpOverdue } from "@/lib/lead-meeting"
 import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
@@ -202,7 +203,8 @@ const getCloserLabel = (lead: Lead, closersById: Map<string, string>) =>
   (lead.closerId ? closersById.get(lead.closerId) : undefined) ||
   "Sem closer"
 
-const getStatusLabel = (status: Lead["status"]) => getLeadStatusLabel(status)
+const getStatusLabel = (status: Lead["status"]) =>
+  status ? getLeadStatusLabel(status) : "Rascunho"
 
 type CalendarEventType = "meeting" | "future_sale" | "lead_time"
 
@@ -432,11 +434,12 @@ export default function CalendarStudio() {
   const nowReference = React.useMemo(() => nowInTz(tz), [tz])
 
   const isMeetingOverdue = React.useCallback((lead: Lead, meetingDate: Date) => {
-    return (
-      meetingDate.getTime() < nowReference.getTime()
-      && lead.status === "scheduled"
-      && lead.meetingHeald !== "yes"
-    )
+    return isMeetingFollowUpOverdue({
+      status: lead.status,
+      meetingDate,
+      meetingHeald: lead.meetingHeald,
+      now: nowReference,
+    })
   }, [nowReference])
 
   const getMeetingStatuses = React.useCallback((lead: Lead, meetingDate: Date): CalendarMeetingStatusFilterValue[] => {
@@ -1119,9 +1122,11 @@ export default function CalendarStudio() {
                   const isOverdue =
                     isMeeting &&
                     !!meetingStart &&
-                    meetingStart.getTime() < Date.now() &&
-                    lead.status === "scheduled" &&
-                    lead.meetingHeald !== "yes"
+                    isMeetingFollowUpOverdue({
+                      status: lead.status,
+                      meetingDate: meetingStart,
+                      meetingHeald: lead.meetingHeald,
+                    })
 
                   if (isMeeting) {
                     const entry = attendeesByLead[lead.id]
@@ -1141,14 +1146,18 @@ export default function CalendarStudio() {
                             handleCardClick(lead)
                           }
                         }}
-                        className={cn("shadow-none border-l-4 border-l-orange-500/80 cursor-pointer", isCanceled && "opacity-70")}
+                        className={cn(
+                          "shadow-none border-l-4 border-l-orange-500/80 cursor-pointer",
+                          isCanceled && "opacity-70",
+                          isOverdue && "border-destructive/70 ring-1 ring-destructive/40 animate-pulse"
+                        )}
                       >
                         <CardContent className="flex flex-col gap-3 p-3">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex flex-wrap items-center gap-2">
                               <CalendarIcon className="size-4 text-muted-foreground" />
                               <p className={cn("text-sm font-semibold", isCanceled && "line-through")}>{meetingTitle}</p>
-                              {isOverdue && <Badge variant="default">Reunião vencida</Badge>}
+                              {isOverdue && <Badge variant="default">Confirme a reunião</Badge>}
                               {isCanceled && (
                                 <Badge className="border-red-500 bg-transparent text-red-500 hover:bg-transparent">
                                   Reunião cancelada

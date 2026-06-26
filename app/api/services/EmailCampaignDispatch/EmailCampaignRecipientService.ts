@@ -14,6 +14,8 @@ import type {
   CampaignRecipient,
   IEmailCampaignRecipientService,
 } from "./IEmailCampaignRecipientService"
+import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
+import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
 
 export class EmailCampaignRecipientService implements IEmailCampaignRecipientService {
   constructor(
@@ -66,7 +68,8 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
 
   async buildCampaignDispatchInput(params: {
     teamId: string
-    contactListId: string
+    contactListId?: string | null
+    cdpSegmentSlug?: string | null
     template: { subject: string; html: string; variables: unknown }
     teamSettings: {
       fromName?: string | null
@@ -77,7 +80,15 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     fallbackFromName: string
     fallbackFromEmail: string
   }): Promise<CampaignDispatchInput> {
-    const recipients = await this.listActiveRecipients(params.teamId, params.contactListId)
+    const baseRecipients = params.cdpSegmentSlug
+      ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
+      : await this.listActiveRecipients(params.teamId, params.contactListId!)
+    const recipients = baseRecipients.map((recipient) => ({
+      email: recipient.email,
+      name: recipient.name,
+      customFields: recipient.customFields,
+    }))
+    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, recipients)
     const globalDefaults = await this.getGlobalDefaults(params.teamId)
     const parsedVariables = this.parseTemplateVariables(params.template.variables)
     const timezone = resolveTimezone(params.masterTimezone)
@@ -89,7 +100,11 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     const replyTo = params.teamSettings?.replyTo ?? null
 
     return {
-      recipients,
+      recipients: enrichedRecipients.map((recipient) => ({
+        email: recipient.email,
+        name: recipient.name ?? null,
+        customFields: recipient.customFields ?? null,
+      })),
       globalDefaults,
       templateVariables,
       subject: params.template.subject,

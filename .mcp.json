@@ -21,6 +21,12 @@
     },
     "Sentry": {
       "url": "https://mcp.sentry.dev/mcp/corretor-studio/sentry-camel-flower"
+    },
+    "mcpmarket-my-toolkit": {
+      "url": "https://link.mcpmarket.com/matheuswillock/toolkits/my-toolkit/mcp",
+      "headers": {
+        "Authorization": "Bearer sk_user_hciDDAtYaWIuVEOMudLxHyH_QW8h6Nqk"
+      }
     }
   }
 }

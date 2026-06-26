@@ -16,7 +16,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Mail, Share2 } from "lucide-react";
+import { SaveWithDraftButton } from "./SaveWithDraftButton";
+import { BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Mail, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -31,6 +32,7 @@ import {
 import { LeadAdditionalNotesField } from "./fields/LeadAdditionalNotesField";
 import { LeadAgeField } from "./fields/LeadAgeField";
 import { LeadCnpjField } from "./fields/LeadCnpjField";
+import { LeadRazaoSocialField } from "./fields/LeadRazaoSocialField";
 import { LeadCurrentValueField } from "./fields/LeadCurrentValueField";
 import { LeadEmailField } from "./fields/LeadEmailField";
 import { LeadHealthPlanField } from "./fields/LeadHealthPlanField";
@@ -49,9 +51,11 @@ const formatCurrencyNumber = (value: number): string =>
         maximumFractionDigits: 2
     })}`;
 
+export type LeadFormSaveMode = "full" | "draft";
+
 export interface ILeadFormProps {
     form: UseFormReturn<leadFormData>;
-    onSubmit: (data: leadFormData) => void | Promise<void>;
+    onSubmit: (data: leadFormData, mode: LeadFormSaveMode) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
     supabaseId?: string;
@@ -96,6 +100,8 @@ export interface ILeadFormProps {
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
     currentUserIsCloser?: boolean;
+    isFullSaveDisabled?: boolean;
+    fullSaveDisabledReason?: string;
 }
 
 export function LeadForm({
@@ -129,6 +135,8 @@ export function LeadForm({
     currentProfileId,
     currentUserIsSdr = false,
     currentUserIsCloser = false,
+    isFullSaveDisabled = false,
+    fullSaveDisabledReason,
     onShareSchedule,
     onResendScheduleInvite,
 }: ILeadFormProps) {
@@ -183,7 +191,8 @@ export function LeadForm({
         () => leadFormSchema.safeParse(watchedValues).success,
         [watchedValues]
     );
-    const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
+    const isDraftDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
+    const isSaveDisabled = isDraftDisabled || isFullSaveDisabled;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
     const isPreSchedule =
         watchedValues.isTransfer === true || scheduleSummary?.isPreSchedule === true;
@@ -326,6 +335,38 @@ export function LeadForm({
         }
     }, [form, isLoading, isUpdating]);
 
+    const runSubmit = useCallback(
+        (mode: LeadFormSaveMode) => {
+            void form.handleSubmit(
+                (data) => onSubmit(data, mode),
+                () => {
+                    void handleInvalidSubmit();
+                }
+            )();
+        },
+        [form, handleInvalidSubmit, onSubmit]
+    );
+
+    const handleSaveFull = useCallback(() => {
+        if (isSaveDisabled) {
+            if (isFullSaveDisabled && fullSaveDisabledReason) {
+                toast.error(fullSaveDisabledReason);
+                return;
+            }
+            void handleInvalidSubmit();
+            return;
+        }
+        runSubmit("full");
+    }, [fullSaveDisabledReason, handleInvalidSubmit, isFullSaveDisabled, isSaveDisabled, runSubmit]);
+
+    const handleSaveDraft = useCallback(() => {
+        if (isDraftDisabled) {
+            void handleInvalidSubmit();
+            return;
+        }
+        runSubmit("draft");
+    }, [handleInvalidSubmit, isDraftDisabled, runSubmit]);
+
     useEffect(() => {
         if (!hasReachedFormEnd) return;
         if (!hasChanges) return;
@@ -345,9 +386,10 @@ export function LeadForm({
     return (
       <Form {...form}>
         <form
-            onSubmit={form.handleSubmit(onSubmit, () => {
-                void handleInvalidSubmit();
-            })}
+            onSubmit={(event) => {
+                event.preventDefault();
+                handleSaveFull();
+            }}
             className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2", className)}
         >            
             <LeadNameField control={form.control} disabled={isLoading || isUpdating} />
@@ -357,6 +399,11 @@ export function LeadForm({
                 control={form.control}
                 disabled={isLoading || isUpdating}
                 onDuplicateCheck={handleCnpjBlur}
+            />
+            <LeadRazaoSocialField
+                control={form.control}
+                disabled={isLoading || isUpdating}
+                isLookupPending={isLoading || isUpdating}
             />
             <LeadAgeField control={form.control} disabled={isLoading || isUpdating} />
 
@@ -895,23 +942,13 @@ export function LeadForm({
                     Cancelar
                 </Button>
 
-                <div
-                    className="inline-flex"
-                    onClick={() => {
-                        if (isSubmitDisabled) {
-                            void handleInvalidSubmit();
-                        }
-                    }}
-                >
-                    <Button 
-                        type="submit" 
-                        className={cn("cursor-pointer", isSubmitDisabled && "pointer-events-none")} 
-                        disabled={isSubmitDisabled}
-                    >
-                        {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isUpdating ? "Salvando..." : "Salvar"}
-                    </Button>
-                </div>
+                <SaveWithDraftButton
+                    isLoading={isLoading || isUpdating}
+                    isSaveDisabled={isSaveDisabled}
+                    isDraftDisabled={isDraftDisabled}
+                    onSaveFull={handleSaveFull}
+                    onSaveDraft={handleSaveDraft}
+                />
             </div>
             <div
                 ref={formEndRef as React.RefObject<HTMLDivElement>}

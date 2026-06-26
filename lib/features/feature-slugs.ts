@@ -19,6 +19,7 @@ export const FEATURE_SLUGS = {
   CONFIGURATION: "integration",
   WHATSAPP: "whatsapp",
   WHATSAPP_SETTINGS: "whatsapp-settings",
+  WHATSAPP_AUTO_RESPONSES: "whatsapp-auto-responses",
   CDP: "cdp",
 } as const
 

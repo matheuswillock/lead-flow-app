@@ -2,7 +2,8 @@
 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Database, RefreshCw } from "lucide-react"
+import { useState } from "react"
+import { Database, Filter, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,19 +32,65 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useCdpContext } from "../context/CdpContext"
 import type { CdpProfileListItem } from "../context/CdpTypes"
 
-function consentBadge(profile: CdpProfileListItem) {
+function eligibilityBadge(profile: CdpProfileListItem) {
   const emailConsent = profile.consents.find((c) => c.channel === "email")
   if (emailConsent?.status === "blocked") {
-    return <Badge variant="destructive">Bloqueado</Badge>
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="destructive">Bloqueado</Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          {emailConsent.reason ? `Motivo: ${emailConsent.reason}` : "Consentimento bloqueado para e-mail"}
+        </TooltipContent>
+      </Tooltip>
+    )
   }
   if (emailConsent?.status === "allowed" && profile.primaryEmail) {
-    return <Badge className="border-semantic-success-border bg-semantic-success-surface text-semantic-success">Apto</Badge>
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge className="border-semantic-success-border bg-semantic-success-surface text-semantic-success">
+            Apto
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>Elegível para campanhas de e-mail</TooltipContent>
+      </Tooltip>
+    )
   }
-  return <Badge variant="secondary">Indefinido</Badge>
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant="secondary">Indefinido</Badge>
+      </TooltipTrigger>
+      <TooltipContent>Sem consentimento de e-mail registrado</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function whatsappBadge(profile: CdpProfileListItem) {
+  const whatsappConsent = profile.consents.find((c) => c.channel === "whatsapp")
+  if (!whatsappConsent) {
+    return <Badge variant="outline">WhatsApp: Indefinido</Badge>
+  }
+  if (whatsappConsent.status === "blocked") {
+    return <Badge variant="destructive">WhatsApp: Bloqueado</Badge>
+  }
+  return <Badge variant="secondary">WhatsApp: Apto</Badge>
+}
+
+function consentBadge(profile: CdpProfileListItem) {
+  return eligibilityBadge(profile)
 }
 
 function sourceBadges(profile: CdpProfileListItem) {
@@ -55,14 +102,29 @@ function sourceBadges(profile: CdpProfileListItem) {
   ))
 }
 
+function eventChannelBadge(eventType: string) {
+  if (eventType.startsWith("whatsapp.")) {
+    return <Badge variant="outline">WhatsApp</Badge>
+  }
+  if (eventType.startsWith("email.")) {
+    return <Badge variant="outline">E-mail</Badge>
+  }
+  return null
+}
+
 export function CdpContainer() {
   const {
     profiles,
     segments,
     metrics,
     selectedProfile,
+    detailEvents,
+    detailEventsTotal,
+    isLoadingMoreEvents,
     isLoading,
     isSyncing,
+    isSyncingWhatsapp,
+    isSyncingLead,
     isDetailLoading,
     error,
     lastSyncAt,
@@ -75,18 +137,29 @@ export function CdpContainer() {
     setConsentFilter,
     sourceFilter,
     setSourceFilter,
+    channelFilter,
+    setChannelFilter,
     segmentFilter,
+    lastSeenFrom,
+    setLastSeenFrom,
+    lastSeenTo,
+    setLastSeenTo,
     setPage,
     openProfile,
     closeProfile,
+    loadMoreProfileEvents,
     runSync,
+    runWhatsappSync,
+    syncLeadProfile,
     applySegment,
     clearSegment,
   } = useCdpContext()
 
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
+    <TooltipProvider>
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
@@ -104,6 +177,10 @@ export function CdpContainer() {
               Último sync: {format(lastSyncAt, "dd/MM HH:mm", { locale: ptBR })}
             </Badge>
           ) : null}
+          <Button variant="outline" disabled={isSyncingWhatsapp} onClick={() => void runWhatsappSync()}>
+            <RefreshCw className={cn(isSyncingWhatsapp && "animate-spin")} data-icon="inline-start" />
+            Sincronizar WhatsApp
+          </Button>
           <Button variant="outline" disabled={isSyncing} onClick={() => void runSync()}>
             <RefreshCw className={cn(isSyncing && "animate-spin")} data-icon="inline-start" />
             Sincronizar
@@ -129,7 +206,7 @@ export function CdpContainer() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="hidden flex-wrap items-center gap-2 md:flex">
         <Input
           className="max-w-xs"
           placeholder="Buscar nome, telefone ou e-mail"
@@ -187,9 +264,121 @@ export function CdpContainer() {
             <SelectItem value="crm_lead">CRM</SelectItem>
             <SelectItem value="portfolio">Carteira</SelectItem>
             <SelectItem value="email_contact">E-mail</SelectItem>
+            <SelectItem value="whatsapp_contact">WhatsApp</SelectItem>
           </SelectContent>
         </Select>
+        <Select
+          value={channelFilter || "__all"}
+          onValueChange={(v) => {
+            setChannelFilter(v === "__all" ? "" : v)
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Canal" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all">Canal</SelectItem>
+            <SelectItem value="email">E-mail</SelectItem>
+            <SelectItem value="whatsapp">WhatsApp</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          type="date"
+          className="w-40"
+          value={lastSeenFrom}
+          onChange={(e) => {
+            setLastSeenFrom(e.target.value)
+            setPage(1)
+          }}
+          aria-label="Última interação a partir de"
+        />
+        <Input
+          type="date"
+          className="w-40"
+          value={lastSeenTo}
+          onChange={(e) => {
+            setLastSeenTo(e.target.value)
+            setPage(1)
+          }}
+          aria-label="Última interação até"
+        />
       </div>
+
+      <div className="flex md:hidden">
+        <Button variant="outline" className="w-full" onClick={() => setFiltersOpen(true)}>
+          <Filter data-icon="inline-start" />
+          Filtros
+        </Button>
+      </div>
+
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Filtros</SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 p-4">
+            <Input
+              placeholder="Buscar nome, telefone ou e-mail"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Select
+              value={segmentFilter || "__all"}
+              onValueChange={(v) => (v === "__all" ? clearSegment() : applySegment(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Segmento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Todos os segmentos</SelectItem>
+                {segments.map((segment) => (
+                  <SelectItem key={segment.slug} value={segment.slug}>
+                    {segment.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={consentFilter || "__all"}
+              onValueChange={(v) => setConsentFilter(v === "__all" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Consentimento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Consentimento</SelectItem>
+                <SelectItem value="allowed">Apto</SelectItem>
+                <SelectItem value="blocked">Bloqueado</SelectItem>
+                <SelectItem value="unknown">Indefinido</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={channelFilter || "__all"}
+              onValueChange={(v) => setChannelFilter(v === "__all" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Canal" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Canal</SelectItem>
+                <SelectItem value="email">E-mail</SelectItem>
+                <SelectItem value="whatsapp">WhatsApp</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input type="date" value={lastSeenFrom} onChange={(e) => setLastSeenFrom(e.target.value)} />
+            <Input type="date" value={lastSeenTo} onChange={(e) => setLastSeenTo(e.target.value)} />
+            <Button
+              onClick={() => {
+                setPage(1)
+                setFiltersOpen(false)
+              }}
+            >
+              Aplicar filtros
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         <Card>
@@ -216,6 +405,7 @@ export function CdpContainer() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Cliente</TableHead>
+                        <TableHead>Segmento</TableHead>
                         <TableHead>Consentimento</TableHead>
                         <TableHead>Origem</TableHead>
                         <TableHead>Última interação</TableHead>
@@ -233,6 +423,15 @@ export function CdpContainer() {
                                 <span className="text-xs text-muted-foreground">{profile.primaryEmail}</span>
                               ) : null}
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            {profile.primarySegmentName ? (
+                              <Badge variant="secondary" className="text-xs">
+                                {profile.primarySegmentName}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                           <TableCell>{consentBadge(profile)}</TableCell>
                           <TableCell>
@@ -261,6 +460,11 @@ export function CdpContainer() {
                           <span className="font-medium">{profile.displayName}</span>
                           {consentBadge(profile)}
                         </div>
+                        {profile.primarySegmentName ? (
+                          <Badge variant="secondary" className="w-fit text-xs">
+                            {profile.primarySegmentName}
+                          </Badge>
+                        ) : null}
                         <p className="text-xs text-muted-foreground">{profile.displayPhone}</p>
                         <Button size="sm" variant="outline" onClick={() => void openProfile(profile.id)}>
                           Ver detalhe
@@ -339,13 +543,32 @@ export function CdpContainer() {
               </div>
             ) : (
               <>
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-lg font-semibold">{selectedProfile.displayName}</h2>
-                  <p className="text-sm text-muted-foreground">{selectedProfile.displayPhone}</p>
-                  {selectedProfile.primaryEmail ? (
-                    <p className="text-sm text-muted-foreground">{selectedProfile.primaryEmail}</p>
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1">
+                    <h2 className="text-lg font-semibold">{selectedProfile.displayName}</h2>
+                    {selectedProfile.primaryDocument ? (
+                      <p className="text-sm text-muted-foreground">Documento: {selectedProfile.primaryDocument}</p>
+                    ) : null}
+                    <p className="text-sm text-muted-foreground">{selectedProfile.displayPhone}</p>
+                    {selectedProfile.primaryEmail ? (
+                      <p className="text-sm text-muted-foreground">{selectedProfile.primaryEmail}</p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      {eligibilityBadge(selectedProfile)}
+                      {whatsappBadge(selectedProfile)}
+                    </div>
+                  </div>
+                  {selectedProfile.identities.some((identity) => identity.type === "lead_id") ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isSyncingLead}
+                      onClick={() => void syncLeadProfile()}
+                    >
+                      <RefreshCw className={cn(isSyncingLead && "animate-spin")} data-icon="inline-start" />
+                      Sincronizar lead
+                    </Button>
                   ) : null}
-                  {consentBadge(selectedProfile)}
                 </div>
                 <Tabs defaultValue="resumo">
                   <TabsList>
@@ -362,7 +585,8 @@ export function CdpContainer() {
                       <p className="text-sm text-muted-foreground">Sem eventos registrados.</p>
                     ) : (
                       selectedProfile.events.map((event) => (
-                        <div key={event.id} className="text-sm">
+                        <div key={event.id} className="flex items-center gap-2 text-sm">
+                          {eventChannelBadge(event.eventType)}
                           <span className="font-medium">{event.eventType}</span>
                           <span className="text-muted-foreground">
                             {" "}
@@ -390,14 +614,27 @@ export function CdpContainer() {
                     ))}
                   </TabsContent>
                   <TabsContent value="timeline" className="flex flex-col gap-2">
-                    {selectedProfile.events.map((event) => (
+                    {detailEvents.map((event) => (
                       <div key={event.id} className="rounded-md border p-2 text-sm">
-                        <p className="font-medium">{event.eventType}</p>
+                        <div className="flex items-center gap-2">
+                          {eventChannelBadge(event.eventType)}
+                          <p className="font-medium">{event.eventType}</p>
+                        </div>
                         <p className="text-muted-foreground">
                           {format(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", { locale: ptBR })} — {event.sourceType}
                         </p>
                       </div>
                     ))}
+                    {detailEvents.length < detailEventsTotal ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isLoadingMoreEvents}
+                        onClick={() => void loadMoreProfileEvents()}
+                      >
+                        {isLoadingMoreEvents ? "Carregando..." : "Carregar mais"}
+                      </Button>
+                    ) : null}
                   </TabsContent>
                 </Tabs>
               </>
@@ -406,5 +643,6 @@ export function CdpContainer() {
         </SheetContent>
       </Sheet>
     </div>
+    </TooltipProvider>
   )
 }

@@ -21,5 +21,6 @@ export const FEATURE_PRODUCT_SLUG_MAP: Record<string, string> = {
   [FEATURE_SLUGS.CONFIGURATION]: "configuration",
   [FEATURE_SLUGS.WHATSAPP]: "whatsapp",
   [FEATURE_SLUGS.WHATSAPP_SETTINGS]: "whatsapp",
+  [FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES]: "whatsapp",
   [FEATURE_SLUGS.CDP]: "cdp",
 }

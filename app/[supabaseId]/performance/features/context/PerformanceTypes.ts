@@ -127,7 +127,10 @@ export interface PerformancePagination {
   totalPages: number;
 }
 
+export type PerformanceViewMode = 'team' | 'self';
+
 export interface PerformanceData {
+  viewMode: PerformanceViewMode;
   kpis: PerformanceKpis;
   highlights: {
     topCloser: PerformanceHighlight | null;

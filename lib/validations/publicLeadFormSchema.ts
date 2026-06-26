@@ -7,6 +7,7 @@ export const publicLeadFormSchema = leadFormSchema
     phone: true,
     email: true,
     cnpj: true,
+    razaoSocial: true,
     age: true,
     currentHealthPlan: true,
     currentValue: true,

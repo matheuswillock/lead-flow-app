@@ -17,8 +17,12 @@ async function parseOutput<T>(res: Response): Promise<T> {
 export class CdpService implements ICdpService {
   private readonly baseUrl = "/api/v1/cdp"
 
-  async syncCrm(): Promise<CdpSyncResult> {
-    const res = await fetch(`${this.baseUrl}/sync/crm`, { method: "POST" })
+  async syncCrm(body?: { leadId?: string }): Promise<CdpSyncResult> {
+    const res = await fetch(`${this.baseUrl}/sync/crm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    })
     return parseOutput<CdpSyncResult>(res)
   }
 
@@ -29,6 +33,11 @@ export class CdpService implements ICdpService {
 
   async syncEmail(): Promise<CdpSyncResult> {
     const res = await fetch(`${this.baseUrl}/sync/email`, { method: "POST" })
+    return parseOutput<CdpSyncResult>(res)
+  }
+
+  async syncWhatsapp(): Promise<CdpSyncResult> {
+    const res = await fetch(`${this.baseUrl}/sync/whatsapp`, { method: "POST" })
     return parseOutput<CdpSyncResult>(res)
   }
 
@@ -60,6 +69,9 @@ export class CdpService implements ICdpService {
     if (params.search) query.set("search", params.search)
     if (params.consent) query.set("consent", params.consent)
     if (params.sourceType) query.set("sourceType", params.sourceType)
+    if (params.channel) query.set("channel", params.channel)
+    if (params.lastSeenFrom) query.set("lastSeenFrom", params.lastSeenFrom)
+    if (params.lastSeenTo) query.set("lastSeenTo", params.lastSeenTo)
 
     const res = await fetch(`${this.baseUrl}/profiles?${query}`)
     return parseOutput<{
@@ -84,6 +96,12 @@ export class CdpService implements ICdpService {
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     const res = await fetch(`${this.baseUrl}/segments/${segment}/profiles?${query}`)
     return parseOutput<{ items: CdpProfileDetail[]; total: number }>(res)
+  }
+
+  async listProfileEvents(profileId: string, page: number, pageSize: number) {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/events?${query}`)
+    return parseOutput<{ items: CdpProfileDetail["events"]; total: number }>(res)
   }
 }
 

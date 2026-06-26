@@ -7,6 +7,11 @@ import type {
   ProfileSubscription,
 } from "@prisma/client"
 
+export interface OwnerUserTypeAssignment {
+  slug: string
+  accessExpiresAt: string | null
+}
+
 export interface UserRoleInfo {
   isMaster: boolean
   role: string
@@ -16,11 +21,14 @@ export interface UserRoleInfo {
   userTypeSlug: string
   memberProActive: boolean
   memberProExpiresAt: string | null
+  activeTeamId: string | null
 }
 
-export interface OwnerUserTypeAssignment {
-  slug: string
-  accessExpiresAt: string | null
+export interface BetaEligibilityContext {
+  profileId: string
+  activeTeamId: string | null
+  managerId: string | null
+  isMaster: boolean
 }
 
 export interface IFeatureAccessRepository {
@@ -35,6 +43,7 @@ export interface IFeatureAccessRepository {
     Array<BackofficeUserSubscription & { product: { slug: string } }>
   >
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
+  resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>
   findUserTypeAssignment(ownerProfileId: string): Promise<OwnerUserTypeAssignment | null>
 }

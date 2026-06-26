@@ -19,8 +19,9 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get("q")?.trim() ?? ""
     const page = parsePositiveInt(searchParams.get("page"), 1)
     const pageSize = Math.max(parsePositiveInt(searchParams.get("pageSize"), 10), 5)
+    const mastersOnly = searchParams.get("mastersOnly") === "true"
 
-    const output = await backofficeFeatureUseCase.listUsers(q, page, pageSize)
+    const output = await backofficeFeatureUseCase.listUsers(q, page, pageSize, { mastersOnly })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[BackofficePlatformUsersRoute][GET]", error)

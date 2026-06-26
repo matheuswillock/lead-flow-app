@@ -128,6 +128,12 @@ export const envSchema = z.object({
   // Google OAuth (Calendar)
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional().describe('Google OAuth client ID (optional)'),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional().describe('Google OAuth client secret (optional)'),
+
+  // Web Push (optional — notifications still work in-app without these)
+  WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional().describe('VAPID public key for Web Push'),
+  WEB_PUSH_VAPID_PRIVATE_KEY: z.string().optional().describe('VAPID private key for Web Push'),
+  WEB_PUSH_VAPID_SUBJECT: z.string().optional().describe('VAPID subject (mailto: or https:)'),
+  NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional().describe('VAPID public key exposed to client'),
 });
 
 // Infer the type from the schema

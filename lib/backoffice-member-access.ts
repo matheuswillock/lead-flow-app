@@ -50,34 +50,39 @@ async function findAuthUsersByEmails(emails: string[]): Promise<Map<string, Supa
   const remaining = new Set(emails.map(normalizeEmail))
   const found = new Map<string, SupabaseAuthUser>()
 
-  for (let page = 1; page <= 30 && remaining.size > 0; page += 1) {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-      page,
-      perPage: 200,
-    })
+  try {
+    for (let page = 1; page <= 30 && remaining.size > 0; page += 1) {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+        page,
+        perPage: 200,
+      })
 
-    if (error) {
-      throw new Error(error.message || "Erro ao listar usuários no Supabase Auth")
-    }
-
-    const users = (data?.users ?? []) as SupabaseAuthUser[]
-    if (users.length === 0) {
-      break
-    }
-
-    for (const user of users) {
-      const userEmail = typeof user.email === "string" ? normalizeEmail(user.email) : null
-      if (!userEmail || !remaining.has(userEmail)) {
-        continue
+      if (error) {
+        console.error("[findAuthUsersByEmails] Erro ao listar usuários:", error)
+        break
       }
 
-      found.set(userEmail, user)
-      remaining.delete(userEmail)
-    }
+      const users = (data?.users ?? []) as SupabaseAuthUser[]
+      if (users.length === 0) {
+        break
+      }
 
-    if (users.length < 200) {
-      break
+      for (const user of users) {
+        const userEmail = typeof user.email === "string" ? normalizeEmail(user.email) : null
+        if (!userEmail || !remaining.has(userEmail)) {
+          continue
+        }
+
+        found.set(userEmail, user)
+        remaining.delete(userEmail)
+      }
+
+      if (users.length < 200) {
+        break
+      }
     }
+  } catch (err) {
+    console.error("[findAuthUsersByEmails] Supabase Auth indisponível:", err)
   }
 
   return found
@@ -105,13 +110,18 @@ export async function resolveBackofficeMemberAccess(
         return
       }
 
-      const { data, error } = await supabaseAdmin.auth.admin.getUserById(profile.supabaseId)
-      if (error || !data?.user) {
-        snapshots.set(profile.profileId, buildSnapshot(null))
-        return
-      }
+      try {
+        const { data, error } = await supabaseAdmin.auth.admin.getUserById(profile.supabaseId)
+        if (error || !data?.user) {
+          snapshots.set(profile.profileId, buildSnapshot(null))
+          return
+        }
 
-      snapshots.set(profile.profileId, buildSnapshot(data.user as SupabaseAuthUser))
+        snapshots.set(profile.profileId, buildSnapshot(data.user as SupabaseAuthUser))
+      } catch (err) {
+        console.error("[resolveBackofficeMemberAccess] Supabase Auth indisponível:", err)
+        snapshots.set(profile.profileId, buildSnapshot(null))
+      }
     })
   )
 

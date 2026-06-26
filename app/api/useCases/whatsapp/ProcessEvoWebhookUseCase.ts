@@ -1,7 +1,7 @@
 import { Output } from "@/lib/output"
 import type { IWhatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { normalizePhone, buildPeriodKey } from "@/app/api/services/whatsapp/phoneUtils"
+import { normalizePhone, buildPeriodKey, normalizeRemoteJid, resolveNormalizedPhone, isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
 import {
   buildMessagePreview,
   normalizeMessageStatus,
@@ -9,7 +9,25 @@ import {
   parseEvoMessageContent,
 } from "@/app/api/services/whatsapp/evo/parseEvoMessageContent"
 import { toQrCodeImageUrl } from "@/app/api/services/whatsapp/qrCodeUtils"
+import { syncWhatsAppHistoryUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsAppHistoryUseCase"
+import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsappMessageToCdpUseCase"
+import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
 import type { Prisma, WhatsAppConnectionStatus, WhatsAppMessageStatus } from "@prisma/client"
+
+const MESSAGE_STATUS_RANK: Record<string, number> = {
+  FAILED: 0,
+  PENDING: 1,
+  RECEIVED: 1,
+  SENT: 2,
+  DELIVERED: 3,
+  READ: 4,
+}
+
+function shouldApplyMessageStatus(current: string, next: string): boolean {
+  const currentRank = MESSAGE_STATUS_RANK[current] ?? 0
+  const nextRank = MESSAGE_STATUS_RANK[next] ?? 0
+  return nextRank >= currentRank
+}
 
 interface ProcessEvoWebhookInput {
   teamId: string
@@ -43,10 +61,6 @@ function extractNestedString(
     current = (current as Record<string, unknown>)[key]
   }
   return typeof current === "string" ? current : undefined
-}
-
-function normalizeRemoteJid(remoteJid: string): string {
-  return remoteJid.replace(/@s\.whatsapp\.net$/, "").replace(/@g\.us$/, "")
 }
 
 function asRecordArray(data: unknown): Record<string, unknown>[] {
@@ -128,7 +142,8 @@ class ProcessEvoWebhookUseCase {
     }
 
     const phoneRaw = normalizeRemoteJid(remoteJid)
-    const normalizedPhone = normalizePhone(phoneRaw)
+    const normalizedPhone = resolveNormalizedPhone(remoteJid, phoneRaw)
+    const isGroup = isGroupChat(remoteJid)
 
     const conversation = await this.repository.findOrCreateConversation({
       teamId,
@@ -136,7 +151,7 @@ class ProcessEvoWebhookUseCase {
       externalChatId: remoteJid,
       contactPhone: phoneRaw,
       normalizedPhone,
-      contactName: pushName,
+      contactName: isGroup ? undefined : pushName,
     })
 
     const existing = await this.repository.findMessageByProviderMessageId(teamId, providerMessageId)
@@ -162,12 +177,17 @@ class ProcessEvoWebhookUseCase {
       contentText: parsed.contentText,
       mediaUrl: parsed.mediaUrl,
       mediaMimeType: parsed.mediaMimeType,
+      mediaFileName: parsed.mediaFileName,
+      linkPreview: parsed.linkPreview ?? undefined,
       caption: parsed.caption,
+      senderDisplayName: !fromMe && isGroup ? pushName ?? null : undefined,
       senderPhone: fromMe ? undefined : normalizedPhone,
       recipientPhone: fromMe ? normalizedPhone : undefined,
       sentAt: now,
       rawPayload: data as Prisma.InputJsonValue,
     })
+
+    const createdMessage = await this.repository.findMessageByProviderMessageId(teamId, providerMessageId)
 
     if (!fromMe) {
       await this.repository.createUsageEvent({
@@ -184,15 +204,50 @@ class ProcessEvoWebhookUseCase {
     await this.repository.updateConversation(conversation.id, {
       lastMessageAt: now,
       lastMessagePreview: preview,
-      ...(pushName && pushName !== conversation.contactName ? { contactName: pushName } : {}),
+      ...(!isGroup && pushName && pushName !== conversation.contactName
+        ? { contactName: pushName }
+        : {}),
       ...(fromMe ? { lastOutboundAt: now } : { lastInboundAt: now, unreadCount: { increment: 1 } }),
     })
+
+    if (createdMessage) {
+      try {
+        const refreshedConversation = await this.repository.findConversationById(conversation.id)
+        if (refreshedConversation) {
+          await syncWhatsappMessageToCdpUseCase.execute({
+            teamId,
+            message: createdMessage,
+            conversation: refreshedConversation,
+          })
+        }
+      } catch (cdpError) {
+        console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] CDP sync failed", cdpError)
+      }
+
+      if (!fromMe) {
+        try {
+          await processWhatsAppInboundAutoResponseUseCase.execute({
+            teamId,
+            configId,
+            conversationId: conversation.id,
+            externalChatId: remoteJid,
+            inboundMessageId: createdMessage.id,
+            inboundText: parsed.contentText,
+            contactName: pushName,
+            normalizedPhone,
+          })
+        } catch (autoResponseError) {
+          console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Auto-response failed", autoResponseError)
+        }
+      }
+    }
   }
 
   private async handleConnectionUpdate(
     configId: string,
     data: unknown
   ): Promise<void> {
+    const config = await this.repository.findConfigById(configId)
     const record =
       typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}
     const state = typeof record["state"] === "string" ? record["state"].toLowerCase() : ""
@@ -225,6 +280,12 @@ class ProcessEvoWebhookUseCase {
       status,
       ...extraFields,
     })
+
+    if (state === "open" && config && config.historySyncStatus !== "COMPLETED") {
+      void syncWhatsAppHistoryUseCase.execute({ teamId: config.teamId }).catch((error) => {
+        console.error("[ProcessEvoWebhookUseCase][handleConnectionUpdate] History sync failed", error)
+      })
+    }
   }
 
   private async handleQrCodeUpdated(configId: string, data: unknown): Promise<void> {
@@ -314,13 +375,21 @@ class ProcessEvoWebhookUseCase {
       updateData.failedAt = now
     }
 
-    if (status) {
+    if (status && shouldApplyMessageStatus(existing.status, status)) {
       updateData.status = status
       console.info(
         "[ProcessEvoWebhookUseCase][applyOutboundMessageStatus] Updating message status to",
         status
       )
       await this.repository.updateMessageStatus(existing.id, updateData)
+    } else if (status) {
+      console.info(
+        "[ProcessEvoWebhookUseCase][applyOutboundMessageStatus] Skipping status regression",
+        existing.status,
+        "→",
+        status,
+        providerMessageId
+      )
     }
   }
 }

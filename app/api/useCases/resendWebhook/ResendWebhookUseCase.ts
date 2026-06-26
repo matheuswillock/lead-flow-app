@@ -92,6 +92,7 @@ export class ResendWebhookUseCase {
             recipientEmail: log.recipientEmail,
             recipientName: log.recipientName,
             logId: log.id,
+            campaignId: log.campaignId,
             eventType,
             occurredAt,
             metadata,

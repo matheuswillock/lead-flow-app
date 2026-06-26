@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const output = await featureAccessUseCase.execute({
       profileId: teamAccess.access.profileId,
       managerId: teamAccess.access.managerId,
+      activeTeamId: teamAccess.access.teamId,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })

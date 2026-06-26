@@ -296,6 +296,93 @@ export class BackofficeMemberUseCase {
       return new Output(false, [], ["Erro ao remover membro do time"], null)
     }
   }
+
+  async addToTeam(memberId: string, teamId: string): Promise<Output> {
+    try {
+      const member = await this.repository.findMemberForUpdate(memberId)
+      if (!member) {
+        return new Output(false, [], ["Membro não encontrado"], null)
+      }
+
+      const profileContext = await this.repository.findProfileRoleContext(memberId)
+      if (!profileContext) {
+        return new Output(false, [], ["Membro não encontrado"], null)
+      }
+
+      const team = await this.repository.findTeamById(teamId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado"], null)
+      }
+
+      const existingMembership = await this.repository.findTeamMembership(teamId, memberId)
+      if (existingMembership) {
+        return new Output(false, [], ["Usuário já pertence a este time"], null)
+      }
+
+      let role: string
+      let functions: string[]
+      let canCreateAccountUsers = false
+      let canManageAccountTeams = false
+      let canTransferAccountLeads = false
+
+      if (profileContext.isMaster && team.masterId === memberId) {
+        role = "manager"
+        functions = []
+      } else {
+        const template = await this.repository.findAccountMembershipTemplate(memberId, team.masterId)
+        if (template) {
+          role = template.role
+          functions = template.functions
+          canCreateAccountUsers = template.canCreateAccountUsers
+          canManageAccountTeams = template.canManageAccountTeams
+          canTransferAccountLeads = template.canTransferAccountLeads
+        } else if (profileContext.isMaster) {
+          role = "operator"
+          functions = profileContext.functions
+        } else {
+          role = profileContext.role === "backoffice" ? "backoffice" : profileContext.role
+          functions = profileContext.functions
+        }
+      }
+
+      const teamMember = await this.repository.createTeamMembership({
+        teamId,
+        profileId: memberId,
+        role,
+        functions,
+        canCreateAccountUsers: role === "manager" && canCreateAccountUsers,
+        canManageAccountTeams: role === "manager" && canManageAccountTeams,
+        canTransferAccountLeads:
+          (role === "manager" || role === "backoffice") && canTransferAccountLeads,
+      })
+
+      console.info("[BackofficeMemberUseCase][addToTeam] Membro adicionado ao time:", teamId, memberId)
+      return new Output(true, ["Membro adicionado ao time com sucesso"], [], {
+        teamMemberId: teamMember.id,
+        teamId,
+        memberId,
+      })
+    } catch (error) {
+      console.error("[BackofficeMemberUseCase][addToTeam]", error)
+      return new Output(false, [], ["Erro ao adicionar membro ao time"], null)
+    }
+  }
+
+  async listExternalTeamMemberships(
+    memberId: string,
+    accountMasterId: string
+  ): Promise<Output> {
+    try {
+      const memberships = await this.repository.findExternalTeamMemberships(
+        memberId,
+        accountMasterId
+      )
+      return new Output(true, [], [], { items: memberships })
+    } catch (error) {
+      console.error("[BackofficeMemberUseCase][listExternalTeamMemberships]", error)
+      return new Output(false, [], ["Erro ao listar times externos"], null)
+    }
+  }
 }
 
 export const backofficeMemberUseCase = new BackofficeMemberUseCase(

@@ -1,6 +1,6 @@
 import type { LeadStatus } from "@prisma/client";
 
-export type LeadTransferStateFilter = "all" | "pending" | "completed";
+export type LeadTransferStateFilter = "pending" | "completed";
 
 export type LeadTransferMemberRef = {
   id: string;
@@ -41,24 +41,54 @@ export type LeadTransfersData = {
 
 export type LeadTransfersFiltersState = {
   search: string;
-  status: LeadTransferStateFilter;
+  transferStatuses: LeadTransferStateFilter[];
   leadStatus: LeadStatus | "";
-  toTeamId: string;
-  transferredByProfileId: string;
-  dateFrom: string;
-  dateTo: string;
+  toTeamIds: string[];
+  transferredByProfileIds: string[];
+  sdrProfileIds: string[];
+  closerProfileIds: string[];
+  transferDateFrom: string;
+  transferDateTo: string;
+  preScheduledDateFrom: string;
+  preScheduledDateTo: string;
+  scheduledDateFrom: string;
+  scheduledDateTo: string;
   page: number;
   pageSize: number;
 };
 
 export const DEFAULT_LEAD_TRANSFERS_FILTERS: LeadTransfersFiltersState = {
   search: "",
-  status: "all",
+  transferStatuses: [],
   leadStatus: "",
-  toTeamId: "",
-  transferredByProfileId: "",
-  dateFrom: "",
-  dateTo: "",
+  toTeamIds: [],
+  transferredByProfileIds: [],
+  sdrProfileIds: [],
+  closerProfileIds: [],
+  transferDateFrom: "",
+  transferDateTo: "",
+  preScheduledDateFrom: "",
+  preScheduledDateTo: "",
+  scheduledDateFrom: "",
+  scheduledDateTo: "",
   page: 1,
   pageSize: 10,
 };
+
+export function isLeadTransfersFiltersChanged(filters: LeadTransfersFiltersState): boolean {
+  return (
+    filters.search.trim().length > 0 ||
+    filters.transferStatuses.length > 0 ||
+    filters.leadStatus !== "" ||
+    filters.toTeamIds.length > 0 ||
+    filters.transferredByProfileIds.length > 0 ||
+    filters.sdrProfileIds.length > 0 ||
+    filters.closerProfileIds.length > 0 ||
+    filters.transferDateFrom !== "" ||
+    filters.transferDateTo !== "" ||
+    filters.preScheduledDateFrom !== "" ||
+    filters.preScheduledDateTo !== "" ||
+    filters.scheduledDateFrom !== "" ||
+    filters.scheduledDateTo !== ""
+  );
+}

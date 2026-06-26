@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ChevronsUpDown } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import {
   Command,
   CommandEmpty,
@@ -18,6 +19,15 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
+
+type TeamSwitcherTeam = {
+  id: string
+  name: string
+  accountName?: string
+  isOwnAccount?: boolean
+  isAccessible?: boolean
+}
 
 export function TeamSwitcher({
   teams,
@@ -26,10 +36,7 @@ export function TeamSwitcher({
   variant = "default",
   inline = false,
 }: {
-  teams: {
-    id: string
-    name: string
-  }[]
+  teams: TeamSwitcherTeam[]
   activeTeamId: string | null
   onChange: (teamId: string) => void
   variant?: "default" | "compact"
@@ -39,10 +46,17 @@ export function TeamSwitcher({
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
-  const activeTeam = React.useMemo(
-    () => teams.find((team) => team.id === activeTeamId) || teams[0],
-    [teams, activeTeamId]
+
+  const accessibleTeams = React.useMemo(
+    () => teams.filter((team) => team.isAccessible !== false),
+    [teams]
   )
+
+  const activeTeam = React.useMemo(
+    () => accessibleTeams.find((team) => team.id === activeTeamId) || accessibleTeams[0],
+    [accessibleTeams, activeTeamId]
+  )
+
   const filteredTeams = React.useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
 
@@ -50,10 +64,29 @@ export function TeamSwitcher({
       return teams
     }
 
-    return teams.filter((team) =>
-      team.name.toLocaleLowerCase().includes(normalizedQuery)
-    )
+    return teams.filter((team) => {
+      const accountName = team.accountName?.toLocaleLowerCase() ?? ""
+      return (
+        team.name.toLocaleLowerCase().includes(normalizedQuery) ||
+        accountName.includes(normalizedQuery)
+      )
+    })
   }, [teams, query])
+
+  const groupedTeams = React.useMemo(() => {
+    const groups = new Map<string, TeamSwitcherTeam[]>()
+
+    for (const team of filteredTeams) {
+      const label = team.isOwnAccount
+        ? "Minha conta"
+        : team.accountName || "Outras contas"
+      const current = groups.get(label) ?? []
+      current.push(team)
+      groups.set(label, current)
+    }
+
+    return [...groups.entries()]
+  }, [filteredTeams])
 
   React.useEffect(() => {
     if (!open) {
@@ -79,8 +112,11 @@ export function TeamSwitcher({
     }
   }
 
-  const handleSelectTeam = (teamId: string) => {
-    onChange(teamId)
+  const handleSelectTeam = (team: TeamSwitcherTeam) => {
+    if (team.isAccessible === false) {
+      return
+    }
+    onChange(team.id)
     setOpen(false)
     setQuery("")
   }
@@ -104,7 +140,9 @@ export function TeamSwitcher({
         </div>
         <div className="grid flex-1 text-left text-sm leading-tight">
           <span className="truncate font-medium">{activeTeam.name}</span>
-          <span className="truncate text-xs">Time ativo</span>
+          <span className="truncate text-xs">
+            {activeTeam.isOwnAccount ? "Minha conta" : activeTeam.accountName || "Time ativo"}
+          </span>
         </div>
         <ChevronsUpDown className="ml-auto" />
       </SidebarMenuButton>
@@ -127,27 +165,40 @@ export function TeamSwitcher({
             ref={inputRef}
             value={query}
             onValueChange={setQuery}
-            placeholder="Pesquisar time pelo nome"
+            placeholder="Pesquisar time ou conta"
           />
           <CommandList className="max-h-none min-h-0 flex-1 overflow-y-auto">
             {filteredTeams.length === 0 ? (
               <CommandEmpty>Nenhum time encontrado.</CommandEmpty>
             ) : (
-              <CommandGroup>
-                {filteredTeams.map((team) => (
-                  <CommandItem
-                    key={team.id}
-                    value={team.name}
-                    onSelect={() => handleSelectTeam(team.id)}
-                    className="gap-2 p-2"
-                  >
-                    <div className="flex size-6 items-center justify-center rounded-md border text-xs font-semibold">
-                      {team.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <span className="truncate">{team.name}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              groupedTeams.map(([groupLabel, groupTeams]) => (
+                <CommandGroup key={groupLabel} heading={groupLabel}>
+                  {groupTeams.map((team) => {
+                    const disabled = team.isAccessible === false
+                    return (
+                      <CommandItem
+                        key={team.id}
+                        value={`${groupLabel}-${team.name}`}
+                        onSelect={() => handleSelectTeam(team)}
+                        disabled={disabled}
+                        className={cn("gap-2 p-2", disabled && "opacity-60")}
+                      >
+                        <div className="flex size-6 items-center justify-center rounded-md border text-xs font-semibold">
+                          {team.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate">{team.name}</span>
+                          {disabled ? (
+                            <Badge variant="outline" className="mt-1 w-fit">
+                              Assinatura inativa
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </CommandItem>
+                    )
+                  })}
+                </CommandGroup>
+              ))
             )}
           </CommandList>
         </Command>

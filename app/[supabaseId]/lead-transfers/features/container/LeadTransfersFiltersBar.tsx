@@ -1,84 +1,159 @@
 "use client";
 
+import { useMemo } from "react";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
+import { useTeamContext } from "@/app/context/TeamContext";
+import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { useLeadTransfersContext } from "../context/LeadTransfersContext";
-import type { LeadTransferStateFilter } from "../context/LeadTransfersTypes";
+import { isLeadTransfersFiltersChanged } from "../context/LeadTransfersTypes";
 
-const STATUS_OPTIONS: Array<{ value: LeadTransferStateFilter; label: string }> = [
-  { value: "all", label: "Todos" },
-  { value: "pending", label: "Pendentes" },
-  { value: "completed", label: "Concluídas" },
+const TRANSFER_STATUS_OPTIONS = [
+  { value: "pending", label: "Pendente" },
+  { value: "completed", label: "Concluída" },
 ];
 
+function parseDateKey(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function toDateRange(from: string, to: string): DateRange | undefined {
+  if (!from && !to) return undefined;
+  return {
+    from: from ? parseDateKey(from) : undefined,
+    to: to ? parseDateKey(to) : undefined,
+  };
+}
+
 export function LeadTransfersFiltersBar() {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
   const { data, filters, setFilter, setDateRange, clearFilters } = useLeadTransfersContext();
+  const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
+  const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
 
-  const dateRange: DateRange | undefined =
-    filters.dateFrom || filters.dateTo
-      ? {
-          from: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-          to: filters.dateTo ? new Date(filters.dateTo) : undefined,
-        }
-      : undefined;
+  const transferDateRange = useMemo(
+    () => toDateRange(filters.transferDateFrom, filters.transferDateTo),
+    [filters.transferDateFrom, filters.transferDateTo]
+  );
 
-  const hasActiveFilters =
-    filters.search.trim().length > 0 ||
-    filters.status !== "all" ||
-    filters.toTeamId !== "" ||
-    filters.transferredByProfileId !== "" ||
-    filters.dateFrom !== "" ||
-    filters.dateTo !== "";
+  const preScheduledDateRange = useMemo(
+    () => toDateRange(filters.preScheduledDateFrom, filters.preScheduledDateTo),
+    [filters.preScheduledDateFrom, filters.preScheduledDateTo]
+  );
+
+  const scheduledDateRange = useMemo(
+    () => toDateRange(filters.scheduledDateFrom, filters.scheduledDateTo),
+    [filters.scheduledDateFrom, filters.scheduledDateTo]
+  );
+
+  const destinationOptions = useMemo(
+    () =>
+      (data?.facets.destinationTeams ?? []).map((team) => ({
+        value: team.id,
+        label: team.name,
+      })),
+    [data?.facets.destinationTeams]
+  );
+
+  const transferredByOptions = useMemo(
+    () =>
+      (data?.facets.transferredBy ?? []).map((member) => ({
+        value: member.id,
+        label: member.fullName ?? member.email,
+      })),
+    [data?.facets.transferredBy]
+  );
+
+  const sdrOptions = useMemo(
+    () =>
+      sdrMembers.map((member) => ({
+        value: member.id,
+        label: member.name || member.email,
+      })),
+    [sdrMembers]
+  );
+
+  const closerOptions = useMemo(
+    () =>
+      closerMembers.map((member) => ({
+        value: member.id,
+        label: member.name || member.email,
+      })),
+    [closerMembers]
+  );
+
+  const isFiltered = isLeadTransfersFiltersChanged(filters);
 
   return (
-    <LeadsFiltersLayout
-      actions={
-        hasActiveFilters ? (
-          <Button type="button" variant="ghost" size="sm" className="h-9 gap-1" onClick={clearFilters}>
-            <X data-icon="inline-start" />
-            Limpar filtros
-          </Button>
-        ) : null
-      }
-    >
+    <LeadsFiltersLayout>
       <Input
         placeholder="Filtrar por nome, e-mail ou telefone..."
         value={filters.search}
         onChange={(event) => setFilter("search", event.target.value)}
-        className="h-9 max-w-md"
+        className="h-8 w-[150px] lg:w-[250px]"
       />
 
-      {STATUS_OPTIONS.map((option) => (
-        <Button
-          key={option.value}
-          type="button"
-          size="sm"
-          variant={filters.status === option.value ? "default" : "outline"}
-          className="h-8"
-          onClick={() => setFilter("status", option.value)}
-        >
-          {option.label}
-        </Button>
-      ))}
+      <LeadsMultiFilter
+        title="Transferência"
+        options={TRANSFER_STATUS_OPTIONS}
+        selectedValues={filters.transferStatuses}
+        onChange={(values) => setFilter("transferStatuses", values as typeof filters.transferStatuses)}
+      />
+
+      {sdrOptions.length > 0 && (
+        <LeadsMultiFilter
+          title="SDR"
+          options={sdrOptions}
+          selectedValues={filters.sdrProfileIds}
+          onChange={(values) => setFilter("sdrProfileIds", values)}
+        />
+      )}
+
+      {closerOptions.length > 0 && (
+        <LeadsMultiFilter
+          title="Closer"
+          options={closerOptions}
+          selectedValues={filters.closerProfileIds}
+          onChange={(values) => setFilter("closerProfileIds", values)}
+        />
+      )}
+
+      {destinationOptions.length > 0 && (
+        <LeadsMultiFilter
+          title="Time destino"
+          options={destinationOptions}
+          selectedValues={filters.toTeamIds}
+          onChange={(values) => setFilter("toTeamIds", values)}
+        />
+      )}
+
+      {transferredByOptions.length > 0 && (
+        <LeadsMultiFilter
+          title="Transferido por"
+          options={transferredByOptions}
+          selectedValues={filters.transferredByProfileIds}
+          onChange={(values) => setFilter("transferredByProfileIds", values)}
+        />
+      )}
 
       <LeadsDateFilter
-        title="Data"
-        value={dateRange}
+        title="Data da transferência"
+        value={transferDateRange}
         onChange={(range) => {
           setDateRange(
+            "transferDate",
             range?.from ? format(range.from, "yyyy-MM-dd") : "",
             range?.to ? format(range.to, "yyyy-MM-dd") : ""
           );
@@ -86,51 +161,37 @@ export function LeadTransfersFiltersBar() {
         allowFutureDates
       />
 
-      {(data?.facets.destinationTeams.length ?? 0) > 0 && (
-        <Select
-          value={filters.toTeamId || "all"}
-          onValueChange={(value) => setFilter("toTeamId", value === "all" ? "" : value)}
-        >
-          <SelectTrigger className="h-8 w-[180px]">
-            <SelectValue placeholder="Time destino" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os destinos</SelectItem>
-            {data?.facets.destinationTeams.map((team) => (
-              <SelectItem key={team.id} value={team.id}>
-                {team.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+      <LeadsDateFilter
+        title="Pré-agendamento"
+        value={preScheduledDateRange}
+        onChange={(range) => {
+          setDateRange(
+            "preScheduledDate",
+            range?.from ? format(range.from, "yyyy-MM-dd") : "",
+            range?.to ? format(range.to, "yyyy-MM-dd") : ""
+          );
+        }}
+        allowFutureDates
+      />
 
-      {(data?.facets.transferredBy.length ?? 0) > 0 && (
-        <Select
-          value={filters.transferredByProfileId || "all"}
-          onValueChange={(value) =>
-            setFilter("transferredByProfileId", value === "all" ? "" : value)
-          }
-        >
-          <SelectTrigger className="h-8 w-[200px]">
-            <SelectValue placeholder="Transferido por" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os responsáveis</SelectItem>
-            {data?.facets.transferredBy.map((member) => (
-              <SelectItem key={member.id} value={member.id}>
-                {member.fullName ?? member.email}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+      <LeadsDateFilter
+        title="Data de agendamento"
+        value={scheduledDateRange}
+        onChange={(range) => {
+          setDateRange(
+            "scheduledDate",
+            range?.from ? format(range.from, "yyyy-MM-dd") : "",
+            range?.to ? format(range.to, "yyyy-MM-dd") : ""
+          );
+        }}
+        allowFutureDates
+      />
 
-      {hasActiveFilters ? (
-        <Badge variant="secondary" className="h-8 px-3">
-          Filtros ativos
-        </Badge>
-      ) : null}
+      {isFiltered && (
+        <Button variant="ghost" className="h-8 px-2 lg:px-3" onClick={clearFilters}>
+          Limpar
+        </Button>
+      )}
     </LeadsFiltersLayout>
   );
 }

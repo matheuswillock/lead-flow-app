@@ -726,6 +726,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           initialStartDate={selectedLead.contractDueDate}
           initialOperadora={selectedLead.soldPlan}
           initialHolderCnpj={selectedLead.cnpj}
+          initialHolderRazaoSocial={selectedLead.razaoSocial}
         />
       )}
 

@@ -12,7 +12,7 @@ export type LeadTransferPendingRow = {
   leadName: string;
   leadEmail: string | null;
   leadPhone: string | null;
-  leadStatus: LeadStatus;
+  leadStatus: LeadStatus | null;
   sdr: LeadTransferProfileRef | null;
   closer: LeadTransferProfileRef | null;
   preScheduledAt: Date | null;
@@ -27,7 +27,7 @@ export type LeadTransferCompletedRow = {
   leadName: string;
   leadEmail: string | null;
   leadPhone: string | null;
-  leadStatus: LeadStatus;
+  leadStatus: LeadStatus | null;
   sdr: LeadTransferProfileRef | null;
   closer: LeadTransferProfileRef | null;
   destinationTeamId: string;
@@ -42,10 +42,16 @@ export type LeadTransferListFilters = {
   teamId: string;
   search?: string;
   leadStatus?: string;
-  toTeamId?: string;
-  transferredByProfileId?: string;
-  dateFrom?: Date;
-  dateTo?: Date;
+  toTeamIds?: string[];
+  transferredByProfileIds?: string[];
+  sdrProfileIds?: string[];
+  closerProfileIds?: string[];
+  transferDateFrom?: Date;
+  transferDateTo?: Date;
+  preScheduledDateFrom?: Date;
+  preScheduledDateTo?: Date;
+  scheduledDateFrom?: Date;
+  scheduledDateTo?: Date;
 };
 
 export interface ILeadTransferRepository {

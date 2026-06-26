@@ -55,16 +55,19 @@ export interface DetailedMetricsData {
   totalValue: number;
 }
 
+export type DashboardTeamScope = 'active' | 'all';
+
 export interface MetricsFilters {
   period?: '7d' | '30d' | '3m' | '6m' | '1y';
   startDate?: string;
   endDate?: string;
+  teamScope?: DashboardTeamScope;
 }
 
 export interface IDashboardMetricsService {
   getMetrics(supabaseId: string, teamId: string, filters?: MetricsFilters): Promise<DashboardMetricsData>;
-  getDetailedMetrics(supabaseId: string, teamId: string): Promise<DetailedMetricsData[]>;
+  getDetailedMetrics(supabaseId: string, teamId: string, teamScope?: DashboardTeamScope): Promise<DetailedMetricsData[]>;
   clearCache?(supabaseId: string, teamId: string, filters?: MetricsFilters): void;
-  clearDetailedCache?(supabaseId: string, teamId: string): void;
+  clearDetailedCache?(supabaseId: string, teamId: string, teamScope?: DashboardTeamScope): void;
   clearAllCache?(): void;
 }

@@ -13,7 +13,7 @@ export function BackofficeBetaContainer() {
       <div>
         <h1 className="text-lg font-semibold">Grupo Beta</h1>
         <p className="text-sm text-muted-foreground">
-          Gerencie quais clientes têm acesso antecipado às funcionalidades beta.
+          Gerencie quais masters têm acesso antecipado às funcionalidades beta e defina o escopo de times.
         </p>
       </div>
 

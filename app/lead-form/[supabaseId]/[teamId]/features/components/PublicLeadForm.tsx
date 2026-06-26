@@ -4,7 +4,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { SaveWithDraftButton } from "@/components/forms/SaveWithDraftButton";
+import { CheckCircle2 } from "lucide-react";
 import Image from "next/image";
 import {
   publicLeadFormSchema,
@@ -31,6 +32,7 @@ import { useIsInView } from "@/hooks/use-is-in-view";
 import { LeadAdditionalNotesField } from "@/components/forms/fields/LeadAdditionalNotesField";
 import { LeadAgeField } from "@/components/forms/fields/LeadAgeField";
 import { LeadCnpjField } from "@/components/forms/fields/LeadCnpjField";
+import { LeadRazaoSocialField } from "@/components/forms/fields/LeadRazaoSocialField";
 import { LeadCurrentValueField } from "@/components/forms/fields/LeadCurrentValueField";
 import { LeadEmailField } from "@/components/forms/fields/LeadEmailField";
 import { LeadHealthPlanField } from "@/components/forms/fields/LeadHealthPlanField";
@@ -98,6 +100,7 @@ export function PublicLeadForm() {
       phone: "",
       email: "",
       cnpj: "",
+      razaoSocial: "",
       age: "",
       currentHealthPlan: "",
       currentValue: "",
@@ -131,18 +134,18 @@ export function PublicLeadForm() {
     [form]
   );
 
-  const onSubmit = useCallback(
-    async (data: PublicLeadFormData) => {
+  const submitFormData = useCallback(
+    async (data: PublicLeadFormData, saveAsDraft: boolean) => {
       if (submitting || isSubmitting) return;
-      if (isTransfer && !meetingDate) {
+      if (!saveAsDraft && isTransfer && !meetingDate) {
         toast.error("Selecione uma data para o pré-agendamento da transferência.");
         return;
       }
       setSubmitting(true);
 
       try {
-        const hasMeeting = !!(closerId && meetingDate && meetingTitle.trim());
-        const hasPreSchedule = isTransfer && !!meetingDate;
+        const hasMeeting = !saveAsDraft && !!(closerId && meetingDate && meetingTitle.trim());
+        const hasPreSchedule = !saveAsDraft && isTransfer && !!meetingDate;
         const guests = parseExtraGuests(data.extraGuests);
 
         const result = await submitLead({
@@ -171,16 +174,23 @@ export function PublicLeadForm() {
           meetingNotes: hasMeeting && meetingNotes ? meetingNotes : undefined,
           extraGuests: hasMeeting && guests.length > 0 ? guests : undefined,
           isTransfer: isTransfer || undefined,
+          saveAsDraft,
         });
 
         if (result.isValid) {
-          const message = result.successMessages[0] || "Lead cadastrado com sucesso!";
+          const message =
+            result.successMessages[0] ||
+            (saveAsDraft ? "Rascunho salvo com sucesso!" : "Lead cadastrado com sucesso!");
           toast.success(message);
+          if (result.successMessages.some((item) => item.includes("não foi possível consultar a razão social"))) {
+            toast.warning("Lead salvo, mas não foi possível consultar a razão social.");
+          }
           form.reset({
             name: "",
             phone: "",
             email: "",
             cnpj: "",
+            razaoSocial: "",
             age: "",
             currentHealthPlan: "",
             currentValue: "",
@@ -234,18 +244,27 @@ export function PublicLeadForm() {
     }
   }, [form, isSubmitting, submitting]);
 
+  const runSubmit = useCallback(
+    (saveAsDraft: boolean) => {
+      void form.handleSubmit(
+        (data) => submitFormData(data, saveAsDraft),
+        () => {
+          void handleInvalidSubmit();
+        }
+      )();
+    },
+    [form, handleInvalidSubmit, submitFormData]
+  );
+
   const isLoading = submitting || isSubmitting;
   const isSchemaValid = publicLeadFormSchema.safeParse(watchedValues).success;
   const hasManualBlockingErrors = Object.values(form.formState.errors).some((error) => {
     return (error as { type?: string } | undefined)?.type === "manual";
   });
   const isTransferWithoutMeetingDate = isTransfer && !meetingDate;
-  const isSubmitDisabled =
-    isLoading ||
-    sdrs.length === 0 ||
-    !isSchemaValid ||
-    hasManualBlockingErrors ||
-    isTransferWithoutMeetingDate;
+  const isDraftDisabled =
+    isLoading || sdrs.length === 0 || !isSchemaValid || hasManualBlockingErrors;
+  const isSaveDisabled = isDraftDisabled || isTransferWithoutMeetingDate;
 
   useEffect(() => {
     if (isSchemaValid) {
@@ -351,9 +370,10 @@ export function PublicLeadForm() {
 
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit(onSubmit, () => {
-              void handleInvalidSubmit();
-            })}
+            onSubmit={(event) => {
+              event.preventDefault();
+              runSubmit(false);
+            }}
             className="space-y-6"
           >
             <div className="space-y-6 rounded-lg border p-4">
@@ -391,6 +411,11 @@ export function PublicLeadForm() {
                   <LeadPhoneField control={form.control} disabled={isLoading} />
                   <LeadEmailField control={form.control} disabled={isLoading} />
                   <LeadCnpjField control={form.control} disabled={isLoading} />
+                  <LeadRazaoSocialField
+                    control={form.control}
+                    disabled={isLoading}
+                    isLookupPending={submitting || isSubmitting}
+                  />
                   <LeadAgeField control={form.control} disabled={isLoading} />
                   <LeadHealthPlanField
                     control={form.control}
@@ -529,30 +554,16 @@ export function PublicLeadForm() {
               />
             </div>
 
-            <div
-              className="w-full"
-              onClick={() => {
-                if (isLoading || sdrs.length === 0) return;
-                if (isSubmitDisabled) {
-                  void handleInvalidSubmit();
-                }
-              }}
-            >
-              <Button
-                type="submit"
-                className={`w-full ${isSubmitDisabled ? "pointer-events-none" : ""}`}
-                disabled={isSubmitDisabled}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Cadastrando...
-                  </>
-                ) : (
-                  "Cadastrar Lead"
-                )}
-              </Button>
-            </div>
+            <SaveWithDraftButton
+              className="w-full [&>button:first-child]:flex-1"
+              isLoading={isLoading}
+              isSaveDisabled={isSaveDisabled}
+              isDraftDisabled={isDraftDisabled}
+              saveLabel="Cadastrar lead"
+              loadingLabel="Cadastrando..."
+              onSaveFull={() => runSubmit(false)}
+              onSaveDraft={() => runSubmit(true)}
+            />
             <div
               ref={formEndRef as React.RefObject<HTMLDivElement>}
               className="h-px w-full"

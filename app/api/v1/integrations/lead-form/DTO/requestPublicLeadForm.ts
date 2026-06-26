@@ -85,7 +85,19 @@ export const PublicLeadFormRequestSchema = z
     utmTerm: z.string().nullish().transform((val) => val || undefined),
     landingUrl: z.string().nullish().transform((val) => val || undefined),
     referrer: z.string().nullish().transform((val) => val || undefined),
+    saveAsDraft: z.boolean().optional(),
   })
+  .refine(
+    (data) => {
+      if (data.saveAsDraft) return true;
+      if (data.isTransfer && !data.meetingDate) return false;
+      return true;
+    },
+    {
+      message: "Selecione uma data para o pré-agendamento da transferência.",
+      path: ["meetingDate"],
+    }
+  )
   .refine(
     (data) => {
       if (data.closerId && (!data.meetingDate || !data.meetingTitle)) {

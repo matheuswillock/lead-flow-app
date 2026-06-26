@@ -5,9 +5,27 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { getMessagesUseCase } from "@/app/api/useCases/whatsapp/GetMessagesUseCase"
 import { sendMessageUseCase } from "@/app/api/useCases/whatsapp/SendMessageUseCase"
 
-const sendMessageSchema = z.object({
-  contentText: z.string().min(1, "Mensagem não pode ser vazia").max(4096),
+const mediaSchema = z.object({
+  mediatype: z.enum(["image", "document", "audio", "video"]),
+  mimeType: z.string().min(1),
+  fileName: z.string().min(1),
+  base64: z.string().min(1),
+  caption: z.string().max(4096).optional(),
 })
+
+const sendMessageSchema = z.union([
+  z.object({
+    contentText: z.string().min(1, "Mensagem não pode ser vazia").max(4096),
+    mentionedJids: z.array(z.string().min(1)).optional(),
+  }),
+  z
+    .object({
+      contentText: z.string().max(4096).optional(),
+      mentionedJids: z.array(z.string().min(1)).optional(),
+      media: mediaSchema,
+    })
+    .refine((data) => Boolean(data.media), { message: "Mídia é obrigatória" }),
+])
 
 function resolveStatus(output: Output): number {
   const msg = output.errorMessages.join(" ")
@@ -86,6 +104,8 @@ export async function POST(
     teamId,
     sentByProfileId: teamAccess.access.profileId,
     contentText: parsed.data.contentText,
+    mentionedJids: parsed.data.mentionedJids,
+    media: "media" in parsed.data ? parsed.data.media : undefined,
   })
 
   if (!output.isValid) {

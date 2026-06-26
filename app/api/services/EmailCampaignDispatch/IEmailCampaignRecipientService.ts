@@ -22,7 +22,8 @@ export interface IEmailCampaignRecipientService {
   parseTemplateVariables(variables: unknown): EmailTemplateVariableDefinition[]
   buildCampaignDispatchInput(params: {
     teamId: string
-    contactListId: string
+    contactListId?: string | null
+    cdpSegmentSlug?: string | null
     template: { subject: string; html: string; variables: unknown }
     teamSettings: {
       fromName?: string | null

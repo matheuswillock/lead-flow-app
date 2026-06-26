@@ -31,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useTimezone } from '@/app/context/TimezoneContext'
 import { formatIntimezone } from '@/lib/dates'
+import { useTeamContext } from '@/app/context/TeamContext'
 import { useWhatsAppSettingsContext } from '../context/WhatsAppSettingsContext'
 import type { WhatsAppConnectionStatus, WhatsAppUsage } from '../context/WhatsAppSettingsTypes'
 
@@ -76,8 +77,21 @@ function formatSyncDate(value: string | null, tz: string): string {
 
 export function ConnectionCard() {
   const { tz } = useTimezone()
-  const { config, usage, isLoading, isConnecting, isReconnecting, isDisconnecting, connect, reconnect, disconnect } =
-    useWhatsAppSettingsContext()
+  const { isTeamMaster } = useTeamContext()
+  const {
+    config,
+    usage,
+    isLoading,
+    isRefreshing,
+    isConnecting,
+    isReconnecting,
+    isDisconnecting,
+    isSyncingContacts,
+    connect,
+    reconnect,
+    disconnect,
+    syncPhoneContacts,
+  } = useWhatsAppSettingsContext()
 
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
 
@@ -86,7 +100,7 @@ export function ConnectionCard() {
     config?.status !== 'CONNECTED' &&
     config?.status !== 'DISCONNECTED'
 
-  if (isLoading) {
+  if (isLoading && !config) {
     return (
       <Card>
         <CardHeader>
@@ -122,6 +136,9 @@ export function ConnectionCard() {
               ) : (
                 <Badge variant="outline">Não configurado</Badge>
               )}
+              {isRefreshing ? (
+                <RefreshCw className="size-4 animate-spin text-muted-foreground" />
+              ) : null}
             </div>
             <CardDescription>
               Conecte um número WhatsApp Business para enviar e receber mensagens com seus leads.
@@ -221,6 +238,18 @@ export function ConnectionCard() {
             <Separator />
 
             <div className="flex flex-wrap gap-2">
+              {config.status === 'CONNECTED' && isTeamMaster ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSyncingContacts}
+                  onClick={() => void syncPhoneContacts()}
+                >
+                  <RefreshCw className={cn(isSyncingContacts && 'animate-spin')} />
+                  {isSyncingContacts ? 'Sincronizando...' : 'Sincronizar contatos do celular'}
+                </Button>
+              ) : null}
               {showQrCode ? (
                 <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
                   <RefreshCw className={cn(isReconnecting && 'animate-spin')} />

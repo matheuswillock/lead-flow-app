@@ -13,6 +13,18 @@ export interface LeadSearchResult {
   leadCode: string
 }
 
+export interface WhatsAppTeamContact {
+  id: string
+  remoteJid: string
+  opaqueId: string
+  phoneNumber: string | null
+  displayName: string | null
+  pushName: string | null
+  source: string
+}
+
+export type WhatsAppContactLookup = Record<string, string>
+
 export interface WhatsAppConversation {
   id: string
   teamId: string
@@ -21,12 +33,15 @@ export interface WhatsAppConversation {
   externalChatId: string | null
   contactPhone: string
   contactName: string | null
+  contactAvatarUrl: string | null
   normalizedPhone: string
   assignedProfileId: string | null
   lastMessageAt: string | null
   lastMessagePreview: string | null
   unreadCount: number
   isArchived: boolean
+  handoffMode: 'BOT' | 'HUMAN'
+  welcomeSentAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -48,6 +63,9 @@ export interface WhatsAppMessage {
   contentText: string | null
   mediaUrl: string | null
   caption: string | null
+  senderDisplayName: string | null
+  mediaFileName: string | null
+  linkPreview: { title?: string; description?: string; imageUrl?: string; url?: string } | null
   sentByProfileId: string | null
   senderPhone: string | null
   recipientPhone: string | null
@@ -55,15 +73,22 @@ export interface WhatsAppMessage {
   deliveredAt: string | null
   readAt: string | null
   failedAt: string | null
+  isAutoResponse: boolean
   createdAt: string
 }
 
 export type WhatsAppConnectionStatus = 'PENDING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'
 
+export type WhatsAppHistorySyncStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+
 export interface WhatsAppConfig {
   status: WhatsAppConnectionStatus
   phoneNumber: string | null
   instanceName: string
+  historySyncStatus?: WhatsAppHistorySyncStatus
+  historySyncStartedAt?: string | null
+  historySyncCompletedAt?: string | null
+  historySyncError?: string | null
 }
 
 export type ConversationFilterMode = 'all' | 'unread' | 'mine' | 'archived'
@@ -92,14 +117,31 @@ export interface InboxState {
   teamMembers: TeamMember[]
   isLoadingTeamMembers: boolean
   currentProfileId: string | null
+  activeTeamId: string | null
   canManageAssignment: boolean
+  isCreatingConversation: boolean
+  isSyncingContacts: boolean
+  isSyncingGroupParticipants: boolean
+  isLoadingContacts: boolean
+  contacts: WhatsAppTeamContact[]
+  contactLookup: WhatsAppContactLookup
+  isTeamMaster: boolean
+  unreadTotal: number
+}
+
+export interface SendMessageMediaInput {
+  mediatype: 'image' | 'document' | 'audio' | 'video'
+  mimeType: string
+  fileName: string
+  base64: string
+  caption?: string
 }
 
 export interface InboxActions {
   selectConversation: (id: string) => void
   loadMoreConversations: () => void
   loadOlderMessages: () => void
-  sendMessage: (text: string) => void
+  sendMessage: (text: string, media?: SendMessageMediaInput, mentionedJids?: string[]) => void
   resendMessage: (messageId: string) => void
   setSearchQuery: (q: string) => void
   setFilterMode: (mode: ConversationFilterMode) => void
@@ -110,5 +152,15 @@ export interface InboxActions {
   archiveConversation: (conversationId: string) => void
   unarchiveConversation: (conversationId: string) => void
   deleteConversation: (conversationId: string) => void
+  createConversation: (input: {
+    phone: string
+    contactName?: string
+    initialMessage?: string
+  }) => Promise<WhatsAppConversation | void>
+  syncPhoneContacts: (
+    conversationId?: string
+  ) => Promise<{ imported: number; updatedConversations: number; totalContacts: number }>
+  syncGroupParticipants: (conversationId: string) => Promise<{ imported: number; totalParticipants: number }>
+  loadContacts: (groupJid?: string) => Promise<void>
 }
 

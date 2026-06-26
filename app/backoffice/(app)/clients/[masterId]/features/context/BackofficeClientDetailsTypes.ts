@@ -54,8 +54,12 @@ export interface BackofficeClientDetails {
     status: string | null
   }
   teams: BackofficeClientTeam[]
-  allTeams: Array<{ id: string; name: string }>
+  allTeams: Array<{ id: string; name: string; membersCount: number }>
   teamsPagination: BackofficePagination
+  userType: {
+    slug: "common" | "member_pro"
+    isExpired: boolean
+  }
 }
 
 export interface BackofficeClientInvoice {

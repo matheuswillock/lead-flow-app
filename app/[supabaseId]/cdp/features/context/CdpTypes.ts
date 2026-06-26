@@ -6,6 +6,8 @@ export type CdpProfileListItem = {
   displayPhone: string
   primaryEmail: string | null
   lastSeenAt: string | null
+  primarySegment?: string | null
+  primarySegmentName?: string | null
   consents: Array<{ channel: string; status: CdpConsentStatus; reason: string | null }>
   sourceLinks: Array<{ sourceType: string }>
 }

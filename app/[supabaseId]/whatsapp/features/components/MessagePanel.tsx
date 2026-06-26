@@ -1,27 +1,24 @@
 "use client"
 
 import { useEffect, useRef } from 'react'
-import { Loader2, Phone, Wifi, WifiOff } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Loader2, Phone, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { AssignmentControl } from './AssignmentControl'
 import { ConversationActionsMenu } from './ConversationActionsMenu'
 import { LinkLeadDialog } from './LinkLeadDialog'
 import { MessageBubble } from './MessageBubble'
+import { MessageBubbleSkeleton } from './MessageBubbleSkeleton'
 import { MessageComposer } from './MessageComposer'
-
-function formatPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
-  if (digits.length === 13) {
-    return `+${digits.slice(0, 2)} (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`
-  }
-  return phone
-}
+import {
+  getChatKind,
+  getConversationDisplayName,
+  getConversationSubtitle,
+} from '../utils/whatsappDisplay'
 
 function getInitials(name: string | null, phone: string): string {
   if (name) {
@@ -45,6 +42,9 @@ export function MessagePanel() {
     loadOlderMessages,
     config,
     canManageAssignment,
+    isTeamMaster,
+    isSyncingGroupParticipants,
+    syncGroupParticipants,
   } = useWhatsAppInboxContext()
 
   const scrollBottomRef = useRef<HTMLDivElement>(null)
@@ -65,8 +65,16 @@ export function MessagePanel() {
     )
   }
 
-  const displayName =
-    selectedConversation.contactName ?? formatPhone(selectedConversation.contactPhone)
+  const displayName = getConversationDisplayName({
+    contactName: selectedConversation.contactName,
+    contactPhone: selectedConversation.contactPhone,
+    externalChatId: selectedConversation.externalChatId,
+  })
+  const subtitle = getConversationSubtitle({
+    contactPhone: selectedConversation.contactPhone,
+    externalChatId: selectedConversation.externalChatId,
+  })
+  const chatKind = getChatKind(selectedConversation.externalChatId)
   const initials = getInitials(selectedConversation.contactName, selectedConversation.contactPhone)
 
   return (
@@ -74,15 +82,38 @@ export function MessagePanel() {
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3">
         <Avatar className="size-9">
+          {selectedConversation.contactAvatarUrl ? (
+            <AvatarImage src={selectedConversation.contactAvatarUrl} alt={displayName} />
+          ) : null}
           <AvatarFallback className="text-xs font-medium">{initials}</AvatarFallback>
         </Avatar>
         <div className="flex flex-1 flex-col gap-0.5">
-          <span className="text-sm font-medium text-foreground">{displayName}</span>
-          <span className="text-xs text-muted-foreground">
-            {formatPhone(selectedConversation.contactPhone)}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">{displayName}</span>
+            {chatKind === 'group' && (
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">Grupo</Badge>
+            )}
+          </div>
+          {subtitle && (
+            <span className="text-xs text-muted-foreground">{subtitle}</span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {chatKind === 'group' && isTeamMaster && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!isConnected || isSyncingGroupParticipants}
+              onClick={() => {
+                if (!selectedConversation) return
+                void syncGroupParticipants(selectedConversation.id)
+              }}
+            >
+              <RefreshCw className={isSyncingGroupParticipants ? 'animate-spin' : undefined} />
+              Sincronizar participantes
+            </Button>
+          )}
           {canManageAssignment && (
             <LinkLeadDialog selectedConversation={selectedConversation} />
           )}
@@ -107,17 +138,23 @@ export function MessagePanel() {
       <Separator />
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-4">
-        <div className="flex flex-col gap-2 py-4">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-muted/30 dark:bg-background"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[url('/whatsapp/chat-background-light.png')] bg-[length:400px] bg-repeat opacity-50 dark:hidden"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 hidden bg-[url('/whatsapp/chat-background-dark.png')] bg-[length:400px] bg-repeat opacity-[0.14] dark:block"
+        />
+        <ScrollArea className="h-full flex-1 [&>[data-radix-scroll-area-viewport]>div]:min-h-full">
+          <div className="relative z-10 flex flex-col gap-2 px-4 py-4">
           {isLoadingMessages ? (
-            Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className={i % 2 === 0 ? 'flex justify-end' : 'flex justify-start'}
-              >
-                <Skeleton className="h-10 w-2/3 rounded-lg" />
-              </div>
-            ))
+            <MessageBubbleSkeleton />
           ) : messages.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-sm text-muted-foreground">Nenhuma mensagem nesta conversa</p>
@@ -141,14 +178,19 @@ export function MessagePanel() {
                   </Button>
                 </div>
               )}
-              {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+              {messages.map((message, index) => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  previousMessage={index > 0 ? messages[index - 1]! : null}
+                />
               ))}
             </>
           )}
           <div ref={scrollBottomRef} />
-        </div>
-      </ScrollArea>
+          </div>
+        </ScrollArea>
+      </div>
 
       <Separator />
 

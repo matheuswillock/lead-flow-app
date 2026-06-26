@@ -1,8 +1,11 @@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { LeadForm } from "@/components/forms/leadForm";
+import type { LeadFormSaveMode } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
+import { isDraftLead } from "@/lib/lead-status";
+import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
 import {
   useCallback,
   useEffect,
@@ -81,6 +84,7 @@ import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
 } from "@/lib/services/leadStatusTransitionClient";
+import { mapLeadInfoPayloadForUpdate } from "@/lib/leadStatusTransitionFields";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
@@ -410,6 +414,10 @@ export default function LeadDialog({
     currentLead.status === "offerSubmission"
   );
   const shouldShowMeetingHeald = !!currentLead && currentLead.status === "scheduled";
+  const isTransferWithoutPreSchedule = useMemo(
+    () => !!currentLead && currentLead.isTransfer === true && !currentLead.meetingDate,
+    [currentLead]
+  );
   const isAssignedCloser = !!(currentLead && user && currentLead.closerId && currentLead.closerId === user.id);
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || isAssignedCloser);
@@ -1325,7 +1333,7 @@ export default function LeadDialog({
     }
   };
 
-  const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
+  const transformToCreateRequest = (data: leadFormData, saveAsDraft: boolean): CreateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
     return {
@@ -1345,12 +1353,12 @@ export default function LeadDialog({
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       closerId: data.closerId || undefined,
-      status: "new_opportunity" as any,
+      saveAsDraft,
+      isTransfer: data.isTransfer || false,
       ticket: undefined,
       contractDueDate: undefined,
       soldPlan: undefined,
       meetingType: undefined,
-      isTransfer: data.isTransfer || false,
       isReferral: data.isReferral || false,
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
@@ -1358,7 +1366,7 @@ export default function LeadDialog({
     };
   };
 
-  const transformToUpdateRequest = (data: leadFormData): UpdateLeadRequest => {
+  const transformToUpdateRequest = (data: leadFormData, saveAsDraft: boolean): UpdateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
     return {
@@ -1392,6 +1400,7 @@ export default function LeadDialog({
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
       referrerPhone: data.referrerPhone || undefined,
+      saveAsDraft,
     };
   };
 
@@ -1448,23 +1457,34 @@ export default function LeadDialog({
     }
   };
 
-  const onSubmit = async (data: leadFormData) => {
+  const onSubmit = async (data: leadFormData, mode: LeadFormSaveMode = "full") => {
+    const saveAsDraft = mode === "draft";
     setIsSubmitting(true);
 
     try {
       if (currentLead) {
         setPendingSubmitData(null);
-        const loadingToast = toast.loading("Atualizando lead...");
+        const loadingToast = toast.loading(
+          saveAsDraft ? "Salvando rascunho..." : "Atualizando lead..."
+        );
 
-        const updateData = transformToUpdateRequest(data);
+        const updateData = transformToUpdateRequest(data, saveAsDraft);
         const result = await updateLead(currentLead.id, updateData);
 
         if (result.success) {
-          toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
+          toast.success(
+            saveAsDraft
+              ? `Rascunho "${data.name}" salvo com sucesso!`
+              : `Lead "${data.name}" atualizado com sucesso!`,
+            {
             id: loadingToast,
             duration: 3000,
           });
+          if (result.message.includes("não foi possível consultar a razão social")) {
+            toast.warning("Lead salvo, mas não foi possível consultar a razão social.");
+          }
           if (result.lead) {
+            form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
             await applyLocalLeadPatch(currentLead.id, result.lead);
             setLocalLead((prev) =>
               prev && prev.id === currentLead.id ? ({ ...prev, ...result.lead } as Lead) : prev,
@@ -1479,18 +1499,28 @@ export default function LeadDialog({
           });
         }
       } else {
-        const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
+        const loadingToast = toast.loading(
+          saveAsDraft ? `Salvando rascunho "${data.name}"...` : `Criando lead "${data.name}"...`
+        );
 
         try {
-          const createData = transformToCreateRequest(data);
+          const createData = transformToCreateRequest(data, saveAsDraft);
           const result = await createLead(createData);
 
           if (result.success) {
-            toast.success(`Lead "${data.name}" criado com sucesso!`, {
+            toast.success(
+              saveAsDraft
+                ? `Rascunho "${data.name}" salvo com sucesso!`
+                : `Lead "${data.name}" criado com sucesso!`,
+              {
               id: loadingToast,
               duration: 4000,
             });
+            if (result.message.includes("não foi possível consultar a razão social")) {
+              toast.warning("Lead salvo, mas não foi possível consultar a razão social.");
+            }
             if (result.lead) {
+              form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
               setLocalLead(result.lead as Lead);
             }
             await refreshLeads();
@@ -1682,6 +1712,18 @@ export default function LeadDialog({
               typeof transition.currentLeadInfo?.ongoingTreatment === "string"
                 ? transition.currentLeadInfo.ongoingTreatment
                 : currentLead.currentTreatment ?? null,
+            email:
+              typeof transition.currentLeadInfo?.email === "string"
+                ? transition.currentLeadInfo.email
+                : currentLead.email ?? null,
+            phone:
+              typeof transition.currentLeadInfo?.phone === "string"
+                ? transition.currentLeadInfo.phone
+                : currentLead.phone ?? null,
+            cnpj:
+              typeof transition.currentLeadInfo?.cnpj === "string"
+                ? transition.currentLeadInfo.cnpj
+                : currentLead.cnpj ?? null,
           };
 
           setPendingLeadInfoGate({
@@ -2055,7 +2097,7 @@ export default function LeadDialog({
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId || "",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(mapLeadInfoPayloadForUpdate(payload)),
       });
 
       const result = await response.json().catch(() => null);
@@ -2111,6 +2153,7 @@ export default function LeadDialog({
         phone: normalizeLeadPhoneDigits(currentLead.phone || ""),
         email: currentLead.email || "",
         cnpj: formatCNPJ(currentLead.cnpj || ""),
+        razaoSocial: currentLead.razaoSocial ?? "",
         closerId: currentLead.closerId || "",
         age: currentLead.age || "",
         currentHealthPlan: currentLead.currentHealthPlan || undefined,
@@ -2140,6 +2183,7 @@ export default function LeadDialog({
         phone: "",
         email: "",
         cnpj: "",
+        razaoSocial: "",
         closerId: "",
         age: "",
         currentHealthPlan: undefined,
@@ -2266,6 +2310,14 @@ export default function LeadDialog({
                         : "Preencha os dados para criar um novo lead."
                       }
                     </DialogDescription>
+                    {currentLead && isDraftLead(currentLead) ? (
+                      <div className="mt-3 flex flex-col gap-2 rounded-md bg-muted px-3 py-2">
+                        <DraftLeadIndicator />
+                        <p className="text-sm text-muted-foreground">
+                          Este lead ainda é um rascunho. Use Salvar para entrar no funil.
+                        </p>
+                      </div>
+                    ) : null}
                     {(currentLead?.leadCode || leadOriginBadge) && (
                       <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                         {currentLead?.leadCode && (
@@ -2451,6 +2503,8 @@ export default function LeadDialog({
                       currentProfileId={user.id}
                       currentUserIsSdr={isOperatorSdr}
                       currentUserIsCloser={isCloserOperator}
+                      isFullSaveDisabled={isTransferWithoutPreSchedule}
+                      fullSaveDisabledReason="Selecione uma data para o pré-agendamento da transferência."
                       supabaseId={supabaseId}
                       activeTeamId={activeTeamId ?? undefined}
                     />
@@ -2898,6 +2952,7 @@ export default function LeadDialog({
           initialStartDate={currentLead.contractDueDate}
           initialOperadora={currentLead.soldPlan}
           initialHolderCnpj={currentLead.cnpj}
+          initialHolderRazaoSocial={currentLead.razaoSocial}
         />
       )}
 

@@ -1,5 +1,9 @@
 export type LeadMeetingHeald = "yes" | "no" | null | undefined;
 
+export const MEETING_FOLLOW_UP_DAYS = 3;
+export const MEETING_FOLLOW_UP_EMAIL_MAX_PER_DAY = 2;
+export const MEETING_FOLLOW_UP_EMAIL_MIN_INTERVAL_HOURS = 6;
+
 export type ScheduleMeetingStatus = "scheduled" | "realized" | "overdue" | "canceled";
 
 export const scheduleMeetingStatusLabels: Record<ScheduleMeetingStatus, string> = {
@@ -47,6 +51,25 @@ export const isMeetingOverdue = (meetingDateIso: string | null | undefined) => {
 };
 
 export const isMeetingHealdResolved = (meetingHeald: LeadMeetingHeald) => meetingHeald === "yes";
+
+export function isMeetingFollowUpOverdue(params: {
+  status: string | null | undefined;
+  meetingDate: string | Date | null | undefined;
+  meetingHeald: LeadMeetingHeald;
+  now?: Date;
+}): boolean {
+  if (params.status !== "scheduled") return false;
+  if (params.meetingHeald === "yes") return false;
+  if (!params.meetingDate) return false;
+
+  const meetingDate =
+    params.meetingDate instanceof Date ? params.meetingDate : new Date(params.meetingDate);
+  if (Number.isNaN(meetingDate.getTime())) return false;
+
+  const now = params.now ?? new Date();
+  const cutoffMs = now.getTime() - MEETING_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000;
+  return meetingDate.getTime() < cutoffMs;
+}
 
 export const requiresMeetingHealdGate = (fromStatus: string | null | undefined, toStatus: string) =>
   fromStatus === "scheduled" &&

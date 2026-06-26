@@ -1,6 +1,6 @@
 import { LeadStatus } from "@prisma/client";
 import { metricsRepository } from "@/app/api/infra/data/repositories/metrics/MetricsRepository";
-import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
+import type { TeamContext, LeadMetricsData } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { IDashboardInfosService } from "./IDashboardInfosService";
 import { DashboardMetrics } from "./types/DashboardMetrics";
@@ -38,9 +38,10 @@ const STATUS_GROUPS = {
 
 export class DashboardInfosService implements IDashboardInfosService {
   async getDashboardMetrics(filters: DashboardFilters, ctx: TeamContext): Promise<DashboardMetrics> {
-    const { teamId, startDate, endDate } = filters;
+    const { teamId, teamIds, startDate, endDate } = filters;
+    const resolvedTeamIds = teamIds?.length ? teamIds : [teamId];
 
-    const ctxFilters = { supabaseId: '', teamId, startDate, endDate, ctx };
+    const ctxFilters = { supabaseId: '', teamId, teamIds: resolvedTeamIds, startDate, endDate, ctx };
 
     // Round 1: todas as queries independentes em paralelo
     const [leads, finalizedLeads, meetingsHeldLeads, scheduledLeads, meetingDateLeads, teamMembers] = await Promise.all([
@@ -50,7 +51,9 @@ export class DashboardInfosService implements IDashboardInfosService {
       metricsRepository.getScheduledLeadsWithCtx(ctxFilters),
       metricsRepository.getLeadsWithMeetingDateWithCtx(ctxFilters),
       prisma.teamMember.findMany({
-        where: { teamId },
+        where: resolvedTeamIds.length === 1
+          ? { teamId: resolvedTeamIds[0] }
+          : { teamId: { in: resolvedTeamIds } },
         select: {
           profileId: true,
           functions: true,
@@ -135,6 +138,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     );
 
     const statusCount = leads.reduce((acc: Record<LeadStatus, number>, lead) => {
+      if (!lead.status) return acc;
       acc[lead.status] = (acc[lead.status] || 0) + 1;
       return acc;
     }, {} as Record<LeadStatus, number>);
@@ -250,18 +254,22 @@ export class DashboardInfosService implements IDashboardInfosService {
     periodDates: { startDate: Date; endDate: Date },
     leads: import("@/app/api/infra/data/repositories/metrics/IMetricsRepository").LeadMetricsData[]
   ) {
-    const { teamId, period = "30d" } = filters;
+    const { teamId, teamIds, period = "30d" } = filters;
+    const resolvedTeamIds = teamIds?.length ? teamIds : [teamId];
     const { startDate, endDate } = periodDates;
 
     const leadsByPeriod = await metricsRepository.getLeadsByPeriodWithCtx(
       ctx,
-      teamId,
+      resolvedTeamIds,
       startDate,
       endDate
     );
 
     const groupedLeads = this.groupLeadsByTimeInterval(leadsByPeriod, period);
-    const groupedConversions = this.groupConversionsByTimeInterval(leads, period);
+    const groupedConversions = this.groupConversionsByTimeInterval(
+      leads.filter((lead): lead is LeadMetricsData & { status: LeadStatus } => lead.status !== null),
+      period
+    );
 
     return groupedLeads.map((item) => ({
       periodo: item.date,
@@ -319,12 +327,16 @@ export class DashboardInfosService implements IDashboardInfosService {
   async getDetailedStatusMetrics(
     _supabaseId: string,
     teamId: string,
+    teamIds: string[] | undefined,
     ctx: TeamContext
   ): Promise<DetailedStatusMetrics[]> {
-    const statusMetrics = await metricsRepository.getStatusMetricsWithCtx(ctx, teamId);
+    const resolvedTeamIds = teamIds?.length ? teamIds : [teamId];
+    const statusMetrics = await metricsRepository.getStatusMetricsWithCtx(ctx, resolvedTeamIds);
 
-    return statusMetrics.map((metric) => ({
-      status: metric.status,
+    return statusMetrics
+      .filter((metric) => metric.status !== null)
+      .map((metric) => ({
+      status: metric.status as string,
       count: metric._count.id,
       averageValue: Number(metric._avg.currentValue || 0),
       totalValue: Number(metric._sum.currentValue || 0),

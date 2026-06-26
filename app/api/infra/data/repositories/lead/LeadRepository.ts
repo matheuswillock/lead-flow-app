@@ -1,4 +1,4 @@
-import { ILeadRepository } from "./ILeadRepository";
+import { ILeadRepository, type TransferToTeamSanitization } from "./ILeadRepository";
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
@@ -15,6 +15,7 @@ const CRM_LEAD_LIST_SELECT = {
   email: true,
   phone: true,
   cnpj: true,
+  razaoSocial: true,
   age: true,
   currentHealthPlan: true,
   currentValue: true,
@@ -174,6 +175,24 @@ export class LeadRepository implements ILeadRepository {
     return await prisma.lead.findUnique({
       where: { leadCode },
     });
+  }
+
+  async findLeadByPhoneInTeam(
+    teamId: string,
+    normalizedPhone: string
+  ): Promise<Pick<Lead, "id"> | null> {
+    const digits = normalizedPhone.replace(/\D/g, "")
+    return prisma.lead.findFirst({
+      where: {
+        teamId,
+        OR: [
+          { phone: normalizedPhone },
+          ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+        ],
+      },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+    })
   }
 
   async findByManagerId(
@@ -455,27 +474,47 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
-  async transferToTeam(id: string, targetTeamId: string, closerId: string, sdrId: string | null): Promise<Lead> {
-    return await prisma.lead.update({
-      where: { id },
-      data: {
-        teamId: targetTeamId,
-        closerId,
-        assignedTo: sdrId ?? null,
-        updatedAt: new Date(),
-        activities: {
-          create: {
-            type: 'status_change',
-            body: 'Lead transferido para outro time',
-            createdAt: new Date(),
+  async transferToTeam(
+    id: string,
+    targetTeamId: string,
+    closerId: string,
+    sdrId: string | null,
+    sanitizations: TransferToTeamSanitization[] = []
+  ): Promise<Lead> {
+    return await prisma.$transaction(async (tx) => {
+      for (const sanitization of sanitizations) {
+        const sanitizeData: Prisma.LeadUpdateInput = {};
+        if (sanitization.clearEmail) sanitizeData.email = null;
+        if (sanitization.clearCnpj) sanitizeData.cnpj = null;
+        if (Object.keys(sanitizeData).length > 0) {
+          await tx.lead.update({
+            where: { id: sanitization.leadId },
+            data: sanitizeData,
+          });
+        }
+      }
+
+      return await tx.lead.update({
+        where: { id },
+        data: {
+          teamId: targetTeamId,
+          closerId,
+          assignedTo: sdrId ?? null,
+          updatedAt: new Date(),
+          activities: {
+            create: {
+              type: "status_change",
+              body: "Lead transferido para outro time",
+              createdAt: new Date(),
+            },
           },
         },
-      },
-      include: {
-        manager: { select: { id: true, fullName: true, email: true } },
-        assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-        closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-      },
+        include: {
+          manager: { select: { id: true, fullName: true, email: true } },
+          assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+        },
+      });
     });
   }
 
@@ -886,7 +925,7 @@ export class LeadRepository implements ILeadRepository {
     teamId: string,
     emails: string[],
     cnpjs: string[]
-  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus }>> {
+  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }>> {
     const conflictFilters: Prisma.LeadWhereInput[] = [];
     if (emails.length) conflictFilters.push({ email: { in: emails } });
     if (cnpjs.length) conflictFilters.push({ cnpj: { in: cnpjs } });

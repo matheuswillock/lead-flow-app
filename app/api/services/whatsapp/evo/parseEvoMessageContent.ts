@@ -5,7 +5,14 @@ export interface ParsedEvoMessageContent {
   contentText: string | null
   mediaUrl: string | null
   mediaMimeType: string | null
+  mediaFileName: string | null
   caption: string | null
+  linkPreview: {
+    title: string | null
+    description: string | null
+    imageUrl: string | null
+    url: string | null
+  } | null
 }
 
 const EMPTY_CONTENT: ParsedEvoMessageContent = {
@@ -13,7 +20,9 @@ const EMPTY_CONTENT: ParsedEvoMessageContent = {
   contentText: null,
   mediaUrl: null,
   mediaMimeType: null,
+  mediaFileName: null,
   caption: null,
+  linkPreview: null,
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -43,6 +52,11 @@ function pickCaption(media: Record<string, unknown>): string | null {
   return typeof caption === "string" && caption.length > 0 ? caption : null
 }
 
+function pickFileName(media: Record<string, unknown>): string | null {
+  const fileName = media["fileName"]
+  return typeof fileName === "string" && fileName.length > 0 ? fileName : null
+}
+
 function fromMediaMessage(
   messageType: WhatsAppMessageType,
   media: Record<string, unknown>
@@ -52,8 +66,26 @@ function fromMediaMessage(
     contentText: null,
     mediaUrl: pickMediaUrl(media),
     mediaMimeType: pickMimeType(media),
+    mediaFileName: pickFileName(media),
     caption: pickCaption(media),
+    linkPreview: null,
   }
+}
+
+function parseLinkPreview(extended: Record<string, unknown>): ParsedEvoMessageContent["linkPreview"] {
+  const title = typeof extended["title"] === "string" ? extended["title"] : null
+  const description = typeof extended["description"] === "string" ? extended["description"] : null
+  const matchedText = typeof extended["matchedText"] === "string" ? extended["matchedText"] : null
+  const canonicalUrl = typeof extended["canonicalUrl"] === "string" ? extended["canonicalUrl"] : null
+  const url = canonicalUrl ?? matchedText
+  const jpegThumbnail = extended["jpegThumbnail"]
+  const imageUrl =
+    typeof jpegThumbnail === "string" && jpegThumbnail.length > 0
+      ? `data:image/jpeg;base64,${jpegThumbnail}`
+      : null
+
+  if (!title && !description && !url && !imageUrl) return null
+  return { title, description, imageUrl, url }
 }
 
 export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageContent {
@@ -67,7 +99,9 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
       contentText: conversation,
       mediaUrl: null,
       mediaMimeType: null,
+      mediaFileName: null,
       caption: null,
+      linkPreview: null,
     }
   }
 
@@ -78,7 +112,9 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
       contentText: extended["text"],
       mediaUrl: null,
       mediaMimeType: null,
+      mediaFileName: null,
       caption: null,
+      linkPreview: parseLinkPreview(extended),
     }
   }
 

@@ -4,12 +4,18 @@ import type { Output } from "@/lib/output";
 
 export type LeadTransferListQuery = {
   search?: string;
-  status?: "pending" | "completed" | "all";
+  transferStatuses?: Array<"pending" | "completed">;
   leadStatus?: string;
-  toTeamId?: string;
-  transferredByProfileId?: string;
-  dateFrom?: Date;
-  dateTo?: Date;
+  toTeamIds?: string[];
+  transferredByProfileIds?: string[];
+  sdrProfileIds?: string[];
+  closerProfileIds?: string[];
+  transferDateFrom?: Date;
+  transferDateTo?: Date;
+  preScheduledDateFrom?: Date;
+  preScheduledDateTo?: Date;
+  scheduledDateFrom?: Date;
+  scheduledDateTo?: Date;
   page?: number;
   pageSize?: number;
 };
@@ -27,7 +33,7 @@ export type LeadTransferListItem = {
   leadName: string;
   leadEmail: string | null;
   leadPhone: string | null;
-  leadStatus: LeadStatus;
+  leadStatus: LeadStatus | null;
   sdr: LeadTransferListMemberRef | null;
   closer: LeadTransferListMemberRef | null;
   destinationTeam: { id: string; name: string } | null;

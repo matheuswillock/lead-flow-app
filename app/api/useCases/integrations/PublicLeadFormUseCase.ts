@@ -12,6 +12,7 @@ import type { PublicLeadFormRequest } from "../../v1/integrations/lead-form/DTO/
 import type { IPublicLeadFormUseCase, PublicLeadFormOriginContext } from "./IPublicLeadFormUseCase";
 import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { getPreScheduleSlotsPayload } from "../../services/preSchedule/PreScheduleSlotService";
 
 const SLOT_MINUTES = 30;
 
@@ -233,7 +234,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         }
       }
 
-      if (data.isTransfer === true) {
+      if (data.isTransfer === true && !data.saveAsDraft) {
         const canTransfer = await this.canCreateTransferLead(access.teamId);
         if (!canTransfer) {
           return new Output(false, [], ["Transferência indisponível para este time."], null);
@@ -249,7 +250,9 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         }
       }
 
-      const hasMeetingData = !data.isTransfer && !!(data.closerId && data.meetingDate && data.meetingTitle);
+      const saveAsDraft = data.saveAsDraft === true;
+      const hasMeetingData =
+        !saveAsDraft && !data.isTransfer && !!(data.closerId && data.meetingDate && data.meetingTitle);
       const createLeadData: CreateLeadRequest = {
         name: data.name,
         email: data.email,
@@ -271,7 +274,12 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         contractDueDate: undefined,
         soldPlan: undefined,
         isTransfer: data.isTransfer === true,
-        status: hasMeetingData ? LeadStatus.scheduled : LeadStatus.new_opportunity,
+        saveAsDraft,
+        status: saveAsDraft
+          ? null
+          : hasMeetingData
+            ? LeadStatus.scheduled
+            : LeadStatus.new_opportunity,
       };
 
       const leadOutput = await leadUseCase.createLead(
@@ -588,35 +596,9 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
 
       const access = accessResult.access as PublicIntegrationAccess;
 
-      const timezone = access.timezone || DEFAULT_TZ;
-      const { start: startOfDay, end: endOfDay } = getDayRangeInTz(date, timezone);
+      const payload = await getPreScheduleSlotsPayload(access.teamId, date, access.timezone);
 
-      const leads = await prisma.lead.findMany({
-        where: {
-          teamId: access.teamId,
-          isTransfer: true,
-          closerId: null,
-          meetingDate: { gte: startOfDay, lt: endOfDay },
-          status: {
-            notIn: [
-              LeadStatus.opportunityLost,
-              LeadStatus.disqualified,
-              LeadStatus.operator_denied,
-              LeadStatus.contract_finalized,
-            ],
-          },
-        },
-        select: { meetingDate: true },
-      });
-
-      const occupiedSlots = leads
-        .map((lead) => {
-          if (!lead.meetingDate) return null;
-          return Math.floor(getMinutesInTz(lead.meetingDate, timezone) / SLOT_MINUTES) * SLOT_MINUTES;
-        })
-        .filter((slot): slot is number => slot !== null);
-
-      return new Output(true, [], [], { occupiedSlots });
+      return new Output(true, [], [], payload);
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao buscar slots de pré-agendamento:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);

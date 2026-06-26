@@ -31,8 +31,11 @@ export function AssignmentControl({ selectedConversation }: AssignmentControlPro
       : (assignedMember?.name ?? 'Atribuída')
     : 'Sem responsável'
 
-  // Operador sem responsável atribuído: botão de auto-atribuição
-  if (!canManageAssignment && selectedConversation.assignedProfileId === null) {
+  // Operador sem responsável atribuído ou conversa em modo bot: assumir conversa
+  if (
+    !canManageAssignment &&
+    (selectedConversation.assignedProfileId === null || selectedConversation.handoffMode === 'BOT')
+  ) {
     return (
       <Button
         variant="outline"

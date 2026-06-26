@@ -39,6 +39,24 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
+  async canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean> {
+    if (requesterProfileId === teamMasterId) {
+      return true;
+    }
+
+    const delegatedMembership = await prisma.teamMember.findFirst({
+      where: {
+        profileId: requesterProfileId,
+        role: "manager",
+        canManageAccountTeams: true,
+        team: { masterId: teamMasterId },
+      },
+      select: { id: true },
+    });
+
+    return delegatedMembership !== null;
+  }
+
   async findMembers(teamId: string): Promise<TeamMembersListItem[]> {
     return prisma.teamMember.findMany({
       where: { teamId },

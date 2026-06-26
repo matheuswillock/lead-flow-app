@@ -4,6 +4,12 @@ import type {
   LeadTransfersFiltersState,
 } from "../context/LeadTransfersTypes";
 
+function appendCsv(params: URLSearchParams, key: string, values: string[]) {
+  if (values.length > 0) {
+    params.set(key, values.join(","));
+  }
+}
+
 class LeadTransfersService implements ILeadTransfersService {
   async list(
     supabaseId: string,
@@ -13,14 +19,18 @@ class LeadTransfersService implements ILeadTransfersService {
     const params = new URLSearchParams();
 
     if (filters.search) params.set("search", filters.search);
-    if (filters.status !== "all") params.set("status", filters.status);
+    appendCsv(params, "transferStatuses", filters.transferStatuses);
     if (filters.leadStatus) params.set("leadStatus", filters.leadStatus);
-    if (filters.toTeamId) params.set("toTeamId", filters.toTeamId);
-    if (filters.transferredByProfileId) {
-      params.set("transferredByProfileId", filters.transferredByProfileId);
-    }
-    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
-    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    appendCsv(params, "toTeamIds", filters.toTeamIds);
+    appendCsv(params, "transferredByProfileIds", filters.transferredByProfileIds);
+    appendCsv(params, "sdrProfileIds", filters.sdrProfileIds);
+    appendCsv(params, "closerProfileIds", filters.closerProfileIds);
+    if (filters.transferDateFrom) params.set("transferDateFrom", filters.transferDateFrom);
+    if (filters.transferDateTo) params.set("transferDateTo", filters.transferDateTo);
+    if (filters.preScheduledDateFrom) params.set("preScheduledDateFrom", filters.preScheduledDateFrom);
+    if (filters.preScheduledDateTo) params.set("preScheduledDateTo", filters.preScheduledDateTo);
+    if (filters.scheduledDateFrom) params.set("scheduledDateFrom", filters.scheduledDateFrom);
+    if (filters.scheduledDateTo) params.set("scheduledDateTo", filters.scheduledDateTo);
     params.set("page", String(filters.page));
     params.set("pageSize", String(filters.pageSize));
 

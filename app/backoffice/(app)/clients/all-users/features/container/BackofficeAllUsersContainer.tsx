@@ -288,6 +288,8 @@ export function BackofficeAllUsersContainer() {
               .find((teamMember) => teamMember.id === item.id)
             if (foundMember) {
               member = foundMember
+            } else if (details.allTeams.length > 0) {
+              member = fallbackMember
             } else {
               toast.info("Usuário sem vínculo de time no cliente. Edição/deleção disponível com dados básicos.")
             }
@@ -319,6 +321,26 @@ export function BackofficeAllUsersContainer() {
     const result = await resolveMemberContext(item, { loadDetails: false })
     if (!result) return
     setMemberDeleteOpen(true)
+  }
+
+  async function handleMemberEditSuccess() {
+    await handleActionSuccess()
+    if (!selectedDetails || !selectedMember) return
+    try {
+      const details = await clientDetailsService.getByMasterId(selectedDetails.id, {
+        page: 1,
+        pageSize: 100,
+      })
+      setSelectedDetails(details)
+      const foundMember = details.teams
+        .flatMap((team) => team.members)
+        .find((teamMember) => teamMember.id === selectedMember.id)
+      if (foundMember) {
+        setSelectedMember(foundMember)
+      }
+    } catch (err) {
+      console.error("[BackofficeAllUsersContainer][handleMemberEditSuccess]", err)
+    }
   }
 
   async function handleActionSuccess() {
@@ -622,7 +644,8 @@ export function BackofficeAllUsersContainer() {
         teamId={null}
         details={selectedDetails}
         service={clientDetailsService}
-        onSuccess={() => void handleActionSuccess()}
+        canManage={canManage}
+        onSuccess={() => void handleMemberEditSuccess()}
         onDeleteRequest={() => {
           setMemberEditOpen(false)
           setMemberDeleteOpen(true)
