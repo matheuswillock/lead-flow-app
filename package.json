@@ -26,7 +26,7 @@
     "design:check": "bun scripts/design/sync-tokens.ts --check",
     "skills:sync": "bun scripts/skills-sync.ts",
     "scaffold:feature": "bun scripts/scaffold-feature.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun run prisma:generate && tsc --noEmit",
     "lint": "eslint .",
     "eslint:fix": "eslint . --fix",
     "lint:check": "prettier --check .",
@@ -41,6 +41,7 @@
     "db:seed:backoffice": "bunx tsx prisma/seed-backoffice.ts",
     "db:seed:backoffice-products": "bunx tsx prisma/seed-backoffice-products.ts",
     "db:seed:leads": "bunx tsx prisma/seed-leads.ts",
+    "db:migrate:from-prisma": "bunx tsx scripts/db-migrate-from-prisma.ts",
     "db:migrate:new": "supabase migration new",
     "db:migrate:apply:local": "supabase migration up --local",
     "db:migrate:push": "supabase db push --linked --include-all",
@@ -62,9 +63,6 @@
     "prisma:db:push": "bunx prisma db push",
     "db:check": "bunx tsx check-database.ts",
     "admin:reset-karen-henrique": "bunx tsx scripts/admin/reset-karen-henrique.ts --confirm"
-  },
-  "prisma": {
-    "seed": "bunx tsx prisma/seed.ts"
   },
   "dependencies": {
     "@date-fns/tz": "^1.4.1",

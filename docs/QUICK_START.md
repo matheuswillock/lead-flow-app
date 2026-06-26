@@ -67,8 +67,8 @@ Edite o `.env` com suas credenciais copiadas nos passos anteriores.
 # Gerar cliente Prisma
 bun run prisma:generate
 
-# Executar migrações
-bun run prisma:migrate
+# Subir Supabase local e aplicar migrations (primeira vez)
+bun run dev:local   # ou: supabase start && bun run db:migrate:reset:local
 
 # (Opcional) Popular com dados de teste
 bun run prisma:seed
@@ -149,9 +149,11 @@ bun run build            # Build de produção
 bun run start            # Iniciar produção
 
 # Database
-bun run prisma:studio    # Interface visual do banco
-bun run prisma:migrate   # Aplicar migrações
-bun run prisma:generate  # Gerar cliente
+bun run prisma:studio              # Interface visual do banco
+bun run db:migrate:from-prisma -- <name>  # Migration de schema (a partir do schema.prisma)
+bun run db:migrate:new <name>      # Migration manual (RLS, seeds, triggers)
+bun run db:migrate:reset:local     # Reset local e reaplicar migrations
+bun run prisma:generate            # Gerar cliente
 
 # Qualidade
 bun run typecheck        # Verificar tipos
