@@ -25,7 +25,7 @@
     "mcpmarket-my-toolkit": {
       "url": "https://link.mcpmarket.com/matheuswillock/toolkits/my-toolkit/mcp",
       "headers": {
-        "Authorization": "Bearer sk_user_hciDDAtYaWIuVEOMudLxHyH_QW8h6Nqk"
+        "Authorization": "Bearer ${MCPMARKET_API_TOKEN}"
       }
     }
   }
