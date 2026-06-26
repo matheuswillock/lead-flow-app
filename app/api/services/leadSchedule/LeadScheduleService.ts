@@ -491,7 +491,8 @@ export class LeadScheduleService implements ILeadScheduleService {
       });
 
       if (emailResult.success) {
-        const resendMessageId = extractResendMessageId(emailResult.data);
+        const resendMessageId =
+          "data" in emailResult ? extractResendMessageId(emailResult.data) : null;
         if (!canUseGoogleCalendar) {
           inviteDispatchStatus = "sent_resend";
           inviteDispatchProvider = "resend";

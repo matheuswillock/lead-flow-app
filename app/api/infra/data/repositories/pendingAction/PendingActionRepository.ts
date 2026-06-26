@@ -1,6 +1,6 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import type { IPendingActionRepository } from "./IPendingActionRepository";
-import { PendingAction } from "@prisma/client";
+import { PendingAction, Prisma } from "@prisma/client";
 
 export class PendingActionRepository implements IPendingActionRepository {
   async findById(id: string) {
@@ -53,7 +53,7 @@ export class PendingActionRepository implements IPendingActionRepository {
         teamId: data.teamId ?? null,
         actionType: data.actionType as PendingAction["actionType"],
         status: data.status as PendingAction["status"],
-        payload: data.payload as PendingAction["payload"],
+        payload: data.payload as Prisma.InputJsonValue,
       },
       select: { id: true },
     });

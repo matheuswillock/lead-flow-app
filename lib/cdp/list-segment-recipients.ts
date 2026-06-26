@@ -16,9 +16,12 @@ export async function listCdpSegmentEmailRecipients(
   if (!isCdpSegmentSlug(segmentSlug)) return []
 
   const profiles = await cdpRepository.listProfilesForSegmentation(teamId)
-  const leadStatuses = await cdpRepository.findLeadStatuses(
+  const rawLeadStatuses = await cdpRepository.findLeadStatuses(
     teamId,
     profiles.flatMap((profile) => profile.identities.map((identity) => identity.normalizedValue))
+  )
+  const leadStatuses = new Map(
+    [...rawLeadStatuses.entries()].flatMap(([key, status]) => (status ? [[key, status] as const] : []))
   )
   const now = Date.now()
   const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
