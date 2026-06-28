@@ -22,6 +22,8 @@ export type Lead = {
   meetingNotes: string | null;
   meetingLink: string | null;
   meetingHeald: MeetingHeald | null;
+  meetingPresenceConfirmed: boolean;
+  meetingPresenceConfirmedAt: string | null;
   isTransfer: boolean;
   followUpAt?: string | null;
   followUpNotes?: string | null;

@@ -23,10 +23,28 @@ function hasSupabaseAuthCookieOnResponse(response: NextResponse) {
   return cookiesIncludeSupabaseAuth(response.cookies.getAll());
 }
 
-function copyResponseCookies(from: NextResponse, to: NextResponse) {
+export function copySessionCookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
     to.cookies.set(cookie);
   });
+}
+
+export function redirectWithSession(
+  sessionResponse: NextResponse,
+  url: URL | string,
+): NextResponse {
+  const redirectResponse = NextResponse.redirect(url);
+  copySessionCookies(sessionResponse, redirectResponse);
+  return redirectResponse;
+}
+
+export function nextWithSession(
+  sessionResponse: NextResponse,
+  init?: Parameters<typeof NextResponse.next>[0],
+): NextResponse {
+  const nextResponse = NextResponse.next(init);
+  copySessionCookies(sessionResponse, nextResponse);
+  return nextResponse;
 }
 
 export async function updateSession(request: NextRequest) {
@@ -71,7 +89,7 @@ export async function updateSession(request: NextRequest) {
           callbackUrl.searchParams.set("next", "/crm");
         }
         const redirectResponse = NextResponse.redirect(callbackUrl);
-        copyResponseCookies(response, redirectResponse);
+        copySessionCookies(response, redirectResponse);
         return {
           supabase,
           response: redirectResponse,
@@ -80,7 +98,7 @@ export async function updateSession(request: NextRequest) {
       }
       if (request.nextUrl.searchParams.has("code")) {
         const redirectResponse = NextResponse.redirect(callbackUrl);
-        copyResponseCookies(response, redirectResponse);
+        copySessionCookies(response, redirectResponse);
         return {
           supabase,
           response: redirectResponse,
@@ -93,14 +111,14 @@ export async function updateSession(request: NextRequest) {
         callbackUrl.searchParams.set("next", "/crm");
       }
       const redirectResponse = NextResponse.redirect(callbackUrl);
-      copyResponseCookies(response, redirectResponse);
+      copySessionCookies(response, redirectResponse);
       return {
         supabase,
         response: redirectResponse,
         user: null,
       };
     } else if (exchangeError && isDev) {
-      console.error("[middleware] exchangeCodeForSession:", exchangeError.message);
+      console.error("[proxy] exchangeCodeForSession:", exchangeError.message);
     }
   }
 
@@ -114,7 +132,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (userError && userError.name !== "AuthSessionMissingError" && isDev) {
-    console.error("[middleware] Error fetching user:", userError)
+    console.error("[proxy] Error fetching user:", userError)
   }
 
   return {

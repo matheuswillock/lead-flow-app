@@ -5,6 +5,7 @@
  *  1. Dump data from remote for the `auth`, `storage` and `public` schemas.
  *  2. Reset the local Supabase DB so the schema matches the migrations head.
  *  3. Restore the dumps in order (auth → storage → public).
+ *  4. Reconcile backoffice feature catalog via seed (remote dump may be stale).
  *
  * The schema itself is not dumped — it comes from `supabase/migrations/`,
  * guaranteeing that local and remote schemas stay in sync.
@@ -19,8 +20,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolvePostgresPassword } from "./lib/resolve-postgres-password";
+import {
+  LOCAL_DB_URL as CATALOG_LOCAL_DB_URL,
+  syncBackofficeCatalog,
+} from "./lib/sync-backoffice-catalog";
 
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
+const LOCAL_DB_URL = CATALOG_LOCAL_DB_URL;
 const DUMP_DIR = resolve(process.cwd(), "tmp", "db-clone");
 const POST_CLONE_MIGRATIONS = [
   resolve(
@@ -317,6 +322,8 @@ async function main() {
   restoreLocal();
   repairUserTypeAssignments();
   reapplyPostCloneMigrations();
+  step("Sync backoffice feature catalog (post-clone seed)");
+  syncBackofficeCatalog(LOCAL_DB_URL);
   cleanup();
   const seconds = Math.round((Date.now() - started) / 1000);
   console.info(`\n✅ Done in ${seconds}s. Local DB now mirrors remote data.`);

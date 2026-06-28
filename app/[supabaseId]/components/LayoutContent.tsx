@@ -25,11 +25,14 @@ interface LayoutContentProps {
  */
 export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutContentProps) {
   const pathname = usePathname();
-  const { isLoading, error } = useUserContext();
+  const { user, isLoading, error } = useUserContext();
   const { teams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const { isLoading: featureLoading, hasAccess } = useFeatureAccess();
 
-  if (isLoading || teamsLoading) {
+  const hasBootstrapData = Boolean(user) && teams.length > 0;
+  const isBootstrapping = isLoading || teamsLoading;
+
+  if (isBootstrapping && !hasBootstrapData) {
     return <GlobalLoading />;
   }
 

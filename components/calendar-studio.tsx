@@ -33,7 +33,7 @@ import {
 } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog"
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes"
 import { getLeadStatusLabel } from "@/lib/lead-status"
-import { isMeetingFollowUpOverdue } from "@/lib/lead-meeting"
+import { isMeetingFollowUpOverdue, canConfirmMeetingPresence, isMeetingPresenceConfirmationDue, getMeetingPresenceBadgeClass, getMeetingPresenceBadgeLabel, getMeetingPresenceAlertLabel } from "@/lib/lead-meeting"
 import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
@@ -256,6 +256,7 @@ export default function CalendarStudio() {
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
   const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
+  const [meetingPresenceConfirmSavingId, setMeetingPresenceConfirmSavingId] = React.useState<string | null>(null)
   const [attendeesByLead, setAttendeesByLead] = React.useState<AttendeesByLead>({})
   const [attendeesLoading, setAttendeesLoading] = React.useState(false)
   const [taskDialogOpen, setTaskDialogOpen] = React.useState(false)
@@ -338,6 +339,75 @@ export default function CalendarStudio() {
       }
     },
     [supabaseId, activeTeamId, canToggleMeetingHeald, patchLead],
+  )
+
+  const canConfirmPresenceForLead = React.useCallback(
+    (lead: Lead) => {
+      if (!user?.id) return false
+      if (
+        !canConfirmMeetingPresence({
+          status: lead.status,
+          meetingDate: lead.meetingDate,
+          isTransfer: lead.isTransfer,
+        })
+      ) {
+        return false
+      }
+      const isAssignedSdr = lead.assignedTo === user.id
+      const isAssignedCloser = lead.closerId === user.id
+      return (
+        isTeamMaster ||
+        activeRole === "manager" ||
+        activeRole === "backoffice" ||
+        isAssignedSdr ||
+        (activeFunctions.includes("CLOSER") && isAssignedCloser) ||
+        (activeFunctions.includes("SDR") && isAssignedSdr)
+      )
+    },
+    [user?.id, isTeamMaster, activeRole, activeFunctions],
+  )
+
+  const handleConfirmMeetingPresence = React.useCallback(
+    async (lead: Lead) => {
+      if (!supabaseId || !activeTeamId) return
+      if (!canConfirmPresenceForLead(lead)) return
+      if (lead.meetingPresenceConfirmed === true) return
+
+      setMeetingPresenceConfirmSavingId(lead.id)
+      patchLead?.(lead.id, { meetingPresenceConfirmed: true })
+
+      try {
+        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId,
+          },
+          body: JSON.stringify({ meetingPresenceConfirmed: true }),
+        })
+
+        const result = await response.json().catch(() => null)
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.join(", ") || "Não foi possível confirmar a agenda.")
+        }
+
+        patchLead?.(lead.id, {
+          meetingPresenceConfirmed: true,
+          meetingPresenceConfirmedAt:
+            result.result?.meetingPresenceConfirmedAt ?? new Date().toISOString(),
+        })
+        toast.success("Agenda confirmada com o lead")
+      } catch (err) {
+        patchLead?.(lead.id, { meetingPresenceConfirmed: false })
+        toast.warning(
+          err instanceof Error ? err.message : "Não foi possível confirmar a agenda.",
+        )
+      } finally {
+        setMeetingPresenceConfirmSavingId(null)
+      }
+    },
+    [supabaseId, activeTeamId, canConfirmPresenceForLead, patchLead],
   )
 
   const todayKey = React.useMemo(() => formatLocalDateValue(nowInTz(tz), tz), [tz])
@@ -615,6 +685,8 @@ export default function CalendarStudio() {
           meetingNotes: payload.meetingNotes,
           meetingLink: payload.meetingLink,
           closerId: payload.closerId,
+          meetingPresenceConfirmed: false,
+          meetingPresenceConfirmedAt: null,
         })
       }
       await refreshLeads()
@@ -1127,6 +1199,18 @@ export default function CalendarStudio() {
                       meetingDate: meetingStart,
                       meetingHeald: lead.meetingHeald,
                     })
+                  const isPresenceConfirmed = lead.meetingPresenceConfirmed === true
+                  const isPresenceConfirmationDue =
+                    isMeeting &&
+                    !lead.isTransfer &&
+                    isMeetingPresenceConfirmationDue({
+                      status: lead.status,
+                      meetingDate: meetingStart,
+                      meetingPresenceConfirmed: lead.meetingPresenceConfirmed,
+                      isTransfer: lead.isTransfer,
+                    })
+                  const canConfirmPresence =
+                    isMeeting && !lead.isTransfer && canConfirmPresenceForLead(lead)
 
                   if (isMeeting) {
                     const entry = attendeesByLead[lead.id]
@@ -1149,7 +1233,10 @@ export default function CalendarStudio() {
                         className={cn(
                           "shadow-none border-l-4 border-l-orange-500/80 cursor-pointer",
                           isCanceled && "opacity-70",
-                          isOverdue && "border-destructive/70 ring-1 ring-destructive/40 animate-pulse"
+                          isOverdue && "border-destructive/70 ring-1 ring-destructive/40 animate-pulse",
+                          !isOverdue &&
+                            isPresenceConfirmationDue &&
+                            "border-semantic-warning/70 ring-1 ring-semantic-warning/40 animate-pulse"
                         )}
                       >
                         <CardContent className="flex flex-col gap-3 p-3">
@@ -1157,6 +1244,22 @@ export default function CalendarStudio() {
                             <div className="flex flex-wrap items-center gap-2">
                               <CalendarIcon className="size-4 text-muted-foreground" />
                               <p className={cn("text-sm font-semibold", isCanceled && "line-through")}>{meetingTitle}</p>
+                              {isPresenceConfirmed ? (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(getMeetingPresenceBadgeClass("confirmed"))}
+                                >
+                                  <BadgeCheck className="size-3" />
+                                  {getMeetingPresenceBadgeLabel("confirmed")}
+                                </Badge>
+                              ) : isPresenceConfirmationDue ? (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(getMeetingPresenceBadgeClass("pending"))}
+                                >
+                                  {getMeetingPresenceAlertLabel()}
+                                </Badge>
+                              ) : null}
                               {isOverdue && <Badge variant="default">Confirme a reunião</Badge>}
                               {isCanceled && (
                                 <Badge className="border-red-500 bg-transparent text-red-500 hover:bg-transparent">
@@ -1228,8 +1331,8 @@ export default function CalendarStudio() {
 
                           <Separator />
 
-                          <div className="flex items-end justify-between gap-3">
-                            <div className="flex flex-col gap-1.5">
+                          <div className="flex flex-wrap items-end justify-between gap-3">
+                            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
                               <span className="text-xs font-medium text-muted-foreground">Convites</span>
                               {attendeesLoading && entry === undefined ? (
                                 <div className="flex flex-wrap gap-1.5">
@@ -1259,6 +1362,31 @@ export default function CalendarStudio() {
                                 </div>
                               ) : null}
                             </div>
+                            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                              {canConfirmPresence && !isPresenceConfirmed && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  data-no-card-open="true"
+                                  disabled={meetingPresenceConfirmSavingId === lead.id}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    void handleConfirmMeetingPresence(lead)
+                                  }}
+                                >
+                                  {meetingPresenceConfirmSavingId === lead.id ? (
+                                    <>
+                                      <Loader2 className="size-4 animate-spin" />
+                                      Confirmando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <BadgeCheck className="size-4" />
+                                      Confirmar agenda
+                                    </>
+                                  )}
+                                </Button>
+                              )}
                             {lead.status === "scheduled" && canToggleMeetingHeald && (
                               <Button
                                 size="sm"
@@ -1288,6 +1416,7 @@ export default function CalendarStudio() {
                                 )}
                               </Button>
                             )}
+                            </div>
                           </div>
                         </CardContent>
                       </Card>

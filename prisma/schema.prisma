@@ -1058,6 +1058,8 @@ model Lead {
   meetingNotes         String?       @db.Text
   meetingLink          String?       @db.Text
   meetingHeald         MeetingHeald?
+  meetingPresenceConfirmed   Boolean   @default(false)
+  meetingPresenceConfirmedAt DateTime? @db.Timestamptz(6)
   meetingType          String?       @db.Text
   isTransfer           Boolean       @default(false)
   followUpAt           DateTime?     @db.Timestamptz(6)

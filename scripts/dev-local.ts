@@ -18,8 +18,13 @@ import "dotenv/config";
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  ensureBackofficeCatalog,
+  EXPECTED_ACTIVE_BACKOFFICE_FEATURES,
+  LOCAL_DB_URL as CATALOG_LOCAL_DB_URL,
+} from "./lib/sync-backoffice-catalog";
 
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
+const LOCAL_DB_URL = CATALOG_LOCAL_DB_URL;
 const LOCAL_EVO_API_URL = "http://127.0.0.1:8080";
 const LOCAL_EVO_WEBHOOK_PUBLIC_URL = "http://host.docker.internal:3000";
 const LOCAL_EVO_DEFAULT_API_KEY = "leadflow-local-evo-key";
@@ -274,6 +279,7 @@ async function runPreflight() {
 
   if (users > 0) {
     info(`✓ ${users} users present — DB is populated, skipping clone.`);
+    ensureBackofficeCatalogSynced();
     return;
   }
 
@@ -283,6 +289,23 @@ async function runPreflight() {
   }
 
   cloneRemote();
+  ensureBackofficeCatalogSynced();
+}
+
+function ensureBackofficeCatalogSynced() {
+  try {
+    const synced = ensureBackofficeCatalog(LOCAL_DB_URL);
+    if (synced) {
+      info(
+        `✓ Catálogo backoffice sincronizado (${EXPECTED_ACTIVE_BACKOFFICE_FEATURES} features ativas).`,
+      );
+    }
+  } catch (err) {
+    info(
+      `⚠ Falha ao sincronizar catálogo backoffice: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    info("  Rode manualmente: DATABASE_URL=<local> bun run db:seed:backoffice-products");
+  }
 }
 
 function parseSupabaseStatusEnv(stdout: string): Record<string, string> {

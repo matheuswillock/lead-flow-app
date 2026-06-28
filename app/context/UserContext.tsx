@@ -5,6 +5,10 @@ import { Output } from "@/lib/output";
 import type { UserRole, UserFunction } from "@prisma/client";
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import {
+  readUserBootstrapCache,
+  writeUserBootstrapCache,
+} from "@/lib/bootstrap/sessionBootstrapCache";
 
 type UserBootstrapResponse = {
   profileOutput: Output;
@@ -96,6 +100,20 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const lastLoadedSupabaseIdRef = useRef<string | null>(null);
+  const bootstrapHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (bootstrapHydratedRef.current) return;
+    bootstrapHydratedRef.current = true;
+
+    const cached = readUserBootstrapCache(supabaseId);
+    if (!cached) return;
+
+    setUser(cached.user as UserData);
+    setHasActiveSubscription(cached.hasActiveSubscription);
+    setUserRole(cached.userRole);
+    setIsLoading(false);
+  }, [supabaseId]);
 
   /**
    * Busca dados do usuário na API
@@ -111,8 +129,13 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       return;
     }
 
+    const cachedUser = readUserBootstrapCache(supabaseId);
+    const shouldBlockUi = !cachedUser || force;
+
     try {
-      setIsLoading(true);
+      if (shouldBlockUi) {
+        setIsLoading(true);
+      }
       setError(null);
 
       const createBootstrapRequest = async (): Promise<UserBootstrapResponse> => {
@@ -215,7 +238,12 @@ export const UserProvider: React.FC<UserProviderProps> = ({
             hasActiveSubscription: subscriptionCheckResult.hasActiveSubscription,
             userRole: subscriptionCheckResult.userRole,
           });
-        } else {
+
+          writeUserBootstrapCache(supabaseId, {
+            user: profileOutput.result,
+            hasActiveSubscription: !!subscriptionCheckResult.hasActiveSubscription,
+            userRole: subscriptionCheckResult.userRole || null,
+          });        } else {
           setHasActiveSubscription(false);
           setUserRole(null);
           console.warn('⚠️ [UserContext] Usuário não encontrado no check de assinatura');

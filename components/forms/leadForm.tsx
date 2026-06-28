@@ -23,6 +23,13 @@ import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import {
+    canConfirmMeetingPresence,
+    getMeetingPresenceBadgeClass,
+    getMeetingPresenceBadgeLabel,
+    getMeetingPresenceAlertLabel,
+    isMeetingPresenceConfirmationDue,
+} from "@/lib/lead-meeting";
+import {
     formatCurrencyInput,
     MAX_CURRENCY_LABEL,
     MAX_CURRENCY_VALUE,
@@ -73,6 +80,7 @@ export interface ILeadFormProps {
         meetingNotes?: string | null;
         meetingLink?: string | null;
         meetingHeald?: "yes" | "no" | null;
+        meetingPresenceConfirmed?: boolean;
         isPreSchedule?: boolean;
         isOverdue?: boolean;
     };
@@ -82,6 +90,9 @@ export interface ILeadFormProps {
     canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
+    canConfirmMeetingPresence?: boolean;
+    meetingPresenceConfirmSaving?: boolean;
+    onMeetingPresenceConfirm?: () => void | Promise<void>;
     canMarkNoShow?: boolean;
     onMarkNoShow?: () => void | Promise<void>;
     usersToAssign: UserAssociated[];
@@ -122,6 +133,9 @@ export function LeadForm({
     canToggleMeetingHeald,
     meetingHealdSaving,
     onMeetingHealdChange,
+    canConfirmMeetingPresence: canConfirmMeetingPresenceAction = false,
+    meetingPresenceConfirmSaving = false,
+    onMeetingPresenceConfirm,
     canMarkNoShow,
     onMarkNoShow,
     usersToAssign,
@@ -216,6 +230,15 @@ export function LeadForm({
         !!scheduleSummary?.meetingDate &&
         scheduleSummary?.status === "scheduled" &&
         !isPreSchedule;
+    const isPresenceConfirmed = scheduleSummary?.meetingPresenceConfirmed === true;
+    const isPresenceConfirmationDue =
+        !isPreSchedule &&
+        isMeetingPresenceConfirmationDue({
+            status: scheduleSummary?.status,
+            meetingDate: scheduleSummary?.meetingDate,
+            meetingPresenceConfirmed: scheduleSummary?.meetingPresenceConfirmed,
+            isTransfer: isPreSchedule,
+        });
     const canEditCloserField =
         isEditMode && !!scheduleSummary?.meetingDate && !isPreSchedule;
 
@@ -635,8 +658,73 @@ export function LeadForm({
                                     />
                                 </div>
                             )}
-                            {(!!canToggleMeetingHeald || !!canMarkNoShow || canResendScheduleInvite) && (
+                            {!isPreSchedule && scheduleSummary?.meetingDate && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {isPresenceConfirmed ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("confirmed"))}
+                                        >
+                                            <BadgeCheck data-icon="inline-start" />
+                                            {getMeetingPresenceBadgeLabel("confirmed")}
+                                        </Badge>
+                                    ) : isPresenceConfirmationDue ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("pending"))}
+                                        >
+                                            {getMeetingPresenceAlertLabel()}
+                                        </Badge>
+                                    ) : canConfirmMeetingPresence({
+                                        status: scheduleSummary?.status,
+                                        meetingDate: scheduleSummary?.meetingDate,
+                                        isTransfer: isPreSchedule,
+                                    }) ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("pending"))}
+                                        >
+                                            {getMeetingPresenceBadgeLabel("pending")}
+                                        </Badge>
+                                    ) : null}
+                                </div>
+                            )}
+                            {(!!canToggleMeetingHeald ||
+                                !!canMarkNoShow ||
+                                canResendScheduleInvite ||
+                                canConfirmMeetingPresenceAction) && (
                                 <div className="flex flex-wrap gap-2 pt-2">
+                                    {canConfirmMeetingPresenceAction && !isPresenceConfirmed && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={
+                                                isLoading ||
+                                                isUpdating ||
+                                                meetingPresenceConfirmSaving ||
+                                                !canConfirmMeetingPresence({
+                                                    status: scheduleSummary?.status,
+                                                    meetingDate: scheduleSummary?.meetingDate,
+                                                    isTransfer: isPreSchedule,
+                                                })
+                                            }
+                                            onClick={() => {
+                                                void onMeetingPresenceConfirm?.();
+                                            }}
+                                        >
+                                            {meetingPresenceConfirmSaving ? (
+                                                <>
+                                                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                                                    Confirmando...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BadgeCheck data-icon="inline-start" />
+                                                    Confirmar agenda
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
                                     {!!canToggleMeetingHeald && (
                                         <Button
                                             type="button"

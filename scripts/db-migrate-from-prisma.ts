@@ -2,8 +2,10 @@
  * Gera migration Supabase com SQL a partir de mudanças em prisma/schema.prisma.
  *
  * Fluxo:
- *   1. prisma db push no banco local (Supabase CLI)
- *   2. supabase db diff --local -f <nome> captura o delta em supabase/migrations/
+ *   1. Remove migrations vazias com o mesmo sufixo (stale de db:migrate:new)
+ *   2. prisma db push no banco local (Supabase CLI)
+ *   3. supabase db diff --local -f <nome> captura o delta em supabase/migrations/
+ *   4. Deduplica arquivos com o mesmo sufixo (mantém o preenchido)
  *
  * Uso:
  *   bun run db:migrate:from-prisma -- add_my_table
@@ -13,13 +15,17 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+
+import {
+  cleanupEmptyMigrationsBySuffix,
+  dedupeMigrationsBySuffix,
+  findNonEmptyMigrationsBySuffix,
+  isEmptyMigrationContent,
+  normalizeMigrationName,
+} from "./db-migrate-utils";
 
 /** Mesma URL usada em scripts/dev-local.ts */
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
-
-const MIGRATIONS_DIR = join("supabase", "migrations");
 
 const rawArgs = process.argv.slice(2);
 const dryRun = rawArgs.includes("--dry-run");
@@ -28,20 +34,6 @@ const migrationName = rawArgs.find((arg) => arg !== "--dry-run");
 function fail(message: string): never {
   console.error(`\n❌ ${message}`);
   process.exit(1);
-}
-
-function normalizeMigrationName(name: string): string {
-  const normalized = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-
-  if (!normalized) {
-    fail("Nome da migration inválido.");
-  }
-
-  return normalized;
 }
 
 function run(
@@ -62,18 +54,6 @@ function run(
   };
 }
 
-function isEmptyDiff(sql: string): boolean {
-  const trimmed = sql.trim();
-  if (!trimmed) return true;
-
-  const lower = trimmed.toLowerCase();
-  return (
-    lower.includes("no schema changes") ||
-    lower.includes("no difference") ||
-    lower.includes("this is an empty migration")
-  );
-}
-
 function assertLocalSupabaseRunning(): void {
   const status = run("supabase", ["status"], {
     SUPABASE_DISABLE_TELEMETRY: "1",
@@ -87,28 +67,22 @@ function assertLocalSupabaseRunning(): void {
   }
 }
 
-function findLatestMigrationFile(suffix: string): string | null {
-  const matches = readdirSync(MIGRATIONS_DIR)
-    .filter((file) => file.endsWith(`_${suffix}.sql`))
-    .map((file) => ({
-      file,
-      mtime: statSync(join(MIGRATIONS_DIR, file)).mtimeMs,
-    }))
-    .sort((a, b) => b.mtime - a.mtime);
-
-  return matches[0]?.file ?? null;
-}
-
 if (!migrationName) {
   console.error("❌ Informe o nome da migration.");
   console.error("");
   console.error("Exemplos:");
   console.error("  bun run db:migrate:from-prisma -- add_require_closer_gate");
   console.error("  bun run db:migrate:from-prisma -- --dry-run add_require_closer_gate");
+  console.error("");
+  console.error("Para SQL manual (RLS, seeds): bun run db:migrate:new <name>");
   process.exit(1);
 }
 
 const normalizedName = normalizeMigrationName(migrationName);
+if (!normalizedName) {
+  fail("Nome da migration inválido.");
+}
+
 const localDbEnv = {
   DATABASE_URL: LOCAL_DB_URL,
   DIRECT_URL: LOCAL_DB_URL,
@@ -117,6 +91,20 @@ const localDbEnv = {
 console.info(`\n▶ Gerando migration a partir de prisma/schema.prisma (${dryRun ? "dry-run" : normalizedName})`);
 
 assertLocalSupabaseRunning();
+
+if (!dryRun) {
+  const existingNonEmpty = findNonEmptyMigrationsBySuffix(normalizedName);
+  if (existingNonEmpty.length > 0) {
+    fail(
+      `Migration "${normalizedName}" já existe com conteúdo: ${existingNonEmpty.map((f) => f.file).join(", ")}. Use outro nome ou remova manualmente.`,
+    );
+  }
+
+  const removed = cleanupEmptyMigrationsBySuffix(normalizedName);
+  if (removed.length > 0) {
+    console.info(`\n▶ Removidas ${removed.length} migration(s) vazia(s) com sufixo "${normalizedName}"`);
+  }
+}
 
 console.info("\n▶ Aplicando schema no banco local (prisma db push)…");
 const push = run(process.execPath, ["x", "prisma", "db", "push", "--accept-data-loss"], localDbEnv);
@@ -149,7 +137,7 @@ if (diff.status !== 0) {
 }
 
 if (dryRun) {
-  if (isEmptyDiff(diff.stdout)) {
+  if (isEmptyMigrationContent(diff.stdout)) {
     console.info("\n✅ Nenhuma diferença entre migrations aplicadas e schema.prisma.");
     process.exit(0);
   }
@@ -161,21 +149,20 @@ if (dryRun) {
   process.exit(0);
 }
 
-if (isEmptyDiff(diffOutput)) {
+if (isEmptyMigrationContent(diffOutput)) {
+  cleanupEmptyMigrationsBySuffix(normalizedName);
   console.info("\n✅ Schema já alinhado com as migrations locais. Nenhum arquivo criado.");
   process.exit(0);
 }
 
-const createdFile = findLatestMigrationFile(normalizedName);
+const migrationPath = dedupeMigrationsBySuffix(normalizedName);
 
-if (!createdFile) {
+if (!migrationPath) {
   console.error(diffOutput);
   fail(
-    `supabase db diff não criou supabase/migrations/*_${normalizedName}.sql. Revise o output acima.`,
+    `supabase db diff não criou supabase/migrations/*_${normalizedName}.sql com conteúdo. Revise o output acima.`,
   );
 }
-
-const migrationPath = join(MIGRATIONS_DIR, createdFile);
 
 console.info("\n✅ Migration criada:");
 console.info(`   ${migrationPath}`);

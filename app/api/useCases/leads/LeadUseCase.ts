@@ -669,6 +669,7 @@ export class LeadUseCase implements ILeadUseCase {
 
       const shouldTrackAssignment = data.assignedTo !== undefined;
       const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
+      const shouldTrackMeetingPresence = data.meetingPresenceConfirmed !== undefined;
       const shouldTrackStatus = data.status !== undefined;
       const shouldCheckCnpj = data.cnpj !== undefined && !!data.cnpj;
       const shouldTrackTransfer = data.isTransfer === true;
@@ -676,6 +677,7 @@ export class LeadUseCase implements ILeadUseCase {
         shouldTrackAssignment ||
         data.closerId !== undefined ||
         shouldTrackMeetingHeald ||
+        shouldTrackMeetingPresence ||
         shouldTrackStatus ||
         shouldCheckCnpj ||
         shouldTrackTransfer;
@@ -819,11 +821,50 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.currentValue !== undefined) updateData.currentValue = data.currentValue;
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
-      if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+      if (data.meetingDate !== undefined) {
+        const nextMeetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+        const previousMeetingDate = existingLead?.meetingDate ?? null;
+        const meetingDateChanged =
+          (nextMeetingDate?.getTime() ?? null) !== (previousMeetingDate?.getTime() ?? null);
+        updateData.meetingDate = nextMeetingDate;
+        if (meetingDateChanged) {
+          updateData.meetingPresenceConfirmed = false;
+          updateData.meetingPresenceConfirmedAt = null;
+        }
+      }
       if (data.meetingTitle !== undefined) updateData.meetingTitle = data.meetingTitle || null;
       if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
+      if (data.meetingPresenceConfirmed !== undefined) {
+        if (data.meetingPresenceConfirmed === true) {
+          const effectiveStatus = data.status ?? existingLead?.status;
+          const effectiveIsTransfer =
+            data.isTransfer !== undefined ? data.isTransfer === true : existingLead?.isTransfer === true;
+          const effectiveMeetingDate =
+            data.meetingDate !== undefined
+              ? data.meetingDate
+                ? new Date(data.meetingDate)
+                : null
+              : existingLead?.meetingDate ?? null;
+
+          if (effectiveStatus !== LeadStatus.scheduled) {
+            return new Output(false, [], ["Só é possível confirmar agenda para leads agendados."], null);
+          }
+          if (effectiveIsTransfer) {
+            return new Output(false, [], ["Pré-agendamento de transferência não pode ser confirmado como agenda."], null);
+          }
+          if (!effectiveMeetingDate || effectiveMeetingDate.getTime() <= Date.now()) {
+            return new Output(false, [], ["Só é possível confirmar agenda antes do horário da reunião."], null);
+          }
+
+          updateData.meetingPresenceConfirmed = true;
+          updateData.meetingPresenceConfirmedAt = new Date();
+        } else {
+          updateData.meetingPresenceConfirmed = false;
+          updateData.meetingPresenceConfirmedAt = null;
+        }
+      }
       if (data.isTransfer !== undefined) updateData.isTransfer = data.isTransfer === true;
       if (autoClearCloserOnTransfer && data.closerId === undefined) {
         updateData.closer = { disconnect: true };
@@ -951,6 +992,29 @@ export class LeadUseCase implements ILeadUseCase {
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de reunião realizada:", error);
+        }
+      }
+
+      if (
+        shouldTrackMeetingPresence &&
+        existingLead?.meetingPresenceConfirmed !== data.meetingPresenceConfirmed &&
+        data.meetingPresenceConfirmed === true
+      ) {
+        try {
+          await prisma.leadActivity.create({
+            data: {
+              leadId: id,
+              type: ActivityType.note,
+              body: "Presença confirmada com o lead para a reunião.",
+              payload: {
+                previousMeetingPresenceConfirmed: existingLead?.meetingPresenceConfirmed ?? false,
+                meetingPresenceConfirmed: true,
+              },
+              createdBy: profileInfo.id,
+            },
+          });
+        } catch (error) {
+          console.warn("Não foi possível registrar atividade de confirmação de agenda:", error);
         }
       }
 
@@ -1331,6 +1395,8 @@ export class LeadUseCase implements ILeadUseCase {
         statusUpdateExtraData.meetingNotes = null;
         statusUpdateExtraData.meetingLink = null;
         statusUpdateExtraData.meetingHeald = null;
+        statusUpdateExtraData.meetingPresenceConfirmed = false;
+        statusUpdateExtraData.meetingPresenceConfirmedAt = null;
       }
 
       if (status !== existingLead.status) {
@@ -2009,6 +2075,10 @@ export class LeadUseCase implements ILeadUseCase {
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
+      meetingPresenceConfirmed: lead.meetingPresenceConfirmed === true,
+      meetingPresenceConfirmedAt: lead.meetingPresenceConfirmedAt
+        ? lead.meetingPresenceConfirmedAt.toISOString()
+        : null,
       isTransfer: lead.isTransfer === true,
       followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
       followUpNotes: lead.followUpNotes ?? null,

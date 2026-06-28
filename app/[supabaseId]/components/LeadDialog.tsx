@@ -45,6 +45,7 @@ import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { fetchTeamMembersPayload } from "@/lib/team/teamMembersClientCache";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
@@ -59,7 +60,7 @@ import {
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
-import { isMeetingOverdue } from "@/lib/lead-meeting";
+import { isMeetingOverdue, canConfirmMeetingPresence } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 import { TransferBetweenTeamsDialog } from "@/app/[supabaseId]/board/features/container/TransferBetweenTeamsDialog";
@@ -192,6 +193,7 @@ export default function LeadDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [meetingHealdSaving, setMeetingHealdSaving] = useState(false);
+  const [meetingPresenceConfirmSaving, setMeetingPresenceConfirmSaving] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
   const [resendDialogOpen, setResendDialogOpen] = useState(false);
@@ -318,12 +320,6 @@ export default function LeadDialog({
   }, []);
 
   useEffect(() => {
-    if (currentLead?.id && open) {
-      void refreshLeadDetails();
-    }
-  }, [currentLead?.id, open, refreshLeadDetails]);
-
-  useEffect(() => {
     if (!open) {
       setActivityBody("");
       setActivityType("note");
@@ -356,16 +352,12 @@ export default function LeadDialog({
       return;
     }
     let cancelled = false;
-    fetch(`/api/v1/teams/${activeTeamId}/members`, {
-      headers: { "x-supabase-user-id": supabaseId },
-    })
-      .then((res) => res.json())
-      .then((data) => {
+    fetchTeamMembersPayload(supabaseId, activeTeamId)
+      .then((payload) => {
         if (cancelled) return;
-        const ids = Array.isArray(data?.result?.transferTargets)
-          ? data.result.transferTargets.map((t: { teamId: string }) => t.teamId)
-          : [];
-        setAllowedTransferTargetIds(ids);
+        setAllowedTransferTargetIds(
+          payload.transferTargets.map((target) => target.teamId)
+        );
       })
       .catch(() => {
         if (!cancelled) setAllowedTransferTargetIds([]);
@@ -434,6 +426,16 @@ export default function LeadDialog({
   const isAssignedCloser = !!(currentLead && user && currentLead.closerId && currentLead.closerId === user.id);
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || isAssignedCloser);
+  const isAssignedSdr = !!(currentLead && user && currentLead.assignedTo === user.id);
+  const canEditMeetingPresence =
+    !!currentLead &&
+    currentLead.isTransfer !== true &&
+    canConfirmMeetingPresence({
+      status: currentLead.status,
+      meetingDate: currentLead.meetingDate,
+      isTransfer: currentLead.isTransfer,
+    }) &&
+    (isTeamMaster || isManagerLikeRole(user?.role ?? "") || isAssignedSdr || isAssignedCloser);
   const canMarkNoShow =
     !!currentLead &&
     currentLead.status === "scheduled" &&
@@ -1470,6 +1472,71 @@ export default function LeadDialog({
     }
   };
 
+  const handleMeetingPresenceConfirm = async () => {
+    if (!currentLead || !supabaseId || !activeTeamId) return;
+    if (!canEditMeetingPresence) return;
+    if (currentLead.meetingPresenceConfirmed === true) return;
+
+    const previousPresenceConfirmed = currentLead.meetingPresenceConfirmed ?? false;
+    const previousPresenceConfirmedAt = currentLead.meetingPresenceConfirmedAt ?? null;
+
+    patchLead?.(currentLead.id, { meetingPresenceConfirmed: true });
+    setLocalLead((prev) =>
+      prev && prev.id === currentLead.id
+        ? ({ ...prev, meetingPresenceConfirmed: true } as Lead)
+        : prev,
+    );
+    setMeetingPresenceConfirmSaving(true);
+
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId,
+        },
+        body: JSON.stringify({ meetingPresenceConfirmed: true }),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível confirmar a agenda.");
+      }
+
+      patchLead?.(currentLead.id, {
+        meetingPresenceConfirmed: true,
+        meetingPresenceConfirmedAt:
+          result.result?.meetingPresenceConfirmedAt ?? new Date().toISOString(),
+      });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id
+          ? ({
+              ...prev,
+              meetingPresenceConfirmed: true,
+              meetingPresenceConfirmedAt:
+                result.result?.meetingPresenceConfirmedAt ?? new Date().toISOString(),
+            } as Lead)
+          : prev,
+      );
+      toast.success("Agenda confirmada com o lead");
+    } catch (error) {
+      patchLead?.(currentLead.id, { meetingPresenceConfirmed: previousPresenceConfirmed, meetingPresenceConfirmedAt: previousPresenceConfirmedAt });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id
+          ? ({
+              ...prev,
+              meetingPresenceConfirmed: previousPresenceConfirmed,
+              meetingPresenceConfirmedAt: previousPresenceConfirmedAt,
+            } as Lead)
+          : prev,
+      );
+      toast.warning(error instanceof Error ? error.message : "Não foi possível confirmar a agenda.");
+    } finally {
+      setMeetingPresenceConfirmSaving(false);
+    }
+  };
+
   const onSubmit = async (data: leadFormData, mode: LeadFormSaveMode = "full") => {
     const saveAsDraft = mode === "draft";
     setIsSubmitting(true);
@@ -2334,6 +2401,7 @@ export default function LeadDialog({
         setScheduleGuests([]);
         return;
       }
+      if (leadDetailsLoading) return;
       if (!supabaseId) return;
       if (!currentLead.id) {
         setScheduleGuests([]);
@@ -2395,7 +2463,7 @@ export default function LeadDialog({
       isActive = false;
       controller.abort();
     };
-  }, [currentLead?.id, open, supabaseId, activeTeamId, form, patchLead]);
+  }, [currentLead?.id, open, supabaseId, activeTeamId, form, patchLead, leadDetailsLoading, currentLead?.meetingDate, currentLead?.meetingTitle, currentLead?.meetingLink]);
 
   return (
     <>
@@ -2594,6 +2662,7 @@ export default function LeadDialog({
                               meetingNotes: currentLead.meetingNotes,
                               meetingLink: currentLead.meetingLink,
                               meetingHeald: currentLead.meetingHeald,
+                              meetingPresenceConfirmed: currentLead.meetingPresenceConfirmed === true,
                               isPreSchedule: currentLead.isTransfer === true,
                             }
                           : undefined
@@ -2612,6 +2681,11 @@ export default function LeadDialog({
                       canToggleMeetingHeald={canEditMeetingHeald}
                       meetingHealdSaving={meetingHealdSaving}
                       onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
+                      canConfirmMeetingPresence={canEditMeetingPresence}
+                      meetingPresenceConfirmSaving={meetingPresenceConfirmSaving}
+                      onMeetingPresenceConfirm={
+                        canEditMeetingPresence ? handleMeetingPresenceConfirm : undefined
+                      }
                       canMarkNoShow={canMarkNoShow}
                       onMarkNoShow={handleNoShow}
                       isEditMode={!!currentLead}
@@ -2646,6 +2720,7 @@ export default function LeadDialog({
                   leadId={currentLead.id}
                   supabaseId={supabaseId ?? ''}
                   teamId={activeTeamId}
+                  enabled={!isLeadContentLoading}
                 />
               )}
 

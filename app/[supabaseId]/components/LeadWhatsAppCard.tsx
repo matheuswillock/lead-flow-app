@@ -20,6 +20,7 @@ interface LeadWhatsAppCardProps {
   leadId: string
   supabaseId: string
   teamId: string
+  enabled?: boolean
 }
 
 function formatPreviewTime(dateStr: string | null): string {
@@ -31,7 +32,7 @@ function formatPreviewTime(dateStr: string | null): string {
   }
 }
 
-export function LeadWhatsAppCard({ leadId, supabaseId, teamId }: LeadWhatsAppCardProps) {
+export function LeadWhatsAppCard({ leadId, supabaseId, teamId, enabled = true }: LeadWhatsAppCardProps) {
   const [conversation, setConversation] = useState<LinkedConversation | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const inFlightRef = useRef(false)
@@ -66,9 +67,15 @@ export function LeadWhatsAppCard({ leadId, supabaseId, teamId }: LeadWhatsAppCar
   }, [leadId, teamId, supabaseId])
 
   useEffect(() => {
+    if (!enabled) {
+      setConversation(null)
+      setIsLoading(false)
+      lastLeadIdRef.current = null
+      return
+    }
     lastLeadIdRef.current = null
     void fetchLinkedConversation()
-  }, [fetchLinkedConversation])
+  }, [enabled, fetchLinkedConversation])
 
   if (isLoading) {
     return (

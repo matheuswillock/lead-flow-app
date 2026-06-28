@@ -1,25 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import { fetchTeamMembersPayload } from "@/lib/team/teamMembersClientCache";
 
 type TeamMemberFunction = "SDR" | "CLOSER";
 type PresenceAvailability = "online" | "away";
 type PresenceStatus = PresenceAvailability | "offline";
-
-type TeamMembersApiMember = {
-  profileId: string;
-  name: string;
-  email: string;
-  profileIconUrl: string | null;
-  functions: string[] | null;
-};
-
-type TeamMembersApiResponse = {
-  isValid: boolean;
-  errorMessages?: string[];
-  result: {
-    members: TeamMembersApiMember[];
-  } | null;
-};
 
 type PresenceStateEntry = {
   profileId?: string;
@@ -150,28 +135,13 @@ export function useTeamPresence({
       setIsLoadingMembers(true);
 
       try {
-        const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
-          headers: {
-            "x-supabase-user-id": supabaseId,
-          },
-          cache: "no-store",
-        });
+        const payload = await fetchTeamMembersPayload(supabaseId, activeTeamId);
 
-        const result = (await response.json()) as TeamMembersApiResponse;
-
-        if (!response.ok || !result?.isValid || !result?.result?.members) {
-          throw new Error(
-            Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
-              ? result.errorMessages.join(", ")
-              : "Erro ao carregar membros do time."
-          );
-        }
-
-        const mappedMembers = result.result.members.map((member) => ({
-          profileId: member.profileId,
+        const mappedMembers = payload.members.map((member) => ({
+          profileId: member.id,
           name: member.name || member.email || "Usuário",
           email: member.email || "",
-          profileIconUrl: member.profileIconUrl ?? null,
+          profileIconUrl: member.avatarImageUrl || null,
           functions: normalizeFunctions(member.functions),
         }));
 

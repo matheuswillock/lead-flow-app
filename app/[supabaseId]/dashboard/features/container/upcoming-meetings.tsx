@@ -10,6 +10,9 @@ import {
   getScheduleMeetingStatus,
   getScheduleMeetingStatusBadgeClass,
   getScheduleMeetingStatusLabel,
+  getMeetingPresenceBadgeClass,
+  getMeetingPresenceBadgeLabel,
+  getMeetingPresenceBadgeVariant,
 } from "@/lib/lead-meeting"
 
 import {
@@ -45,6 +48,7 @@ interface ScheduleData {
   closerName: string
   closerEmail: string
   meetingHeald: "yes" | "no" | null
+  meetingPresenceConfirmed: boolean
   teamName: string
   teamId: string
   notes?: string
@@ -189,6 +193,19 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
     }
   }
 
+  const renderMeetingPresenceBadge = (schedule: ScheduleData) => {
+    const variant = getMeetingPresenceBadgeVariant({
+      meetingPresenceConfirmed: schedule.meetingPresenceConfirmed,
+      meetingDate: schedule.date,
+    })
+
+    return (
+      <Badge variant="outline" className={cn(getMeetingPresenceBadgeClass(variant))}>
+        {getMeetingPresenceBadgeLabel(variant)}
+      </Badge>
+    )
+  }
+
   const renderMeetingStatusBadge = (schedule: ScheduleData) => {
     const status = getScheduleMeetingStatus({
       date: schedule.date,
@@ -286,6 +303,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
                 {showTeamColumn ? <TableHead>Time</TableHead> : null}
                 <TableHead>Responsável</TableHead>
                 <TableHead>Closer</TableHead>
+                <TableHead>Agenda confirmada</TableHead>
                 <TableHead>Reunião realizada</TableHead>
                 <TableHead className="text-right">Tempo Restante</TableHead>
               </TableRow>
@@ -342,6 +360,9 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
                         </Avatar>
                         <span className="text-sm">{schedule.closerName}</span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {renderMeetingPresenceBadge(schedule)}
                     </TableCell>
                     <TableCell>
                       {renderMeetingStatusBadge(schedule)}

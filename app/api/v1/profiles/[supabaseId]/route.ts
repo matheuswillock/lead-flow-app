@@ -5,6 +5,7 @@ import { Output } from "@/lib/output";
 import { createClient } from '@supabase/supabase-js';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import { assertProfileOwnership } from "@/app/api/v1/profiles/utils/assertProfileOwnership";
 
 const profileUseCase = new RegisterNewUserProfile();
 
@@ -40,6 +41,11 @@ export async function GET(
     if (!supabaseId) {
       const output = new Output(false, [], ["Supabase ID is required"], null);
       return NextResponse.json(output, { status: 400 });
+    }
+
+    const access = await assertProfileOwnership(request, supabaseId);
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status });
     }
 
     const result = await profileUseCase.getProfileBySupabaseId(supabaseId);

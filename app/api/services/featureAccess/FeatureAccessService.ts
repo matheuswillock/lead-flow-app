@@ -172,8 +172,38 @@ export class FeatureAccessService implements IFeatureAccessService {
       return false
     }
 
+    const getAncestorFeatureIds = (featureId: string): string[] => {
+      const ancestorIds: string[] = []
+      const visited = new Set<string>()
+      let current = featureById.get(featureId)
+
+      while (current?.parentId) {
+        const parent = featureById.get(current.parentId)
+        if (!parent || visited.has(parent.id)) {
+          break
+        }
+        ancestorIds.push(parent.id)
+        visited.add(parent.id)
+        current = parent
+      }
+
+      return ancestorIds
+    }
+
     const isBetaEligibleForFeature = (featureId: string, effectiveFeatureId: string): boolean => {
-      return betaEligibleFeatureIds.has(featureId) || betaEligibleFeatureIds.has(effectiveFeatureId)
+      const candidateIds = new Set([
+        featureId,
+        effectiveFeatureId,
+        ...getAncestorFeatureIds(featureId),
+      ])
+
+      for (const candidateId of candidateIds) {
+        if (betaEligibleFeatureIds.has(candidateId)) {
+          return true
+        }
+      }
+
+      return false
     }
 
     const betaSlugs = features

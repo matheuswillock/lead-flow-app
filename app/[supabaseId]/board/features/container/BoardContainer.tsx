@@ -87,6 +87,7 @@ export function BoardContainer({
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [resendInviteLead, setResendInviteLead] = useState<Lead | null>(null);
+  const [confirmingPresenceLeadId, setConfirmingPresenceLeadId] = useState<string | null>(null);
   const scheduleSucceededRef = useRef(false);
   const boardService = useMemo(() => createBoardService(), []);
   const params = useParams();
@@ -240,6 +241,49 @@ export function BoardContainer({
     [activeTeamId, patchLead, supabaseId]
   );
 
+  const handleConfirmMeetingPresence = useCallback(
+    async (lead: Lead) => {
+      if (!supabaseId) {
+        toast.error("Usuário não identificado");
+        return;
+      }
+
+      setConfirmingPresenceLeadId(lead.id);
+      const loadingToast = toast.loading("Confirmando agenda...");
+
+      try {
+        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId ?? "",
+          },
+          body: JSON.stringify({ meetingPresenceConfirmed: true }),
+        });
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.[0] || "Não foi possível confirmar a agenda.");
+        }
+
+        patchLead(lead.id, {
+          meetingPresenceConfirmed: true,
+          meetingPresenceConfirmedAt:
+            result.result?.meetingPresenceConfirmedAt ?? new Date().toISOString(),
+        });
+        toast.success("Agenda confirmada com o lead", { id: loadingToast });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao confirmar agenda", {
+          id: loadingToast,
+        });
+      } finally {
+        setConfirmingPresenceLeadId(null);
+      }
+    },
+    [activeTeamId, patchLead, supabaseId]
+  );
+
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
     if (!selectedLead) return;
 
@@ -283,6 +327,8 @@ export function BoardContainer({
         meetingNotes: payload.meetingNotes,
         meetingLink: payload.meetingLink,
         closerId: payload.closerId,
+        meetingPresenceConfirmed: false,
+        meetingPresenceConfirmedAt: null,
       });
     }
     setSelectedLead(null);
@@ -366,6 +412,8 @@ export function BoardContainer({
         onScheduleMeeting={handleScheduleMeeting}
         onNoShow={handleNoShow}
         onResendScheduleInvite={handleResendScheduleInvite}
+        onConfirmMeetingPresence={handleConfirmMeetingPresence}
+        confirmingPresenceLeadId={confirmingPresenceLeadId}
       />
 
       <BoardFooter />

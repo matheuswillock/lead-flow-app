@@ -1,7 +1,17 @@
-# Email Specs Index
+# Specs Index
 
-These are intentionally separate artifacts so dispatch and analytics can evolve independently.
+Artifacts de especificação separados para evolução independente por domínio.
+
+## Produto
+
+- [Usuário Associado e fluxo Backoffice/Associados](specs/associados.md)
+
+## E-mail
 
 - [Spec 1: Scheduled Email Dispatch](specs/email-dispatch.md)
 - [Spec 2: Resend Email Analytics Backend](specs/email-analytics.md)
+
+## CDP
+
+- [CDP V1 para e-mail](specs/cdp-email.md)
 

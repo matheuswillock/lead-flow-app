@@ -13,6 +13,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import { prefetchLeadDetails } from "@/hooks/useLeadDetails";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
   createLeadTimeRulesVersion,
@@ -110,6 +111,7 @@ interface IPipelineContextState {
   setSelected: (lead: Lead | null) => void;
   clearErrors: () => void;
   handleRowClick: (lead: Lead) => void;
+  handleRowHover: (lead: Lead) => void;
   openNewLeadDialog: () => void;
   refreshLeads: () => Promise<void>;
   patchLead: (leadId: string, patch: Partial<Lead>) => void;
@@ -366,8 +368,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   // Função para carregar leads da API
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
-    const leadTimeRulesVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}`;
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
 
     if (
       !options?.force &&
@@ -413,7 +414,6 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         if (result.isValid && result.result) {
           console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
           lastLeadsLoadKeyRef.current = loadKey;
-          
           const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
             if (!lead.status) {
               return {
@@ -493,7 +493,45 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId, teamStatusRules.leadTimeRules]);
+  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
+
+  const leadTimeRulesVersionRef = useRef("");
+
+  useEffect(() => {
+    const nextVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
+    if (nextVersion === leadTimeRulesVersionRef.current) {
+      return;
+    }
+    leadTimeRulesVersionRef.current = nextVersion;
+
+    setAllLeads((prev) => {
+      if (prev.length === 0) {
+        return prev;
+      }
+
+      return prev.map((lead) => {
+        if (!lead.status) {
+          return {
+            ...lead,
+            leadTimeDueAt: null,
+            isLeadTimeBreached: false,
+          };
+        }
+
+        const state = resolveLeadTimeState(
+          lead.status,
+          lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+          teamStatusRules.leadTimeRules
+        );
+
+        return {
+          ...lead,
+          leadTimeDueAt: state.dueAt,
+          isLeadTimeBreached: state.isBreached,
+        };
+      });
+    });
+  }, [teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -638,6 +676,15 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOpen(true);
   };
 
+  const handleRowHover = useCallback(
+    (lead: Lead) => {
+      if (supabaseId && activeTeamId && lead.id) {
+        prefetchLeadDetails(supabaseId, activeTeamId, lead.id);
+      }
+    },
+    [activeTeamId, supabaseId]
+  );
+
   const openNewLeadDialog = () => {
     setSelected(null);
     setOpen(true);
@@ -775,6 +822,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setSelected,
     clearErrors,
     handleRowClick,
+    handleRowHover,
     openNewLeadDialog,
     refreshLeads: () => loadLeads({ force: true }),
     patchLead,

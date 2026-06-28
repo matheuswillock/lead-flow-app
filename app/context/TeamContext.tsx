@@ -4,6 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Output } from "@/lib/output";
 import { toast } from "sonner";
 import { useUser } from "@/app/context/UserContext";
+import {
+  readTeamsBootstrapCache,
+  writeTeamsBootstrapCache,
+} from "@/lib/bootstrap/sessionBootstrapCache";
 
 const teamsInFlightBySupabaseId = new Map<string, Promise<Output>>();
 
@@ -63,21 +67,51 @@ interface TeamProviderProps {
 
 export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   const { user } = useUser();
+  const storageKey = getStorageKey(supabaseId);
+
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamIdState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const serverActiveTeamIdRef = useRef<string | null>(null);
   const initializedRef = useRef(false);
-  const storageKey = getStorageKey(supabaseId);
+  const bootstrapHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (bootstrapHydratedRef.current) return;
+    bootstrapHydratedRef.current = true;
+
+    const cached = readTeamsBootstrapCache(supabaseId);
+    if (cached) {
+      setTeams(cached.teams as TeamSummary[]);
+      serverActiveTeamIdRef.current = cached.activeTeamId ?? null;
+      if (cached.activeTeamId) {
+        setActiveTeamIdState(cached.activeTeamId);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(storageKey);
+      if (stored) {
+        setActiveTeamIdState(stored);
+      }
+    }
+  }, [storageKey, supabaseId]);
 
   const refreshTeams = useCallback(async () => {
     if (!supabaseId) {
       return;
     }
 
+    const cachedTeams = readTeamsBootstrapCache(supabaseId);
+    const shouldBlockUi = !cachedTeams;
+
     try {
-      setIsLoading(true);
+      if (shouldBlockUi) {
+        setIsLoading(true);
+      }
       setError(null);
 
       const createTeamsRequest = async (): Promise<Output> => {
@@ -111,6 +145,11 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       const payload = output.result as { teams: TeamSummary[]; activeTeamId: string | null };
       setTeams(payload.teams || []);
       serverActiveTeamIdRef.current = payload.activeTeamId ?? null;
+
+      writeTeamsBootstrapCache(supabaseId, {
+        teams: payload.teams || [],
+        activeTeamId: payload.activeTeamId ?? null,
+      });
 
       if (payload.activeTeamId && payload.activeTeamId !== activeTeamId) {
         setActiveTeamIdState(payload.activeTeamId);

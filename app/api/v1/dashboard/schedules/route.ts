@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
             email: true,
             phone: true,
             meetingHeald: true,
+            meetingPresenceConfirmed: true,
             assignedTo: true,
             assignee: {
               select: {
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest) {
       closerName: schedule.lead.closer?.fullName || 'Não atribuído',
       closerEmail: schedule.lead.closer?.email || '',
       meetingHeald: schedule.lead.meetingHeald,
+      meetingPresenceConfirmed: schedule.lead.meetingPresenceConfirmed === true,
       teamName: schedule.lead.team?.name ?? '',
       teamId: schedule.lead.team?.id ?? '',
       meetingTitle: schedule.meetingTitle,

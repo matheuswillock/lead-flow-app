@@ -12,9 +12,10 @@ import { isMeetingFollowUpOverdue } from "@/lib/lead-meeting";
 interface DraggableRowProps {
   row: Row<Lead>;
   onRowClick: (lead: Lead) => void;
+  onRowHover?: (lead: Lead) => void;
 }
 
-export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
+export function DraggableRow({ row, onRowClick, onRowHover }: DraggableRowProps) {
   const {
     setNodeRef,
     transform,
@@ -50,6 +51,7 @@ export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
       )}
       data-draft={isDraftLead(row.original) ? "true" : "false"}
       onClick={() => onRowClick(row.original)}
+      onMouseEnter={() => onRowHover?.(row.original)}
     >
       {row.getVisibleCells().map((cell) => (
         <TableCell key={cell.id} className="p-2 text-center align-middle">

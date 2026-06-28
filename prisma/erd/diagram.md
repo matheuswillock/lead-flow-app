@@ -968,6 +968,8 @@ CDP CDP
     String meetingNotes "❓"
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
+    Boolean meetingPresenceConfirmed 
+    DateTime meetingPresenceConfirmedAt "❓"
     String meetingType "❓"
     Boolean isTransfer 
     DateTime followUpAt "❓"

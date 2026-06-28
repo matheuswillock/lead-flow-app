@@ -632,6 +632,9 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingLink: resolvedMeetingLink,
           meetingType: resolvedMeetingType,
           closerId,
+          ...(existingSchedule?.date?.getTime() !== meetingDate.getTime()
+            ? { meetingPresenceConfirmed: false, meetingPresenceConfirmedAt: null }
+            : {}),
           ...(transitionStatusToScheduled === true ? { status: LeadStatus.scheduled } : {}),
         },
       });
