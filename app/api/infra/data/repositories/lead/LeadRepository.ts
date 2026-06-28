@@ -71,6 +71,11 @@ const CRM_LEAD_LIST_SELECT = {
       profileIconUrl: true,
     },
   },
+  proposalReview: {
+    select: {
+      status: true,
+    },
+  },
   _count: {
     select: {
       attachments: true,

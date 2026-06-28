@@ -112,6 +112,7 @@ const PRODUCTS = [
 // Features sem parentSlug são guarda-chuvas. Features com parentSlug herdam acesso do pai por padrão.
 const FEATURES_WITHOUT_PARENT_INHERITANCE = new Set([
   "crm-lead-transfers",
+  "crm-backoffice-associados",
   "email-settings",
   "whatsapp-auto-responses",
 ])
@@ -136,6 +137,7 @@ const FEATURES: Array<{
   { slug: "crm", name: "CRM", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 10, productSlug: "crm" },
   { slug: "crm-dashboard",        name: "Dashboard",          accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 20, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-lead-transfers",   name: "Transferências",     accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 35, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-backoffice-associados", name: "Associados",   accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 36, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-calendar",         name: "Calendário",         accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 40, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-performance",      name: "Performance",        accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 50, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-simulator",        name: "Simulador de Planos",accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 60, parentSlug: "crm", productSlug: "crm" },
@@ -265,6 +267,12 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
+  ]),
+  "crm-backoffice-associados": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+    { principal: "CAN_MANAGE_TEAMS", accessLevel: "FULL" },
   ]),
   "crm-calendar": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },

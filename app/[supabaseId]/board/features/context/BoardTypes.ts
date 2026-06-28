@@ -1,4 +1,4 @@
-import type { LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export type Lead = {
   id: string;
@@ -49,6 +49,7 @@ export type Lead = {
   leadTimeDueAt?: string | null;
   isLeadTimeBreached?: boolean;
   attachmentCount?: number;
+  proposalReviewStatus?: LeadProposalReviewStatus | null;
   manager?: {
     id: string;
     fullName: string | null;

@@ -27,6 +27,7 @@ type TeamSwitcherTeam = {
   accountName?: string
   isOwnAccount?: boolean
   isAccessible?: boolean
+  isAssociateAccount?: boolean
 }
 
 export function TeamSwitcher({
@@ -79,7 +80,9 @@ export function TeamSwitcher({
     for (const team of filteredTeams) {
       const label = team.isOwnAccount
         ? "Minha conta"
-        : team.accountName || "Outras contas"
+        : team.isAssociateAccount
+          ? "Associados"
+          : team.accountName || "Outras contas"
       const current = groups.get(label) ?? []
       current.push(team)
       groups.set(label, current)
@@ -188,6 +191,14 @@ export function TeamSwitcher({
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="truncate">{team.name}</span>
+                          {team.isAssociateAccount ? (
+                            <Badge
+                              variant="outline"
+                              className="mt-1 w-fit border-precision-border-soft bg-precision-indigo/10 text-precision-indigo"
+                            >
+                              Associado
+                            </Badge>
+                          ) : null}
                           {disabled ? (
                             <Badge variant="outline" className="mt-1 w-fit">
                               Assinatura inativa

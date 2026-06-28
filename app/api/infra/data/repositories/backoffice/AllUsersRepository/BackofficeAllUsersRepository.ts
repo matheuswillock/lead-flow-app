@@ -17,6 +17,7 @@ import type {
   BackofficeAllUsersScheduleRecord,
   BackofficeAllUsersScheduleTransferRef,
   BackofficeAllUsersUserTypeRef,
+  BackofficeSponsorMasterOption,
   BackofficeUpsertUserTypeAssignmentInput,
   IBackofficeAllUsersRepository,
 } from "./IBackofficeAllUsersRepository"
@@ -190,17 +191,35 @@ function buildScheduleWhere(
   return { AND: and }
 }
 
-function mapUserType(assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null): BackofficeAllUsersUserTypeRef {
-  const slug: "common" | "member_pro" = assignment?.userType.slug === "member_pro" ? "member_pro" : "common"
+function mapUserType(
+  assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null,
+  sponsor?: { id: string; fullName: string | null } | null
+): BackofficeAllUsersUserTypeRef {
+  const rawSlug = assignment?.userType.slug
+  const slug: BackofficeAllUsersUserTypeRef["slug"] =
+    rawSlug === "member_pro"
+      ? "member_pro"
+      : rawSlug === "associate"
+        ? "associate"
+        : "common"
   const accessExpiresAt = assignment?.accessExpiresAt ? assignment.accessExpiresAt.toISOString() : null
   const isExpired = slug === "member_pro" && accessExpiresAt !== null && new Date(accessExpiresAt).getTime() <= Date.now()
 
   let label = "Comum"
   if (slug === "member_pro") {
     label = isExpired ? "MEMBER PRO (EXPIRADO)" : "MEMBER PRO"
+  } else if (slug === "associate") {
+    label = "Associado"
   }
 
-  return { slug, label, accessExpiresAt, isExpired }
+  return {
+    slug,
+    label,
+    accessExpiresAt,
+    isExpired,
+    sponsorMasterId: sponsor?.id ?? null,
+    sponsorMasterName: sponsor?.fullName ?? null,
+  }
 }
 
 const PROFILE_LIST_SELECT = {
@@ -240,6 +259,10 @@ const PROFILE_LIST_SELECT = {
       userType: { select: { slug: true } },
     },
   },
+  sponsorMasterId: true,
+  sponsorMaster: {
+    select: { id: true, fullName: true },
+  },
 } satisfies Prisma.ProfileSelect
 
 type ProfileListRow = Prisma.ProfileGetPayload<{ select: typeof PROFILE_LIST_SELECT }>
@@ -277,7 +300,10 @@ function mapRow(profile: ProfileListRow): BackofficeAllUsersListRecord {
     googleCalendarConnected: !!profile.googleConnection?.refreshToken && !profile.googleConnection?.revokedAt,
     createdAt: profile.createdAt,
     master: masterRef,
-    userType: mapUserType(profile.isMaster ? profile.userTypeAssignment : profile.manager?.userTypeAssignment ?? null),
+    userType: mapUserType(
+      profile.isMaster ? profile.userTypeAssignment : profile.manager?.userTypeAssignment ?? null,
+      profile.isMaster ? profile.sponsorMaster : null
+    ),
   }
 }
 
@@ -397,6 +423,16 @@ function buildWhere(filters: BackofficeAllUsersFiltersInput): Prisma.ProfileWher
             { manager: { is: { userTypeAssignment: { is: null } } } },
             { manager: { is: { userTypeAssignment: { is: { userType: { is: { slug: "common" } } } } } } },
           ],
+        },
+      ],
+    })
+  } else if (filters.userType === "associate") {
+    andClauses.push({
+      OR: [
+        { isMaster: true, userTypeAssignment: { is: { userType: { is: { slug: "associate" } } } } },
+        {
+          isMaster: false,
+          manager: { is: { userTypeAssignment: { is: { userType: { is: { slug: "associate" } } } } } },
         },
       ],
     })
@@ -680,5 +716,35 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
     })
 
     return mapUserType(assignment)
+  }
+
+  async updateSponsorMasterId(profileId: string, sponsorMasterId: string | null): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { sponsorMasterId },
+    })
+  }
+
+  async findSponsorMasterOptions(): Promise<BackofficeSponsorMasterOption[]> {
+    const masters = await prisma.profile.findMany({
+      where: { isMaster: true },
+      select: { id: true, fullName: true, email: true },
+      orderBy: [{ fullName: "asc" }, { email: "asc" }],
+    })
+    return masters
+  }
+
+  async hasOpenProposalReviewsForAssociate(profileId: string): Promise<boolean> {
+    const count = await prisma.leadProposalReview.count({
+      where: {
+        status: { in: ["submitted", "criticized", "pending"] },
+        lead: {
+          team: {
+            masterId: profileId,
+          },
+        },
+      },
+    })
+    return count > 0
   }
 }

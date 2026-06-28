@@ -33,6 +33,7 @@ export const TENANT_ROUTE_PREFIXES = [
   "/dashboard",
   "/crm",
   "/lead-transfers",
+  "/associados",
   "/calendar",
   "/performance",
   "/pme-simulador",

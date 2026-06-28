@@ -75,6 +75,13 @@ describe("requiresManagerRole", () => {
   })
 })
 
+describe("tenant associados route", () => {
+  it("parses associados as tenant app route", () => {
+    expect(isTenantAppRoute(`/${USER_A}/associados`)).toBe(true)
+    expect(parseTenantPath(`/${USER_A}/associados`)?.routePath).toBe("/associados")
+  })
+})
+
 describe("isSensitiveRoute", () => {
   it("marks backoffice routes as sensitive", () => {
     expect(isSensitiveRoute("/backoffice/clients")).toBe(true)

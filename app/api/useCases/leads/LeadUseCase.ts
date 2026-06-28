@@ -48,6 +48,8 @@ import {
   resolveMissingLeadFields,
 } from "@/lib/leadStatusTransitionFields";
 import { resolveLeadRazaoSocial } from "@/app/api/services/cnpjLookup/CnpjLookupService";
+import type { LeadRequiredDocumentType } from "@prisma/client";
+import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -81,6 +83,7 @@ type LeadStatusTransitionBlockerType =
   | "email_required"
   | "lead_info_required"
   | "closer_required"
+  | "required_documents"
   | "none";
 
 const defaultLeadRepository = new LeadRepository();
@@ -1261,6 +1264,27 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], gateEvaluation.errorMessages, gateEvaluation.result);
       }
 
+      if (status === LeadStatus.offerSubmission && existingLead.teamId) {
+        const docCheck = await associateProposalUseCase.evaluateRequiredDocumentsForOfferSubmission(
+          id,
+          existingLead.teamId
+        );
+        if (docCheck.blocked) {
+          return new Output(
+            false,
+            [],
+            ["Documentos obrigatórios precisam estar aprovados antes de enviar a proposta."],
+            {
+              transition: createTransition(false, "required_documents", {
+                pendingDocumentTypes: docCheck.pendingTypes,
+                sourceStatus: existingLead.status,
+                targetStatus: status,
+              }),
+            }
+          );
+        }
+      }
+
       Object.assign(statusUpdateExtraData, gateEvaluation.statusUpdatePatch);
 
       const activeStatusRules = existingLead.teamId
@@ -2105,6 +2129,7 @@ export class LeadUseCase implements ILeadUseCase {
       leadTimeDueAt: lead.leadTimeDueAt ?? null,
       isLeadTimeBreached: lead.isLeadTimeBreached ?? false,
       attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
+      proposalReviewStatus: lead.proposalReview?.status ?? null,
       ...(lead.manager && {
         manager: {
           id: lead.manager.id,
@@ -2136,14 +2161,25 @@ export class LeadUseCase implements ILeadUseCase {
           payload: activity.payload,
           createdAt: activity.createdAt.toISOString(),
           reactions: this.aggregateActivityReactions(activity.reactions, viewerProfileId),
-          ...(activity.author && {
-            author: {
-              id: activity.author.id,
-              fullName: activity.author.fullName,
-              email: activity.author.email,
-              avatarUrl: activity.author.profileIconUrl || null,
-            }
-          })
+          ...((activity.author
+            ? {
+                author: {
+                  id: activity.author.id,
+                  fullName: activity.author.fullName,
+                  email: activity.author.email,
+                  avatarUrl: activity.author.profileIconUrl || null,
+                },
+              }
+            : activity.payload?.displayAuthor
+              ? {
+                  author: {
+                    id: "corretor-studio",
+                    fullName: String(activity.payload.displayAuthor),
+                    email: "",
+                    avatarUrl: activity.payload.authorAvatarUrl ?? "/corretor-studio-icon.svg",
+                  },
+                }
+              : {}) as Record<string, unknown>)
         }))
       })
     };
@@ -2232,6 +2268,11 @@ export class LeadUseCase implements ILeadUseCase {
       return;
     }
 
+    const leadId = input.lead.id as string;
+    await associateProposalUseCase.resetReviewOnResubmit(leadId).catch((err) =>
+      console.error("[LeadUseCase][resetReviewOnResubmit]", err)
+    );
+
     const teamId = input.lead.teamId as string | null;
     if (!teamId) {
       return;
@@ -2241,7 +2282,10 @@ export class LeadUseCase implements ILeadUseCase {
       const [team, backofficeMembers, closerProfile] = await Promise.all([
         prisma.team.findUnique({
           where: { id: teamId },
-          select: { masterId: true },
+          select: {
+            masterId: true,
+            master: { select: { sponsorMasterId: true } },
+          },
         }),
         prisma.teamMember.findMany({
           where: {
@@ -2268,6 +2312,17 @@ export class LeadUseCase implements ILeadUseCase {
 
       if (!team?.masterId) {
         return;
+      }
+
+      if (team.master?.sponsorMasterId) {
+        await associateProposalUseCase.notifyAssociateOfferSubmission({
+          leadId,
+          teamId,
+          leadCode: input.lead.leadCode,
+          leadName: input.lead.name,
+          actorProfileId: input.actorProfileId,
+          actorName: input.actorName,
+        }).catch((err) => console.error("[LeadUseCase][notifyAssociateOfferSubmission]", err));
       }
 
       const masterProfile = await prisma.profile.findUnique({

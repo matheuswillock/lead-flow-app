@@ -97,7 +97,8 @@ function LeadCardComponent({
         meetingPresenceConfirmed: lead.meetingPresenceConfirmed,
         isTransfer: lead.isTransfer,
     });
-    const showDestructivePulse = lead.isLeadTimeBreached || isFollowUpOverdue;
+    const showDestructivePulse =
+        lead.isLeadTimeBreached || isFollowUpOverdue || lead.proposalReviewStatus === "criticized";
 
     const handleFinalizeClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Evita que o card seja clicado

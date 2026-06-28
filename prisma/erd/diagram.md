@@ -42,6 +42,32 @@ contract_finalized contract_finalized
     
 
 
+        LeadProposalReviewStatus {
+            pending pending
+submitted submitted
+criticized criticized
+approved approved
+        }
+    
+
+
+        LeadRequiredDocumentType {
+            rg rg
+address_proof address_proof
+social_contract social_contract
+        }
+    
+
+
+        LeadRequiredDocumentStatus {
+            pending pending
+uploaded uploaded
+approved approved
+rejected rejected
+        }
+    
+
+
         backoffice_lead_status {
             new_opportunity new_opportunity
 scheduled scheduled
@@ -1119,6 +1145,28 @@ CDP CDP
     }
   
 
+  "corretor_studio_lead_proposal_reviews" {
+    String id "🗝️"
+    LeadProposalReviewStatus status 
+    String criticizedTitle "❓"
+    String criticizedMessage "❓"
+    DateTime criticizedAt "❓"
+    DateTime saleRegisteredAt "❓"
+    Json salePayload "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_lead_required_documents" {
+    String id "🗝️"
+    LeadRequiredDocumentType documentType 
+    LeadRequiredDocumentStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_pending_operators" {
     String id "🗝️"
     String name 
@@ -1819,6 +1867,7 @@ CDP CDP
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profiles" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "manager"
+    "corretor_studio_profiles" |o--|o corretor_studio_profiles : "sponsorMaster"
     "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" |o--|| corretor_studio_profiles : "profile"
@@ -1895,6 +1944,14 @@ CDP CDP
     "corretor_studio_lead_portfolio" }o--|| corretor_studio_teams : "team"
     "corretor_studio_lead_attachments" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_attachments" }o--|| corretor_studio_profiles : "uploader"
+    "corretor_studio_lead_proposal_reviews" |o--|| "LeadProposalReviewStatus" : "enum:status"
+    "corretor_studio_lead_proposal_reviews" |o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_proposal_reviews" }o--|o corretor_studio_profiles : "reviewedBy"
+    "corretor_studio_lead_required_documents" |o--|| "LeadRequiredDocumentType" : "enum:documentType"
+    "corretor_studio_lead_required_documents" |o--|| "LeadRequiredDocumentStatus" : "enum:status"
+    "corretor_studio_lead_required_documents" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_required_documents" }o--|o corretor_studio_lead_attachments : "attachment"
+    "corretor_studio_lead_required_documents" }o--|o corretor_studio_profiles : "reviewedBy"
     "corretor_studio_pending_operators" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_pending_operators" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_pending_operators" }o--|o corretor_studio_teams : "team"

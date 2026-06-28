@@ -1,4 +1,4 @@
-import type { LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export interface LeadResponseDTO {
   id: string;
@@ -49,6 +49,7 @@ export interface LeadResponseDTO {
   leadTimeDueAt?: string | null;
   isLeadTimeBreached?: boolean;
   attachmentCount?: number;
+  proposalReviewStatus?: LeadProposalReviewStatus | null;
   manager?: {
     id: string;
     fullName: string | null;

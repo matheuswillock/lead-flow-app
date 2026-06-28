@@ -53,7 +53,19 @@ export function createColumns({
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }) => <div className="font-medium">{row.getValue("name") || "—"}</div>,
+      cell: ({ row }) => (
+        <div className="flex flex-col gap-1">
+          <div className="font-medium">{row.getValue("name") || "—"}</div>
+          {row.original.isAssociateAccount ? (
+            <Badge
+              variant="outline"
+              className="w-fit border-precision-border-soft bg-precision-indigo/10 text-precision-indigo"
+            >
+              Associado
+            </Badge>
+          ) : null}
+        </div>
+      ),
     },
     {
       accessorKey: "role",

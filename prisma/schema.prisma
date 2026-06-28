@@ -62,6 +62,26 @@ enum LeadStatus {
   contract_finalized
 }
 
+enum LeadProposalReviewStatus {
+  pending
+  submitted
+  criticized
+  approved
+}
+
+enum LeadRequiredDocumentType {
+  rg
+  address_proof
+  social_contract
+}
+
+enum LeadRequiredDocumentStatus {
+  pending
+  uploaded
+  approved
+  rejected
+}
+
 enum BackofficeLeadStatus {
   new_opportunity
   scheduled
@@ -545,6 +565,7 @@ model Profile {
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
+  sponsorMasterId          String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
   subscriptionId           String?             @db.Text
   subscriptionStatus       SubscriptionStatus?
@@ -565,6 +586,9 @@ model Profile {
   // Relations
   manager   Profile?  @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)
   operators Profile[] @relation("ManagerOperators")
+
+  sponsorMaster     Profile?  @relation("ProfileSponsor", fields: [sponsorMasterId], references: [id], onDelete: Restrict)
+  sponsoredAccounts Profile[] @relation("ProfileSponsor")
 
   // Lead relations
   leadsAsManager    Lead[]                 @relation("LeadManager")
@@ -634,8 +658,12 @@ model Profile {
   whatsappConversations   WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
   whatsappMessagesSent    WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
 
+  proposalReviewsReviewed LeadProposalReview[]  @relation("LeadProposalReviewReviewer")
+  requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
+
   @@index([role])
   @@index([managerId])
+  @@index([sponsorMasterId])
   @@index([cpfCnpj])
   @@index([googleConnectionId])
   @@map("corretor_studio_profiles")
@@ -1102,6 +1130,8 @@ model Lead {
   transfers     LeadTransfer[]
   portfolio     LeadPortfolio?
   attachments   LeadAttachment[]
+  proposalReview LeadProposalReview?
+  requiredDocuments LeadRequiredDocument[]
 
   // WhatsApp relations
   whatsappConversations WhatsAppConversation[]
@@ -1342,10 +1372,52 @@ model LeadAttachment {
   // Relations
   lead     Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   uploader Profile @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  requiredDocumentLinks LeadRequiredDocument[]
 
   @@index([leadId])
   @@index([uploadedBy])
   @@map("corretor_studio_lead_attachments")
+}
+
+model LeadProposalReview {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  leadId               String                   @unique @db.Uuid
+  status               LeadProposalReviewStatus @default(pending)
+  criticizedTitle      String?                  @db.Text
+  criticizedMessage    String?                  @db.Text
+  criticizedAt         DateTime?                @db.Timestamptz(6)
+  reviewedByProfileId  String?                  @db.Uuid
+  saleRegisteredAt     DateTime?                @db.Timestamptz(6)
+  salePayload          Json?
+  createdAt            DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime                 @updatedAt @db.Timestamptz(6)
+
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reviewedBy Profile? @relation("LeadProposalReviewReviewer", fields: [reviewedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([reviewedByProfileId])
+  @@map("corretor_studio_lead_proposal_reviews")
+}
+
+model LeadRequiredDocument {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  leadId              String                     @db.Uuid
+  documentType        LeadRequiredDocumentType
+  status              LeadRequiredDocumentStatus @default(pending)
+  attachmentId        String?                    @db.Uuid
+  reviewedByProfileId String?                    @db.Uuid
+  createdAt           DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime                   @updatedAt @db.Timestamptz(6)
+
+  lead       Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  attachment LeadAttachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  reviewedBy Profile?        @relation("LeadRequiredDocumentReviewer", fields: [reviewedByProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([leadId, documentType])
+  @@index([leadId])
+  @@index([status])
+  @@map("corretor_studio_lead_required_documents")
 }
 
 // -----------------------------

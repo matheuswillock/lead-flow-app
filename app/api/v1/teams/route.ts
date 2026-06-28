@@ -134,6 +134,7 @@ export async function GET(request: NextRequest) {
                 id: true,
                 fullName: true,
                 email: true,
+                sponsorMasterId: true,
               },
             },
           },
@@ -202,6 +203,33 @@ export async function GET(request: NextRequest) {
       })
     );
 
+    const activeTeamIds = new Set(memberships.map((m) => m.team.id));
+
+    const sponsoredTeams = await prisma.team.findMany({
+      where: {
+        master: {
+          sponsorMasterId: profile.id,
+        },
+      },
+      include: {
+        master: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    for (const masterId of sponsoredTeams.map((t) => t.masterId)) {
+      if (!subscriptionByMasterId.has(masterId)) {
+        const status = await getAccountSubscriptionStatus(masterId);
+        subscriptionByMasterId.set(masterId, status.isActive);
+      }
+    }
+
     const activeTeams = memberships.map((membership) => {
       const accountMasterId = membership.team.masterId;
       const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
@@ -213,6 +241,11 @@ export async function GET(request: NextRequest) {
         accountMasterId,
         accountName: membership.team.master.fullName ?? membership.team.master.email,
         isOwnAccount: accountMasterId === profile.id,
+        isAssociateAccount: Boolean(membership.team.master.sponsorMasterId),
+        associateAccountName:
+          membership.team.master.sponsorMasterId
+            ? (membership.team.master.fullName ?? membership.team.master.email)
+            : null,
         isAccessible: accountSubscriptionActive,
         accountSubscriptionActive,
         isDefault: membership.team.isDefault,
@@ -227,12 +260,44 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const sponsoredTeamRows = sponsoredTeams
+      .filter((team) => !activeTeamIds.has(team.id))
+      .map((team) => {
+        const accountMasterId = team.masterId;
+        const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+        const associateAccountName = team.master.fullName ?? team.master.email;
+
+        return {
+          id: team.id,
+          name: team.name,
+          masterId: accountMasterId,
+          accountMasterId,
+          accountName: associateAccountName,
+          isOwnAccount: false,
+          isAssociateAccount: true,
+          associateAccountName,
+          isAccessible: accountSubscriptionActive,
+          accountSubscriptionActive,
+          isDefault: team.isDefault,
+          role: "backoffice" as const,
+          functions: [] as string[],
+          canCreateAccountUsers: false,
+          canManageAccountTeams: true,
+          canTransferAccountLeads: false,
+          membershipCreatedAt: team.createdAt,
+          isPending: false,
+          pendingPayment: null,
+        };
+      });
+
+    const activeTeamsMerged = [...activeTeams, ...sponsoredTeamRows];
+
     const pendingTeamRows = pendingActions
       .filter((action) => {
         const payload = (action.payload as Record<string, unknown>) || {};
         const teamName = String(payload.teamName ?? "").trim();
         if (!teamName) return false;
-        return !activeTeams.some((team) => team.name.trim() === teamName);
+        return !activeTeamsMerged.some((team) => team.name.trim() === teamName);
       })
       .map((action) => {
         const payload = (action.payload as Record<string, unknown>) || {};
@@ -269,7 +334,7 @@ export async function GET(request: NextRequest) {
         };
       });
 
-    const teams = [...activeTeams, ...pendingTeamRows];
+    const teams = [...activeTeamsMerged, ...pendingTeamRows];
 
     let activeTeamId = profile.activeTeamId;
     const currentTeam = teams.find((team) => team.id === activeTeamId);
@@ -279,7 +344,7 @@ export async function GET(request: NextRequest) {
       ("isAccessible" in currentTeam ? currentTeam.isAccessible : true);
 
     if (!currentIsAccessible) {
-      const fallbackTeam = activeTeams.find((team) => team.isAccessible);
+      const fallbackTeam = activeTeamsMerged.find((team) => team.isAccessible);
       if (fallbackTeam) {
         activeTeamId = fallbackTeam.id;
         await prisma.profile.update({

@@ -20,6 +20,7 @@ import {
   Send,
   History,
   ArrowRightLeft,
+  Handshake,
   BarChart3,
   Calculator,
   Settings,
@@ -108,10 +109,15 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     () => `sidebar-whatsapp-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
   );
+  const backofficeStorageKey = useMemo(
+    () => `sidebar-backoffice-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
+    [supabaseId, activeTeamId]
+  );
   const [isTeamActivityCollapsed, setIsTeamActivityCollapsed] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isEmailCollapsed, setIsEmailCollapsed] = useState(false);
   const [isWhatsAppCollapsed, setIsWhatsAppCollapsed] = useState(false);
+  const [isBackofficeCollapsed, setIsBackofficeCollapsed] = useState(false);
   const { unreadConversations } = useWhatsAppUnreadCount({ enabled: hasAccess(FEATURE_SLUGS.WHATSAPP) });
   const docsUrl = `/${supabaseId}/docs`;
 
@@ -139,6 +145,15 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP, unreadCount: unreadConversations },
     { title: "Auto-respostas", url: `/${supabaseId}/whatsapp/auto-respostas`, icon: Bot, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES },
     { title: "Configurações", url: `/${supabaseId}/whatsapp/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
+  ];
+
+  const backofficeItems: SidebarItem[] = [
+    {
+      title: "Associados",
+      url: `/${supabaseId}/associados`,
+      icon: Handshake,
+      featureSlug: FEATURE_SLUGS.CRM_BACKOFFICE_ASSOCIADOS,
+    },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -214,7 +229,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     setIsNavCollapsed(window.localStorage.getItem(navStorageKey) === "true");
     setIsEmailCollapsed(window.localStorage.getItem(emailStorageKey) === "true");
     setIsWhatsAppCollapsed(window.localStorage.getItem(whatsAppStorageKey) === "true");
-  }, [teamActivityStorageKey, navStorageKey, emailStorageKey, whatsAppStorageKey]);
+    setIsBackofficeCollapsed(window.localStorage.getItem(backofficeStorageKey) === "true");
+  }, [teamActivityStorageKey, navStorageKey, emailStorageKey, whatsAppStorageKey, backofficeStorageKey]);
 
   const toggleTeamActivityVisibility = () => {
     setIsTeamActivityCollapsed((previous) => {
@@ -248,6 +264,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     });
   };
 
+  const toggleBackofficeVisibility = () => {
+    setIsBackofficeCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") window.localStorage.setItem(backofficeStorageKey, String(next));
+      return next;
+    });
+  };
+
   const formatInitials = (fullName: string) =>
     fullName
       .split(" ")
@@ -263,6 +287,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   }
 
   const visibleNavigationItems = navigationItems.filter(canShowItem)
+  const visibleBackofficeItems = backofficeItems.filter(canShowItem)
   const visibleEmailItems = emailItems.filter(canShowItem)
   const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)
@@ -290,6 +315,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 accountName: team.accountName,
                 isOwnAccount: team.isOwnAccount,
                 isAccessible: team.isAccessible,
+                isAssociateAccount: team.isAssociateAccount,
               }))}
               activeTeamId={activeTeamId}
               onChange={setActiveTeamId}
@@ -339,6 +365,47 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                   </SidebarGroupContent>
                 )}
             </SidebarGroup>
+            )}
+            {visibleBackofficeItems.length > 0 &&
+              !(activeTeam?.isAssociateAccount && activeTeam?.isOwnAccount) && (
+              <SidebarGroup>
+                <SidebarGroupLabel
+                  className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors"
+                  onClick={toggleBackofficeVisibility}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    Backoffice
+                    {isBackofficeCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </span>
+                </SidebarGroupLabel>
+                {!isBackofficeCollapsed && (
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {visibleBackofficeItems.map((item) => {
+                        const statusBadge = getItemBadge(item);
+
+                        return (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                              <Link href={item.url} className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <item.icon className="size-4 shrink-0" />
+                                  <span>{item.title}</span>
+                                </span>
+                                {statusBadge && (
+                                  <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                    {statusBadge.label}
+                                  </span>
+                                )}
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
+              </SidebarGroup>
             )}
             {(isManager || isTeamMaster || isCloser) &&
               hasAccess(FEATURE_SLUGS.EMAIL) &&

@@ -53,6 +53,8 @@ export function ManagerTeamsContainer({
     role: team.role,
     functions: team.functions ?? [],
     createdAt: team.membershipCreatedAt,
+    isAssociateAccount: team.isAssociateAccount ?? false,
+    associateAccountName: team.associateAccountName ?? undefined,
     isPending: team.isPending ?? false,
     pendingPayment: team.pendingPayment ?? null,
   }));

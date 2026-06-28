@@ -633,7 +633,23 @@ export default function LeadDialog({
     [applyLocalLeadPatch]
   );
 
-  const resolveActivityAuthor = useCallback((profileId: string | null | undefined) => {
+  const resolveActivityAuthor = useCallback((
+    profileId: string | null | undefined,
+    payload?: Record<string, unknown> | null
+  ) => {
+    const displayAuthor = typeof payload?.displayAuthor === "string" ? payload.displayAuthor : null;
+    if (!profileId && displayAuthor) {
+      return {
+        id: "corretor-studio",
+        fullName: displayAuthor,
+        email: "",
+        avatarUrl:
+          typeof payload?.authorAvatarUrl === "string"
+            ? payload.authorAvatarUrl
+            : "/corretor-studio-icon.svg",
+      };
+    }
+
     if (!profileId) return null;
 
     const member = teamMembers.find((teamMember) => teamMember.profileId === profileId);
@@ -668,7 +684,7 @@ export default function LeadDialog({
       payload: activityRow.payload,
       createdAt: activityRow.createdAt,
       reactions: [],
-      author: resolveActivityAuthor(activityRow.createdBy),
+      author: resolveActivityAuthor(activityRow.createdBy, activityRow.payload as Record<string, unknown> | null),
     };
 
     setOptimisticActivities((prev) => {

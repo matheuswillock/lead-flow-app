@@ -86,9 +86,18 @@ export class TeamMembersUseCase {
         isMaster: member.profileId === team.masterId,
       }));
 
+      const isAssociateAccount = Boolean(team.sponsorMasterId);
+      const viewerOnAssociateAccount =
+        profile.id === team.masterId || profile.managerId === team.masterId;
+
+      const visibleMembers =
+        isAssociateAccount && viewerOnAssociateAccount && team.sponsorMasterId
+          ? formattedMembers.filter((member) => member.profileId !== team.sponsorMasterId)
+          : formattedMembers;
+
       const filteredMembers = requestedFunction
-        ? formattedMembers.filter((member) => member.functions.includes(requestedFunction))
-        : formattedMembers;
+        ? visibleMembers.filter((member) => member.functions.includes(requestedFunction))
+        : visibleMembers;
 
       let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
       let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];

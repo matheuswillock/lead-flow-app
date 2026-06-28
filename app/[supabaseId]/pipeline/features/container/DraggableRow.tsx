@@ -47,7 +47,9 @@ export function DraggableRow({ row, onRowClick, onRowHover }: DraggableRowProps)
       className={cn(
         "cursor-pointer",
         isDraftLead(row.original) && "bg-muted/40 border-l-2 border-dashed border-muted-foreground/40",
-        (row.original.isLeadTimeBreached || isFollowUpOverdue) && "animate-pulse bg-destructive/10"
+        (row.original.isLeadTimeBreached || isFollowUpOverdue) && "animate-pulse bg-destructive/10",
+        row.original.proposalReviewStatus === "criticized" &&
+          "border-l-2 border-destructive bg-destructive/10"
       )}
       data-draft={isDraftLead(row.original) ? "true" : "false"}
       onClick={() => onRowClick(row.original)}

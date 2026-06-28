@@ -1570,13 +1570,127 @@
                 "description": "Lista leads pendentes de transferência e histórico concluído do time de origem. Acesso: Master, Manager ou Backoffice."
               },
               "response": []
+            },
+            {
+              "name": "15. Listar Propostas Associados",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals?page=1&pageSize=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "20" }
+                  ]
+                },
+                "description": "Fila de propostas (offerSubmission) de contas associadas ao patrocinador ativo."
+              },
+              "response": []
+            },
+            {
+              "name": "16. Detalhe Proposta Associado",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "17. Criticar Proposta Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Ajuste na proposta\",\n  \"message\": \"Corrija o valor informado.\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/criticize",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "criticize"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "18. Aprovar Documento Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents/rg/approve",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents", "rg", "approve"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "19. Registrar Venda Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"operatorName\": \"Operadora X\",\n  \"proposalNumber\": \"12345\",\n  \"notes\": \"Registro manual\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/register-sale",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "register-sale"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "20. Comprovante Boleto Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"attachmentId\": \"{{attachmentId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/payment-proof",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "payment-proof"]
+                }
+              },
+              "response": []
             }
           ]
         }
       ]
     },
-    {
-      "name": "Notifications",
       "item": [
         {
           "name": "Web Push Consent",

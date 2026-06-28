@@ -5,12 +5,14 @@ export interface TeamMembersRequesterProfile {
   email: string | null;
   fullName: string | null;
   isMaster: boolean;
+  managerId: string | null;
 }
 
 export interface TeamMembersTeam {
   id: string;
   masterId: string;
   name: string;
+  sponsorMasterId?: string | null;
 }
 
 export interface TeamMembersListItem {
