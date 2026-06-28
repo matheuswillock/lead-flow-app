@@ -109,7 +109,7 @@ jobs:
           echo "proxy-tests=${{ steps['proxy-tests'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" ]]; then
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
             echo "passed=true" >> "$GITHUB_OUTPUT"
           else
             echo "passed=false" >> "$GITHUB_OUTPUT"
