@@ -1,4 +1,4 @@
-import { ILeadRepository, type TransferToTeamSanitization } from "./ILeadRepository";
+import { ILeadRepository, type LeadCreateRepositoryInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
@@ -77,9 +77,9 @@ const CRM_LEAD_LIST_SELECT = {
 } satisfies Prisma.LeadSelect;
 
 export class LeadRepository implements ILeadRepository {
-  async create(data: Prisma.LeadCreateInput): Promise<Lead> {
+  async create(data: LeadCreateRepositoryInput): Promise<LeadRecord> {
     return await prisma.lead.create({
-      data,
+      data: data as Prisma.LeadCreateInput,
       include: {
         manager: {
           select: {
@@ -113,7 +113,7 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
-  async findById(id: string): Promise<Lead | null> {
+  async findById(id: string): Promise<LeadRecord | null> {
     return await prisma.lead.findUnique({
       where: { id },
       include: {
@@ -256,10 +256,10 @@ export class LeadRepository implements ILeadRepository {
     return { leads, total };
   }
 
-  async update(id: string, data: Prisma.LeadUpdateInput): Promise<Lead> {
+  async update(id: string, data: LeadUpdateRepositoryInput): Promise<LeadRecord> {
     return await prisma.lead.update({
       where: { id },
-      data,
+      data: data as Prisma.LeadUpdateInput,
       include: {
         manager: {
           select: {

@@ -42,6 +42,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   allowedDevOrigins: (
     process.env.NEXT_ALLOWED_DEV_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? [
+      "127.0.0.1",
+      "localhost",
       "nonzero-rodrick-mentholated.ngrok-free.dev",
     ]
   ),

@@ -36,7 +36,7 @@ export function SignInForm({
       provider: "google",
       options: {
         scopes: GOOGLE_CALENDAR_SCOPES,
-        redirectTo: `${window.location.origin}/auth/callback?next=/crm`,
+        redirectTo: `${window.location.origin}/auth/callback`,
         queryParams: {
           access_type: "offline",
           prompt: "consent",

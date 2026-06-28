@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback,
 import { Output } from "@/lib/output";
 import type { UserRole, UserFunction } from "@prisma/client";
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 type UserBootstrapResponse = {
   profileOutput: Output;
@@ -115,8 +116,37 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       setError(null);
 
       const createBootstrapRequest = async (): Promise<UserBootstrapResponse> => {
-        const response = await fetch(`/api/v1/profiles/${supabaseId}`);
-        const profileOutput: Output = await response.json();
+        const profilePromise = fetch(`/api/v1/profiles/${supabaseId}`).then(
+          (response) => response.json() as Promise<Output>
+        );
+
+        const sessionEmailPromise = createSupabaseBrowser()
+          ?.auth.getSession()
+          .then((result) => result.data.session?.user?.email ?? null) ?? Promise.resolve(null);
+
+        const subscriptionPromise = sessionEmailPromise.then(async (sessionEmail) => {
+          if (!sessionEmail) {
+            return null;
+          }
+
+          const checkResponse = await fetch("/api/v1/subscriptions/check", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ email: sessionEmail }),
+          });
+
+          const subscriptionCheckOutput: Output = await checkResponse.json();
+          return subscriptionCheckOutput.isValid
+            ? (subscriptionCheckOutput.result as UserBootstrapResponse["subscriptionCheckResult"])
+            : null;
+        });
+
+        const [profileOutput, subscriptionCheckResult] = await Promise.all([
+          profilePromise,
+          subscriptionPromise,
+        ]);
 
         if (!profileOutput.isValid || !profileOutput.result) {
           return {
@@ -125,10 +155,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({
           };
         }
 
-        const checkResponse = await fetch('/api/v1/subscriptions/check', {
-          method: 'POST',
+        if (subscriptionCheckResult?.userExists) {
+          return { profileOutput, subscriptionCheckResult };
+        }
+
+        const checkResponse = await fetch("/api/v1/subscriptions/check", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             email: profileOutput.result.email,
@@ -138,13 +172,13 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         });
 
         const subscriptionCheckOutput: Output = await checkResponse.json();
-        const subscriptionCheckResult = subscriptionCheckOutput.isValid
+        const enrichedSubscriptionCheckResult = subscriptionCheckOutput.isValid
           ? (subscriptionCheckOutput.result as UserBootstrapResponse["subscriptionCheckResult"])
           : null;
 
         return {
           profileOutput,
-          subscriptionCheckResult,
+          subscriptionCheckResult: enrichedSubscriptionCheckResult,
         };
       };
 

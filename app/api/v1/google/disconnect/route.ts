@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
     if (currentProfile.googleConnectionId) {
       const linkedDependents =
         await backofficeUserRepository.findLinkedDependentsWithoutOwnConnection(currentProfile.id)
+
       if (linkedDependents.length > 0 && !force) {
         const output = new Output(
           false,

@@ -1,7 +1,3 @@
--- Add require_closer gate type and seed offer submission closer requirement
-
-ALTER TYPE "BackofficeLeadTransitionGateType" ADD VALUE IF NOT EXISTS 'require_closer';
-
 INSERT INTO "backoffice_lead_status_transition_gates"
     ("slug", "name", "gateType", "sourceStatus", "targetStatus", "config", "blockerType", "errorMessage", "isEnabled", "sortOrder", "updatedByProfileId")
 SELECT

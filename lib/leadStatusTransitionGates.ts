@@ -166,13 +166,28 @@ export function getAllowedTargetStatusesFromGates(
   return parseAllowedTargetStatusesConfig(gate.config).allowedTargetStatuses;
 }
 
+/** Fallback client-side quando a API de gates ainda não carregou (espelha seed `new_opportunity_allowed_targets`). */
+export function getBuiltinAllowedTargetStatuses(sourceStatus: LeadStatus): LeadStatus[] | null {
+  if (sourceStatus === "new_opportunity") {
+    return ["scheduled", "opportunityLost"];
+  }
+  return null;
+}
+
+export function resolveAllowedTargetStatuses(
+  gates: LeadStatusTransitionGateRow[],
+  sourceStatus: LeadStatus
+): LeadStatus[] | null {
+  return getAllowedTargetStatusesFromGates(gates, sourceStatus) ?? getBuiltinAllowedTargetStatuses(sourceStatus);
+}
+
 export function isTransitionAllowedByGates(
   gates: LeadStatusTransitionGateRow[],
   sourceStatus: LeadStatus,
   targetStatus: LeadStatus
 ): boolean {
   if (sourceStatus === targetStatus) return true;
-  const allowed = getAllowedTargetStatusesFromGates(gates, sourceStatus);
+  const allowed = resolveAllowedTargetStatuses(gates, sourceStatus);
   if (!allowed) return true;
   return allowed.includes(targetStatus);
 }
@@ -183,10 +198,7 @@ export function filterSelectableStatusLabelsFromGates(
   gates: LeadStatusTransitionGateRow[]
 ): Array<[string, string]> {
   const entries = Object.entries(statusLabels);
-  const allowed = getAllowedTargetStatusesFromGates(
-    gates,
-    sourceStatus as LeadStatus
-  );
+  const allowed = resolveAllowedTargetStatuses(gates, sourceStatus as LeadStatus);
   if (!allowed) return entries;
   const allowedSet = new Set<string>(allowed);
   return entries.filter(([value]) => allowedSet.has(value));

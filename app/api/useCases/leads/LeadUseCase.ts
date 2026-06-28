@@ -8,7 +8,7 @@ import type {
   UpdateLeadStatusTriggerInput,
 } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
-import type { TransferToTeamSanitization } from "../../infra/data/repositories/lead/ILeadRepository";
+import type { LeadUpdateRepositoryInput, TransferToTeamSanitization } from "../../infra/data/repositories/lead/ILeadRepository";
 import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
@@ -85,11 +85,27 @@ type LeadStatusTransitionBlockerType =
 
 const defaultLeadRepository = new LeadRepository();
 
+function serializeLeadForCache<T extends { currentValue?: unknown; ticket?: unknown }>(
+  lead: T | null
+): T | null {
+  if (!lead) {
+    return null;
+  }
+
+  return {
+    ...lead,
+    currentValue:
+      lead.currentValue != null ? Number(lead.currentValue as number | string) : null,
+    ticket: lead.ticket != null ? Number(lead.ticket as number | string) : null,
+  };
+}
+
 async function getCachedLeadById(leadId: string) {
   "use cache";
   cacheTag(cacheTags.lead(leadId));
   cacheLife({ stale: 30, revalidate: 60 });
-  return defaultLeadRepository.findById(leadId);
+  const lead = await defaultLeadRepository.findById(leadId);
+  return serializeLeadForCache(lead);
 }
 
 export class LeadUseCase implements ILeadUseCase {
@@ -770,7 +786,7 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
-      const updateData: any = {};
+      const updateData: LeadUpdateRepositoryInput = {};
       let razaoSocialLookupWarning = false;
       const shouldValidateHealthPlans = data.currentHealthPlan !== undefined || data.soldPlan !== undefined;
       const normalizedPlans = shouldValidateHealthPlans

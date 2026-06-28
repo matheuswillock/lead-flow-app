@@ -29,8 +29,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
   const { teams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const { isLoading: featureLoading, hasAccess } = useFeatureAccess();
 
-  // Enquanto carrega os dados do usuário, mostra loading global
-  if (isLoading || teamsLoading || featureLoading) {
+  if (isLoading || teamsLoading) {
     return <GlobalLoading />;
   }
 
@@ -73,7 +72,11 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
 
   const shouldShowNoTeamsMessage = teams.length === 0;
   const requiredFeatureSlug = getFeatureSlugForAppPath(pathname);
-  const shouldBlockByFeature = !shouldShowNoTeamsMessage && !!requiredFeatureSlug && !hasAccess(requiredFeatureSlug);
+  const shouldBlockByFeature =
+    !shouldShowNoTeamsMessage &&
+    !featureLoading &&
+    !!requiredFeatureSlug &&
+    !hasAccess(requiredFeatureSlug);
   const canShowWhatsNewModal = !shouldShowNoTeamsMessage && !shouldBlockByFeature;
 
   // Dados carregados, renderiza o layout completo

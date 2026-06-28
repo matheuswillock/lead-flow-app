@@ -1,6 +1,18 @@
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
+export type LeadRecord = Lead & {
+  razaoSocial: string | null;
+};
+
+export type LeadCreateRepositoryInput = Prisma.LeadCreateInput & {
+  razaoSocial?: string | null;
+};
+
+export type LeadUpdateRepositoryInput = Prisma.LeadUpdateInput & {
+  razaoSocial?: string | null;
+};
+
 export type TransferToTeamSanitization = {
   leadId: string;
   clearEmail: boolean;
@@ -8,8 +20,8 @@ export type TransferToTeamSanitization = {
 };
 
 export interface ILeadRepository {
-  create(data: Prisma.LeadCreateInput): Promise<Lead>;
-  findById(id: string): Promise<Lead | null>;
+  create(data: LeadCreateRepositoryInput): Promise<LeadRecord>;
+  findById(id: string): Promise<LeadRecord | null>;
   findByLeadCode(leadCode: string): Promise<Lead | null>;
   findLeadByPhoneInTeam(teamId: string, normalizedPhone: string): Promise<Pick<Lead, "id"> | null>;
   findByManagerId(
@@ -69,7 +81,7 @@ export interface ILeadRepository {
       onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }>;
-  update(id: string, data: Prisma.LeadUpdateInput): Promise<Lead>;
+  update(id: string, data: LeadUpdateRepositoryInput): Promise<LeadRecord>;
   delete(id: string): Promise<void>;
   updateStatus(id: string, status: LeadStatus, extraData?: Prisma.LeadUpdateInput): Promise<Lead>;
   assignToOperator(id: string, operatorId: string): Promise<Lead>;
