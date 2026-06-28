@@ -179,6 +179,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     supabaseId,
     currentProfileId: user?.id ?? null,
     enabled: Boolean(activeTeamId && supabaseId),
+    isAssociateAccount: Boolean(activeTeam?.isAssociateAccount && activeTeam?.isOwnAccount),
+    sponsorMasterId: activeTeam?.sponsorMasterId ?? null,
   });
 
   const presenceVisualMap = {
@@ -286,8 +288,15 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     return getSidebarStatusBadge(item.status)
   }
 
+  const canAccessAssociadosBackoffice =
+    activeRole === "backoffice" ||
+    Boolean(activeTeam?.canManageAccountTeams) ||
+    (isTeamMaster && teams.some((team) => team.isAssociateAccount));
+
   const visibleNavigationItems = navigationItems.filter(canShowItem)
-  const visibleBackofficeItems = backofficeItems.filter(canShowItem)
+  const visibleBackofficeItems = backofficeItems.filter(
+    (item) => canShowItem(item) && canAccessAssociadosBackoffice
+  )
   const visibleEmailItems = emailItems.filter(canShowItem)
   const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)

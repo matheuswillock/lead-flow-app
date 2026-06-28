@@ -58,6 +58,21 @@ export interface LeadProposalPendingUrgentEmailData {
   actorName: string;
 }
 
+export interface AssociateProposalCriticismEmailData {
+  to: string[];
+  leadCode: string;
+  leadName: string;
+  title: string;
+  message: string;
+}
+
+export interface AssociateRequiredDocumentsPendingEmailData {
+  to: string[];
+  leadCode: string;
+  leadName: string;
+  actorName: string;
+}
+
 export interface LeadTransferActivatedEmailData {
   to: string[];
   leadCode: string;
@@ -1139,6 +1154,51 @@ export class EmailService {
       html,
       attachments: data.attachments,
     });
+  }
+
+  async sendAssociateProposalCriticismEmail(data: AssociateProposalCriticismEmailData) {
+    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
+    const subject = `Proposta criticada — ${data.leadName} (${data.leadCode})`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #dc2626; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 22px;">Proposta criticada</h1>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">Corretor Studio</p>
+        </div>
+        <div style="border: 1px solid #fecaca; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
+          <p style="margin: 0 0 14px;"><strong>Lead:</strong> ${data.leadName} (${data.leadCode})</p>
+          <p style="margin: 0 0 8px;"><strong>Título:</strong> ${data.title}</p>
+          <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 12px; border-radius: 6px; margin: 0 0 14px;">
+            <p style="margin: 0; white-space: pre-wrap;">${data.message}</p>
+          </div>
+          <a href="${leadUrl}" style="display: inline-block; background: #dc2626; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Abrir lead no CRM</a>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({ to: data.to, subject, html });
+  }
+
+  async sendAssociateRequiredDocumentsPendingEmail(data: AssociateRequiredDocumentsPendingEmailData) {
+    const leadUrl = getFullUrl(`/associados`);
+    const subject = `Documentos pendentes — ${data.leadName} (${data.leadCode})`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 22px;">Documentos obrigatórios pendentes</h1>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">${data.actorName} enviou proposta de conta associada</p>
+        </div>
+        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
+          <p style="margin: 0 0 14px;"><strong>Lead:</strong> ${data.leadName} (${data.leadCode})</p>
+          <p style="margin: 0 0 14px;">Revise e aprove RG, Comprovante de Endereço e Contrato Social na fila Associados.</p>
+          <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Abrir fila Associados</a>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({ to: data.to, subject, html });
   }
 
   // Email de convite para novo operador

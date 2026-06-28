@@ -130,6 +130,54 @@ export class AssociateProposalService {
     return { leadId, documentType, status: "approved" };
   }
 
+  async linkDocument(
+    access: AssociateBackofficeAccess,
+    leadId: string,
+    input: { documentType: LeadRequiredDocumentType; attachmentId: string }
+  ) {
+    const lead = await associateProposalRepository.assertLeadBelongsToSponsor(
+      leadId,
+      access.sponsorProfileId
+    );
+    if (!lead) throw new Error("Lead não encontrado");
+
+    const attachment = await associateProposalRepository.findLeadAttachmentForLead(
+      leadId,
+      input.attachmentId
+    );
+    if (!attachment) throw new Error("Anexo não pertence ao lead");
+
+    await associateProposalRepository.linkRequiredDocument({
+      leadId,
+      documentType: input.documentType,
+      attachmentId: input.attachmentId,
+    });
+
+    return { leadId, documentType: input.documentType, status: "uploaded" as const };
+  }
+
+  async rejectDocument(
+    access: AssociateBackofficeAccess,
+    leadId: string,
+    documentType: LeadRequiredDocumentType,
+    reason: string
+  ) {
+    const lead = await associateProposalRepository.assertLeadBelongsToSponsor(
+      leadId,
+      access.sponsorProfileId
+    );
+    if (!lead) throw new Error("Lead não encontrado");
+
+    await associateProposalRepository.rejectRequiredDocument({
+      leadId,
+      documentType,
+      reason,
+      reviewedByProfileId: access.profileId,
+    });
+
+    return { leadId, documentType, status: "rejected" as const };
+  }
+
   async uploadPaymentProof(
     access: AssociateBackofficeAccess,
     leadId: string,
@@ -152,20 +200,18 @@ export class AssociateProposalService {
     await associateProposalRepository.resetCriticizedReview(leadId);
   }
 
-  async evaluateRequiredDocumentsForOfferSubmission(leadId: string, teamId: string) {
-    const sponsorMasterId = await associateProposalRepository.findTeamSponsorMasterId(teamId);
-    if (!sponsorMasterId) {
-      return { blocked: false, pendingTypes: [] as LeadRequiredDocumentType[] };
-    }
-
-    await associateProposalRepository.ensureProposalArtifacts(leadId);
-
+  async hasPendingRequiredDocuments(leadId: string) {
     const docs = await associateProposalRepository.findRequiredDocumentStatuses(leadId);
-    const pendingTypes = docs
-      .filter((doc) => doc.status !== "approved")
-      .map((doc) => doc.documentType);
+    return docs.some((doc) => doc.status === "pending" || doc.status === "rejected");
+  }
 
-    return { blocked: pendingTypes.length > 0, pendingTypes };
+  async hasAllRequiredDocumentsApproved(leadId: string) {
+    const docs = await associateProposalRepository.findRequiredDocumentStatuses(leadId);
+    return docs.length > 0 && docs.every((doc) => doc.status === "approved");
+  }
+
+  async evaluateRequiredDocumentsForOfferSubmission(_leadId: string, _teamId: string) {
+    return { blocked: false, pendingTypes: [] as LeadRequiredDocumentType[] };
   }
 }
 

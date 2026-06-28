@@ -1,8 +1,12 @@
 import { LeadStatus } from "@prisma/client";
 import { Output } from "@/lib/output";
+import { getEmailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { dispatchWebPushToProfile } from "@/app/api/infra/webPush/dispatchWebPush";
-import { STUDIO_FEED_IDENTITY } from "@/app/api/infra/data/repositories/associateProposal/AssociateProposalRepository";
+import {
+  associateProposalRepository,
+  STUDIO_FEED_IDENTITY,
+} from "@/app/api/infra/data/repositories/associateProposal/AssociateProposalRepository";
 import type { AssociateBackofficeAccess } from "@/app/api/useCases/associateProposal/AssociateBackofficeAccessTypes";
 import {
   associateProposalService,
@@ -53,6 +57,16 @@ export class AssociateProposalUseCase {
 
     await this.service.ensureProposalArtifacts(input.leadId);
 
+    await this.notifyRequiredDocumentsPending({
+      leadId: input.leadId,
+      teamId: input.teamId,
+      leadCode: input.leadCode,
+      leadName: input.leadName,
+      actorProfileId: input.actorProfileId,
+      actorName: input.actorName,
+      recipientProfileIds: recipients.recipientIds,
+    });
+
     await notificationService
       .createLeadProposalPendingNotification({
         teamId: input.teamId,
@@ -83,6 +97,22 @@ export class AssociateProposalUseCase {
         })
       )
     ).catch((err) => console.error("[AssociateProposalUseCase][webPush]", err));
+
+    if (recipients.recipientEmails.length > 0) {
+      getEmailService()
+        .sendLeadProposalPendingUrgentEmail({
+          to: recipients.recipientEmails,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          leadEmail: null,
+          leadPhone: null,
+          sdrName: "—",
+          closerName: "—",
+          notes: "Proposta de conta associada aguardando registro na operadora.",
+          actorName: input.actorName,
+        })
+        .catch((err) => console.error("[AssociateProposalUseCase][notify][email]", err));
+    }
   }
 
   async resetReviewOnResubmit(leadId: string) {
@@ -93,6 +123,73 @@ export class AssociateProposalUseCase {
     return this.service.evaluateRequiredDocumentsForOfferSubmission(leadId, teamId);
   }
 
+  async notifyRequiredDocumentsPending(input: {
+    leadId: string;
+    teamId: string;
+    leadCode: string;
+    leadName: string;
+    actorProfileId: string;
+    actorName: string;
+    recipientProfileIds: string[];
+  }) {
+    const hasPending = await this.service.hasPendingRequiredDocuments(input.leadId);
+    if (!hasPending || input.recipientProfileIds.length === 0) return;
+
+    const message = `Documentos obrigatórios pendentes para ${input.leadName}`;
+
+    await notificationService
+      .createLeadProposalPendingNotification({
+        teamId: input.teamId,
+        actorProfileId: input.actorProfileId,
+        actorName: input.actorName,
+        recipientProfileIds: input.recipientProfileIds,
+        leadId: input.leadId,
+        leadCode: input.leadCode,
+        leadName: input.leadName,
+        leadEmail: null,
+        leadPhone: null,
+        sdrName: "—",
+        closerName: "—",
+        notes: "Revise e aprove os documentos obrigatórios na fila Associados.",
+        previousStatus: LeadStatus.offerNegotiation,
+        nextStatus: LeadStatus.pending_documents,
+      })
+      .catch((err) => console.error("[AssociateProposalUseCase][notifyRequiredDocumentsPending]", err));
+
+    await Promise.all(
+      input.recipientProfileIds.map((profileId) =>
+        dispatchWebPushToProfile({
+          profileId,
+          teamId: input.teamId,
+          type: "LEAD_PROPOSAL_PENDING",
+          message,
+          metadata: { leadId: input.leadId },
+        })
+      )
+    ).catch((err) => console.error("[AssociateProposalUseCase][notifyRequiredDocumentsPending][webPush]", err));
+
+    const recipientEmails = (
+      await Promise.all(
+        input.recipientProfileIds.map((id) => associateProposalRepository.findProfileEmail(id))
+      )
+    )
+      .map((profile) => profile?.email)
+      .filter((email): email is string => Boolean(email?.trim()));
+
+    if (recipientEmails.length > 0) {
+      getEmailService()
+        .sendAssociateRequiredDocumentsPendingEmail({
+          to: Array.from(new Set(recipientEmails)),
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          actorName: input.actorName,
+        })
+        .catch((err) =>
+          console.error("[AssociateProposalUseCase][notifyRequiredDocumentsPending][email]", err)
+        );
+    }
+  }
+
   async criticize(
     access: AssociateBackofficeAccess,
     leadId: string,
@@ -101,12 +198,15 @@ export class AssociateProposalUseCase {
     try {
       const result = await this.service.criticizeProposal(access, leadId, input);
 
-      if (result.assigneeId && result.createdTaskId) {
+      const notifyRecipientId =
+        result.assigneeId ?? result.lead.team?.masterId ?? null;
+
+      if (notifyRecipientId && result.createdTaskId) {
         await notificationService
           .createTaskAssignmentNotifications({
             actorProfileId: access.profileId,
             actorName: STUDIO_FEED_IDENTITY.displayAuthor,
-            recipientProfileIds: [result.assigneeId],
+            recipientProfileIds: [notifyRecipientId],
             leadId,
             leadCode: result.lead.leadCode,
             leadName: result.lead.name,
@@ -115,6 +215,42 @@ export class AssociateProposalUseCase {
             teamId: result.lead.teamId!,
           })
           .catch((err) => console.error("[AssociateProposalUseCase][criticize][notify]", err));
+      } else if (notifyRecipientId) {
+        await notificationService
+          .createLeadProposalPendingNotification({
+            teamId: result.lead.teamId!,
+            actorProfileId: access.profileId,
+            actorName: STUDIO_FEED_IDENTITY.displayAuthor,
+            recipientProfileIds: [notifyRecipientId],
+            leadId,
+            leadCode: result.lead.leadCode,
+            leadName: result.lead.name,
+            leadEmail: result.lead.email,
+            leadPhone: result.lead.phone,
+            sdrName: "—",
+            closerName: "—",
+            notes: input.message,
+            previousStatus: LeadStatus.offerSubmission,
+            nextStatus: LeadStatus.offerSubmission,
+          })
+          .catch((err) => console.error("[AssociateProposalUseCase][criticize][fallbackNotify]", err));
+      }
+
+      const criticismRecipientId =
+        result.assigneeId ?? result.lead.team?.masterId ?? null;
+      if (criticismRecipientId) {
+        const recipient = await associateProposalRepository.findProfileEmail(criticismRecipientId);
+        if (recipient?.email) {
+          getEmailService()
+            .sendAssociateProposalCriticismEmail({
+              to: [recipient.email],
+              leadCode: result.lead.leadCode,
+              leadName: result.lead.name,
+              title: input.title,
+              message: input.message,
+            })
+            .catch((err) => console.error("[AssociateProposalUseCase][criticize][email]", err));
+        }
       }
 
       return new Output(true, ["Proposta criticada"], [], {
@@ -150,6 +286,60 @@ export class AssociateProposalUseCase {
     }
   }
 
+  async linkDocument(
+    access: AssociateBackofficeAccess,
+    leadId: string,
+    input: { documentType: LeadRequiredDocumentType; attachmentId: string }
+  ) {
+    try {
+      const result = await this.service.linkDocument(access, leadId, input);
+      return new Output(true, ["Documento vinculado"], [], result);
+    } catch (error) {
+      console.error("[AssociateProposalUseCase][linkDocument]", error);
+      return new Output(false, [], [error instanceof Error ? error.message : "Erro ao vincular documento"], null);
+    }
+  }
+
+  async rejectDocument(
+    access: AssociateBackofficeAccess,
+    leadId: string,
+    documentType: LeadRequiredDocumentType,
+    reason: string
+  ) {
+    try {
+      const result = await this.service.rejectDocument(access, leadId, documentType, reason);
+      const lead = await associateProposalRepository.assertLeadBelongsToSponsor(
+        leadId,
+        access.sponsorProfileId
+      );
+      const notifyId = lead?.closerId ?? lead?.team?.masterId;
+      if (notifyId && lead?.teamId) {
+        await notificationService
+          .createLeadProposalPendingNotification({
+            teamId: lead.teamId,
+            actorProfileId: access.profileId,
+            actorName: STUDIO_FEED_IDENTITY.displayAuthor,
+            recipientProfileIds: [notifyId],
+            leadId,
+            leadCode: lead.leadCode,
+            leadName: lead.name,
+            leadEmail: lead.email,
+            leadPhone: lead.phone,
+            sdrName: "—",
+            closerName: "—",
+            notes: reason,
+            previousStatus: LeadStatus.pending_documents,
+            nextStatus: LeadStatus.pending_documents,
+          })
+          .catch((err) => console.error("[AssociateProposalUseCase][rejectDocument][notify]", err));
+      }
+      return new Output(true, ["Documento rejeitado"], [], result);
+    } catch (error) {
+      console.error("[AssociateProposalUseCase][rejectDocument]", error);
+      return new Output(false, [], [error instanceof Error ? error.message : "Erro ao rejeitar documento"], null);
+    }
+  }
+
   async approveDocument(
     access: AssociateBackofficeAccess,
     leadId: string,
@@ -157,6 +347,36 @@ export class AssociateProposalUseCase {
   ) {
     try {
       const result = await this.service.approveDocument(access, leadId, documentType);
+      const allApproved = await this.service.hasAllRequiredDocumentsApproved(leadId);
+      if (allApproved) {
+        const lead = await associateProposalRepository.assertLeadBelongsToSponsor(
+          leadId,
+          access.sponsorProfileId
+        );
+        const notifyIds = [lead?.closerId, lead?.team?.masterId].filter(
+          (id): id is string => Boolean(id)
+        );
+        if (notifyIds.length > 0 && lead?.teamId) {
+          await notificationService
+            .createLeadProposalPendingNotification({
+              teamId: lead.teamId,
+              actorProfileId: access.profileId,
+              actorName: STUDIO_FEED_IDENTITY.displayAuthor,
+              recipientProfileIds: Array.from(new Set(notifyIds)),
+              leadId,
+              leadCode: lead.leadCode,
+              leadName: lead.name,
+              leadEmail: lead.email,
+              leadPhone: lead.phone,
+              sdrName: "—",
+              closerName: "—",
+              notes: "Todos os documentos obrigatórios foram aprovados.",
+              previousStatus: LeadStatus.pending_documents,
+              nextStatus: LeadStatus.offerSubmission,
+            })
+            .catch((err) => console.error("[AssociateProposalUseCase][approveDocument][notify]", err));
+        }
+      }
       return new Output(true, ["Documento aprovado"], [], result);
     } catch (error) {
       console.error("[AssociateProposalUseCase][approveDocument]", error);

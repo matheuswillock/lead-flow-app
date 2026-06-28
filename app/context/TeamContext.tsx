@@ -19,6 +19,7 @@ export interface TeamSummary {
   accountName?: string;
   isOwnAccount?: boolean;
   isAssociateAccount?: boolean;
+  sponsorMasterId?: string | null;
   associateAccountName?: string | null;
   isAccessible?: boolean;
   accountSubscriptionActive?: boolean;

@@ -182,7 +182,6 @@ export class AssociateProposalRepository {
     return prisma.lead.findFirst({
       where: {
         id: leadId,
-        status: "offerSubmission",
         team: { master: { sponsorMasterId: sponsorProfileId } },
       },
       select: {
@@ -312,18 +311,21 @@ export class AssociateProposalRepository {
     const [sponsorProfile, sponsorBackoffices, associateMaster] = await Promise.all([
       prisma.profile.findUnique({
         where: { id: sponsorMasterId },
-        select: { id: true },
+        select: { id: true, email: true },
       }),
       prisma.teamMember.findMany({
         where: {
           role: "backoffice",
           team: { masterId: sponsorMasterId },
         },
-        select: { profileId: true },
+        select: {
+          profileId: true,
+          profile: { select: { email: true } },
+        },
       }),
       prisma.profile.findUnique({
         where: { id: team.masterId },
-        select: { id: true },
+        select: { id: true, email: true },
       }),
     ]);
 
@@ -337,7 +339,25 @@ export class AssociateProposalRepository {
       )
     );
 
-    return { sponsorMasterId, recipientIds };
+    const recipientEmails = Array.from(
+      new Set(
+        [
+          sponsorProfile?.email,
+          associateMaster?.email,
+          ...sponsorBackoffices.map((member) => member.profile.email),
+        ].filter((email): email is string => Boolean(email?.trim()))
+      )
+    );
+
+    return { sponsorMasterId, recipientIds, recipientEmails };
+  }
+
+  async findProfileEmail(profileId: string) {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { email: true, fullName: true },
+    });
+    return profile;
   }
 
   async resetCriticizedReview(leadId: string) {
@@ -488,6 +508,65 @@ export class AssociateProposalRepository {
     });
   }
 
+  async findLeadAttachmentForLead(leadId: string, attachmentId: string) {
+    return prisma.leadAttachment.findFirst({
+      where: { id: attachmentId, leadId },
+      select: { id: true },
+    });
+  }
+
+  async linkRequiredDocument(input: {
+    leadId: string;
+    documentType: LeadRequiredDocumentType;
+    attachmentId: string;
+  }) {
+    await prisma.leadRequiredDocument.upsert({
+      where: { leadId_documentType: { leadId: input.leadId, documentType: input.documentType } },
+      create: {
+        leadId: input.leadId,
+        documentType: input.documentType,
+        attachmentId: input.attachmentId,
+        status: "uploaded",
+      },
+      update: {
+        attachmentId: input.attachmentId,
+        status: "uploaded",
+      },
+    });
+  }
+
+  async rejectRequiredDocument(input: {
+    leadId: string;
+    documentType: LeadRequiredDocumentType;
+    reason: string;
+    reviewedByProfileId: string;
+  }) {
+    await prisma.$transaction(async (tx) => {
+      await tx.leadRequiredDocument.update({
+        where: { leadId_documentType: { leadId: input.leadId, documentType: input.documentType } },
+        data: {
+          status: "rejected",
+          reviewedByProfileId: input.reviewedByProfileId,
+        },
+      });
+
+      await tx.leadActivity.create({
+        data: {
+          leadId: input.leadId,
+          type: "note" as ActivityType,
+          body: input.reason,
+          createdBy: null,
+          payload: {
+            kind: "required_document_rejected",
+            ...STUDIO_FEED_IDENTITY,
+            message: input.reason,
+            metadata: { documentType: input.documentType },
+          },
+        },
+      });
+    });
+  }
+
   async approveRequiredDocument(input: {
     leadId: string;
     documentType: LeadRequiredDocumentType;
@@ -520,6 +599,11 @@ export class AssociateProposalRepository {
   }
 
   async uploadPaymentProof(leadId: string, attachmentId: string) {
+    const attachment = await this.findLeadAttachmentForLead(leadId, attachmentId);
+    if (!attachment) {
+      throw new Error("Anexo não pertence ao lead");
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.leadActivity.create({
         data: {

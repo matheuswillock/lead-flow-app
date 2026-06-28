@@ -1646,6 +1646,48 @@
               "response": []
             },
             {
+              "name": "18b. Vincular Documento Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"documentType\": \"rg\",\n  \"attachmentId\": \"{{attachmentId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "18c. Rejeitar Documento Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Documento ilegível, envie novamente.\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents/rg/reject",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents", "rg", "reject"]
+                }
+              },
+              "response": []
+            },
+            {
               "name": "19. Registrar Venda Associado",
               "request": {
                 "method": "POST",

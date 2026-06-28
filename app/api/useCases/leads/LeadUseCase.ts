@@ -1264,27 +1264,6 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], gateEvaluation.errorMessages, gateEvaluation.result);
       }
 
-      if (status === LeadStatus.offerSubmission && existingLead.teamId) {
-        const docCheck = await associateProposalUseCase.evaluateRequiredDocumentsForOfferSubmission(
-          id,
-          existingLead.teamId
-        );
-        if (docCheck.blocked) {
-          return new Output(
-            false,
-            [],
-            ["Documentos obrigatórios precisam estar aprovados antes de enviar a proposta."],
-            {
-              transition: createTransition(false, "required_documents", {
-                pendingDocumentTypes: docCheck.pendingTypes,
-                sourceStatus: existingLead.status,
-                targetStatus: status,
-              }),
-            }
-          );
-        }
-      }
-
       Object.assign(statusUpdateExtraData, gateEvaluation.statusUpdatePatch);
 
       const activeStatusRules = existingLead.teamId
@@ -2330,20 +2309,26 @@ export class LeadUseCase implements ILeadUseCase {
         select: { id: true, email: true, fullName: true },
       });
 
-      const emailRecipients = this.resolveProposalAlertEmails(
-        [
-          ...backofficeMembers.map((member) => member.profile.email),
-          closerProfile?.email,
-        ],
-        [masterProfile?.email],
-        input.lead.email
-      );
+      const isAssociateAccount = Boolean(team.master?.sponsorMasterId);
+
+      const emailRecipients = isAssociateAccount
+        ? { to: [] as string[], cc: [] as string[] }
+        : this.resolveProposalAlertEmails(
+            [
+              ...backofficeMembers.map((member) => member.profile.email),
+              closerProfile?.email,
+            ],
+            [masterProfile?.email],
+            input.lead.email
+          );
 
       const sdrName = input.lead.assignee?.fullName || input.lead.assignee?.email || "Nao informado";
       const closerName = input.lead.closer?.fullName || input.lead.closer?.email || "Nao informado";
-      const leadAttachments = await this.buildLeadProposalAttachments(input.lead.id);
+      const leadAttachments = isAssociateAccount
+        ? []
+        : await this.buildLeadProposalAttachments(input.lead.id);
 
-      if (emailRecipients.to.length > 0 || emailRecipients.cc.length > 0) {
+      if (!isAssociateAccount && (emailRecipients.to.length > 0 || emailRecipients.cc.length > 0)) {
         try {
           const emailService = getEmailService();
           const emailResult = await emailService.sendLeadProposalPendingUrgentEmail({

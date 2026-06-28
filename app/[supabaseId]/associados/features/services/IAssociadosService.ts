@@ -1,4 +1,10 @@
-import type { AssociadosData, AssociadosFiltersState } from "../context/AssociadosTypes";
+import type {
+  AssociadosData,
+  AssociadosFiltersState,
+  AssociateProposalDetail,
+  AssociateRequiredDocument,
+  LeadAttachmentOption,
+} from "../context/AssociadosTypes";
 
 export interface IAssociadosService {
   listProposals(
@@ -6,6 +12,18 @@ export interface IAssociadosService {
     teamId: string,
     filters: AssociadosFiltersState
   ): Promise<AssociadosData>;
+
+  getDetail(
+    supabaseId: string,
+    teamId: string,
+    leadId: string
+  ): Promise<AssociateProposalDetail>;
+
+  listLeadAttachments(
+    supabaseId: string,
+    teamId: string,
+    leadId: string
+  ): Promise<LeadAttachmentOption[]>;
 
   criticize(
     supabaseId: string,
@@ -18,6 +36,40 @@ export interface IAssociadosService {
     supabaseId: string,
     teamId: string,
     leadId: string,
-    input: { operatorName: string; proposalNumber?: string; notes?: string }
+    input: {
+      operatorName: string;
+      proposalNumber?: string;
+      notes?: string;
+      attachmentIds?: string[];
+    }
+  ): Promise<void>;
+
+  approveDocument(
+    supabaseId: string,
+    teamId: string,
+    leadId: string,
+    documentType: AssociateRequiredDocument["documentType"]
+  ): Promise<void>;
+
+  rejectDocument(
+    supabaseId: string,
+    teamId: string,
+    leadId: string,
+    documentType: AssociateRequiredDocument["documentType"],
+    reason: string
+  ): Promise<void>;
+
+  linkDocument(
+    supabaseId: string,
+    teamId: string,
+    leadId: string,
+    input: { documentType: AssociateRequiredDocument["documentType"]; attachmentId: string }
+  ): Promise<void>;
+
+  uploadPaymentProof(
+    supabaseId: string,
+    teamId: string,
+    leadId: string,
+    attachmentId: string
   ): Promise<void>;
 }

@@ -45,7 +45,7 @@ export class AssociateBackofficeAccessUseCase {
     const isDelegatedManager =
       isManagerLikeRole(access.teamMember.role) && hasDelegatedTeamManagementAccess(access);
 
-    if (!isSponsorMaster && !isBackoffice && !isDelegatedManager && !access.isMaster) {
+    if (!isSponsorMaster && !isBackoffice && !isDelegatedManager) {
       return {
         error: new Output(false, [], ["Sem permissão para a fila Associados"], null),
         status: 403,

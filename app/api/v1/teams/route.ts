@@ -217,6 +217,7 @@ export async function GET(request: NextRequest) {
             id: true,
             fullName: true,
             email: true,
+            sponsorMasterId: true,
           },
         },
       },
@@ -242,6 +243,7 @@ export async function GET(request: NextRequest) {
         accountName: membership.team.master.fullName ?? membership.team.master.email,
         isOwnAccount: accountMasterId === profile.id,
         isAssociateAccount: Boolean(membership.team.master.sponsorMasterId),
+        sponsorMasterId: membership.team.master.sponsorMasterId ?? null,
         associateAccountName:
           membership.team.master.sponsorMasterId
             ? (membership.team.master.fullName ?? membership.team.master.email)
@@ -275,6 +277,7 @@ export async function GET(request: NextRequest) {
           accountName: associateAccountName,
           isOwnAccount: false,
           isAssociateAccount: true,
+          sponsorMasterId: team.master.sponsorMasterId ?? profile.id,
           associateAccountName,
           isAccessible: accountSubscriptionActive,
           accountSubscriptionActive,
