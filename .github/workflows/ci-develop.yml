@@ -522,7 +522,7 @@ jobs:
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
             git add package.json
-            git diff --cached --quiet || git commit -m "chore: bump version to v$VERSION [skip ci]"
+            git diff --cached --quiet || git commit -m "chore: bump version to v$VERSION"
           fi
           git push origin release/develop-to-main --force-with-lease 2>/dev/null || \
             git push origin release/develop-to-main --force
