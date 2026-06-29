@@ -45,7 +45,7 @@
     "db:migrate:from-prisma": "bunx tsx scripts/db-migrate-from-prisma.ts",
     "db:migrate:new": "bunx tsx scripts/db-migrate-new.ts",
     "db:migrate:apply:local": "supabase migration up --local",
-    "db:migrate:push": "supabase db push --linked --include-all",
+    "db:migrate:push": "supabase db push --linked --include-all --yes",
     "db:migrate:push:dry-run": "supabase db push --linked --dry-run",
     "db:migrate:status": "supabase migration list",
     "db:migrate:reset:local": "supabase db reset --local --no-seed",

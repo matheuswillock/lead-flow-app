@@ -1,44 +1,59 @@
 -- Migration: cdp-core-schema
 -- Customer Data Platform v1 tables
 
-CREATE TYPE "public"."customer_identity_type" AS ENUM (
-  'phone',
-  'email',
-  'document',
-  'lead_id',
-  'email_contact_id',
-  'portfolio_id',
-  'whatsapp_contact_id'
-);
+DO $$ BEGIN
+  CREATE TYPE "public"."customer_identity_type" AS ENUM (
+    'phone',
+    'email',
+    'document',
+    'lead_id',
+    'email_contact_id',
+    'portfolio_id',
+    'whatsapp_contact_id'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE "public"."customer_source_type" AS ENUM (
-  'crm_lead',
-  'portfolio',
-  'email_contact',
-  'email_campaign',
-  'whatsapp_contact'
-);
+DO $$ BEGIN
+  CREATE TYPE "public"."customer_source_type" AS ENUM (
+    'crm_lead',
+    'portfolio',
+    'email_contact',
+    'email_campaign',
+    'whatsapp_contact'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE "public"."customer_channel" AS ENUM (
-  'email',
-  'whatsapp'
-);
+DO $$ BEGIN
+  CREATE TYPE "public"."customer_channel" AS ENUM (
+    'email',
+    'whatsapp'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE "public"."customer_consent_status" AS ENUM (
-  'allowed',
-  'blocked',
-  'unknown'
-);
+DO $$ BEGIN
+  CREATE TYPE "public"."customer_consent_status" AS ENUM (
+    'allowed',
+    'blocked',
+    'unknown'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE "public"."customer_consent_reason" AS ENUM (
-  'manual',
-  'imported',
-  'unsubscribe',
-  'bounce',
-  'complaint',
-  'opt_out',
-  'missing_identity'
-);
+DO $$ BEGIN
+  CREATE TYPE "public"."customer_consent_reason" AS ENUM (
+    'manual',
+    'imported',
+    'unsubscribe',
+    'bounce',
+    'complaint',
+    'opt_out',
+    'missing_identity'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "public"."corretor_studio_cdp_profiles" (
   "id"                        UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -69,9 +84,14 @@ CREATE INDEX IF NOT EXISTS "corretor_studio_cdp_profiles_team_document_idx"
 CREATE INDEX IF NOT EXISTS "corretor_studio_cdp_profiles_team_last_seen_idx"
   ON "public"."corretor_studio_cdp_profiles" ("teamId", "lastSeenAt" DESC NULLS LAST);
 
-ALTER TABLE "public"."corretor_studio_cdp_profiles"
-  ADD CONSTRAINT "corretor_studio_cdp_profiles_teamId_fkey"
-  FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_profiles_teamId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_profiles"
+      ADD CONSTRAINT "corretor_studio_cdp_profiles_teamId_fkey"
+      FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "public"."corretor_studio_cdp_identities" (
   "id"              UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -93,11 +113,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS "corretor_studio_cdp_identities_team_type_valu
 CREATE INDEX IF NOT EXISTS "corretor_studio_cdp_identities_profile_type_idx"
   ON "public"."corretor_studio_cdp_identities" ("profileId", "type");
 
-ALTER TABLE "public"."corretor_studio_cdp_identities"
-  ADD CONSTRAINT "corretor_studio_cdp_identities_profileId_fkey"
-  FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE,
-  ADD CONSTRAINT "corretor_studio_cdp_identities_teamId_fkey"
-  FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_identities_profileId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_identities"
+      ADD CONSTRAINT "corretor_studio_cdp_identities_profileId_fkey"
+      FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_identities_teamId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_identities"
+      ADD CONSTRAINT "corretor_studio_cdp_identities_teamId_fkey"
+      FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "public"."corretor_studio_cdp_source_links" (
   "id"             UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -117,11 +146,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS "corretor_studio_cdp_source_links_team_source_
 CREATE INDEX IF NOT EXISTS "corretor_studio_cdp_source_links_profile_source_idx"
   ON "public"."corretor_studio_cdp_source_links" ("profileId", "sourceType");
 
-ALTER TABLE "public"."corretor_studio_cdp_source_links"
-  ADD CONSTRAINT "corretor_studio_cdp_source_links_profileId_fkey"
-  FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE,
-  ADD CONSTRAINT "corretor_studio_cdp_source_links_teamId_fkey"
-  FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_source_links_profileId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_source_links"
+      ADD CONSTRAINT "corretor_studio_cdp_source_links_profileId_fkey"
+      FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_source_links_teamId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_source_links"
+      ADD CONSTRAINT "corretor_studio_cdp_source_links_teamId_fkey"
+      FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "public"."corretor_studio_cdp_events" (
   "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -145,11 +183,20 @@ CREATE INDEX IF NOT EXISTS "corretor_studio_cdp_events_team_type_occurred_idx"
 CREATE INDEX IF NOT EXISTS "corretor_studio_cdp_events_profile_occurred_idx"
   ON "public"."corretor_studio_cdp_events" ("profileId", "occurredAt" DESC);
 
-ALTER TABLE "public"."corretor_studio_cdp_events"
-  ADD CONSTRAINT "corretor_studio_cdp_events_profileId_fkey"
-  FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE,
-  ADD CONSTRAINT "corretor_studio_cdp_events_teamId_fkey"
-  FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_events_profileId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_events"
+      ADD CONSTRAINT "corretor_studio_cdp_events_profileId_fkey"
+      FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_events_teamId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_events"
+      ADD CONSTRAINT "corretor_studio_cdp_events_teamId_fkey"
+      FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "public"."corretor_studio_cdp_channel_consents" (
   "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -171,8 +218,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "corretor_studio_cdp_channel_consents_profile_
 CREATE INDEX IF NOT EXISTS "corretor_studio_cdp_channel_consents_team_channel_status_idx"
   ON "public"."corretor_studio_cdp_channel_consents" ("teamId", "channel", "status");
 
-ALTER TABLE "public"."corretor_studio_cdp_channel_consents"
-  ADD CONSTRAINT "corretor_studio_cdp_channel_consents_profileId_fkey"
-  FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE,
-  ADD CONSTRAINT "corretor_studio_cdp_channel_consents_teamId_fkey"
-  FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_channel_consents_profileId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_channel_consents"
+      ADD CONSTRAINT "corretor_studio_cdp_channel_consents_profileId_fkey"
+      FOREIGN KEY ("profileId") REFERENCES "public"."corretor_studio_cdp_profiles" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corretor_studio_cdp_channel_consents_teamId_fkey') THEN
+    ALTER TABLE "public"."corretor_studio_cdp_channel_consents"
+      ADD CONSTRAINT "corretor_studio_cdp_channel_consents_teamId_fkey"
+      FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+END $$;
