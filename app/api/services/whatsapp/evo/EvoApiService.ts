@@ -89,10 +89,23 @@ interface EvoConnectionStateResponse {
 interface EvoSendTextResponse {
   key?: {
     id?: string
+    remoteJid?: string
+    fromMe?: boolean
   }
   status?: string
   message?: {
     conversation?: string
+  }
+}
+
+function parseEvoMessageKey(
+  key: EvoSendTextResponse["key"],
+  fallback: { remoteJid: string; providerMessageId: string }
+): Record<string, unknown> {
+  return {
+    remoteJid: key?.remoteJid ?? fallback.remoteJid,
+    fromMe: key?.fromMe ?? true,
+    id: key?.id ?? fallback.providerMessageId,
   }
 }
 
@@ -523,6 +536,10 @@ export class EvoApiService implements IEvoApiService {
     return {
       providerMessageId,
       status: data.status ?? "PENDING",
+      messageKey: parseEvoMessageKey(data.key, {
+        remoteJid: params.recipientJid,
+        providerMessageId,
+      }),
     }
   }
 
@@ -572,6 +589,10 @@ export class EvoApiService implements IEvoApiService {
     return {
       providerMessageId,
       status: data.status ?? "PENDING",
+      messageKey: parseEvoMessageKey(data.key, {
+        remoteJid: params.recipientJid,
+        providerMessageId,
+      }),
     }
   }
 

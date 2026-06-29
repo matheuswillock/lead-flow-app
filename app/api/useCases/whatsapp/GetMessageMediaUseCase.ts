@@ -17,12 +17,36 @@ function extractMessageKey(rawPayload: unknown): Record<string, unknown> | null 
   return null
 }
 
+function extractOutboundMedia(
+  rawPayload: unknown
+): { base64: string; mimeType?: string } | null {
+  if (typeof rawPayload !== "object" || rawPayload === null) return null
+  const record = rawPayload as Record<string, unknown>
+  const outbound = record["outboundMedia"]
+  if (typeof outbound !== "object" || outbound === null) return null
+  const media = outbound as Record<string, unknown>
+  if (typeof media.base64 !== "string" || !media.base64) return null
+  return {
+    base64: media.base64,
+    mimeType: typeof media.mimeType === "string" ? media.mimeType : undefined,
+  }
+}
+
 class GetMessageMediaUseCase {
   async execute(input: GetMessageMediaInput): Promise<Output> {
     try {
       const message = await whatsAppRepository.findMessageByIdForTeam(input.teamId, input.messageId)
       if (!message) {
         return new Output(false, [], ["Mensagem não encontrada"], null)
+      }
+
+      const outboundMedia = extractOutboundMedia(message.rawPayload)
+      if (outboundMedia) {
+        return new Output(true, [], [], {
+          base64: outboundMedia.base64,
+          mimeType: outboundMedia.mimeType || message.mediaMimeType,
+          fileName: message.mediaFileName,
+        })
       }
 
       const config = await whatsAppRepository.findConfigByTeamId(input.teamId)

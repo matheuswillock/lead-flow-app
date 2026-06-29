@@ -11,6 +11,7 @@ import { generateWebhookSecret, buildPeriodKey, normalizePhone, normalizeRemoteJ
 import { resolveConfigStatusFromEvo, toQrCodeImageUrl } from "./qrCodeUtils"
 import type { Prisma } from "@prisma/client"
 import type { WhatsAppConfigSelect, WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature"
 
 export const WHATSAPP_HISTORY_SYNC_DAYS = 30
 
@@ -48,6 +49,11 @@ class WhatsAppService implements IWhatsAppService {
   private historySyncInFlightByTeam = new Set<string>()
 
   async createConfig(input: CreateWhatsAppConfigInput): Promise<ConfigOutput> {
+    const hasFeature = await teamHasWhatsAppFeature(input.teamId)
+    if (!hasFeature) {
+      throw new Error("Addon WhatsApp não está ativo para este time")
+    }
+
     const existing = await whatsAppRepository.findConfigByTeamId(input.teamId)
     if (existing) {
       throw new Error("Configuração já existe para este time")
@@ -240,7 +246,7 @@ class WhatsAppService implements IWhatsAppService {
     const now = new Date()
     const periodKey = buildPeriodKey(now)
 
-    let evoResult: { providerMessageId: string; status: string }
+    let evoResult: { providerMessageId: string; status: string; messageKey?: Record<string, unknown> }
     let messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO" = "TEXT"
     const contentText: string | undefined = input.contentText
     let mediaMimeType: string | undefined
@@ -290,6 +296,20 @@ class WhatsAppService implements IWhatsAppService {
 
     console.info("[WhatsAppService][sendMessage] Sending message to", recipientJid)
 
+    const rawPayload: Prisma.InputJsonValue = input.media
+      ? {
+          key: evoResult.messageKey ?? {
+            remoteJid: recipientJid,
+            fromMe: true,
+            id: evoResult.providerMessageId,
+          },
+          outboundMedia: {
+            base64: input.media.base64,
+            mimeType: input.media.mimeType,
+          },
+        }
+      : {}
+
     const message = await whatsAppRepository.createMessage({
       conversation: { connect: { id: input.conversationId } },
       team: { connect: { id: input.teamId } },
@@ -306,7 +326,7 @@ class WhatsAppService implements IWhatsAppService {
       recipientPhone: normalizePhone(conversation.contactPhone),
       sentByProfile: { connect: { id: input.sentByProfileId } },
       sentAt: now,
-      rawPayload: {},
+      rawPayload,
     })
 
     await whatsAppRepository.createUsageEvent({

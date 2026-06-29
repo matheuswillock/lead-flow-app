@@ -259,19 +259,11 @@ export class FeatureAccessService implements IFeatureAccessService {
             resolvedUserPrincipals
           )
         } else if (effectiveFeature.accessMode === "PAID" || effectiveFeature.accessMode === "ADDON") {
-          const effectiveProductSlug =
-            effectiveFeature.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[effectiveFeature.slug]
-          const hasSubscription =
-            hasPermanentAccess ||
-            (effectiveProductSlug ? paidProductSlugs.has(effectiveProductSlug) : false)
-
-          if (hasSubscription) {
-            hasAccess = evaluatePrincipalRules(
-              effectiveFeature.accessRules,
-              effectiveFeature.defaultAccessLevel,
-              resolvedUserPrincipals
-            )
-          }
+          hasAccess = evaluatePrincipalRules(
+            effectiveFeature.accessRules,
+            effectiveFeature.defaultAccessLevel,
+            resolvedUserPrincipals
+          )
         }
       }
 
