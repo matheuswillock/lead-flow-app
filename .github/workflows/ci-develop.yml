@@ -442,6 +442,8 @@ jobs:
     needs:
       - quality
       - quality-gate
+      - migration-check
+      - migration-dry-run
       - build
       - deploy-preview
       - version-bump
@@ -490,6 +492,10 @@ jobs:
             const versionBumpResult = '${{ needs['version-bump'].result }}';
             const deployPreviewResult = '${{ needs['deploy-preview'].result }}';
             const buildResult = '${{ needs['build'].result }}';
+            const migrationCheckResult = '${{ needs['migration-check'].result }}';
+            const migrationDryRunResult = '${{ needs['migration-dry-run'].result }}';
+            const hasPendingMigrations = '${{ needs['migration-check'].outputs.has_pending }}' === 'true';
+            const qualityGateResult = '${{ needs['quality-gate'].result }}';
             let newVersion = '${{ needs['version-bump'].outputs.new_version }}' || '';
             if (!newVersion) {
               try {
@@ -502,11 +508,38 @@ jobs:
               buildResult === 'success' &&
               (versionBumpResult === 'success' || versionBumpResult === 'skipped') &&
               (deployPreviewResult === 'success' || deployPreviewResult === 'skipped');
+            const resolveSkipReason = () => {
+              if (qualityGateResult !== 'success') {
+                return 'Quality gate falhou. Corrija governance, lint, typecheck ou spellcheck em develop.';
+              }
+              if (migrationCheckResult !== 'success') {
+                return 'Migration check falhou ou foi ignorado. Revise o job "Migration Check".';
+              }
+              if (hasPendingMigrations) {
+                return 'Migrations pendentes no banco remoto. Revise o dry-run, execute o workflow "Apply Pending Migrations" e faça um novo push em develop.';
+              }
+              if (migrationDryRunResult === 'failure') {
+                return 'Migration dry-run falhou. Corrija as migrations antes de liberar o release.';
+              }
+              if (buildResult === 'failure') {
+                return 'Build falhou. Corrija os erros de compilacao antes de liberar o release.';
+              }
+              if (buildResult === 'skipped') {
+                return 'Build nao executou. Verifique os jobs anteriores do workflow.';
+              }
+              if (deployPreviewResult === 'failure') {
+                return 'Deploy de preview falhou. Corrija o deploy na Vercel antes de liberar o release.';
+              }
+              return 'Um ou mais checks obrigatorios nao passaram.';
+            };
             const checks = {
               governanceSync: '${{ needs.quality.outputs['governance-sync'] }}',
               governanceCheck: '${{ needs.quality.outputs['governance-check'] }}',
               lint: '${{ needs.quality.outputs.lint }}',
               typecheck: '${{ needs.quality.outputs.typecheck }}',
+              migrationCheck: migrationCheckResult,
+              migrationsPending: hasPendingMigrations ? 'failure' : 'success',
+              migrationDryRun: migrationDryRunResult,
               build: '${{ needs.build.result }}',
               deployPreview: '${{ needs['deploy-preview'].result }}',
             };
@@ -544,6 +577,8 @@ jobs:
               `**Version:** \`${newVersion ? `v${newVersion}` : 'unavailable'}\``,
               `**Bump type:** \`${bumpType || 'unavailable'}\``,
               '',
+              checklistLine(checks.migrationCheck, 'Migration check OK'),
+              checklistLine(checks.migrationsPending, 'Sem migrations pendentes'),
               checklistLine(checks.build, 'Build OK'),
               checklistLine(checks.deployPreview, 'Preview deploy OK'),
               '',
@@ -600,8 +635,11 @@ jobs:
             }
 
             if (!canCreateReleasePr) {
-              core.info('Release branch was not updated because one or more required checks failed. No release PR created.');
+              const skipReason = resolveSkipReason();
+              core.warning(skipReason);
+              core.info(`Release branch was not updated. No release PR created. Reason: ${skipReason}`);
               core.setOutput('operation', 'skipped');
+              core.setOutput('skip-reason', skipReason);
               core.setOutput('pr-url', '');
               return;
             }
@@ -625,8 +663,15 @@ jobs:
             core.info(`PR criado: #${res.data.number} ${res.data.html_url}`);
 
       - name: Release PR summary
+        if: always()
         run: |
           echo "### Release PR (develop -> main)" >> $GITHUB_STEP_SUMMARY
-          echo "- Version: v${{ needs['version-bump'].outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Operation: ${{ steps['release-pr'].outputs.operation }}" >> $GITHUB_STEP_SUMMARY
-          echo "- PR: ${{ steps['release-pr'].outputs['pr-url'] }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: v${{ needs['version-bump'].outputs.new_version || 'unavailable' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Operation: ${{ steps['release-pr'].outputs.operation || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Migration check: ${{ needs['migration-check'].result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Pending migrations: ${{ needs['migration-check'].outputs.has_pending }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps['release-pr'].outputs['skip-reason'] }}" ]; then
+            echo "- Blocked: ${{ steps['release-pr'].outputs['skip-reason'] }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- PR: ${{ steps['release-pr'].outputs['pr-url'] || 'not created' }}" >> $GITHUB_STEP_SUMMARY
