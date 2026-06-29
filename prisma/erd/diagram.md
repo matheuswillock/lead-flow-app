@@ -1311,6 +1311,7 @@ CDP CDP
     Boolean canCreateAccountUsers 
     Boolean canManageAccountTeams 
     Boolean canTransferAccountLeads 
+    Boolean canViewAllTeams 
     DateTime createdAt 
     DateTime updatedAt 
     }

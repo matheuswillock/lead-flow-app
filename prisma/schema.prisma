@@ -1704,6 +1704,7 @@ model TeamMember {
   canCreateAccountUsers   Boolean        @default(false)
   canManageAccountTeams   Boolean        @default(false)
   canTransferAccountLeads Boolean        @default(false)
+  canViewAllTeams         Boolean        @default(false) @map("canViewAllTeams")
   createdAt               DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt               DateTime       @updatedAt @db.Timestamptz(6)
 

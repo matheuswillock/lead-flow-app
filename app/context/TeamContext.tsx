@@ -29,6 +29,8 @@ export interface TeamSummary {
   canCreateAccountUsers: boolean;
   canManageAccountTeams: boolean;
   canTransferAccountLeads: boolean;
+  canViewAllTeams: boolean;
+  hasTransferRoutes?: boolean;
   membershipCreatedAt: string;
   isPending?: boolean;
   pendingPayment?: {

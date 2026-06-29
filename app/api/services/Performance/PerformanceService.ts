@@ -122,6 +122,7 @@ export class PerformanceService implements IPerformanceService {
   async getSalesPerformance(filters: PerformanceSalesFilters): Promise<PerformanceSalesResult> {
     const {
       teamId,
+      teamIds,
       profileId,
       isManager,
       isCloser,
@@ -137,8 +138,12 @@ export class PerformanceService implements IPerformanceService {
 
     const viewMode = isManager ? 'team' : 'self';
 
+    const resolvedTeamIds = teamIds && teamIds.length > 0 ? teamIds : [teamId];
+    const teamFilter: Prisma.LeadWhereInput =
+      resolvedTeamIds.length === 1 ? { teamId: resolvedTeamIds[0] } : { teamId: { in: resolvedTeamIds } };
+
     const leadScope: Prisma.LeadWhereInput = {
-      teamId,
+      ...teamFilter,
       ...(!isManager ? buildOperatorLeadScope(profileId, isCloser, isSdr) : {}),
       ...(isManager && sdrId ? { assignedTo: sdrId } : {}),
       ...(isManager && closerId ? { closerId } : {}),
@@ -164,7 +169,7 @@ export class PerformanceService implements IPerformanceService {
     ] = await Promise.all([
       // All team profiles
       prisma.profile.findMany({
-        where: { teamMemberships: { some: { teamId } } },
+        where: { teamMemberships: { some: { teamId: { in: resolvedTeamIds } } } },
         select: { id: true, fullName: true, email: true },
       }),
 

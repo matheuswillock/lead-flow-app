@@ -2,13 +2,16 @@
 
 import { createContext, ReactNode, useContext } from 'react';
 import { usePerformanceHook } from './PerformanceHook';
-import type { PerformanceFiltersState, PerformancePreset, PerformanceData } from './PerformanceTypes';
+import type { PerformanceFiltersState, PerformancePreset, PerformanceData, PerformanceTeamScope } from './PerformanceTypes';
 
 type PerformanceContextValue = {
   data: PerformanceData | null;
   isLoading: boolean;
   error: string | null;
   filters: PerformanceFiltersState;
+  teamScope: PerformanceTeamScope;
+  setTeamScope: (scope: PerformanceTeamScope) => void;
+  canUseAllTeamsScope: boolean;
   setFilter: <K extends keyof PerformanceFiltersState>(key: K, value: PerformanceFiltersState[K]) => void;
   setPage: (page: number) => void;
   setPreset: (preset: PerformancePreset) => void;

@@ -62,6 +62,7 @@ type SidebarItem = {
   closerOrManager?: boolean
   sdrCloserOrManager?: boolean
   requiresIntegrationsAccess?: boolean
+  requiresTransferRoutes?: boolean
   featureSlug?: string
   status?: "beta" | "comingSoon"
   unreadCount?: number
@@ -124,7 +125,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const navigationItems: SidebarItem[] = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard, featureSlug: FEATURE_SLUGS.CRM_DASHBOARD },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: Users, featureSlug: FEATURE_SLUGS.CRM },
-    { title: "Transferências", url: `/${supabaseId}/lead-transfers`, icon: ArrowRightLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_LEAD_TRANSFERS },
+    { title: "Transferências", url: `/${supabaseId}/lead-transfers`, icon: ArrowRightLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_LEAD_TRANSFERS, requiresTransferRoutes: true },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
@@ -215,6 +216,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       return false;
     }
     if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
+      return false;
+    }
+    if (item.requiresTransferRoutes && !activeTeam?.hasTransferRoutes) {
       return false;
     }
     if (item.featureSlug && !hasAccess(item.featureSlug)) {
@@ -467,7 +471,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     <span className="flex items-center gap-2">
                       WhatsApp
                       {isWhatsAppCollapsed && unreadConversations > 0 && (
-                        <span className="flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 h-[16px] text-[10px] font-semibold leading-none text-destructive-foreground">
+                        <span className="flex min-w-4.5 items-center justify-center rounded-full bg-destructive px-1 h-4 text-[10px] font-semibold leading-none text-destructive-foreground">
                           {unreadConversations > 99 ? "99+" : unreadConversations}
                         </span>
                       )}
@@ -490,7 +494,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                                   <span>{item.title}</span>
                                 </span>
                                 {hasUnread ? (
-                                  <span className="flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 h-[16px] text-[10px] font-semibold leading-none text-destructive-foreground">
+                                  <span className="flex min-w-4.5 items-center justify-center rounded-full bg-destructive px-1 h-4 text-[10px] font-semibold leading-none text-destructive-foreground">
                                     {(item.unreadCount ?? 0) > 99 ? "99+" : item.unreadCount}
                                   </span>
                                 ) : statusBadge ? (

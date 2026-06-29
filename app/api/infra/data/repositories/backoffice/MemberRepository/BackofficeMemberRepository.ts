@@ -174,6 +174,7 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
         canCreateAccountUsers: true,
         canManageAccountTeams: true,
         canTransferAccountLeads: true,
+        canViewAllTeams: true,
       },
     })
     if (!membership) return null
@@ -183,6 +184,7 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
       canCreateAccountUsers: membership.canCreateAccountUsers,
       canManageAccountTeams: membership.canManageAccountTeams,
       canTransferAccountLeads: membership.canTransferAccountLeads,
+      canViewAllTeams: membership.canViewAllTeams,
     }
   }
 
@@ -219,6 +221,7 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
     }
   ): Promise<void> {
     const payload: Record<string, unknown> = {}
@@ -232,6 +235,9 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     }
     if (data.canTransferAccountLeads !== undefined) {
       payload.canTransferAccountLeads = data.canTransferAccountLeads
+    }
+    if (data.canViewAllTeams !== undefined) {
+      payload.canViewAllTeams = data.canViewAllTeams
     }
 
     if (Object.keys(payload).length === 0) return

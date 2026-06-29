@@ -73,6 +73,7 @@ export interface IBackofficeClientDetailsService {
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
       teamId?: string
     }
   ): Promise<void>

@@ -250,6 +250,7 @@ export function BackofficeAllUsersContainer() {
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
       canTransferAccountLeads: false,
+      canViewAllTeams: false,
       accessStatus: item.accessStatus,
       hasCompletedFirstAccess: item.hasCompletedFirstAccess,
       lastSignInAt: item.lastSignInAt,

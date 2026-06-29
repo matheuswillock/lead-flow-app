@@ -54,6 +54,8 @@ export async function PATCH(
       typeof body.canManageAccountTeams === "boolean" ? body.canManageAccountTeams : undefined
     const canTransferAccountLeads =
       typeof body.canTransferAccountLeads === "boolean" ? body.canTransferAccountLeads : undefined
+    const canViewAllTeams =
+      typeof body.canViewAllTeams === "boolean" ? body.canViewAllTeams : undefined
     const teamId = optionalString(body.teamId)
 
     const data = {
@@ -65,6 +67,7 @@ export async function PATCH(
       canCreateAccountUsers,
       canManageAccountTeams,
       canTransferAccountLeads,
+      canViewAllTeams,
       teamId,
     }
 

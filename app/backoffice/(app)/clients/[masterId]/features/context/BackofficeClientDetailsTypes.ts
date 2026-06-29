@@ -13,6 +13,7 @@ export interface BackofficeClientTeamMember {
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
   canTransferAccountLeads: boolean
+  canViewAllTeams: boolean
   accessStatus: "pending_first_access" | "active"
   hasCompletedFirstAccess: boolean
   lastSignInAt: string | null

@@ -43,12 +43,16 @@ export async function resolveDashboardTeamScope(
     };
   }
 
-  if (!isManagerLikeRole(access.teamMember.role)) {
+  const canViewAll =
+    access.isMaster ||
+    ((isManagerLikeRole(access.teamMember.role)) && access.canViewAllTeams);
+
+  if (!canViewAll) {
     return {
       error: new Output(
         false,
         [],
-        ["Acesso negado: apenas managers podem visualizar todos os times"],
+        ["Acesso negado: apenas o master ou managers autorizados podem visualizar todos os times"],
         null,
       ),
       status: 403,

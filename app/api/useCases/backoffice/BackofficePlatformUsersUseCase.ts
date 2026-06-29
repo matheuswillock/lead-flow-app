@@ -464,6 +464,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             canCreateAccountUsers: member.canCreateAccountUsers,
             canManageAccountTeams: member.canManageAccountTeams,
             canTransferAccountLeads: member.canTransferAccountLeads,
+            canViewAllTeams: member.canViewAllTeams,
             ...(accessByProfileId.get(member.id) ?? {
               accessStatus: "pending_first_access",
               hasCompletedFirstAccess: false,

@@ -1,5 +1,6 @@
 export interface PerformanceSalesFilters {
   teamId: string;
+  teamIds?: string[];
   profileId: string;
   isManager: boolean;
   isCloser: boolean;

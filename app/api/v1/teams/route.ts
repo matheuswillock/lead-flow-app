@@ -207,6 +207,13 @@ export async function GET(request: NextRequest) {
 
     const activeTeamIds = new Set(memberships.map((m) => m.team.id));
 
+    const memberTeamIds = memberships.map((m) => m.team.id);
+    const transferRoutes = await prisma.teamTransferRoute.findMany({
+      where: { sourceTeamId: { in: memberTeamIds } },
+      select: { sourceTeamId: true },
+    });
+    const teamsWithRoutes = new Set(transferRoutes.map((r) => r.sourceTeamId));
+
     const sponsoredTeams = await prisma.team.findMany({
       where: {
         master: {
@@ -258,6 +265,8 @@ export async function GET(request: NextRequest) {
         canCreateAccountUsers: membership.canCreateAccountUsers,
         canManageAccountTeams: membership.canManageAccountTeams,
         canTransferAccountLeads: membership.canTransferAccountLeads,
+        canViewAllTeams: membership.canViewAllTeams,
+        hasTransferRoutes: teamsWithRoutes.has(membership.team.id),
         membershipCreatedAt: membership.createdAt,
         isPending: false,
         pendingPayment: pendingByName.get(membership.team.name) ?? null,
@@ -289,6 +298,8 @@ export async function GET(request: NextRequest) {
           canCreateAccountUsers: false,
           canManageAccountTeams: true,
           canTransferAccountLeads: false,
+          canViewAllTeams: false,
+          hasTransferRoutes: false,
           membershipCreatedAt: team.createdAt,
           isPending: false,
           pendingPayment: null,
@@ -327,6 +338,8 @@ export async function GET(request: NextRequest) {
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
           canTransferAccountLeads: false,
+          canViewAllTeams: false,
+          hasTransferRoutes: false,
           membershipCreatedAt: action.createdAt,
           isPending: true,
           pendingPayment: {

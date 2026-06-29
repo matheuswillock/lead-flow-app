@@ -16,6 +16,7 @@ interface UpdateMemberInput {
   canCreateAccountUsers?: boolean
   canManageAccountTeams?: boolean
   canTransferAccountLeads?: boolean
+  canViewAllTeams?: boolean
   teamId?: string
 }
 
@@ -100,7 +101,8 @@ export class BackofficeMemberUseCase {
         data.functions !== undefined ||
         data.canCreateAccountUsers !== undefined ||
         data.canManageAccountTeams !== undefined ||
-        data.canTransferAccountLeads !== undefined
+        data.canTransferAccountLeads !== undefined ||
+        data.canViewAllTeams !== undefined
 
       if (hasTeamAccessUpdate && data.teamId === undefined) {
         return new Output(false, [], ["teamId é obrigatório para alterar permissões do membro"], null)
@@ -136,6 +138,10 @@ export class BackofficeMemberUseCase {
             canTransferAccountLeads:
               role === "manager" || role === "backoffice" || (role === undefined && data.canTransferAccountLeads !== undefined)
                 ? data.canTransferAccountLeads
+                : false,
+            canViewAllTeams:
+              role === "manager" || role === "backoffice" || (role === undefined && data.canViewAllTeams !== undefined)
+                ? data.canViewAllTeams
                 : false,
           }
         )
