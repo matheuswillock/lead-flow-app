@@ -4,6 +4,9 @@ name: CI (develop -> version -> preview -> PR main)
 on:
   push:
     branches: ["develop"]
+    paths-ignore:
+      - "package.json"
+  workflow_dispatch:
 
 concurrency:
   group: ci-develop-${{ github.ref }}
@@ -310,18 +313,26 @@ jobs:
 
   version-bump:
     name: Auto Version Bump (develop)
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: |
+      (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
+      needs.quality-gate.result == 'success' &&
+      needs.migration-check.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    needs: build
+    needs:
+      - quality-gate
+      - migration-check
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
       bumped: ${{ steps.bump.outputs.bumped }}
       bump_type: ${{ steps.bump.outputs.bump_type }}
+      base_version: ${{ steps.bump.outputs.base_version }}
+      has_code_changes: ${{ steps.bump.outputs.has_code_changes }}
     steps:
-      - name: Checkout
+      - name: Checkout develop
         uses: actions/checkout@v4
         with:
+          ref: develop
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -334,7 +345,21 @@ jobs:
           git fetch origin main --depth=1
           git fetch origin release/develop-to-main --depth=1 2>/dev/null || true
 
-          # Read version strings via pipe — no execSync needed
+          DEVELOP_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
+
+          # Sem diff de codigo em develop desde main → nao ha release a publicar.
+          if git diff --quiet origin/main...HEAD -- . ':!package.json'; then
+            echo "bumped=false" >> $GITHUB_OUTPUT
+            echo "has_code_changes=false" >> $GITHUB_OUTPUT
+            echo "new_version=$DEVELOP_VERSION" >> $GITHUB_OUTPUT
+            echo "bump_type=unchanged" >> $GITHUB_OUTPUT
+            echo "base_version=$DEVELOP_VERSION" >> $GITHUB_OUTPUT
+            echo "Skipped version bump — develop has no code changes since main"
+            exit 0
+          fi
+
+          echo "has_code_changes=true" >> $GITHUB_OUTPUT
+
           MAIN_VERSION=$(git show origin/main:package.json | node -e \
             "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(JSON.parse(d).version))")
 
@@ -344,7 +369,6 @@ jobs:
               "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(JSON.parse(d).version))")
           fi
 
-          # Returns 0 (true) if $1 is strictly greater than $2 using semver comparison.
           semver_gt() {
             local a_major a_minor a_patch b_major b_minor b_patch
             IFS='.' read -r a_major a_minor a_patch <<< "$1"
@@ -357,57 +381,78 @@ jobs:
             return 1
           }
 
-          # Reuse only when the release branch carries a version strictly newer than main.
-          # Equal or lower version means the PR was already merged or the branch is stale.
+          # When a release PR is open, bump from the release version (not main).
           if [ -n "$RELEASE_VERSION" ] && semver_gt "$RELEASE_VERSION" "$MAIN_VERSION"; then
-            BUMP_TYPE="reused"
-            NEW_VERSION="$RELEASE_VERSION"
+            CURRENT_VERSION="$RELEASE_VERSION"
+            BUMP_SOURCE="release"
+            RELEASE_SHA=$(git rev-parse "$RELEASE_BRANCH")
+            COMMITS_SINCE_RELEASE=$(git rev-list --count "${RELEASE_SHA}..HEAD" || echo "0")
+            if [ "$COMMITS_SINCE_RELEASE" -eq 0 ]; then
+              NEW_VERSION="$RELEASE_VERSION"
+              BUMP_TYPE="unchanged"
+              echo "bumped=false" >> $GITHUB_OUTPUT
+              echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+              echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+              echo "base_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+              echo "Reusing v$NEW_VERSION — no new commits on develop since release branch"
+              exit 0
+            fi
           else
             CURRENT_VERSION="$MAIN_VERSION"
-
-            RANGE="${MAIN_BRANCH}..HEAD"
-            COMMITS=$(git log $RANGE --pretty=format:"%s")
-            MERGES=$(git log $RANGE --merges --pretty=format:"%s")
-
-            BUMP_TYPE="patch"
-            if echo "$MERGES" | grep -qiE "from .*\/(feature|feat)\/"; then
-              BUMP_TYPE="minor"
-            elif echo "$MERGES" | grep -qiE "from .*\/(bugfix|fix)\/"; then
-              BUMP_TYPE="patch"
-            else
-              if echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
-                BUMP_TYPE="minor"
-              elif echo "$COMMITS" | grep -qiE "^fix(\(.+\))?:"; then
-                BUMP_TYPE="patch"
-              fi
-            fi
-
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-            case $BUMP_TYPE in
-              minor) NEW_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
-              patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-            esac
+            BUMP_SOURCE="main"
           fi
+
+          RANGE="${MAIN_BRANCH}..HEAD"
+          COMMITS=$(git log $RANGE --pretty=format:"%s")
+          MERGES=$(git log $RANGE --merges --pretty=format:"%s")
+
+          BUMP_TYPE="patch"
+          if echo "$MERGES" | grep -qiE "from .*\/(feature|feat)\/"; then
+            BUMP_TYPE="minor"
+          elif echo "$MERGES" | grep -qiE "from .*\/(bugfix|fix)\/"; then
+            BUMP_TYPE="patch"
+          else
+            if echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+              BUMP_TYPE="minor"
+            elif echo "$COMMITS" | grep -qiE "^fix(\(.+\))?:"; then
+              BUMP_TYPE="patch"
+            fi
+          fi
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+          case $BUMP_TYPE in
+            minor) NEW_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
+            patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+          esac
 
           echo "bumped=true" >> $GITHUB_OUTPUT
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          echo "base_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Computed v$NEW_VERSION ($BUMP_TYPE) from $BUMP_SOURCE base v$CURRENT_VERSION (main=v$MAIN_VERSION, release=${RELEASE_VERSION:-none})"
 
       - name: Version bump summary
         run: |
           echo "### Version Bump (develop)" >> $GITHUB_STEP_SUMMARY
+          echo "- Base Version: v${{ steps.bump.outputs.base_version }}" >> $GITHUB_STEP_SUMMARY
           echo "- New Version: v${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
           echo "- Bump Type: ${{ steps.bump.outputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Applied on release branch after build passes (only when code changed)" >> $GITHUB_STEP_SUMMARY
+          echo "- Has code changes: ${{ steps.bump.outputs.has_code_changes }}" >> $GITHUB_STEP_SUMMARY
 
   deploy-preview:
     name: Deploy Vercel (Preview) from develop
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: |
+      (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
+      needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: version-bump
+    needs:
+      - build
+      - version-bump
     steps:
-      - name: Checkout latest develop (includes bump)
+      - name: Checkout develop
         uses: actions/checkout@v4
         with:
           ref: develop
@@ -461,7 +506,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Reset release branch to develop and apply version bump
-        if: ${{ needs['build'].result == 'success' }}
+        if: ${{ needs['build'].result == 'success' && needs['version-bump'].outputs.bumped == 'true' }}
         run: |
           git checkout -B release/develop-to-main origin/develop
           VERSION="${{ needs['version-bump'].outputs.new_version }}"
@@ -504,9 +549,14 @@ jobs:
               } catch (_) {}
             }
             const bumpType = '${{ needs['version-bump'].outputs.bump_type }}';
+            const baseVersion = '${{ needs['version-bump'].outputs.base_version }}' || '';
+            const versionBumped = '${{ needs['version-bump'].outputs.bumped }}' === 'true';
+            const hasCodeChanges = '${{ needs['version-bump'].outputs.has_code_changes }}' === 'true';
             const canCreateReleasePr =
               buildResult === 'success' &&
-              (versionBumpResult === 'success' || versionBumpResult === 'skipped') &&
+              versionBumpResult === 'success' &&
+              versionBumped &&
+              hasCodeChanges &&
               (deployPreviewResult === 'success' || deployPreviewResult === 'skipped');
             const resolveSkipReason = () => {
               if (qualityGateResult !== 'success') {
@@ -514,6 +564,12 @@ jobs:
               }
               if (migrationCheckResult !== 'success') {
                 return 'Migration check falhou ou foi ignorado. Revise o job "Migration Check".';
+              }
+              if (versionBumpResult !== 'success') {
+                return 'Version bump nao executou. Revise quality gate e migration check.';
+              }
+              if (!hasCodeChanges || !versionBumped || bumpType === 'unchanged') {
+                return 'Nenhuma alteracao de codigo em develop desde main. Release ignorada para evitar ciclo de versionamento.';
               }
               if (hasPendingMigrations) {
                 return 'Migrations pendentes no banco remoto. Revise o dry-run, execute o workflow "Apply Pending Migrations" e faça um novo push em develop.';
@@ -575,6 +631,7 @@ jobs:
               `**Release branch:** \`${head}\``,
               `**Base:** \`${base}\``,
               `**Version:** \`${newVersion ? `v${newVersion}` : 'unavailable'}\``,
+              `**Base version:** \`${baseVersion || 'unavailable'}\``,
               `**Bump type:** \`${bumpType || 'unavailable'}\``,
               '',
               checklistLine(checks.migrationCheck, 'Migration check OK'),
@@ -611,6 +668,14 @@ jobs:
 
             if (prs.data.length > 0) {
               const existingPr = prs.data[0];
+              if (!hasCodeChanges || !versionBumped) {
+                core.info('Open release PR kept unchanged — no new code on develop since main.');
+                core.setOutput('operation', 'unchanged');
+                core.setOutput('skip-reason', 'Nenhuma alteracao de codigo em develop desde main.');
+                core.setOutput('pr-url', existingPr.html_url);
+                core.setOutput('pr-number', String(existingPr.number));
+                return;
+              }
               const fallbackTemplate = fs.readFileSync('.github/pull_request_template.md', 'utf8');
               let body = applyChecklistStatuses(existingPr.body || fallbackTemplate);
               body = upsertAutomationSection(body, '*Atualizado automaticamente pelo GitHub Actions.*');
@@ -667,6 +732,10 @@ jobs:
         run: |
           echo "### Release PR (develop -> main)" >> $GITHUB_STEP_SUMMARY
           echo "- Version: v${{ needs['version-bump'].outputs.new_version || 'unavailable' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Base version: v${{ needs['version-bump'].outputs.base_version || 'unavailable' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version bump job: ${{ needs['version-bump'].result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Has code changes: ${{ needs['version-bump'].outputs.has_code_changes || 'unknown' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version bumped: ${{ needs['version-bump'].outputs.bumped || 'false' }}" >> $GITHUB_STEP_SUMMARY
           echo "- Operation: ${{ steps['release-pr'].outputs.operation || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
           echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Migration check: ${{ needs['migration-check'].result }}" >> $GITHUB_STEP_SUMMARY
