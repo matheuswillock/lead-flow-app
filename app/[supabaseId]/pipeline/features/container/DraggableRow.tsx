@@ -6,13 +6,16 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { flexRender, Row } from "@tanstack/react-table";
 import { Lead } from "../context/PipelineTypes";
 import { cn } from "@/lib/utils";
+import { isDraftLead } from "@/lib/lead-status";
+import { isMeetingFollowUpOverdue } from "@/lib/lead-meeting";
 
 interface DraggableRowProps {
   row: Row<Lead>;
   onRowClick: (lead: Lead) => void;
+  onRowHover?: (lead: Lead) => void;
 }
 
-export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
+export function DraggableRow({ row, onRowClick, onRowHover }: DraggableRowProps) {
   const {
     setNodeRef,
     transform,
@@ -30,6 +33,12 @@ export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
     zIndex: isDragging ? 1 : 0,
   };
 
+  const isFollowUpOverdue = isMeetingFollowUpOverdue({
+    status: row.original.status,
+    meetingDate: row.original.meetingDate,
+    meetingHeald: row.original.meetingHeald,
+  });
+
   return (
     <TableRow
       ref={setNodeRef}
@@ -37,9 +46,14 @@ export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
       data-state={row.getIsSelected() && "selected"}
       className={cn(
         "cursor-pointer",
-        row.original.isLeadTimeBreached && "animate-pulse bg-destructive/10"
+        isDraftLead(row.original) && "bg-muted/40 border-l-2 border-dashed border-muted-foreground/40",
+        (row.original.isLeadTimeBreached || isFollowUpOverdue) && "animate-pulse bg-destructive/10",
+        row.original.proposalReviewStatus === "criticized" &&
+          "border-l-2 border-semantic-danger-border bg-semantic-danger-surface/30 ring-1 ring-semantic-danger-border"
       )}
+      data-draft={isDraftLead(row.original) ? "true" : "false"}
       onClick={() => onRowClick(row.original)}
+      onMouseEnter={() => onRowHover?.(row.original)}
     >
       {row.getVisibleCells().map((cell) => (
         <TableCell key={cell.id} className="p-2 text-center align-middle">

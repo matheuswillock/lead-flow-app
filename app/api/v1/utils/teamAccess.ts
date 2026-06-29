@@ -5,6 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
+import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -60,6 +61,25 @@ const resolveTeamMembershipForAccess = cache(async (teamId: string, profileId: s
       team: {
         select: {
           masterId: true,
+          master: {
+            select: {
+              sponsorMasterId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+});
+
+const resolveTeamForSponsorAccess = cache(async (teamId: string) => {
+  return prisma.team.findUnique({
+    where: { id: teamId },
+    select: {
+      masterId: true,
+      master: {
+        select: {
+          sponsorMasterId: true,
         },
       },
     },
@@ -108,8 +128,61 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   const teamMember = await resolveTeamMembershipForAccess(teamId, profile.id);
 
   if (!teamMember) {
+    const teamForSponsor = await resolveTeamForSponsorAccess(teamId);
+    const sponsorMasterId = teamForSponsor?.master.sponsorMasterId;
+    if (!teamForSponsor || sponsorMasterId !== profile.id) {
+      return {
+        error: new Output(false, [], ["Acesso negado para este time"], null),
+        status: 403,
+      };
+    }
+
+    const accountMasterId = teamForSponsor.masterId;
+    const accountSubscriptionActive = await isAccountSubscriptionActive(accountMasterId);
+    if (!accountSubscriptionActive) {
+      return {
+        error: new Output(
+          false,
+          [],
+          ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
+          null
+        ),
+        status: 403,
+      };
+    }
+
     return {
-      error: new Output(false, [], ["Acesso negado para este time"], null),
+      access: {
+        supabaseId,
+        teamId,
+        profileId: profile.id,
+        profileEmail: profile.email,
+        profileName: profile.fullName,
+        isMaster: false,
+        managerId: accountMasterId,
+        canCreateAccountUsers: false,
+        canManageAccountTeams: true,
+        canTransferAccountLeads: false,
+        userTimezone: resolveTimezone(profile.timezone),
+        teamMember: {
+          role: "backoffice" as UserRole,
+          functions: [] as UserFunction[],
+        },
+      },
+    };
+  }
+
+  const accountMasterId = teamMember.team.masterId;
+  const accountSubscriptionActive = await isAccountSubscriptionActive(accountMasterId);
+
+  if (!accountSubscriptionActive) {
+    return {
+      error: new Output(
+        false,
+        [],
+        ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
+        null
+      ),
       status: 403,
     };
   }
@@ -121,8 +194,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       profileId: profile.id,
       profileEmail: profile.email,
       profileName: profile.fullName,
-      isMaster: teamMember.team.masterId === profile.id || profile.isMaster,
-      managerId: profile.managerId ?? teamMember.team.masterId ?? profile.id,
+      isMaster: accountMasterId === profile.id,
+      managerId: accountMasterId,
       canCreateAccountUsers:
         teamMember.role === "manager" && teamMember.canCreateAccountUsers === true,
       canManageAccountTeams:

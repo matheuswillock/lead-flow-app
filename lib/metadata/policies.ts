@@ -39,7 +39,7 @@ export function createPublicPageMetadata({
   title,
   description,
   canonicalPath,
-  keywords,
+  keywords: _keywords,
   ogType = "website",
   publishedTime,
   modifiedTime,
@@ -51,7 +51,6 @@ export function createPublicPageMetadata({
     metadataBase: getMetadataBase(),
     title,
     description,
-    keywords,
     alternates: {
       canonical: absoluteCanonical,
     },

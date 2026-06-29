@@ -11,6 +11,8 @@ const variableSchema = z.object({
   defaultValue: z.string().max(500).nullable().optional(),
   description: z.string().max(280).nullable().optional(),
   isActive: z.boolean().optional(),
+  valueSource: z.enum(["STATIC", "CDP"]).optional(),
+  cdpFieldKey: z.string().max(120).nullable().optional(),
 })
 
 function makeUseCase() {

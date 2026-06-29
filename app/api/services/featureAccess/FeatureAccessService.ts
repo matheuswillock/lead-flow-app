@@ -1,7 +1,12 @@
 import type { IFeatureAccessService, ResolveFeatureAccessInput, FeatureAccessResult } from "./IFeatureAccessService"
 import { FEATURE_PRODUCT_SLUG_MAP } from "@/lib/features/feature-product-slug-map"
-import type { IFeatureAccessRepository, UserRoleInfo } from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
+import type {
+  IFeatureAccessRepository,
+  UserRoleInfo,
+} from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
+import type { BackofficeFeatureAccessRule } from "@prisma/client"
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
+import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
 
@@ -29,29 +34,77 @@ function principalsForUser(user: UserRoleInfo): Set<string> {
   return principals
 }
 
+function evaluatePrincipalRules(
+  accessRules: BackofficeFeatureAccessRule[],
+  defaultAccessLevel: string,
+  principals: Set<string>
+): boolean {
+  if (accessRules.length > 0) {
+    const matchingRules = accessRules.filter((rule) => principals.has(rule.principal))
+    return matchingRules.some((rule) => rule.accessLevel !== "NONE")
+  }
+
+  return roleHasPublicAccess(defaultAccessLevel)
+}
+
 export class FeatureAccessService implements IFeatureAccessService {
   constructor(private readonly repository: IFeatureAccessRepository) {}
 
   async resolveAllowedSlugs(data: ResolveFeatureAccessInput): Promise<FeatureAccessResult> {
     const ownerProfileId = data.managerId || data.profileId
 
-    const [features, ownerProfile, ownerProfileSubscription, userSubscriptions, ownerSubscriptions, betaGrants, currentUserRole, ownerUserType] =
-      await Promise.all([
-        this.repository.listActiveFeatures(),
-        this.repository.findOwnerProfile(ownerProfileId),
-        this.repository.findOwnerProfileSubscription(ownerProfileId),
-        this.repository.listActiveUserSubscriptions(data.profileId),
-        this.repository.listActiveUserSubscriptions(ownerProfileId),
-        this.repository.listActiveBetaGrantsForProfile(data.profileId),
-        this.repository.findCurrentUserRoleInfo(data.profileId),
-        this.repository.findUserTypeAssignment(ownerProfileId),
-      ])
+    const [
+      features,
+      ownerProfile,
+      ownerProfileSubscription,
+      userSubscriptions,
+      ownerSubscriptions,
+      currentUserRole,
+      ownerUserType,
+    ] = await Promise.all([
+      this.repository.listActiveFeatures(),
+      this.repository.findOwnerProfile(ownerProfileId),
+      this.repository.findOwnerProfileSubscription(ownerProfileId),
+      this.repository.listActiveUserSubscriptions(data.profileId),
+      this.repository.listActiveUserSubscriptions(ownerProfileId),
+      this.repository.findCurrentUserRoleInfo(data.profileId),
+      this.repository.findUserTypeAssignment(ownerProfileId),
+    ])
 
     const userTypeSlug = ownerUserType?.slug ?? "common"
     const memberProExpiresAt = ownerUserType?.accessExpiresAt ?? null
     const memberProActive =
       userTypeSlug === "member_pro" &&
       (memberProExpiresAt === null || new Date(memberProExpiresAt).getTime() > Date.now())
+
+    const safeUserRole: UserRoleInfo = {
+      ...(currentUserRole ?? {
+        isMaster: false,
+        role: "operator",
+        functions: [],
+        canManageAccountTeams: false,
+        canCreateAccountUsers: false,
+        userTypeSlug: "common",
+        memberProActive: false,
+        memberProExpiresAt: null,
+        activeTeamId: null,
+      }),
+      userTypeSlug,
+      memberProActive,
+      memberProExpiresAt,
+    }
+
+    const accountSubscriptionActive = await isAccountSubscriptionActive(ownerProfileId)
+    if (!accountSubscriptionActive) {
+      return { slugs: [], betaSlugs: [], userRole: safeUserRole }
+    }
+
+    const betaEligibleFeatureIds = await this.repository.resolveBetaEligibleFeatureIds({
+      profileId: data.profileId,
+      activeTeamId: data.activeTeamId ?? safeUserRole.activeTeamId,
+      managerId: data.managerId || null,
+      isMaster: safeUserRole.isMaster,
+    })
 
     const hasPermanentAccess =
       ownerProfile?.hasPermanentSubscription === true ||
@@ -73,7 +126,6 @@ export class FeatureAccessService implements IFeatureAccessService {
       paidProductSlugs.add(ownerProfileSubscription.product.slug)
     }
 
-    const betaFeatureIds = new Set(betaGrants.map((item) => item.featureId))
     const featureById = new Map(features.map((f) => [f.id, f]))
     const allowedSlugs = new Set<string>()
 
@@ -120,32 +172,51 @@ export class FeatureAccessService implements IFeatureAccessService {
       return false
     }
 
+    const getAncestorFeatureIds = (featureId: string): string[] => {
+      const ancestorIds: string[] = []
+      const visited = new Set<string>()
+      let current = featureById.get(featureId)
+
+      while (current?.parentId) {
+        const parent = featureById.get(current.parentId)
+        if (!parent || visited.has(parent.id)) {
+          break
+        }
+        ancestorIds.push(parent.id)
+        visited.add(parent.id)
+        current = parent
+      }
+
+      return ancestorIds
+    }
+
+    const isBetaEligibleForFeature = (featureId: string, effectiveFeatureId: string): boolean => {
+      const candidateIds = new Set([
+        featureId,
+        effectiveFeatureId,
+        ...getAncestorFeatureIds(featureId),
+      ])
+
+      for (const candidateId of candidateIds) {
+        if (betaEligibleFeatureIds.has(candidateId)) {
+          return true
+        }
+      }
+
+      return false
+    }
+
     const betaSlugs = features
       .filter((feature) => {
         const effectiveFeature = resolveEffectiveFeature(feature.id)
-        if (effectiveFeature?.betaEnabled === true) {
-          return true
-        }
+        const isBetaFeature =
+          effectiveFeature?.betaEnabled === true || hasBetaParentInHierarchy(feature.id)
+        if (!isBetaFeature) return false
 
-        return hasBetaParentInHierarchy(feature.id)
+        return isBetaEligibleForFeature(feature.id, effectiveFeature?.id ?? feature.id)
       })
       .map((feature) => feature.slug)
 
-    const safeUserRole: UserRoleInfo = {
-      ...(currentUserRole ?? {
-        isMaster: false,
-        role: "operator",
-        functions: [],
-        canManageAccountTeams: false,
-        canCreateAccountUsers: false,
-        userTypeSlug: "common",
-        memberProActive: false,
-        memberProExpiresAt: null,
-      }),
-      userTypeSlug,
-      memberProActive,
-      memberProExpiresAt,
-    }
     const resolvedUserPrincipals = principalsForUser(safeUserRole)
 
     for (const feature of features) {
@@ -153,14 +224,11 @@ export class FeatureAccessService implements IFeatureAccessService {
       let hasAccess = false
 
       if (effectiveFeature.accessMode === "PUBLIC") {
-        if (effectiveFeature.accessRules.length > 0) {
-          const matchingRules = effectiveFeature.accessRules.filter((rule) =>
-            resolvedUserPrincipals.has(rule.principal)
-          )
-          hasAccess = matchingRules.some((rule) => rule.accessLevel !== "NONE")
-        } else {
-          hasAccess = roleHasPublicAccess(effectiveFeature.defaultAccessLevel)
-        }
+        hasAccess = evaluatePrincipalRules(
+          effectiveFeature.accessRules,
+          effectiveFeature.defaultAccessLevel,
+          resolvedUserPrincipals
+        )
       } else if (effectiveFeature.accessMode === "PAID" || effectiveFeature.accessMode === "ADDON") {
         const effectiveProductSlug =
           effectiveFeature.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[effectiveFeature.slug]
@@ -169,10 +237,11 @@ export class FeatureAccessService implements IFeatureAccessService {
           (effectiveProductSlug ? paidProductSlugs.has(effectiveProductSlug) : false)
 
         if (hasSubscription && effectiveFeature.accessRules.length > 0) {
-          const matchingRules = effectiveFeature.accessRules.filter((rule) =>
-            resolvedUserPrincipals.has(rule.principal)
+          hasAccess = evaluatePrincipalRules(
+            effectiveFeature.accessRules,
+            effectiveFeature.defaultAccessLevel,
+            resolvedUserPrincipals
           )
-          hasAccess = matchingRules.some((rule) => rule.accessLevel !== "NONE")
         } else {
           hasAccess = hasSubscription
         }
@@ -181,9 +250,29 @@ export class FeatureAccessService implements IFeatureAccessService {
       if (
         !hasAccess &&
         effectiveFeature.betaEnabled &&
-        (betaFeatureIds.has(feature.id) || betaFeatureIds.has(effectiveFeature.id))
+        isBetaEligibleForFeature(feature.id, effectiveFeature.id)
       ) {
-        hasAccess = true
+        if (effectiveFeature.accessMode === "PUBLIC") {
+          hasAccess = evaluatePrincipalRules(
+            effectiveFeature.accessRules,
+            effectiveFeature.defaultAccessLevel,
+            resolvedUserPrincipals
+          )
+        } else if (effectiveFeature.accessMode === "PAID" || effectiveFeature.accessMode === "ADDON") {
+          const effectiveProductSlug =
+            effectiveFeature.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[effectiveFeature.slug]
+          const hasSubscription =
+            hasPermanentAccess ||
+            (effectiveProductSlug ? paidProductSlugs.has(effectiveProductSlug) : false)
+
+          if (hasSubscription) {
+            hasAccess = evaluatePrincipalRules(
+              effectiveFeature.accessRules,
+              effectiveFeature.defaultAccessLevel,
+              resolvedUserPrincipals
+            )
+          }
+        }
       }
 
       if (hasAccess) {

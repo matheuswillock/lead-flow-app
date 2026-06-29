@@ -15,7 +15,9 @@ import {
   Tag,
   Zap,
   Building2,
+  MessageCircle,
   EllipsisVertical,
+  ListChecks,
   LogOut,
   UserRound,
 } from "lucide-react"
@@ -56,9 +58,11 @@ const navigationItems = [
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
   { title: "Funcionalidades", url: "/backoffice/features", icon: Zap },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
+  { title: "WhatsApp", url: "/backoffice/whatsapp", icon: MessageCircle },
   { title: "Templates de E-mail", url: "/backoffice/email-templates", icon: Mail },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
+  { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },
 ]
 
 export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {

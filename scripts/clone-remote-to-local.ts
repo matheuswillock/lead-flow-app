@@ -5,6 +5,7 @@
  *  1. Dump data from remote for the `auth`, `storage` and `public` schemas.
  *  2. Reset the local Supabase DB so the schema matches the migrations head.
  *  3. Restore the dumps in order (auth → storage → public).
+ *  4. Reconcile backoffice feature catalog via seed (remote dump may be stale).
  *
  * The schema itself is not dumped — it comes from `supabase/migrations/`,
  * guaranteeing that local and remote schemas stay in sync.
@@ -18,8 +19,13 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolvePostgresPassword } from "./lib/resolve-postgres-password";
+import {
+  LOCAL_DB_URL as CATALOG_LOCAL_DB_URL,
+  syncBackofficeCatalog,
+} from "./lib/sync-backoffice-catalog";
 
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
+const LOCAL_DB_URL = CATALOG_LOCAL_DB_URL;
 const DUMP_DIR = resolve(process.cwd(), "tmp", "db-clone");
 const POST_CLONE_MIGRATIONS = [
   resolve(
@@ -46,16 +52,36 @@ function step(label: string) {
   console.info(`\n▶ ${label}`);
 }
 
-function run(cmd: string, args: string[], opts: { stdio?: "inherit" | "pipe"; outFile?: string } = {}) {
+function run(
+  cmd: string,
+  args: string[],
+  opts: { stdio?: "inherit" | "pipe"; outFile?: string; env?: NodeJS.ProcessEnv } = {},
+) {
   const result = spawnSync(cmd, args, {
     stdio: opts.stdio ?? "inherit",
     shell: process.platform === "win32",
     encoding: "utf8",
+    env: opts.env ?? process.env,
   });
   if (result.status !== 0) {
     throw new Error(`Command failed (exit ${result.status}): ${cmd} ${args.join(" ")}`);
   }
   return result;
+}
+
+function getSupabaseCliEnv(): NodeJS.ProcessEnv {
+  const password = resolvePostgresPassword();
+  return {
+    ...process.env,
+    SUPABASE_DISABLE_TELEMETRY: "1",
+    DO_NOT_TRACK: "1",
+    // Supabase CLI exige SUPABASE_DB_PASSWORD; mapeamos de POSTGRES_PASSWORD ou connection URL.
+    ...(password ? { SUPABASE_DB_PASSWORD: password } : {}),
+  };
+}
+
+function runSupabase(args: string[]) {
+  run("supabase", args, { env: getSupabaseCliEnv() });
 }
 
 function normalizeSqlIdentifier(identifier: string) {
@@ -213,19 +239,25 @@ function ensureDumpDir() {
 }
 
 function dumpRemote() {
+  const supabaseEnv = getSupabaseCliEnv();
+  if (!supabaseEnv.SUPABASE_DB_PASSWORD) {
+    console.warn(
+      "\n⚠ Senha do Postgres remoto não encontrada — defina POSTGRES_PASSWORD ou DIRECT_URL/DATABASE_URL no .env.",
+    );
+  }
+
   for (const schema of SCHEMAS) {
     const outPath = resolve(DUMP_DIR, schema.file);
     step(`Dump remote schema "${schema.name}" → ${outPath}`);
-    const args = ["db", "dump", "--linked", "--data-only", "-f", outPath];
-    args.push("--schema", schema.name);
-    run("supabase", args);
+    const args = ["db", "dump", "--linked", "--data-only", "-f", outPath, "--schema", schema.name];
+    run("supabase", args, { env: supabaseEnv });
   }
   sanitizePublicDumpForLocalSchema();
 }
 
 function resetLocal() {
   step("Reset local Supabase DB (re-apply migrations)");
-  run("supabase", ["db", "reset", "--local", "--no-seed"]);
+  runSupabase(["db", "reset", "--local", "--no-seed"]);
 }
 
 function preparePublicRestore() {
@@ -290,12 +322,20 @@ async function main() {
   restoreLocal();
   repairUserTypeAssignments();
   reapplyPostCloneMigrations();
+  step("Sync backoffice feature catalog (post-clone seed)");
+  syncBackofficeCatalog(LOCAL_DB_URL);
   cleanup();
   const seconds = Math.round((Date.now() - started) / 1000);
   console.info(`\n✅ Done in ${seconds}s. Local DB now mirrors remote data.`);
 }
 
 main().catch((err) => {
-  console.error("\n❌ Clone failed:", err instanceof Error ? err.message : err);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("\n❌ Clone failed:", message);
+  if (message.includes("connection slots are reserved")) {
+    console.error(
+      "\nO Postgres remoto está sem conexões livres. Feche conexões extras, aguarde alguns minutos e tente de novo.",
+    );
+  }
   process.exit(1);
 });

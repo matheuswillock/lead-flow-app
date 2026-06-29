@@ -1,4 +1,4 @@
-import { ILeadRepository } from "./ILeadRepository";
+import { ILeadRepository, type LeadCreateRepositoryInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
@@ -15,6 +15,7 @@ const CRM_LEAD_LIST_SELECT = {
   email: true,
   phone: true,
   cnpj: true,
+  razaoSocial: true,
   age: true,
   currentHealthPlan: true,
   currentValue: true,
@@ -25,6 +26,8 @@ const CRM_LEAD_LIST_SELECT = {
   meetingNotes: true,
   meetingLink: true,
   meetingHeald: true,
+  meetingPresenceConfirmed: true,
+  meetingPresenceConfirmedAt: true,
   meetingType: true,
   isTransfer: true,
   followUpAt: true,
@@ -68,6 +71,11 @@ const CRM_LEAD_LIST_SELECT = {
       profileIconUrl: true,
     },
   },
+  proposalReview: {
+    select: {
+      status: true,
+    },
+  },
   _count: {
     select: {
       attachments: true,
@@ -76,9 +84,9 @@ const CRM_LEAD_LIST_SELECT = {
 } satisfies Prisma.LeadSelect;
 
 export class LeadRepository implements ILeadRepository {
-  async create(data: Prisma.LeadCreateInput): Promise<Lead> {
+  async create(data: LeadCreateRepositoryInput): Promise<LeadRecord> {
     return await prisma.lead.create({
-      data,
+      data: data as Prisma.LeadCreateInput,
       include: {
         manager: {
           select: {
@@ -112,7 +120,7 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
-  async findById(id: string): Promise<Lead | null> {
+  async findById(id: string): Promise<LeadRecord | null> {
     return await prisma.lead.findUnique({
       where: { id },
       include: {
@@ -176,6 +184,24 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
+  async findLeadByPhoneInTeam(
+    teamId: string,
+    normalizedPhone: string
+  ): Promise<Pick<Lead, "id"> | null> {
+    const digits = normalizedPhone.replace(/\D/g, "")
+    return prisma.lead.findFirst({
+      where: {
+        teamId,
+        OR: [
+          { phone: normalizedPhone },
+          ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+        ],
+      },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+    })
+  }
+
   async findByManagerId(
     managerId: string,
     options?: {
@@ -237,10 +263,10 @@ export class LeadRepository implements ILeadRepository {
     return { leads, total };
   }
 
-  async update(id: string, data: Prisma.LeadUpdateInput): Promise<Lead> {
+  async update(id: string, data: LeadUpdateRepositoryInput): Promise<LeadRecord> {
     return await prisma.lead.update({
       where: { id },
-      data,
+      data: data as Prisma.LeadUpdateInput,
       include: {
         manager: {
           select: {
@@ -455,27 +481,47 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
-  async transferToTeam(id: string, targetTeamId: string, closerId: string, sdrId: string | null): Promise<Lead> {
-    return await prisma.lead.update({
-      where: { id },
-      data: {
-        teamId: targetTeamId,
-        closerId,
-        assignedTo: sdrId ?? null,
-        updatedAt: new Date(),
-        activities: {
-          create: {
-            type: 'status_change',
-            body: 'Lead transferido para outro time',
-            createdAt: new Date(),
+  async transferToTeam(
+    id: string,
+    targetTeamId: string,
+    closerId: string,
+    sdrId: string | null,
+    sanitizations: TransferToTeamSanitization[] = []
+  ): Promise<Lead> {
+    return await prisma.$transaction(async (tx) => {
+      for (const sanitization of sanitizations) {
+        const sanitizeData: Prisma.LeadUpdateInput = {};
+        if (sanitization.clearEmail) sanitizeData.email = null;
+        if (sanitization.clearCnpj) sanitizeData.cnpj = null;
+        if (Object.keys(sanitizeData).length > 0) {
+          await tx.lead.update({
+            where: { id: sanitization.leadId },
+            data: sanitizeData,
+          });
+        }
+      }
+
+      return await tx.lead.update({
+        where: { id },
+        data: {
+          teamId: targetTeamId,
+          closerId,
+          assignedTo: sdrId ?? null,
+          updatedAt: new Date(),
+          activities: {
+            create: {
+              type: "status_change",
+              body: "Lead transferido para outro time",
+              createdAt: new Date(),
+            },
           },
         },
-      },
-      include: {
-        manager: { select: { id: true, fullName: true, email: true } },
-        assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-        closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-      },
+        include: {
+          manager: { select: { id: true, fullName: true, email: true } },
+          assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+        },
+      });
     });
   }
 
@@ -886,7 +932,7 @@ export class LeadRepository implements ILeadRepository {
     teamId: string,
     emails: string[],
     cnpjs: string[]
-  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus }>> {
+  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }>> {
     const conflictFilters: Prisma.LeadWhereInput[] = [];
     if (emails.length) conflictFilters.push({ email: { in: emails } });
     if (cnpjs.length) conflictFilters.push({ cnpj: { in: cnpjs } });

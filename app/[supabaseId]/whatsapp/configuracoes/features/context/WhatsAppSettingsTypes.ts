@@ -1,5 +1,7 @@
 export type WhatsAppConnectionStatus = 'PENDING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'
 
+export type WhatsAppHistorySyncStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+
 export interface WhatsAppConfig {
   teamId: string
   provider: string
@@ -12,6 +14,10 @@ export interface WhatsAppConfig {
   lastConnectedAt: string | null
   lastDisconnectedAt: string | null
   lastSyncAt: string | null
+  historySyncStatus: WhatsAppHistorySyncStatus
+  historySyncStartedAt: string | null
+  historySyncCompletedAt: string | null
+  historySyncError: string | null
 }
 
 export interface WhatsAppUsage {
@@ -27,9 +33,11 @@ export interface WhatsAppSettingsState {
   config: WhatsAppConfig | null
   usage: WhatsAppUsage | null
   isLoading: boolean
+  isRefreshing: boolean
   isConnecting: boolean
   isReconnecting: boolean
   isDisconnecting: boolean
+  isSyncingContacts: boolean
 }
 
 export interface WhatsAppSettingsActions {
@@ -37,6 +45,7 @@ export interface WhatsAppSettingsActions {
   reconnect: () => Promise<void>
   disconnect: () => Promise<void>
   reload: () => void
+  syncPhoneContacts: () => Promise<void>
 }
 
 export type WhatsAppSettingsContextValue = WhatsAppSettingsState & WhatsAppSettingsActions

@@ -5,6 +5,9 @@ import { TeamProvider } from "@/app/context/TeamContext"
 import { FeatureAccessProvider } from "@/app/context/FeatureAccessContext"
 import { LayoutContent } from "./components/LayoutContent"
 import { NotificationsProvider } from "./notifications/features/context/NotificationsContext"
+import { InAppNotificationProvider } from "./notifications/features/context/InAppNotificationContext"
+import { NotificationFaviconBadge } from "./notifications/features/components/NotificationFaviconBadge"
+import { WebPushConsentPrompt } from "./notifications/features/components/WebPushConsentPrompt"
 import { NO_INDEX_METADATA } from "@/lib/metadata/policies"
 
 export const metadata: Metadata = NO_INDEX_METADATA
@@ -29,9 +32,13 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
       <TeamProvider supabaseId={supabaseId}>
         <FeatureAccessProvider>
           <NotificationsProvider supabaseId={supabaseId}>
-            <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
-              {children}
-            </LayoutContent>
+            <InAppNotificationProvider>
+              <NotificationFaviconBadge />
+              <WebPushConsentPrompt supabaseId={supabaseId} />
+              <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
+                {children}
+              </LayoutContent>
+            </InAppNotificationProvider>
           </NotificationsProvider>
         </FeatureAccessProvider>
       </TeamProvider>

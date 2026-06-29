@@ -16,4 +16,6 @@ export interface ISubscriptionRepository {
    * @returns Profile ou null se não encontrado
    */
   findProfileById(id: string): Promise<Profile | null>;
+
+  listDistinctMembershipMasterIds(profileId: string): Promise<string[]>;
 }

@@ -6,4 +6,9 @@ export interface IWhatsAppSettingsService {
   reconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig>
   disconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig>
   fetchUsage(teamId: string, supabaseId: string): Promise<WhatsAppUsage | null>
+  syncHistory(teamId: string, supabaseId: string): Promise<void>
+  syncPhoneContacts(
+    teamId: string,
+    supabaseId: string
+  ): Promise<{ imported: number; updatedConversations: number; totalContacts: number }>
 }

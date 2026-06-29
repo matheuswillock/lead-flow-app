@@ -48,10 +48,13 @@ export class TeamMembersUseCase {
         return new Output(false, [], ["Perfil não encontrado"], null);
       }
 
+      const accessTeam = await this.repository.findTeam(teamId);
+      if (!accessTeam) return new Output(false, [], ["Time não encontrado"], null);
+
+      const canManageMembers = await this.repository.canManageTeamMembers(profile.id, accessTeam.masterId);
       const membership = await this.repository.findMembership(teamId, profile.id);
-      if (!membership) {
-        const team = await this.repository.findTeam(teamId);
-        if (!team) return new Output(false, [], ["Time não encontrado"], null);
+
+      if (!membership && !canManageMembers) {
         return new Output(false, [], ["Você não faz parte deste time"], null);
       }
 
@@ -83,9 +86,18 @@ export class TeamMembersUseCase {
         isMaster: member.profileId === team.masterId,
       }));
 
+      const isAssociateAccount = Boolean(team.sponsorMasterId);
+      const viewerOnAssociateAccount =
+        profile.id === team.masterId || profile.managerId === team.masterId;
+
+      const visibleMembers =
+        isAssociateAccount && viewerOnAssociateAccount && team.sponsorMasterId
+          ? formattedMembers.filter((member) => member.profileId !== team.sponsorMasterId)
+          : formattedMembers;
+
       const filteredMembers = requestedFunction
-        ? formattedMembers.filter((member) => member.functions.includes(requestedFunction))
-        : formattedMembers;
+        ? visibleMembers.filter((member) => member.functions.includes(requestedFunction))
+        : visibleMembers;
 
       let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
       let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
@@ -123,7 +135,7 @@ export class TeamMembersUseCase {
 
       const canManageTransferRoutes =
         team.masterId === profile.id ||
-        (membership.role === "manager" && membership.canManageAccountTeams === true);
+        (membership?.role === "manager" && membership.canManageAccountTeams === true);
 
       const transferTargets = await this.repository.findTransferTargets(teamId);
 
@@ -134,6 +146,7 @@ export class TeamMembersUseCase {
         transferCandidates,
         transferTargets,
         canManageTransferRoutes,
+        canManageMembers,
       });
     } catch (error) {
       console.error("[TeamMembersUseCase][listMembers] Erro ao listar membros do time:", error);
@@ -153,8 +166,8 @@ export class TeamMembersUseCase {
         return new Output(false, [], ["Time não encontrado"], null);
       }
 
-      if (team.masterId !== profile.id) {
-        return new Output(false, [], ["Apenas o master do time pode adicionar membros"], null);
+      if (!(await this.repository.canManageTeamMembers(profile.id, team.masterId))) {
+        return new Output(false, [], ["Apenas o master ou um manager delegado pode adicionar membros"], null);
       }
 
       const existingMember = await this.repository.findExistingMember(teamId, profileId);

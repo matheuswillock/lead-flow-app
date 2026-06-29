@@ -5,12 +5,14 @@ export interface TeamMembersRequesterProfile {
   email: string | null;
   fullName: string | null;
   isMaster: boolean;
+  managerId: string | null;
 }
 
 export interface TeamMembersTeam {
   id: string;
   masterId: string;
   name: string;
+  sponsorMasterId?: string | null;
 }
 
 export interface TeamMembersListItem {
@@ -58,6 +60,7 @@ export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
   findMembership(teamId: string, profileId: string): Promise<TeamMembersMembershipAccess | null>;
+  canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;
   findMasterAccountProfiles(masterId: string): Promise<TeamMembersProfileOption[]>;

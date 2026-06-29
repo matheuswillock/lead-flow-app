@@ -17,10 +17,11 @@ export async function GET(request: NextRequest) {
   const { profileId, teamId, teamMember, userTimezone } = teamAccess.access;
   const isManager = isManagerLikeRole(teamMember.role);
   const isCloser = teamMember.functions.includes('CLOSER');
+  const isSdr = teamMember.functions.includes('SDR');
 
-  if (!isManager && !isCloser) {
+  if (!isManager && !isCloser && !isSdr) {
     return NextResponse.json(
-      new Output(false, [], ['Acesso negado: somente managers ou closers podem acessar este recurso'], null),
+      new Output(false, [], ['Acesso negado: somente managers, closers ou SDRs podem acessar este recurso'], null),
       { status: 403 }
     );
   }
@@ -50,17 +51,18 @@ export async function GET(request: NextRequest) {
     resolvedEndDate = dates.endDate;
   }
 
-  // CLOSER restriction: cannot override their own scope via query param
   const resolvedCloserId = isCloser && !isManager ? profileId : closerId;
+  const resolvedSdrId = isSdr && !isManager ? profileId : sdrId;
 
   const result = await performanceUseCase.getSalesPerformance({
     teamId,
     profileId,
     isManager,
     isCloser,
+    isSdr,
     startDate: resolvedStartDate,
     endDate: resolvedEndDate,
-    sdrId,
+    sdrId: resolvedSdrId,
     closerId: resolvedCloserId,
     search,
     page,

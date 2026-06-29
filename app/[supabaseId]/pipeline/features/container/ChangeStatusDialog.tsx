@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -47,6 +47,10 @@ import {
   type SalesInfoPayload,
 } from '@/app/[supabaseId]/components/SalesInfoRequirementDialog';
 import {
+  CloserRequirementDialog,
+  type CloserRequirementPayload,
+} from '@/app/[supabaseId]/components/CloserRequirementDialog';
+import {
   LeadInfoRequirementDialog,
   type LeadInfoInitialValues,
   type LeadInfoPayload,
@@ -56,6 +60,12 @@ import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
 } from '@/lib/services/leadStatusTransitionClient';
+import { mapLeadInfoPayloadForUpdate } from '@/lib/leadStatusTransitionFields';
+import { filterSelectableStatusLabelsFromProductGates } from '@/lib/leadStatusTransitionRules';
+import {
+  fetchProductTransitionGates,
+  type ProductLeadStatusTransitionGate,
+} from '@/lib/services/leadStatusTransitionGatesClient';
 
 interface ChangeStatusDialogProps {
   open: boolean;
@@ -80,6 +90,12 @@ type PendingSalesInfoGate = {
   trigger?: LeadStatusTransitionTrigger;
   missingFields: MissingSalesField[];
   currentSalesInfo: SalesInfoInitialValues;
+};
+
+type PendingCloserGate = {
+  status: string;
+  trigger?: LeadStatusTransitionTrigger;
+  currentCloserId: string | null;
 };
 
 type PendingLeadInfoGate = {
@@ -114,9 +130,18 @@ export function ChangeStatusDialog({
   const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
   const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
+  const [pendingCloserGate, setPendingCloserGate] = useState<PendingCloserGate | null>(null);
+  const [showCloserRequirementDialog, setShowCloserRequirementDialog] = useState(false);
+  const [closerRequirementSaving, setCloserRequirementSaving] = useState(false);
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showLeadInfoDialog, setShowLeadInfoDialog] = useState(false);
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
+  const [transitionGates, setTransitionGates] = useState<ProductLeadStatusTransitionGate[]>([]);
+
+  useEffect(() => {
+    if (!open || !supabaseId) return;
+    void fetchProductTransitionGates({ supabaseId, teamId: activeTeamId }).then(setTransitionGates);
+  }, [open, supabaseId, activeTeamId]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
@@ -192,6 +217,17 @@ export function ChangeStatusDialog({
           return false;
         }
 
+        if (transition.blockerType === 'closer_required') {
+          setPendingCloserGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            currentCloserId: lead.closerId ?? null,
+          });
+          setShowCloserRequirementDialog(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
         if (transition.blockerType === 'lead_info_required') {
           const missingFields = Array.isArray(transition.missingLeadFields)
             ? transition.missingLeadFields
@@ -213,6 +249,18 @@ export function ChangeStatusDialog({
               typeof transition.currentLeadInfo?.ongoingTreatment === 'string'
                 ? transition.currentLeadInfo.ongoingTreatment
                 : lead.currentTreatment ?? null,
+            email:
+              typeof transition.currentLeadInfo?.email === 'string'
+                ? transition.currentLeadInfo.email
+                : lead.email ?? null,
+            phone:
+              typeof transition.currentLeadInfo?.phone === 'string'
+                ? transition.currentLeadInfo.phone
+                : lead.phone ?? null,
+            cnpj:
+              typeof transition.currentLeadInfo?.cnpj === 'string'
+                ? transition.currentLeadInfo.cnpj
+                : lead.cnpj ?? null,
           };
 
           setPendingLeadInfoGate({
@@ -420,6 +468,48 @@ export function ChangeStatusDialog({
     }
   };
 
+  const handleCloserRequirementSave = async (payload: CloserRequirementPayload) => {
+    if (!lead || !pendingCloserGate) return;
+
+    setCloserRequirementSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+        },
+        body: JSON.stringify({ closerId: payload.closerId }),
+      });
+
+      const closerResult = await response.json().catch(() => null);
+      if (!response.ok || !closerResult?.isValid) {
+        throw new Error(closerResult?.errorMessages?.[0] || 'Erro ao salvar closer do lead');
+      }
+
+      const closerPatch =
+        closerResult.result && typeof closerResult.result === 'object'
+          ? (closerResult.result as Partial<Lead>)
+          : {};
+      await onStatusChanged(lead.id, closerPatch);
+
+      const updated = await updateLeadStatus(
+        pendingCloserGate.status,
+        pendingCloserGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setShowCloserRequirementDialog(false);
+      setPendingCloserGate(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar closer do lead');
+    } finally {
+      setCloserRequirementSaving(false);
+    }
+  };
+
   const handleLeadInfoSave = async (payload: LeadInfoPayload) => {
     if (!lead || !pendingLeadInfoGate) return;
 
@@ -432,7 +522,7 @@ export function ChangeStatusDialog({
           ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
           ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(mapLeadInfoPayloadForUpdate(payload)),
       });
 
       const leadInfoResult = await response.json().catch(() => null);
@@ -525,7 +615,14 @@ export function ChangeStatusDialog({
                   <SelectValue placeholder="Selecione um status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(statusLabels).map(([value, label]) => (
+                  {(lead
+                    ? filterSelectableStatusLabelsFromProductGates(
+                        lead.status ?? '',
+                        statusLabels,
+                        transitionGates
+                      )
+                    : Object.entries(statusLabels)
+                  ).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>
@@ -568,6 +665,7 @@ export function ChangeStatusDialog({
         initialStartDate={lead.contractDueDate}
         initialOperadora={lead.soldPlan}
         initialHolderCnpj={lead.cnpj}
+        initialHolderRazaoSocial={lead.razaoSocial}
       />
 
       {selectedStatus && needsTriggerDialog(selectedStatus) && (
@@ -650,6 +748,21 @@ export function ChangeStatusDialog({
           isSaving={salesInfoSaving}
           initialValues={pendingSalesInfoGate.currentSalesInfo}
           missingFields={pendingSalesInfoGate.missingFields}
+        />
+      )}
+
+      {pendingCloserGate && (
+        <CloserRequirementDialog
+          open={showCloserRequirementDialog}
+          onOpenChange={(nextOpen) => {
+            setShowCloserRequirementDialog(nextOpen);
+            if (!nextOpen) setPendingCloserGate(null);
+          }}
+          onSave={handleCloserRequirementSave}
+          closers={closers}
+          leadName={lead.name}
+          isSaving={closerRequirementSaving}
+          initialCloserId={pendingCloserGate.currentCloserId}
         />
       )}
 

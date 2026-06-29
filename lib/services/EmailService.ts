@@ -9,6 +9,7 @@ import { sendTrackedEmailToProfileRecipients } from "@/lib/email/send-tracked-pr
 import { logResendDispatchesForRecipients } from "@/lib/email/log-profile-email-dispatches";
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags";
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger";
+import { AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL } from "@/lib/supabase/email-auth-link";
 
 export interface EmailTrackingMeta {
   teamId: string;
@@ -57,14 +58,31 @@ export interface LeadProposalPendingUrgentEmailData {
   actorName: string;
 }
 
+export interface AssociateProposalCriticismEmailData {
+  to: string[];
+  leadCode: string;
+  leadName: string;
+  title: string;
+  message: string;
+}
+
+export interface AssociateRequiredDocumentsPendingEmailData {
+  to: string[];
+  leadCode: string;
+  leadName: string;
+  actorName: string;
+}
+
 export interface LeadTransferActivatedEmailData {
   to: string[];
+  leadCode: string;
   leadName: string;
   leadPhone?: string | null;
   leadCnpj?: string | null;
   leadCurrentHealthPlan?: string | null;
   leadCurrentValue?: number | null;
   leadNotes?: string | null;
+  sdrName?: string | null;
   scheduleShareUrl?: string | null;
 }
 
@@ -175,6 +193,16 @@ export interface CloserScheduleNotificationEmailData {
   notes?: string | null;
   attachments?: Attachment[];
   timezone?: string | null;
+}
+
+export interface MeetingFollowUpDigestEmailData {
+  profileId?: string;
+  to: string;
+  recipientName: string;
+  leadCount: number;
+  role: "closer" | "master";
+  teamName?: string;
+  crmUrl: string;
 }
 
 export interface AddOnPendingPaymentEmailData {
@@ -1007,6 +1035,12 @@ export class EmailService {
                     <p style="margin: 24px 0 0 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
                       Se o botão não abrir, use o link direto recebido neste e-mail.
                     </p>
+
+                    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin: 24px 0 0 0;">
+                      <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6; text-align: center;">
+                        <strong>⚠️ Importante:</strong> Este link expira em ${AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL}.
+                      </p>
+                    </div>
                   </td>
                 </tr>
 
@@ -1120,6 +1154,51 @@ export class EmailService {
       html,
       attachments: data.attachments,
     });
+  }
+
+  async sendAssociateProposalCriticismEmail(data: AssociateProposalCriticismEmailData) {
+    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
+    const subject = `Proposta criticada — ${data.leadName} (${data.leadCode})`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #dc2626; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 22px;">Proposta criticada</h1>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">Corretor Studio</p>
+        </div>
+        <div style="border: 1px solid #fecaca; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
+          <p style="margin: 0 0 14px;"><strong>Lead:</strong> ${data.leadName} (${data.leadCode})</p>
+          <p style="margin: 0 0 8px;"><strong>Título:</strong> ${data.title}</p>
+          <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 12px; border-radius: 6px; margin: 0 0 14px;">
+            <p style="margin: 0; white-space: pre-wrap;">${data.message}</p>
+          </div>
+          <a href="${leadUrl}" style="display: inline-block; background: #dc2626; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Abrir lead no CRM</a>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({ to: data.to, subject, html });
+  }
+
+  async sendAssociateRequiredDocumentsPendingEmail(data: AssociateRequiredDocumentsPendingEmailData) {
+    const leadUrl = getFullUrl(`/associados`);
+    const subject = `Documentos pendentes — ${data.leadName} (${data.leadCode})`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 22px;">Documentos obrigatórios pendentes</h1>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">${data.actorName} enviou proposta de conta associada</p>
+        </div>
+        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
+          <p style="margin: 0 0 14px;"><strong>Lead:</strong> ${data.leadName} (${data.leadCode})</p>
+          <p style="margin: 0 0 14px;">Revise e aprove RG, Comprovante de Endereço e Contrato Social na fila Associados.</p>
+          <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Abrir fila Associados</a>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({ to: data.to, subject, html });
   }
 
   // Email de convite para novo operador
@@ -1240,7 +1319,7 @@ export class EmailService {
                     <!-- Aviso de Segurança -->
                     <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin: 24px 0;">
                       <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
-                        <strong>⚠️ Importante:</strong> Este link expira em 24 horas. Clique no botão acima para definir sua senha e começar a usar a plataforma.
+                        <strong>⚠️ Importante:</strong> Este link expira em ${AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL}. Clique no botão acima para definir sua senha e começar a usar a plataforma.
                       </p>
                     </div>
 
@@ -1455,7 +1534,7 @@ export class EmailService {
                     </div>
 
                     <p style="margin: 16px 0 0 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
-                      Este link é válido por <strong>1 hora</strong>.
+                      Este link é válido por <strong>${AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL}</strong>.
                     </p>
                     
                     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 32px 0;" />
@@ -2037,6 +2116,8 @@ export class EmailService {
       data.leadCurrentValue != null
         ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.leadCurrentValue)
         : "Não informado";
+    const sdrName = data.sdrName || "Não informado";
+    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
     const leadNotes = (data.leadNotes || "Sem observações").trim();
     const scheduleShareUrl = data.scheduleShareUrl?.trim() || "";
     const scheduleShareBlock = scheduleShareUrl
@@ -2064,7 +2145,12 @@ export class EmailService {
           <p style="margin: 0 0 8px;"><strong>Telefone:</strong> ${leadPhone}</p>
           <p style="margin: 0 0 8px;"><strong>CNPJ:</strong> ${leadCnpj}</p>
           <p style="margin: 0 0 8px;"><strong>Plano atual:</strong> ${leadCurrentHealthPlan}</p>
-          <p style="margin: 0 0 14px;"><strong>Valor atual:</strong> ${leadCurrentValue}</p>
+          <p style="margin: 0 0 8px;"><strong>Valor atual:</strong> ${leadCurrentValue}</p>
+          <p style="margin: 0 0 14px;"><strong>SDR:</strong> ${sdrName}</p>
+
+          <div style="margin: 0 0 14px;">
+            <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Acessar lead no CRM</a>
+          </div>
 
           <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
             <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
@@ -2078,6 +2164,80 @@ export class EmailService {
     return this.sendEmail({
       to: data.to,
       subject: `Novo lead para transferência: ${leadName}`,
+      html,
+    });
+  }
+
+  async sendMeetingFollowUpDigestEmail(data: MeetingFollowUpDigestEmailData) {
+    const meetingLabel = data.leadCount === 1 ? "reunião" : "reuniões";
+    const subject =
+      data.role === "closer"
+        ? `${data.leadCount} ${meetingLabel} aguardando confirmação`
+        : `Time: ${data.leadCount} ${meetingLabel} pendentes há mais de 3 dias`;
+
+    const introText =
+      data.role === "closer"
+        ? `Olá <strong>${data.recipientName}</strong>, você tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação. Marque como realizada ou no-show no Corretor Studio.`
+        : `Olá <strong>${data.recipientName}</strong>, o time <strong>${data.teamName ?? "do time"}</strong> tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação há mais de 3 dias.`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Reuniões aguardando confirmação</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 48px 32px;">
+                    <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6;">
+                      ${introText}
+                    </p>
+                    <div style="text-align: center; margin: 32px 0;">
+                      <a href="${data.crmUrl}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 600; font-size: 16px;">
+                        Abrir board no CRM
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    if (data.profileId) {
+      return sendTrackedEmailToProfileRecipients({
+        profileId: data.profileId,
+        category: "meeting_invite",
+        subject,
+        html,
+        sourceType: "meeting_follow_up_digest",
+      });
+    }
+
+    return this.sendEmail({
+      to: [data.to],
+      subject,
       html,
     });
   }

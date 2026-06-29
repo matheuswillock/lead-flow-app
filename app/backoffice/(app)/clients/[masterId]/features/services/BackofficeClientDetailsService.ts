@@ -1,9 +1,39 @@
-import type { IBackofficeClientDetailsService } from "./IBackofficeClientDetailsService"
+import type { IBackofficeClientDetailsService, BackofficeMutationResult } from "./IBackofficeClientDetailsService"
 import type {
   BackofficeClientDetails,
   BackofficeClientInvoiceFilters,
   BackofficeClientInvoicesResult,
 } from "../context/BackofficeClientDetailsTypes"
+
+function mapMutationResult(result: unknown): BackofficeMutationResult {
+  if (
+    result &&
+    typeof result === "object" &&
+    "requiresPayment" in result &&
+    (result as { requiresPayment?: boolean }).requiresPayment === true &&
+    "checkoutUrl" in result &&
+    typeof (result as { checkoutUrl?: unknown }).checkoutUrl === "string" &&
+    "pendingActionId" in result &&
+    typeof (result as { pendingActionId?: unknown }).pendingActionId === "string"
+  ) {
+    const pending = result as unknown as {
+      pendingActionId: string
+      checkoutUrl: string
+      totalCharge: number
+      remainingMonths: number
+    }
+    return {
+      kind: "pending_payment",
+      requiresPayment: true,
+      pendingActionId: pending.pendingActionId,
+      checkoutUrl: pending.checkoutUrl,
+      totalCharge: pending.totalCharge,
+      remainingMonths: pending.remainingMonths,
+    }
+  }
+
+  return { kind: "completed" }
+}
 
 export class BackofficeClientDetailsService implements IBackofficeClientDetailsService {
   async sendAccessEmail(
@@ -203,6 +233,17 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
+  async addMemberToTeam(memberId: string, teamId: string): Promise<void> {
+    const res = await fetch(
+      `/api/v1/backoffice/members/${memberId}/teams/${teamId}`,
+      { method: "POST" }
+    )
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao adicionar membro ao time")
+    }
+  }
+
   async getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }> {
     const res = await fetch(`/api/v1/backoffice/members/${memberId}/google-scopes`, {
       cache: "no-store",
@@ -212,6 +253,25 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       throw new Error(json.errorMessages?.[0] ?? "Erro ao buscar escopos Google do membro")
     }
     return json.result as { connected: boolean; scopes: string[] }
+  }
+
+  async getMemberExternalTeams(memberId: string, accountMasterId: string) {
+    const params = new URLSearchParams({ accountMasterId })
+    const res = await fetch(
+      `/api/v1/backoffice/members/${memberId}/external-teams?${params.toString()}`,
+      { cache: "no-store" }
+    )
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao listar times externos do membro")
+    }
+    return (json.result?.items ?? []) as Array<{
+      teamId: string
+      teamName: string
+      accountMasterId: string
+      accountName: string
+      role: string
+    }>
   }
 
   async addMember(
@@ -226,8 +286,9 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      generateCharge?: boolean
     }
-  ): Promise<void> {
+  ): Promise<BackofficeMutationResult> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -237,9 +298,13 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     if (!json.isValid) {
       throw new Error(json.errorMessages?.[0] ?? "Erro ao adicionar usuário")
     }
+    return mapMutationResult(json.result)
   }
 
-  async addTeam(masterId: string, data: { name: string }): Promise<void> {
+  async addTeam(
+    masterId: string,
+    data: { name: string; generateCharge?: boolean }
+  ): Promise<BackofficeMutationResult> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/teams`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -248,6 +313,18 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     const json = await res.json()
     if (!json.isValid) {
       throw new Error(json.errorMessages?.[0] ?? "Erro ao criar time")
+    }
+    return mapMutationResult(json.result)
+  }
+
+  async addMasterToTeam(masterId: string, teamId: string): Promise<void> {
+    const res = await fetch(
+      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}/add-master`,
+      { method: "POST" }
+    )
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao adicionar master ao time")
     }
   }
 

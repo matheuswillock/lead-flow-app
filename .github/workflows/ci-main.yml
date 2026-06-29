@@ -65,6 +65,9 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Proxy Tests
+        run: bun run test:proxy
+
   migration-status:
     name: Migration Status
     runs-on: ubuntu-latest

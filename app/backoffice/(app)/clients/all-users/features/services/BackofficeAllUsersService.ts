@@ -8,6 +8,7 @@ import type {
   BackofficeAllUsersEmailDispatchFilters,
   BackofficeAllUsersEmailDispatchListResult,
   BackofficeAllUsersUserType,
+  BackofficeSponsorMasterOption,
 } from "../context/BackofficeAllUsersTypes"
 
 interface OutputResponse<T> {
@@ -238,5 +239,13 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
       "Erro ao atualizar tipo de usuário"
     )
     return result.userType
+  }
+
+  async listSponsorMasters(): Promise<BackofficeSponsorMasterOption[]> {
+    const result = await parseOutput<{ options: BackofficeSponsorMasterOption[] }>(
+      await fetch("/api/v1/backoffice/clients/all-users/sponsor-masters"),
+      "Erro ao carregar patrocinadores"
+    )
+    return result.options
   }
 }

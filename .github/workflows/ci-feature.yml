@@ -39,6 +39,7 @@ jobs:
       governance-check: ${{ steps['quality-result'].outputs['governance-check'] }}
       lint: ${{ steps['quality-result'].outputs.lint }}
       typecheck: ${{ steps['quality-result'].outputs.typecheck }}
+      proxy-tests: ${{ steps['quality-result'].outputs['proxy-tests'] }}
       quality-passed: ${{ steps['quality-result'].outputs.passed }}
     steps:
       - name: Checkout
@@ -88,6 +89,11 @@ jobs:
         continue-on-error: true
         run: bun run typecheck
 
+      - name: Proxy Tests
+        id: proxy-tests
+        continue-on-error: true
+        run: bun run test:proxy
+
       - name: Spellcheck PT-BR
         id: spellcheck-pt-br
         continue-on-error: true
@@ -101,9 +107,10 @@ jobs:
           echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
           echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "proxy-tests=${{ steps['proxy-tests'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" ]]; then
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
             echo "passed=true" >> "$GITHUB_OUTPUT"
           else
             echo "passed=false" >> "$GITHUB_OUTPUT"
@@ -130,6 +137,7 @@ jobs:
             echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
             echo "lint=${{ needs.quality.outputs.lint }}"
             echo "typecheck=${{ needs.quality.outputs.typecheck }}"
+            echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
             exit 1
           fi
 

@@ -16,6 +16,10 @@ export interface WhatsAppConfigSelect {
   lastConnectedAt: Date | null
   lastDisconnectedAt: Date | null
   lastSyncAt: Date | null
+  historySyncStatus: string
+  historySyncStartedAt: Date | null
+  historySyncCompletedAt: Date | null
+  historySyncError: string | null
   usageLimitMonthly: number
   billingEnabled: boolean
   createdAt: Date
@@ -30,12 +34,15 @@ export interface WhatsAppConversationSelect {
   externalChatId: string | null
   contactPhone: string
   contactName: string | null
+  contactAvatarUrl: string | null
   normalizedPhone: string
   assignedProfileId: string | null
   lastMessageAt: Date | null
   lastMessagePreview: string | null
   unreadCount: number
   isArchived: boolean
+  handoffMode: string
+  welcomeSentAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -52,7 +59,11 @@ export interface WhatsAppMessageSelect {
   status: string
   contentText: string | null
   mediaUrl: string | null
+  mediaMimeType: string | null
+  mediaFileName: string | null
+  linkPreview: Prisma.JsonValue | null
   caption: string | null
+  senderDisplayName: string | null
   sentByProfileId: string | null
   senderPhone: string | null
   recipientPhone: string | null
@@ -60,6 +71,8 @@ export interface WhatsAppMessageSelect {
   deliveredAt: Date | null
   readAt: Date | null
   failedAt: Date | null
+  isAutoResponse: boolean
+  autoResponseRuleId: string | null
   createdAt: Date
 }
 
@@ -67,8 +80,10 @@ export interface IWhatsAppRepository {
   // Config
   findConfigByTeamId(teamId: string): Promise<WhatsAppConfigSelect | null>
   findConfigByWebhookSecret(secret: string): Promise<WhatsAppConfigSelect | null>
+  findConfigById(id: string): Promise<WhatsAppConfigSelect | null>
   createConfig(data: Prisma.TeamWhatsAppConfigCreateInput): Promise<WhatsAppConfigSelect>
   updateConfig(id: string, data: Prisma.TeamWhatsAppConfigUpdateInput): Promise<WhatsAppConfigSelect>
+  deleteConfig(id: string): Promise<void>
 
   // Conversations
   findOrCreateConversation(params: {
@@ -111,6 +126,11 @@ export interface IWhatsAppRepository {
     providerMessageId: string
   ): Promise<WhatsAppMessageSelect | null>
 
+  findMessageByIdForTeam(
+    teamId: string,
+    messageId: string
+  ): Promise<(WhatsAppMessageSelect & { rawPayload: Prisma.JsonValue }) | null>
+
   updateMessageStatus(
     id: string,
     data: {
@@ -134,4 +154,13 @@ export interface IWhatsAppRepository {
     teamId: string
     periodKey: string
   }): Promise<{ outboundCount: number; inboundCount: number }>
+
+  listMessagesSince(params: {
+    teamId: string
+    since: Date
+  }): Promise<WhatsAppMessageSelect[]>
+
+  listConversationsForTeam(teamId: string): Promise<WhatsAppConversationSelect[]>
+
+  findTeamMasterContext(teamId: string): Promise<{ masterId: string; timezone: string | null } | null>
 }

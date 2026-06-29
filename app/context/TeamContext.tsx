@@ -4,6 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Output } from "@/lib/output";
 import { toast } from "sonner";
 import { useUser } from "@/app/context/UserContext";
+import {
+  readTeamsBootstrapCache,
+  writeTeamsBootstrapCache,
+} from "@/lib/bootstrap/sessionBootstrapCache";
 
 const teamsInFlightBySupabaseId = new Map<string, Promise<Output>>();
 
@@ -11,6 +15,14 @@ export interface TeamSummary {
   id: string;
   name: string;
   masterId: string;
+  accountMasterId?: string;
+  accountName?: string;
+  isOwnAccount?: boolean;
+  isAssociateAccount?: boolean;
+  sponsorMasterId?: string | null;
+  associateAccountName?: string | null;
+  isAccessible?: boolean;
+  accountSubscriptionActive?: boolean;
   isDefault: boolean;
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
@@ -43,7 +55,13 @@ interface TeamContextState {
 
 const TeamContext = createContext<TeamContextState | undefined>(undefined);
 
-const STORAGE_KEY = "activeTeamId";
+function getStorageKey(supabaseId: string) {
+  return `activeTeamId:${supabaseId}`;
+}
+
+function isTeamSelectable(team: TeamSummary) {
+  return !team.isPending && team.isAccessible !== false;
+}
 
 interface TeamProviderProps {
   children: React.ReactNode;
@@ -52,20 +70,51 @@ interface TeamProviderProps {
 
 export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   const { user } = useUser();
+  const storageKey = getStorageKey(supabaseId);
+
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamIdState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const serverActiveTeamIdRef = useRef<string | null>(null);
   const initializedRef = useRef(false);
+  const bootstrapHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (bootstrapHydratedRef.current) return;
+    bootstrapHydratedRef.current = true;
+
+    const cached = readTeamsBootstrapCache(supabaseId);
+    if (cached) {
+      setTeams(cached.teams as TeamSummary[]);
+      serverActiveTeamIdRef.current = cached.activeTeamId ?? null;
+      if (cached.activeTeamId) {
+        setActiveTeamIdState(cached.activeTeamId);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(storageKey);
+      if (stored) {
+        setActiveTeamIdState(stored);
+      }
+    }
+  }, [storageKey, supabaseId]);
 
   const refreshTeams = useCallback(async () => {
     if (!supabaseId) {
       return;
     }
 
+    const cachedTeams = readTeamsBootstrapCache(supabaseId);
+    const shouldBlockUi = !cachedTeams;
+
     try {
-      setIsLoading(true);
+      if (shouldBlockUi) {
+        setIsLoading(true);
+      }
       setError(null);
 
       const createTeamsRequest = async (): Promise<Output> => {
@@ -99,17 +148,29 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       const payload = output.result as { teams: TeamSummary[]; activeTeamId: string | null };
       setTeams(payload.teams || []);
       serverActiveTeamIdRef.current = payload.activeTeamId ?? null;
+
+      writeTeamsBootstrapCache(supabaseId, {
+        teams: payload.teams || [],
+        activeTeamId: payload.activeTeamId ?? null,
+      });
+
+      if (payload.activeTeamId && payload.activeTeamId !== activeTeamId) {
+        setActiveTeamIdState(payload.activeTeamId);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(storageKey, payload.activeTeamId);
+        }
+      }
     } catch (err) {
       console.error("Error fetching teams:", err);
       setError("Network error while fetching teams");
     } finally {
       setIsLoading(false);
     }
-  }, [supabaseId]);
+  }, [activeTeamId, storageKey, supabaseId]);
 
   const persistActiveTeam = useCallback(async (teamId: string) => {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, teamId);
+      window.localStorage.setItem(storageKey, teamId);
     }
 
     if (serverActiveTeamIdRef.current === teamId) {
@@ -117,7 +178,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
     }
 
     try {
-      await fetch("/api/v1/teams/active", {
+      const response = await fetch("/api/v1/teams/active", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -125,21 +186,35 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
         },
         body: JSON.stringify({ teamId })
       });
+      const output = await response.json();
+      if (!response.ok || !output.isValid) {
+        throw new Error(output.errorMessages?.join(", ") || "Não foi possível alterar o time ativo.");
+      }
       serverActiveTeamIdRef.current = teamId;
     } catch (err) {
       console.error("Error updating active team:", err);
+      throw err;
     }
-  }, [supabaseId]);
+  }, [storageKey, supabaseId]);
 
   const setActiveTeamId = useCallback(async (teamId: string) => {
-    const targetTeam = teams.find((t) => t.id === teamId);
-    if (!teamId || teamId === activeTeamId || targetTeam?.isPending) {
+    const targetTeam = teams.find((team) => team.id === teamId);
+    if (!teamId || teamId === activeTeamId || !targetTeam) {
+      return;
+    }
+
+    if (!isTeamSelectable(targetTeam)) {
+      toast.error("A assinatura desta conta está inativa. Entre em contato com o administrador.");
       return;
     }
 
     setActiveTeamIdState(teamId);
-    await persistActiveTeam(teamId);
-  }, [activeTeamId, persistActiveTeam]);
+    try {
+      await persistActiveTeam(teamId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao alterar o time ativo.");
+    }
+  }, [activeTeamId, persistActiveTeam, teams]);
 
   useEffect(() => {
     if (!supabaseId) return;
@@ -153,23 +228,23 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
     let nextTeamId: string | null = null;
 
     if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      const storedTeam = stored ? teams.find((t) => t.id === stored) : null;
-      if (stored && storedTeam && !storedTeam.isPending) {
+      const stored = window.localStorage.getItem(storageKey);
+      const storedTeam = stored ? teams.find((team) => team.id === stored) : null;
+      if (stored && storedTeam && isTeamSelectable(storedTeam)) {
         nextTeamId = stored;
       }
     }
 
     if (!nextTeamId && serverActiveTeamIdRef.current) {
       const serverTeamId = serverActiveTeamIdRef.current;
-      const serverTeam = teams.find((t) => t.id === serverTeamId);
-      if (serverTeam && !serverTeam.isPending) {
+      const serverTeam = teams.find((team) => team.id === serverTeamId);
+      if (serverTeam && isTeamSelectable(serverTeam)) {
         nextTeamId = serverTeamId;
       }
     }
 
     if (!nextTeamId) {
-      nextTeamId = teams.find((team) => !team.isPending)?.id ?? null;
+      nextTeamId = teams.find((team) => isTeamSelectable(team))?.id ?? null;
     }
 
     if (nextTeamId) {
@@ -179,12 +254,35 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
         console.error("Error persisting initial team:", err);
       });
     }
-  }, [teams, persistActiveTeam]);
+  }, [storageKey, teams, persistActiveTeam]);
+
+  useEffect(() => {
+    if (!activeTeamId) return;
+
+    const currentTeam = teams.find((team) => team.id === activeTeamId);
+    if (!currentTeam || isTeamSelectable(currentTeam)) {
+      return;
+    }
+
+    const fallback = teams.find((team) => isTeamSelectable(team))?.id ?? null;
+    if (fallback && fallback !== activeTeamId) {
+      toast.info("A assinatura desta conta está inativa. Alternamos para outro time disponível.");
+      setActiveTeamIdState(fallback);
+      persistActiveTeam(fallback).catch((err) => {
+        console.error("Error persisting fallback team:", err);
+      });
+      return;
+    }
+
+    if (!fallback) {
+      setActiveTeamIdState(null);
+    }
+  }, [activeTeamId, teams, persistActiveTeam]);
 
   useEffect(() => {
     if (!activeTeamId) return;
     if (!teams.some((team) => team.id === activeTeamId)) {
-      const fallback = teams[0]?.id ?? null;
+      const fallback = teams.find((team) => isTeamSelectable(team))?.id ?? null;
       if (fallback) {
         setActiveTeamIdState(fallback);
         persistActiveTeam(fallback).catch((err) => {

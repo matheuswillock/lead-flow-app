@@ -3,29 +3,12 @@
 import { div as MotionDiv } from "framer-motion/client"
 import { ArrowRight, BarChart2, CalendarClock, CheckCircle2, FileText, Mail, Upload } from "lucide-react"
 import Link from "next/link"
+import type { ElementType } from "react"
+import { emailBenefitsData, EMAIL_SPOTLIGHT_HEADING, EMAIL_SPOTLIGHT_SUBHEADING } from "@/lib/landing/email-spotlight-data"
 
-const benefits = [
-  {
-    icon: FileText,
-    title: "Templates com editor visual drag-and-drop",
-    description: "Crie emails profissionais com o editor Maily ou diretamente em HTML.",
-  },
-  {
-    icon: Upload,
-    title: "Importe listas de contatos via CSV",
-    description: "Gerencie múltiplas listas, rastreie cancelamentos e bounces automaticamente.",
-  },
-  {
-    icon: CalendarClock,
-    title: "Programe campanhas com agendamento automático",
-    description: "Defina data e hora de disparo e o sistema envia no momento certo.",
-  },
-  {
-    icon: BarChart2,
-    title: "Métricas de abertura, clique e entrega em tempo real",
-    description: "Acompanhe a performance de cada campanha com dashboard detalhado.",
-  },
-]
+const BENEFIT_ICONS: ElementType[] = [FileText, Upload, CalendarClock, BarChart2]
+
+const benefits = emailBenefitsData.map((b, i) => ({ ...b, icon: BENEFIT_ICONS[i] }))
 
 const mockStats = [
   { label: "Taxa de abertura", value: "34,2%", className: "text-primary" },
@@ -67,10 +50,11 @@ export function EmailCampaignsSpotlight() {
           className="text-center mb-14"
         >
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-            Campanhas de email <span className="landing-primary-gradient">em breve no CRM</span>
+            {EMAIL_SPOTLIGHT_HEADING.split("em breve no CRM")[0]}
+            <span className="landing-primary-gradient">em breve no CRM</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Estamos finalizando o módulo para você criar, agendar e medir campanhas sem sair do Corretor Studio.
+            {EMAIL_SPOTLIGHT_SUBHEADING}
           </p>
         </MotionDiv>
 
@@ -176,7 +160,7 @@ export function EmailCampaignsSpotlight() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
-                    Acesso gradual por lotes apos o lancamento
+                    Acesso gradual por lotes após o lançamento
                   </li>
                 </ul>
               </div>

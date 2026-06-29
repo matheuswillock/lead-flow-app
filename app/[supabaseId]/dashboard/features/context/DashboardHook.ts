@@ -1,17 +1,21 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { IDashboardState, IDashboardActions } from './DashboardTypes';
+import { IDashboardState, IDashboardActions, DashboardTeamScope } from './DashboardTypes';
 import { IDashboardMetricsService, MetricsFilters } from '../services/IDashboardMetricsService';
 
 interface UseDashboardHookProps {
   supabaseId: string;
   teamId: string;
+  teamScope: DashboardTeamScope;
+  canUseAllTeamsScope: boolean;
   dashboardService: IDashboardMetricsService;
   initialFilters?: MetricsFilters;
+  onTeamScopeChange?: (scope: DashboardTeamScope) => void;
 }
 
 interface UseDashboardHookReturn extends IDashboardState, IDashboardActions {}
+
 interface FetchMetricsOptions {
   forceDetailed?: boolean;
 }
@@ -19,16 +23,17 @@ interface FetchMetricsOptions {
 export function useDashboardHook({ 
   supabaseId, 
   teamId,
+  teamScope,
+  canUseAllTeamsScope,
   dashboardService, 
-  initialFilters 
+  initialFilters,
+  onTeamScopeChange,
 }: UseDashboardHookProps): UseDashboardHookReturn {
-  // Estados principais
   const [metrics, setMetrics] = useState<IDashboardState['metrics']>(null);
   const [detailedMetrics, setDetailedMetrics] = useState<IDashboardState['detailedMetrics']>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Estados de filtros
   const [filters, setFilters] = useState<MetricsFilters>(
     initialFilters || { period: '30d' }
   );
@@ -36,14 +41,16 @@ export function useDashboardHook({
   const detailedMetricsRef = useRef<IDashboardState['detailedMetrics']>(null);
   const detailedContextKeyRef = useRef<string | null>(null);
   
-  // Estado de privacidade
   const [isBlurred, setIsBlurred] = useState<boolean>(false);
   const skipPersistBlurRef = useRef(false);
 
+  const effectiveTeamScope: DashboardTeamScope =
+    canUseAllTeamsScope ? teamScope : 'active';
+
   const blurStorageKey = useMemo(() => {
     if (!supabaseId) return null;
-    return `dashboardBlur:${supabaseId}:${teamId || 'default'}`;
-  }, [supabaseId, teamId]);
+    return `dashboardBlur:${supabaseId}:${teamId || 'default'}:${effectiveTeamScope}`;
+  }, [supabaseId, teamId, effectiveTeamScope]);
 
   useEffect(() => {
     skipPersistBlurRef.current = true;
@@ -84,30 +91,31 @@ export function useDashboardHook({
   }, [detailedMetrics]);
 
   useEffect(() => {
-    const currentKey = supabaseId && teamId ? `${supabaseId}:${teamId}` : null;
+    const currentKey = supabaseId && teamId
+      ? `${supabaseId}:${teamId}:${effectiveTeamScope}`
+      : null;
     if (detailedContextKeyRef.current && detailedContextKeyRef.current !== currentKey) {
       detailedContextKeyRef.current = null;
       detailedMetricsRef.current = null;
       setDetailedMetrics(null);
     }
-  }, [supabaseId, teamId]);
+  }, [supabaseId, teamId, effectiveTeamScope]);
 
-  // Ação para buscar métricas
   const fetchMetrics = useCallback(async (options?: FetchMetricsOptions) => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Preparar filtros finais
       const finalFilters: MetricsFilters = customDateRange 
         ? {
             ...filters,
             startDate: customDateRange.startDate,
             endDate: customDateRange.endDate,
+            teamScope: effectiveTeamScope,
           }
-        : filters;
+        : { ...filters, teamScope: effectiveTeamScope };
 
-      const detailedKey = `${supabaseId}:${teamId}`;
+      const detailedKey = `${supabaseId}:${teamId}:${effectiveTeamScope}`;
       const shouldFetchDetailed =
         options?.forceDetailed === true ||
         detailedContextKeyRef.current !== detailedKey ||
@@ -115,11 +123,10 @@ export function useDashboardHook({
 
       const detailedFallback = detailedMetricsRef.current ?? [];
 
-      // Buscar dados em paralelo
       const [metricsData, detailedData] = await Promise.all([
         dashboardService.getMetrics(supabaseId, teamId, finalFilters),
         shouldFetchDetailed
-          ? dashboardService.getDetailedMetrics(supabaseId, teamId)
+          ? dashboardService.getDetailedMetrics(supabaseId, teamId, effectiveTeamScope)
           : Promise.resolve(detailedFallback),
       ]);
 
@@ -137,28 +144,23 @@ export function useDashboardHook({
     } finally {
       setIsLoading(false);
     }
-  }, [supabaseId, teamId, dashboardService, filters, customDateRange]);
+  }, [supabaseId, teamId, effectiveTeamScope, dashboardService, filters, customDateRange]);
 
-  // Ação para atualizar filtros
   const updateFilters = useCallback((newFilters: Partial<MetricsFilters>) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
     
-    // Se estiver atualizando período, limpar data range customizada
     if (newFilters.period) {
       setCustomDateRange(null);
     }
   }, []);
 
-  // Ação para definir período específico
   const setPeriod = useCallback((period: '7d' | '30d' | '3m' | '6m' | '1y') => {
     setFilters(prev => ({ ...prev, period }));
     setCustomDateRange(null);
   }, []);
 
-  // Ação para definir data range customizada
   const setCustomDateRangeAction = useCallback((startDate: string, endDate: string) => {
     setCustomDateRange({ startDate, endDate });
-    // Limpar período dos filtros ao usar data customizada
     setFilters(prev => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { period, ...rest } = prev;
@@ -166,70 +168,71 @@ export function useDashboardHook({
     });
   }, []);
 
-  // Ação para limpar data range customizada
   const clearCustomDateRange = useCallback(() => {
     setCustomDateRange(null);
-    // Voltar para período padrão
     setFilters(prev => ({ ...prev, period: '30d' }));
   }, []);
 
-  // Ação para limpar erros
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // Ação para resetar filtros
   const resetFilters = useCallback(() => {
     setFilters({ period: '30d' });
     setCustomDateRange(null);
   }, []);
 
-  // Ação para refresh (alias para fetchMetrics)
   const refreshMetrics = useCallback(async () => {
-    // Limpar cache antes de fazer refresh
     if ('clearCache' in dashboardService && typeof dashboardService.clearCache === 'function') {
       const finalFilters = customDateRange 
         ? {
             ...filters,
             startDate: customDateRange.startDate,
             endDate: customDateRange.endDate,
+            teamScope: effectiveTeamScope,
           }
-        : filters;
+        : { ...filters, teamScope: effectiveTeamScope };
       
       dashboardService.clearCache(supabaseId, teamId, finalFilters);
     }
     
     if ('clearDetailedCache' in dashboardService && typeof dashboardService.clearDetailedCache === 'function') {
-      dashboardService.clearDetailedCache(supabaseId, teamId);
+      dashboardService.clearDetailedCache(supabaseId, teamId, effectiveTeamScope);
       detailedContextKeyRef.current = null;
       detailedMetricsRef.current = null;
     }
 
     await fetchMetrics({ forceDetailed: true });
-  }, [fetchMetrics, dashboardService, supabaseId, teamId, filters, customDateRange]);
+  }, [fetchMetrics, dashboardService, supabaseId, teamId, effectiveTeamScope, filters, customDateRange]);
   
-  // Ação para toggle de blur
   const toggleBlur = useCallback(() => {
     setIsBlurred(prev => !prev);
   }, []);
 
+  const setTeamScope = useCallback((scope: DashboardTeamScope) => {
+    if (!canUseAllTeamsScope && scope === 'all') {
+      return;
+    }
+    onTeamScopeChange?.(scope);
+  }, [canUseAllTeamsScope, onTeamScopeChange]);
+
   return {
-    // Estado
     metrics,
     detailedMetrics,
     isLoading,
     error,
     filters,
+    teamScope: effectiveTeamScope,
+    canUseAllTeamsScope,
     customDateRange,
     isBlurred,
-    
-    // Ações
     fetchMetrics,
     refreshMetrics,
     updateFilters,
     setPeriod,
     setCustomDateRange: setCustomDateRangeAction,
     clearCustomDateRange,
+    setTeamScope,
     clearError,
     resetFilters,
     toggleBlur,

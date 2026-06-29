@@ -1,8 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { CalendarCheck, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTeamContext } from "@/app/context/TeamContext";
+import { useUserContext } from "@/app/context/UserContext";
 import { usePerformanceContext } from "../context/PerformanceContext";
 import { PerfFiltersBar } from "./Components/PerfFiltersBar";
 import { PerfKpis } from "./Components/PerfKpis";
@@ -11,8 +15,18 @@ import { PerfRankings } from "./Components/PerfRankings";
 import { ExportarRelatorioModal } from "./Components/ExportarRelatorioModal";
 
 export function PerformanceContainer() {
-  const { error, filters } = usePerformanceContext();
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+  const { user } = useUserContext();
+  const { activeRole, isTeamMaster } = useTeamContext();
+  const { error, filters, data } = usePerformanceContext();
   const [isExportarOpen, setIsExportarOpen] = useState(false);
+
+  const isSelfView = data?.viewMode === "self";
+  const canAccessMeetingsHeld =
+    user?.isMaster === true ||
+    isTeamMaster ||
+    activeRole === "manager";
 
   const periodLabel = (
     {
@@ -35,12 +49,29 @@ export function PerformanceContainer() {
                   Performance
                 </h1>
                 <p className="text-[12.5px] text-foreground/55 mt-1.5">
-                  Indicadores comerciais e ranking de SDRs e Closers —{" "}
-                  <span className="text-foreground/80">{periodLabel}</span>
+                  {isSelfView ? (
+                    <>
+                      Seus indicadores comerciais no período —{" "}
+                      <span className="text-foreground/80">{periodLabel}</span>
+                    </>
+                  ) : (
+                    <>
+                      Indicadores comerciais e ranking de SDRs e Closers —{" "}
+                      <span className="text-foreground/80">{periodLabel}</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {canAccessMeetingsHeld && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/${supabaseId}/performance/reunioes-realizadas`}>
+                    <CalendarCheck data-icon="inline-start" size={13} />
+                    Reuniões realizadas
+                  </Link>
+                </Button>
+              )}
               <div className="text-[11px] text-foreground/45 px-2.5 py-1 rounded-md border border-border bg-card/40">
                 Ultima atualizacao: <span className="text-foreground/75 num">ha 2 min</span>
               </div>
@@ -77,7 +108,7 @@ export function PerformanceContainer() {
           )}
 
           <PerfKpis />
-          <PerfTopHighlights />
+          {!isSelfView && <PerfTopHighlights />}
           <PerfRankings />
           <div className="pb-6 pt-2 text-center text-[11px] text-foreground/35">
             Dados sincronizados com CRM · Apenas vendas e reunioes marcadas como realizadas no

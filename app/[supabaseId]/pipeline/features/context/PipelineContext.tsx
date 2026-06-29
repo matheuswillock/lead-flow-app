@@ -13,6 +13,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import { prefetchLeadDetails } from "@/hooks/useLeadDetails";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
   createLeadTimeRulesVersion,
@@ -90,6 +91,8 @@ interface IPipelineContextState {
   setOnlyMeetingsHeld: (value: boolean) => void;
   onlyTransfer: boolean;
   setOnlyTransfer: (value: boolean) => void;
+  onlyDraft: boolean;
+  setOnlyDraft: (value: boolean) => void;
   allLeads: Lead[]; // Todos os leads em um array flat
   filtered: Lead[]; // Leads filtrados
   periodStart: string; 
@@ -108,6 +111,7 @@ interface IPipelineContextState {
   setSelected: (lead: Lead | null) => void;
   clearErrors: () => void;
   handleRowClick: (lead: Lead) => void;
+  handleRowHover: (lead: Lead) => void;
   openNewLeadDialog: () => void;
   refreshLeads: () => Promise<void>;
   patchLead: (leadId: string, patch: Partial<Lead>) => void;
@@ -181,6 +185,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [onlyTransfer, setOnlyTransfer] = useState(false);
+  const [onlyDraft, setOnlyDraft] = useState(false);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [periodStart, setPeriodStart] = useState<string>("");
   const [periodEnd, setPeriodEnd] = useState<string>("");
@@ -363,8 +368,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   // Função para carregar leads da API
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
-    const leadTimeRulesVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}`;
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
 
     if (
       !options?.force &&
@@ -410,8 +414,16 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         if (result.isValid && result.result) {
           console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
           lastLeadsLoadKeyRef.current = loadKey;
-          
           const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
+            if (!lead.status) {
+              return {
+                ...lead,
+                statusEnteredAt: lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+                leadTimeDueAt: null,
+                isLeadTimeBreached: false,
+              };
+            }
+
             const state = resolveLeadTimeState(
               lead.status,
               lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
@@ -481,7 +493,45 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId, teamStatusRules.leadTimeRules]);
+  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
+
+  const leadTimeRulesVersionRef = useRef("");
+
+  useEffect(() => {
+    const nextVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
+    if (nextVersion === leadTimeRulesVersionRef.current) {
+      return;
+    }
+    leadTimeRulesVersionRef.current = nextVersion;
+
+    setAllLeads((prev) => {
+      if (prev.length === 0) {
+        return prev;
+      }
+
+      return prev.map((lead) => {
+        if (!lead.status) {
+          return {
+            ...lead,
+            leadTimeDueAt: null,
+            isLeadTimeBreached: false,
+          };
+        }
+
+        const state = resolveLeadTimeState(
+          lead.status,
+          lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+          teamStatusRules.leadTimeRules
+        );
+
+        return {
+          ...lead,
+          leadTimeDueAt: state.dueAt,
+          isLeadTimeBreached: state.isBreached,
+        };
+      });
+    });
+  }, [teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -526,11 +576,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           (nextStatus !== lead.status
             ? patch.updatedAt || new Date().toISOString()
             : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
-        const leadTimeState = resolveLeadTimeState(
-          nextStatus,
-          statusEnteredAt,
-          teamStatusRules.leadTimeRules
-        );
+        const leadTimeState = nextStatus
+          ? resolveLeadTimeState(
+              nextStatus,
+              statusEnteredAt,
+              teamStatusRules.leadTimeRules
+            )
+          : { dueAt: null, isBreached: false };
 
         return {
           ...merged,
@@ -550,11 +602,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         (nextStatus !== prev.status
           ? patch.updatedAt || new Date().toISOString()
           : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
-      const leadTimeState = resolveLeadTimeState(
-        nextStatus,
-        statusEnteredAt,
-        teamStatusRules.leadTimeRules
-      );
+      const leadTimeState = nextStatus
+        ? resolveLeadTimeState(
+            nextStatus,
+            statusEnteredAt,
+            teamStatusRules.leadTimeRules
+          )
+        : { dueAt: null, isBreached: false };
 
       return {
         ...merged,
@@ -622,6 +676,15 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOpen(true);
   };
 
+  const handleRowHover = useCallback(
+    (lead: Lead) => {
+      if (supabaseId && activeTeamId && lead.id) {
+        prefetchLeadDetails(supabaseId, activeTeamId, lead.id);
+      }
+    },
+    [activeTeamId, supabaseId]
+  );
+
   const openNewLeadDialog = () => {
     setSelected(null);
     setOpen(true);
@@ -648,10 +711,19 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       externalFilters !== undefined ? externalFilters.onlyMeetingsHeld : onlyMeetingsHeld;
     const activeTransfer =
       externalFilters !== undefined ? externalFilters.onlyTransfer : onlyTransfer;
+    const activeDraft =
+      externalFilters !== undefined ? externalFilters.onlyDraft : onlyDraft;
 
     const q = activeQuery.trim().toLowerCase();
     
     return allLeads.filter((lead) => {
+      const isDraftLeadRow = lead.status === null || lead.status === undefined;
+      if (activeDraft) {
+        if (!isDraftLeadRow) return false;
+      } else if (isDraftLeadRow) {
+        return false;
+      }
+
       // Filtro por query (nome ou data)
       const matchesQuery = !q || 
         lead.name.toLowerCase().includes(q) || 
@@ -709,7 +781,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         matchesScheduledPeriod
       );
     });
-  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, periodStart, periodEnd, tz]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, onlyDraft, periodStart, periodEnd, tz]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
@@ -730,6 +802,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOnlyMeetingsHeld,
     onlyTransfer,
     setOnlyTransfer,
+    onlyDraft,
+    setOnlyDraft,
     allLeads,
     filtered,
     periodStart,
@@ -748,6 +822,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setSelected,
     clearErrors,
     handleRowClick,
+    handleRowHover,
     openNewLeadDialog,
     refreshLeads: () => loadLeads({ force: true }),
     patchLead,

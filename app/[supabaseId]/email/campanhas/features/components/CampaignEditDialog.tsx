@@ -20,6 +20,12 @@ import {
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatLocalInputValue } from "@/lib/dates"
+import type { ContactList } from "../context/CampanhasTypes"
+
+function formatContactListLabel(list: ContactList): string {
+  const activeCount = list.activeContacts ?? list.totalContacts
+  return `${list.name} (${activeCount.toLocaleString("pt-BR")} ativos)`
+}
 
 export function CampaignEditDialog() {
   const { tz } = useTimezone()
@@ -86,7 +92,7 @@ export function CampaignEditDialog() {
               <SelectContent>
                 {contactLists.map((l) => (
                   <SelectItem key={l.id} value={l.id}>
-                    {l.name} ({l.totalContacts.toLocaleString("pt-BR")} contatos)
+                    {formatContactListLabel(l)}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -43,10 +43,11 @@ export async function POST(request: NextRequest) {
   const { profileId, profileEmail, profileName, teamId, teamMember, userTimezone } = teamAccess.access;
   const isManager = isManagerLikeRole(teamMember.role);
   const isCloser = teamMember.functions.includes('CLOSER');
+  const isSdr = teamMember.functions.includes('SDR');
 
-  if (!isManager && !isCloser) {
+  if (!isManager && !isCloser && !isSdr) {
     return NextResponse.json(
-      new Output(false, [], ['Acesso negado: somente managers ou closers podem exportar este recurso'], null),
+      new Output(false, [], ['Acesso negado: somente managers, closers ou SDRs podem exportar este recurso'], null),
       { status: 403 }
     );
   }
@@ -86,8 +87,8 @@ export async function POST(request: NextRequest) {
     resolvedEndDate = dates.endDate;
   }
 
-  // CLOSER restriction: cannot override their own scope via query param
   const resolvedCloserId = isCloser && !isManager ? profileId : closerId;
+  const resolvedSdrId = isSdr && !isManager ? profileId : sdrId;
   const presetLabel = startDate && endDate ? `${startDate}-${endDate}` : (preset ?? '7d');
 
   const output = await performanceUseCase.sendSalesPerformanceExportEmail({
@@ -101,9 +102,10 @@ export async function POST(request: NextRequest) {
       profileId,
       isManager,
       isCloser,
+      isSdr,
       startDate: resolvedStartDate,
       endDate: resolvedEndDate,
-      sdrId,
+      sdrId: resolvedSdrId,
       closerId: resolvedCloserId,
       search,
       page: 1,

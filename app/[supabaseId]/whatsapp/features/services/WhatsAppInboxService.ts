@@ -1,5 +1,5 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
-import type { LeadSearchResult, WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 class WhatsAppInboxService implements IWhatsAppInboxService {
   private extractErrorMessage(output: unknown, fallback: string): string {
@@ -104,8 +104,17 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     teamId: string,
     supabaseId: string,
     conversationId: string,
-    text: string
+    text: string,
+    media?: SendMessageMediaInput,
+    mentionedJids?: string[]
   ): Promise<{ messageId: string }> {
+    const body: Record<string, unknown> = media
+      ? { contentText: text || undefined, media }
+      : { contentText: text }
+    if (mentionedJids && mentionedJids.length > 0) {
+      body.mentionedJids = mentionedJids
+    }
+
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages`,
       {
@@ -114,7 +123,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
         },
-        body: JSON.stringify({ contentText: text }),
+        body: JSON.stringify(body),
       }
     )
 
@@ -124,6 +133,97 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     }
 
     return (output as Record<string, unknown>).result as { messageId: string }
+  }
+
+  async fetchContacts(
+    teamId: string,
+    supabaseId: string,
+    params?: { q?: string; groupJid?: string }
+  ): Promise<WhatsAppTeamContact[]> {
+    const searchParams = new URLSearchParams()
+    if (params?.q) searchParams.set('q', params.q)
+    if (params?.groupJid) searchParams.set('groupJid', params.groupJid)
+
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/contacts?${searchParams.toString()}`,
+      {
+        method: 'GET',
+        headers: {
+          'x-supabase-user-id': supabaseId,
+        },
+      }
+    )
+
+    const output: unknown = await response.json()
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar os contatos'))
+    }
+
+    const result = (output as Record<string, unknown>).result as { contacts: WhatsAppTeamContact[] }
+    return result.contacts ?? []
+  }
+
+  async syncPhoneContacts(
+    teamId: string,
+    supabaseId: string,
+    conversationId?: string
+  ): Promise<{ imported: number; updatedConversations: number; totalContacts: number }> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/sync-contacts`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+        },
+        body: JSON.stringify(conversationId ? { conversationId } : {}),
+      }
+    )
+
+    const output: unknown = await response.json()
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível sincronizar os contatos'))
+    }
+
+    return (
+      ((output as Record<string, unknown>).result as {
+        imported: number
+        updatedConversations: number
+        totalContacts: number
+      }) ?? { imported: 0, updatedConversations: 0, totalContacts: 0 }
+    )
+  }
+
+  async syncGroupParticipants(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string
+  ): Promise<{ imported: number; totalParticipants: number }> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/sync-group-participants`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+        },
+        body: JSON.stringify({ conversationId }),
+      }
+    )
+
+    const output: unknown = await response.json()
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(
+        this.extractErrorMessage(output, 'Não foi possível sincronizar os participantes do grupo')
+      )
+    }
+
+    return (
+      ((output as Record<string, unknown>).result as {
+        imported: number
+        totalParticipants: number
+      }) ?? { imported: 0, totalParticipants: 0 }
+    )
   }
 
   async markConversationRead(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
@@ -183,10 +283,13 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar os membros do time'))
     }
 
-    const result = (output as Record<string, unknown>).result as Array<Record<string, unknown>>
-    if (!Array.isArray(result)) return []
+    const result = (output as Record<string, unknown>).result
+    const members = Array.isArray(result)
+      ? result
+      : ((result as Record<string, unknown> | undefined)?.members ?? [])
+    if (!Array.isArray(members)) return []
 
-    return result.map((member) => ({
+    return (members as Array<Record<string, unknown>>).map((member) => ({
       id: (member.profileId ?? member.id) as string,
       name: (member.name ?? member.fullName ?? 'Usuário') as string,
       role: (member.role ?? '') as string,
@@ -258,8 +361,38 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     }
   }
 
-  async searchLeads(teamId: string, supabaseId: string, query: string): Promise<LeadSearchResult[]> {
-    const params = new URLSearchParams({ search: query, teamId, limit: '10' })
+  async createConversation(
+    teamId: string,
+    supabaseId: string,
+    input: { phone: string; contactName?: string; initialMessage?: string }
+  ): Promise<WhatsAppConversation> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+        },
+        body: JSON.stringify(input),
+      }
+    )
+
+    const output: unknown = await response.json()
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível criar a conversa'))
+    }
+
+    return (output as Record<string, unknown>).result as WhatsAppConversation
+  }
+
+  async searchLeads(
+    teamId: string,
+    supabaseId: string,
+    query: string,
+    role: string
+  ): Promise<LeadSearchResult[]> {
+    const params = new URLSearchParams({ search: query, teamId, limit: '10', role })
     const response = await fetch(`/api/v1/leads?${params.toString()}`, {
       method: 'GET',
       headers: {

@@ -77,6 +77,39 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
     }
     return output.result as WhatsAppUsage
   }
+
+  async syncHistory(teamId: string, supabaseId: string): Promise<void> {
+    const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/sync-history`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId),
+    })
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível sincronizar o histórico do WhatsApp'))
+    }
+  }
+
+  async syncPhoneContacts(
+    teamId: string,
+    supabaseId: string
+  ): Promise<{ imported: number; updatedConversations: number; totalContacts: number }> {
+    const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/sync-contacts`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId),
+      body: JSON.stringify({}),
+    })
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível sincronizar os contatos'))
+    }
+    return (
+      (output.result as {
+        imported: number
+        updatedConversations: number
+        totalContacts: number
+      }) ?? { imported: 0, updatedConversations: 0, totalContacts: 0 }
+    )
+  }
 }
 
 export const whatsAppSettingsService = new WhatsAppSettingsService()

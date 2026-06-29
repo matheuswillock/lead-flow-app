@@ -1,8 +1,26 @@
-import type { IWhatsAppService, ConfigOutput, CreateWhatsAppConfigInput, SendMessageInput, UsageSummaryOutput } from "./IWhatsAppService"
+import type { IWhatsAppService, ConfigOutput, CreateWhatsAppConfigInput, CreateConversationInput, SendMessageInput, SendAutoResponseMessageInput, UsageSummaryOutput, SyncContactsOutput, SyncGroupParticipantsOutput, WhatsAppContactOutput } from "./IWhatsAppService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
+import { whatsAppContactRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppContactRepository"
 import { evoApiService } from "./evo/EvoApiService"
-import { generateWebhookSecret, buildPeriodKey, normalizePhone } from "./phoneUtils"
-import type { WhatsAppConfigSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+import { whatsAppAutoResponseRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppAutoResponseRepository"
+import {
+  buildMessagePreview,
+  parseEvoMessageContent,
+} from "./evo/parseEvoMessageContent"
+import { generateWebhookSecret, buildPeriodKey, normalizePhone, normalizeRemoteJid, extractOpaqueId, toWhatsAppJid, resolveNormalizedPhone, isGroupChat } from "./phoneUtils"
+import { resolveConfigStatusFromEvo, toQrCodeImageUrl } from "./qrCodeUtils"
+import type { Prisma } from "@prisma/client"
+import type { WhatsAppConfigSelect, WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+
+export const WHATSAPP_HISTORY_SYNC_DAYS = 30
+
+function resolveWebhookBaseUrl(): string {
+  const webhookPublic = process.env.EVO_WEBHOOK_PUBLIC_URL?.replace(/\/$/, "")
+  if (webhookPublic) return webhookPublic
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) throw new Error("[WhatsAppService] NEXT_PUBLIC_APP_URL is not set")
+  return appUrl.replace(/\/$/, "")
+}
 
 function toConfigOutput(config: WhatsAppConfigSelect): ConfigOutput {
   return {
@@ -11,16 +29,24 @@ function toConfigOutput(config: WhatsAppConfigSelect): ConfigOutput {
     status: config.status,
     instanceName: config.instanceName,
     phoneNumber: config.phoneNumber,
-    qrCodeImageUrl: config.qrCodeImageUrl,
+    qrCodeImageUrl: config.qrCodeImageUrl
+      ? toQrCodeImageUrl(config.qrCodeImageUrl)
+      : null,
     qrCodeText: config.qrCodeText,
     usageLimitMonthly: config.usageLimitMonthly,
     lastConnectedAt: config.lastConnectedAt,
     lastDisconnectedAt: config.lastDisconnectedAt,
     lastSyncAt: config.lastSyncAt,
+    historySyncStatus: config.historySyncStatus,
+    historySyncStartedAt: config.historySyncStartedAt,
+    historySyncCompletedAt: config.historySyncCompletedAt,
+    historySyncError: config.historySyncError,
   }
 }
 
 class WhatsAppService implements IWhatsAppService {
+  private historySyncInFlightByTeam = new Set<string>()
+
   async createConfig(input: CreateWhatsAppConfigInput): Promise<ConfigOutput> {
     const existing = await whatsAppRepository.findConfigByTeamId(input.teamId)
     if (existing) {
@@ -29,40 +55,129 @@ class WhatsAppService implements IWhatsAppService {
 
     const instanceName = `team_${input.teamId.replace(/-/g, "").slice(0, 16)}`
     const webhookSecret = generateWebhookSecret()
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-    if (!appUrl) throw new Error("[WhatsAppService] NEXT_PUBLIC_APP_URL is not set")
-
-    const webhookUrl = `${appUrl}/api/webhooks/whatsapp/evolution/${webhookSecret}`
+    const webhookUrl = `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/evolution/${webhookSecret}`
 
     console.info("[WhatsAppService][createConfig] Creating instance", instanceName)
 
-    const evoResult = await evoApiService.createInstance({
-      instanceName,
-      webhookUrl,
-      hostBaseUrl: input.hostBaseUrl,
-    })
-
-    const config = await whatsAppRepository.createConfig({
+    // Persist webhook secret before Evolution bootstrap so early webhooks resolve.
+    const pending = await whatsAppRepository.createConfig({
       team: { connect: { id: input.teamId } },
-      instanceName: evoResult.instanceName,
-      instanceId: evoResult.instanceId ?? undefined,
+      instanceName,
       webhookSecret,
       hostBaseUrl: input.hostBaseUrl ?? null,
       usageLimitMonthly: input.usageLimitMonthly ?? 2000,
-      status: evoResult.status === "open" ? "CONNECTED" : evoResult.status === "connecting" ? "QR_READY" : "PENDING",
-      qrCodeText: evoResult.qrCode?.text ?? null,
-      qrCodeImageUrl: evoResult.qrCode?.base64 ? `data:image/png;base64,${evoResult.qrCode.base64}` : null,
+      status: "PENDING",
       createdBy: { connect: { id: input.profileId } },
       updatedBy: { connect: { id: input.profileId } },
     })
 
-    return toConfigOutput(config)
+    try {
+      const evoResult = await evoApiService.createInstance({
+        instanceName,
+        webhookUrl,
+        hostBaseUrl: input.hostBaseUrl,
+      })
+
+      let qrCodeText = evoResult.qrCode?.text ?? null
+      let qrCodeImageUrl = evoResult.qrCode?.base64
+        ? toQrCodeImageUrl(evoResult.qrCode.base64)
+        : null
+
+      if (!qrCodeImageUrl) {
+        try {
+          const qr = await evoApiService.getQrCode(instanceName, input.hostBaseUrl ?? undefined)
+          qrCodeText = qr.text
+          qrCodeImageUrl = toQrCodeImageUrl(qr.base64)
+        } catch (error) {
+          console.error("[WhatsAppService][createConfig] QR fetch after create failed", error)
+        }
+      }
+
+      const status = resolveConfigStatusFromEvo(evoResult.status, Boolean(qrCodeImageUrl))
+
+      const config = await whatsAppRepository.updateConfig(pending.id, {
+        instanceId: evoResult.instanceId ?? undefined,
+        status,
+        qrCodeText,
+        qrCodeImageUrl,
+        updatedBy: { connect: { id: input.profileId } },
+      })
+
+      await whatsAppAutoResponseRepository.seedDefaultRules(config.id)
+
+      return toConfigOutput(config)
+    } catch (error) {
+      await whatsAppRepository.deleteConfig(pending.id)
+      throw error
+    }
   }
 
   async getConfig(teamId: string): Promise<ConfigOutput | null> {
     const config = await whatsAppRepository.findConfigByTeamId(teamId)
     if (!config) return null
-    return toConfigOutput(config)
+    const synced = await this.syncConfigWithEvolution(config)
+    return toConfigOutput(synced)
+  }
+
+  private async syncConfigWithEvolution(
+    config: WhatsAppConfigSelect
+  ): Promise<WhatsAppConfigSelect> {
+    try {
+      const { state } = await evoApiService.getConnectionState(
+        config.instanceName,
+        config.hostBaseUrl ?? undefined
+      )
+      const now = new Date()
+
+      if (state === "open") {
+        let phoneNumber = config.phoneNumber
+        if (!phoneNumber) {
+          try {
+            const instance = await evoApiService.fetchInstance(
+              config.instanceName,
+              config.hostBaseUrl ?? undefined
+            )
+            if (instance?.owner) {
+              phoneNumber = normalizeRemoteJid(instance.owner)
+            }
+          } catch (error) {
+            console.error("[WhatsAppService][syncConfigWithEvolution] fetchInstance failed", error)
+          }
+        }
+
+        return whatsAppRepository.updateConfig(config.id, {
+          status: "CONNECTED",
+          lastConnectedAt: config.lastConnectedAt ?? now,
+          lastSyncAt: now,
+          qrCodeText: null,
+          qrCodeImageUrl: null,
+          ...(phoneNumber ? { phoneNumber } : {}),
+        })
+      }
+
+      if (state === "close") {
+        if (config.status === "DISCONNECTED") {
+          return whatsAppRepository.updateConfig(config.id, { lastSyncAt: now })
+        }
+        return whatsAppRepository.updateConfig(config.id, {
+          status: "DISCONNECTED",
+          lastDisconnectedAt: config.lastDisconnectedAt ?? now,
+          lastSyncAt: now,
+        })
+      }
+
+      if (config.status !== "QR_READY" && config.status !== "PENDING") {
+        return whatsAppRepository.updateConfig(config.id, {
+          status: "QR_READY",
+          lastSyncAt: now,
+        })
+      }
+
+      return whatsAppRepository.updateConfig(config.id, { lastSyncAt: now })
+    } catch (error) {
+      console.error("[WhatsAppService][syncConfigWithEvolution]", error)
+      return config
+    }
   }
 
   async reconnect(teamId: string, profileId: string): Promise<ConfigOutput> {
@@ -78,7 +193,7 @@ class WhatsAppService implements IWhatsAppService {
     const updated = await whatsAppRepository.updateConfig(existing.id, {
       status: "QR_READY",
       qrCodeText: qr.text,
-      qrCodeImageUrl: `data:image/png;base64,${qr.base64}`,
+      qrCodeImageUrl: toQrCodeImageUrl(qr.base64),
       updatedBy: { connect: { id: profileId } },
     })
 
@@ -119,19 +234,61 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("Conversa não encontrada")
     }
 
-    const recipientPhone = normalizePhone(conversation.contactPhone)
-
-    console.info("[WhatsAppService][sendMessage] Sending message to", recipientPhone)
-
-    const evoResult = await evoApiService.sendTextMessage({
-      instanceName: config.instanceName,
-      recipientPhone,
-      text: input.contentText,
-      hostBaseUrl: config.hostBaseUrl ?? undefined,
-    })
+    const recipientJid =
+      conversation.externalChatId ?? toWhatsAppJid(normalizePhone(conversation.contactPhone))
 
     const now = new Date()
     const periodKey = buildPeriodKey(now)
+
+    let evoResult: { providerMessageId: string; status: string }
+    let messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO" = "TEXT"
+    const contentText: string | undefined = input.contentText
+    let mediaMimeType: string | undefined
+    let mediaFileName: string | undefined
+    let caption: string | undefined
+    let preview: string
+
+    if (input.media) {
+      messageType =
+        input.media.mediatype === "image"
+          ? "IMAGE"
+          : input.media.mediatype === "document"
+            ? "DOCUMENT"
+            : input.media.mediatype === "audio"
+              ? "AUDIO"
+              : "VIDEO"
+      mediaMimeType = input.media.mimeType
+      mediaFileName = input.media.fileName
+      caption = input.media.caption
+      preview = input.media.caption ?? `[${messageType === "IMAGE" ? "Imagem" : messageType === "DOCUMENT" ? "Documento" : messageType === "AUDIO" ? "Áudio" : "Vídeo"}]`
+
+      evoResult = await evoApiService.sendMediaMessage({
+        instanceName: config.instanceName,
+        recipientJid,
+        mediatype: input.media.mediatype,
+        mimeType: input.media.mimeType,
+        fileName: input.media.fileName,
+        base64: input.media.base64,
+        caption: input.media.caption,
+        hostBaseUrl: config.hostBaseUrl ?? undefined,
+      })
+    } else {
+      const text = input.contentText?.trim()
+      if (!text) {
+        throw new Error("Mensagem não pode ser vazia")
+      }
+      preview = text.slice(0, 100)
+      evoResult = await evoApiService.sendTextMessage({
+        instanceName: config.instanceName,
+        recipientJid,
+        text,
+        mentioned: input.mentionedJids,
+        linkPreview: true,
+        hostBaseUrl: config.hostBaseUrl ?? undefined,
+      })
+    }
+
+    console.info("[WhatsAppService][sendMessage] Sending message to", recipientJid)
 
     const message = await whatsAppRepository.createMessage({
       conversation: { connect: { id: input.conversationId } },
@@ -140,10 +297,13 @@ class WhatsAppService implements IWhatsAppService {
       ...(conversation.leadId ? { lead: { connect: { id: conversation.leadId } } } : {}),
       providerMessageId: evoResult.providerMessageId,
       direction: "OUTBOUND",
-      messageType: "TEXT",
+      messageType,
       status: "SENT",
-      contentText: input.contentText,
-      recipientPhone,
+      contentText: contentText ?? null,
+      mediaMimeType: mediaMimeType ?? null,
+      mediaFileName: mediaFileName ?? null,
+      caption: caption ?? null,
+      recipientPhone: normalizePhone(conversation.contactPhone),
       sentByProfile: { connect: { id: input.sentByProfileId } },
       sentAt: now,
       rawPayload: {},
@@ -162,10 +322,466 @@ class WhatsAppService implements IWhatsAppService {
     await whatsAppRepository.updateConversation(input.conversationId, {
       lastOutboundAt: now,
       lastMessageAt: now,
-      lastMessagePreview: input.contentText.slice(0, 100),
+      lastMessagePreview: preview,
+      handoffMode: "HUMAN",
     })
 
     return { messageId: message.id }
+  }
+
+  async sendAutoResponseMessage(input: SendAutoResponseMessageInput): Promise<{ messageId: string }> {
+    const config = await whatsAppRepository.findConfigByTeamId(input.teamId)
+    if (!config) {
+      throw new Error("Configuração não encontrada")
+    }
+    if (config.status !== "CONNECTED") {
+      throw new Error("WhatsApp não está conectado")
+    }
+
+    const conversation = await whatsAppRepository.findConversationById(input.conversationId)
+    if (!conversation) {
+      throw new Error("Conversa não encontrada")
+    }
+
+    const recipientJid =
+      conversation.externalChatId ?? toWhatsAppJid(normalizePhone(conversation.contactPhone))
+
+    const text = input.contentText.trim()
+    if (!text) {
+      throw new Error("Mensagem não pode ser vazia")
+    }
+
+    const now = new Date()
+    const periodKey = buildPeriodKey(now)
+    const preview = text.slice(0, 100)
+
+    const evoResult = await evoApiService.sendTextMessage({
+      instanceName: config.instanceName,
+      recipientJid,
+      text,
+      hostBaseUrl: config.hostBaseUrl ?? undefined,
+    })
+
+    console.info("[WhatsAppService][sendAutoResponseMessage] Sending auto reply to", recipientJid)
+
+    const message = await whatsAppRepository.createMessage({
+      conversation: { connect: { id: input.conversationId } },
+      team: { connect: { id: input.teamId } },
+      config: { connect: { id: config.id } },
+      ...(conversation.leadId ? { lead: { connect: { id: conversation.leadId } } } : {}),
+      providerMessageId: evoResult.providerMessageId,
+      direction: "OUTBOUND",
+      messageType: "TEXT",
+      status: "SENT",
+      contentText: text,
+      recipientPhone: normalizePhone(conversation.contactPhone),
+      isAutoResponse: true,
+      autoResponseRule: { connect: { id: input.autoResponseRuleId } },
+      sentAt: now,
+      rawPayload: {},
+    })
+
+    await whatsAppRepository.createUsageEvent({
+      team: { connect: { id: input.teamId } },
+      config: { connect: { id: config.id } },
+      periodKey,
+      eventType: "OUTBOUND_MESSAGE",
+      direction: "OUTBOUND",
+      countedTowardsQuota: true,
+      providerMessageId: evoResult.providerMessageId,
+    })
+
+    await whatsAppRepository.updateConversation(input.conversationId, {
+      lastOutboundAt: now,
+      lastMessageAt: now,
+      lastMessagePreview: preview,
+    })
+
+    return { messageId: message.id }
+  }
+
+  async createConversation(input: CreateConversationInput): Promise<WhatsAppConversationSelect> {
+    const config = await whatsAppRepository.findConfigByTeamId(input.teamId)
+    if (!config) {
+      throw new Error("Configuração não encontrada")
+    }
+    if (config.status !== "CONNECTED") {
+      throw new Error("WhatsApp não está conectado")
+    }
+
+    const normalizedPhone = normalizePhone(input.phone)
+    const externalChatId = toWhatsAppJid(normalizedPhone)
+
+    let contactAvatarUrl: string | null = null
+    try {
+      contactAvatarUrl = await evoApiService.fetchProfilePictureUrl({
+        instanceName: config.instanceName,
+        remoteJid: externalChatId,
+        hostBaseUrl: config.hostBaseUrl ?? undefined,
+      })
+    } catch {
+      contactAvatarUrl = null
+    }
+
+    const conversation = await whatsAppRepository.findOrCreateConversation({
+      teamId: input.teamId,
+      configId: config.id,
+      externalChatId,
+      contactPhone: normalizedPhone,
+      normalizedPhone,
+      contactName: input.contactName,
+    })
+
+    await whatsAppRepository.updateConversation(conversation.id, {
+      ...(contactAvatarUrl ? { contactAvatarUrl } : {}),
+      ...(input.contactName ? { contactName: input.contactName } : {}),
+      assignedProfile: { connect: { id: input.profileId } },
+    })
+
+    if (input.initialMessage?.trim()) {
+      await this.sendMessage({
+        conversationId: conversation.id,
+        teamId: input.teamId,
+        sentByProfileId: input.profileId,
+        contentText: input.initialMessage.trim(),
+      })
+    }
+
+    const refreshed = await whatsAppRepository.findConversationById(conversation.id)
+    if (!refreshed) {
+      throw new Error("Conversa não encontrada após criação")
+    }
+
+    return refreshed
+  }
+
+  async syncTeamHistory(teamId: string): Promise<{ chats: number; messages: number }> {
+    if (this.historySyncInFlightByTeam.has(teamId)) {
+      return { chats: 0, messages: 0 }
+    }
+
+    const config = await whatsAppRepository.findConfigByTeamId(teamId)
+    if (!config) {
+      throw new Error("Configuração WhatsApp não encontrada")
+    }
+    if (config.status !== "CONNECTED") {
+      throw new Error("WhatsApp não está conectado")
+    }
+    if (config.historySyncStatus === "COMPLETED" || config.historySyncStatus === "RUNNING") {
+      return { chats: 0, messages: 0 }
+    }
+
+    this.historySyncInFlightByTeam.add(teamId)
+
+    await whatsAppRepository.updateConfig(config.id, {
+      historySyncStatus: "RUNNING",
+      historySyncStartedAt: new Date(),
+      historySyncCompletedAt: null,
+      historySyncError: null,
+    })
+
+    const since = new Date(Date.now() - WHATSAPP_HISTORY_SYNC_DAYS * 24 * 60 * 60 * 1000)
+    let chatCount = 0
+    let messageCount = 0
+
+    try {
+      const chats = await evoApiService.findChats(config.instanceName, config.hostBaseUrl ?? undefined)
+
+      for (const chat of chats) {
+        const phoneRaw = normalizeRemoteJid(chat.remoteJid)
+        const normalizedPhone = resolveNormalizedPhone(chat.remoteJid, phoneRaw)
+        const isGroup = isGroupChat(chat.remoteJid)
+
+        let contactAvatarUrl = chat.profilePicUrl
+        if (!contactAvatarUrl && !isGroup) {
+          contactAvatarUrl = await evoApiService.fetchProfilePictureUrl({
+            instanceName: config.instanceName,
+            remoteJid: chat.remoteJid,
+            hostBaseUrl: config.hostBaseUrl ?? undefined,
+          })
+        }
+
+        const conversation = await whatsAppRepository.findOrCreateConversation({
+          teamId,
+          configId: config.id,
+          externalChatId: chat.remoteJid,
+          contactPhone: phoneRaw,
+          normalizedPhone,
+          contactName: isGroup
+            ? (chat.subject ?? chat.pushName ?? undefined)
+            : (chat.pushName ?? undefined),
+        })
+
+        if (contactAvatarUrl && contactAvatarUrl !== conversation.contactAvatarUrl) {
+          await whatsAppRepository.updateConversation(conversation.id, { contactAvatarUrl })
+        }
+
+        chatCount += 1
+
+        const messages = await evoApiService.findMessages({
+          instanceName: config.instanceName,
+          remoteJid: chat.remoteJid,
+          since,
+          hostBaseUrl: config.hostBaseUrl ?? undefined,
+        })
+
+        let lastMessageAt: Date | null = conversation.lastMessageAt
+        let lastMessagePreview: string | null = conversation.lastMessagePreview
+        let lastInboundAt: Date | null = null
+        let lastOutboundAt: Date | null = null
+        let unreadIncrement = 0
+
+        for (const item of messages) {
+          const existing = await whatsAppRepository.findMessageByProviderMessageId(
+            teamId,
+            item.providerMessageId
+          )
+          if (existing) continue
+
+          const parsed = parseEvoMessageContent(item.messagePayload)
+          const preview = buildMessagePreview(parsed)
+          const direction = item.fromMe ? "OUTBOUND" : "INBOUND"
+
+          const inboundGroupSender =
+            !item.fromMe && isGroup
+              ? (typeof (item.messagePayload as Record<string, unknown>)?.pushName === "string"
+                  ? ((item.messagePayload as Record<string, unknown>).pushName as string)
+                  : null)
+              : null
+
+          await whatsAppRepository.createMessage({
+            conversation: { connect: { id: conversation.id } },
+            team: { connect: { id: teamId } },
+            config: { connect: { id: config.id } },
+            providerMessageId: item.providerMessageId,
+            direction,
+            messageType: parsed.messageType,
+            status: item.fromMe ? "SENT" : "RECEIVED",
+            contentText: parsed.contentText,
+            mediaUrl: parsed.mediaUrl,
+            mediaMimeType: parsed.mediaMimeType,
+            mediaFileName: parsed.mediaFileName,
+            linkPreview: parsed.linkPreview ?? undefined,
+            caption: parsed.caption,
+            senderDisplayName: inboundGroupSender,
+            senderPhone: item.fromMe ? undefined : normalizedPhone,
+            recipientPhone: item.fromMe ? normalizedPhone : undefined,
+            sentAt: item.messageTimestamp,
+            rawPayload: item.messagePayload as Prisma.InputJsonValue,
+          })
+
+          messageCount += 1
+
+          if (!lastMessageAt || item.messageTimestamp > lastMessageAt) {
+            lastMessageAt = item.messageTimestamp
+            lastMessagePreview = preview
+          }
+          if (item.fromMe) {
+            if (!lastOutboundAt || item.messageTimestamp > lastOutboundAt) {
+              lastOutboundAt = item.messageTimestamp
+            }
+          } else {
+            if (!lastInboundAt || item.messageTimestamp > lastInboundAt) {
+              lastInboundAt = item.messageTimestamp
+            }
+            unreadIncrement += 1
+          }
+        }
+
+        if (lastMessageAt) {
+          await whatsAppRepository.updateConversation(conversation.id, {
+            lastMessageAt,
+            lastMessagePreview,
+            ...(lastOutboundAt ? { lastOutboundAt } : {}),
+            ...(lastInboundAt ? { lastInboundAt } : {}),
+            ...(unreadIncrement > 0 ? { unreadCount: { increment: unreadIncrement } } : {}),
+            ...(isGroup && chat.subject ? { contactName: chat.subject } : {}),
+            ...(!isGroup && chat.pushName ? { contactName: chat.pushName } : {}),
+          })
+        }
+      }
+
+      await whatsAppRepository.updateConfig(config.id, {
+        historySyncStatus: "COMPLETED",
+        historySyncCompletedAt: new Date(),
+        historySyncError: null,
+      })
+
+      return { chats: chatCount, messages: messageCount }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao sincronizar histórico"
+      await whatsAppRepository.updateConfig(config.id, {
+        historySyncStatus: "FAILED",
+        historySyncError: message,
+      })
+      throw error
+    } finally {
+      this.historySyncInFlightByTeam.delete(teamId)
+    }
+  }
+
+  async syncContacts(teamId: string, conversationId?: string): Promise<SyncContactsOutput> {
+    const config = await whatsAppRepository.findConfigByTeamId(teamId)
+    if (!config) {
+      throw new Error("Configuração não encontrada")
+    }
+    if (config.status !== "CONNECTED") {
+      throw new Error("WhatsApp não está conectado")
+    }
+
+    const contacts = await evoApiService.findContacts(
+      config.instanceName,
+      config.hostBaseUrl ?? undefined
+    )
+
+    const now = new Date()
+    const upsertInputs = contacts.map((contact) => ({
+      teamId,
+      remoteJid: contact.remoteJid,
+      opaqueId: extractOpaqueId(contact.remoteJid),
+      phoneNumber: contact.phoneNumber ? normalizePhone(contact.phoneNumber) : null,
+      displayName: contact.pushName?.trim() || null,
+      pushName: contact.pushName?.trim() || null,
+      source: "PHONE_CONTACTS" as const,
+      lastSyncedAt: now,
+    }))
+
+    const imported = await whatsAppContactRepository.upsertMany(upsertInputs)
+
+    const contactByJid = new Map(contacts.map((c) => [c.remoteJid, c]))
+    const contactByPhone = new Map(
+      contacts
+        .filter((c) => c.phoneNumber)
+        .map((c) => [normalizePhone(c.phoneNumber!), c])
+    )
+
+    let updatedConversations = 0
+
+    const updateFromContact = async (
+      conversation: Awaited<ReturnType<typeof whatsAppRepository.findConversationById>>
+    ) => {
+      if (!conversation) return false
+
+      const jid = conversation.externalChatId ?? toWhatsAppJid(normalizePhone(conversation.contactPhone))
+      const normalized = normalizePhone(conversation.normalizedPhone || conversation.contactPhone)
+
+      const match =
+        contactByJid.get(jid) ??
+        contactByPhone.get(normalized)
+
+      if (!match) return false
+
+      const nextName = match.pushName?.trim() || conversation.contactName
+      const patch: { contactName?: string } = {}
+      if (nextName && nextName !== conversation.contactName) {
+        patch.contactName = nextName
+      }
+
+      if (Object.keys(patch).length === 0) return false
+
+      await whatsAppRepository.updateConversation(conversation.id, patch)
+      return true
+    }
+
+    if (conversationId) {
+      const conversation = await whatsAppRepository.findConversationById(conversationId)
+      if (await updateFromContact(conversation)) {
+        updatedConversations = 1
+      }
+      return { imported, updatedConversations, totalContacts: contacts.length }
+    }
+
+    const conversations = await whatsAppRepository.listConversations({
+      teamId,
+      page: 1,
+      limit: 500,
+      isArchived: false,
+    })
+
+    for (const conversation of conversations.conversations) {
+      if (await updateFromContact(conversation)) {
+        updatedConversations += 1
+      }
+    }
+
+    return { imported, updatedConversations, totalContacts: contacts.length }
+  }
+
+  async syncGroupParticipants(teamId: string, conversationId: string): Promise<SyncGroupParticipantsOutput> {
+    const config = await whatsAppRepository.findConfigByTeamId(teamId)
+    if (!config) {
+      throw new Error("Configuração não encontrada")
+    }
+    if (config.status !== "CONNECTED") {
+      throw new Error("WhatsApp não está conectado")
+    }
+
+    const conversation = await whatsAppRepository.findConversationById(conversationId)
+    if (!conversation) {
+      throw new Error("Conversa não encontrada")
+    }
+
+    const groupJid = conversation.externalChatId
+    if (!groupJid || !isGroupChat(groupJid)) {
+      throw new Error("Conversa não é um grupo")
+    }
+
+    const participants = await evoApiService.findGroupParticipants({
+      instanceName: config.instanceName,
+      groupJid,
+      hostBaseUrl: config.hostBaseUrl ?? undefined,
+    })
+
+    const phoneContacts = await evoApiService.findContacts(
+      config.instanceName,
+      config.hostBaseUrl ?? undefined
+    )
+    const phoneContactByJid = new Map(phoneContacts.map((c) => [c.remoteJid, c]))
+
+    const now = new Date()
+    const upsertInputs = participants.map((participant) => {
+      const agendaMatch = phoneContactByJid.get(participant.remoteJid)
+      const pushName = participant.pushName?.trim() || agendaMatch?.pushName?.trim() || null
+      return {
+        teamId,
+        remoteJid: participant.remoteJid,
+        opaqueId: extractOpaqueId(participant.remoteJid),
+        phoneNumber: participant.phoneNumber
+          ? normalizePhone(participant.phoneNumber)
+          : agendaMatch?.phoneNumber
+            ? normalizePhone(agendaMatch.phoneNumber)
+            : null,
+        displayName: pushName,
+        pushName,
+        source: "GROUP_PARTICIPANT" as const,
+        lastSyncedAt: now,
+      }
+    })
+
+    const imported = await whatsAppContactRepository.upsertMany(upsertInputs)
+
+    return { imported, totalParticipants: participants.length }
+  }
+
+  async listContacts(
+    teamId: string,
+    params?: { q?: string; groupJid?: string }
+  ): Promise<WhatsAppContactOutput[]> {
+    const rows = await whatsAppContactRepository.listByTeam(teamId, {
+      q: params?.q,
+      groupJid: params?.groupJid,
+      limit: 500,
+    })
+
+    return rows.map((row) => ({
+      id: row.id,
+      remoteJid: row.remoteJid,
+      opaqueId: row.opaqueId,
+      phoneNumber: row.phoneNumber,
+      displayName: row.displayName,
+      pushName: row.pushName,
+      source: row.source,
+    }))
   }
 
   async getUsageSummary(teamId: string): Promise<UsageSummaryOutput> {

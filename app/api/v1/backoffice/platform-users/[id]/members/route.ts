@@ -51,6 +51,7 @@ export async function POST(
     const canCreateAccountUsers = data.canCreateAccountUsers === true
     const canManageAccountTeams = data.canManageAccountTeams === true
     const canTransferAccountLeads = data.canTransferAccountLeads === true
+    const generateCharge = data.generateCharge === true
 
     if (!fullName) {
       return NextResponse.json(
@@ -84,6 +85,7 @@ export async function POST(
       canCreateAccountUsers,
       canManageAccountTeams,
       canTransferAccountLeads,
+      generateCharge,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })

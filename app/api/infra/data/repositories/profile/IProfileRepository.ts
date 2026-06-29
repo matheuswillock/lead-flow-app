@@ -103,4 +103,18 @@ export interface IProfileRepository {
     email: string,
     fullName: string
   ): Promise<{ profileId: string }>;
+  findAsaasSyncProfileById(profileId: string): Promise<{
+    id: string;
+    fullName: string | null;
+    email: string;
+    cpfCnpj: string | null;
+    phone: string | null;
+    postalCode: string | null;
+    address: string | null;
+    addressNumber: string | null;
+    neighborhood: string | null;
+    complement: string | null;
+    asaasCustomerId: string | null;
+  } | null>;
+  updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
 }

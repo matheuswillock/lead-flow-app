@@ -6,14 +6,14 @@ const API_BASE_URL = '/api/v1';
 
 export class BoardService implements IBoardService {
     updateLeadStatus(leadId: string, newStatus: string, supabaseId: string, teamId?: string | null): Promise<Output> {
-        return fetch(`${API_BASE_URL}/leads/${leadId}/status`, {
-            method: "PUT",
+        return fetch(`${API_BASE_URL}/leads/${leadId}/status-transition`, {
+            method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "x-supabase-user-id": supabaseId,
                 ...(teamId ? { "x-team-id": teamId } : {})
             },
-            body: JSON.stringify({ status: newStatus }),
+            body: JSON.stringify({ mode: "apply", targetStatus: newStatus }),
         })
         .then(response => response.json())
         .then(data => data as Output)

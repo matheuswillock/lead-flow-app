@@ -118,6 +118,17 @@ async function loadLeadDetailsWithDedupe(
 }
 
 /**
+ * Pré-carrega detalhes do lead (cache + dedupe) — usar em hover na tabela.
+ */
+export function prefetchLeadDetails(
+  supabaseId: string,
+  teamId: string,
+  leadId: string
+): void {
+  void loadLeadDetailsWithDedupe(supabaseId, teamId, leadId);
+}
+
+/**
  * Invalida o cache de detalhes de um lead específico.
  * Usar após uploads/deletes de anexos ou mutações no lead.
  */

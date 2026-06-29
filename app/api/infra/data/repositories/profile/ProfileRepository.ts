@@ -966,6 +966,32 @@ class PrismaProfileRepository implements IProfileRepository {
         console.info("[ProfileRepository] BackofficeProfile criado:", profile.id)
         return { profileId: profile.id }
     }
+
+    async findAsaasSyncProfileById(profileId: string) {
+        return prisma.profile.findUnique({
+            where: { id: profileId },
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                cpfCnpj: true,
+                phone: true,
+                postalCode: true,
+                address: true,
+                addressNumber: true,
+                neighborhood: true,
+                complement: true,
+                asaasCustomerId: true,
+            },
+        });
+    }
+
+    async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {
+        await prisma.profile.update({
+            where: { id: profileId },
+            data: { asaasCustomerId },
+        });
+    }
 }
 
 export const profileRepository: IProfileRepository = new PrismaProfileRepository();

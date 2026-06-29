@@ -17,15 +17,28 @@ export class TeamMembersRepository implements ITeamMembersRepository {
         email: true,
         fullName: true,
         isMaster: true,
+        managerId: true,
       },
     });
   }
 
   async findTeam(teamId: string): Promise<TeamMembersTeam | null> {
-    return prisma.team.findUnique({
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
-      select: { id: true, masterId: true, name: true },
+      select: {
+        id: true,
+        masterId: true,
+        name: true,
+        master: { select: { sponsorMasterId: true } },
+      },
     });
+    if (!team) return null;
+    return {
+      id: team.id,
+      masterId: team.masterId,
+      name: team.name,
+      sponsorMasterId: team.master.sponsorMasterId,
+    };
   }
 
   async findMembership(teamId: string, profileId: string) {
@@ -37,6 +50,24 @@ export class TeamMembersRepository implements ITeamMembersRepository {
         canManageAccountTeams: true,
       },
     });
+  }
+
+  async canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean> {
+    if (requesterProfileId === teamMasterId) {
+      return true;
+    }
+
+    const delegatedMembership = await prisma.teamMember.findFirst({
+      where: {
+        profileId: requesterProfileId,
+        role: "manager",
+        canManageAccountTeams: true,
+        team: { masterId: teamMasterId },
+      },
+      select: { id: true },
+    });
+
+    return delegatedMembership !== null;
   }
 
   async findMembers(teamId: string): Promise<TeamMembersListItem[]> {

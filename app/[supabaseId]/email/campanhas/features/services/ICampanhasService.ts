@@ -3,7 +3,8 @@ import type { Campaign, CreditStatus, Template, ContactList } from '../context/C
 export type CreateCampaignData = {
   name: string
   templateId: string
-  contactListId: string
+  contactListId?: string
+  cdpSegmentSlug?: string
   scheduledAt?: string
 }
 
@@ -11,6 +12,7 @@ export type UpdateCampaignData = {
   name?: string
   templateId?: string
   contactListId?: string
+  cdpSegmentSlug?: string
   scheduledAt?: string | null
 }
 

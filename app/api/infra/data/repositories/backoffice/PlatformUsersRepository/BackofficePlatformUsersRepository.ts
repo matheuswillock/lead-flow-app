@@ -1,5 +1,6 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { Prisma, UserRole, UserFunction } from "@prisma/client"
+import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 import type {
   IBackofficePlatformUsersRepository,
@@ -11,6 +12,20 @@ import type {
   RepositoryPaginatedResult,
   RepositoryPaginationParams,
 } from "./IBackofficePlatformUsersRepository"
+
+function mapMasterUserType(
+  assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null
+): MasterPlatformUserDetailsRecord["userType"] {
+  const slug: "common" | "member_pro" =
+    assignment?.userType.slug === "member_pro" ? "member_pro" : "common"
+  const accessExpiresAt = assignment?.accessExpiresAt ?? null
+  const isExpired =
+    slug === "member_pro" &&
+    accessExpiresAt !== null &&
+    new Date(accessExpiresAt).getTime() <= Date.now()
+
+  return { slug, isExpired }
+}
 
 export class BackofficePlatformUsersRepository implements IBackofficePlatformUsersRepository {
   private buildMasterFilters(filters?: PlatformUsersFilters): Prisma.ProfileWhereInput {
@@ -273,6 +288,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
             revokedAt: true,
           },
         },
+        userTypeAssignment: {
+          select: {
+            accessExpiresAt: true,
+            userType: { select: { slug: true } },
+          },
+        },
       },
     })
 
@@ -378,7 +399,11 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       prisma.team.count({ where: teamsWhere }),
       prisma.team.findMany({
         where: { masterId: master.id },
-        select: { id: true, name: true },
+        select: {
+          id: true,
+          name: true,
+          _count: { select: { members: true } },
+        },
         orderBy: { name: "asc" },
       }),
       prisma.teamMember.findMany({
@@ -424,7 +449,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: linkedUsers.size,
       teamsTotalItems,
-      allTeams,
+      userType: mapMasterUserType(master.userTypeAssignment),
+      allTeams: allTeams.map((team) => ({
+        id: team.id,
+        name: team.name,
+        membersCount: team._count.members,
+      })),
       teams: teams.map((team) => ({
         id: team.id,
         name: team.name,
@@ -468,10 +498,52 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         id: true,
         fullName: true,
         email: true,
+        cpfCnpj: true,
+        phone: true,
+        postalCode: true,
+        address: true,
+        addressNumber: true,
+        neighborhood: true,
+        complement: true,
         asaasCustomerId: true,
+        asaasSubscriptionId: true,
+        subscriptionStatus: true,
+        subscriptionNextDueDate: true,
+        subscriptionEndDate: true,
+        subscriptionCycle: true,
         hasPermanentSubscription: true,
+        timezone: true,
+        functions: true,
       },
     })
+  }
+
+  async profileBelongsToMasterAccount(
+    profileId: string,
+    masterProfileId: string
+  ): Promise<boolean> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { managerId: true },
+    })
+
+    if (!profile) {
+      return false
+    }
+
+    if (profile.managerId === masterProfileId) {
+      return true
+    }
+
+    const membership = await prisma.teamMember.findFirst({
+      where: {
+        profileId,
+        team: { masterId: masterProfileId },
+      },
+      select: { id: true },
+    })
+
+    return membership !== null
   }
 
   async updateMasterUserProfile(
@@ -646,6 +718,34 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     })
   }
 
+  async listTeamsByMasterId(
+    masterProfileId: string
+  ): Promise<Array<{ id: string; name: string }> | null> {
+    const master = await prisma.profile.findFirst({
+      where: {
+        id: masterProfileId,
+        isMaster: true,
+        role: "manager",
+      },
+      select: { id: true },
+    })
+
+    if (!master) return null
+
+    return prisma.team.findMany({
+      where: { masterId: masterProfileId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    })
+  }
+
+  async findTeamMember(teamId: string, profileId: string): Promise<{ id: string } | null> {
+    return prisma.teamMember.findUnique({
+      where: { teamId_profileId: { teamId, profileId } },
+      select: { id: true },
+    })
+  }
+
   async findTeamByIdAndMasterId(teamId: string, masterId: string): Promise<{ id: string } | null> {
     return prisma.team.findFirst({
       where: { id: teamId, masterId },
@@ -653,10 +753,24 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     })
   }
 
-  async findProfileByEmail(email: string): Promise<{ id: string; isMaster: boolean; managerId: string | null } | null> {
+  async findProfileByEmail(email: string): Promise<{
+    id: string
+    email: string
+    fullName: string | null
+    supabaseId: string | null
+    isMaster: boolean
+    managerId: string | null
+  } | null> {
     return prisma.profile.findUnique({
       where: { email },
-      select: { id: true, isMaster: true, managerId: true },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        supabaseId: true,
+        isMaster: true,
+        managerId: true,
+      },
     })
   }
 
@@ -804,6 +918,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     await prisma.profile.update({
       where: { id: profileId },
       data: { supabaseId },
+    })
+  }
+
+  async assertUserSubscriptionCapacity(masterProfileId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await subscriptionCreditRepository.assertCapacityAvailable(tx, masterProfileId, { users: 1 })
     })
   }
 }

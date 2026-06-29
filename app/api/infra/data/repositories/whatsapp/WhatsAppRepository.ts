@@ -23,6 +23,10 @@ const CONFIG_SELECT = {
   lastConnectedAt: true,
   lastDisconnectedAt: true,
   lastSyncAt: true,
+  historySyncStatus: true,
+  historySyncStartedAt: true,
+  historySyncCompletedAt: true,
+  historySyncError: true,
   usageLimitMonthly: true,
   billingEnabled: true,
   createdAt: true,
@@ -37,12 +41,15 @@ const CONVERSATION_SELECT = {
   externalChatId: true,
   contactPhone: true,
   contactName: true,
+  contactAvatarUrl: true,
   normalizedPhone: true,
   assignedProfileId: true,
   lastMessageAt: true,
   lastMessagePreview: true,
   unreadCount: true,
   isArchived: true,
+  handoffMode: true,
+  welcomeSentAt: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -59,7 +66,11 @@ const MESSAGE_SELECT = {
   status: true,
   contentText: true,
   mediaUrl: true,
+  mediaMimeType: true,
+  mediaFileName: true,
+  linkPreview: true,
   caption: true,
+  senderDisplayName: true,
   sentByProfileId: true,
   senderPhone: true,
   recipientPhone: true,
@@ -67,6 +78,8 @@ const MESSAGE_SELECT = {
   deliveredAt: true,
   readAt: true,
   failedAt: true,
+  isAutoResponse: true,
+  autoResponseRuleId: true,
   createdAt: true,
 } as const
 
@@ -81,6 +94,13 @@ class WhatsAppRepository implements IWhatsAppRepository {
   async findConfigByWebhookSecret(secret: string): Promise<WhatsAppConfigSelect | null> {
     return prisma.teamWhatsAppConfig.findFirst({
       where: { webhookSecret: secret },
+      select: CONFIG_SELECT,
+    })
+  }
+
+  async findConfigById(id: string): Promise<WhatsAppConfigSelect | null> {
+    return prisma.teamWhatsAppConfig.findUnique({
+      where: { id },
       select: CONFIG_SELECT,
     })
   }
@@ -101,6 +121,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
       data,
       select: CONFIG_SELECT,
     })
+  }
+
+  async deleteConfig(id: string): Promise<void> {
+    await prisma.teamWhatsAppConfig.delete({ where: { id } })
   }
 
   async findConversationById(conversationId: string): Promise<WhatsAppConversationSelect | null> {
@@ -180,7 +204,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
       prisma.whatsAppConversation.findMany({
         where,
         select: CONVERSATION_SELECT,
-        orderBy: { lastMessageAt: "desc" },
+        orderBy: [{ unreadCount: "desc" }, { lastMessageAt: "desc" }],
         skip,
         take: limit,
       }),
@@ -228,6 +252,16 @@ class WhatsAppRepository implements IWhatsAppRepository {
         teamId_providerMessageId: { teamId, providerMessageId },
       },
       select: MESSAGE_SELECT,
+    })
+  }
+
+  async findMessageByIdForTeam(
+    teamId: string,
+    messageId: string
+  ): Promise<(WhatsAppMessageSelect & { rawPayload: Prisma.JsonValue }) | null> {
+    return prisma.whatsAppMessage.findFirst({
+      where: { id: messageId, teamId },
+      select: { ...MESSAGE_SELECT, rawPayload: true },
     })
   }
 
@@ -306,8 +340,45 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return { outboundCount, inboundCount }
   }
 
+  async listMessagesSince(params: {
+    teamId: string
+    since: Date
+  }): Promise<WhatsAppMessageSelect[]> {
+    return prisma.whatsAppMessage.findMany({
+      where: {
+        teamId: params.teamId,
+        sentAt: { gte: params.since },
+      },
+      select: MESSAGE_SELECT,
+      orderBy: { sentAt: "asc" },
+      take: 10000,
+    })
+  }
+
+  async listConversationsForTeam(teamId: string): Promise<WhatsAppConversationSelect[]> {
+    return prisma.whatsAppConversation.findMany({
+      where: { teamId },
+      select: CONVERSATION_SELECT,
+      orderBy: { lastMessageAt: "desc" },
+    })
+  }
+
   async deleteConversation(id: string): Promise<void> {
     await prisma.whatsAppConversation.delete({ where: { id } })
+  }
+
+  async findTeamMasterContext(
+    teamId: string
+  ): Promise<{ masterId: string; timezone: string | null } | null> {
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: {
+        masterId: true,
+        master: { select: { timezone: true } },
+      },
+    })
+    if (!team) return null
+    return { masterId: team.masterId, timezone: team.master.timezone }
   }
 }
 

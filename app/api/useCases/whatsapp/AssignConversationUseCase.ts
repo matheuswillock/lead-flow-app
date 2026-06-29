@@ -34,6 +34,7 @@ class AssignConversationUseCase {
 
       const updated = await whatsAppRepository.updateConversation(input.conversationId, {
         assignedProfile: { connect: { id: input.assigneeProfileId } },
+        handoffMode: "HUMAN",
       })
 
       return new Output(true, ["Responsável atribuído com sucesso"], [], updated)

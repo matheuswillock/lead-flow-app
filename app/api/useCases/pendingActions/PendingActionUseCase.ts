@@ -9,6 +9,8 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
 import type { Prisma, UserFunction, UserRole } from "@prisma/client";
+import { buildAddedToTeamEmail } from "@/lib/emails/buildAddedToTeamEmail";
+import { getAppUrl } from "@/lib/utils/app-url";
 
 async function findActionByCheckoutId(checkoutId: string) {
   return prisma.pendingAction.findFirst({
@@ -209,6 +211,10 @@ export class PendingActionUseCase {
         await this.sendInviteForCreatedUser(action, appliedResult.createdUser);
       }
 
+      if (action.actionType === "add_member") {
+        await this.sendAddedToTeamEmailForMember(action);
+      }
+
       const targetRecurringTotal = Number((action.payload as PendingActionPayload)?.targetRecurringTotal ?? 0);
       if (!Number.isNaN(targetRecurringTotal) && targetRecurringTotal > 0) {
         try {
@@ -365,12 +371,18 @@ export class PendingActionUseCase {
     });
 
     if (!existingMember) {
+      const role = (payload.role || "operator") as UserRole;
       await tx.teamMember.create({
         data: {
           teamId,
           profileId,
-          role: (payload.role || "operator") as UserRole,
+          role,
           functions: (payload.functions as UserFunction[] | undefined) ?? [],
+          canCreateAccountUsers: role === "manager" && payload.canCreateAccountUsers === true,
+          canManageAccountTeams: role === "manager" && payload.canManageAccountTeams === true,
+          canTransferAccountLeads:
+            (role === "manager" || role === "backoffice") &&
+            payload.canTransferAccountLeads === true,
         },
       });
     }
@@ -595,6 +607,37 @@ export class PendingActionUseCase {
     });
 
     return { teamId: action.teamId ?? "" };
+  }
+
+  private async sendAddedToTeamEmailForMember(action: ResolvedPendingAction) {
+    const payload = (action.payload as PendingActionPayload) || {};
+    const profileId = payload.profileId as string | undefined;
+    const profileEmail = payload.profileEmail as string | undefined;
+    const profileName = payload.profileName as string | undefined;
+
+    if (!profileId) {
+      return;
+    }
+
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { email: true, fullName: true },
+    });
+
+    const email = profileEmail || profile?.email;
+    if (!email) {
+      return;
+    }
+
+    const userName = profileName || profile?.fullName || email;
+    const appUrl = getAppUrl({ removeTrailingSlash: true });
+    const emailService = getEmailService();
+
+    await emailService.sendEmail({
+      to: [email],
+      subject: "Corretor Studio - Você foi adicionado a um novo time",
+      html: buildAddedToTeamEmail({ userName, loginUrl: `${appUrl}/sign-in` }),
+    });
   }
 
   private async sendInviteForCreatedUser(

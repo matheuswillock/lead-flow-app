@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { useUserContext } from '@/app/context/UserContext'
+import { WHATSAPP_UNREAD_CHANGED_EVENT } from '@/lib/whatsapp/unread-events'
 
 export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
   const { activeTeamId } = useTeamContext()
@@ -45,6 +46,13 @@ export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
     }
     void fetchCount()
   }, [enabled, activeTeamId, fetchCount])
+
+  useEffect(() => {
+    if (!enabled) return
+    const onUnreadChanged = () => void fetchCount()
+    window.addEventListener(WHATSAPP_UNREAD_CHANGED_EVENT, onUnreadChanged)
+    return () => window.removeEventListener(WHATSAPP_UNREAD_CHANGED_EVENT, onUnreadChanged)
+  }, [enabled, fetchCount])
 
   useEffect(() => {
     if (!enabled || !activeTeamId) return

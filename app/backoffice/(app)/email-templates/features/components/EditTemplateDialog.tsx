@@ -53,6 +53,7 @@ export function EditTemplateDialog({
   const [template, setTemplate] = useState<TemplateDetail | null>(null)
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false)
   const [form, setForm] = useState<UpdateTemplateFormData>({})
+  const [activeTab, setActiveTab] = useState("html")
 
   useEffect(() => {
     if (!open || !templateId) return
@@ -120,6 +121,7 @@ export function EditTemplateDialog({
     if (!next) {
       setTemplate(null)
       setForm({})
+      setActiveTab("html")
     }
     onOpenChange(next)
   }
@@ -247,7 +249,11 @@ export function EditTemplateDialog({
             </div>
 
             <div className="flex-1 flex flex-col min-h-0">
-              <Tabs defaultValue="html" className="flex flex-col flex-1 min-h-0">
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="flex flex-col flex-1 min-h-0"
+              >
                 <TabsList className="self-start shrink-0">
                   <TabsTrigger value="html">HTML</TabsTrigger>
                   <TabsTrigger value="preview">Preview</TabsTrigger>
@@ -256,14 +262,17 @@ export function EditTemplateDialog({
                   value="html"
                   className="mt-2 flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"
                 >
-                  <div className="flex-1 min-h-0 rounded-md overflow-hidden border">
-                    <MonacoCodeEditor
-                      value={form.html ?? ""}
-                      onChange={(val) => handleChange("html", val)}
-                      language="html"
-                      height="100%"
-                      themeVariant="resend-dark"
-                    />
+                  <div className="flex-1 min-h-[360px] rounded-md overflow-hidden border">
+                    {activeTab === "html" ? (
+                      <MonacoCodeEditor
+                        editorKey={templateId ?? undefined}
+                        value={form.html ?? ""}
+                        onChange={(val) => handleChange("html", val)}
+                        language="html"
+                        height="100%"
+                        themeVariant="resend-dark"
+                      />
+                    ) : null}
                   </div>
                 </TabsContent>
                 <TabsContent

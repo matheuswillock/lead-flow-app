@@ -2,32 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import { fetchTeamMembersPayload } from "@/lib/team/teamMembersClientCache";
 
 type TeamFunction = "SDR" | "CLOSER";
-
-type TeamMembersCacheEntry = {
-  members: UserAssociated[];
-  timestamp: number;
-};
-
-const MEMBERS_CACHE_TTL_MS = 60 * 1000;
-const EMPTY_MEMBERS_CACHE_TTL_MS = 10 * 1000;
-
-// Cache and in-flight maps are keyed by team only (not by function) so that
-// CLOSER and SDR consumers share the same HTTP request to /teams/{id}/members
-// and only filter the result locally.
-const membersInFlightByKey = new Map<string, Promise<UserAssociated[]>>();
-const membersCacheByKey = new Map<string, TeamMembersCacheEntry>();
-
-const mapMemberToUserAssociated = (member: any): UserAssociated => ({
-  id: member.profileId,
-  name: member.name || member.email || "Usuário",
-  avatarImageUrl: member.profileIconUrl || "",
-  email: member.email || "",
-  role: member.role,
-  functions: member.functions ?? [],
-  googleCalendarConnected: member.googleCalendarConnected ?? false,
-});
 
 const filterByFunction = (members: UserAssociated[], fn: TeamFunction) =>
   members.filter((m) => Array.isArray(m.functions) && m.functions.includes(fn));
@@ -56,86 +33,29 @@ function useTeamMembersByFunction(
       const requestKey = `${supabaseId}:${teamId}`;
       latestRequestKeyRef.current = requestKey;
 
-      if (!options?.force) {
-        const cachedEntry = membersCacheByKey.get(requestKey);
-        if (cachedEntry) {
-          const cacheAgeMs = Date.now() - cachedEntry.timestamp;
-          const ttlMs =
-            cachedEntry.members.length === 0
-              ? EMPTY_MEMBERS_CACHE_TTL_MS
-              : MEMBERS_CACHE_TTL_MS;
-
-          if (cacheAgeMs <= ttlMs) {
-            setMembers(filterByFunction(cachedEntry.members, functionName));
-            setError(null);
-            lastAppliedKeyRef.current = requestKey;
-            return;
-          }
-        }
-
-        if (lastAppliedKeyRef.current !== requestKey) {
-          setMembers([]);
-          setError(null);
-        }
-      }
-
-      const existingRequest = membersInFlightByKey.get(requestKey);
-      const requestPromise =
-        existingRequest ??
-        (async (): Promise<UserAssociated[]> => {
-          const response = await fetch(
-            `/api/v1/teams/${teamId}/members`,
-            {
-              method: "GET",
-              cache: "no-store",
-              headers: {
-                "x-supabase-user-id": supabaseId,
-                "x-team-id": teamId,
-              },
-            }
-          );
-
-          const result = await response.json().catch(() => null);
-          if (!response.ok || !result?.isValid) {
-            const errorMessage =
-              result?.errorMessages?.join(", ") || "Erro ao carregar membros do time";
-            throw new Error(errorMessage);
-          }
-
-          const allMembers = ((result?.result?.members ?? []) as any[]).map(
-            mapMemberToUserAssociated
-          );
-          membersCacheByKey.set(requestKey, {
-            members: allMembers,
-            timestamp: Date.now(),
-          });
-          return allMembers;
-        })();
-
-      if (!existingRequest) {
-        membersInFlightByKey.set(
-          requestKey,
-          requestPromise.finally(() => {
-            membersInFlightByKey.delete(requestKey);
-          })
-        );
+      if (!options?.force && lastAppliedKeyRef.current === requestKey) {
+        return;
       }
 
       setLoading(true);
       setError(null);
       try {
-        const allMembers = await requestPromise;
+        const payload = await fetchTeamMembersPayload(supabaseId, teamId, options);
         if (latestRequestKeyRef.current !== requestKey) {
           return;
         }
-        setMembers(filterByFunction(allMembers, functionName));
+        setMembers(filterByFunction(payload.members, functionName));
         setError(null);
         lastAppliedKeyRef.current = requestKey;
       } catch (loadError) {
         if (latestRequestKeyRef.current !== requestKey) {
           return;
         }
-        setError(loadError instanceof Error ? loadError.message : "Erro ao carregar membros do time");
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Erro ao carregar membros do time"
+        );
       } finally {
         if (latestRequestKeyRef.current === requestKey) {
           setLoading(false);

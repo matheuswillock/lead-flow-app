@@ -28,4 +28,17 @@ export class SubscriptionRepository implements ISubscriptionRepository {
       },
     });
   }
+
+  async listDistinctMembershipMasterIds(profileId: string): Promise<string[]> {
+    const memberships = await prisma.teamMember.findMany({
+      where: { profileId },
+      select: {
+        team: {
+          select: { masterId: true },
+        },
+      },
+    });
+
+    return [...new Set(memberships.map((item) => item.team.masterId))];
+  }
 }

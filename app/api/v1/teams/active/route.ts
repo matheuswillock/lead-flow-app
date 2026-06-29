@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
 
 export async function PUT(request: NextRequest) {
   try {
@@ -52,12 +53,30 @@ export async function PUT(request: NextRequest) {
           teamId,
           profileId: profile.id
         }
-      }
+      },
+      select: {
+        team: {
+          select: { masterId: true },
+        },
+      },
     });
 
     if (!membership) {
       return NextResponse.json(
         new Output(false, [], ["User is not a member of this team"], null),
+        { status: 403 }
+      );
+    }
+
+    const accountSubscriptionActive = await isAccountSubscriptionActive(membership.team.masterId);
+    if (!accountSubscriptionActive) {
+      return NextResponse.json(
+        new Output(
+          false,
+          [],
+          ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
+          null
+        ),
         { status: 403 }
       );
     }

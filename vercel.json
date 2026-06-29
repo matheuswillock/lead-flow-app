@@ -7,6 +7,18 @@
     {
       "path": "/api/v1/email/cron/reset-credits",
       "schedule": "0 3 1 * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/meeting-reminders",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/meeting-follow-up",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/meeting-follow-up",
+      "schedule": "0 17 * * *"
     }
   ]
 }

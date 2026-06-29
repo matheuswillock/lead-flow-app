@@ -286,12 +286,25 @@ export function TransferBetweenTeamsDialog({
         throw new Error(message);
       }
 
-      if (Array.isArray(result.errorMessages) && result.errorMessages.length > 0) {
+      const transferResult = result.result as { lead?: Lead; schedulePending?: boolean } | Lead | null;
+      const updatedLead = transferResult && "lead" in transferResult ? transferResult.lead : (transferResult as Lead);
+      const schedulePending =
+        transferResult && typeof transferResult === "object" && "schedulePending" in transferResult
+          ? transferResult.schedulePending === true
+          : false;
+
+      if (!updatedLead) {
+        throw new Error("Resposta inválida ao transferir lead");
+      }
+
+      if (schedulePending) {
+        toast.success("Lead transferido. O agendamento está sendo processado.");
+      } else if (Array.isArray(result.errorMessages) && result.errorMessages.length > 0) {
         toast.warning(result.errorMessages[0]);
       } else {
         toast.success("Lead transferido com sucesso");
       }
-      onSuccess(result.result as Lead);
+      onSuccess(updatedLead);
       onOpenChange(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao transferir lead");

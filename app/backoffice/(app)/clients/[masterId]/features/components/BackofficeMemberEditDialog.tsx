@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { Crown, Trash2, UserMinus } from "lucide-react"
+import { Crown, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +23,7 @@ import type {
   BackofficeClientTeamMember,
 } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
+import { BackofficeMemberTeamsSection, type ExternalTeamMembershipRow } from "./BackofficeMemberTeamsSection"
 
 type MemberRole = "manager" | "backoffice" | "operator"
 type MemberFunction = "SDR" | "CLOSER"
@@ -87,6 +88,7 @@ interface BackofficeMemberEditDialogProps {
   service: IBackofficeClientDetailsService
   onSuccess: () => void
   onDeleteRequest: () => void
+  canManage?: boolean
 }
 
 export function BackofficeMemberEditDialog({
@@ -98,6 +100,7 @@ export function BackofficeMemberEditDialog({
   service,
   onSuccess,
   onDeleteRequest,
+  canManage = true,
 }: BackofficeMemberEditDialogProps) {
   const [form, setForm] = useState<FormState>(() =>
     member
@@ -106,17 +109,44 @@ export function BackofficeMemberEditDialog({
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [removingTeamId, setRemovingTeamId] = useState<string | null>(null)
+  const [addingTeamId, setAddingTeamId] = useState<string | null>(null)
+  const [externalTeams, setExternalTeams] = useState<ExternalTeamMembershipRow[]>([])
   const inFlight = useRef(false)
 
   useEffect(() => {
     if (open && member) {
       setForm(initForm(member))
+      setAddingTeamId(null)
     }
   }, [open, member])
+
+  useEffect(() => {
+    if (!open || !member || !details?.id) {
+      setExternalTeams([])
+      return
+    }
+
+    let cancelled = false
+
+    void service
+      .getMemberExternalTeams(member.id, details.id)
+      .then((items) => {
+        if (!cancelled) setExternalTeams(items)
+      })
+      .catch(() => {
+        if (!cancelled) setExternalTeams([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, member, details?.id, service])
 
   if (!member) return null
 
   const memberTeams = details ? findTeamsOfMember(details.teams, member.id) : []
+  const memberTeamIds = new Set(memberTeams.map((team) => team.id))
+  const allTeams = details?.allTeams ?? []
 
   const nameValid = form.fullName.trim().length >= 2
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
@@ -189,6 +219,20 @@ export function BackofficeMemberEditDialog({
       toast.error(err instanceof Error ? err.message : "Erro ao remover do time")
     } finally {
       setRemovingTeamId(null)
+    }
+  }
+
+  async function handleAddToTeam(teamId: string) {
+    if (!member || addingTeamId) return
+    setAddingTeamId(teamId)
+    try {
+      await service.addMemberToTeam(member.id, teamId)
+      toast.success("Membro adicionado ao time")
+      onSuccess()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao adicionar ao time")
+    } finally {
+      setAddingTeamId(null)
     }
   }
 
@@ -391,57 +435,18 @@ export function BackofficeMemberEditDialog({
               </>
             ) : null}
 
-            <Separator />
-
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-medium">Times deste cliente</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Remova o membro de um time específico sem excluir a conta.
-                </p>
-              </div>
-
-              {memberTeams.length === 0 ? (
-                <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
-                  Este membro não pertence a nenhum time deste cliente.
-                </p>
-              ) : (
-                <div className="rounded-md border divide-y">
-                  {memberTeams.map((team) => (
-                    <div
-                      key={team.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{team.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {team.membersCount} membro{team.membersCount === 1 ? "" : "s"}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleRemoveFromTeam(team.id)}
-                        disabled={
-                          isSubmitting ||
-                          removingTeamId !== null ||
-                          member.isMaster
-                        }
-                        title={
-                          member.isMaster
-                            ? "Não é possível remover o usuário master do time"
-                            : undefined
-                        }
-                      >
-                        <UserMinus />
-                        {removingTeamId === team.id ? "Removendo..." : "Remover"}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <BackofficeMemberTeamsSection
+              teams={allTeams}
+              memberTeamIds={memberTeamIds}
+              member={member}
+              externalTeams={externalTeams}
+              canManage={canManage}
+              isSubmitting={isSubmitting}
+              addingTeamId={addingTeamId}
+              removingTeamId={removingTeamId}
+              onAddToTeam={(teamId) => void handleAddToTeam(teamId)}
+              onRemoveFromTeam={(teamId) => void handleRemoveFromTeam(teamId)}
+            />
 
             {!member.isMaster ? (
               <>

@@ -36,6 +36,8 @@ interface LeadsStatusFilterProps {
   onToggleMeetingHeld?: (value: boolean) => void;
   transfer?: boolean;
   onToggleTransfer?: (value: boolean) => void;
+  draft?: boolean;
+  onToggleDraft?: (value: boolean) => void;
 }
 
 export function LeadsStatusFilter({
@@ -47,6 +49,8 @@ export function LeadsStatusFilter({
   onToggleMeetingHeld,
   transfer = false,
   onToggleTransfer,
+  draft = false,
+  onToggleDraft,
 }: LeadsStatusFilterProps) {
   const selectedSet = React.useMemo(
     () => new Set(selectedStatuses),
@@ -63,8 +67,11 @@ export function LeadsStatusFilter({
     if (transfer) {
       labels.unshift("Transferência");
     }
+    if (draft) {
+      labels.unshift("Rascunhos");
+    }
     return labels;
-  }, [meetingHeld, selectedSet, statusOptions, transfer]);
+  }, [draft, meetingHeld, selectedSet, statusOptions, transfer]);
 
   const hasSelections = selectedLabels.length > 0;
 
@@ -132,7 +139,7 @@ export function LeadsStatusFilter({
           <CommandInput placeholder={title} />
           <CommandList>
             <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
-            {(onToggleMeetingHeld || onToggleTransfer) && (
+            {(onToggleMeetingHeld || onToggleTransfer || onToggleDraft) && (
               <>
                 <CommandGroup>
                   {onToggleMeetingHeld && (
@@ -167,6 +174,21 @@ export function LeadsStatusFilter({
                         <Check className="h-4 w-4" />
                       </div>
                       <span>Transferência</span>
+                    </CommandItem>
+                  )}
+                  {onToggleDraft && (
+                    <CommandItem onSelect={() => onToggleDraft(!draft)}>
+                      <div
+                        className={cn(
+                          "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                          draft
+                            ? "bg-primary text-primary-foreground"
+                            : "opacity-50 [&_svg]:invisible"
+                        )}
+                      >
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <span>Somente rascunhos</span>
                     </CommandItem>
                   )}
                 </CommandGroup>

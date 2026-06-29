@@ -2,7 +2,7 @@ import { LeadStatus, MeetingHeald } from "@prisma/client";
 
 export interface LeadMetricsData {
   id: string;
-  status: LeadStatus;
+  status: LeadStatus | null;
   currentValue: any; // Prisma Decimal type
   ticket: any; // Prisma Decimal type
   createdAt: Date;
@@ -14,7 +14,7 @@ export interface LeadMetricsData {
 }
 
 export interface StatusMetricsData {
-  status: LeadStatus;
+  status: LeadStatus | null;
   _count: {
     id: number;
   };
@@ -36,6 +36,7 @@ export interface LeadsPeriodData {
 export interface MetricsFilters {
   supabaseId: string;
   teamId: string;
+  teamIds?: string[];
   startDate?: Date;
   endDate?: Date;
 }
@@ -104,7 +105,7 @@ export interface IMetricsRepository {
   /**
    * Busca métricas detalhadas por status com contexto já resolvido
    */
-  getStatusMetricsWithCtx(ctx: TeamContext, teamId: string): Promise<StatusMetricsData[]>;
+  getStatusMetricsWithCtx(ctx: TeamContext, teamIds: string[]): Promise<StatusMetricsData[]>;
 
   /**
    * Busca leads agrupados por período
@@ -114,7 +115,7 @@ export interface IMetricsRepository {
   /**
    * Busca leads agrupados por período com contexto já resolvido
    */
-  getLeadsByPeriodWithCtx(ctx: TeamContext, teamId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
+  getLeadsByPeriodWithCtx(ctx: TeamContext, teamIds: string[], startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
 
   /**
    * Busca agendamentos da tabela LeadsSchedule

@@ -5,6 +5,10 @@ import { IMetricsUseCase } from '@/app/api/useCases';
 import { MetricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 import { NextRequest, NextResponse } from 'next/server';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
+import {
+  getDashboardTeamScopeFromRequest,
+  resolveDashboardTeamScope,
+} from '@/app/api/v1/utils/dashboardTeamScope';
 
 const dashboardInfosService: IDashboardInfosService = new DashboardInfosService();
 const metricsUseCase: IMetricsUseCase = new MetricsUseCase(dashboardInfosService);
@@ -21,12 +25,19 @@ export async function GET(
     }
 
     const { access } = teamAccess;
+    const teamScope = getDashboardTeamScopeFromRequest(request);
+    const scopeResult = await resolveDashboardTeamScope(access, teamScope);
+    if ("error" in scopeResult) {
+      return NextResponse.json(scopeResult.error, { status: scopeResult.status });
+    }
+
     const ctx: TeamContext = { profileId: access.profileId, teamMember: access.teamMember };
 
     const result = await metricsUseCase.getDetailedStatusMetrics(
       access.supabaseId,
       access.teamId,
-      ctx
+      scopeResult.teamIds,
+      ctx,
     );
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 });

@@ -387,6 +387,11 @@
                           "key": "period",
                           "value": "30d",
                           "description": "Período: 7d, 30d, 3m, 6m, 1y"
+                        },
+                        {
+                          "key": "teamScope",
+                          "value": "active",
+                          "description": "Escopo: active (time ativo) ou all (todos os times da conta, apenas managers)"
                         }
                       ]
                     },
@@ -1459,6 +1464,351 @@
                   ]
                 },
                 "description": "Transfere um lead para outro time do mesmo master. O closer é obrigatório; o SDR é opcional. Pode incluir agendamento no ato da transferência."
+              },
+              "response": []
+            },
+            {
+              "name": "14. Listar Transferências de Leads",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/lead-transfers?page=1&pageSize=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lead-transfers"
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "transferStatuses",
+                      "value": "pending,completed",
+                      "disabled": true
+                    },
+                    {
+                      "key": "leadStatus",
+                      "value": "new_opportunity",
+                      "disabled": true
+                    },
+                    {
+                      "key": "toTeamIds",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "transferredByProfileIds",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "sdrProfileIds",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "closerProfileIds",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "transferDateFrom",
+                      "value": "2024-01-01",
+                      "disabled": true
+                    },
+                    {
+                      "key": "transferDateTo",
+                      "value": "2024-12-31",
+                      "disabled": true
+                    },
+                    {
+                      "key": "preScheduledDateFrom",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "preScheduledDateTo",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "scheduledDateFrom",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "scheduledDateTo",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Lista leads pendentes de transferência e histórico concluído do time de origem. Acesso: Master, Manager ou Backoffice."
+              },
+              "response": []
+            },
+            {
+              "name": "15. Listar Propostas Associados",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals?page=1&pageSize=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "20" }
+                  ]
+                },
+                "description": "Fila de propostas (offerSubmission) de contas associadas ao patrocinador ativo."
+              },
+              "response": []
+            },
+            {
+              "name": "16. Detalhe Proposta Associado",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "17. Criticar Proposta Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Ajuste na proposta\",\n  \"message\": \"Corrija o valor informado.\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/criticize",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "criticize"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "18. Aprovar Documento Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents/rg/approve",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents", "rg", "approve"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "18b. Vincular Documento Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"documentType\": \"rg\",\n  \"attachmentId\": \"{{attachmentId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "18c. Rejeitar Documento Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Documento ilegível, envie novamente.\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents/rg/reject",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents", "rg", "reject"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "19. Registrar Venda Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"operatorName\": \"Operadora X\",\n  \"proposalNumber\": \"12345\",\n  \"notes\": \"Registro manual\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/register-sale",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "register-sale"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "20. Comprovante Boleto Associado",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"attachmentId\": \"{{attachmentId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/payment-proof",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "payment-proof"]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+      "item": [
+        {
+          "name": "Web Push Consent",
+          "item": [
+            {
+              "name": "GET Push Consent",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/notifications/push/consent",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "notifications", "push", "consent"]
+                },
+                "description": "Retorna status de consentimento de notificações web push e se o prompt deve ser exibido."
+              },
+              "response": []
+            },
+            {
+              "name": "POST Push Consent (dismiss/decline)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"dismissed\",\n  \"consentVersion\": \"1.0\",\n  \"source\": \"login_prompt\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/notifications/push/consent",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "notifications", "push", "consent"]
+                },
+                "description": "Registra recusa temporária (dismissed) ou permanente (declined) do prompt de notificações."
+              },
+              "response": []
+            },
+            {
+              "name": "POST Push Subscribe",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+                  { "key": "x-team-id", "value": "{{teamId}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"endpoint\": \"https://example.push.service/endpoint\",\n  \"keys\": {\n    \"p256dh\": \"base64-key\",\n    \"auth\": \"base64-auth\"\n  },\n  \"consentVersion\": \"1.0\",\n  \"source\": \"settings_sheet\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/notifications/push/subscribe",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "notifications", "push", "subscribe"]
+                },
+                "description": "Salva inscrição web push e registra consentimento accepted quando consentVersion é enviado."
+              },
+              "response": []
+            },
+            {
+              "name": "GET VAPID Public Key",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/notifications/push/vapid-public-key",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "notifications", "push", "vapid-public-key"]
+                },
+                "description": "Retorna chave pública VAPID para subscribe no navegador."
               },
               "response": []
             }
@@ -3119,7 +3469,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/api/v1/dashboard/metrics",
+                      "raw": "{{baseUrl}}/api/v1/dashboard/metrics?period=30d&teamScope=active",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -3128,6 +3478,17 @@
                         "v1",
                         "dashboard",
                         "metrics"
+                      ],
+                      "query": [
+                        {
+                          "key": "period",
+                          "value": "30d"
+                        },
+                        {
+                          "key": "teamScope",
+                          "value": "active",
+                          "description": "Escopo: active ou all (managers)"
+                        }
                       ]
                     },
                     "description": "Auto-generated from app/api/v1/dashboard/metrics/route.ts"
@@ -3146,7 +3507,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/api/v1/dashboard/metrics/detailed/{{supabaseId}}",
+                      "raw": "{{baseUrl}}/api/v1/dashboard/metrics/detailed/{{supabaseId}}?teamScope=active",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -3157,6 +3518,13 @@
                         "metrics",
                         "detailed",
                         "{{supabaseId}}"
+                      ],
+                      "query": [
+                        {
+                          "key": "teamScope",
+                          "value": "active",
+                          "description": "Escopo: active ou all (managers)"
+                        }
                       ]
                     },
                     "description": "Auto-generated from app/api/v1/dashboard/metrics/detailed/[supabaseId]/route.ts"
@@ -3175,7 +3543,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/api/v1/dashboard/schedules",
+                      "raw": "{{baseUrl}}/api/v1/dashboard/schedules?teamScope=active",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -3184,6 +3552,13 @@
                         "v1",
                         "dashboard",
                         "schedules"
+                      ],
+                      "query": [
+                        {
+                          "key": "teamScope",
+                          "value": "active",
+                          "description": "Escopo: active ou all (managers)"
+                        }
                       ]
                     },
                     "description": "Auto-generated from app/api/v1/dashboard/schedules/route.ts"
@@ -3403,7 +3778,7 @@
                         "leads"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/leads/route.ts",
+                    "description": "Auto-generated from app/api/v1/leads/route.ts. Quando `cnpj` é informado, o backend consulta a BrasilAPI e preenche `razaoSocial` na resposta (campo somente leitura, não aceito no body).",
                     "body": {
                       "mode": "raw",
                       "raw": "{}"
@@ -3488,7 +3863,7 @@
                         "{{id}}"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/leads/[id]/route.ts",
+                    "description": "Auto-generated from app/api/v1/leads/[id]/route.ts. Ao enviar `cnpj`, o backend reconsulta a BrasilAPI e atualiza `razaoSocial` na resposta quando aplicável.",
                     "body": {
                       "mode": "raw",
                       "raw": "{}"
@@ -5782,6 +6157,80 @@
                   "response": []
                 },
                 {
+                  "name": "POST /api/v1/teams/{{teamId}}/members/external",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      },
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{supabaseUserId}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/members/external",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "members",
+                        "external"
+                      ]
+                    },
+                    "description": "Convite cross-account de membro existente (produto)",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"email\": \"usuario@outraconta.com\",\n  \"role\": \"operator\",\n  \"functions\": [\"SDR\"]\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/members/external/lookup",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{supabaseUserId}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/members/external/lookup?email=usuario@outraconta.com",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "members",
+                        "external",
+                        "lookup"
+                      ],
+                      "query": [
+                        {
+                          "key": "email",
+                          "value": "usuario@outraconta.com"
+                        }
+                      ]
+                    },
+                    "description": "Lookup seguro por e-mail para convite cross-account"
+                  },
+                  "response": []
+                },
+                {
                   "name": "POST /api/v1/teams/{{teamId}}/transfer",
                   "request": {
                     "method": "POST",
@@ -6788,6 +7237,68 @@
               ]
             },
             "description": "Retorna vendas com reunião realizada (meetingHeald=yes) e status=contract_finalized no período. Permissão: manager (tudo) ou closer (somente próprios leads)."
+          }
+        },
+        {
+          "name": "GET Meetings Held",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/performance/meetings-held?startDate=2026-01-01&endDate=2026-01-31&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "performance",
+                "meetings-held"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2026-01-31"
+                },
+                {
+                  "key": "sdrId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "closerId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "countMonth",
+                  "value": "2026-01",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Lista reuniões realizadas (meetingHeald=yes) no intervalo. Permissão: manager ou master da conta."
           }
         }
       ]
@@ -8555,7 +9066,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"fullName\": \"Nome do Usuário\",\n  \"email\": \"usuario@example.com\",\n  \"phone\": \"11999990000\",\n  \"role\": \"operator\",\n  \"functions\": [\"SDR\"]\n}"
+                  "raw": "{\n  \"fullName\": \"Nome do Usuário\",\n  \"email\": \"usuario@example.com\",\n  \"phone\": \"11999990000\",\n  \"role\": \"operator\",\n  \"functions\": [\"SDR\"],\n  \"teamId\": \"{{teamId}}\",\n  \"generateCharge\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/members",
@@ -8577,7 +9088,7 @@
                     }
                   ]
                 },
-                "description": "Adiciona um novo membro ao time padrão do usuário master. Cria o Profile, adiciona ao TeamMember e envia e-mail de convite. role: manager | backoffice | operator. functions: SDR | CLOSER."
+                "description": "Adiciona um novo membro ao time do usuário master. Cria o Profile, adiciona ao TeamMember e envia e-mail de convite. role: manager | backoffice | operator. functions: SDR | CLOSER. generateCharge (opcional, default false): quando true e há custo incremental, retorna pendingAction + checkoutUrl em vez de criar o usuário imediatamente."
               }
             },
             {
@@ -8596,7 +9107,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Nome do Time\"\n}"
+                  "raw": "{\n  \"name\": \"Nome do Time\",\n  \"generateCharge\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams",
@@ -8618,7 +9129,253 @@
                     }
                   ]
                 },
-                "description": "Cria um novo time para o usuário master e adiciona o master como membro do time."
+                "description": "Cria um novo time para o usuário master e adiciona o master como membro do time. generateCharge (opcional, default false): quando true e há custo incremental, retorna pendingAction + checkoutUrl em vez de criar o time imediatamente."
+              }
+            },
+            {
+              "name": "GET Master Teams",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "teams"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Lista times de um master sem resolver acesso de membros via Supabase Auth."
+              }
+            },
+            {
+              "name": "POST Add Master to Team",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/add-master",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "teams",
+                    ":teamId",
+                    "add-master"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    },
+                    {
+                      "key": "teamId",
+                      "value": "{{teamId}}"
+                    }
+                  ]
+                },
+                "description": "Adiciona o usuário master da conta a um time específico quando ele ainda não é membro. Retorna 409 se o master já pertence ao time."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Features Beta",
+          "item": [
+            {
+              "name": "GET Beta Users by Feature",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "features",
+                    ":featureId",
+                    "beta-users"
+                  ],
+                  "variable": [
+                    {
+                      "key": "featureId",
+                      "value": "{{backofficeFeatureId}}"
+                    }
+                  ]
+                },
+                "description": "Lista masters no grupo beta de uma funcionalidade, com escopo de times."
+              }
+            },
+            {
+              "name": "POST Add Beta User (master + team scope)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"profileId\": \"{{masterProfileId}}\",\n  \"betaTeamScope\": \"SPECIFIC_TEAMS\",\n  \"teamIds\": [\"{{teamId}}\"]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "features",
+                    ":featureId",
+                    "beta-users"
+                  ],
+                  "variable": [
+                    {
+                      "key": "featureId",
+                      "value": "{{backofficeFeatureId}}"
+                    }
+                  ]
+                },
+                "description": "Adiciona master ao grupo beta. betaTeamScope: ALL_TEAMS | SPECIFIC_TEAMS. teamIds obrigatório quando SPECIFIC_TEAMS."
+              }
+            },
+            {
+              "name": "PATCH Update Beta User Team Scope",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"profileId\": \"{{masterProfileId}}\",\n  \"betaTeamScope\": \"ALL_TEAMS\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "features",
+                    ":featureId",
+                    "beta-users"
+                  ],
+                  "variable": [
+                    {
+                      "key": "featureId",
+                      "value": "{{backofficeFeatureId}}"
+                    }
+                  ]
+                },
+                "description": "Atualiza escopo de times do grant beta de um master."
+              }
+            },
+            {
+              "name": "DELETE Remove Beta User",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users/:profileId",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "features",
+                    ":featureId",
+                    "beta-users",
+                    ":profileId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "featureId",
+                      "value": "{{backofficeFeatureId}}"
+                    },
+                    {
+                      "key": "profileId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Remove master do grupo beta da funcionalidade."
+              }
+            },
+            {
+              "name": "GET Platform Users (masters only)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users?mastersOnly=true&page=1&pageSize=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "platform-users"],
+                  "query": [
+                    { "key": "mastersOnly", "value": "true" },
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "10" },
+                    { "key": "q", "value": "", "disabled": true }
+                  ]
+                },
+                "description": "Busca paginada de masters para adicionar ao grupo beta."
               }
             }
           ]
@@ -8977,6 +9734,44 @@
                   ]
                 },
                 "description": "Remove o vínculo de um membro com um time específico (deleta TeamMember). Não exclui o Profile nem o acesso ao Supabase Auth."
+              }
+            },
+            {
+              "name": "POST Add Member To Team",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/teams/:teamId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "teams",
+                    ":teamId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    },
+                    {
+                      "key": "teamId",
+                      "value": "{{teamId}}"
+                    }
+                  ]
+                },
+                "description": "Adiciona um membro existente da conta a um time do master. Retorna 409 se o usuário já pertence ao time."
               }
             },
             {
@@ -9371,6 +10166,371 @@
                   ]
                 },
                 "description": "Auto-generated from app/api/v1/backoffice/health-plans/icon-upload/route.ts"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Lead Status Transition Rules",
+          "item": [
+            {
+              "name": "GET Lead Status Transition Rules",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/lead-status-transition-rules",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "lead-status-transition-rules"
+                  ]
+                },
+                "description": "Lista regras globais de campos obrigatórios por status destino."
+              }
+            },
+            {
+              "name": "PUT Lead Status Transition Rules",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"targetStatus\": \"pricingRequest\",\n  \"fieldKeys\": [\"age\", \"currentHealthPlan\"]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/lead-status-transition-rules",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "lead-status-transition-rules"
+                  ]
+                },
+                "description": "Salva regras para um status destino (master). Também aceita { rules: [...] } para replace em lote."
+              }
+            },
+            {
+              "name": "GET Lead Status Transition Gates",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/lead-status-transition-gates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "lead-status-transition-gates"
+                  ]
+                },
+                "description": "Lista gates globais de transição de status."
+              }
+            },
+            {
+              "name": "PUT Lead Status Transition Gate",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"{{gateId}}\",\n  \"gate\": {\n    \"name\": \"Nova oportunidade: destinos permitidos\",\n    \"gateType\": \"allowed_target_statuses\",\n    \"sourceStatus\": \"new_opportunity\",\n    \"targetStatus\": null,\n    \"config\": { \"allowedTargetStatuses\": [\"scheduled\", \"opportunityLost\"] },\n    \"blockerType\": \"validation_error\",\n    \"errorMessage\": \"De Nova oportunidade, o lead só pode ser movido para Agendado ou Perdido.\",\n    \"isEnabled\": true,\n    \"sortOrder\": 10\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/lead-status-transition-gates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "lead-status-transition-gates"
+                  ]
+                },
+                "description": "Atualiza um gate global de transição (master)."
+              }
+            },
+            {
+              "name": "GET Product Lead Status Transition Gates",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/lead-status-transition-gates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lead-status-transition-gates"
+                  ]
+                },
+                "description": "Lista gates habilitados para o CRM (filtro de transições na UI)."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice WhatsApp Instances",
+          "item": [
+            {
+              "name": "GET List WhatsApp Instances",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances?page=1&pageSize=10",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "instances"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "10"
+                    },
+                    {
+                      "key": "q",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "CONNECTED",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Lista paginada de instâncias WhatsApp dos clientes."
+              }
+            },
+            {
+              "name": "POST Provision WhatsApp Instance",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"usageLimitMonthly\": 2000,\n  \"hostBaseUrl\": null\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "instances"
+                  ]
+                },
+                "description": "Provisiona instância WhatsApp para um time elegível."
+              }
+            },
+            {
+              "name": "GET WhatsApp Instance Detail",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "instances",
+                    "{{whatsappConfigId}}"
+                  ]
+                },
+                "description": "Detalhe de uma instância com uso mensal."
+              }
+            },
+            {
+              "name": "PATCH Update WhatsApp Instance",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"usageLimitMonthly\": 3000,\n  \"billingEnabled\": true,\n  \"hostBaseUrl\": null\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "instances",
+                    "{{whatsappConfigId}}"
+                  ]
+                },
+                "description": "Atualiza limites e configurações administrativas."
+              }
+            },
+            {
+              "name": "POST Reconnect WhatsApp Instance",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}/reconnect",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "instances",
+                    "{{whatsappConfigId}}",
+                    "reconnect"
+                  ]
+                },
+                "description": "Gera novo QR para reconexão."
+              }
+            },
+            {
+              "name": "POST Disconnect WhatsApp Instance",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}/disconnect",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "instances",
+                    "{{whatsappConfigId}}",
+                    "disconnect"
+                  ]
+                },
+                "description": "Desconecta a sessão na Evolution."
+              }
+            },
+            {
+              "name": "POST Sync WhatsApp History",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}/sync-history",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "instances",
+                    "{{whatsappConfigId}}",
+                    "sync-history"
+                  ]
+                },
+                "description": "Sincroniza histórico de conversas."
+              }
+            },
+            {
+              "name": "GET Teams Without WhatsApp Instance",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/teams-without-instance?page=1&pageSize=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "teams-without-instance"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    },
+                    {
+                      "key": "q",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Lista times elegíveis sem instância provisionada."
               }
             }
           ]
@@ -10476,13 +11636,31 @@
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}"
               },
               "response": []
+            },
+            {
+              "name": "Digest Reuniões Pendentes (+3 dias)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/notifications/cron/meeting-follow-up",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "notifications",
+                    "cron",
+                    "meeting-follow-up"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {{cronSecret}}. Cron 2x/dia (08:00 e 14:00 BRT)."
+              },
+              "response": []
             }
           ]
         }
-      ]
-    },
-    {
-      "name": "Add-on Checkout (Público)",
       "item": [
         {
           "name": "GET Detalhes do Checkout",
@@ -10923,6 +12101,136 @@
           "response": []
         },
         {
+          "name": "Sincronizar histórico WhatsApp (30 dias)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/sync-history",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "sync-history"]
+            },
+            "description": "Importa conversas e mensagens dos últimos 30 dias da Evolution API."
+          },
+          "response": []
+        },
+        {
+          "name": "Sincronizar contatos do celular",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/sync-contacts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "sync-contacts"]
+            },
+            "description": "Sincroniza agenda Evolution para o diretório de contatos do time e atualiza nomes nas conversas. Apenas master do time."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar contatos WhatsApp do time",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/contacts?q=&groupJid=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "contacts"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": ""
+                },
+                {
+                  "key": "groupJid",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Lista contatos sincronizados do time para resolução de menções e picker @."
+          },
+          "response": []
+        },
+        {
+          "name": "Sincronizar participantes de grupo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/sync-group-participants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "sync-group-participants"]
+            },
+            "description": "Sincroniza participantes de um grupo WhatsApp para o diretório de contatos. Apenas master do time."
+          },
+          "response": []
+        },
+        {
+          "name": "Baixar mídia de mensagem WhatsApp",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages/{{messageId}}/media",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "messages", "{{messageId}}", "media"]
+            },
+            "description": "Proxy para baixar mídia inbound via Evolution API (imagem, documento, áudio)."
+          },
+          "response": []
+        },
+        {
           "name": "Listar conversas do time",
           "request": {
             "method": "GET",
@@ -10977,6 +12285,34 @@
               ]
             },
             "description": "Lista conversas do time. Filtros opcionais: leadId, assignedProfileId, hasUnread, search."
+          },
+          "response": []
+        },
+        {
+          "name": "Criar conversa WhatsApp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"5511999999999\",\n  \"contactName\": \"Cliente\",\n  \"initialMessage\": \"Olá!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "conversations"]
+            },
+            "description": "Cria ou reutiliza conversa por telefone. Opcionalmente envia mensagem inicial."
           },
           "response": []
         },
@@ -11042,7 +12378,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"contentText\": \"Ol\\u00e1, tudo bem? Estou entrando em contato sobre sua cota\\u00e7\\u00e3o.\"\n}"
+              "raw": "{\n  \"contentText\": \"Ol\\u00e1 @Jo\\u00e3o, segue o link: https://meet.google.com/abc-defg-hij\",\n  \"mentionedJids\": [\"5511999999999@s.whatsapp.net\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/messages",
@@ -11060,7 +12396,7 @@
                 "messages"
               ]
             },
-            "description": "Envia mensagem outbound. Registra autoria do operador autenticado."
+            "description": "Envia mensagem outbound. Suporta mentionedJids (grupos) e linkPreview automático em URLs."
           },
           "response": []
         },
@@ -11133,6 +12469,218 @@
               ]
             },
             "description": "Retorna contagem do período: limite, uso atual, percentual consumido e status de alerta."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar regras de auto-resposta",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/auto-response-rules",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "auto-response-rules"]
+            },
+            "description": "Lista regras de boas-vindas, fora do horário e palavras-chave do time."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar regra de auto-resposta",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"replyMessage\": \"Olá! Em breve retornaremos.\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/auto-response-rules/{{ruleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "auto-response-rules", "{{ruleId}}"]
+            },
+            "description": "Atualiza mensagem, keywords, horário ou status de uma regra."
+          },
+          "response": []
+        },
+        {
+          "name": "Alternar regra de auto-resposta",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/auto-response-rules/{{ruleId}}/toggle",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "auto-response-rules", "{{ruleId}}", "toggle"]
+            },
+            "description": "Ativa ou desativa uma regra de auto-resposta."
+          },
+          "response": []
+        },
+        {
+          "name": "Assumir conversa (handoff humano)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/takeover",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "conversations", "{{conversationId}}", "takeover"]
+            },
+            "description": "Transfere conversa do modo bot para atendimento humano."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CDP",
+      "item": [
+        {
+          "name": "Sync CRM",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/sync/crm",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "sync", "crm"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Carteira",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/sync/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "sync", "portfolio"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/sync/email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "sync", "email"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sync WhatsApp",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/sync/whatsapp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "sync", "whatsapp"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar Perfis",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/profiles?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "profiles"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "lastSeenFrom", "value": "", "disabled": true },
+                { "key": "lastSeenTo", "value": "", "disabled": true }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Segmentos",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/segments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "segments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Campos CDP disponíveis",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/available-fields",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "available-fields"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Preview interpolação CDP",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profileId\": \"{{cdpProfileId}}\",\n  \"variableKeys\": [\"operadora\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cdp/interpolation-preview",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cdp", "interpolation-preview"]
+            }
           },
           "response": []
         }

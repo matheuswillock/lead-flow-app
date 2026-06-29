@@ -6,6 +6,7 @@ import { profileRepository } from "@/app/api/infra/data/repositories/profile/Pro
 import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 import { fetchGoogleGrantedScopes } from "@/lib/google/scopes";
+import { shouldNotifyGoogleConnected as shouldNotifyGoogleConnectedDecision } from "@/lib/google/should-notify-google-connect";
 
 const LOG_PREFIX = "[GoogleConnect]";
 
@@ -14,6 +15,7 @@ const connectSchema = z.object({
   refreshToken: z.string().min(1).optional(),
   expiresAt: z.string().datetime().optional(),
   email: z.string().email().optional(),
+  source: z.enum(["login", "account"]).optional(),
 });
 
 const logInfo = (message: string, context: Record<string, unknown>) => {
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { accessToken, refreshToken, expiresAt, email } = validation.data;
+    const { accessToken, refreshToken, expiresAt, email, source = "login" } = validation.data;
 
     const currentProfile = await profileRepository.findBySupabaseId(supabaseId);
     if (!currentProfile) {
@@ -137,9 +139,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(output, { status: 409 });
       }
     }
-    const shouldNotifyGoogleConnected =
-      !currentProfile.googleConnectionId ||
-      (previousGoogleEmail ?? null) !== (normalizedNextGoogleEmail ?? null);
+    const notifyConnected = shouldNotifyGoogleConnectedDecision({
+      source,
+      hadConnectionId: !!currentProfile.googleConnectionId,
+      connection: currentConnection,
+      previousGoogleEmail: previousGoogleEmail ?? null,
+      nextGoogleEmail: normalizedNextGoogleEmail ?? null,
+    });
 
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken,
@@ -181,7 +187,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (shouldNotifyGoogleConnected) {
+    if (notifyConnected) {
       const notifyOutput = await googleConnectionUseCase.notifyGoogleConnected({
         supabaseId,
         profileId: currentProfile.id,

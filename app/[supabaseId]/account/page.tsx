@@ -105,6 +105,7 @@ export default function AccountProfilePage() {
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
   const [isUpdatingTimezone, setIsUpdatingTimezone] = useState(false);
+  const [disconnectForceRequired, setDisconnectForceRequired] = useState(false);
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
   const [grantedScopes, setGrantedScopes] = useState<string[]>([]);
   const [isScopesLoading, setIsScopesLoading] = useState(false);
@@ -507,15 +508,20 @@ export default function AccountProfilePage() {
         return;
       }
 
-      const redirectTo = `${window.location.origin}/auth/callback?next=/account`;
-      const auth = supabase.auth as typeof supabase.auth & {
-        linkIdentity?: (params: any) => Promise<{ error: { message: string } | null }>;
-      };
+      if (user?.googleCalendarConnected) {
+        toast.info("Google Calendar já está conectado.");
+        return;
+      }
 
-      // Flag de contexto para o callback distinguir reconexao da tela de conta.
+      const redirectTo = `${window.location.origin}/auth/callback`;
+
       sessionStorage.setItem(
         "googleConnectContext",
-        JSON.stringify({ source: "account", expectedSupabaseId: supabaseId })
+        JSON.stringify({
+          source: "account",
+          expectedSupabaseId: supabaseId,
+          next: "/account",
+        })
       );
 
       const params: SignInWithOAuthCredentials = {
@@ -530,6 +536,10 @@ export default function AccountProfilePage() {
         },
       };
 
+      const auth = supabase.auth as typeof supabase.auth & {
+        linkIdentity?: (params: SignInWithOAuthCredentials) => Promise<{ error: { message: string } | null }>;
+      };
+
       const { data } = await supabase.auth.getUser();
       const hasGoogleIdentity =
         data.user?.identities?.some((identity) => identity.provider === "google") ?? false;
@@ -537,8 +547,11 @@ export default function AccountProfilePage() {
       const linkIdentity = auth.linkIdentity?.bind(auth);
 
       if (hasGoogleIdentity) {
-        sessionStorage.removeItem("googleConnectContext");
-        toast.info("Sua conta já possui identidade Google vinculada.");
+        const { error } = await supabase.auth.signInWithOAuth(params);
+        if (error) {
+          sessionStorage.removeItem("googleConnectContext");
+          toast.error(error.message || "Erro ao reconectar Google Calendar");
+        }
         return;
       }
 
@@ -567,7 +580,7 @@ export default function AccountProfilePage() {
     }
   }
 
-  async function handleDisconnectGoogle() {
+  async function handleDisconnectGoogle(force = false) {
     if (isDisconnectingGoogle) return;
     setIsDisconnectingGoogle(true);
     try {
@@ -577,15 +590,26 @@ export default function AccountProfilePage() {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
         },
+        body: JSON.stringify({ force }),
       });
 
       const result = await response.json();
+
+      if (response.status === 409 && !force) {
+        setDisconnectForceRequired(true);
+        toast.warning(
+          "Usuários backoffice dependem desta conexão. Confirme novamente para desconectar."
+        );
+        return;
+      }
+
       if (!response.ok || !result?.isValid) {
         toast.error(result?.errorMessages?.join(", ") || "Erro ao desconectar Google");
         return;
       }
 
       toast.success("Conta Google desconectada.");
+      setDisconnectForceRequired(false);
       setDisconnectDialogOpen(false);
       await refreshUser();
     } catch (error) {
@@ -898,7 +922,10 @@ export default function AccountProfilePage() {
                       {user?.googleCalendarConnected ? (
                         <AlertDialog
                           open={disconnectDialogOpen}
-                          onOpenChange={setDisconnectDialogOpen}
+                          onOpenChange={(open) => {
+                            setDisconnectDialogOpen(open);
+                            if (!open) setDisconnectForceRequired(false);
+                          }}
                         >
                           <AlertDialogTrigger asChild>
                             <Button
@@ -921,6 +948,13 @@ export default function AccountProfilePage() {
                                     Você deixará de criar eventos automaticamente no Google
                                     Calendar.
                                   </p>
+                                  {disconnectForceRequired ? (
+                                    <p className="text-sm text-amber-600 dark:text-amber-500">
+                                      Usuários backoffice vinculados a esta conta também perderão
+                                      o acesso ao Google Calendar até você reconectar. Ao reconectar,
+                                      o acesso será restaurado automaticamente.
+                                    </p>
+                                  ) : null}
                                   <p className="text-sm text-muted-foreground">
                                     Esta ação não remove eventos já criados.
                                   </p>
@@ -936,11 +970,15 @@ export default function AccountProfilePage() {
                               </AlertDialogCancel>
                               <Button
                                 variant="destructive"
-                                onClick={handleDisconnectGoogle}
+                                onClick={() => void handleDisconnectGoogle(disconnectForceRequired)}
                                 disabled={isDisconnectingGoogle}
                                 className="cursor-pointer bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                {isDisconnectingGoogle ? "Desconectando..." : "Desconectar Google"}
+                                {isDisconnectingGoogle
+                                  ? "Desconectando..."
+                                  : disconnectForceRequired
+                                    ? "Confirmar desconexão"
+                                    : "Desconectar Google"}
                               </Button>
                             </AlertDialogFooter>
                           </AlertDialogContent>

@@ -143,7 +143,7 @@ Abra o DevTools Console e verifique os logs:
 
 ### Problema: Token inválido
 
-**Causa:** Token expirou (válido por 1 hora)
+**Causa:** Token expirou (válido por 24 horas)
 
 **Solução:** Reenvie o email de reset
 
@@ -175,7 +175,7 @@ SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
 
 ## 📝 Notas Importantes
 
-1. **Segurança**: O token de recovery expira em 1 hora
+1. **Segurança**: O token de recovery expira em 24 horas
 2. **Email Template**: Você pode customizar o template do email no Supabase Dashboard → Authentication → Email Templates → Reset Password
 3. **Produção**: Não esqueça de atualizar `NEXT_PUBLIC_APP_URL` antes do deploy
 4. **Whitelist**: Sempre adicione as URLs de produção na whitelist do Supabase

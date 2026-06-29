@@ -2,39 +2,12 @@
 
 import { div as MotionDiv } from "framer-motion/client"
 import { BarChart3, CalendarDays, Filter, UserPlus, Users2 } from "lucide-react"
+import type { ElementType } from "react"
+import { howItWorksSteps, HOW_IT_WORKS_SUBHEADING } from "@/lib/landing/how-it-works-data"
 
-const steps = [
-  {
-    number: "01",
-    icon: UserPlus,
-    title: "Capture Leads",
-    description: "Adicione leads manualmente ou via integração com formulários externos.",
-  },
-  {
-    number: "02",
-    icon: Filter,
-    title: "Organize no Pipeline",
-    description: "Leads aparecem no Kanban. Defina etapas: Novo, Contato, Proposta, Fechamento.",
-  },
-  {
-    number: "03",
-    icon: CalendarDays,
-    title: "Agende Reuniões",
-    description: "Marque reuniões direto do lead com integração ao Google Calendar.",
-  },
-  {
-    number: "04",
-    icon: Users2,
-    title: "Trabalhe em Times",
-    description: "Separe operações por time, gerencie funções SDR/Closer por workspace.",
-  },
-  {
-    number: "05",
-    icon: BarChart3,
-    title: "Analise & Cresça",
-    description: "Acompanhe métricas e indicadores para tomar decisões rápidas.",
-  },
-]
+const STEP_ICONS: ElementType[] = [UserPlus, Filter, CalendarDays, Users2, BarChart3]
+
+const steps = howItWorksSteps.map((s, i) => ({ ...s, icon: STEP_ICONS[i] }))
 
 export function HowItWorksSection() {
   return (
@@ -50,10 +23,11 @@ export function HowItWorksSection() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-            Como funciona o <span className="landing-primary-gradient">Corretor Studio</span>
+            Como funciona o{" "}
+            <span className="landing-primary-gradient">Corretor Studio</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Um fluxo simples e visual para transformar leads em clientes de forma consistente.
+            {HOW_IT_WORKS_SUBHEADING}
           </p>
         </MotionDiv>
 

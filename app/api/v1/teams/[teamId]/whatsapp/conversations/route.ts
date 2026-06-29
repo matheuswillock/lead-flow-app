@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { listConversationsUseCase } from "@/app/api/useCases/whatsapp/ListConversationsUseCase"
+import { createConversationUseCase } from "@/app/api/useCases/whatsapp/CreateConversationUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+
+const createConversationSchema = z.object({
+  phone: z.string().min(8),
+  contactName: z.string().trim().min(1).optional(),
+  initialMessage: z.string().trim().min(1).optional(),
+})
 
 export async function GET(
   request: NextRequest,
@@ -53,4 +61,54 @@ export async function GET(
   }
 
   return NextResponse.json(output)
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ teamId: string }> }
+) {
+  const { teamId } = await params
+  const teamAccess = await getTeamAccess(request)
+  if ("error" in teamAccess) {
+    return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+  }
+
+  if (teamAccess.access.teamId !== teamId) {
+    return NextResponse.json(
+      new Output(false, [], ["Acesso negado a este time"], null),
+      { status: 403 }
+    )
+  }
+
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json(
+      new Output(false, [], ["Corpo da requisição inválido"], null),
+      { status: 400 }
+    )
+  }
+
+  const parsed = createConversationSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json(
+      new Output(false, [], parsed.error.issues.map((issue) => issue.message), null),
+      { status: 400 }
+    )
+  }
+
+  const output = await createConversationUseCase.execute({
+    teamId,
+    profileId: teamAccess.access.profileId,
+    phone: parsed.data.phone,
+    contactName: parsed.data.contactName,
+    initialMessage: parsed.data.initialMessage,
+  })
+
+  if (!output.isValid) {
+    return NextResponse.json(output, { status: 400 })
+  }
+
+  return NextResponse.json(output, { status: 201 })
 }

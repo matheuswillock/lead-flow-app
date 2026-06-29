@@ -6,6 +6,7 @@ import type {
   EmailSender,
   EmailSettings,
   EmailVariableType,
+  EmailVariableValueSource,
   ResendDomainStatus,
 } from "../context/EmailSettingsTypes"
 
@@ -17,6 +18,8 @@ export interface UpsertEmailVariableData {
   defaultValue?: string | null
   description?: string | null
   isActive?: boolean
+  valueSource?: EmailVariableValueSource
+  cdpFieldKey?: string | null
 }
 
 export interface UpdateEmailSettingsData {
