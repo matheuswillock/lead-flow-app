@@ -39,6 +39,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -143,6 +148,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -218,6 +228,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -274,6 +289,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -309,6 +329,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 're_placeholder' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bun run build
 
   version-bump:
@@ -335,6 +357,11 @@ jobs:
           ref: develop
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
 
       - name: Determine version bump (main/release aware)
         id: bump
@@ -462,6 +489,11 @@ jobs:
           ref: develop
           fetch-depth: 0
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
@@ -503,6 +535,11 @@ jobs:
           ref: develop
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
 
       - name: Configure git
         run: |
