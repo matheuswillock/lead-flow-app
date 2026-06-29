@@ -117,6 +117,8 @@ function validateLocalEnv(
   }
 
   for (const [key, value] of localVars) {
+    if (OPTIONAL_EMPTY_KEYS.has(key)) continue;
+
     if (!value.trim()) {
       errors.push(`${key}: declarada no .env mas sem valor`);
     }
@@ -125,24 +127,56 @@ function validateLocalEnv(
   return errors;
 }
 
-function listVercelEnvNames(): Set<string> {
-  const result = spawnSync("vercel", ["env", "ls"], {
-    cwd: ROOT,
-    encoding: "utf8",
+type VercelEnvByTarget = Record<VercelEnvironment, Set<string>>;
+
+function listVercelEnvNamesByTarget(): VercelEnvByTarget {
+  const byTarget = Object.fromEntries(
+    ALL_ENVIRONMENTS.map((environment) => [environment, new Set<string>()])
+  ) as VercelEnvByTarget;
+
+  for (const environment of ALL_ENVIRONMENTS) {
+    const result = spawnSync("vercel", ["env", "ls", environment], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+
+    if (result.status !== 0) {
+      console.error(result.stderr || result.stdout);
+      throw new Error(
+        `Falha ao listar variáveis da Vercel (${environment}). Rode \`vercel link\` antes.`
+      );
+    }
+
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const match = line.match(/^\s+([A-Za-z0-9_]+)\s+/);
+      if (match) byTarget[environment].add(match[1]);
+    }
+  }
+
+  return byTarget;
+}
+
+type MissingEnvAssignment = { key: string; environment: VercelEnvironment };
+
+function getMissingAssignments(
+  filledLocal: Map<string, string>,
+  remoteByTarget: VercelEnvByTarget
+): MissingEnvAssignment[] {
+  const missing: MissingEnvAssignment[] = [];
+
+  for (const key of filledLocal.keys()) {
+    for (const environment of getTargetEnvironments(key)) {
+      if (!remoteByTarget[environment].has(key)) {
+        missing.push({ key, environment });
+      }
+    }
+  }
+
+  return missing.sort((a, b) => {
+    const keyCmp = a.key.localeCompare(b.key);
+    if (keyCmp !== 0) return keyCmp;
+    return ALL_ENVIRONMENTS.indexOf(a.environment) - ALL_ENVIRONMENTS.indexOf(b.environment);
   });
-
-  if (result.status !== 0) {
-    console.error(result.stderr || result.stdout);
-    throw new Error("Falha ao listar variáveis da Vercel. Rode `vercel link` antes.");
-  }
-
-  const names = new Set<string>();
-  for (const line of result.stdout.split(/\r?\n/)) {
-    const match = line.match(/^\s+([A-Za-z0-9_]+)\s+/);
-    if (match) names.add(match[1]);
-  }
-
-  return names;
 }
 
 /** Vercel não permite variáveis sensíveis no ambiente development. */
@@ -182,18 +216,31 @@ function addEnvVar(key: string, value: string, environment: VercelEnvironment): 
   throw new Error(`Falha ao adicionar ${key} (${environment})`);
 }
 
-function reportVercelCoverage(localVars: Map<string, string>, remoteNames: Set<string>): void {
-  const missingOnVercel = [...localVars.keys()]
-    .filter((key) => !remoteNames.has(key))
-    .sort();
+function reportVercelCoverage(
+  localVars: Map<string, string>,
+  remoteByTarget: VercelEnvByTarget
+): void {
+  const gaps: string[] = [];
 
-  if (missingOnVercel.length === 0) {
-    console.info("✓ Vercel: todas as chaves preenchidas do .env local estão cadastradas.");
+  for (const key of [...localVars.keys()].sort()) {
+    const missingTargets = getTargetEnvironments(key).filter(
+      (environment) => !remoteByTarget[environment].has(key)
+    );
+
+    if (missingTargets.length > 0) {
+      gaps.push(`${key} → ${missingTargets.join(", ")}`);
+    }
+  }
+
+  if (gaps.length === 0) {
+    console.info(
+      "✓ Vercel: todas as chaves preenchidas do .env local estão cadastradas em todos os targets."
+    );
     return;
   }
 
-  console.info(`⚠ Vercel: ${missingOnVercel.length} chave(s) do .env local ainda ausente(s):`);
-  for (const key of missingOnVercel) console.info(`  - ${key}`);
+  console.info(`⚠ Vercel: ${gaps.length} chave(s) com target(s) ausente(s):`);
+  for (const gap of gaps) console.info(`  - ${gap}`);
 }
 
 function main() {
@@ -215,36 +262,47 @@ function main() {
 
   console.info(`✓ .env local validado (${filledLocal.size} variáveis preenchidas)\n`);
 
-  const remoteNames = listVercelEnvNames();
-  const missing = [...filledLocal.keys()].filter((key) => !remoteNames.has(key)).sort();
+  const remoteByTarget = listVercelEnvNamesByTarget();
+  const missingAssignments = getMissingAssignments(filledLocal, remoteByTarget);
 
-  if (missing.length === 0) {
-    console.info("Nada a adicionar: todas as chaves preenchidas do .env já existem na Vercel.\n");
-    reportVercelCoverage(filledLocal, remoteNames);
+  if (missingAssignments.length === 0) {
+    console.info(
+      "Nada a adicionar: todas as chaves preenchidas do .env já existem nos targets da Vercel.\n"
+    );
+    reportVercelCoverage(filledLocal, remoteByTarget);
     return;
   }
 
-  console.info(`Chaves ausentes na Vercel (${missing.length}):`);
-  for (const key of missing) console.info(`  - ${key}`);
+  const missingByKey = new Map<string, VercelEnvironment[]>();
+  for (const { key, environment } of missingAssignments) {
+    const targets = missingByKey.get(key) ?? [];
+    targets.push(environment);
+    missingByKey.set(key, targets);
+  }
 
-  for (const key of missing) {
+  console.info(`Atribuições ausentes na Vercel (${missingAssignments.length}):`);
+  for (const [key, environments] of [...missingByKey.entries()].sort(([a], [b]) =>
+    a.localeCompare(b)
+  )) {
+    console.info(`  - ${key} → ${environments.join(", ")}`);
+  }
+
+  for (const { key, environment } of missingAssignments) {
     const value = filledLocal.get(key);
     if (!value) continue;
 
-    for (const environment of getTargetEnvironments(key)) {
-      const result = addEnvVar(key, value, environment);
-      if (result === "added") {
-        console.info(`✓ ${key} → ${environment}`);
-      } else if (result === "exists") {
-        console.info(`· ${key} → ${environment} (já existia)`);
-      } else {
-        console.info(`⊘ ${key} → ${environment} (pulado)`);
-      }
+    const result = addEnvVar(key, value, environment);
+    if (result === "added") {
+      console.info(`✓ ${key} → ${environment}`);
+    } else if (result === "exists") {
+      console.info(`· ${key} → ${environment} (já existia)`);
+    } else {
+      console.info(`⊘ ${key} → ${environment} (pulado)`);
     }
   }
 
   console.info("\nConcluído. Faça redeploy na Vercel para aplicar em runtime.\n");
-  reportVercelCoverage(filledLocal, listVercelEnvNames());
+  reportVercelCoverage(filledLocal, listVercelEnvNamesByTarget());
 }
 
 main();
