@@ -7,8 +7,11 @@ import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepos
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
+import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+
+const teamMembersRepository = new TeamMembersRepository();
 
 async function getCachedLeadAttachments(leadId: string) {
   "use cache";
@@ -49,6 +52,13 @@ async function getCachedLeadTeamMembers(teamId: string) {
   ]);
 }
 
+async function getCachedTransferTargets(teamId: string) {
+  "use cache";
+  cacheTag(cacheTags.teamMembers(teamId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  return teamMembersRepository.findTransferTargets(teamId);
+}
+
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
 const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
@@ -59,7 +69,7 @@ const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
  * Endpoint agregado: autentica uma única vez e busca em paralelo lead,
  * anexos e membros do time. Reduz de 3 round-trips independentes para 1.
  *
- * Response: { lead: LeadResponseDTO, attachments: Attachment[], teamMembers: MemberDTO[] }
+ * Response: { lead: LeadResponseDTO, attachments: Attachment[], teamMembers: MemberDTO[], transferTargets: { teamId: string }[] }
  */
 export async function GET(
   request: NextRequest,
@@ -133,12 +143,13 @@ export async function GET(
       );
     }
 
-    // Busca paralela: lead, anexos, membros do time + info do time
-    const [leadSettled, attachmentsSettled, membersAndTeamSettled] =
+    // Busca paralela: lead, anexos, membros do time + rotas de transferência
+    const [leadSettled, attachmentsSettled, membersAndTeamSettled, transferTargetsSettled] =
       await Promise.allSettled([
         leadUseCase.getLeadById(supabaseId, leadId),
         getCachedLeadAttachments(leadId),
         getCachedLeadTeamMembers(teamId),
+        getCachedTransferTargets(teamId),
       ]);
 
     // Mapear lead
@@ -197,8 +208,22 @@ export async function GET(
       );
     }
 
+    const transferTargets =
+      transferTargetsSettled.status === "fulfilled"
+        ? transferTargetsSettled.value.map((target) => ({
+            teamId: target.teamId,
+          }))
+        : [];
+
+    if (transferTargetsSettled.status === "rejected") {
+      console.error(
+        "[LeadDetailsRoute][GET] Erro ao buscar rotas de transferência (graceful degradation):",
+        transferTargetsSettled.reason
+      );
+    }
+
     return NextResponse.json(
-      new Output(true, [], [], { lead, attachments, teamMembers }),
+      new Output(true, [], [], { lead, attachments, teamMembers, transferTargets }),
       { status: 200 }
     );
   } catch (error) {

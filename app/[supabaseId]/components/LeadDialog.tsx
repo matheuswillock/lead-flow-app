@@ -45,7 +45,6 @@ import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
-import { fetchTeamMembersPayload } from "@/lib/team/teamMembersClientCache";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
@@ -229,7 +228,6 @@ export default function LeadDialog({
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showTransferBetweenTeamsDialog, setShowTransferBetweenTeamsDialog] = useState(false);
   const [isTransferToggling, setIsTransferToggling] = useState(false);
-  const [allowedTransferTargetIds, setAllowedTransferTargetIds] = useState<string[]>([]);
 
   useEffect(() => {
     setLocalLead(lead);
@@ -260,13 +258,17 @@ export default function LeadDialog({
   const { hasAccess } = useFeatureAccess();
   const canTransferBetweenTeams =
     isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
-  const hasTransferTargets = allowedTransferTargetIds.length > 0;
   const {
     details: leadDetails,
     loading: leadDetailsLoading,
     error: leadDetailsError,
     refresh: refreshLeadDetails,
   } = useLeadDetails(currentLeadId || null, activeTeamId, supabaseId);
+  const allowedTransferTargetIds = useMemo(
+    () => (leadDetails?.transferTargets ?? []).map((target) => target.teamId),
+    [leadDetails?.transferTargets]
+  );
+  const hasTransferTargets = allowedTransferTargetIds.length > 0;
   const isCloserOperator =
     activeFunctions.includes("CLOSER") &&
     !isTeamMaster &&
@@ -347,23 +349,13 @@ export default function LeadDialog({
   }, [currentLead?.id]);
 
   useEffect(() => {
-    if (!open || !activeTeamId || !supabaseId) {
-      setAllowedTransferTargetIds([]);
-      return;
-    }
-    let cancelled = false;
-    fetchTeamMembersPayload(supabaseId, activeTeamId)
-      .then((payload) => {
-        if (cancelled) return;
-        setAllowedTransferTargetIds(
-          payload.transferTargets.map((target) => target.teamId)
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setAllowedTransferTargetIds([]);
-      });
-    return () => { cancelled = true; };
-  }, [open, activeTeamId, supabaseId]);
+    if (!leadDetails?.lead || leadDetails.lead.id !== currentLeadId) return;
+    setLocalLead((prev) =>
+      prev?.id === leadDetails.lead.id
+        ? ({ ...prev, ...leadDetails.lead } as Lead)
+        : (leadDetails.lead as Lead)
+    );
+  }, [leadDetails?.lead, currentLeadId]);
 
   // teamMembers para o popover de menções — derivado do useLeadDetails (sem fetch separado)
   useEffect(() => {
@@ -2541,7 +2533,7 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    {currentLead && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && hasTransferTargets && (
+                    {currentLead && !leadDetailsLoading && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && hasTransferTargets && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -2560,7 +2552,7 @@ export default function LeadDialog({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {currentLead && hasTransferTargets && (
+                    {currentLead && !leadDetailsLoading && hasTransferTargets && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
