@@ -96,7 +96,7 @@ export class FeatureAccessService implements IFeatureAccessService {
 
     const accountSubscriptionActive = await isAccountSubscriptionActive(ownerProfileId)
     if (!accountSubscriptionActive) {
-      return { slugs: [], betaSlugs: [], userRole: safeUserRole }
+      return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
 
     const betaEligibleFeatureIds = await this.repository.resolveBetaEligibleFeatureIds({
@@ -272,7 +272,16 @@ export class FeatureAccessService implements IFeatureAccessService {
       }
     }
 
-    return { slugs: Array.from(allowedSlugs), betaSlugs, userRole: safeUserRole }
+    const betaLabelSlugs = features
+      .filter((feature) => {
+        const effectiveFeature = resolveEffectiveFeature(feature.id)
+        const isBetaFeature =
+          effectiveFeature?.betaEnabled === true || hasBetaParentInHierarchy(feature.id)
+        return isBetaFeature && allowedSlugs.has(feature.slug)
+      })
+      .map((feature) => feature.slug)
+
+    return { slugs: Array.from(allowedSlugs), betaSlugs, betaLabelSlugs, userRole: safeUserRole }
   }
 }
 

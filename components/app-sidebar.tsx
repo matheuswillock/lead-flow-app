@@ -88,7 +88,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const pathname = usePathname();
   const { user } = useUserContext();
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster, activeRole, activeFunctions } = useTeamContext();
-  const { hasAccess, isBeta } = useFeatureAccess();
+  const { hasAccess, isBeta, showsBetaLabel } = useFeatureAccess();
   const isManager = activeRole === "manager";
   const isCloser = activeFunctions.includes("CLOSER");
   const isSdr = activeFunctions.includes("SDR");
@@ -284,7 +284,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       .slice(0, 2);
 
   const getItemBadge = (item: SidebarItem) => {
-    if (item.featureSlug && isBeta(item.featureSlug)) return getSidebarStatusBadge("beta")
+    if (item.featureSlug && showsBetaLabel(item.featureSlug)) return getSidebarStatusBadge("beta")
     return getSidebarStatusBadge(item.status)
   }
 
@@ -520,7 +520,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                             <Plug className="size-4 shrink-0" />
                             <span>Webhooks & Formulários</span>
                           </span>
-                          {isBeta(FEATURE_SLUGS.CONFIGURATION) && (() => {
+                          {showsBetaLabel(FEATURE_SLUGS.CONFIGURATION) && (() => {
                             const badge = getSidebarStatusBadge("beta")
                             return badge ? (
                               <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>

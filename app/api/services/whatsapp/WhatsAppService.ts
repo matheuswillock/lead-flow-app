@@ -298,11 +298,11 @@ class WhatsAppService implements IWhatsAppService {
 
     const rawPayload: Prisma.InputJsonValue = input.media
       ? {
-          key: evoResult.messageKey ?? {
+          key: (evoResult.messageKey ?? {
             remoteJid: recipientJid,
             fromMe: true,
             id: evoResult.providerMessageId,
-          },
+          }) as Prisma.InputJsonValue,
           outboundMedia: {
             base64: input.media.base64,
             mimeType: input.media.mimeType,
