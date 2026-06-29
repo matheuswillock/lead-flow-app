@@ -32,10 +32,12 @@ const ACCESS_POLL_INTERVAL_MS = 60_000
 interface FeatureAccessContextValue {
   slugs: string[]
   betaSlugs: string[]
+  betaLabelSlugs: string[]
   userRole: UserRoleData
   isLoading: boolean
   hasAccess: (slug: string) => boolean
   isBeta: (slug: string) => boolean
+  showsBetaLabel: (slug: string) => boolean
   refresh: () => Promise<void>
 }
 
@@ -50,6 +52,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
   const { activeTeamId } = useTeamContext()
   const [slugs, setSlugs] = useState<string[]>([])
   const [betaSlugs, setBetaSlugs] = useState<string[]>([])
+  const [betaLabelSlugs, setBetaLabelSlugs] = useState<string[]>([])
   const [userRole, setUserRole] = useState<UserRoleData>(DEFAULT_USER_ROLE)
   const [isLoading, setIsLoading] = useState(true)
   const lastRequestKeyRef = useRef<string>("")
@@ -62,6 +65,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
       if (!user?.supabaseId) {
         setSlugs([])
         setBetaSlugs([])
+        setBetaLabelSlugs([])
         setUserRole(DEFAULT_USER_ROLE)
         lastRequestKeyRef.current = ""
         lastFetchedAtRef.current = 0
@@ -93,6 +97,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
         if (!output.isValid) {
           setSlugs([])
           setBetaSlugs([])
+          setBetaLabelSlugs([])
           setUserRole(DEFAULT_USER_ROLE)
           return
         }
@@ -101,12 +106,14 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
         lastFetchedAtRef.current = Date.now()
         setSlugs(Array.isArray(output.result?.slugs) ? output.result.slugs : [])
         setBetaSlugs(Array.isArray(output.result?.betaSlugs) ? output.result.betaSlugs : [])
+        setBetaLabelSlugs(Array.isArray(output.result?.betaLabelSlugs) ? output.result.betaLabelSlugs : [])
         const rawRole = output.result?.userRole
         setUserRole(rawRole && typeof rawRole === "object" ? (rawRole as UserRoleData) : DEFAULT_USER_ROLE)
       } catch (error) {
         console.error("[FeatureAccessContext] Erro ao carregar acesso:", error)
         setSlugs([])
         setBetaSlugs([])
+        setBetaLabelSlugs([])
         setUserRole(DEFAULT_USER_ROLE)
       } finally {
         hasResolvedAccessRef.current = true
@@ -151,20 +158,23 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
 
   const hasAccess = useCallback((slug: string) => slugs.includes(slug), [slugs])
   const isBeta = useCallback((slug: string) => betaSlugs.includes(slug), [betaSlugs])
+  const showsBetaLabel = useCallback((slug: string) => betaLabelSlugs.includes(slug), [betaLabelSlugs])
 
   const value = useMemo<FeatureAccessContextValue>(
     () => ({
       slugs,
       betaSlugs,
+      betaLabelSlugs,
       userRole,
       isLoading,
       hasAccess,
       isBeta,
+      showsBetaLabel,
       refresh: async () => {
         await fetchAccess(true)
       },
     }),
-    [slugs, betaSlugs, userRole, isLoading, hasAccess, isBeta, fetchAccess]
+    [slugs, betaSlugs, betaLabelSlugs, userRole, isLoading, hasAccess, isBeta, showsBetaLabel, fetchAccess]
   )
 
   return <FeatureAccessContext.Provider value={value}>{children}</FeatureAccessContext.Provider>

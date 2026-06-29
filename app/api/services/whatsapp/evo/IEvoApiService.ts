@@ -35,6 +35,7 @@ export interface EvoHistoryMessage {
 export interface EvoSendTextResult {
   providerMessageId: string
   status: string
+  messageKey?: Record<string, unknown>
 }
 
 export interface IEvoApiService {

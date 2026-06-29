@@ -118,6 +118,13 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
         continue
       }
 
+      // O master é o dono do grant — é elegível independente do escopo de time,
+      // que controla apenas a distribuição para membros do time.
+      if (ctx.isMaster) {
+        eligible.add(grant.featureId)
+        continue
+      }
+
       if (!ctx.activeTeamId) {
         continue
       }

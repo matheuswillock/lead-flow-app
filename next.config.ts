@@ -60,12 +60,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/:supabaseId/whatsapp/:path*",
-        headers: whatsAppSecurityHeaders,
-      },
-      {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      {
+        source: "/:supabaseId/whatsapp/:path*",
+        headers: whatsAppSecurityHeaders,
       },
     ]
   },

@@ -9,6 +9,7 @@ export interface ResolveFeatureAccessInput {
 export interface FeatureAccessResult {
   slugs: string[]
   betaSlugs: string[]
+  betaLabelSlugs: string[]
   userRole: UserRoleInfo
 }
 

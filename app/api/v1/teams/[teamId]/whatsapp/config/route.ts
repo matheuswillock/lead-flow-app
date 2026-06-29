@@ -14,7 +14,14 @@ function resolveStatus(output: Output): number {
   const msg = output.errorMessages.join(" ")
   if (msg.includes("não encontrad")) return 404
   if (msg.includes("já existe")) return 409
-  if (msg.includes("autorização") || msg.includes("acesso negado")) return 403
+  if (
+    msg.includes("autorização") ||
+    msg.includes("acesso negado") ||
+    msg.includes("gestores") ||
+    msg.includes("não está ativo")
+  ) {
+    return 403
+  }
   if (msg.includes("Erro interno") || msg.includes("inesperado")) return 500
   return 400
 }
@@ -79,6 +86,8 @@ export async function POST(
   const output = await createWhatsAppConfigUseCase.execute({
     teamId,
     profileId: teamAccess.access.profileId,
+    callerIsMaster: teamAccess.access.isMaster,
+    callerRole: teamAccess.access.teamMember.role,
     usageLimitMonthly: parsed.data.usageLimitMonthly,
     hostBaseUrl: parsed.data.hostBaseUrl,
   })
