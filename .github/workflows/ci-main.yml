@@ -75,6 +75,7 @@ jobs:
 
   migration-status:
     name: Migration Status
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
@@ -143,9 +144,14 @@ jobs:
 
   build:
     name: Build
+    if: |
+      always() &&
+      needs.quality.result == 'success' &&
+      (needs['migration-status'].result == 'success' || needs['migration-status'].result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
+      - quality
       - migration-status
     steps:
       - name: Checkout
