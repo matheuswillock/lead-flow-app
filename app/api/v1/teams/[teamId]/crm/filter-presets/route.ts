@@ -5,6 +5,7 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
 import type { TeamFilterPresetInput } from "@/app/api/useCases/teamFilterPresets/ITeamFilterPresetsUseCase";
 import { invalidateTeamFilterPresetsCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const createFilterPresetSchema = z.object({
   name: z.string().trim().min(1, "Nome é obrigatório").max(120, "Nome muito longo"),
@@ -34,6 +35,7 @@ export async function GET(
     const output = await teamFilterPresetsUseCase.list(teamId, teamAccess.access.profileId);
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamFilterPresetsRoute][GET] Erro ao listar presets:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao listar filtros pré-definidos"], null),
@@ -87,6 +89,7 @@ export async function POST(
     }
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamFilterPresetsRoute][POST] Erro ao criar preset:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao criar filtro pré-definido"], null),

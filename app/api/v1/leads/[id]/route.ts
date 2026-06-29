@@ -8,6 +8,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { invalidateLeadCache, invalidateLeadFullCache } from "@/lib/cache/invalidation";
 import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -98,6 +99,7 @@ export async function GET(
     return NextResponse.json(output, { status });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao buscar lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -253,6 +255,7 @@ export async function PUT(
     return NextResponse.json(output, { status });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao atualizar lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -327,6 +330,7 @@ export async function DELETE(
     return NextResponse.json(output, { status });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao excluir lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

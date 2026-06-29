@@ -8,6 +8,7 @@ import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 async function getCachedLeadAttachments(leadId: string) {
   "use cache";
@@ -201,6 +202,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadDetailsRoute][GET] Erro ao buscar detalhes do lead:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno do servidor"], null),

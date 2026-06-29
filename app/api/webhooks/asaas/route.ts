@@ -6,6 +6,7 @@ import type { PaymentValidationResult } from '@/app/api/services/PaymentValidati
 import { PaymentValidationService } from '@/app/api/services/PaymentValidation/PaymentValidationService';
 import { PaymentValidationUseCase } from '@/app/api/useCases/payments/PaymentValidationUseCase';
 import { getFullUrl } from '@/lib/utils/app-url';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(request: NextRequest) {
   try {
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
           result: adhesionOutput.result,
         });
       } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
         console.error('[Webhook][BackofficeAdhesion] sync error:', error);
       }
       
@@ -156,6 +158,7 @@ export async function POST(request: NextRequest) {
             willProcess: isOperatorPayment && (isPaid || paymentStatus === 'CONFIRMED')
           });
         } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
           console.error('❌ [Webhook Asaas] Erro ao verificar pendingOperator:', error);
         }
       } else {
@@ -188,6 +191,7 @@ export async function POST(request: NextRequest) {
             });
           }
         } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
           console.error('❌ [Webhook Asaas] Erro ao processar checkout de operador:', error);
           // Não bloquear o fluxo principal
         }
@@ -207,6 +211,7 @@ export async function POST(request: NextRequest) {
             console.error('❌ [Webhook Asaas] Falha ao aplicar ação pendente:', actionResult.errorMessages);
           }
         } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
           console.error('❌ [Webhook Asaas] Erro ao aplicar ação pendente:', error);
         }
       }
@@ -224,6 +229,7 @@ export async function POST(request: NextRequest) {
             console.error('❌ [Webhook Asaas] Falha ao aplicar ação pendente (payment):', actionResult.errorMessages);
           }
         } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
           console.error('❌ [Webhook Asaas] Erro ao aplicar ação pendente (payment):', error);
         }
       }
@@ -249,6 +255,7 @@ export async function POST(request: NextRequest) {
             });
           }
         } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
           console.error('? [Webhook Asaas] Erro ao processar pagamento de operador (externalRef):', error);
         }
       }
@@ -264,6 +271,7 @@ export async function POST(request: NextRequest) {
           console.info('✅ [Webhook Asaas] Assinatura ativada após pagamento:', body.payment.subscription);
         }
       } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
         console.error('❌ [Webhook Asaas] Erro ao ativar assinatura:', error);
       }
     }
@@ -339,6 +347,7 @@ export async function POST(request: NextRequest) {
             console.warn('⚠️ [Webhook Asaas] Manager não encontrado para customerId:', subscription.customer);
           }
         } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
           console.error('❌ [Webhook Asaas] Erro ao sincronizar assinatura:', error);
           // Não bloquear o fluxo principal
         }
@@ -368,6 +377,7 @@ export async function POST(request: NextRequest) {
         
         console.info('✅ [Webhook Asaas] Notificação enviada para frontend');
       } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
         console.error('❌ [Webhook Asaas] Erro ao processar notificação:', error);
       }
     }

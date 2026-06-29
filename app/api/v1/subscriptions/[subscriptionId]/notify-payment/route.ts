@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 // Cache simples em memória para confirmações de pagamento
 // Em produção, usar Redis ou similar
@@ -45,6 +46,7 @@ export async function POST(
     }, { status: 200 });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [NotifyPaymentController] Erro:', error);
     
     return NextResponse.json(
@@ -114,6 +116,7 @@ export async function GET(
     });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [NotifyPaymentController] Erro:', error);
     
     return NextResponse.json(

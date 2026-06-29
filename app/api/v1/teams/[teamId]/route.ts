@@ -9,6 +9,7 @@ import {
   hasDelegatedTeamManagementAccess,
 } from "@/app/api/v1/utils/teamAccess";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const updateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -124,6 +125,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao atualizar time:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao atualizar time"], null),

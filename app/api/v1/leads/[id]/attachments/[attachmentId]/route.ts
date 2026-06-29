@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 // DELETE /api/v1/leads/[id]/attachments/[attachmentId] - Delete an attachment
 export async function DELETE(
@@ -75,6 +76,7 @@ export async function DELETE(
     const result = await leadAttachmentUseCase.deleteAttachment(attachmentId, leadId, profile.id);
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadAttachmentByIdRoute][DELETE] Erro ao deletar anexo:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),

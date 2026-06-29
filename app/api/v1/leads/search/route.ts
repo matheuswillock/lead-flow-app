@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseFactory";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(new Output(true, [], [], leads), { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadSearchRoute][GET] Erro ao buscar leads:", error);
     return NextResponse.json(new Output(false, [], ["Erro interno do servidor"], null), { status: 500 });
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const useCase = new RegisterNewUserProfile();
 
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[ProfileByEmailRoute][GET] Erro inesperado:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

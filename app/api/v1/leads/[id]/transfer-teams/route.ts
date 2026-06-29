@@ -8,6 +8,7 @@ import type { TransferLeadBetweenTeamsResult } from "../../DTO/transferLeadBetwe
 import { Output } from "@/lib/output";
 import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
 import { invalidateLeadCache, invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -85,6 +86,7 @@ export async function POST(
     const status = isUniqueConflict ? 409 : 400;
     return NextResponse.json(output, { status });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TransferLeadBetweenTeamsRoute][POST] Erro interno:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import type { ScheduleMeetingStatus } from "@/lib/lead-meeting"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeAllUsersUseCase } from "@/app/api/useCases/backoffice/BackofficeAllUsersUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const MEETING_STATUS_VALUES: ScheduleMeetingStatus[] = [
   "scheduled",
@@ -91,6 +92,7 @@ export async function GET(
       status: output.isValid ? 200 : output.errorMessages.includes("Usuário não encontrado") ? 404 : 400,
     })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAllUsersSchedulesRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

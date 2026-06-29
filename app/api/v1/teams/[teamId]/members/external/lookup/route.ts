@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { crossAccountMembersUseCase } from "@/app/api/useCases/crossAccountMembers/CrossAccountMembersUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(
   request: NextRequest,
@@ -26,6 +27,7 @@ export async function GET(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamExternalMembersLookupRoute][GET]", error);
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 });
   }

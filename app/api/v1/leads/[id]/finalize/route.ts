@@ -5,6 +5,7 @@ import { getTeamAccess, hasLeadAccess } from '@/app/api/v1/utils/teamAccess';
 import { invalidateLeadCache, invalidatePortfolioCache } from '@/lib/cache/invalidation';
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(
   request: NextRequest,
@@ -256,6 +257,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('[FinalizeLeadRoute][POST] Erro ao finalizar contrato:', error);
     return NextResponse.json(
       new Output(false, [], ['Erro interno ao finalizar contrato'], null),

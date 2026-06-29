@@ -3,6 +3,7 @@ import type { MetricsFilters } from '@/app/api/useCases/metrics/IMetricsUseCase'
 import type { TeamContext } from '@/app/api/infra/data/repositories/metrics/IMetricsRepository';
 import { metricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   getDashboardTeamScopeFromRequest,
   resolveDashboardTeamScope,
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('[DashboardMetricsRoute][GET] Erro inesperado:', error);
     return NextResponse.json(
       { isValid: false, successMessages: [], errorMessages: ['Erro inesperado no servidor'], result: null },

@@ -7,6 +7,7 @@ import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignD
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import { formatIntimezone, resolveTimezone } from "@/lib/dates"
 import { interpolateEmailTemplate } from "@/lib/email/interpolate"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const FALLBACK_FROM_NAME = "Corretor Studio"
 const FALLBACK_FROM_EMAIL = "no-reply@corretorstudio.com"
@@ -239,6 +240,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailCronDispatchRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno no cron de disparo"], null), { status: 500 })
   }

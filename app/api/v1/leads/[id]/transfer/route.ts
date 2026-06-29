@@ -7,6 +7,7 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { invalidateLeadCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -59,6 +60,7 @@ export async function PUT(
     return NextResponse.json(output, { status: responseStatus });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro na API de transferência de lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

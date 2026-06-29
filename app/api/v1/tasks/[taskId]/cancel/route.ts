@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { cancelTaskUseCase } from "@/app/api/useCases/task/CancelTaskUseCase";
 import { invalidateTeamCalendarCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(
   request: NextRequest,
@@ -31,6 +32,7 @@ export async function POST(
     invalidateTeamTasksCache({ teamId: teamAccess.access.teamId });
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TaskCancelRoute][POST] Erro:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

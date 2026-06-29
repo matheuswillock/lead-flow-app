@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { subscriptionManagementUseCase } from '@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { status: statusCode });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('Erro inesperado na route:', error);
 
     const errorResult = {

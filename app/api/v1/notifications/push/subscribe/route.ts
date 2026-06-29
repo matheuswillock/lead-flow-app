@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { webPushSubscriptionUseCase } from "@/app/api/useCases/notifications/WebPushSubscriptionUseCase";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 type SubscribeBody = {
   endpoint?: string;
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[WebPushSubscribeRoute][POST] Erro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao salvar inscrição"], null),
@@ -77,6 +79,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[WebPushSubscribeRoute][DELETE] Erro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao remover inscrição"], null),

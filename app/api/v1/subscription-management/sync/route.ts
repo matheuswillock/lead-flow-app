@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionManagementUseCase } from "@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 export async function POST(request: NextRequest) {
   const supabaseId = request.headers.get("x-supabase-user-id");

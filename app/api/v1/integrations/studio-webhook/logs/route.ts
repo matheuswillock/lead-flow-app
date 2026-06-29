@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { studioWebhookIntegrationUseCase } from "@/app/api/useCases/integrations/StudioWebhookIntegrationUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const routePrefix = "[StudioWebhookLogsRoute]";
 
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error(`${routePrefix}[GET] Erro ao consultar logs do webhook:`, error);
     return NextResponse.json(
       new Output(false, [], ["Erro ao consultar logs do webhook"], null),

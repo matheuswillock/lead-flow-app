@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { Output } from "@/lib/output";
 import { profileIconService } from "@/app/api/services/profile/ProfileIconService";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const profileUseCase = new RegisterNewUserProfile();
 
@@ -70,6 +71,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in POST /api/v1/profiles/[supabaseId]/icon:", error);
     const output = new Output(
       false, 
@@ -135,6 +137,7 @@ export async function DELETE(
     const output = new Output(true, ["Ícone de perfil removido com sucesso"], [], null);
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in DELETE /api/v1/profiles/[supabaseId]/icon:", error);
     const output = new Output(
       false, 

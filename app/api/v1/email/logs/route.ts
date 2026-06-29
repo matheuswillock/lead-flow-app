@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailLogsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

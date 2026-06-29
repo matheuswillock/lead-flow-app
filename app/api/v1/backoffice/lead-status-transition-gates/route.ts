@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess";
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess";
 import { backofficeLeadStatusTransitionGateUseCase } from "@/app/api/useCases/backofficeLeadStatusTransitionGate/BackofficeLeadStatusTransitionGateUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadStatusSchema = z.enum([
   "new_opportunity",
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
     const output = await backofficeLeadStatusTransitionGateUseCase.list();
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeLeadStatusTransitionGatesRoute][GET]", error);
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 });
   }
@@ -88,6 +90,7 @@ export async function PUT(request: NextRequest) {
     );
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeLeadStatusTransitionGatesRoute][PUT]", error);
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 });
   }

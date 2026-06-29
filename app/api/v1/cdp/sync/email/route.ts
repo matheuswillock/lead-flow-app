@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getCdpAccess, teamContextFromCdpAccess } from "@/app/api/v1/cdp/utils/getCdpAccess"
 import { customerDataPlatformUseCase } from "@/app/api/useCases/cdp/CustomerDataPlatformUseCase"
 import { parseCdpSyncFilters } from "@/lib/cdp/sync-filters"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(request: NextRequest) {
   try {

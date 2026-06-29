@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Webhook } from "svix"
 import { resendWebhookUseCase } from "@/app/api/useCases/resendWebhook/ResendWebhookUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ received: true }, { status: 200 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[ResendWebhookRoute][POST]", error)
     return NextResponse.json({ received: true }, { status: 200 })
   }

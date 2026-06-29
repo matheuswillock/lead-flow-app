@@ -4,6 +4,7 @@ import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackoffice
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { BackofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
@@ -37,6 +38,7 @@ export async function GET(
     })
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserByIdRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -83,6 +85,7 @@ export async function PATCH(
     const output = await useCase.updateMasterUser(id, data)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -105,6 +108,7 @@ export async function DELETE(
     const output = await useCase.deleteMasterUser(id)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

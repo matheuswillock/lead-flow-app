@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { Output } from "@/lib/output"
 import { isValidTimezone } from "@/lib/dates"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET /api/v1/profiles/[supabaseId]/timezone
@@ -22,6 +23,7 @@ export async function GET(
     }
     return NextResponse.json(new Output(true, [], [], { timezone: profile.timezone }), { status: 200 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[ProfileTimezoneRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -62,6 +64,7 @@ export async function PATCH(
 
     return NextResponse.json(new Output(true, ["Fuso horário atualizado"], [], { timezone }), { status: 200 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[ProfileTimezoneRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

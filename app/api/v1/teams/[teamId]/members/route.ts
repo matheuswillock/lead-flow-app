@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { invalidateTeamMembersCache } from "@/lib/cache/invalidation";
 import { teamMembersUseCase } from "@/app/api/useCases/teamMembers/TeamMembersUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const addMemberSchema = z.object({
   profileId: z.string().uuid(),
@@ -70,6 +71,7 @@ export async function GET(
     const output = await teamMembersUseCase.listMembers(supabaseId, teamId, requestedFunction);
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamMembersRoute][GET] Erro ao listar membros do time:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao listar membros do time"], null),
@@ -109,6 +111,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamMembersRoute][POST] Erro ao adicionar membro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao adicionar membro"], null),
@@ -148,6 +151,7 @@ export async function DELETE(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamMembersRoute][DELETE] Erro ao remover membro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao remover membro"], null),

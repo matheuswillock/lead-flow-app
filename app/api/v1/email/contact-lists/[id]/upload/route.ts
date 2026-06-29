@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const output = await useCase.uploadCsv(id, csvContent, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailContactListUploadRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno ao processar arquivo"], null), { status: 500 })
   }

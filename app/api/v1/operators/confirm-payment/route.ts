@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionUpgradeUseCase } from "@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * POST /api/v1/operators/confirm-payment
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: statusCode });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao confirmar pagamento:", error);
 
     return NextResponse.json(

@@ -4,6 +4,7 @@ import { invalidateTeamMembersCache } from "@/lib/cache/invalidation"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeMemberUseCase } from "@/app/api/useCases/backoffice/BackofficeMemberUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function resolvePostStatus(output: Output) {
   const messages = output.errorMessages.join(" ")
@@ -33,6 +34,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : resolvePostStatus(output) })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMemberTeamRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -67,6 +69,7 @@ export async function DELETE(
 
     return NextResponse.json(output, { status })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMemberTeamRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

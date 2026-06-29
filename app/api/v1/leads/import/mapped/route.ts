@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { importMappedLeadsUseCase } from "@/app/api/useCases/leads/ImportMappedLeadsUseCase";
 import { MappedImportRequestSchema } from "./DTO/mappedImportRequest";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadsImportMappedRoute][POST] Erro ao importar leads:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

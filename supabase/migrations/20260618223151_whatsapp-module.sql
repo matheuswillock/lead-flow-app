@@ -3,12 +3,35 @@
 -- Adds TeamWhatsAppConfig, WhatsAppConversation, WhatsAppMessage, WhatsAppUsageEvent
 
 -- Enums
-CREATE TYPE "WhatsAppProvider" AS ENUM ('EVOLUTION');
-CREATE TYPE "WhatsAppConnectionStatus" AS ENUM ('PENDING', 'QR_READY', 'CONNECTED', 'DISCONNECTED', 'ERROR', 'BANNED');
-CREATE TYPE "WhatsAppMessageDirection" AS ENUM ('INBOUND', 'OUTBOUND');
-CREATE TYPE "WhatsAppMessageType" AS ENUM ('TEXT', 'IMAGE', 'AUDIO', 'VIDEO', 'DOCUMENT', 'STICKER', 'LOCATION', 'CONTACT', 'UNKNOWN');
-CREATE TYPE "WhatsAppMessageStatus" AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'RECEIVED');
-CREATE TYPE "WhatsAppUsageEventType" AS ENUM ('OUTBOUND_MESSAGE', 'INBOUND_MESSAGE', 'CONNECTION_EVENT', 'RECONNECTION_EVENT');
+DO $$ BEGIN
+  CREATE TYPE "WhatsAppProvider" AS ENUM ('EVOLUTION');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "WhatsAppConnectionStatus" AS ENUM ('PENDING', 'QR_READY', 'CONNECTED', 'DISCONNECTED', 'ERROR', 'BANNED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "WhatsAppMessageDirection" AS ENUM ('INBOUND', 'OUTBOUND');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "WhatsAppMessageType" AS ENUM ('TEXT', 'IMAGE', 'AUDIO', 'VIDEO', 'DOCUMENT', 'STICKER', 'LOCATION', 'CONTACT', 'UNKNOWN');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "WhatsAppMessageStatus" AS ENUM ('PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'RECEIVED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "WhatsAppUsageEventType" AS ENUM ('OUTBOUND_MESSAGE', 'INBOUND_MESSAGE', 'CONNECTION_EVENT', 'RECONNECTION_EVENT');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- TeamWhatsAppConfig: one config per team
 CREATE TABLE IF NOT EXISTS "team_whatsapp_configs" (
@@ -43,13 +66,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS "team_whatsapp_configs_teamId_key"
 CREATE UNIQUE INDEX IF NOT EXISTS "team_whatsapp_configs_webhookSecret_key"
     ON "team_whatsapp_configs" ("webhookSecret");
 
-ALTER TABLE "team_whatsapp_configs"
-    ADD CONSTRAINT "team_whatsapp_configs_teamId_fkey"
-        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE,
-    ADD CONSTRAINT "team_whatsapp_configs_createdByProfileId_fkey"
-        FOREIGN KEY ("createdByProfileId") REFERENCES "corretor_studio_profiles" ("id"),
-    ADD CONSTRAINT "team_whatsapp_configs_updatedByProfileId_fkey"
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'team_whatsapp_configs_teamId_fkey') THEN
+    ALTER TABLE "team_whatsapp_configs"
+      ADD CONSTRAINT "team_whatsapp_configs_teamId_fkey"
+        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'team_whatsapp_configs_createdByProfileId_fkey') THEN
+    ALTER TABLE "team_whatsapp_configs"
+      ADD CONSTRAINT "team_whatsapp_configs_createdByProfileId_fkey"
+        FOREIGN KEY ("createdByProfileId") REFERENCES "corretor_studio_profiles" ("id");
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'team_whatsapp_configs_updatedByProfileId_fkey') THEN
+    ALTER TABLE "team_whatsapp_configs"
+      ADD CONSTRAINT "team_whatsapp_configs_updatedByProfileId_fkey"
         FOREIGN KEY ("updatedByProfileId") REFERENCES "corretor_studio_profiles" ("id");
+  END IF;
+END $$;
 
 -- WhatsAppConversation: per-team chat threads
 CREATE TABLE IF NOT EXISTS "whatsapp_conversations" (
@@ -88,15 +124,32 @@ CREATE INDEX IF NOT EXISTS "whatsapp_conversations_teamId_normalizedPhone_idx"
 CREATE INDEX IF NOT EXISTS "whatsapp_conversations_leadId_idx"
     ON "whatsapp_conversations" ("leadId");
 
-ALTER TABLE "whatsapp_conversations"
-    ADD CONSTRAINT "whatsapp_conversations_teamId_fkey"
-        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE,
-    ADD CONSTRAINT "whatsapp_conversations_configId_fkey"
-        FOREIGN KEY ("configId") REFERENCES "team_whatsapp_configs" ("id") ON DELETE CASCADE,
-    ADD CONSTRAINT "whatsapp_conversations_leadId_fkey"
-        FOREIGN KEY ("leadId") REFERENCES "corretor_studio_leads" ("id") ON DELETE SET NULL,
-    ADD CONSTRAINT "whatsapp_conversations_assignedProfileId_fkey"
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_conversations_teamId_fkey') THEN
+    ALTER TABLE "whatsapp_conversations"
+      ADD CONSTRAINT "whatsapp_conversations_teamId_fkey"
+        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_conversations_configId_fkey') THEN
+    ALTER TABLE "whatsapp_conversations"
+      ADD CONSTRAINT "whatsapp_conversations_configId_fkey"
+        FOREIGN KEY ("configId") REFERENCES "team_whatsapp_configs" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_conversations_leadId_fkey') THEN
+    ALTER TABLE "whatsapp_conversations"
+      ADD CONSTRAINT "whatsapp_conversations_leadId_fkey"
+        FOREIGN KEY ("leadId") REFERENCES "corretor_studio_leads" ("id") ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_conversations_assignedProfileId_fkey') THEN
+    ALTER TABLE "whatsapp_conversations"
+      ADD CONSTRAINT "whatsapp_conversations_assignedProfileId_fkey"
         FOREIGN KEY ("assignedProfileId") REFERENCES "corretor_studio_profiles" ("id") ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- WhatsAppMessage: persisted messages
 CREATE TABLE IF NOT EXISTS "whatsapp_messages" (
@@ -140,17 +193,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_messages_teamId_providerEventId_key"
 CREATE INDEX IF NOT EXISTS "whatsapp_messages_conversationId_createdAt_idx"
     ON "whatsapp_messages" ("conversationId", "createdAt" ASC);
 
-ALTER TABLE "whatsapp_messages"
-    ADD CONSTRAINT "whatsapp_messages_conversationId_fkey"
-        FOREIGN KEY ("conversationId") REFERENCES "whatsapp_conversations" ("id") ON DELETE CASCADE,
-    ADD CONSTRAINT "whatsapp_messages_teamId_fkey"
-        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE,
-    ADD CONSTRAINT "whatsapp_messages_configId_fkey"
-        FOREIGN KEY ("configId") REFERENCES "team_whatsapp_configs" ("id") ON DELETE CASCADE,
-    ADD CONSTRAINT "whatsapp_messages_leadId_fkey"
-        FOREIGN KEY ("leadId") REFERENCES "corretor_studio_leads" ("id") ON DELETE SET NULL,
-    ADD CONSTRAINT "whatsapp_messages_sentByProfileId_fkey"
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_messages_conversationId_fkey') THEN
+    ALTER TABLE "whatsapp_messages"
+      ADD CONSTRAINT "whatsapp_messages_conversationId_fkey"
+        FOREIGN KEY ("conversationId") REFERENCES "whatsapp_conversations" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_messages_teamId_fkey') THEN
+    ALTER TABLE "whatsapp_messages"
+      ADD CONSTRAINT "whatsapp_messages_teamId_fkey"
+        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_messages_configId_fkey') THEN
+    ALTER TABLE "whatsapp_messages"
+      ADD CONSTRAINT "whatsapp_messages_configId_fkey"
+        FOREIGN KEY ("configId") REFERENCES "team_whatsapp_configs" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_messages_leadId_fkey') THEN
+    ALTER TABLE "whatsapp_messages"
+      ADD CONSTRAINT "whatsapp_messages_leadId_fkey"
+        FOREIGN KEY ("leadId") REFERENCES "corretor_studio_leads" ("id") ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_messages_sentByProfileId_fkey') THEN
+    ALTER TABLE "whatsapp_messages"
+      ADD CONSTRAINT "whatsapp_messages_sentByProfileId_fkey"
         FOREIGN KEY ("sentByProfileId") REFERENCES "corretor_studio_profiles" ("id") ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- WhatsAppUsageEvent: billing & quota tracking
 CREATE TABLE IF NOT EXISTS "whatsapp_usage_events" (
@@ -184,8 +258,17 @@ CREATE INDEX IF NOT EXISTS "whatsapp_usage_events_teamId_periodKey_idx"
 CREATE INDEX IF NOT EXISTS "whatsapp_usage_events_configId_periodKey_idx"
     ON "whatsapp_usage_events" ("configId", "periodKey");
 
-ALTER TABLE "whatsapp_usage_events"
-    ADD CONSTRAINT "whatsapp_usage_events_teamId_fkey"
-        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE,
-    ADD CONSTRAINT "whatsapp_usage_events_configId_fkey"
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_usage_events_teamId_fkey') THEN
+    ALTER TABLE "whatsapp_usage_events"
+      ADD CONSTRAINT "whatsapp_usage_events_teamId_fkey"
+        FOREIGN KEY ("teamId") REFERENCES "corretor_studio_teams" ("id") ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_usage_events_configId_fkey') THEN
+    ALTER TABLE "whatsapp_usage_events"
+      ADD CONSTRAINT "whatsapp_usage_events_configId_fkey"
         FOREIGN KEY ("configId") REFERENCES "team_whatsapp_configs" ("id") ON DELETE CASCADE;
+  END IF;
+END $$;

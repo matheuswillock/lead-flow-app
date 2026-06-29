@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function getDefaultFrom(tz: string): Date {
   return startOfDayInTz(addDaysInTz(new Date(), -30, tz), tz)
@@ -84,6 +85,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailAnalyticsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

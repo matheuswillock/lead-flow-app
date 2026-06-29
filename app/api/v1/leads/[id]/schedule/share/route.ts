@@ -2,6 +2,7 @@ import { scheduleShareUseCase } from "@/app/api/useCases/scheduleShare/ScheduleS
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { Output } from "@/lib/output";
 import { NextRequest, NextResponse } from "next/server";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(
   request: NextRequest,
@@ -31,6 +32,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadScheduleShareRoute][POST]", error);
     return NextResponse.json(new Output(false, [], ["Erro interno do servidor."], null), { status: 500 });
   }

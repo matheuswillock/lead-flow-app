@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { assertProfileOwnership } from "@/app/api/v1/profiles/utils/assertProfileOwnership";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const profileUseCase = new RegisterNewUserProfile();
 
@@ -58,6 +59,7 @@ export async function GET(
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in GET /api/v1/profiles/[supabaseId]:", error);
     const output = new Output(false, [], ["Internal server error"], null);
     return NextResponse.json(output, { status: 500 });
@@ -130,6 +132,7 @@ export async function PUT(
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in PUT /api/v1/profiles/[supabaseId]:", error);
     const output = new Output(false, [], ["Internal server error"], null);
     return NextResponse.json(output, { status: 500 });
@@ -254,6 +257,7 @@ export async function DELETE(
           subscriptionId,
         });
       } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
         const errorMessage = error instanceof Error ? error.message : String(error);
 
         if (isIdempotentAsaasCancelError(errorMessage)) {
@@ -315,6 +319,7 @@ export async function DELETE(
               console.info(`✅ [DELETE Profile] Operador ${operator.email} deletado do Supabase`);
             }
           } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
             console.error(`⚠️ [DELETE Profile] Erro ao deletar operador ${operator.email}:`, error);
           }
         }

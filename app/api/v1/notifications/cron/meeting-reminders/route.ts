@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { meetingReminderUseCase } from "@/app/api/useCases/notifications/MeetingReminderUseCase";
 
 export async function GET(request: NextRequest) {
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
     const output = await meetingReminderUseCase.processDueReminders();
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[MeetingRemindersCronRoute][GET] Erro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno no cron de lembretes de reunião"], null),

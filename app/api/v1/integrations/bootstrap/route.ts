@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache/cacheTags";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 
 const routePrefix = "[IntegrationBootstrapRoute][GET]";
@@ -88,6 +89,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error(`${routePrefix} Erro ao carregar bootstrap do formulário público:`, error);
     return NextResponse.json(
       new Output(false, [], ["Erro ao carregar dados iniciais do formulário"], null),
