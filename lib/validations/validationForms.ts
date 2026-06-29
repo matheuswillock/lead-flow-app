@@ -170,6 +170,7 @@ export const leadFormSchema = z.object({
       if (!value || value.trim() === "") return true;
       return isValidCNPJ(value);
     }, "CNPJ inválido"),
+  razaoSocial: z.string().optional().or(z.literal("")),
   closerId: z.string().min(0).optional(),
   age: z.string().optional().or(z.literal("")),
   currentHealthPlan: z.string().trim().optional().or(z.literal("")),

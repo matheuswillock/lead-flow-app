@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { studioWebhookIntegrationUseCase } from "@/app/api/useCases/integrations/StudioWebhookIntegrationUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const routePrefix = "[StudioWebhookIntegrationRoute]";
 const ExpiryModeSchema = z.enum(["hours_24", "months_6", "indeterminate"]);
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error(`${routePrefix}[GET] Erro ao consultar configuração do webhook:`, error);
     return NextResponse.json(
       new Output(false, [], ["Erro ao consultar configuração do webhook"], null),
@@ -124,6 +126,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error(`${routePrefix}[PUT] Erro ao salvar configuração do webhook:`, error);
     return NextResponse.json(
       new Output(false, [], ["Erro ao salvar configuração do webhook"], null),

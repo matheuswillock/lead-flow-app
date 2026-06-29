@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
     const output = await backofficeProductUseCase.list()
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePricingRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -32,6 +34,7 @@ export async function POST(request: NextRequest) {
     const output = await backofficeProductUseCase.create(body)
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePricingRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

@@ -6,6 +6,7 @@ import { BackofficeClientUseCase } from "@/app/api/useCases/backoffice/Backoffic
 import { BackofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/ClientRepository/BackofficeClientRepository"
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function makeUseCase() {
   return new BackofficeClientUseCase(
@@ -64,6 +65,7 @@ export async function GET(request: NextRequest) {
     const output = await useCase.listClients()
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeClientsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -81,6 +83,7 @@ export async function POST(request: NextRequest) {
     const output = await useCase.createClient(body, result.access.profileId)
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeClientsRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

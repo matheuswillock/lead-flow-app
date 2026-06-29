@@ -50,7 +50,13 @@ export interface PublicLeadFormActions {
     meetingNotes?: string;
     extraGuests?: string[];
     isTransfer?: boolean;
-  }) => Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }>;
+    saveAsDraft?: boolean;
+  }) => Promise<{
+    isValid: boolean;
+    successMessages: string[];
+    errorMessages: string[];
+    lead?: { razaoSocial?: string | null } | null;
+  }>;
   retryBootstrap: () => void;
   resetForm: () => void;
 }

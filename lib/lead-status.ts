@@ -22,6 +22,9 @@ export const leadStatusLabels: Record<LeadStatus, string> = {
 export const getLeadStatusLabel = (status: LeadStatus | string) =>
   leadStatusLabels[status as LeadStatus] ?? status
 
+export const isDraftLead = (lead: { status: LeadStatus | null | undefined }) =>
+  lead.status === null || lead.status === undefined
+
 export const getLeadStatusBadgeClass = (status: string) => {
   const classes: Record<string, string> = {
     new_opportunity: "border-primary/30 bg-primary/10 text-primary",

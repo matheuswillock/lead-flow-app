@@ -4,6 +4,11 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback,
 import { Output } from "@/lib/output";
 import type { UserRole, UserFunction } from "@prisma/client";
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import {
+  readUserBootstrapCache,
+  writeUserBootstrapCache,
+} from "@/lib/bootstrap/sessionBootstrapCache";
 
 type UserBootstrapResponse = {
   profileOutput: Output;
@@ -95,6 +100,20 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const lastLoadedSupabaseIdRef = useRef<string | null>(null);
+  const bootstrapHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (bootstrapHydratedRef.current) return;
+    bootstrapHydratedRef.current = true;
+
+    const cached = readUserBootstrapCache(supabaseId);
+    if (!cached) return;
+
+    setUser(cached.user as UserData);
+    setHasActiveSubscription(cached.hasActiveSubscription);
+    setUserRole(cached.userRole);
+    setIsLoading(false);
+  }, [supabaseId]);
 
   /**
    * Busca dados do usuário na API
@@ -110,13 +129,47 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       return;
     }
 
+    const cachedUser = readUserBootstrapCache(supabaseId);
+    const shouldBlockUi = !cachedUser || force;
+
     try {
-      setIsLoading(true);
+      if (shouldBlockUi) {
+        setIsLoading(true);
+      }
       setError(null);
 
       const createBootstrapRequest = async (): Promise<UserBootstrapResponse> => {
-        const response = await fetch(`/api/v1/profiles/${supabaseId}`);
-        const profileOutput: Output = await response.json();
+        const profilePromise = fetch(`/api/v1/profiles/${supabaseId}`).then(
+          (response) => response.json() as Promise<Output>
+        );
+
+        const sessionEmailPromise = createSupabaseBrowser()
+          ?.auth.getSession()
+          .then((result) => result.data.session?.user?.email ?? null) ?? Promise.resolve(null);
+
+        const subscriptionPromise = sessionEmailPromise.then(async (sessionEmail) => {
+          if (!sessionEmail) {
+            return null;
+          }
+
+          const checkResponse = await fetch("/api/v1/subscriptions/check", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ email: sessionEmail }),
+          });
+
+          const subscriptionCheckOutput: Output = await checkResponse.json();
+          return subscriptionCheckOutput.isValid
+            ? (subscriptionCheckOutput.result as UserBootstrapResponse["subscriptionCheckResult"])
+            : null;
+        });
+
+        const [profileOutput, subscriptionCheckResult] = await Promise.all([
+          profilePromise,
+          subscriptionPromise,
+        ]);
 
         if (!profileOutput.isValid || !profileOutput.result) {
           return {
@@ -125,10 +178,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({
           };
         }
 
-        const checkResponse = await fetch('/api/v1/subscriptions/check', {
-          method: 'POST',
+        if (subscriptionCheckResult?.userExists) {
+          return { profileOutput, subscriptionCheckResult };
+        }
+
+        const checkResponse = await fetch("/api/v1/subscriptions/check", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             email: profileOutput.result.email,
@@ -138,13 +195,13 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         });
 
         const subscriptionCheckOutput: Output = await checkResponse.json();
-        const subscriptionCheckResult = subscriptionCheckOutput.isValid
+        const enrichedSubscriptionCheckResult = subscriptionCheckOutput.isValid
           ? (subscriptionCheckOutput.result as UserBootstrapResponse["subscriptionCheckResult"])
           : null;
 
         return {
           profileOutput,
-          subscriptionCheckResult,
+          subscriptionCheckResult: enrichedSubscriptionCheckResult,
         };
       };
 
@@ -181,7 +238,12 @@ export const UserProvider: React.FC<UserProviderProps> = ({
             hasActiveSubscription: subscriptionCheckResult.hasActiveSubscription,
             userRole: subscriptionCheckResult.userRole,
           });
-        } else {
+
+          writeUserBootstrapCache(supabaseId, {
+            user: profileOutput.result,
+            hasActiveSubscription: !!subscriptionCheckResult.hasActiveSubscription,
+            userRole: subscriptionCheckResult.userRole || null,
+          });        } else {
           setHasActiveSubscription(false);
           setUserRole(null);
           console.warn('⚠️ [UserContext] Usuário não encontrado no check de assinatura');

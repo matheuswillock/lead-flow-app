@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { updateTaskUseCase } from "@/app/api/useCases/task/UpdateTaskUseCase";
 import { invalidateTeamCalendarCache, invalidateLeadActivitiesCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const bodySchema = z.object({
   title: z.string().min(1).max(200),
@@ -64,6 +65,7 @@ export async function PATCH(
     }
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TasksByIdRoute][PATCH] Erro:", error);
     return NextResponse.json(new Output(false, [], ["Erro interno do servidor"], null), { status: 500 });
   }

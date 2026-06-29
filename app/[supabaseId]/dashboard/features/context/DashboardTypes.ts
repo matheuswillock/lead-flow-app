@@ -1,4 +1,6 @@
-import { DashboardMetricsData, DetailedMetricsData, MetricsFilters } from '../services/DashboardMetricsService';
+import { DashboardMetricsData, DetailedMetricsData, MetricsFilters, DashboardTeamScope } from '../services/DashboardMetricsService';
+
+export type { DashboardTeamScope };
 
 export interface IDashboardState {
   // Dados principais
@@ -11,6 +13,8 @@ export interface IDashboardState {
   
   // Filtros
   filters: MetricsFilters;
+  teamScope: DashboardTeamScope;
+  canUseAllTeamsScope: boolean;
   
   // Período customizado
   customDateRange: {
@@ -32,6 +36,7 @@ export interface IDashboardActions {
   setPeriod: (period: '7d' | '30d' | '3m' | '6m' | '1y') => void;
   setCustomDateRange: (startDate: string, endDate: string) => void;
   clearCustomDateRange: () => void;
+  setTeamScope: (scope: DashboardTeamScope) => void;
   
   // Ações de controle
   clearError: () => void;

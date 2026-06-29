@@ -18,6 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { isManagerLikeRole } from "@/lib/roles";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
@@ -76,7 +77,9 @@ export function PerfFiltersBar() {
 
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId } = useTeamContext();
+  const { activeTeamId, activeRole, isTeamMaster } = useTeamContext();
+
+  const canFilterByMember = isTeamMaster || (activeRole !== null && isManagerLikeRole(activeRole));
 
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
@@ -321,7 +324,7 @@ export function PerfFiltersBar() {
       />
 
       {/* SDR */}
-      {sdrOptions.length > 0 && (
+      {canFilterByMember && sdrOptions.length > 0 && (
         <LeadsMultiFilter
           title="SDR"
           options={sdrOptions}
@@ -331,7 +334,7 @@ export function PerfFiltersBar() {
       )}
 
       {/* Closer */}
-      {closerOptions.length > 0 && (
+      {canFilterByMember && closerOptions.length > 0 && (
         <LeadsMultiFilter
           title="Closer"
           options={closerOptions}

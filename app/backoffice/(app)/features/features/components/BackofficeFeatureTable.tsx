@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { isBetaGroupEligible } from "@/lib/features/is-beta-group-eligible"
 import type { BackofficeFeatureItem } from "../context/BackofficeFeatureTypes"
 import { useBackofficeFeature } from "../context/BackofficeFeatureContext"
 
@@ -79,7 +80,7 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
         {feature.productSlug ?? <span className="text-muted-foreground/40">—</span>}
       </TableCell>
       <TableCell>
-        {feature.betaEnabled ? (
+        {isBetaGroupEligible(feature) ? (
           <Badge variant="outline" className="text-orange-500 border-orange-500/40">
             Beta
           </Badge>

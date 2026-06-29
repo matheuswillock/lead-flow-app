@@ -1,4 +1,5 @@
 import { buildResendBatchIdempotencyKey, resend } from "@/lib/email"
+import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
   interpolateEmailTemplate,
   type EmailTemplateVariableDefinition,
@@ -45,10 +46,12 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             params.globalDefaults,
             params.templateVariables
           ),
-          tags: [
-            { name: "campaignId", value: params.campaignId },
-            { name: "teamId", value: params.teamId },
-          ],
+          tags: buildResendTrackingTags({
+            teamId: params.teamId,
+            category: "campaign",
+            sourceType: "campaign",
+            sourceId: params.campaignId,
+          }),
         }))
 
         const batchResult = await resend.batch.send(batchPayload, {

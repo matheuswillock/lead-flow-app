@@ -5,6 +5,7 @@ import { isManagerLikeRole } from "@/lib/roles";
 import { invalidatePortfolioCache } from "@/lib/cache/invalidation";
 import { importMappedPortfolioClientsUseCase } from "@/app/api/useCases/portfolio/ImportMappedPortfolioClientsUseCase";
 import { MappedPortfolioImportRequestSchema } from "./DTO/mappedPortfolioImportRequest";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output);
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[PortfolioImportMappedRoute][POST] Erro ao importar clientes:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

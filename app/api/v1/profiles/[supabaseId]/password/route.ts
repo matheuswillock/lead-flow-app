@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { validateUpdatePasswordRequest } from "../../DTO/requestToUpdatePassword";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const profileUseCase = new RegisterNewUserProfile();
 
@@ -67,6 +68,7 @@ export async function PUT(
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('[Change Password][PUT /api/v1/profiles/[supabaseId]/password] Erro inesperado', {
       requestUserId: supabaseId,
       originScreen,

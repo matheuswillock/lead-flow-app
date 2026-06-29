@@ -7,6 +7,7 @@ import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAcc
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { createTaskUseCase } from "@/app/api/useCases/task/CreateTaskUseCase";
 import { invalidateLeadActivitiesCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const mentionSchema = z.object({
   profileId: z.string().uuid("profileId deve ser um UUID válido"),
@@ -192,6 +193,7 @@ export async function POST(
     invalidateLeadActivitiesCache({ leadId });
     return NextResponse.json(output, { status: 201 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadActivitiesRoute][POST] Erro ao adicionar atividade:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

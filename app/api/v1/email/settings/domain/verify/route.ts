@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTeamSettingsUseCase } from "@/app/api/useCases/email/EmailTeamSettingsUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
     const output = await useCase.verifyDomain(teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailSettingsDomainVerifyRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

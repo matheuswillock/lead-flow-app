@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, Braces, CheckCircle2, Copy, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +41,8 @@ type GlobalVariable = {
   key: string;
   description: string | null;
   defaultValue: string | null;
+  valueSource?: "STATIC" | "CDP";
+  cdpFieldKey?: string | null;
 };
 
 function sanitizeKey(value: string) {
@@ -140,6 +144,7 @@ interface VariablesPanelProps {
 
 export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
   const { draft, updateDraft } = useTemplateEditorContext();
+  const params = useParams<{ supabaseId: string }>();
   const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>([]);
 
   useEffect(() => {
@@ -272,9 +277,25 @@ export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
           </p>
           <div className="flex flex-wrap gap-1.5">
             {globalVariables.map((v) => (
-              <VariableChip key={v.id} label={v.key} hint={v.description ?? undefined} />
+              <VariableChip
+                key={v.id}
+                label={v.key}
+                hint={
+                  v.valueSource === "CDP"
+                    ? `CDP: ${v.cdpFieldKey ?? "campo não configurado"}`
+                    : v.description ?? undefined
+                }
+              />
             ))}
           </div>
+          {globalVariables.some((variable) => variable.valueSource === "CDP") ? (
+            <Link
+              href={`/${params.supabaseId}/email/configuracoes`}
+              className="text-xs text-primary underline-offset-4 hover:underline"
+            >
+              Configurar em Variáveis globais
+            </Link>
+          ) : null}
         </div>
       ) : null}
 

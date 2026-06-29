@@ -5,6 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { isManagerLikeRole } from "@/lib/roles"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
+import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import {
   type EmailTemplateFunctionDefinition,
@@ -508,7 +509,7 @@ export class EmailTemplateUseCase {
       }))
 
       const recipientEmail = data.to.trim().toLowerCase()
-      const recipient = {
+      const baseRecipient = {
         email: recipientEmail,
         name: recipientEmail.split("@")[0] || recipientEmail,
         customFields: variableInputs.reduce<Record<string, string>>((acc, variable) => {
@@ -520,6 +521,8 @@ export class EmailTemplateUseCase {
           return acc
         }, {}),
       }
+      const [enrichedRecipient] = await enrichCampaignRecipientsWithCdp(ctx.teamId, [baseRecipient])
+      const recipient = enrichedRecipient ?? baseRecipient
       const defaultsUseCase = new EmailTeamVariablesUseCase()
       const defaultsOutput = await defaultsUseCase.getDefaultsMap(ctx)
       const globalDefaults = defaultsOutput.isValid

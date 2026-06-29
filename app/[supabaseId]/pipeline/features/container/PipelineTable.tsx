@@ -89,7 +89,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   const { tz } = useTimezone();
   const { 
     filtered, 
-    handleRowClick, 
+    handleRowClick,
+    handleRowHover,
     statusLabels, 
     isLoading,
     refreshLeads,
@@ -597,7 +598,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
               <TableBody>
                 {table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
-                    <DraggableRow key={row.id} row={row} onRowClick={handleRowClick} />
+                    <DraggableRow key={row.id} row={row} onRowClick={handleRowClick} onRowHover={handleRowHover} />
                   ))
                 ) : (
                   <TableRow>
@@ -726,6 +727,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           initialStartDate={selectedLead.contractDueDate}
           initialOperadora={selectedLead.soldPlan}
           initialHolderCnpj={selectedLead.cnpj}
+          initialHolderRazaoSocial={selectedLead.razaoSocial}
         />
       )}
 

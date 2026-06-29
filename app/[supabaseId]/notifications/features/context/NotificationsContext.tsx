@@ -5,6 +5,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { notificationsService } from "../services/NotificationsService";
+import { inAppNotificationBridge } from "@/lib/notifications/in-app-notification-bridge";
 import type {
   MarkAllAsReadOptions,
   NotificationItem,
@@ -294,11 +295,15 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
               setTotal((prev) => prev + 1);
               void syncFromServer();
 
+              const mapped = mapRealtimeRowToNotification(row);
+              if (!row.isRead && typeof document !== "undefined" && document.visibilityState === "visible") {
+                inAppNotificationBridge.emit(mapped);
+              }
+
               if (!listWasLoadedRef.current) {
                 return;
               }
 
-              const mapped = mapRealtimeRowToNotification(row);
               setNotifications((prev) => {
                 if (prev.some((item) => item.id === mapped.id)) {
                   return prev;

@@ -41,6 +41,11 @@ export interface MasterPlatformUserRecord {
   teams: TeamSummaryRecord[]
 }
 
+export interface MasterPlatformUserTypeRecord {
+  slug: "common" | "member_pro"
+  isExpired: boolean
+}
+
 export interface MasterPlatformUserDetailsRecord {
   id: string
   fullName: string | null
@@ -65,6 +70,8 @@ export interface MasterPlatformUserDetailsRecord {
   googleCalendarConnected: boolean
   linkedUsersCount: number
   teamsTotalItems: number
+  userType: MasterPlatformUserTypeRecord
+  allTeams: Array<{ id: string; name: string; membersCount: number }>
   teams: Array<{
     id: string
     name: string
@@ -79,8 +86,22 @@ export interface MasterPlatformUserBillingRecord {
   id: string
   fullName: string | null
   email: string
+  cpfCnpj: string | null
+  phone: string | null
+  postalCode: string | null
+  address: string | null
+  addressNumber: string | null
+  neighborhood: string | null
+  complement: string | null
   asaasCustomerId: string | null
+  asaasSubscriptionId: string | null
+  subscriptionStatus: SubscriptionStatus | null
+  subscriptionNextDueDate: Date | null
+  subscriptionEndDate: Date | null
+  subscriptionCycle: string | null
   hasPermanentSubscription: boolean
+  timezone: string | null
+  functions: string[]
 }
 
 export interface PlatformUsersFilters {
@@ -153,9 +174,22 @@ export interface IBackofficePlatformUsersRepository {
 
   findDefaultTeamByMasterId(masterProfileId: string): Promise<{ id: string; name: string } | null>
 
+  listTeamsByMasterId(masterProfileId: string): Promise<Array<{ id: string; name: string }> | null>
+
   findTeamByIdAndMasterId(teamId: string, masterId: string): Promise<{ id: string } | null>
 
-  findProfileByEmail(email: string): Promise<{ id: string; isMaster: boolean; managerId: string | null } | null>
+  findTeamMember(teamId: string, profileId: string): Promise<{ id: string } | null>
+
+  findProfileByEmail(email: string): Promise<{
+    id: string
+    email: string
+    fullName: string | null
+    supabaseId: string | null
+    isMaster: boolean
+    managerId: string | null
+  } | null>
+
+  profileBelongsToMasterAccount(profileId: string, masterProfileId: string): Promise<boolean>
 
   createMemberForMaster(
     masterProfileId: string,
@@ -205,4 +239,6 @@ export interface IBackofficePlatformUsersRepository {
   deleteTeam(teamId: string, masterId: string): Promise<void>
 
   updateSupabaseIdForProfile(profileId: string, supabaseId: string): Promise<void>
+
+  assertUserSubscriptionCapacity(masterProfileId: string): Promise<void>
 }

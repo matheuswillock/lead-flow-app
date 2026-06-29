@@ -116,7 +116,7 @@ type ParsedLeadRow = {
 
 type ExistingLeadKey = {
   id: string;
-  status: LeadStatus;
+  status: LeadStatus | null;
   email: string | null;
   phone: string | null;
   cnpj: string | null;

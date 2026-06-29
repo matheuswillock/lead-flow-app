@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailCreditUseCase } from "@/app/api/useCases/email/EmailCreditUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const schema = z.object({
   plan: z.enum(["starter", "plus", "pro", "business"]),
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
     const output = await useCase.subscribe(validation.data.plan, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailCreditsSubscribeRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

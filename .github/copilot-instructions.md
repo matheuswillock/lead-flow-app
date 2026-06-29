@@ -43,17 +43,32 @@ The migration workflow uses **Supabase CLI** as the source of truth for migratio
 
 ### Creating migrations (MUST)
 
-For any database change (schema, RLS, functions, triggers, publications, extensions):
+Agents **MUST NOT** create migration files manually in `supabase/migrations/` (hand-crafted timestamps, copy/paste, or rename-only flows). Every new file **MUST** originate from the Supabase CLI.
+
+| Change type | Command | SQL |
+|-------------|---------|-----|
+| **Schema** (`prisma/schema.prisma` — models, enums, indexes) | `bun run db:migrate:from-prisma -- <migration-name>` | Auto-generated via `prisma db push` (local) + `supabase db diff -f` — **review before remote push** |
+| **Manual** (RLS, triggers, functions, seeds, publications, extensions) | `bun run db:migrate:new <migration-name>` | Written by hand in the generated file |
+
+**Schema workflow** (requires local Supabase on port 55322):
+
+```bash
+# Preview diff without writing a file
+bun run db:migrate:from-prisma -- --dry-run <migration-name>
+
+# Generate supabase/migrations/<timestamp>_<migration-name>.sql
+bun run db:migrate:from-prisma -- <migration-name>
+
+# Validate replay
+bun run db:migrate:reset:local
+```
+
+**Manual workflow** (RLS, data seeds, etc.):
 
 ```bash
 bun run db:migrate:new <migration-name>
-# Creates: supabase/migrations/<timestamp>_<migration-name>.sql
+# Edit the generated SQL file (idempotent when possible)
 ```
-
-Agents **MUST NOT** create migration files manually in `supabase/migrations/` (including hand-crafted timestamps, copy/paste, or rename-only flows).  
-Every new migration file **MUST** originate from `supabase migration new` (via `bun run db:migrate:new <migration-name>`), and only then receive SQL edits.
-
-Write SQL directly in the generated file. For schema changes driven by `prisma/schema.prisma`, apply the schema to the local DB first (`bun run prisma:db:push`), then use `bun run db:diff` to capture the diff.
 
 All migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`).
 
@@ -388,7 +403,7 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 ## Pull Request Checklist (MUST)
 
 - [ ] Seguiu `agents.md`?
-- [ ] Criou migration? Gerou com `bun run prisma:migrate -- <name>`, revisou `migration.sql` e aplicou somente com autorização?
+- [ ] Criou migration? Schema via `bun run db:migrate:from-prisma -- <name>` ou manual via `db:migrate:new`; revisou SQL e aplicou remoto somente com autorização?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
 - [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
 - [ ] Criou nova feature com `featureSlug`? Registrou em `backoffice_features` via migration de dados (`bun run db:migrate:new seed-<slug>`) **e** atualizou `prisma/seed-backoffice-products.ts`?

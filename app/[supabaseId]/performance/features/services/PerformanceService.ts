@@ -1,7 +1,7 @@
 import type { IPerformanceService, SendPerformanceExportEmailInput } from './IPerformanceService';
 import type { PerformanceData, PerformanceFiltersState } from '../context/PerformanceTypes';
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 interface CachedEntry {

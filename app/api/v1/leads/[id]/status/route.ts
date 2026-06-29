@@ -7,6 +7,7 @@ import { LeadStatus } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { invalidateLeadCache, invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import type {
   LeadStatusTransitionMode,
   UpdateLeadStatusTriggerInput,
@@ -105,6 +106,7 @@ export async function handleLeadStatusTransition(
     return NextResponse.json(output, { status: responseStatus });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error(`[${options.logPrefix}] Erro ao atualizar status do lead:`, error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

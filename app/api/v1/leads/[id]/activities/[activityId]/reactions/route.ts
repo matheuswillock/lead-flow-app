@@ -4,6 +4,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAccess";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const reactionSchema = z.object({
   emoji: z.string().min(1, "Emoji é obrigatório"),
@@ -162,6 +163,7 @@ export async function POST(
     const output = new Output(true, ["Reação atualizada"], [], { reactions: aggregated });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadActivityReactionsRoute][POST] Erro ao reagir à atividade:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

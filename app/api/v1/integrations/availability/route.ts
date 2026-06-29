@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const schema = z.object({
   teamId: z.string().uuid(),
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[IntegrationAvailabilityRoute][POST] Erro ao buscar disponibilidade:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno do servidor"], null),

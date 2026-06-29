@@ -26,6 +26,7 @@ import { useBillingSlots } from "@/app/hooks/useBillingSlots";
 import { cn } from "@/lib/utils";
 import { ManagerTeamsContainer } from "./features/container/ManagerTeamsContainer";
 import { PendingPaymentEditDialog } from "./features/container/PendingPaymentEditDialog";
+import { ExternalMemberInviteForm } from "./features/components/ExternalMemberInviteForm";
 import type { ManagerTeamTableRow } from "./features/types";
 
 type TeamMember = {
@@ -171,6 +172,7 @@ export default function TeamsPage() {
   const [transferCandidateId, setTransferCandidateId] = useState("");
   const [transferTargets, setTransferTargets] = useState<TeamTransferTarget[]>([]);
   const [canManageTransferRoutes, setCanManageTransferRoutes] = useState(false);
+  const [canManageMembers, setCanManageMembers] = useState(false);
   const [savingTransferTargets, setSavingTransferTargets] = useState(false);
   const [disabledStatuses, setDisabledStatuses] = useState<string[]>([]);
   const [leadTimeRules, setLeadTimeRules] = useState<Record<string, LeadTimeRuleDraft>>({});
@@ -662,6 +664,7 @@ export default function TeamsPage() {
         transferCandidates: EligibleProfile[];
         transferTargets?: TeamTransferTarget[];
         canManageTransferRoutes?: boolean;
+        canManageMembers?: boolean;
       };
 
       setMembers(payload.members || []);
@@ -669,6 +672,7 @@ export default function TeamsPage() {
       setTransferCandidates(payload.transferCandidates || []);
       setTransferTargets(payload.transferTargets || []);
       setCanManageTransferRoutes(payload.canManageTransferRoutes === true);
+      setCanManageMembers(payload.canManageMembers === true);
       setRenameValue(payload.team.name || "");
       setManageTeamName(payload.team.name || "");
       if (payload.transferCandidates?.length) {
@@ -1108,14 +1112,14 @@ export default function TeamsPage() {
                       Adicione ou remova membros deste time.
                     </p>
                   </div>
-                  {!user?.isMaster ? (
+                  {!canManageMembers ? (
                     <Badge variant="outline" className="text-xs">
                       Apenas master
                     </Badge>
                   ) : null}
                 </div>
 
-                {user?.isMaster ? (
+                {canManageMembers ? (
                   <div className="space-y-3 rounded-lg border border-border/60 p-3">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <UserPlus className="h-4 w-4" />
@@ -1258,6 +1262,17 @@ export default function TeamsPage() {
                       </Button>
                     </div>
                   </div>
+                ) : null}
+
+                {canManageMembers && manageTeamId ? (
+                  <ExternalMemberInviteForm
+                    teamId={manageTeamId}
+                    supabaseId={supabaseId}
+                    onSuccess={async () => {
+                      await loadManageData(manageTeamId);
+                      await refreshTeams();
+                    }}
+                  />
                 ) : null}
 
                 <div className="rounded-lg border border-border/60">

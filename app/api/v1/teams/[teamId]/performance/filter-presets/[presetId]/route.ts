@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
 import type { TeamFilterPresetInput } from "@/app/api/useCases/teamFilterPresets/ITeamFilterPresetsUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const updateFilterPresetSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -49,6 +50,7 @@ export async function PATCH(
     );
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[PerformanceFilterPresetsRoute][PATCH] Erro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao atualizar preset"], null),
@@ -82,6 +84,7 @@ export async function DELETE(
     );
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[PerformanceFilterPresetsRoute][DELETE] Erro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao remover preset"], null),

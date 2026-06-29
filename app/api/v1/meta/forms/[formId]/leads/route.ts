@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { metaLeadService } from '@/app/api/services/MetaLeadService';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET /api/v1/meta/forms/[formId]/leads?limit=100
@@ -34,6 +35,7 @@ export async function GET(
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ Erro ao buscar leads:', error);
 
     return NextResponse.json(

@@ -4,9 +4,12 @@ import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMet
 export interface MetricsFilters {
   supabaseId: string;
   teamId: string;
+  teamIds?: string[];
   startDate?: Date;
   endDate?: Date;
   period?: '7d' | '30d' | '3m' | '6m' | '1y';
+  teamScope?: 'active' | 'all';
+  masterId?: string;
 }
 
 /**
@@ -15,5 +18,5 @@ export interface MetricsFilters {
  */
 export interface IMetricsUseCase {
   getDashboardMetrics(filters: MetricsFilters, ctx: TeamContext): Promise<Output>;
-  getDetailedStatusMetrics(supabaseId: string, teamId: string, ctx: TeamContext): Promise<Output>;
+  getDetailedStatusMetrics(supabaseId: string, teamId: string, teamIds: string[], ctx: TeamContext): Promise<Output>;
 }

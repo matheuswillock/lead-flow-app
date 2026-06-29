@@ -62,6 +62,26 @@ enum LeadStatus {
   contract_finalized
 }
 
+enum LeadProposalReviewStatus {
+  pending
+  submitted
+  criticized
+  approved
+}
+
+enum LeadRequiredDocumentType {
+  rg
+  address_proof
+  social_contract
+}
+
+enum LeadRequiredDocumentStatus {
+  pending
+  uploaded
+  approved
+  rejected
+}
+
 enum BackofficeLeadStatus {
   new_opportunity
   scheduled
@@ -141,6 +161,31 @@ enum TeamStatusRuleType {
   disabled_status
   lead_time
   combined_transition
+}
+
+enum BackofficeLeadTransitionFieldKey {
+  age
+  currentHealthPlan
+  referenceHospital
+  currentTreatment
+  email
+  phone
+  cnpj
+}
+
+enum BackofficeLeadTransitionGateType {
+  allowed_target_statuses
+  block_targets_when_field_equals
+  require_meeting_heald_on_exit
+  require_no_show_preconditions
+  require_sales_info
+  require_finalize_contract
+  require_schedule_artifacts
+  require_trigger_future_sale
+  require_trigger_loss_reason
+  require_email_for_online_schedule
+  require_finalize_contract_flow
+  require_closer
 }
 
 enum TeamLeadTimeUnit {
@@ -302,6 +347,13 @@ enum BackofficeFeatureGrantType {
   @@map("backoffice_feature_grant_type")
 }
 
+enum BackofficeBetaTeamScope {
+  ALL_TEAMS
+  SPECIFIC_TEAMS
+
+  @@map("backoffice_beta_team_scope")
+}
+
 enum BackofficeAccessPrincipal {
   MASTER
   MANAGER
@@ -363,8 +415,19 @@ enum NotificationType {
   LEAD_PROPOSAL_PENDING
   GOOGLE_CONNECTION_BROKEN
   LEAD_TRANSFER_ACTIVATED
+  MEETING_REMINDER
+  LEAD_TRANSFER_SCHEDULE_FAILED
+  MEETING_FOLLOW_UP_DIGEST
 
   @@map("notification_type")
+}
+
+enum WebPushConsentStatus {
+  accepted
+  declined
+  dismissed
+
+  @@map("web_push_consent_status")
 }
 
 enum StudioWebhookTokenExpiryMode {
@@ -502,6 +565,7 @@ model Profile {
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
+  sponsorMasterId          String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
   subscriptionId           String?             @db.Text
   subscriptionStatus       SubscriptionStatus?
@@ -522,6 +586,9 @@ model Profile {
   // Relations
   manager   Profile?  @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)
   operators Profile[] @relation("ManagerOperators")
+
+  sponsorMaster     Profile?  @relation("ProfileSponsor", fields: [sponsorMasterId], references: [id], onDelete: Restrict)
+  sponsoredAccounts Profile[] @relation("ProfileSponsor")
 
   // Lead relations
   leadsAsManager    Lead[]                 @relation("LeadManager")
@@ -552,9 +619,14 @@ model Profile {
   createdBackofficeLeads      BackofficeLead[]          @relation("BackofficeLeadCreator")
   receivedNotifications       Notification[]            @relation("NotificationRecipient")
   sentNotifications           Notification[]            @relation("NotificationActor")
+  meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[] @relation("MeetingFollowUpDigestRecipient")
+  webPushSubscriptions        ProfileWebPushSubscription[] @relation("ProfileWebPushSubscriptions")
+  webPushConsent              ProfileWebPushConsent?       @relation("ProfileWebPushConsents")
   updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
   createdTeamFilterPresets    TeamFilterPreset[]        @relation("TeamFilterPresetCreator")
   createdTeamStatusRules      TeamStatusRule[]          @relation("TeamStatusRuleCreator")
+  updatedLeadStatusTransitionFieldRules BackofficeLeadStatusTransitionFieldRule[] @relation("BackofficeLeadStatusTransitionFieldRuleUpdater")
+  updatedLeadStatusTransitionGates BackofficeLeadStatusTransitionGate[] @relation("BackofficeLeadStatusTransitionGateUpdater")
   finalizedContracts          LeadFinalized[]           @relation("LeadFinalizedCloser")
   createdTasks                Task[]                    @relation("TaskCreator")
   taskAssignments             TaskAssignee[]            @relation("TaskAssigneeProfile")
@@ -580,8 +652,18 @@ model Profile {
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
   assignedUserTypeChanges ProfileUserTypeAssignment[] @relation("ProfileUserTypeAssignmentAssignedBy")
 
+  // WhatsApp relations
+  whatsappConfigsCreated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigCreatedBy")
+  whatsappConfigsUpdated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigUpdatedBy")
+  whatsappConversations   WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
+  whatsappMessagesSent    WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
+
+  proposalReviewsReviewed LeadProposalReview[]  @relation("LeadProposalReviewReviewer")
+  requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
+
   @@index([role])
   @@index([managerId])
+  @@index([sponsorMasterId])
   @@index([cpfCnpj])
   @@index([googleConnectionId])
   @@map("corretor_studio_profiles")
@@ -988,11 +1070,12 @@ model Lead {
   teamId               String?       @db.Uuid
   assignedTo           String?       @db.Uuid
   closerId             String?       @db.Uuid
-  status               LeadStatus    @default(new_opportunity)
+  status               LeadStatus?
   name                 String        @db.Text
   email                String?       @db.Text
   phone                String?       @db.Text
   cnpj                 String?       @db.Text
+  razaoSocial          String?       @db.Text @map("razaoSocial")
   age                  String?       @db.Text
   currentHealthPlan    String?       @db.Text
   currentValue         Decimal?      @db.Decimal(12, 2)
@@ -1003,6 +1086,8 @@ model Lead {
   meetingNotes         String?       @db.Text
   meetingLink          String?       @db.Text
   meetingHeald         MeetingHeald?
+  meetingPresenceConfirmed   Boolean   @default(false)
+  meetingPresenceConfirmedAt DateTime? @db.Timestamptz(6)
   meetingType          String?       @db.Text
   isTransfer           Boolean       @default(false)
   followUpAt           DateTime?     @db.Timestamptz(6)
@@ -1045,6 +1130,12 @@ model Lead {
   transfers     LeadTransfer[]
   portfolio     LeadPortfolio?
   attachments   LeadAttachment[]
+  proposalReview LeadProposalReview?
+  requiredDocuments LeadRequiredDocument[]
+
+  // WhatsApp relations
+  whatsappConversations WhatsAppConversation[]
+  whatsappMessages      WhatsAppMessage[]
 
   // Unique per tenant
   @@unique([teamId, email])
@@ -1171,6 +1262,7 @@ model LeadsSchedule {
   inviteDispatchLastPayload   Json?
   publicShareTokenHash        String?               @map("publicShareTokenHash") @db.Text
   publicShareExpiresAt        DateTime?             @map("publicShareExpiresAt") @db.Timestamptz(6)
+  reminder30MinSentAt         DateTime?             @map("reminder30MinSentAt") @db.Timestamptz(6)
   createdAt                   DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt                   DateTime              @updatedAt @db.Timestamptz(6)
 
@@ -1280,10 +1372,52 @@ model LeadAttachment {
   // Relations
   lead     Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   uploader Profile @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  requiredDocumentLinks LeadRequiredDocument[]
 
   @@index([leadId])
   @@index([uploadedBy])
   @@map("corretor_studio_lead_attachments")
+}
+
+model LeadProposalReview {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  leadId               String                   @unique @db.Uuid
+  status               LeadProposalReviewStatus @default(pending)
+  criticizedTitle      String?                  @db.Text
+  criticizedMessage    String?                  @db.Text
+  criticizedAt         DateTime?                @db.Timestamptz(6)
+  reviewedByProfileId  String?                  @db.Uuid
+  saleRegisteredAt     DateTime?                @db.Timestamptz(6)
+  salePayload          Json?
+  createdAt            DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime                 @updatedAt @db.Timestamptz(6)
+
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reviewedBy Profile? @relation("LeadProposalReviewReviewer", fields: [reviewedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([reviewedByProfileId])
+  @@map("corretor_studio_lead_proposal_reviews")
+}
+
+model LeadRequiredDocument {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  leadId              String                     @db.Uuid
+  documentType        LeadRequiredDocumentType
+  status              LeadRequiredDocumentStatus @default(pending)
+  attachmentId        String?                    @db.Uuid
+  reviewedByProfileId String?                    @db.Uuid
+  createdAt           DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime                   @updatedAt @db.Timestamptz(6)
+
+  lead       Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  attachment LeadAttachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  reviewedBy Profile?        @relation("LeadRequiredDocumentReviewer", fields: [reviewedByProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([leadId, documentType])
+  @@index([leadId])
+  @@index([status])
+  @@map("corretor_studio_lead_required_documents")
 }
 
 // -----------------------------
@@ -1353,6 +1487,23 @@ model Team {
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
   emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
   emailTemplateHistory EmailTemplateHistory[]
+
+  // WhatsApp relations
+  whatsappConfig        TeamWhatsAppConfig?
+  whatsappConversations WhatsAppConversation[]
+  whatsappMessages      WhatsAppMessage[]
+  whatsappUsageEvents   WhatsAppUsageEvent[]
+  whatsappContacts      TeamWhatsAppContact[]
+
+  // CDP relations
+  customerProfiles      CustomerProfile[]
+  customerIdentities    CustomerIdentity[]
+  customerSourceLinks   CustomerSourceLink[]
+  customerEvents        CustomerEvent[]
+  customerChannelConsents CustomerChannelConsent[]
+
+  backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
+  meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
 
   @@index([masterId])
   @@map("corretor_studio_teams")
@@ -1461,6 +1612,59 @@ model Notification {
   @@index([recipientProfileId, createdAt])
   @@index([teamId, createdAt])
   @@map("corretor_studio_notifications")
+}
+
+model MeetingFollowUpDigestLog {
+  id                 String   @id @default(uuid()) @db.Uuid
+  recipientProfileId String   @db.Uuid
+  teamId             String   @db.Uuid
+  digestDate         DateTime @db.Date
+  sentAt             DateTime @db.Timestamptz(6)
+  leadCount          Int
+  channel            String   @db.Text
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+
+  recipient Profile @relation("MeetingFollowUpDigestRecipient", fields: [recipientProfileId], references: [id], onDelete: Cascade)
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([recipientProfileId, teamId, digestDate])
+  @@index([sentAt(sort: Desc)])
+  @@map("meeting_follow_up_digest_logs")
+}
+
+model ProfileWebPushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @map("profileId") @db.Uuid
+  endpoint  String   @unique @db.Text
+  p256dh    String   @db.Text
+  auth      String   @db.Text
+  userAgent String?  @map("userAgent") @db.Text
+  isActive  Boolean  @default(true) @map("isActive")
+  createdAt DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile Profile @relation("ProfileWebPushSubscriptions", fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId], map: "corretor_studio_profile_web_push_subscriptions_profile_id_idx")
+  @@map("corretor_studio_profile_web_push_subscriptions")
+}
+
+model ProfileWebPushConsent {
+  id             String               @id @default(uuid()) @db.Uuid
+  profileId      String               @unique @map("profileId") @db.Uuid
+  status         WebPushConsentStatus
+  consentVersion String               @map("consentVersion") @db.Text
+  consentedAt    DateTime?            @map("consentedAt") @db.Timestamptz(6)
+  declinedAt     DateTime?            @map("declinedAt") @db.Timestamptz(6)
+  dismissedAt    DateTime?            @map("dismissedAt") @db.Timestamptz(6)
+  source         String?              @db.Text
+  createdAt      DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt      DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile Profile @relation("ProfileWebPushConsents", fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId], map: "corretor_studio_profile_web_push_consents_profile_id_idx")
+  @@map("corretor_studio_profile_web_push_consents")
 }
 
 // -----------------------------
@@ -1706,7 +1910,8 @@ model EmailCampaign {
   createdBy       String              @db.Uuid
   name            String              @db.Text
   templateId      String              @db.Uuid
-  contactListId   String              @db.Uuid
+  contactListId   String?             @db.Uuid
+  cdpSegmentSlug  String?             @db.Text
   status          EmailCampaignStatus @default(draft)
   scheduledAt     DateTime?           @db.Timestamptz(6)
   sentAt          DateTime?           @db.Timestamptz(6)
@@ -1725,7 +1930,7 @@ model EmailCampaign {
   team        Team             @relation("TeamEmailCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
   creator     Profile          @relation("EmailCampaignCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   template    EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  contactList EmailContactList @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  contactList EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: Restrict)
   logs        EmailLog[]
 
   @@index([teamId, status])
@@ -1855,22 +2060,39 @@ model BackofficeFeatureAccessRule {
 }
 
 model BackofficeFeatureGrant {
-  id          String                       @id @default(uuid()) @db.Uuid
-  featureId   String                       @db.Uuid
-  profileId   String                       @db.Uuid
-  grantType   BackofficeFeatureGrantType   @default(BETA)
-  accessLevel BackofficeFeatureAccessLevel @default(FULL)
-  isActive    Boolean                      @default(true)
-  createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime                     @updatedAt @db.Timestamptz(6)
+  id            String                       @id @default(uuid()) @db.Uuid
+  featureId     String                       @db.Uuid
+  profileId     String                       @db.Uuid
+  grantType     BackofficeFeatureGrantType   @default(BETA)
+  accessLevel   BackofficeFeatureAccessLevel @default(FULL)
+  betaTeamScope BackofficeBetaTeamScope      @default(ALL_TEAMS)
+  isActive      Boolean                      @default(true)
+  createdAt     DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime                     @updatedAt @db.Timestamptz(6)
 
-  feature BackofficeFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  profile Profile           @relation("BackofficeFeatureProfileGrants", fields: [profileId], references: [id], onDelete: Cascade)
+  feature BackofficeFeature              @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  profile Profile                        @relation("BackofficeFeatureProfileGrants", fields: [profileId], references: [id], onDelete: Cascade)
+  teams   BackofficeFeatureGrantTeam[]
 
   @@unique([featureId, profileId, grantType], map: "backoffice_feature_grants_feature_profile_grant_type_key")
   @@index([profileId, grantType, isActive], map: "backoffice_feature_grants_profile_grant_type_active_idx")
   @@index([featureId, isActive], map: "backoffice_feature_grants_feature_active_idx")
   @@map("backoffice_feature_grants")
+}
+
+model BackofficeFeatureGrantTeam {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  grantId   String   @db.Uuid
+  teamId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  grant BackofficeFeatureGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  team  Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, teamId], map: "backoffice_feature_grant_teams_grant_team_key")
+  @@index([grantId], map: "backoffice_feature_grant_teams_grant_id_idx")
+  @@index([teamId], map: "backoffice_feature_grant_teams_team_id_idx")
+  @@map("backoffice_feature_grant_teams")
 }
 
 model BackofficeProductPaymentRule {
@@ -1889,6 +2111,45 @@ model BackofficeProductPaymentRule {
   @@unique([productId, paymentMethod, billingCycle], map: "backoffice_product_payment_rules_unique")
   @@index([productId], map: "backoffice_product_payment_rules_productid_idx")
   @@map("backoffice_product_payment_rules")
+}
+
+model BackofficeLeadStatusTransitionFieldRule {
+  id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  targetStatus       LeadStatus
+  fieldKey           BackofficeLeadTransitionFieldKey
+  isEnabled          Boolean                          @default(true)
+  updatedByProfileId String                           @db.Uuid
+  createdAt          DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                         @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile @relation("BackofficeLeadStatusTransitionFieldRuleUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([targetStatus, fieldKey])
+  @@index([targetStatus])
+  @@map("backoffice_lead_status_transition_field_rules")
+}
+
+model BackofficeLeadStatusTransitionGate {
+  id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug               String                           @unique
+  name               String
+  gateType           BackofficeLeadTransitionGateType
+  sourceStatus       LeadStatus?
+  targetStatus       LeadStatus?
+  config             Json                             @default("{}")
+  blockerType        String
+  errorMessage       String?
+  isEnabled          Boolean                          @default(true)
+  sortOrder          Int                              @default(0)
+  updatedByProfileId String                           @db.Uuid
+  createdAt          DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                         @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile @relation("BackofficeLeadStatusTransitionGateUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
+
+  @@index([sortOrder])
+  @@index([isEnabled])
+  @@map("backoffice_lead_status_transition_gates")
 }
 
 model BackofficeUserSubscription {
@@ -2008,20 +2269,23 @@ model EmailTeamSender {
 }
 
 model EmailTeamVariable {
-  id           String   @id @default(uuid()) @db.Uuid
-  teamId       String   @db.Uuid
-  key          String   @db.Text
-  type         String   @default("string") @db.Text
-  defaultValue String?  @db.Text
-  description  String?  @db.Text
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+  id           String                   @id @default(uuid()) @db.Uuid
+  teamId       String                   @db.Uuid
+  key          String                   @db.Text
+  type         String                   @default("string") @db.Text
+  defaultValue String?                  @db.Text
+  description  String?                  @db.Text
+  isActive     Boolean                  @default(true)
+  valueSource  EmailVariableValueSource @default(STATIC)
+  cdpFieldKey  String?                  @db.Text
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime                 @updatedAt @db.Timestamptz(6)
 
   team Team @relation("TeamEmailVariables", fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, key])
   @@index([teamId, isActive])
+  @@index([teamId, valueSource])
   @@map("email_team_variables")
 }
 
@@ -2061,4 +2325,453 @@ model ProfileUserTypeAssignment {
   @@index([userTypeId])
   @@index([accessExpiresAt])
   @@map("profile_user_type_assignments")
+}
+
+// ==============================
+// WHATSAPP MODULE
+// ==============================
+
+enum WhatsAppProvider {
+  EVOLUTION
+}
+
+enum WhatsAppConnectionStatus {
+  PENDING
+  QR_READY
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  BANNED
+}
+
+enum WhatsAppMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsAppMessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACT
+  UNKNOWN
+}
+
+enum WhatsAppMessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+enum WhatsAppUsageEventType {
+  OUTBOUND_MESSAGE
+  INBOUND_MESSAGE
+  CONNECTION_EVENT
+  RECONNECTION_EVENT
+}
+
+enum WhatsAppHistorySyncStatus {
+  IDLE
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum WhatsAppHandoffMode {
+  BOT
+  HUMAN
+}
+
+enum WhatsAppAutoResponseRuleType {
+  WELCOME
+  OFF_HOURS
+  KEYWORD
+}
+
+enum WhatsAppAutoResponseMatchMode {
+  CONTAINS
+  EXACT
+  STARTS_WITH
+}
+
+enum TeamWhatsAppContactSource {
+  PHONE_CONTACTS
+  GROUP_PARTICIPANT
+}
+
+model TeamWhatsAppContact {
+  id           String                    @id @default(uuid()) @db.Uuid
+  teamId       String                    @db.Uuid
+  remoteJid    String                    @db.Text
+  opaqueId     String                    @db.Text
+  phoneNumber  String?                   @db.Text
+  displayName  String?                   @db.Text
+  pushName     String?                   @db.Text
+  source       TeamWhatsAppContactSource
+  lastSyncedAt DateTime                  @default(now()) @db.Timestamptz(6)
+  createdAt    DateTime                  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime                  @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, remoteJid])
+  @@index([teamId, opaqueId])
+  @@map("team_whatsapp_contacts")
+}
+
+model TeamWhatsAppConfig {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  teamId             String                   @unique @db.Uuid
+  provider           WhatsAppProvider         @default(EVOLUTION)
+  instanceName       String                   @db.Text
+  instanceId         String?                  @db.Text
+  phoneNumber        String?                  @db.Text
+  displayName        String?                  @db.Text
+  status             WhatsAppConnectionStatus @default(PENDING)
+  qrCodeText         String?                  @db.Text
+  qrCodeImageUrl     String?                  @db.Text
+  webhookSecret      String                   @db.Text
+  hostBaseUrl        String?                  @db.Text
+  lastConnectedAt    DateTime?                @db.Timestamptz(6)
+  lastDisconnectedAt DateTime?                @db.Timestamptz(6)
+  lastSyncAt             DateTime?                @db.Timestamptz(6)
+  historySyncStatus      WhatsAppHistorySyncStatus @default(IDLE)
+  historySyncStartedAt   DateTime?                @db.Timestamptz(6)
+  historySyncCompletedAt DateTime?                @db.Timestamptz(6)
+  historySyncError       String?                  @db.Text
+  usageLimitMonthly      Int                      @default(2000)
+  billingEnabled     Boolean                  @default(true)
+  createdByProfileId String                   @db.Uuid
+  updatedByProfileId String                   @db.Uuid
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                 @updatedAt @db.Timestamptz(6)
+
+  team          Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdBy     Profile                @relation("WhatsAppConfigCreatedBy", fields: [createdByProfileId], references: [id])
+  updatedBy     Profile                @relation("WhatsAppConfigUpdatedBy", fields: [updatedByProfileId], references: [id])
+  conversations WhatsAppConversation[]
+  usageEvents   WhatsAppUsageEvent[]
+  messages      WhatsAppMessage[]
+  autoResponseRules WhatsAppAutoResponseRule[]
+
+  @@map("team_whatsapp_configs")
+}
+
+model WhatsAppConversation {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @db.Uuid
+  configId           String    @db.Uuid
+  leadId             String?   @db.Uuid
+  externalChatId     String?   @db.Text
+  contactPhone       String    @db.Text
+  contactName        String?   @db.Text
+  contactAvatarUrl   String?   @db.Text
+  normalizedPhone    String    @db.Text
+  assignedProfileId  String?   @db.Uuid
+  lastMessageAt      DateTime? @db.Timestamptz(6)
+  lastInboundAt      DateTime? @db.Timestamptz(6)
+  lastOutboundAt     DateTime? @db.Timestamptz(6)
+  lastMessagePreview String?   @db.Text
+  unreadCount        Int       @default(0)
+  isArchived         Boolean   @default(false)
+  handoffMode        WhatsAppHandoffMode @default(BOT)
+  welcomeSentAt      DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team            Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config          TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  lead            Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedProfile Profile?           @relation("WhatsAppConversationAssignee", fields: [assignedProfileId], references: [id], onDelete: SetNull)
+  messages        WhatsAppMessage[]
+  autoResponseLogs WhatsAppAutoResponseLog[]
+
+  @@unique([configId, externalChatId])
+  @@index([teamId, lastMessageAt(sort: Desc)])
+  @@index([teamId, normalizedPhone])
+  @@index([leadId])
+  @@map("whatsapp_conversations")
+}
+
+model WhatsAppMessage {
+  id                String                   @id @default(uuid()) @db.Uuid
+  conversationId    String                   @db.Uuid
+  teamId            String                   @db.Uuid
+  configId          String                   @db.Uuid
+  leadId            String?                  @db.Uuid
+  providerMessageId String?                  @db.Text
+  providerEventId   String?                  @db.Text
+  direction         WhatsAppMessageDirection
+  messageType       WhatsAppMessageType      @default(TEXT)
+  status            WhatsAppMessageStatus    @default(PENDING)
+  contentText       String?                  @db.Text
+  mediaUrl          String?                  @db.Text
+  mediaMimeType     String?                  @db.Text
+  mediaFileName     String?                  @db.Text
+  linkPreview       Json?
+  caption           String?                  @db.Text
+  senderDisplayName String?                  @db.Text
+  sentByProfileId   String?                  @db.Uuid
+  senderPhone       String?                  @db.Text
+  recipientPhone    String?                  @db.Text
+  sentAt            DateTime?                @db.Timestamptz(6)
+  deliveredAt       DateTime?                @db.Timestamptz(6)
+  readAt            DateTime?                @db.Timestamptz(6)
+  failedAt          DateTime?                @db.Timestamptz(6)
+  isAutoResponse    Boolean                  @default(false)
+  autoResponseRuleId String?                 @db.Uuid
+  rawPayload        Json
+  createdAt         DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                 @updatedAt @db.Timestamptz(6)
+
+  conversation  WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  team          Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config        TeamWhatsAppConfig   @relation(fields: [configId], references: [id], onDelete: Cascade)
+  lead          Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  sentByProfile Profile?             @relation("WhatsAppMessageSentBy", fields: [sentByProfileId], references: [id], onDelete: SetNull)
+  autoResponseRule WhatsAppAutoResponseRule? @relation(fields: [autoResponseRuleId], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, providerMessageId])
+  @@unique([teamId, providerEventId])
+  @@index([conversationId, createdAt(sort: Asc)])
+  @@map("whatsapp_messages")
+}
+
+model WhatsAppUsageEvent {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  teamId              String                    @db.Uuid
+  configId            String                    @db.Uuid
+  conversationId      String?                   @db.Uuid
+  messageId           String?                   @db.Uuid
+  providerMessageId   String?                   @db.Text
+  periodKey           String                    @db.Text
+  provider            WhatsAppProvider          @default(EVOLUTION)
+  eventType           WhatsAppUsageEventType
+  direction           WhatsAppMessageDirection?
+  billable            Boolean                   @default(false)
+  countedTowardsQuota Boolean                   @default(true)
+  quantity            Int                       @default(1)
+  rawPayload          Json?
+  createdAt           DateTime                  @default(now()) @db.Timestamptz(6)
+
+  team   Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, providerMessageId, eventType])
+  @@index([teamId, periodKey])
+  @@index([configId, periodKey])
+  @@map("whatsapp_usage_events")
+}
+
+model WhatsAppAutoResponseRule {
+  id               String                        @id @default(uuid()) @db.Uuid
+  configId         String                        @db.Uuid
+  type             WhatsAppAutoResponseRuleType
+  replyMessage     String                        @db.Text
+  triggerKeywords  String[]                      @default([])
+  matchMode        WhatsAppAutoResponseMatchMode @default(CONTAINS)
+  offHoursSchedule Json?
+  isActive         Boolean                       @default(false)
+  priority         Int                           @default(0)
+  createdAt        DateTime                      @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime                      @updatedAt @db.Timestamptz(6)
+
+  config   TeamWhatsAppConfig        @relation(fields: [configId], references: [id], onDelete: Cascade)
+  messages WhatsAppMessage[]
+  logs     WhatsAppAutoResponseLog[]
+
+  @@index([configId, type, isActive])
+  @@map("whatsapp_auto_response_rules")
+}
+
+model WhatsAppAutoResponseLog {
+  id                String                     @id @default(uuid()) @db.Uuid
+  conversationId    String                     @db.Uuid
+  ruleId            String?                    @db.Uuid
+  ruleType          WhatsAppAutoResponseRuleType
+  inboundMessageId  String?                    @db.Uuid
+  outboundMessageId String?                    @db.Uuid
+  triggerText       String?                    @db.Text
+  sentText          String                     @db.Text
+  createdAt         DateTime                   @default(now()) @db.Timestamptz(6)
+
+  conversation WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  rule         WhatsAppAutoResponseRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, ruleType, createdAt])
+  @@map("whatsapp_auto_response_logs")
+}
+
+// ==============================
+// CDP (Customer Data Platform)
+// ==============================
+
+enum CustomerIdentityType {
+  phone
+  email
+  document
+  lead_id
+  email_contact_id
+  portfolio_id
+  whatsapp_contact_id
+
+  @@map("customer_identity_type")
+}
+
+enum CustomerSourceType {
+  crm_lead
+  portfolio
+  email_contact
+  email_campaign
+  whatsapp_contact
+
+  @@map("customer_source_type")
+}
+
+enum CustomerChannel {
+  email
+  whatsapp
+
+  @@map("customer_channel")
+}
+
+enum CustomerConsentStatus {
+  allowed
+  blocked
+  unknown
+
+  @@map("customer_consent_status")
+}
+
+enum CustomerConsentReason {
+  manual
+  imported
+  unsubscribe
+  bounce
+  complaint
+  opt_out
+  missing_identity
+
+  @@map("customer_consent_reason")
+}
+
+enum EmailVariableValueSource {
+  STATIC
+  CDP
+
+  @@map("email_variable_value_source")
+}
+
+model CustomerProfile {
+  id                       String    @id @default(uuid()) @db.Uuid
+  teamId                   String    @db.Uuid
+  normalizedName           String    @db.Text
+  displayName              String    @db.Text
+  normalizedPhone          String    @db.Text
+  displayPhone             String    @db.Text
+  primaryEmail             String?   @db.Text
+  normalizedPrimaryEmail   String?   @db.Text
+  primaryDocument          String?   @db.Text
+  normalizedPrimaryDocument String?  @db.Text
+  lastSeenAt               DateTime? @db.Timestamptz(6)
+  profileData              Json?
+  createdAt                DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt @db.Timestamptz(6)
+
+  team       Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  identities CustomerIdentity[]
+  sourceLinks CustomerSourceLink[]
+  events     CustomerEvent[]
+  consents   CustomerChannelConsent[]
+
+  @@unique([teamId, normalizedPhone, normalizedName])
+  @@index([teamId, normalizedPrimaryEmail])
+  @@index([teamId, normalizedPrimaryDocument])
+  @@index([teamId, lastSeenAt(sort: Desc)])
+  @@map("corretor_studio_cdp_profiles")
+}
+
+model CustomerIdentity {
+  id              String               @id @default(uuid()) @db.Uuid
+  profileId       String               @db.Uuid
+  teamId          String               @db.Uuid
+  type            CustomerIdentityType
+  value           String?              @db.Text
+  normalizedValue String               @db.Text
+  source          String               @db.Text
+  isPrimary       Boolean              @default(false)
+  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime             @updatedAt @db.Timestamptz(6)
+
+  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, type, normalizedValue])
+  @@index([profileId, type])
+  @@map("corretor_studio_cdp_identities")
+}
+
+model CustomerSourceLink {
+  id             String             @id @default(uuid()) @db.Uuid
+  profileId      String             @db.Uuid
+  teamId         String             @db.Uuid
+  sourceType     CustomerSourceType
+  sourceId       String             @db.Text
+  sourceMetadata Json?
+  firstLinkedAt  DateTime           @default(now()) @db.Timestamptz(6)
+  lastSyncedAt   DateTime           @default(now()) @db.Timestamptz(6)
+
+  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, sourceType, sourceId])
+  @@index([profileId, sourceType])
+  @@map("corretor_studio_cdp_source_links")
+}
+
+model CustomerEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  profileId  String   @db.Uuid
+  teamId     String   @db.Uuid
+  eventType  String   @db.Text
+  sourceType String   @db.Text
+  sourceId   String?  @db.Text
+  occurredAt DateTime @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, sourceType, sourceId, eventType, occurredAt])
+  @@index([teamId, eventType, occurredAt(sort: Desc)])
+  @@index([profileId, occurredAt(sort: Desc)])
+  @@map("corretor_studio_cdp_events")
+}
+
+model CustomerChannelConsent {
+  id         String                @id @default(uuid()) @db.Uuid
+  profileId  String                @db.Uuid
+  teamId     String                @db.Uuid
+  channel    CustomerChannel
+  status     CustomerConsentStatus @default(unknown)
+  reason     CustomerConsentReason?
+  sourceType String?               @db.Text
+  sourceId   String?               @db.Text
+  updatedAt  DateTime              @updatedAt @db.Timestamptz(6)
+  createdAt  DateTime              @default(now()) @db.Timestamptz(6)
+
+  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, channel])
+  @@index([teamId, channel, status])
+  @@map("corretor_studio_cdp_channel_consents")
 }

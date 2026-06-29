@@ -1,5 +1,7 @@
 import { NotificationType, type Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import type { NotificationLinkMetadata } from "@/lib/notifications/build-notification-url";
+import { dispatchWebPushToProfile } from "@/app/api/infra/webPush/dispatchWebPush";
 
 type MentionNotificationInput = {
   teamId: string;
@@ -67,8 +69,19 @@ type LeadTransferActivatedNotificationInput = {
   teamId: string;
   recipientProfileIds: string[];
   leadId: string;
+  leadCode: string;
   leadName: string;
+  sdrName?: string | null;
   scheduleShareUrl?: string | null;
+};
+
+type LeadTransferScheduleFailedNotificationInput = {
+  teamId: string;
+  recipientProfileId: string;
+  leadId: string;
+  leadCode: string | null;
+  leadName: string;
+  errorMessage: string;
 };
 
 type ListNotificationsInput = {
@@ -115,7 +128,55 @@ type SystemNotificationInput = {
   metadata?: Prisma.InputJsonValue;
 };
 
+type MeetingReminderNotificationInput = {
+  teamId: string;
+  leadId: string;
+  leadCode: string | null;
+  leadName: string;
+  meetingDate: Date;
+  meetingLink?: string | null;
+  recipientProfileIds: string[];
+};
+
+type MeetingFollowUpDigestNotificationInput = {
+  teamId: string;
+  recipientProfileId: string;
+  leadCount: number;
+  role: "closer" | "master";
+};
+
+type WebPushDispatchItem = {
+  recipientProfileId: string;
+  teamId: string;
+  type: NotificationType;
+  message: string;
+  metadata?: NotificationLinkMetadata | null;
+  notificationId?: string;
+};
+
 class NotificationService {
+  private dispatchWebPushForItems(items: WebPushDispatchItem[]) {
+    for (const item of items) {
+      void dispatchWebPushToProfile({
+          profileId: item.recipientProfileId,
+          teamId: item.teamId,
+          type: item.type,
+          message: item.message,
+          metadata: item.metadata,
+          notificationId: item.notificationId,
+        })
+        .catch((error) => {
+          console.error("[NotificationService] Erro ao disparar web push:", error);
+        });
+    }
+  }
+
+  private metadataAsLinkMetadata(metadata: Prisma.InputJsonValue | undefined): NotificationLinkMetadata | null {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return null;
+    }
+    return metadata as NotificationLinkMetadata;
+  }
   async createTaskAssignmentNotifications(input: TaskAssignmentNotificationInput) {
     const uniqueRecipients = Array.from(
       new Set(
@@ -157,6 +218,23 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.dispatchWebPushForItems(
+      uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.ACTIVITY_MENTION,
+        message: `${input.actorName} atribuiu uma tarefa para @${profileMap.get(recipientProfileId) || "usuário"} no lead ${input.leadName}.`,
+        metadata: {
+          event: "TASK_ASSIGNED",
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          taskId: input.taskId,
+          preview,
+        },
+      })),
+    );
+
     return { createdCount: result.count };
   }
 
@@ -165,7 +243,7 @@ class NotificationService {
       return null;
     }
 
-    return prisma.notification.create({
+    const created = await prisma.notification.create({
       data: {
         recipientProfileId: input.recipientProfileId,
         actorProfileId: input.actorProfileId,
@@ -182,10 +260,23 @@ class NotificationService {
         },
       },
     });
+
+    this.dispatchWebPushForItems([
+      {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.ACTIVITY_MENTION,
+        message: created.message,
+        metadata: this.metadataAsLinkMetadata(created.metadata ?? undefined),
+        notificationId: created.id,
+      },
+    ]);
+
+    return created;
   }
 
   async createSystemNotification(input: SystemNotificationInput) {
-    return prisma.notification.create({
+    const created = await prisma.notification.create({
       data: {
         recipientProfileId: input.recipientProfileId,
         actorProfileId: null,
@@ -195,6 +286,19 @@ class NotificationService {
         metadata: input.metadata,
       },
     });
+
+    this.dispatchWebPushForItems([
+      {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+        type: created.type,
+        message: created.message,
+        metadata: this.metadataAsLinkMetadata(created.metadata ?? undefined),
+        notificationId: created.id,
+      },
+    ]);
+
+    return created;
   }
 
   async createMentionNotifications(input: MentionNotificationInput) {
@@ -231,6 +335,22 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.dispatchWebPushForItems(
+      uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.ACTIVITY_MENTION,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          activityId: input.activityId,
+          preview,
+        },
+      })),
+    );
+
     return { createdCount: result.count };
   }
 
@@ -244,7 +364,7 @@ class NotificationService {
         ? `${input.actorName} adicionou você ao time ${input.teamName}.`
         : `${input.actorName} removeu você do time ${input.teamName}.`;
 
-    return prisma.notification.create({
+    const created = await prisma.notification.create({
       data: {
         recipientProfileId: input.recipientProfileId,
         actorProfileId: input.actorProfileId,
@@ -257,6 +377,19 @@ class NotificationService {
         },
       },
     });
+
+    this.dispatchWebPushForItems([
+      {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+        type: created.type,
+        message: created.message,
+        metadata: this.metadataAsLinkMetadata(created.metadata ?? undefined),
+        notificationId: created.id,
+      },
+    ]);
+
+    return created;
   }
 
   async createScheduleNotification(input: ScheduleNotificationInput) {
@@ -293,6 +426,22 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.dispatchWebPushForItems(
+      uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.LEAD_SCHEDULE_CREATED,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          meetingDate: input.meetingDate.toISOString(),
+          isReschedule: input.isReschedule,
+        },
+      })),
+    );
+
     return { createdCount: result.count };
   }
 
@@ -311,7 +460,7 @@ class NotificationService {
     };
 
     try {
-      return await prisma.notification.create({
+      const created = await prisma.notification.create({
         data: {
           recipientProfileId: input.recipientProfileId,
           actorProfileId: input.actorProfileId,
@@ -321,6 +470,19 @@ class NotificationService {
           metadata,
         },
       });
+
+      this.dispatchWebPushForItems([
+        {
+          recipientProfileId: input.recipientProfileId,
+          teamId: input.teamId,
+          type: NotificationType.ACTIVITY_REACTION,
+          message: created.message,
+          metadata,
+          notificationId: created.id,
+        },
+      ]);
+
+      return created;
     } catch (error) {
       const messageText = error instanceof Error ? error.message : "";
       const isEnumValidationError =
@@ -351,7 +513,21 @@ class NotificationService {
         RETURNING "id";
       `;
 
-      return inserted[0] ?? null;
+      const created = inserted[0] ?? null;
+      if (created) {
+        this.dispatchWebPushForItems([
+          {
+            recipientProfileId: input.recipientProfileId,
+            teamId: input.teamId,
+            type: NotificationType.ACTIVITY_REACTION,
+            message,
+            metadata,
+            notificationId: created.id,
+          },
+        ]);
+      }
+
+      return created;
     }
   }
 
@@ -388,6 +564,20 @@ class NotificationService {
       })),
       skipDuplicates: false,
     });
+
+    this.dispatchWebPushForItems(
+      uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.LEAD_PROPOSAL_PENDING,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+        },
+      })),
+    );
 
     return { createdCount: result.count };
   }
@@ -459,7 +649,8 @@ class NotificationService {
       return { createdCount: 0 };
     }
 
-    const message = `Lead ${input.leadName} foi adicionado para transferência.`;
+    const sdrName = input.sdrName?.trim() || "Não informado";
+    const message = `Lead ${input.leadName} foi adicionado para transferência. SDR: ${sdrName}.`;
 
     const result = await prisma.notification.createMany({
       data: uniqueRecipients.map((recipientProfileId) => ({
@@ -469,14 +660,148 @@ class NotificationService {
         message,
         metadata: {
           leadId: input.leadId,
+          leadCode: input.leadCode,
           leadName: input.leadName,
+          sdrName,
           scheduleShareUrl: input.scheduleShareUrl ?? null,
         },
       })),
       skipDuplicates: false,
     });
 
+    this.dispatchWebPushForItems(
+      uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.LEAD_TRANSFER_ACTIVATED,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          sdrName,
+          scheduleShareUrl: input.scheduleShareUrl ?? null,
+        },
+      })),
+    );
+
     return { createdCount: result.count };
+  }
+
+  async createTransferScheduleFailedNotification(input: LeadTransferScheduleFailedNotificationInput) {
+    const message = `Lead ${input.leadName} foi transferido, mas o agendamento falhou: ${input.errorMessage}`;
+
+    const created = await prisma.notification.create({
+      data: {
+        recipientProfileId: input.recipientProfileId,
+        actorProfileId: null,
+        teamId: input.teamId,
+        type: NotificationType.LEAD_TRANSFER_SCHEDULE_FAILED,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          errorMessage: input.errorMessage,
+        },
+      },
+    });
+
+    this.dispatchWebPushForItems([
+      {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.LEAD_TRANSFER_SCHEDULE_FAILED,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          errorMessage: input.errorMessage,
+        },
+        notificationId: created.id,
+      },
+    ]);
+
+    return created;
+  }
+
+  async createMeetingReminderNotification(input: MeetingReminderNotificationInput) {
+    const uniqueRecipients = Array.from(
+      new Set(input.recipientProfileIds.filter((profileId) => !!profileId)),
+    );
+
+    if (uniqueRecipients.length === 0) {
+      return { createdCount: 0 };
+    }
+
+    const message = `Reunião com ${input.leadName} começa em 30 minutos.`;
+    const metadata = {
+      leadId: input.leadId,
+      leadCode: input.leadCode,
+      leadName: input.leadName,
+      meetingDate: input.meetingDate.toISOString(),
+      meetingLink: input.meetingLink ?? null,
+    };
+
+    const result = await prisma.notification.createMany({
+      data: uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.MEETING_REMINDER,
+        message,
+        metadata,
+      })),
+      skipDuplicates: false,
+    });
+
+    this.dispatchWebPushForItems(
+      uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.MEETING_REMINDER,
+        message,
+        metadata,
+      })),
+    );
+
+    return { createdCount: result.count };
+  }
+
+  async createMeetingFollowUpDigestNotification(input: MeetingFollowUpDigestNotificationInput) {
+    const message =
+      input.role === "closer"
+        ? `Você tem ${input.leadCount} reunião${input.leadCount === 1 ? "" : "ões"} aguardando confirmação. Marque como realizada ou no-show.`
+        : `Seu time tem ${input.leadCount} reunião${input.leadCount === 1 ? "" : "ões"} aguardando confirmação há mais de 3 dias.`;
+
+    const metadata = {
+      leadCount: input.leadCount,
+      role: input.role,
+      filter: "meeting_follow_up",
+    };
+
+    const created = await prisma.notification.create({
+      data: {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.MEETING_FOLLOW_UP_DIGEST,
+        message,
+        metadata,
+      },
+    });
+
+    this.dispatchWebPushForItems([
+      {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+        type: NotificationType.MEETING_FOLLOW_UP_DIGEST,
+        message,
+        metadata,
+        notificationId: created.id,
+      },
+    ]);
+
+    return { createdCount: 1 };
   }
 }
 

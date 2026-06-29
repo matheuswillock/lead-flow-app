@@ -6,6 +6,9 @@ import { UpdateLeadRequestSchema } from "../DTO/requestToUpdateLead";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { invalidateLeadCache, invalidateLeadFullCache } from "@/lib/cache/invalidation";
+import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
+import { isManagerLikeRole } from "@/lib/roles";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -64,15 +67,31 @@ export async function GET(
       return NextResponse.json(output, { status: 403 });
     }
 
-    if (!lead || lead.teamId !== teamId) {
-      console.warn("[LeadByIdRoute][GET] team mismatch ou lead inexistente", {
-        requestedLeadId: id,
-        requestTeamId: teamId,
-        leadTeamId: lead?.teamId ?? null,
-        profileId: profile.id,
-      });
+    if (!lead) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
+    }
+
+    if (lead.teamId !== teamId) {
+      const teamAccess = await getTeamAccess(request);
+      const canViewTransferredLead =
+        !teamAccess.error &&
+        isManagerOrMaster(teamAccess.access) &&
+        (await prisma.leadTransfer.findFirst({
+          where: { leadId: id, fromTeamId: teamId },
+          select: { id: true },
+        }));
+
+      if (!canViewTransferredLead) {
+        console.warn("[LeadByIdRoute][GET] team mismatch ou lead inexistente", {
+          requestedLeadId: id,
+          requestTeamId: teamId,
+          leadTeamId: lead.teamId,
+          profileId: profile.id,
+        });
+        const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+        return NextResponse.json(output, { status: 404 });
+      }
     }
 
     const output = await leadUseCase.getLeadById(supabaseId, id);
@@ -80,6 +99,7 @@ export async function GET(
     return NextResponse.json(output, { status });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao buscar lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -135,7 +155,15 @@ export async function PUT(
       }),
       prisma.lead.findUnique({
         where: { id },
-        select: { id: true, teamId: true, status: true, closerId: true },
+        select: {
+          id: true,
+          teamId: true,
+          status: true,
+          closerId: true,
+          assignedTo: true,
+          isTransfer: true,
+          meetingDate: true,
+        },
       }),
     ]);
 
@@ -179,6 +207,46 @@ export async function PUT(
       }
     }
 
+    const wantsMeetingPresenceUpdate = Object.prototype.hasOwnProperty.call(body, "meetingPresenceConfirmed");
+
+    if (wantsMeetingPresenceUpdate && body.meetingPresenceConfirmed === true) {
+      const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { masterId: true },
+      });
+
+      const isTeamMaster = !!(team && team.masterId === profile.id);
+      const isManagerLike = isManagerLikeRole(membership.role);
+      const isAssignedSdr = !!lead.assignedTo && lead.assignedTo === profile.id;
+      const isAssignedCloser = !!lead.closerId && lead.closerId === profile.id;
+      const canConfirmPresence =
+        isTeamMaster ||
+        isManagerLike ||
+        isAssignedSdr ||
+        (membership.functions?.includes("CLOSER") && isAssignedCloser) ||
+        (membership.functions?.includes("SDR") && isAssignedSdr);
+
+      if (lead.status !== "scheduled") {
+        const output = new Output(false, [], ["Só é possível confirmar agenda para leads agendados."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      if (lead.isTransfer) {
+        const output = new Output(false, [], ["Pré-agendamento de transferência não pode ser confirmado como agenda."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      if (!lead.meetingDate || lead.meetingDate.getTime() <= Date.now()) {
+        const output = new Output(false, [], ["Só é possível confirmar agenda antes do horário da reunião."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      if (!canConfirmPresence) {
+        const output = new Output(false, [], ["Acesso negado: somente o SDR, closer ou gestor do lead pode confirmar a agenda."], null);
+        return NextResponse.json(output, { status: 403 });
+      }
+    }
+
     const output = await leadUseCase.updateLead(supabaseId, id, validatedData);
     if (output.isValid) {
       invalidateLeadCache({ leadId: id, teamId });
@@ -187,6 +255,7 @@ export async function PUT(
     return NextResponse.json(output, { status });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao atualizar lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -261,6 +330,7 @@ export async function DELETE(
     return NextResponse.json(output, { status });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao excluir lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

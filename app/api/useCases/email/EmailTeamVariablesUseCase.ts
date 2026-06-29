@@ -2,8 +2,11 @@ import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { customerDataPlatformService } from "@/app/api/services/cdp/CustomerDataPlatformService"
+import { isValidCdpFieldKey } from "@/lib/cdp/field-catalog"
 
 export type EmailVariableType = "string" | "number"
+export type EmailVariableValueSource = "STATIC" | "CDP"
 
 export interface UpsertEmailVariableInput {
   key: string
@@ -11,6 +14,8 @@ export interface UpsertEmailVariableInput {
   defaultValue?: string | null
   description?: string | null
   isActive?: boolean
+  valueSource?: EmailVariableValueSource
+  cdpFieldKey?: string | null
 }
 
 const variableSelect = {
@@ -20,6 +25,8 @@ const variableSelect = {
   defaultValue: true,
   description: true,
   isActive: true,
+  valueSource: true,
+  cdpFieldKey: true,
 } satisfies Prisma.EmailTeamVariableSelect
 
 const KEY_RE = /^[a-zA-Z0-9_]+$/
@@ -35,7 +42,44 @@ function validateInput(input: UpsertEmailVariableInput): string | null {
   if (input.type && input.type !== "string" && input.type !== "number") {
     return "Tipo inválido. Use 'string' ou 'number'"
   }
+
+  const valueSource = input.valueSource ?? "STATIC"
+  if (valueSource !== "STATIC" && valueSource !== "CDP") {
+    return "Origem inválida. Use 'STATIC' ou 'CDP'"
+  }
+
+  if (valueSource === "CDP") {
+    if (!input.cdpFieldKey?.trim()) {
+      return "Selecione um campo da CDP para variáveis com origem CDP"
+    }
+    if (!isValidCdpFieldKey(input.cdpFieldKey)) {
+      return "Campo da CDP inválido"
+    }
+  }
+
+  if (valueSource === "STATIC" && input.cdpFieldKey) {
+    return "Campos da CDP só são permitidos quando a origem é CDP"
+  }
+
   return null
+}
+
+async function refreshCdpProfileData(ctx: TeamContext) {
+  try {
+    await customerDataPlatformService.syncProfileDataForTeam({
+      teamId: ctx.teamId,
+      ctx: {
+        profileId: ctx.profileId,
+        userTimezone: ctx.userTimezone,
+        teamMember: {
+          role: ctx.teamMember.role,
+          functions: ctx.teamMember.functions,
+        },
+      },
+    })
+  } catch (error) {
+    console.error("[EmailTeamVariablesUseCase][refreshCdpProfileData]", error)
+  }
 }
 
 export class EmailTeamVariablesUseCase {
@@ -54,13 +98,17 @@ export class EmailTeamVariablesUseCase {
   }
 
   /**
-   * Returns a map of active global variable keys to their default values,
-   * used as interpolation fallback for previews, test sends and dispatch.
+   * Returns a map of active static global variable keys to their default values.
    */
   async getDefaultsMap(ctx: TeamContext): Promise<Output> {
     try {
       const variables = await prisma.emailTeamVariable.findMany({
-        where: { teamId: ctx.teamId, isActive: true, defaultValue: { not: null } },
+        where: {
+          teamId: ctx.teamId,
+          isActive: true,
+          valueSource: "STATIC",
+          defaultValue: { not: null },
+        },
         select: { key: true, defaultValue: true },
       })
       const map = variables.reduce<Record<string, string>>((acc, v) => {
@@ -80,6 +128,7 @@ export class EmailTeamVariablesUseCase {
       if (validationError) return new Output(false, [], [validationError], null)
 
       const key = normalizeKey(input.key)
+      const valueSource = input.valueSource ?? "STATIC"
       const existing = await prisma.emailTeamVariable.findUnique({
         where: { teamId_key: { teamId: ctx.teamId, key } },
         select: { id: true },
@@ -96,9 +145,15 @@ export class EmailTeamVariablesUseCase {
           defaultValue: input.defaultValue?.trim() ? input.defaultValue.trim() : null,
           description: input.description?.trim() ? input.description.trim() : null,
           isActive: input.isActive ?? true,
+          valueSource,
+          cdpFieldKey: valueSource === "CDP" ? input.cdpFieldKey?.trim() ?? null : null,
         },
         select: variableSelect,
       })
+
+      if (valueSource === "CDP") {
+        await refreshCdpProfileData(ctx)
+      }
 
       return new Output(true, ["Variável global criada com sucesso"], [], variable)
     } catch (error) {
@@ -121,6 +176,7 @@ export class EmailTeamVariablesUseCase {
       }
 
       const key = normalizeKey(input.key)
+      const valueSource = input.valueSource ?? "STATIC"
       const conflict = await prisma.emailTeamVariable.findFirst({
         where: { teamId: ctx.teamId, key, id: { not: variableId } },
         select: { id: true },
@@ -137,9 +193,13 @@ export class EmailTeamVariablesUseCase {
           defaultValue: input.defaultValue?.trim() ? input.defaultValue.trim() : null,
           description: input.description?.trim() ? input.description.trim() : null,
           ...(input.isActive !== undefined && { isActive: input.isActive }),
+          valueSource,
+          cdpFieldKey: valueSource === "CDP" ? input.cdpFieldKey?.trim() ?? null : null,
         },
         select: variableSelect,
       })
+
+      await refreshCdpProfileData(ctx)
 
       return new Output(true, ["Variável global atualizada com sucesso"], [], variable)
     } catch (error) {
@@ -152,13 +212,18 @@ export class EmailTeamVariablesUseCase {
     try {
       const existing = await prisma.emailTeamVariable.findFirst({
         where: { id: variableId, teamId: ctx.teamId },
-        select: { id: true },
+        select: { id: true, valueSource: true },
       })
       if (!existing) {
         return new Output(false, [], ["Variável não encontrada"], null)
       }
 
       await prisma.emailTeamVariable.delete({ where: { id: variableId } })
+
+      if (existing.valueSource === "CDP") {
+        await refreshCdpProfileData(ctx)
+      }
+
       return new Output(true, ["Variável global removida com sucesso"], [], null)
     } catch (error) {
       console.error("[EmailTeamVariablesUseCase][delete]", error)

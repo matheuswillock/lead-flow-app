@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import {
   supportRequestUseCase,
 } from "@/app/api/useCases/support/SupportRequestUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import type {
   SupportRequestAttachmentInput,
 } from "@/app/api/useCases/support/ISupportRequestUseCase";
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[SupportRoute][POST] Erro ao criar pedido de suporte:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao enviar pedido de suporte"], null),

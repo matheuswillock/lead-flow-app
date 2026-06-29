@@ -6,6 +6,7 @@ import { CreateLeadRequestSchema } from "./DTO/requestToCreateLead";
 import { Output } from "@/lib/output";
 import { LeadStatus } from "@prisma/client";
 import { invalidateLeadCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(output, { status });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadsRoute][POST] Erro ao criar lead:", {
       error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
     });
@@ -113,6 +115,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(output);
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[API /leads] Erro ao buscar leads:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

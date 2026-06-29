@@ -28,10 +28,15 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
+import { leadStatusTransitionClient } from "@/lib/services/leadStatusTransitionClient";
 import {
   SalesInfoRequirementDialog,
   type SalesInfoPayload,
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
+import {
+  CloserRequirementDialog,
+  type CloserRequirementPayload,
+} from "@/app/[supabaseId]/components/CloserRequirementDialog";
 
 interface BoardContainerProps {
   title?: string;
@@ -65,6 +70,9 @@ export function BoardContainer({
     pendingSalesInfoGateDrop,
     clearPendingSalesInfoGateDrop,
     applyPendingSalesInfoGateTransition,
+    pendingCloserGateDrop,
+    clearPendingCloserGateDrop,
+    applyPendingCloserGateTransition,
     pendingFinalizeDrop,
     clearPendingFinalizeDrop,
     data,
@@ -73,10 +81,13 @@ export function BoardContainer({
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
   const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
+  const [showCloserRequirementDialog, setShowCloserRequirementDialog] = useState(false);
+  const [closerRequirementSaving, setCloserRequirementSaving] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [resendInviteLead, setResendInviteLead] = useState<Lead | null>(null);
+  const [confirmingPresenceLeadId, setConfirmingPresenceLeadId] = useState<string | null>(null);
   const scheduleSucceededRef = useRef(false);
   const boardService = useMemo(() => createBoardService(), []);
   const params = useParams();
@@ -176,6 +187,20 @@ export function BoardContainer({
     setShowSalesInfoDialog(true);
   }, [pendingSalesInfoGateDrop, pendingSalesInfoLead]);
 
+  const pendingCloserLead = useMemo(() => {
+    if (!pendingCloserGateDrop) return null;
+    return (
+      data[pendingCloserGateDrop.from]?.find((item) => item.id === pendingCloserGateDrop.leadId) ??
+      null
+    );
+  }, [data, pendingCloserGateDrop]);
+
+  useEffect(() => {
+    if (!pendingCloserGateDrop || !pendingCloserLead) return;
+    setSelectedLead(pendingCloserLead);
+    setShowCloserRequirementDialog(true);
+  }, [pendingCloserGateDrop, pendingCloserLead]);
+
   const handleNoShow = useCallback(
     async (lead: Lead) => {
       if (!supabaseId) {
@@ -183,31 +208,77 @@ export function BoardContainer({
         return;
       }
 
+      const loadingToast = toast.loading("Marcando no-show...");
+
       try {
-        const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
+        const transitionResult = await leadStatusTransitionClient.executeStatusTransition({
+          leadId: lead.id,
+          targetStatus: "no_show",
+          supabaseId,
+          teamId: activeTeamId,
+        });
+
+        const { output, transition } = transitionResult;
+
+        if (!transition.allowed || !output.isValid) {
+          throw new Error(
+            output.errorMessages?.[0] || "Não foi possível marcar no-show."
+          );
+        }
+
+        const payload =
+          output.result && typeof output.result === "object"
+            ? (output.result as Partial<Lead>)
+            : {};
+        patchLead(lead.id, { ...payload, status: "no_show" });
+        toast.success("Lead marcado como no-show", { id: loadingToast });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show", {
+          id: loadingToast,
+        });
+      }
+    },
+    [activeTeamId, patchLead, supabaseId]
+  );
+
+  const handleConfirmMeetingPresence = useCallback(
+    async (lead: Lead) => {
+      if (!supabaseId) {
+        toast.error("Usuário não identificado");
+        return;
+      }
+
+      setConfirmingPresenceLeadId(lead.id);
+      const loadingToast = toast.loading("Confirmando agenda...");
+
+      try {
+        const response = await fetch(`/api/v1/leads/${lead.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
-            "x-team-id": activeTeamId || "",
+            "x-team-id": activeTeamId ?? "",
           },
-          body: JSON.stringify({ status: "no_show" }),
+          body: JSON.stringify({ meetingPresenceConfirmed: true }),
         });
-
         const result = await response.json().catch(() => null);
 
         if (!response.ok || !result?.isValid) {
-          throw new Error(result?.errorMessages?.join(", ") || "Erro ao marcar no-show");
+          throw new Error(result?.errorMessages?.[0] || "Não foi possível confirmar a agenda.");
         }
 
-        const payload =
-          result.result && typeof result.result === "object"
-            ? (result.result as Partial<Lead>)
-            : {};
-        patchLead(lead.id, { ...payload, status: "no_show" });
-        toast.success("Lead marcado como no-show");
+        patchLead(lead.id, {
+          meetingPresenceConfirmed: true,
+          meetingPresenceConfirmedAt:
+            result.result?.meetingPresenceConfirmedAt ?? new Date().toISOString(),
+        });
+        toast.success("Agenda confirmada com o lead", { id: loadingToast });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
+        toast.error(error instanceof Error ? error.message : "Erro ao confirmar agenda", {
+          id: loadingToast,
+        });
+      } finally {
+        setConfirmingPresenceLeadId(null);
       }
     },
     [activeTeamId, patchLead, supabaseId]
@@ -247,7 +318,7 @@ export function BoardContainer({
   const handleScheduleSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
     scheduleSucceededRef.current = true;
 
-    if (payload && selectedLead) {
+    if (payload && selectedLead && selectedLead.status) {
       applyScheduledTransition(selectedLead.status, {
         id: payload.leadId,
         status: payload.status,
@@ -256,6 +327,8 @@ export function BoardContainer({
         meetingNotes: payload.meetingNotes,
         meetingLink: payload.meetingLink,
         closerId: payload.closerId,
+        meetingPresenceConfirmed: false,
+        meetingPresenceConfirmedAt: null,
       });
     }
     setSelectedLead(null);
@@ -295,6 +368,17 @@ export function BoardContainer({
     setSelectedLead(null);
   };
 
+  const handleCloserRequirementSave = async (payload: CloserRequirementPayload) => {
+    setCloserRequirementSaving(true);
+    const updated = await applyPendingCloserGateTransition(payload);
+    setCloserRequirementSaving(false);
+    if (!updated) return;
+
+    setShowCloserRequirementDialog(false);
+    clearPendingCloserGateDrop();
+    setSelectedLead(null);
+  };
+
   const handleConfirmPendingRule = async () => {
     if (!pendingStatusTriggerDrop?.confirmationRuleId) return;
     const updated = await applyPendingStatusTriggerTransition({
@@ -328,6 +412,8 @@ export function BoardContainer({
         onScheduleMeeting={handleScheduleMeeting}
         onNoShow={handleNoShow}
         onResendScheduleInvite={handleResendScheduleInvite}
+        onConfirmMeetingPresence={handleConfirmMeetingPresence}
+        confirmingPresenceLeadId={confirmingPresenceLeadId}
       />
 
       <BoardFooter />
@@ -363,6 +449,7 @@ export function BoardContainer({
             initialStartDate={selectedLead.contractDueDate}
             initialOperadora={selectedLead.soldPlan}
             initialHolderCnpj={selectedLead.cnpj}
+            initialHolderRazaoSocial={selectedLead.razaoSocial}
           />
           
           <ScheduleMeetingDialog
@@ -480,6 +567,24 @@ export function BoardContainer({
           isSaving={salesInfoSaving}
           initialValues={pendingSalesInfoGateDrop.currentSalesInfo}
           missingFields={pendingSalesInfoGateDrop.missingFields}
+        />
+      )}
+
+      {pendingCloserGateDrop && selectedLead && (
+        <CloserRequirementDialog
+          open={showCloserRequirementDialog}
+          onOpenChange={(open) => {
+            setShowCloserRequirementDialog(open);
+            if (!open) {
+              clearPendingCloserGateDrop();
+              setSelectedLead(null);
+            }
+          }}
+          onSave={handleCloserRequirementSave}
+          closers={closers}
+          leadName={selectedLead.name}
+          isSaving={closerRequirementSaving}
+          initialCloserId={pendingCloserGateDrop.currentCloserId}
         />
       )}
 

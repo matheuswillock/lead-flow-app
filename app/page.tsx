@@ -3,6 +3,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { ArrowRight, CalendarCheck, UserPlus } from "lucide-react"
 import { LandingHeader } from "@/components/landing/landingHeader"
+import { LogoBar } from "@/components/landing/LogoBar"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { EmailCampaignsSpotlight } from "@/components/landing/EmailCampaignsSpotlight"
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection"
@@ -11,84 +12,112 @@ import { LandingFooter } from "@/components/landing/LandingFooter"
 import { HomeClientRuntime } from "@/components/landing/HomeClientRuntime"
 import { createPublicPageMetadata } from "@/lib/metadata/policies"
 import { getAbsoluteUrl } from "@/lib/metadata/share"
+import { featuresData, FEATURES_SECTION_HEADING, FEATURES_SECTION_SUBHEADING } from "@/lib/landing/features-data"
+import { howItWorksSteps, HOW_IT_WORKS_HEADING, HOW_IT_WORKS_SUBHEADING } from "@/lib/landing/how-it-works-data"
+import { emailBenefitsData, EMAIL_SPOTLIGHT_HEADING, EMAIL_SPOTLIGHT_SUBHEADING } from "@/lib/landing/email-spotlight-data"
 
 const homeTitle = "Corretor Studio | CRM e Marketing para Corretores de Saúde"
 const homeDescription =
-  "CRM para corretores de saúde. Pipeline Kanban, gestão de equipe, agenda e métricas para aumentar conversão. Campanhas de e-mail em breve."
+  "CRM para corretores de saúde com pipeline Kanban, gestão de equipe, agenda e métricas. Agende uma demonstração gratuita e aumente sua conversão."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
   description: homeDescription,
   canonicalPath: "/",
-  keywords: [
-    "crm para corretores de saude",
-    "pipeline comercial planos de saude",
-    "gestao de leads corretora",
-    "software para corretor de saude",
-    "corretor studio",
-  ],
 })
 
 export default function HomePage() {
   const websiteUrl = getAbsoluteUrl("/")
   const logoUrl = getAbsoluteUrl("/corretor-studio-icon.svg")
 
-  const websiteSchema = {
+  const graphSchema = {
     "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: "Corretor Studio",
-    url: websiteUrl,
-    inLanguage: "pt-BR",
-    description: homeDescription,
-  }
-
-  const organizationSchema = {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    name: "Corretor Studio",
-    url: websiteUrl,
-    logo: logoUrl,
-  }
-
-  const softwareApplicationSchema = {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "Corretor Studio",
-    applicationCategory: "BusinessApplication",
-    operatingSystem: "Web",
-    inLanguage: "pt-BR",
-    url: websiteUrl,
-    description:
-      "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, times e agendamento de reuniões. Campanhas de e-mail em breve.",
-  }
-
-  const faqSchema = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: [
+    "@graph": [
       {
-        "@type": "Question",
-        name: "O Corretor Studio e indicado para qual tipo de corretor?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "A plataforma foi desenhada para corretores e equipes comerciais que atuam com planos de saude e precisam de mais controle de funil e conversao.",
-        },
+        "@type": "WebSite",
+        "@id": `${websiteUrl}#website`,
+        name: "Corretor Studio",
+        url: websiteUrl,
+        inLanguage: "pt-BR",
+        description: homeDescription,
+        publisher: { "@id": `${websiteUrl}#organization` },
       },
       {
-        "@type": "Question",
-        name: "O Corretor Studio substitui planilhas de leads?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Sim. O objetivo e centralizar o processo comercial com rastreabilidade, ownership de leads e indicadores para decisao.",
+        "@type": "Organization",
+        "@id": `${websiteUrl}#organization`,
+        name: "Corretor Studio",
+        url: websiteUrl,
+        logo: {
+          "@type": "ImageObject",
+          url: logoUrl,
         },
+        contactPoint: {
+          "@type": "ContactPoint",
+          contactType: "customer support",
+          availableLanguage: "Portuguese",
+        },
+        sameAs: [],
       },
       {
-        "@type": "Question",
-        name: "Existe suporte em portugues e foco no mercado brasileiro?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Sim. O produto foi pensado para o contexto de operacao comercial no Brasil e oferece suporte em PT-BR.",
-        },
+        "@type": "SoftwareApplication",
+        "@id": `${websiteUrl}#software`,
+        name: "Corretor Studio",
+        applicationCategory: "BusinessApplication",
+        applicationSubCategory: "CRM",
+        operatingSystem: "Web",
+        inLanguage: "pt-BR",
+        url: websiteUrl,
+        description:
+          "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, gestão de times e agendamento de reuniões.",
+        publisher: { "@id": `${websiteUrl}#organization` },
+        featureList: [
+          "Pipeline Kanban de leads",
+          "CRM para corretores de saúde",
+          "Gestão de equipe comercial",
+          "Agenda de reuniões",
+          "Métricas de conversão",
+          "Integrações de captação",
+          "Campanhas de e-mail",
+        ],
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Home",
+          },
+        ],
+      },
+      {
+        "@type": "FAQPage",
+        mainEntity: [
+          {
+            "@type": "Question",
+            name: "O Corretor Studio é indicado para qual tipo de corretor?",
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: "O Corretor Studio foi desenvolvido especificamente para corretores e equipes comerciais que atuam com planos de saúde no Brasil — tanto para o corretor individual quanto para corretoras com times estruturados de operadores. Se você lida com captação e qualificação de leads, envio de propostas, follow-up e gestão de renovações, a plataforma foi desenhada para o seu processo. O sistema é especialmente valioso para quem está saindo de planilhas ou de comunicação exclusiva pelo WhatsApp e quer previsibilidade no funil comercial. Cada funcionalidade — pipeline, agenda, métricas, campanhas — foi pensada para a rotina específica de venda e gestão de planos de saúde.",
+            },
+          },
+          {
+            "@type": "Question",
+            name: "O Corretor Studio substitui planilhas de leads?",
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: "Sim. O objetivo central do Corretor Studio é centralizar o processo comercial com rastreabilidade, ownership de leads e indicadores claros — tudo o que uma planilha não oferece de forma nativa. Com o CRM, cada lead tem um responsável definido, um histórico completo de interações e uma próxima ação registrada. O gestor consegue ver em tempo real onde cada oportunidade está no funil, sem precisar consolidar linhas de planilha. A migração é guiada, com importação dos leads existentes para não perder histórico. Para a maioria das operações, o impacto positivo começa a aparecer na primeira semana de uso.",
+            },
+          },
+          {
+            "@type": "Question",
+            name: "Existe suporte em português e foco no mercado brasileiro?",
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: "Sim. O Corretor Studio foi construído exclusivamente para o mercado de planos de saúde no Brasil, e todo o produto, documentação e suporte são em português. As terminologias, fluxos e funcionalidades do sistema refletem a realidade operacional de corretores brasileiros. O suporte atende em PT-BR com conhecimento do setor, o que agiliza a resolução de dúvidas específicas da operação de planos. O produto é atualizado continuamente com base no feedback da base de usuários brasileiros, garantindo que as funcionalidades evoluam conforme as necessidades reais do mercado nacional de saúde suplementar.",
+            },
+          },
+        ],
       },
     ],
   }
@@ -97,19 +126,7 @@ export default function HomePage() {
     <main className="landing-page min-h-screen bg-background text-foreground">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(graphSchema) }}
       />
 
       <LandingHeader />
@@ -220,12 +237,46 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* <LogoBar /> */}
+      <LogoBar />
 
+      {/* Server-rendered text for SEO indexability — visual rendered by FeaturesSection */}
+      <section aria-hidden="true" className="sr-only">
+        <h2>{FEATURES_SECTION_HEADING}</h2>
+        <p>{FEATURES_SECTION_SUBHEADING}</p>
+        {featuresData.map((f) => (
+          <div key={f.title}>
+            <h3>{f.title}</h3>
+            <p>{f.description}</p>
+            {f.benefits?.map((b) => <span key={b}>{b}</span>)}
+          </div>
+        ))}
+      </section>
       <FeaturesSection />
 
+      {/* Server-rendered text for SEO indexability — visual rendered by EmailCampaignsSpotlight */}
+      <section aria-hidden="true" className="sr-only">
+        <h2>{EMAIL_SPOTLIGHT_HEADING}</h2>
+        <p>{EMAIL_SPOTLIGHT_SUBHEADING}</p>
+        {emailBenefitsData.map((b) => (
+          <div key={b.title}>
+            <h3>{b.title}</h3>
+            <p>{b.description}</p>
+          </div>
+        ))}
+      </section>
       <EmailCampaignsSpotlight />
 
+      {/* Server-rendered text for SEO indexability — visual rendered by HowItWorksSection */}
+      <section aria-hidden="true" className="sr-only">
+        <h2>{HOW_IT_WORKS_HEADING}</h2>
+        <p>{HOW_IT_WORKS_SUBHEADING}</p>
+        {howItWorksSteps.map((s) => (
+          <div key={s.number}>
+            <h3>{s.title}</h3>
+            <p>{s.description}</p>
+          </div>
+        ))}
+      </section>
       <HowItWorksSection />
 
       {/* <TestimonialsSection /> */}

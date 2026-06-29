@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { metaLeadUseCase } from '@/app/api/useCases/metaLeads/MetaLeadUseCase';
 import { metaLeadService } from '@/app/api/services/MetaLeadService';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET - Verificação do webhook (Meta envia para validar)
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ Erro na verificação do webhook:', error);
     
     return NextResponse.json(
@@ -83,6 +85,7 @@ export async function POST(request: NextRequest) {
     try {
       payload = JSON.parse(body);
     } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
       console.error('❌ Erro ao fazer parse do payload:', error);
       
       return NextResponse.json(
@@ -113,6 +116,7 @@ export async function POST(request: NextRequest) {
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ Erro inesperado ao processar webhook:', error);
 
     // Retornar 200 mesmo com erro para não ser bloqueado pelo Meta

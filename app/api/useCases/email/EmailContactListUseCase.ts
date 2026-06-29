@@ -69,6 +69,40 @@ export class EmailContactListUseCase {
 
       const totalDefaultContacts = new Set(teamContacts.map((contact) => contact.email)).size
 
+      const activeTeamContacts = await prisma.emailContact.findMany({
+        where: {
+          isUnsubscribed: false,
+          isBounced: false,
+          list: { teamId: ctx.teamId, isArchived: false },
+        },
+        select: { email: true },
+      })
+
+      const activeDefaultContacts = new Set(
+        activeTeamContacts.map((contact) => contact.email.trim().toLowerCase())
+      ).size
+
+      const regularListIds = lists
+        .filter((list) => !(list.id === defaultList.id || list.isSystemDefault))
+        .map((list) => list.id)
+
+      const activeCountsByListId = new Map<string, number>()
+      if (regularListIds.length > 0) {
+        const activeCounts = await prisma.emailContact.groupBy({
+          by: ["listId"],
+          where: {
+            listId: { in: regularListIds },
+            isUnsubscribed: false,
+            isBounced: false,
+          },
+          _count: { _all: true },
+        })
+
+        for (const entry of activeCounts) {
+          activeCountsByListId.set(entry.listId, entry._count._all)
+        }
+      }
+
       const normalizedLists = lists
         .map((list) => {
           const isDefault = list.id === defaultList.id || list.isSystemDefault
@@ -77,6 +111,9 @@ export class EmailContactListUseCase {
             name: isDefault ? DEFAULT_LIST_NAME : list.name,
             description: isDefault ? list.description : list.description,
             totalContacts: isDefault ? totalDefaultContacts : list.totalContacts,
+            activeContacts: isDefault
+              ? activeDefaultContacts
+              : (activeCountsByListId.get(list.id) ?? 0),
             isSystemDefault: isDefault,
           }
         })

@@ -6,6 +6,7 @@ import { cancelCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCal
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(
   request: NextRequest,
@@ -96,6 +97,7 @@ export async function POST(
         },
       });
     } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
       console.warn("Não foi possível registrar atividade de cancelamento:", error);
     }
 
@@ -107,6 +109,7 @@ export async function POST(
     invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao cancelar agendamento:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

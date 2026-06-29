@@ -25,12 +25,14 @@ interface LayoutContentProps {
  */
 export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutContentProps) {
   const pathname = usePathname();
-  const { isLoading, error } = useUserContext();
+  const { user, isLoading, error } = useUserContext();
   const { teams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const { isLoading: featureLoading, hasAccess } = useFeatureAccess();
 
-  // Enquanto carrega os dados do usuário, mostra loading global
-  if (isLoading || teamsLoading || featureLoading) {
+  const hasBootstrapData = Boolean(user) && teams.length > 0;
+  const isBootstrapping = isLoading || teamsLoading;
+
+  if (isBootstrapping && !hasBootstrapData) {
     return <GlobalLoading />;
   }
 
@@ -73,7 +75,11 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
 
   const shouldShowNoTeamsMessage = teams.length === 0;
   const requiredFeatureSlug = getFeatureSlugForAppPath(pathname);
-  const shouldBlockByFeature = !shouldShowNoTeamsMessage && !!requiredFeatureSlug && !hasAccess(requiredFeatureSlug);
+  const shouldBlockByFeature =
+    !shouldShowNoTeamsMessage &&
+    !featureLoading &&
+    !!requiredFeatureSlug &&
+    !hasAccess(requiredFeatureSlug);
   const canShowWhatsNewModal = !shouldShowNoTeamsMessage && !shouldBlockByFeature;
 
   // Dados carregados, renderiza o layout completo

@@ -8,11 +8,13 @@ import type {
   BackofficeAllUsersEmailDispatchListResult,
   BackofficeAllUsersUserType,
   BackofficeAllUsersUserTypeFilter,
+  BackofficeSponsorMasterOption,
 } from "../context/BackofficeAllUsersTypes"
 
 export interface BackofficeAllUsersUpdateUserTypeInput {
   userType: BackofficeAllUsersUserTypeFilter
   accessExpiresAt?: string
+  sponsorMasterId?: string
 }
 
 export interface IBackofficeAllUsersService {
@@ -48,4 +50,6 @@ export interface IBackofficeAllUsersService {
   ): Promise<{ email: string }>
 
   updateUserType(profileId: string, data: BackofficeAllUsersUpdateUserTypeInput): Promise<BackofficeAllUsersUserType>
+
+  listSponsorMasters(): Promise<BackofficeSponsorMasterOption[]>
 }

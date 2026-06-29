@@ -27,7 +27,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useBackofficeAllUsers } from "../context/BackofficeAllUsersContext"
-import type { BackofficeAllUsersItem, BackofficeAllUsersUserTypeFilter } from "../context/BackofficeAllUsersTypes"
+import type {
+  BackofficeAllUsersItem,
+  BackofficeAllUsersUserTypeFilter,
+  BackofficeSponsorMasterOption,
+} from "../context/BackofficeAllUsersTypes"
 
 const MIN_DAYS = 1
 const MAX_DAYS = 365
@@ -36,12 +40,14 @@ const DAY_MS = 24 * 60 * 60 * 1000
 interface FormState {
   userType: BackofficeAllUsersUserTypeFilter
   accessDays: string
+  sponsorMasterId: string
 }
 
 function initForm(item: BackofficeAllUsersItem | null): FormState {
   return {
     userType: item?.userType.slug ?? "common",
     accessDays: "",
+    sponsorMasterId: item?.userType.sponsorMasterId ?? "",
   }
 }
 
@@ -67,21 +73,26 @@ export function BackofficeProfileUserTypeDialog({
 }: BackofficeProfileUserTypeDialogProps) {
   const { service } = useBackofficeAllUsers()
   const [form, setForm] = useState<FormState>(() => initForm(item))
+  const [sponsorOptions, setSponsorOptions] = useState<BackofficeSponsorMasterOption[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const inFlight = useRef(false)
 
   useEffect(() => {
     if (open && item) {
       setForm(initForm(item))
+      void service.listSponsorMasters().then(setSponsorOptions).catch(() => setSponsorOptions([]))
     }
-  }, [open, item])
+  }, [open, item, service])
 
   if (!item) return null
 
   const isMemberPro = form.userType === "member_pro"
+  const isAssociate = form.userType === "associate"
   const accessDaysValue = parsePositiveInt(form.accessDays)
-  const accessDaysValid = !isMemberPro || (accessDaysValue !== null && accessDaysValue >= MIN_DAYS && accessDaysValue <= MAX_DAYS)
-  const isValid = accessDaysValid
+  const accessDaysValid =
+    !isMemberPro || (accessDaysValue !== null && accessDaysValue >= MIN_DAYS && accessDaysValue <= MAX_DAYS)
+  const sponsorValid = !isAssociate || form.sponsorMasterId.length > 0
+  const isValid = accessDaysValid && sponsorValid
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -94,6 +105,12 @@ export function BackofficeProfileUserTypeDialog({
       if (form.userType === "common") {
         await service.updateUserType(item.id, { userType: "common" })
         toast.success("Tipo de usuário atualizado para Comum")
+      } else if (form.userType === "associate") {
+        await service.updateUserType(item.id, {
+          userType: "associate",
+          sponsorMasterId: form.sponsorMasterId,
+        })
+        toast.success("Tipo de usuário atualizado para Associado")
       } else {
         const accessExpiresAt = new Date(Date.now() + (accessDaysValue as number) * DAY_MS).toISOString()
         await service.updateUserType(item.id, {
@@ -112,6 +129,8 @@ export function BackofficeProfileUserTypeDialog({
       inFlight.current = false
     }
   }
+
+  const filteredSponsors = sponsorOptions.filter((option) => option.id !== item.id)
 
   return (
     <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
@@ -139,6 +158,7 @@ export function BackofficeProfileUserTypeDialog({
                     <SelectGroup>
                       <SelectItem value="common">Comum</SelectItem>
                       <SelectItem value="member_pro">Member PRO</SelectItem>
+                      <SelectItem value="associate">Associado</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -147,6 +167,11 @@ export function BackofficeProfileUserTypeDialog({
                     Acesso atual expira em{" "}
                     {new Date(item.userType.accessExpiresAt).toLocaleDateString("pt-BR")}
                     {item.userType.isExpired ? " (expirado)" : ""}.
+                  </FieldDescription>
+                )}
+                {item.userType.slug === "associate" && item.userType.sponsorMasterName && (
+                  <FieldDescription>
+                    Patrocinador atual: {item.userType.sponsorMasterName}
                   </FieldDescription>
                 )}
               </Field>
@@ -168,6 +193,34 @@ export function BackofficeProfileUserTypeDialog({
                   {form.accessDays.length > 0 && !accessDaysValid && (
                     <FieldError>Informe um número entre 1 e 365</FieldError>
                   )}
+                </Field>
+              )}
+
+              {isAssociate && (
+                <Field>
+                  <FieldLabel htmlFor="sponsor-master-select">Patrocinador</FieldLabel>
+                  <Select
+                    value={form.sponsorMasterId}
+                    onValueChange={(value) => setForm((prev) => ({ ...prev, sponsorMasterId: value }))}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="sponsor-master-select">
+                      <SelectValue placeholder="Selecione o master patrocinador" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {filteredSponsors.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.fullName ?? option.email}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    Conta Associado exige CPF/CNPJ válido no master para sincronizar cliente Asaas.
+                  </FieldDescription>
+                  {!sponsorValid && <FieldError>Selecione um patrocinador</FieldError>}
                 </Field>
               )}
             </FieldGroup>

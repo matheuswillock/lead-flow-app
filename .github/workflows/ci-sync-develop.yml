@@ -40,9 +40,9 @@ jobs:
             COUNT=$(echo "$CONFLICTS" | grep -c "^UU" || true)
 
             if [ "$COUNT" -eq 1 ] && echo "$CONFLICTS" | grep -q "^UU package.json"; then
-              git checkout --ours package.json
+              git checkout --theirs package.json
               git add package.json
-              git commit -m "chore: sync develop ← main (auto-resolved package.json version) [skip ci]"
+              git commit -m "chore: sync develop ← main (package.json version from main) [skip ci]"
             else
               echo "::error::Unexpected merge conflicts. Manual resolution required:"
               git status --porcelain
@@ -50,6 +50,23 @@ jobs:
               exit 1
             fi
           }
+
+      - name: Align develop package.json version with main
+        run: |
+          MAIN_VERSION=$(git show origin/main:package.json | node -e \
+            "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(JSON.parse(d).version))")
+          CURRENT_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
+
+          if [ "$CURRENT_VERSION" != "$MAIN_VERSION" ]; then
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              pkg.version = '$MAIN_VERSION';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            git add package.json
+            git commit -m "chore: align develop package.json to main v$MAIN_VERSION [skip ci]"
+          fi
 
       - name: Push develop
         run: |

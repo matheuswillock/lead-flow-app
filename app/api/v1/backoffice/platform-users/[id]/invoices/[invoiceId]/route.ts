@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { BackofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(
   request: NextRequest,
@@ -24,6 +25,7 @@ export async function GET(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserInvoiceByIdRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -66,6 +68,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: notFound ? 404 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserInvoiceByIdRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

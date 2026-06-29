@@ -2,16 +2,17 @@ import {
   IDashboardMetricsService, 
   DashboardMetricsData, 
   DetailedMetricsData, 
-  MetricsFilters 
+  MetricsFilters,
+  DashboardTeamScope,
 } from "./IDashboardMetricsService";
 
 // Re-exportar os tipos para facilitar importação
-export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters };
+export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters, DashboardTeamScope };
 
 // Configuração de cache
 const CACHE_KEY_PREFIX = 'dashboard_metrics';
 const DETAILED_CACHE_KEY_PREFIX = `${CACHE_KEY_PREFIX}_detailed`;
-const CACHE_VERSION = '7';
+const CACHE_VERSION = '8';
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutos em milissegundos
 const metricsInFlightByCacheKey = new Map<string, Promise<DashboardMetricsData>>();
 const detailedInFlightByCacheKey = new Map<string, Promise<DetailedMetricsData[]>>();
@@ -29,17 +30,18 @@ export class DashboardMetricsService implements IDashboardMetricsService {
    * Gera chave única para cache baseada nos parâmetros
    */
   private getCacheKey(supabaseId: string, teamId: string, filters?: MetricsFilters): string {
+    const scopeKey = filters?.teamScope ?? 'active';
     const filterKey = filters 
-      ? `_${filters.period || 'default'}_${filters.startDate || ''}_${filters.endDate || ''}`
-      : '_default';
+      ? `_${scopeKey}_${filters.period || 'default'}_${filters.startDate || ''}_${filters.endDate || ''}`
+      : `_default_${scopeKey}`;
     return `${CACHE_KEY_PREFIX}_${supabaseId}_${teamId}${filterKey}`;
   }
 
   /**
    * Gera chave única para cache de métricas detalhadas por time
    */
-  private getDetailedCacheKey(supabaseId: string, teamId: string): string {
-    return `${DETAILED_CACHE_KEY_PREFIX}_${supabaseId}_${teamId}`;
+  private getDetailedCacheKey(supabaseId: string, teamId: string, teamScope: DashboardTeamScope = 'active'): string {
+    return `${DETAILED_CACHE_KEY_PREFIX}_${supabaseId}_${teamId}_${teamScope}`;
   }
 
   /**
@@ -149,9 +151,9 @@ export class DashboardMetricsService implements IDashboardMetricsService {
   /**
    * Limpa cache de métricas detalhadas de um time
    */
-  public clearDetailedCache(supabaseId: string, teamId: string): void {
+  public clearDetailedCache(supabaseId: string, teamId: string, teamScope: DashboardTeamScope = 'active'): void {
     if (typeof window === 'undefined') return;
-    const cacheKey = this.getDetailedCacheKey(supabaseId, teamId);
+    const cacheKey = this.getDetailedCacheKey(supabaseId, teamId, teamScope);
     localStorage.removeItem(cacheKey);
     detailedInFlightByCacheKey.delete(cacheKey);
   }
@@ -215,6 +217,10 @@ export class DashboardMetricsService implements IDashboardMetricsService {
           params.append('endDate', filters.endDate);
         }
 
+        if (filters?.teamScope) {
+          params.append('teamScope', filters.teamScope);
+        }
+
         // Fazer requisição para a API
         const response = await fetch(`/api/v1/dashboard/metrics?${params.toString()}`, {
           method: 'GET',
@@ -263,9 +269,13 @@ export class DashboardMetricsService implements IDashboardMetricsService {
   /**
    * Busca métricas detalhadas por status
    */
-  async getDetailedMetrics(supabaseId: string, teamId: string): Promise<DetailedMetricsData[]> {
+  async getDetailedMetrics(
+    supabaseId: string,
+    teamId: string,
+    teamScope: DashboardTeamScope = 'active',
+  ): Promise<DetailedMetricsData[]> {
     try {
-      const cacheKey = this.getDetailedCacheKey(supabaseId, teamId);
+      const cacheKey = this.getDetailedCacheKey(supabaseId, teamId, teamScope);
       const cachedData = this.getFromCache<DetailedMetricsData[]>(cacheKey);
       if (cachedData) {
         return cachedData;
@@ -277,8 +287,14 @@ export class DashboardMetricsService implements IDashboardMetricsService {
       }
 
       const requestPromise = (async (): Promise<DetailedMetricsData[]> => {
-        // Fazer requisição para a API usando URL relativa
-        const response = await fetch(`/api/v1/dashboard/metrics/detailed/${supabaseId}`, {
+        const params = new URLSearchParams();
+        if (teamScope === 'all') {
+          params.append('teamScope', 'all');
+        }
+
+        const response = await fetch(
+          `/api/v1/dashboard/metrics/detailed/${supabaseId}?${params.toString()}`,
+          {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',

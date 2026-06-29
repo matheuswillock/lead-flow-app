@@ -491,7 +491,8 @@ export class LeadScheduleService implements ILeadScheduleService {
       });
 
       if (emailResult.success) {
-        const resendMessageId = extractResendMessageId(emailResult.data);
+        const resendMessageId =
+          "data" in emailResult ? extractResendMessageId(emailResult.data) : null;
         if (!canUseGoogleCalendar) {
           inviteDispatchStatus = "sent_resend";
           inviteDispatchProvider = "resend";
@@ -617,6 +618,8 @@ export class LeadScheduleService implements ILeadScheduleService {
           inviteDispatchLastError,
           inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
           publicShareExpiresAt: refreshedPublicShareExpiresAt,
+          reminder30MinSentAt:
+            existingSchedule?.date?.getTime() !== meetingDate.getTime() ? null : existingSchedule?.reminder30MinSentAt,
         },
       });
 
@@ -629,6 +632,9 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingLink: resolvedMeetingLink,
           meetingType: resolvedMeetingType,
           closerId,
+          ...(existingSchedule?.date?.getTime() !== meetingDate.getTime()
+            ? { meetingPresenceConfirmed: false, meetingPresenceConfirmedAt: null }
+            : {}),
           ...(transitionStatusToScheduled === true ? { status: LeadStatus.scheduled } : {}),
         },
       });

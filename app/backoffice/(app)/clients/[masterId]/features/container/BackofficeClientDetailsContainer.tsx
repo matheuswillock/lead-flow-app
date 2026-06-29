@@ -2,15 +2,15 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { CalendarDays, Crown, DollarSign, Eye, KeyRound, Mail, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
+import { CalendarDays, ChevronDown, Crown, DollarSign, Eye, KeyRound, Mail, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
-  AccordionTrigger,
 } from "@/components/ui/accordion"
+import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -55,6 +55,9 @@ import type { BackofficeClientTeam, BackofficeClientTeamMember } from "../contex
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
+import { cn } from "@/lib/utils"
+
+const TEAMS_TABLE_GRID = "grid-cols-[2rem_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_2.5rem]"
 
 const INVOICE_STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
@@ -171,6 +174,7 @@ export function BackofficeClientDetailsContainer() {
   const [selectedMemberTeamId, setSelectedMemberTeamId] = useState<string | null>(null)
   const [editingTeam, setEditingTeam] = useState<BackofficeClientTeam | null>(null)
   const [deletingTeam, setDeletingTeam] = useState<BackofficeClientTeam | null>(null)
+  const [addingMasterTeamId, setAddingMasterTeamId] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -277,6 +281,27 @@ export function BackofficeClientDetailsContainer() {
       )
     } finally {
       setMemberAccessActionId(null)
+    }
+  }
+
+  async function handleAddMasterToTeam(team: BackofficeClientTeam) {
+    if (addingMasterTeamId) return
+
+    setAddingMasterTeamId(team.id)
+    const toastId = toast.loading("Adicionando master ao time...")
+
+    try {
+      await service.addMasterToTeam(masterId, team.id)
+      toast.success("Master adicionado ao time com sucesso.", { id: toastId })
+      await reload()
+    } catch (error) {
+      console.error("[BackofficeClientDetailsContainer][handleAddMasterToTeam]", error)
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao adicionar master ao time.",
+        { id: toastId }
+      )
+    } finally {
+      setAddingMasterTeamId(null)
     }
   }
 
@@ -395,10 +420,17 @@ export function BackofficeClientDetailsContainer() {
               )}
 
               <div className="rounded-md border overflow-hidden">
-                <div className="grid grid-cols-[2fr_1fr_1fr] gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <div
+                  className={cn(
+                    "grid gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground",
+                    TEAMS_TABLE_GRID
+                  )}
+                >
+                  <span aria-hidden className="size-4" />
                   <span className="text-center">Time</span>
                   <span className="text-center">Membros</span>
                   <span className="text-center">Criado em</span>
+                  <span className="text-center">{canManage ? "Ações" : ""}</span>
                 </div>
 
                 {teamsError ? (
@@ -419,40 +451,80 @@ export function BackofficeClientDetailsContainer() {
                   </div>
                 ) : (
                   <Accordion type="single" collapsible className="w-full">
-                    {teams.map((team) => (
-                      <AccordionItem key={team.id} value={team.id}>
-                        <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                          <div className="grid w-full grid-cols-[2fr_1fr_1fr_auto] gap-3 text-sm pr-4 items-center">
-                            <span className="font-medium text-center">{team.name}</span>
-                            <span className="text-center">{team.membersCount}</span>
-                            <span className="text-center">{formatDate(team.createdAt, tz)}</span>
-                            {canManage && (
-                              <div
-                                className="flex items-center gap-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-7"
-                                  title="Editar time"
-                                  onClick={() => setEditingTeam(team)}
-                                >
-                                  <Pencil className="size-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-7 text-destructive hover:text-destructive"
-                                  title="Excluir time"
-                                  onClick={() => setDeletingTeam(team)}
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </Button>
-                              </div>
-                            )}
+                    {teams.map((team) => {
+                      const masterMissing = !team.members.some((member) => member.isMaster)
+
+                      return (
+                      <AccordionItem key={team.id} value={team.id} className="border-b last:border-b-0">
+                        <div
+                          className={cn(
+                            "grid items-center gap-3 px-4",
+                            TEAMS_TABLE_GRID
+                          )}
+                        >
+                          <AccordionPrimitive.Header className="col-span-4 grid grid-cols-subgrid [grid-column:span_4]">
+                            <AccordionPrimitive.Trigger
+                              className={cn(
+                                "col-span-4 grid grid-cols-subgrid items-center py-3 text-sm font-medium text-left transition-all",
+                                "hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                                "[&[data-state=open]>svg]:rotate-180"
+                              )}
+                            >
+                              <ChevronDown className="mx-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200" />
+                              <span className="truncate text-center font-medium">
+                                {team.name}
+                              </span>
+                              <span className="text-center tabular-nums">
+                                {team.membersCount}
+                              </span>
+                              <span className="text-center tabular-nums">
+                                {formatDate(team.createdAt, tz)}
+                              </span>
+                            </AccordionPrimitive.Trigger>
+                          </AccordionPrimitive.Header>
+
+                          <div className="flex justify-center">
+                            {canManage ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="size-8"
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
+                                    <MoreHorizontal />
+                                    <span className="sr-only">Ações do time</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {masterMissing ? (
+                                    <DropdownMenuItem
+                                      disabled={addingMasterTeamId !== null}
+                                      onClick={() => void handleAddMasterToTeam(team)}
+                                    >
+                                      <Crown />
+                                      {addingMasterTeamId === team.id
+                                        ? "Adicionando master..."
+                                        : "Adicionar master ao time"}
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  <DropdownMenuItem onClick={() => setEditingTeam(team)}>
+                                    <Pencil />
+                                    Editar time
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                    onClick={() => setDeletingTeam(team)}
+                                  >
+                                    <Trash2 />
+                                    Excluir time
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : null}
                           </div>
-                        </AccordionTrigger>
+                        </div>
                         <AccordionContent className="px-4 pb-4">
                           <div className="rounded-md border">
                             <Table>
@@ -559,7 +631,8 @@ export function BackofficeClientDetailsContainer() {
                           </div>
                         </AccordionContent>
                       </AccordionItem>
-                    ))}
+                      )
+                    })}
                   </Accordion>
                 )}
 
@@ -888,6 +961,7 @@ export function BackofficeClientDetailsContainer() {
         teamId={selectedMemberTeamId}
         details={details}
         service={service}
+        canManage={canManage}
         onSuccess={reload}
         onDeleteRequest={() => {
           setMemberEditOpen(false)
@@ -906,7 +980,8 @@ export function BackofficeClientDetailsContainer() {
       <BackofficeAddMemberDialog
         open={addMemberOpen}
         masterId={masterId}
-        teams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
+        teams={details?.allTeams ?? []}
+        masterUserType={details?.userType}
         service={service}
         onOpenChange={setAddMemberOpen}
         onSaved={reload}
@@ -915,6 +990,7 @@ export function BackofficeClientDetailsContainer() {
       <BackofficeAddTeamDialog
         open={addTeamOpen}
         masterId={masterId}
+        masterUserType={details?.userType}
         service={service}
         onOpenChange={setAddTeamOpen}
         onSaved={reload}
@@ -924,7 +1000,7 @@ export function BackofficeClientDetailsContainer() {
         open={editingTeam !== null}
         onOpenChange={(open) => { if (!open) setEditingTeam(null) }}
         team={editingTeam}
-        allTeams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
+        allTeams={details?.allTeams ?? []}
         masterId={masterId}
         service={service}
         onSuccess={() => { setEditingTeam(null); void reload() }}

@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
@@ -84,6 +85,7 @@ export async function PATCH(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -106,6 +108,7 @@ export async function DELETE(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

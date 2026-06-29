@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { invalidateHealthPlansCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   healthPlanUseCase,
   HEALTH_PLAN_ERROR_MESSAGES,
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[HealthPlansRoute][GET] Erro ao listar planos de saúde:", error);
     return NextResponse.json(new Output(false, [], [HEALTH_PLAN_ERROR_MESSAGES.INTERNAL_LIST_ERROR], null), {
       status: 500,
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
     invalidateHealthPlansCache();
     return NextResponse.json(output, { status: 201 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[HealthPlansRoute][POST] Erro ao criar plano de saúde:", error);
     return NextResponse.json(new Output(false, [], [HEALTH_PLAN_ERROR_MESSAGES.INTERNAL_CREATE_ERROR], null), {
       status: 500,

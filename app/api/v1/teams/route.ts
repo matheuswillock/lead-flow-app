@@ -11,6 +11,8 @@ import {
 } from "@/app/api/v1/utils/teamAccess";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { getAccountSubscriptionStatus } from "@/lib/subscription/isAccountSubscriptionActive";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -28,6 +30,7 @@ async function getPendingPaymentStatus(paymentId?: string | null) {
       paymentMethod: payment?.billingType || "UNDEFINED",
     };
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamsRoute][GET] Erro ao consultar pagamento pendente:", error);
     const is404 = (error as any)?.statusCode === 404;
     return {
@@ -125,7 +128,20 @@ export async function GET(request: NextRequest) {
 
     const memberships = await prisma.teamMember.findMany({
       where: { profileId: profile.id },
-      include: { team: true },
+      include: {
+        team: {
+          include: {
+            master: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                sponsorMasterId: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "asc" }
     });
 
@@ -180,27 +196,113 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const activeTeams = memberships.map((membership) => ({
-      id: membership.team.id,
-      name: membership.team.name,
-      masterId: membership.team.masterId,
-      isDefault: membership.team.isDefault,
-      role: membership.role,
-      functions: membership.functions,
-      canCreateAccountUsers: membership.canCreateAccountUsers,
-      canManageAccountTeams: membership.canManageAccountTeams,
-      canTransferAccountLeads: membership.canTransferAccountLeads,
-      membershipCreatedAt: membership.createdAt,
-      isPending: false,
-      pendingPayment: pendingByName.get(membership.team.name) ?? null,
-    }));
+    const subscriptionByMasterId = new Map<string, boolean>();
+    const uniqueMasterIds = [...new Set(memberships.map((item) => item.team.masterId))];
+    await Promise.all(
+      uniqueMasterIds.map(async (masterId) => {
+        const status = await getAccountSubscriptionStatus(masterId);
+        subscriptionByMasterId.set(masterId, status.isActive);
+      })
+    );
+
+    const activeTeamIds = new Set(memberships.map((m) => m.team.id));
+
+    const sponsoredTeams = await prisma.team.findMany({
+      where: {
+        master: {
+          sponsorMasterId: profile.id,
+        },
+      },
+      include: {
+        master: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            sponsorMasterId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    for (const masterId of sponsoredTeams.map((t) => t.masterId)) {
+      if (!subscriptionByMasterId.has(masterId)) {
+        const status = await getAccountSubscriptionStatus(masterId);
+        subscriptionByMasterId.set(masterId, status.isActive);
+      }
+    }
+
+    const activeTeams = memberships.map((membership) => {
+      const accountMasterId = membership.team.masterId;
+      const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+
+      return {
+        id: membership.team.id,
+        name: membership.team.name,
+        masterId: accountMasterId,
+        accountMasterId,
+        accountName: membership.team.master.fullName ?? membership.team.master.email,
+        isOwnAccount: accountMasterId === profile.id,
+        isAssociateAccount: Boolean(membership.team.master.sponsorMasterId),
+        sponsorMasterId: membership.team.master.sponsorMasterId ?? null,
+        associateAccountName:
+          membership.team.master.sponsorMasterId
+            ? (membership.team.master.fullName ?? membership.team.master.email)
+            : null,
+        isAccessible: accountSubscriptionActive,
+        accountSubscriptionActive,
+        isDefault: membership.team.isDefault,
+        role: membership.role,
+        functions: membership.functions,
+        canCreateAccountUsers: membership.canCreateAccountUsers,
+        canManageAccountTeams: membership.canManageAccountTeams,
+        canTransferAccountLeads: membership.canTransferAccountLeads,
+        membershipCreatedAt: membership.createdAt,
+        isPending: false,
+        pendingPayment: pendingByName.get(membership.team.name) ?? null,
+      };
+    });
+
+    const sponsoredTeamRows = sponsoredTeams
+      .filter((team) => !activeTeamIds.has(team.id))
+      .map((team) => {
+        const accountMasterId = team.masterId;
+        const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+        const associateAccountName = team.master.fullName ?? team.master.email;
+
+        return {
+          id: team.id,
+          name: team.name,
+          masterId: accountMasterId,
+          accountMasterId,
+          accountName: associateAccountName,
+          isOwnAccount: false,
+          isAssociateAccount: true,
+          sponsorMasterId: team.master.sponsorMasterId ?? profile.id,
+          associateAccountName,
+          isAccessible: accountSubscriptionActive,
+          accountSubscriptionActive,
+          isDefault: team.isDefault,
+          role: "backoffice" as const,
+          functions: [] as string[],
+          canCreateAccountUsers: false,
+          canManageAccountTeams: true,
+          canTransferAccountLeads: false,
+          membershipCreatedAt: team.createdAt,
+          isPending: false,
+          pendingPayment: null,
+        };
+      });
+
+    const activeTeamsMerged = [...activeTeams, ...sponsoredTeamRows];
 
     const pendingTeamRows = pendingActions
       .filter((action) => {
         const payload = (action.payload as Record<string, unknown>) || {};
         const teamName = String(payload.teamName ?? "").trim();
         if (!teamName) return false;
-        return !activeTeams.some((team) => team.name.trim() === teamName);
+        return !activeTeamsMerged.some((team) => team.name.trim() === teamName);
       })
       .map((action) => {
         const payload = (action.payload as Record<string, unknown>) || {};
@@ -237,13 +339,34 @@ export async function GET(request: NextRequest) {
         };
       });
 
-    const teams = [...activeTeams, ...pendingTeamRows];
+    const teams = [...activeTeamsMerged, ...pendingTeamRows];
+
+    let activeTeamId = profile.activeTeamId;
+    const currentTeam = teams.find((team) => team.id === activeTeamId);
+    const currentIsAccessible =
+      currentTeam &&
+      !currentTeam.isPending &&
+      ("isAccessible" in currentTeam ? currentTeam.isAccessible : true);
+
+    if (!currentIsAccessible) {
+      const fallbackTeam = activeTeamsMerged.find((team) => team.isAccessible);
+      if (fallbackTeam) {
+        activeTeamId = fallbackTeam.id;
+        await prisma.profile.update({
+          where: { id: profile.id },
+          data: { activeTeamId: fallbackTeam.id },
+        });
+      } else {
+        activeTeamId = null;
+      }
+    }
 
     return NextResponse.json(
-      new Output(true, [], [], { teams, activeTeamId: profile.activeTeamId }),
+      new Output(true, [], [], { teams, activeTeamId }),
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in GET /api/v1/teams:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),
@@ -361,6 +484,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in POST /api/v1/teams:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),

@@ -1,0 +1,299 @@
+"use client"
+
+import { useState } from 'react'
+import {
+  AlertTriangle,
+  MessageCircle,
+  Phone,
+  PlugZap,
+  QrCode,
+  RefreshCw,
+  Wifi,
+  WifiOff,
+} from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
+import { useTimezone } from '@/app/context/TimezoneContext'
+import { formatIntimezone } from '@/lib/dates'
+import { useTeamContext } from '@/app/context/TeamContext'
+import { useWhatsAppSettingsContext } from '../context/WhatsAppSettingsContext'
+import type { WhatsAppConnectionStatus, WhatsAppUsage } from '../context/WhatsAppSettingsTypes'
+
+const STATUS_LABELS: Record<WhatsAppConnectionStatus, string> = {
+  PENDING: 'Pendente',
+  QR_READY: 'Aguardando QR',
+  CONNECTED: 'Conectado',
+  DISCONNECTED: 'Desconectado',
+  ERROR: 'Erro',
+  BANNED: 'Bloqueado',
+}
+
+const USAGE_STATUS_LABELS: Record<WhatsAppUsage['status'], string> = {
+  WITHIN_LIMIT: 'Dentro do limite',
+  ATTENTION: 'Atenção',
+  EXCEEDED: 'Excedido',
+}
+
+function getStatusBadgeVariant(status: WhatsAppConnectionStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (status === 'CONNECTED') return 'default'
+  if (status === 'QR_READY' || status === 'DISCONNECTED' || status === 'PENDING') return 'secondary'
+  return 'destructive'
+}
+
+function getUsageBadgeVariant(status: WhatsAppUsage['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (status === 'WITHIN_LIMIT') return 'default'
+  if (status === 'ATTENTION') return 'secondary'
+  return 'destructive'
+}
+
+function StatusIcon({ status }: { status: WhatsAppConnectionStatus }) {
+  if (status === 'CONNECTED') return <Wifi className={cn('size-5', 'text-semantic-success')} />
+  if (status === 'ERROR' || status === 'BANNED') return <WifiOff className={cn('size-5', 'text-semantic-danger')} />
+  return <WifiOff className={cn('size-5', 'text-muted-foreground')} />
+}
+
+function formatSyncDate(value: string | null, tz: string): string {
+  if (!value) return 'Nunca'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Data inválida'
+  return formatIntimezone(date, 'dd/MM/yyyy HH:mm', tz)
+}
+
+export function ConnectionCard() {
+  const { tz } = useTimezone()
+  const { isTeamMaster } = useTeamContext()
+  const {
+    config,
+    usage,
+    isLoading,
+    isRefreshing,
+    isConnecting,
+    isReconnecting,
+    isDisconnecting,
+    isSyncingContacts,
+    connect,
+    reconnect,
+    disconnect,
+    syncPhoneContacts,
+  } = useWhatsAppSettingsContext()
+
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
+
+  const showQrCode =
+    Boolean(config?.qrCodeImageUrl) &&
+    config?.status !== 'CONNECTED' &&
+    config?.status !== 'DISCONNECTED'
+
+  if (isLoading && !config) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Skeleton className="size-10 shrink-0 rounded-lg" />
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-72" />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-9 w-36" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <MessageCircle className="size-5 text-primary" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>WhatsApp Business</CardTitle>
+              {config ? (
+                <Badge variant={getStatusBadgeVariant(config.status)}>{STATUS_LABELS[config.status]}</Badge>
+              ) : (
+                <Badge variant="outline">Não configurado</Badge>
+              )}
+              {isRefreshing ? (
+                <RefreshCw className="size-4 animate-spin text-muted-foreground" />
+              ) : null}
+            </div>
+            <CardDescription>
+              Conecte um número WhatsApp Business para enviar e receber mensagens com seus leads.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {!config ? (
+          <div className="flex flex-col items-center gap-4 py-6 text-center">
+            <div className="rounded-full bg-muted p-4">
+              <PlugZap className="size-8 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-base font-semibold">Conecte seu WhatsApp</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Configure a integração para enviar mensagens e acompanhar seus leads diretamente pelo WhatsApp.
+              </p>
+            </div>
+            <Button onClick={() => void connect()} disabled={isConnecting}>
+              {isConnecting ? <RefreshCw className="animate-spin" /> : <PlugZap />}
+              {isConnecting ? 'Conectando...' : 'Conectar WhatsApp'}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <StatusIcon status={config.status} />
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <Phone className="size-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{config.phoneNumber ?? 'Número não conectado'}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  Última sincronização: {formatSyncDate(config.lastSyncAt, tz)}
+                </span>
+              </div>
+            </div>
+
+            {showQrCode ? (
+              <>
+                <Separator />
+                <div className="flex flex-col items-center gap-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="size-5 text-primary" />
+                    <p className="text-sm font-semibold">Escaneie o QR Code</p>
+                  </div>
+                  <img
+                    src={config.qrCodeImageUrl!}
+                    alt="QR Code WhatsApp"
+                    className="size-48 rounded-lg border bg-background object-contain"
+                  />
+                  <p className="max-w-sm text-center text-sm text-muted-foreground">
+                    No celular: WhatsApp → Aparelhos conectados → Conectar aparelho. Escaneie em até 60
+                    segundos. Se falhar, clique em Atualizar QR Code e tente de novo.
+                  </p>
+                </div>
+              </>
+            ) : null}
+
+            {config.provider === 'EVOLUTION' ? (
+              <>
+                <Separator />
+                <Alert>
+                  <AlertTriangle className="size-4" />
+                  <AlertDescription>
+                    Este módulo usa Evolution API (conexão via QR Code). Podem ocorrer desconexões, reconexões e risco
+                    de bloqueio do número.
+                  </AlertDescription>
+                </Alert>
+              </>
+            ) : null}
+
+            {config.status === 'CONNECTED' && usage ? (
+              <>
+                <Separator />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">Uso do período — {usage.periodKey}</p>
+                    <Badge variant={getUsageBadgeVariant(usage.status)}>{USAGE_STATUS_LABELS[usage.status]}</Badge>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${Math.min(usage.consumedPercentage, 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{usage.outboundCount} mensagens enviadas</span>
+                    <span>limite: {usage.usageLimitMonthly}</span>
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            <Separator />
+
+            <div className="flex flex-wrap gap-2">
+              {config.status === 'CONNECTED' && isTeamMaster ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSyncingContacts}
+                  onClick={() => void syncPhoneContacts()}
+                >
+                  <RefreshCw className={cn(isSyncingContacts && 'animate-spin')} />
+                  {isSyncingContacts ? 'Sincronizando...' : 'Sincronizar contatos do celular'}
+                </Button>
+              ) : null}
+              {showQrCode ? (
+                <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
+                  <RefreshCw className={cn(isReconnecting && 'animate-spin')} />
+                  {isReconnecting ? 'Atualizando...' : 'Atualizar QR Code'}
+                </Button>
+              ) : config.status !== 'CONNECTED' ? (
+                <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
+                  <RefreshCw className={cn(isReconnecting && 'animate-spin')} />
+                  {isReconnecting ? 'Reconectando...' : 'Reconectar'}
+                </Button>
+              ) : null}
+
+              <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={isDisconnecting}>
+                    <WifiOff />
+                    {isDisconnecting ? 'Desconectando...' : 'Desconectar'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Desconectar WhatsApp</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta ação irá desconectar o número WhatsApp vinculado ao time. Mensagens automáticas serão
+                      interrompidas até uma nova conexão ser estabelecida.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        setDisconnectDialogOpen(false)
+                        void disconnect()
+                      }}
+                    >
+                      Desconectar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

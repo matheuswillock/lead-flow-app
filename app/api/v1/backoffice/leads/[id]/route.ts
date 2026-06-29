@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeLeadUseCase } from "@/app/api/useCases/backofficeLead/BackofficeLeadUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function optionalStringArray(data: Record<string, unknown>, key: string): string[] | undefined {
   const value = data[key]
@@ -26,6 +27,7 @@ export async function GET(
     const output = await backofficeLeadUseCase.getLeadById(id)
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeLeadByIdRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -89,6 +91,7 @@ export async function PUT(
     })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeLeadByIdRoute][PUT]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -110,6 +113,7 @@ export async function DELETE(
     const output = await backofficeLeadUseCase.deleteLead(id)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeLeadByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

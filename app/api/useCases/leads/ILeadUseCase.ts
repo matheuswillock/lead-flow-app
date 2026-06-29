@@ -4,6 +4,7 @@ import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { TransferLeadBetweenTeamsRequest } from "../../v1/leads/DTO/requestToTransferLeadBetweenTeams";
+import type { TransferLeadBetweenTeamsResult } from "../../v1/leads/DTO/transferLeadBetweenTeamsResult";
 
 export interface LeadCreationActivityContext {
   body?: string;
@@ -73,5 +74,6 @@ export interface ILeadUseCase {
   assignLeadToOperator(supabaseId: string, id: string, operatorId: string): Promise<Output>;
   transferLead(supabaseId: string, id: string, data: TransferLeadRequest): Promise<Output>;
   transferLeadBetweenTeams(supabaseId: string, callerTeamId: string, id: string, data: TransferLeadBetweenTeamsRequest): Promise<Output>;
+  runDeferredTransferScheduleAfterTransfer(leadId: string, transferResult: TransferLeadBetweenTeamsResult): Promise<void>;
   getLeadsByStatus(supabaseId: string, status: LeadStatus): Promise<Output>;
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 
 export async function GET(request: NextRequest) {
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[IntegrationTeamClosersRoute][GET] Erro ao listar closers:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro ao listar closers do time"], null),

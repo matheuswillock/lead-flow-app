@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionUpgradeUseCase } from "@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET /api/v1/operators/payment-status/[paymentId]
@@ -31,6 +32,7 @@ export async function GET(
 
     return NextResponse.json(result, { status: statusCode });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao verificar status do pagamento:", error);
 
     return NextResponse.json(

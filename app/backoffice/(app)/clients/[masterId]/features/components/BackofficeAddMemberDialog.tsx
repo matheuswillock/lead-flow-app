@@ -74,25 +74,39 @@ interface BackofficeAddMemberDialogProps {
   open: boolean
   masterId: string
   teams: { id: string; name: string }[]
+  masterUserType?: { slug: "common" | "member_pro"; isExpired: boolean }
   service: IBackofficeClientDetailsService
   onOpenChange: (open: boolean) => void
   onSaved?: () => Promise<void> | void
+}
+
+function defaultGenerateCharge(
+  userType?: { slug: "common" | "member_pro"; isExpired: boolean }
+): boolean {
+  return userType?.slug === "member_pro" && !userType.isExpired
 }
 
 export function BackofficeAddMemberDialog({
   open,
   masterId,
   teams,
+  masterUserType,
   service,
   onOpenChange,
   onSaved,
 }: BackofficeAddMemberDialogProps) {
   const [values, setValues] = useState<FormValues>(defaultValues)
+  const [generateCharge, setGenerateCharge] = useState(() => defaultGenerateCharge(masterUserType))
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const showChargeToggle =
+    masterUserType?.slug === "member_pro" && !masterUserType.isExpired
 
   function handleOpenChange(next: boolean) {
     if (!next && isSubmitting) return
-    if (!next) setValues(defaultValues())
+    if (!next) {
+      setValues(defaultValues())
+      setGenerateCharge(defaultGenerateCharge(masterUserType))
+    }
     onOpenChange(next)
   }
 
@@ -115,7 +129,7 @@ export function BackofficeAddMemberDialog({
     if (!canSubmit || isSubmitting) return
     setIsSubmitting(true)
     try {
-      await service.addMember(masterId, {
+      const result = await service.addMember(masterId, {
         fullName: values.fullName.trim(),
         email: values.email.trim().toLowerCase(),
         phone: sanitizePhone(values.phone) || null,
@@ -124,8 +138,20 @@ export function BackofficeAddMemberDialog({
         teamId: values.teamId,
         canCreateAccountUsers: values.role === "manager" ? values.canCreateAccountUsers : false,
         canManageAccountTeams: values.role === "manager" ? values.canManageAccountTeams : false,
+        generateCharge: showChargeToggle ? generateCharge : false,
       })
-      toast.success("Convite enviado ao usuário")
+
+      if (result.kind === "pending_payment") {
+        toast.success("Cobrança pendente criada. O usuário será adicionado após o pagamento.", {
+          description: result.checkoutUrl,
+          action: {
+            label: "Copiar link",
+            onClick: () => void navigator.clipboard.writeText(result.checkoutUrl),
+          },
+        })
+      } else {
+        toast.success("Convite enviado ao usuário")
+      }
       await onSaved?.()
       onOpenChange(false)
     } catch (err) {
@@ -181,6 +207,10 @@ export function BackofficeAddMemberDialog({
               disabled={isSubmitting}
               required
             />
+            <p className="text-xs text-muted-foreground">
+              E-mails de outras contas também são aceitos. Será cobrada uma vaga adicional após
+              confirmação do pagamento.
+            </p>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -288,6 +318,25 @@ export function BackofficeAddMemberDialog({
                   onCheckedChange={(checked) =>
                     setValues((v) => ({ ...v, canManageAccountTeams: checked }))
                   }
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {showChargeToggle ? (
+            <div className="flex flex-col gap-2">
+              <Label>Cobrança</Label>
+              <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium">Gerar cobrança</span>
+                  <span className="text-xs text-muted-foreground">
+                    Quando desligado, o usuário é adicionado sem cobrar o master.
+                  </span>
+                </div>
+                <Switch
+                  checked={generateCharge}
+                  onCheckedChange={setGenerateCharge}
                   disabled={isSubmitting}
                 />
               </div>

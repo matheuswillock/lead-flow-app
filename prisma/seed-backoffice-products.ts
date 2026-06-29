@@ -81,41 +81,123 @@ const PRODUCTS = [
     priceLifetime: null,
     isActive: true,
   },
+  {
+    slug: "whatsapp",
+    name: "WhatsApp",
+    description: "Módulo WhatsApp — inbox, conversas e envio de mensagens via Evolution API.",
+    type: BackofficeProductType.ADDON,
+    billingMode: BackofficeProductBillingMode.RECURRING,
+    priceMonthly: 39.9,
+    priceQuarterly: 34.9,
+    priceSemiannual: 29.9,
+    priceAnnual: 29.9,
+    priceLifetime: null,
+    isActive: true,
+  },
+  {
+    slug: "cdp",
+    name: "CDP",
+    description: "CDP — perfis unificados, segmentos e timeline para campanhas de e-mail.",
+    type: BackofficeProductType.ADDON,
+    billingMode: BackofficeProductBillingMode.RECURRING,
+    priceMonthly: 29.9,
+    priceQuarterly: 29.9,
+    priceSemiannual: 29.9,
+    priceAnnual: 29.9,
+    priceLifetime: null,
+    isActive: true,
+  },
 ]
 
-// Features sem parentSlug são guarda-chuvas. Features com parentSlug herdam acesso do pai.
+// Features sem parentSlug são guarda-chuvas. Features com parentSlug herdam acesso do pai por padrão.
+const FEATURES_WITHOUT_PARENT_INHERITANCE = new Set([
+  "crm-lead-transfers",
+  "crm-backoffice-associados",
+  "email-settings",
+  "whatsapp-auto-responses",
+])
+
+function resolveInheritParentSettings(slug: string, parentSlug?: string): boolean {
+  if (!parentSlug) return false
+  return !FEATURES_WITHOUT_PARENT_INHERITANCE.has(slug)
+}
+
 const FEATURES: Array<{
   slug: string
   name: string
   accessMode: BackofficeFeatureAccessMode
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled: boolean
+  inheritParentSettings: boolean
   sortOrder: number
   parentSlug?: string
   productSlug: string | null
 }> = [
   // ── CRM guarda-chuva ──────────────────────────────────────────────────────
-  { slug: "crm", name: "CRM", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 10, productSlug: "crm" },
-  { slug: "crm-dashboard",        name: "Dashboard",          accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 20, parentSlug: "crm", productSlug: "crm" },
-  { slug: "crm-calendar",         name: "Calendário",         accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 40, parentSlug: "crm", productSlug: "crm" },
-  { slug: "crm-performance",      name: "Performance",        accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 50, parentSlug: "crm", productSlug: "crm" },
-  { slug: "crm-simulator",        name: "Simulador de Planos",accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 60, parentSlug: "crm", productSlug: "crm" },
-  { slug: "crm-time",             name: "Time",               accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 70, parentSlug: "crm", productSlug: "crm" },
-  { slug: "crm-time-manage-teams",name: "Gerenciar Times",    accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 80, parentSlug: "crm", productSlug: "extra-team" },
-  { slug: "crm-time-manage-users",name: "Gerenciar Usuários", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 90, parentSlug: "crm", productSlug: "extra-user" },
-  { slug: "crm-wallet",           name: "Carteira",           accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 95, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm", name: "CRM", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 10, productSlug: "crm" },
+  { slug: "crm-dashboard",        name: "Dashboard",          accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 20, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-lead-transfers",   name: "Transferências",     accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 35, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-backoffice-associados", name: "Associados",   accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 36, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-calendar",         name: "Calendário",         accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 40, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-performance",      name: "Performance",        accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 50, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-simulator",        name: "Simulador de Planos",accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 60, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-time",             name: "Time",               accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 70, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-time-manage-teams",name: "Gerenciar Times",    accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 80, parentSlug: "crm", productSlug: "extra-team" },
+  { slug: "crm-time-manage-users",name: "Gerenciar Usuários", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 90, parentSlug: "crm", productSlug: "extra-user" },
+  { slug: "crm-wallet",           name: "Carteira",           accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 95, parentSlug: "crm", productSlug: "crm" },
 
   // ── Email guarda-chuva ────────────────────────────────────────────────────
-  { slug: "email",               name: "Email",     accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true,  sortOrder: 100, productSlug: "email" },
-  { slug: "email-templates",     name: "Templates", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 110, parentSlug: "email", productSlug: "email" },
-  { slug: "email-contacts",      name: "Contatos",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 120, parentSlug: "email", productSlug: "email" },
-  { slug: "email-campaigns",     name: "Campanhas", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 130, parentSlug: "email", productSlug: "email" },
-  { slug: "email-history",       name: "Histórico", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 140, parentSlug: "email", productSlug: "email" },
-  { slug: "email-analytics",     name: "Analytics",      accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 150, parentSlug: "email", productSlug: "email" },
-  { slug: "email-settings",     name: "Configurações",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 160, parentSlug: "email", productSlug: "email" },
+  { slug: "email",               name: "Email",     accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true,  inheritParentSettings: false, sortOrder: 100, productSlug: "email" },
+  { slug: "email-templates",     name: "Templates", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 110, parentSlug: "email", productSlug: "email" },
+  { slug: "email-contacts",      name: "Contatos",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 120, parentSlug: "email", productSlug: "email" },
+  { slug: "email-campaigns",     name: "Campanhas", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 130, parentSlug: "email", productSlug: "email" },
+  { slug: "email-history",       name: "Histórico", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 140, parentSlug: "email", productSlug: "email" },
+  { slug: "email-analytics",     name: "Analytics",      accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 150, parentSlug: "email", productSlug: "email" },
+  { slug: "email-settings",     name: "Configurações",  accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 160, parentSlug: "email", productSlug: "email" },
+
+  // ── WhatsApp guarda-chuva ─────────────────────────────────────────────────
+  { slug: "whatsapp",                name: "WhatsApp",               accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true,  inheritParentSettings: false, sortOrder: 170, productSlug: "whatsapp" },
+  { slug: "whatsapp-auto-responses", name: "Auto-respostas",         accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 172, parentSlug: "whatsapp", productSlug: "whatsapp" },
+  { slug: "whatsapp-settings",       name: "Configurações WhatsApp", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 175, parentSlug: "whatsapp", productSlug: "whatsapp" },
+
+  { slug: "cdp", name: "CDP", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, inheritParentSettings: false, sortOrder: 180, productSlug: "cdp" },
 
   // ── Integração guarda-chuva ───────────────────────────────────────────────
-  { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, sortOrder: 200, productSlug: null },
+  { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
+]
+
+const WHATSAPP_PAYMENT_RULES: Array<{
+  paymentMethod: BackofficePaymentMethod
+  billingCycle: BackofficeAdhesionBillingCycle
+  price: number
+  canInstallment: boolean
+  maxInstallments: number
+}> = [
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.monthly,    price: 39.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.quarterly,  price: 34.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.annual,     price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.monthly,    price: 45.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.quarterly,  price: 39.9, canInstallment: true,  maxInstallments: 3 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 34.9, canInstallment: true,  maxInstallments: 6 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.annual,     price: 34.9, canInstallment: true,  maxInstallments: 12 },
+]
+
+const CDP_PAYMENT_RULES: Array<{
+  paymentMethod: BackofficePaymentMethod
+  billingCycle: BackofficeAdhesionBillingCycle
+  price: number
+  canInstallment: boolean
+  maxInstallments: number
+}> = [
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.monthly,    price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.quarterly,  price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX,         billingCycle: BackofficeAdhesionBillingCycle.annual,     price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.monthly,    price: 29.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.quarterly,  price: 29.9, canInstallment: true,  maxInstallments: 3 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 29.9, canInstallment: true,  maxInstallments: 6 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.annual,     price: 29.9, canInstallment: true,  maxInstallments: 12 },
 ]
 
 const CRM_PAYMENT_RULES: Array<{
@@ -181,6 +263,17 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "SDR", accessLevel: "FULL" },
     { principal: "CLOSER", accessLevel: "FULL" },
   ]),
+  "crm-lead-transfers": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+  ]),
+  "crm-backoffice-associados": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+    { principal: "CAN_MANAGE_TEAMS", accessLevel: "FULL" },
+  ]),
   "crm-calendar": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
@@ -218,7 +311,7 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
     { principal: "CLOSER", accessLevel: "FULL" },
-    { principal: "SDR", accessLevel: "NONE" },
+    { principal: "SDR", accessLevel: "FULL" },
     { principal: "OPERATOR", accessLevel: "NONE" },
   ]),
   "crm-time-manage-teams": completeRuleSet([
@@ -258,6 +351,27 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
   ]),
+  whatsapp: completeRuleSet([
+    { principal: "MASTER",    accessLevel: "FULL" },
+    { principal: "MANAGER",   accessLevel: "FULL" },
+    { principal: "BACKOFFICE",accessLevel: "FULL" },
+    { principal: "OPERATOR",  accessLevel: "FULL" },
+    { principal: "SDR",       accessLevel: "FULL" },
+    { principal: "CLOSER",    accessLevel: "FULL" },
+  ]),
+  "whatsapp-settings": completeRuleSet([
+    { principal: "MASTER",  accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
+  "whatsapp-auto-responses": completeRuleSet([
+    { principal: "MASTER",  accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
+  cdp: completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+  ]),
   integration: completeRuleSet([{ principal: "MASTER", accessLevel: "FULL" }]),
 }
 
@@ -286,6 +400,9 @@ async function main() {
 
   // 2. Upsert features without parentId first (resolve parents in second pass)
   for (const feature of FEATURES) {
+    const inheritParentSettings = feature.inheritParentSettings
+    const betaEnabled = inheritParentSettings ? false : feature.betaEnabled
+
     await prisma.backofficeFeature.upsert({
       where: { slug: feature.slug },
       create: {
@@ -293,7 +410,8 @@ async function main() {
         name: feature.name,
         accessMode: feature.accessMode,
         defaultAccessLevel: feature.defaultAccessLevel,
-        betaEnabled: feature.betaEnabled,
+        betaEnabled,
+        inheritParentSettings,
         sortOrder: feature.sortOrder,
         productSlug: feature.productSlug,
         isActive: true,
@@ -302,7 +420,8 @@ async function main() {
         name: feature.name,
         accessMode: feature.accessMode,
         defaultAccessLevel: feature.defaultAccessLevel,
-        betaEnabled: feature.betaEnabled,
+        betaEnabled,
+        inheritParentSettings,
         sortOrder: feature.sortOrder,
         productSlug: feature.productSlug,
         isActive: true,
@@ -321,7 +440,10 @@ async function main() {
     }
     await prisma.backofficeFeature.update({
       where: { slug: feature.slug },
-      data: { parentId: parent.id },
+      data: {
+        parentId: parent.id,
+        inheritParentSettings: resolveInheritParentSettings(feature.slug, feature.parentSlug),
+      },
     })
     console.info(`[seed:backoffice-products] parentId definido: ${feature.slug} → ${feature.parentSlug}`)
   }
@@ -373,6 +495,43 @@ async function main() {
       })
     }
     console.info("[seed:backoffice-products] Regras de pagamento CRM prontas")
+  }
+
+  // 7. WhatsApp payment rules
+  const whatsappProduct = await prisma.backofficeProduct.findUnique({ where: { slug: "whatsapp" } })
+  if (whatsappProduct) {
+    for (const rule of WHATSAPP_PAYMENT_RULES) {
+      await prisma.backofficeProductPaymentRule.upsert({
+        where: {
+          productId_paymentMethod_billingCycle: {
+            productId: whatsappProduct.id,
+            paymentMethod: rule.paymentMethod,
+            billingCycle: rule.billingCycle,
+          },
+        },
+        create: { productId: whatsappProduct.id, ...rule },
+        update: { price: rule.price, canInstallment: rule.canInstallment, maxInstallments: rule.maxInstallments },
+      })
+    }
+    console.info("[seed:backoffice-products] Regras de pagamento WhatsApp prontas")
+  }
+
+  const cdpProduct = await prisma.backofficeProduct.findUnique({ where: { slug: "cdp" } })
+  if (cdpProduct) {
+    for (const rule of CDP_PAYMENT_RULES) {
+      await prisma.backofficeProductPaymentRule.upsert({
+        where: {
+          productId_paymentMethod_billingCycle: {
+            productId: cdpProduct.id,
+            paymentMethod: rule.paymentMethod,
+            billingCycle: rule.billingCycle,
+          },
+        },
+        create: { productId: cdpProduct.id, ...rule },
+        update: { price: rule.price, canInstallment: rule.canInstallment, maxInstallments: rule.maxInstallments },
+      })
+    }
+    console.info("[seed:backoffice-products] Regras de pagamento CDP prontas")
   }
 
   console.info("[seed:backoffice-products] Concluído.")

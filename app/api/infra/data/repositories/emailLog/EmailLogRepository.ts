@@ -13,8 +13,10 @@ export class EmailLogRepository implements IEmailLogRepository {
       where: { resendEmailId },
       select: {
         id: true,
+        teamId: true,
         status: true,
         recipientEmail: true,
+        recipientName: true,
         campaignId: true,
       },
     })

@@ -1,0 +1,96 @@
+# =============================================================================
+# docker-compose.evolution.yml — Evolution API para desenvolvimento local
+# =============================================================================
+#
+# Stack isolada do Lead Flow: API WhatsApp (Baileys) + Redis + Postgres dedicados.
+# O Postgres do Supabase (55322) NÃO é usado aqui.
+#
+# Uso:
+#   cp .env.evolution.example .env.evolution
+#   bun run evo:up
+#   bun run evo:logs
+#   bun run evo:down
+#
+# API: http://127.0.0.1:8080
+# Chave: AUTHENTICATION_API_KEY em .env.evolution (= EVO_API_KEY no .env do app)
+#
+# Webhooks: configure EVO_WEBHOOK_PUBLIC_URL=http://host.docker.internal:3000
+# no .env do app para a Evolution (Docker) alcançar o Next.js no host.
+#
+# =============================================================================
+
+services:
+  api:
+    container_name: evolution_api
+    image: evoapicloud/evolution-api:latest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+      evolution-postgres:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+    env_file:
+      - .env.evolution
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
+  redis:
+    container_name: evolution_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - evolution_redis:/data
+    networks:
+      - evolution-net
+    expose:
+      - "6379"
+
+  evolution-postgres:
+    container_name: evolution_postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    # Credenciais fixas — não use ${POSTGRES_PASSWORD} do host (colide com Supabase .env).
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - listen_addresses=*
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    networks:
+      - evolution-net
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  evolution_instances:
+  evolution_redis:
+  evolution_postgres:
+
+networks:
+  evolution-net:
+    name: evolution-net
+    driver: bridge

@@ -1,6 +1,6 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import type { IPendingActionRepository } from "./IPendingActionRepository";
-import { PendingAction } from "@prisma/client";
+import { PendingAction, Prisma } from "@prisma/client";
 
 export class PendingActionRepository implements IPendingActionRepository {
   async findById(id: string) {
@@ -38,6 +38,27 @@ export class PendingActionRepository implements IPendingActionRepository {
     return prisma.pendingAction.findUnique({
       where: { id },
     });
+  }
+
+  async create(data: {
+    masterId: string;
+    teamId?: string | null;
+    actionType: string;
+    status: string;
+    payload: Record<string, unknown>;
+  }): Promise<{ id: string }> {
+    const pendingAction = await prisma.pendingAction.create({
+      data: {
+        masterId: data.masterId,
+        teamId: data.teamId ?? null,
+        actionType: data.actionType as PendingAction["actionType"],
+        status: data.status as PendingAction["status"],
+        payload: data.payload as Prisma.InputJsonValue,
+      },
+      select: { id: true },
+    });
+
+    return pendingAction;
   }
 
   async updatePaymentId(id: string, paymentId: string): Promise<void> {

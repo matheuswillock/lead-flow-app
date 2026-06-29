@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 // GET /api/v1/leads/[id]/attachments - List all attachments for a lead
 export async function GET(
@@ -75,6 +76,7 @@ export async function GET(
     const result = await leadAttachmentUseCase.listAttachments(leadId);
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadAttachmentsRoute][GET] Erro ao listar anexos:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),
@@ -164,6 +166,7 @@ export async function POST(
     const result = await leadAttachmentUseCase.uploadAttachment(leadId, file, profile.id);
     return NextResponse.json(result, { status: result.isValid ? 201 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadAttachmentsRoute][POST] Erro ao fazer upload de anexo:", { leadId, error });
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),

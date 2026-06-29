@@ -34,6 +34,7 @@ export type EmailSender = {
 }
 
 export type EmailVariableType = "string" | "number"
+export type EmailVariableValueSource = "STATIC" | "CDP"
 
 export type EmailGlobalVariable = {
   id: string
@@ -42,6 +43,8 @@ export type EmailGlobalVariable = {
   defaultValue: string | null
   description: string | null
   isActive: boolean
+  valueSource: EmailVariableValueSource
+  cdpFieldKey: string | null
 }
 
 export type EmailSettings = {

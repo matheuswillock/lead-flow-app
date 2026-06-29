@@ -2,9 +2,11 @@
 
 import { div as MotionDiv } from "framer-motion/client"
 import { ArrowRight, BarChart3, CalendarDays, Kanban, Mail, Paperclip, Users, Users2 } from "lucide-react"
+import { featuresData, FEATURES_SECTION_SUBHEADING } from "@/lib/landing/features-data"
+import type { ElementType } from "react"
 
 type Feature = {
-  icon: React.ElementType
+  icon: ElementType
   title: string
   description: string
   badge?: string
@@ -12,65 +14,12 @@ type Feature = {
   size: "large" | "small"
 }
 
-const features: Feature[] = [
-  {
-    icon: Kanban,
-    title: "Pipeline Kanban + Tabela",
-    description:
-      "Organize o funil com duas visões: Kanban para mover etapas e tabela para revisar todos os leads.",
-    benefits: [
-      "Arraste e solte por etapa",
-      "Visão em lista com filtros rápidos",
-      "Status e responsáveis sempre visíveis",
-      "Detalhes completos do lead em um clique",
-    ],
-    size: "large",
-  },
-  {
-    icon: CalendarDays,
-    title: "Calendário & Reuniões",
-    description: "Agenda diária/semanal com agendamentos integrados ao Google Calendar.",
-    size: "small",
-  },
-  {
-    icon: Users2,
-    title: "Times / Workspaces",
-    description: "Separe operações por time e alterne o workspace ativo com um clique.",
-    size: "small",
-  },
-  {
-    icon: Mail,
-    title: "Campanhas de E-mail",
-    description:
-      "Em breve: campanhas segmentadas para listas de contatos com editor visual, agendamento automático e analytics detalhados.",
-    badge: "Em breve",
-    benefits: [
-      "Editor visual drag-and-drop (Maily)",
-      "Upload de listas via CSV",
-      "Agendamento de disparos",
-      "Métricas de abertura, clique e entrega",
-    ],
-    size: "large",
-  },
-  {
-    icon: BarChart3,
-    title: "Dashboard & Métricas",
-    description: "KPIs, gráficos e indicadores para acompanhar a performance da equipe.",
-    size: "small",
-  },
-  {
-    icon: Users,
-    title: "Gestão de Operadores",
-    description: "Cadastre operadores, defina funções (SDR/Closer) e controle acessos.",
-    size: "small",
-  },
-  {
-    icon: Paperclip,
-    title: "Anexos por Lead",
-    description: "Guarde contratos, imagens e documentos junto ao lead com acesso direto.",
-    size: "small",
-  },
-]
+const FEATURE_ICONS: ElementType[] = [Kanban, CalendarDays, Users2, Mail, BarChart3, Users, Paperclip]
+
+const features: Feature[] = featuresData.map((f, i) => ({
+  ...f,
+  icon: FEATURE_ICONS[i],
+}))
 
 export function FeaturesSection() {
   return (
@@ -90,14 +39,10 @@ export function FeaturesSection() {
         >
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
             Tudo que você precisa para{" "}
-            <span
-              className="landing-primary-gradient"
-            >
-              vender mais
-            </span>
+            <span className="landing-primary-gradient">vender mais</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            CRM completo hoje, com módulo de campanhas de e-mail chegando em breve para ampliar sua operação.
+            {FEATURES_SECTION_SUBHEADING}
           </p>
         </MotionDiv>
 

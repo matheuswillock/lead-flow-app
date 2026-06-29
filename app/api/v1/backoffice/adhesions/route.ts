@@ -6,6 +6,7 @@ import {
   backofficeAdhesionUseCase,
   isBackofficeAdhesionStatusValue,
 } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 type ParsedAdditionalUser = {
   name: string
   email: string
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest) {
     const output = await backofficeAdhesionUseCase.list({ page, pageSize, status, query })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -176,6 +178,7 @@ export async function POST(request: NextRequest) {
     )
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionsRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

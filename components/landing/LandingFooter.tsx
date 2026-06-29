@@ -5,14 +5,24 @@ import Image from "next/image"
 import { Heart } from "lucide-react"
 
 const footerLinks = {
+  recursos: {
+    title: "Recursos",
+    links: [
+      { label: "CRM para Corretores", href: "/recursos/crm-corretores-saude" },
+      { label: "Pipeline Comercial", href: "/recursos/pipeline-planos-saude" },
+      { label: "Gestão de Equipe", href: "/recursos/gestao-equipe-comercial" },
+      { label: "CRM vs Planilha", href: "/recursos/crm-vs-planilha" },
+      { label: "Todos os Recursos", href: "/recursos" },
+    ],
+  },
   legal: {
     title: "Legal",
     links: [
       { label: "Política de Privacidade", href: "/privacy-policy" },
       { label: "Termos de Uso", href: "/terms" },
-      { label: "Politica de Cookies", href: "/cookies" },
-    ]
-  }
+      { label: "Política de Cookies", href: "/cookies" },
+    ],
+  },
 }
 
 export function LandingFooter() {
@@ -24,7 +34,7 @@ export function LandingFooter() {
       />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12">
           {/* Brand */}
           <div>
             <Link href="/" className="flex items-center gap-2 mb-4">
@@ -38,13 +48,29 @@ export function LandingFooter() {
               <span className="text-lg font-bold tracking-tight">Corretor Studio</span>
             </Link>
             <p className="text-sm text-muted-foreground mb-4 max-w-sm leading-relaxed">
-              CRM para corretores de saúde que precisam de mais clareza, mais velocidade e mais conversão. Módulo de campanhas de e-mail em breve.
+              CRM para corretores de saúde que precisam de mais clareza, mais velocidade e mais conversão.
             </p>
             <p className="text-sm text-muted-foreground inline-flex items-baseline gap-2">
               <span>Made with</span>
               <Heart className="w-4 h-4 text-primary pulsing-heart fill-primary flex-shrink-0 translate-y-[1px]" />
               <span className="font-semibold landing-primary-gradient">Willock&apos;s House</span>
             </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-4 text-foreground">{footerLinks.recursos.title}</h3>
+            <ul className="space-y-3">
+              {footerLinks.recursos.links.map((link) => (
+                <li key={link.label}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div>

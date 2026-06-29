@@ -1,3 +1,5 @@
+import type { LeadTransitionFieldApiKey } from "@/lib/leadStatusTransitionFields";
+
 export type LeadStatusTransitionBlockerType =
   | "sales_info"
   | "confirmation"
@@ -10,6 +12,7 @@ export type LeadStatusTransitionBlockerType =
   | "validation_error"
   | "email_required"
   | "lead_info_required"
+  | "closer_required"
   | "none";
 
 export interface LeadStatusTransitionResultPayload {
@@ -19,12 +22,15 @@ export interface LeadStatusTransitionResultPayload {
     sourceStatus?: string;
     targetStatus?: string;
     missingFields?: Array<"ticket" | "contractDueDate" | "soldPlan">;
-    missingLeadFields?: Array<"age" | "currentHealthPlan" | "referenceHospital" | "ongoingTreatment">;
+    missingLeadFields?: LeadTransitionFieldApiKey[];
     currentLeadInfo?: {
       age: string | null;
       currentHealthPlan: string | null;
       referenceHospital: string | null;
       ongoingTreatment: string | null;
+      email?: string | null;
+      phone?: string | null;
+      cnpj?: string | null;
     };
     confirmationRuleId?: string | null;
     confirmationMessage?: string | null;
@@ -36,6 +42,7 @@ export interface LeadStatusTransitionResultPayload {
       contractDueDate: string | null;
       soldPlan: string | null;
     };
+    currentCloserId?: string | null;
     message?: string;
   };
   [key: string]: unknown;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { listCachedHealthPlanOptions } from "@/app/api/useCases/healthPlans/HealthPlanUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET() {
   try {
@@ -13,6 +14,7 @@ export async function GET() {
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[IntegrationHealthPlansRoute][GET] Erro ao listar planos de saúde:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro ao listar planos de saúde"], null),

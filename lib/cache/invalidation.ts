@@ -66,7 +66,7 @@ export function invalidateFeatureAccessCache(input: {
   managerId?: string | null;
 }) {
   revalidateDefinedTags([
-    input.profileId ? cacheTags.featureAccess(input.profileId) : null,
+    input.profileId ? cacheTags.featureAccessProfile(input.profileId) : null,
     input.managerId ? cacheTags.featureAccessOwner(input.managerId) : null,
     cacheTags.backofficeFeatures(),
   ]);
@@ -86,6 +86,14 @@ export function invalidateBackofficeFeaturesCache() {
 
 export function invalidateTeamStatusRulesCache(input: { teamId: string }) {
   revalidateDefinedTags([cacheTags.teamStatusRules(input.teamId)]);
+}
+
+export function invalidateLeadStatusTransitionFieldRulesCache() {
+  revalidateDefinedTags([cacheTags.leadStatusTransitionFieldRules()]);
+}
+
+export function invalidateLeadStatusTransitionGatesCache() {
+  revalidateDefinedTags([cacheTags.leadStatusTransitionGates()]);
 }
 
 export function invalidateTeamLeadsCache(input: { teamId: string }) {

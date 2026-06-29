@@ -130,6 +130,7 @@ class PublicLeadFormService implements IPublicLeadFormService {
       isValid: result?.isValid ?? false,
       successMessages: result?.successMessages ?? [],
       errorMessages: result?.errorMessages ?? [],
+      lead: result?.result ?? null,
     };
   }
 }

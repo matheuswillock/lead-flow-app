@@ -1,55 +1,31 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import type { SignInWithOAuthCredentials } from "@supabase/supabase-js"
-import {
-  AlertTriangle,
-  Calendar,
-  CircleCheckBig,
-  Eye,
-  EyeOff,
-  Link2,
-  Loader2,
-  Upload,
-} from "lucide-react"
+import { useEffect, useState } from "react"
+import { Eye, EyeOff } from "lucide-react"
 import { toast } from "sonner"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth"
-import { getProfileTimezoneOptions } from "@/lib/dates"
-import { createSupabaseBrowser } from "@/lib/supabase/browser"
+import { useBackofficeAccount } from "../context/BackofficeAccountHook"
 import type { BackofficeAccountUpdateInput } from "../context/BackofficeAccountTypes"
-import { formatDocumentInput, maskPhone } from "@/lib/masks"
 
-const EMPTY_FORM: BackofficeAccountUpdateInput = {
-  fullName: "",
-  email: "",
-  phone: "",
-  cpfCnpj: "",
-  postalCode: "",
-  address: "",
-  addressNumber: "",
-  neighborhood: "",
-  complement: "",
-  city: "",
-  state: "",
+interface ProfileForm {
+  fullName: string
+  email: string
 }
 
-function initials(name?: string | null) {
-  if (!name) return "BO"
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase()
+const EMPTY_PROFILE: ProfileForm = {
+  fullName: "",
+  email: "",
 }
 
 function hasStrongPassword(value: string) {
@@ -62,62 +38,41 @@ function hasStrongPassword(value: string) {
 }
 
 export function BackofficeAccountContainer() {
-  const {
-    account,
-    isLoading,
-    error,
-    updateAccount,
-    updatePassword,
-    uploadIcon,
-    removeIcon,
-    updateTimezone,
-    disconnectGoogle,
-  } = useBackofficeAccount()
-  const [form, setForm] = useState<BackofficeAccountUpdateInput>(EMPTY_FORM)
+  const { account, isLoading, error, updateAccount, updatePassword } = useBackofficeAccount()
+  const [profileForm, setProfileForm] = useState<ProfileForm>(EMPTY_PROFILE)
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isSavingPassword, setIsSavingPassword] = useState(false)
-  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false)
-  const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false)
-  const [isUpdatingTimezone, setIsUpdatingTimezone] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!account) return
-    setForm({
+    setProfileForm({
       fullName: account.fullName ?? "",
       email: account.email ?? "",
-      phone: account.phone ?? "",
-      cpfCnpj: account.cpfCnpj ?? "",
-      postalCode: account.postalCode ?? "",
-      address: account.address ?? "",
-      addressNumber: account.addressNumber ?? "",
-      neighborhood: account.neighborhood ?? "",
-      complement: account.complement ?? "",
-      city: account.city ?? "",
-      state: account.state ?? "",
     })
   }, [account])
 
-  const timezoneOptions = useMemo(
-    () => getProfileTimezoneOptions(account?.timezone ?? "America/Sao_Paulo"),
-    [account?.timezone]
-  )
-  const selectedTimezoneLabel =
-    timezoneOptions.find((option) => option.value === account?.timezone)?.label ?? "São Paulo"
+  const nameChanged = profileForm.fullName.trim() !== (account?.fullName ?? "")
+  const emailChanged = profileForm.email.trim() !== (account?.email ?? "")
+  const canSaveProfile =
+    (nameChanged || emailChanged) &&
+    profileForm.fullName.trim().length >= 2 &&
+    profileForm.email.trim().length > 0
 
-  const setField = (key: keyof BackofficeAccountUpdateInput, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
+  async function handleSaveProfile(event: React.FormEvent) {
+    event.preventDefault()
+    if (!canSaveProfile || isSavingProfile) return
 
-  async function handleSaveProfile() {
-    if (isSavingProfile) return
     setIsSavingProfile(true)
     try {
-      await updateAccount(form)
+      const payload: BackofficeAccountUpdateInput = {
+        fullName: profileForm.fullName.trim(),
+        email: profileForm.email.trim(),
+      }
+      await updateAccount(payload)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao atualizar conta")
     } finally {
@@ -125,8 +80,18 @@ export function BackofficeAccountContainer() {
     }
   }
 
-  async function handleSavePassword() {
+  function handleCancelProfile() {
+    if (!account) return
+    setProfileForm({
+      fullName: account.fullName ?? "",
+      email: account.email ?? "",
+    })
+  }
+
+  async function handleSavePassword(event: React.FormEvent) {
+    event.preventDefault()
     if (isSavingPassword || !hasStrongPassword(password) || password !== confirmPassword) return
+
     setIsSavingPassword(true)
     try {
       await updatePassword(password)
@@ -139,118 +104,32 @@ export function BackofficeAccountContainer() {
     }
   }
 
-  async function handleIconChange(file: File | null) {
-    if (!file) return
-    try {
-      await uploadIcon(file)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar ícone")
-    }
-  }
-
-  async function handleConnectGoogle() {
-    if (isConnectingGoogle) return
-    setIsConnectingGoogle(true)
-    try {
-      const supabase = createSupabaseBrowser()
-      if (!supabase) {
-        toast.error("Supabase indisponível no momento")
-        return
-      }
-
-      const redirectTo = `${window.location.origin}/auth/callback?next=/backoffice/account`
-      sessionStorage.setItem(
-        "googleConnectContext",
-        JSON.stringify({
-          source: "backoffice-account",
-          expectedSupabaseId: account?.supabaseId ?? null,
-        })
-      )
-
-      const params: SignInWithOAuthCredentials = {
-        provider: "google",
-        options: {
-          scopes: GOOGLE_CALENDAR_SCOPES,
-          redirectTo,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      }
-
-      const { data } = await supabase.auth.getUser()
-      const hasGoogleIdentity =
-        data.user?.identities?.some((identity) => identity.provider === "google") ?? false
-      const auth = supabase.auth as typeof supabase.auth & {
-        linkIdentity?: (params: SignInWithOAuthCredentials) => Promise<{ error: { message: string } | null }>
-      }
-
-      const result = hasGoogleIdentity
-        ? await supabase.auth.signInWithOAuth(params)
-        : await auth.linkIdentity?.(params)
-
-      if (!result) {
-        sessionStorage.removeItem("googleConnectContext")
-        toast.error("Não foi possível iniciar a conexão Google")
-        return
-      }
-
-      if (result.error) {
-        sessionStorage.removeItem("googleConnectContext")
-        toast.error(result.error.message || "Erro ao iniciar conexão Google")
-      }
-    } catch (err) {
-      sessionStorage.removeItem("googleConnectContext")
-      console.error("[BackofficeAccountContainer][connectGoogle]", err)
-      toast.error("Erro inesperado ao conectar Google")
-    } finally {
-      setIsConnectingGoogle(false)
-    }
-  }
-
-  async function handleDisconnectGoogle() {
-    if (isDisconnectingGoogle) return
-    setIsDisconnectingGoogle(true)
-    try {
-      await disconnectGoogle()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao desconectar Google")
-    } finally {
-      setIsDisconnectingGoogle(false)
-    }
-  }
-
-  async function handleTimezoneChange(timezone: string) {
-    if (isUpdatingTimezone || timezone === account?.timezone) return
-    setIsUpdatingTimezone(true)
-    try {
-      await updateTimezone(timezone)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar fuso horário")
-    } finally {
-      setIsUpdatingTimezone(false)
-    }
+  function handleCancelPassword() {
+    setPassword("")
+    setConfirmPassword("")
   }
 
   if (isLoading) {
     return (
-      <main className="flex min-h-screen items-start justify-center px-4 py-10">
-        <Card className="w-full max-w-3xl">
-          <CardHeader>
-            <CardTitle>Minha conta</CardTitle>
+      <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+        <Card className="mx-auto w-full max-w-3xl">
+          <CardHeader className="gap-3">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-72" />
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">Carregando...</CardContent>
+          <CardContent className="flex flex-col gap-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </CardContent>
         </Card>
-      </main>
+      </div>
     )
   }
 
   if (error || !account) {
     return (
-      <main className="flex min-h-screen items-start justify-center px-4 py-10">
-        <Card className="w-full max-w-3xl">
+      <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+        <Card className="mx-auto w-full max-w-3xl">
           <CardHeader>
             <CardTitle>Minha conta</CardTitle>
           </CardHeader>
@@ -258,238 +137,174 @@ export function BackofficeAccountContainer() {
             {error ?? "Conta não encontrada"}
           </CardContent>
         </Card>
-      </main>
+      </div>
     )
   }
 
   return (
-    <main className="flex min-h-screen justify-center px-4 py-10">
-      <Card className="w-full max-w-3xl">
-        <CardHeader className="space-y-2">
+    <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+      <Card className="mx-auto w-full max-w-3xl">
+        <CardHeader className="flex flex-col gap-2">
           <CardTitle className="text-2xl">Minha conta</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Gerencie seu perfil e configurações do backoffice.
+            Gerencie seu perfil e configurações de segurança.
           </p>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="profile" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
+          <Tabs defaultValue="profile" className="flex w-full flex-col gap-6">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="profile">Perfil</TabsTrigger>
               <TabsTrigger value="security">Segurança</TabsTrigger>
-              <TabsTrigger value="connections">Conexões</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="profile" className="space-y-6">
-              <section className="space-y-4">
-                <h2 className="text-base font-semibold">Ícone de perfil</h2>
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                  <Avatar className="h-24 w-24">
-                    <AvatarImage
-                      src={account.profileIconUrl ?? undefined}
-                      alt={account.fullName ?? "Backoffice"}
-                    />
-                    <AvatarFallback>{initials(account.fullName)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-wrap gap-2">
+            <TabsContent value="profile" className="flex flex-col gap-6">
+              <form onSubmit={(event) => void handleSaveProfile(event)} className="flex flex-col gap-6">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="backoffice-account-name">Nome</FieldLabel>
                     <Input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      className="hidden"
-                      onChange={(event) => void handleIconChange(event.target.files?.[0] ?? null)}
+                      id="backoffice-account-name"
+                      value={profileForm.fullName}
+                      onChange={(event) =>
+                        setProfileForm((prev) => ({ ...prev, fullName: event.target.value }))
+                      }
+                      placeholder="Seu nome completo"
+                      autoComplete="name"
+                      disabled={isSavingProfile}
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Upload className="h-4 w-4" />
-                      Enviar imagem
-                    </Button>
-                    {account.profileIconUrl ? (
-                      <Button type="button" variant="ghost" onClick={() => void removeIcon()}>
-                        Remover ícone
-                      </Button>
-                    ) : null}
-                  </div>
+                    {profileForm.fullName.length > 0 && profileForm.fullName.trim().length < 2 && (
+                      <FieldDescription className="text-destructive">
+                        Mínimo de 2 caracteres
+                      </FieldDescription>
+                    )}
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="backoffice-account-email">E-mail</FieldLabel>
+                    <Input
+                      id="backoffice-account-email"
+                      type="email"
+                      value={profileForm.email}
+                      onChange={(event) =>
+                        setProfileForm((prev) => ({ ...prev, email: event.target.value }))
+                      }
+                      placeholder="seu@email.com"
+                      autoComplete="email"
+                      disabled={isSavingProfile}
+                    />
+                  </Field>
+                </FieldGroup>
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancelProfile}
+                    disabled={isSavingProfile || (!nameChanged && !emailChanged)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={!canSaveProfile || isSavingProfile}>
+                    {isSavingProfile ? "Salvando..." : "Salvar alterações"}
+                  </Button>
                 </div>
-              </section>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="security" className="flex flex-col gap-6">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-base font-medium">Alterar senha</h2>
+                <p className="text-sm text-muted-foreground">
+                  Atualize sua senha para manter sua conta segura.
+                </p>
+              </div>
 
               <Separator />
 
-              <section className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-name">Nome</Label>
-                  <Input
-                    id="backoffice-account-name"
-                    value={form.fullName}
-                    onChange={(event) => setField("fullName", event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-email">E-mail</Label>
-                  <Input
-                    id="backoffice-account-email"
-                    value={form.email}
-                    onChange={(event) => setField("email", event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-phone">Telefone</Label>
-                  <Input
-                    id="backoffice-account-phone"
-                    value={maskPhone(form.phone ?? "")}
-                    onChange={(event) => setField("phone", event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-document">Documento</Label>
-                  <Input
-                    id="backoffice-account-document"
-                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                    value={formatDocumentInput(form.cpfCnpj ?? "")}
-                    onChange={(event) => setField("cpfCnpj", event.target.value)}
-                  />
-                </div>
-              </section>
+              <form onSubmit={(event) => void handleSavePassword(event)} className="flex flex-col gap-6">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="backoffice-account-password">Nova senha</FieldLabel>
+                    <div className="relative">
+                      <Input
+                        id="backoffice-account-password"
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        disabled={isSavingPassword}
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-0 right-0"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        disabled={isSavingPassword}
+                        aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                      >
+                        {showPassword ? <EyeOff data-icon="inline-start" /> : <Eye data-icon="inline-start" />}
+                      </Button>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="backoffice-account-confirm-password">
+                      Confirmar nova senha
+                    </FieldLabel>
+                    <div className="relative">
+                      <Input
+                        id="backoffice-account-confirm-password"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        disabled={isSavingPassword}
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-0 right-0"
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
+                        disabled={isSavingPassword}
+                        aria-label={showConfirmPassword ? "Ocultar senha" : "Mostrar senha"}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff data-icon="inline-start" />
+                        ) : (
+                          <Eye data-icon="inline-start" />
+                        )}
+                      </Button>
+                    </div>
+                    {confirmPassword.length > 0 && password !== confirmPassword && (
+                      <FieldDescription className="text-destructive">
+                        As senhas não coincidem
+                      </FieldDescription>
+                    )}
+                  </Field>
+                </FieldGroup>
 
-              <section className="space-y-4">
-                <h2 className="text-base font-semibold text-muted-foreground">
-                  Endereço
-                </h2>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="backoffice-account-postal-code">CEP</Label>
-                    <Input
-                      id="backoffice-account-postal-code"
-                      value={form.postalCode ?? ""}
-                      onChange={(event) => setField("postalCode", event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="backoffice-account-city">Cidade</Label>
-                    <Input
-                      id="backoffice-account-city"
-                      value={form.city ?? ""}
-                      onChange={(event) => setField("city", event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="backoffice-account-address">Endereço</Label>
-                    <Input
-                      id="backoffice-account-address"
-                      value={form.address ?? ""}
-                      onChange={(event) => setField("address", event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="backoffice-account-number">Número</Label>
-                    <Input
-                      id="backoffice-account-number"
-                      value={form.addressNumber ?? ""}
-                      onChange={(event) => setField("addressNumber", event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="backoffice-account-neighborhood">Bairro</Label>
-                    <Input
-                      id="backoffice-account-neighborhood"
-                      value={form.neighborhood ?? ""}
-                      onChange={(event) => setField("neighborhood", event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="backoffice-account-complement">Complemento</Label>
-                    <Input
-                      id="backoffice-account-complement"
-                      value={form.complement ?? ""}
-                      onChange={(event) => setField("complement", event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="backoffice-account-state">Estado</Label>
-                    <Input
-                      id="backoffice-account-state"
-                      value={form.state ?? ""}
-                      onChange={(event) => setField("state", event.target.value)}
-                    />
-                  </div>
-                </div>
-              </section>
-
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  onClick={() => void handleSaveProfile()}
-                  disabled={isSavingProfile}
-                >
-                  {isSavingProfile ? "Salvando..." : "Salvar alterações"}
-                </Button>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="security" className="space-y-6">
-              <section className="space-y-4">
-                <div>
-                  <h2 className="text-base font-semibold">Alterar senha</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Atualize sua senha para manter sua conta segura.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-password">Nova senha</Label>
-                  <div className="relative">
-                    <Input
-                      id="backoffice-account-password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1 h-8 w-8"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-confirm-password">Confirmar nova senha</Label>
-                  <div className="relative">
-                    <Input
-                      id="backoffice-account-confirm-password"
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1 h-8 w-8"
-                      onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
                 <div className="rounded-lg border border-border/60 p-4 text-xs text-muted-foreground">
                   <p className="mb-2 text-sm font-medium text-foreground">Requisitos da senha:</p>
                   <p>
                     Mínimo de 6 caracteres, uma letra maiúscula, um número e um caractere especial.
                   </p>
                 </div>
-                <div className="flex justify-end">
+
+                <div className="flex justify-end gap-2">
                   <Button
                     type="button"
-                    onClick={() => void handleSavePassword()}
+                    variant="outline"
+                    onClick={handleCancelPassword}
+                    disabled={isSavingPassword || (!password && !confirmPassword)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
                     disabled={
                       isSavingPassword ||
                       !hasStrongPassword(password) ||
@@ -499,136 +314,11 @@ export function BackofficeAccountContainer() {
                     {isSavingPassword ? "Atualizando..." : "Atualizar senha"}
                   </Button>
                 </div>
-              </section>
-            </TabsContent>
-
-            <TabsContent value="connections" className="space-y-6">
-              <section className="space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-base font-semibold">Google Calendar</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Conecte sua conta Google para criar reuniões automaticamente.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-                    {account.googleCalendarConnected ? (
-                      <CircleCheckBig className="h-4 w-4 text-emerald-500" />
-                    ) : (
-                      <Calendar className="h-4 w-4" />
-                    )}
-                    {account.googleCalendarConnected ? "Conectado" : "Não conectado"}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      {account.googleCalendarConnected
-                        ? "Conta vinculada"
-                        : "Conectar conta Google"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {account.googleCalendarConnected
-                        ? `Conectado como ${account.googleEmail || account.email}.`
-                        : "Usada somente para a agenda do backoffice."}
-                    </p>
-                  </div>
-                  {account.googleCalendarConnected ? (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="text-destructive"
-                          disabled={isDisconnectingGoogle}
-                        >
-                          Desconectar Google
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle className="flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-destructive" />
-                            Desconectar Google?
-                          </AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Eventos já criados não serão removidos automaticamente.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel disabled={isDisconnectingGoogle}>
-                            Cancelar
-                          </AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => void handleDisconnectGoogle()}
-                            disabled={isDisconnectingGoogle}
-                          >
-                            {isDisconnectingGoogle ? "Desconectando..." : "Desconectar"}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void handleConnectGoogle()}
-                      disabled={isConnectingGoogle}
-                    >
-                      <Link2 className="h-4 w-4" />
-                      {isConnectingGoogle ? "Conectando..." : "Conectar Google"}
-                    </Button>
-                  )}
-                </div>
-              </section>
-
-              <Separator />
-
-              <section className="space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-base font-semibold">Fuso horário</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Define o horário local usado em agendamentos.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-                    {isUpdatingTimezone ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Calendar className="h-4 w-4" />
-                    )}
-                    {isUpdatingTimezone ? "Salvando..." : selectedTimezoneLabel}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-border/60 p-4">
-                  <Label htmlFor="backoffice-account-timezone">Timezone da conta</Label>
-                  <Select
-                    value={account.timezone}
-                    onValueChange={(value) => void handleTimezoneChange(value)}
-                    disabled={isUpdatingTimezone}
-                  >
-                    <SelectTrigger id="backoffice-account-timezone" className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timezoneOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </section>
+              </form>
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
-    </main>
+    </div>
   )
 }
-function useBackofficeAccount(): { account: any; isLoading: any; error: any; updateAccount: any; updatePassword: any; uploadIcon: any; removeIcon: any; updateTimezone: any; disconnectGoogle: any } {
-  throw new Error("Function not implemented.")
-}
-

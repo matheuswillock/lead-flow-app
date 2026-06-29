@@ -7,6 +7,7 @@ import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepos
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   isLostStatus,
   mapHealthPlan,
@@ -233,6 +234,7 @@ export async function POST(request: NextRequest) {
     const output = new Output(true, ["Importacao concluida"], [], result);
     return NextResponse.json(output);
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao importar leads:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const functionDefinitionSchema = z.object({
   operator: z.enum([
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
     const output = await useCase.list(teamAccess.access, "all", scope)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailTemplatesRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -88,6 +90,7 @@ export async function POST(request: NextRequest) {
     const output = await useCase.create(validation.data, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailTemplatesRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

@@ -16,11 +16,19 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Mail, Share2 } from "lucide-react";
+import { SaveWithDraftButton } from "./SaveWithDraftButton";
+import { BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Loader2, Mail, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import { useTimezone } from "@/app/context/TimezoneContext";
+import {
+    canConfirmMeetingPresence,
+    getMeetingPresenceBadgeClass,
+    getMeetingPresenceBadgeLabel,
+    getMeetingPresenceAlertLabel,
+    isMeetingPresenceConfirmationDue,
+} from "@/lib/lead-meeting";
 import {
     formatCurrencyInput,
     MAX_CURRENCY_LABEL,
@@ -31,6 +39,7 @@ import {
 import { LeadAdditionalNotesField } from "./fields/LeadAdditionalNotesField";
 import { LeadAgeField } from "./fields/LeadAgeField";
 import { LeadCnpjField } from "./fields/LeadCnpjField";
+import { LeadRazaoSocialField } from "./fields/LeadRazaoSocialField";
 import { LeadCurrentValueField } from "./fields/LeadCurrentValueField";
 import { LeadEmailField } from "./fields/LeadEmailField";
 import { LeadHealthPlanField } from "./fields/LeadHealthPlanField";
@@ -49,9 +58,11 @@ const formatCurrencyNumber = (value: number): string =>
         maximumFractionDigits: 2
     })}`;
 
+export type LeadFormSaveMode = "full" | "draft";
+
 export interface ILeadFormProps {
     form: UseFormReturn<leadFormData>;
-    onSubmit: (data: leadFormData) => void | Promise<void>;
+    onSubmit: (data: leadFormData, mode: LeadFormSaveMode) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
     supabaseId?: string;
@@ -69,6 +80,7 @@ export interface ILeadFormProps {
         meetingNotes?: string | null;
         meetingLink?: string | null;
         meetingHeald?: "yes" | "no" | null;
+        meetingPresenceConfirmed?: boolean;
         isPreSchedule?: boolean;
         isOverdue?: boolean;
     };
@@ -78,6 +90,9 @@ export interface ILeadFormProps {
     canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
+    canConfirmMeetingPresence?: boolean;
+    meetingPresenceConfirmSaving?: boolean;
+    onMeetingPresenceConfirm?: () => void | Promise<void>;
     canMarkNoShow?: boolean;
     onMarkNoShow?: () => void | Promise<void>;
     usersToAssign: UserAssociated[];
@@ -96,6 +111,9 @@ export interface ILeadFormProps {
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
     currentUserIsCloser?: boolean;
+    isFullSaveDisabled?: boolean;
+    fullSaveDisabledReason?: string;
+    isCloserSelectDisabled?: boolean;
 }
 
 export function LeadForm({
@@ -115,6 +133,9 @@ export function LeadForm({
     canToggleMeetingHeald,
     meetingHealdSaving,
     onMeetingHealdChange,
+    canConfirmMeetingPresence: canConfirmMeetingPresenceAction = false,
+    meetingPresenceConfirmSaving = false,
+    onMeetingPresenceConfirm,
     canMarkNoShow,
     onMarkNoShow,
     usersToAssign,
@@ -129,8 +150,14 @@ export function LeadForm({
     currentProfileId,
     currentUserIsSdr = false,
     currentUserIsCloser = false,
+    isFullSaveDisabled = false,
+    fullSaveDisabledReason,
     onShareSchedule,
     onResendScheduleInvite,
+    closersToAssign,
+    closersLoading,
+    closersError,
+    isCloserSelectDisabled = false,
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -145,6 +172,10 @@ export function LeadForm({
     const sdrs = React.useMemo(
         () => sdrsToAssign ?? [],
         [sdrsToAssign]
+    );
+    const closers = React.useMemo(
+        () => closersToAssign ?? [],
+        [closersToAssign]
     );
     const responsibleUsers = React.useMemo(() => {
         const base = sdrs.length > 0 ? sdrs : usersToAssign ?? [];
@@ -183,7 +214,8 @@ export function LeadForm({
         () => leadFormSchema.safeParse(watchedValues).success,
         [watchedValues]
     );
-    const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
+    const isDraftDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
+    const isSaveDisabled = isDraftDisabled || isFullSaveDisabled;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
     const isPreSchedule =
         watchedValues.isTransfer === true || scheduleSummary?.isPreSchedule === true;
@@ -198,6 +230,17 @@ export function LeadForm({
         !!scheduleSummary?.meetingDate &&
         scheduleSummary?.status === "scheduled" &&
         !isPreSchedule;
+    const isPresenceConfirmed = scheduleSummary?.meetingPresenceConfirmed === true;
+    const isPresenceConfirmationDue =
+        !isPreSchedule &&
+        isMeetingPresenceConfirmationDue({
+            status: scheduleSummary?.status,
+            meetingDate: scheduleSummary?.meetingDate,
+            meetingPresenceConfirmed: scheduleSummary?.meetingPresenceConfirmed,
+            isTransfer: isPreSchedule,
+        });
+    const canEditCloserField =
+        isEditMode && !!scheduleSummary?.meetingDate && !isPreSchedule;
 
     useEffect(() => {
         if (!initialData) {
@@ -326,6 +369,38 @@ export function LeadForm({
         }
     }, [form, isLoading, isUpdating]);
 
+    const runSubmit = useCallback(
+        (mode: LeadFormSaveMode) => {
+            void form.handleSubmit(
+                (data) => onSubmit(data, mode),
+                () => {
+                    void handleInvalidSubmit();
+                }
+            )();
+        },
+        [form, handleInvalidSubmit, onSubmit]
+    );
+
+    const handleSaveFull = useCallback(() => {
+        if (isSaveDisabled) {
+            if (isFullSaveDisabled && fullSaveDisabledReason) {
+                toast.error(fullSaveDisabledReason);
+                return;
+            }
+            void handleInvalidSubmit();
+            return;
+        }
+        runSubmit("full");
+    }, [fullSaveDisabledReason, handleInvalidSubmit, isFullSaveDisabled, isSaveDisabled, runSubmit]);
+
+    const handleSaveDraft = useCallback(() => {
+        if (isDraftDisabled) {
+            void handleInvalidSubmit();
+            return;
+        }
+        runSubmit("draft");
+    }, [handleInvalidSubmit, isDraftDisabled, runSubmit]);
+
     useEffect(() => {
         if (!hasReachedFormEnd) return;
         if (!hasChanges) return;
@@ -345,9 +420,10 @@ export function LeadForm({
     return (
       <Form {...form}>
         <form
-            onSubmit={form.handleSubmit(onSubmit, () => {
-                void handleInvalidSubmit();
-            })}
+            onSubmit={(event) => {
+                event.preventDefault();
+                handleSaveFull();
+            }}
             className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2", className)}
         >            
             <LeadNameField control={form.control} disabled={isLoading || isUpdating} />
@@ -357,6 +433,11 @@ export function LeadForm({
                 control={form.control}
                 disabled={isLoading || isUpdating}
                 onDuplicateCheck={handleCnpjBlur}
+            />
+            <LeadRazaoSocialField
+                control={form.control}
+                disabled={isLoading || isUpdating}
+                isLookupPending={isLoading || isUpdating}
             />
             <LeadAgeField control={form.control} disabled={isLoading || isUpdating} />
 
@@ -460,12 +541,58 @@ export function LeadForm({
                                 <span className="text-foreground">Data/hora</span>
                                 <span>{new Date(scheduleSummary.meetingDate).toLocaleString("pt-BR")}</span>
                             </div>
-                            {!!scheduleSummary?.closerName && (
+                            {canEditCloserField ? (
+                                <FormField
+                                    control={form.control}
+                                    name="closerId"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Closer</FormLabel>
+                                            <Select
+                                                onValueChange={field.onChange}
+                                                value={field.value || ""}
+                                                disabled={
+                                                    isLoading ||
+                                                    isUpdating ||
+                                                    closersLoading ||
+                                                    isCloserSelectDisabled ||
+                                                    closers.length === 0
+                                                }
+                                            >
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue
+                                                            placeholder={
+                                                                closersLoading
+                                                                    ? "Carregando closers..."
+                                                                    : closers.length === 0
+                                                                      ? "Nenhum closer disponível"
+                                                                      : "Selecione o closer"
+                                                            }
+                                                        />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {closers.map((closer) => (
+                                                        <SelectItem key={closer.id} value={closer.id}>
+                                                            {closer.name || closer.email}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            {closersError ? (
+                                                <p className="text-xs text-destructive">{closersError}</p>
+                                            ) : null}
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            ) : scheduleSummary?.closerName ? (
                                 <div className="grid gap-1">
                                     <span className="text-foreground">Closer</span>
                                     <span>{scheduleSummary.closerName}</span>
                                 </div>
-                            )}
+                            ) : null}
                             {!!scheduleSummary?.meetingTitle && (
                                 <div className="grid gap-1">
                                     <span className="text-foreground">Título</span>
@@ -531,8 +658,73 @@ export function LeadForm({
                                     />
                                 </div>
                             )}
-                            {(!!canToggleMeetingHeald || !!canMarkNoShow || canResendScheduleInvite) && (
+                            {!isPreSchedule && scheduleSummary?.meetingDate && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {isPresenceConfirmed ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("confirmed"))}
+                                        >
+                                            <BadgeCheck data-icon="inline-start" />
+                                            {getMeetingPresenceBadgeLabel("confirmed")}
+                                        </Badge>
+                                    ) : isPresenceConfirmationDue ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("pending"))}
+                                        >
+                                            {getMeetingPresenceAlertLabel()}
+                                        </Badge>
+                                    ) : canConfirmMeetingPresence({
+                                        status: scheduleSummary?.status,
+                                        meetingDate: scheduleSummary?.meetingDate,
+                                        isTransfer: isPreSchedule,
+                                    }) ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("pending"))}
+                                        >
+                                            {getMeetingPresenceBadgeLabel("pending")}
+                                        </Badge>
+                                    ) : null}
+                                </div>
+                            )}
+                            {(!!canToggleMeetingHeald ||
+                                !!canMarkNoShow ||
+                                canResendScheduleInvite ||
+                                canConfirmMeetingPresenceAction) && (
                                 <div className="flex flex-wrap gap-2 pt-2">
+                                    {canConfirmMeetingPresenceAction && !isPresenceConfirmed && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={
+                                                isLoading ||
+                                                isUpdating ||
+                                                meetingPresenceConfirmSaving ||
+                                                !canConfirmMeetingPresence({
+                                                    status: scheduleSummary?.status,
+                                                    meetingDate: scheduleSummary?.meetingDate,
+                                                    isTransfer: isPreSchedule,
+                                                })
+                                            }
+                                            onClick={() => {
+                                                void onMeetingPresenceConfirm?.();
+                                            }}
+                                        >
+                                            {meetingPresenceConfirmSaving ? (
+                                                <>
+                                                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                                                    Confirmando...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BadgeCheck data-icon="inline-start" />
+                                                    Confirmar agenda
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
                                     {!!canToggleMeetingHeald && (
                                         <Button
                                             type="button"
@@ -895,23 +1087,13 @@ export function LeadForm({
                     Cancelar
                 </Button>
 
-                <div
-                    className="inline-flex"
-                    onClick={() => {
-                        if (isSubmitDisabled) {
-                            void handleInvalidSubmit();
-                        }
-                    }}
-                >
-                    <Button 
-                        type="submit" 
-                        className={cn("cursor-pointer", isSubmitDisabled && "pointer-events-none")} 
-                        disabled={isSubmitDisabled}
-                    >
-                        {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isUpdating ? "Salvando..." : "Salvar"}
-                    </Button>
-                </div>
+                <SaveWithDraftButton
+                    isLoading={isLoading || isUpdating}
+                    isSaveDisabled={isSaveDisabled}
+                    isDraftDisabled={isDraftDisabled}
+                    onSaveFull={handleSaveFull}
+                    onSaveDraft={handleSaveDraft}
+                />
             </div>
             <div
                 ref={formEndRef as React.RefObject<HTMLDivElement>}

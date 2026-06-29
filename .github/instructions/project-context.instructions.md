@@ -349,8 +349,10 @@ bun run governance:sync
 # Scaffold nova feature
 bun run scaffold:feature -- --name <feature-name>
 
-# Prisma
-bun run prisma:migrate
+# Prisma / Supabase migrations
+bun run db:migrate:from-prisma -- <name>   # schema.prisma → SQL em supabase/migrations/
+bun run db:migrate:new <name>              # SQL manual (RLS, seeds, triggers)
+bun run db:migrate:reset:local
 bun run prisma:seed
 bunx prisma studio
 ```

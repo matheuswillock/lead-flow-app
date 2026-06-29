@@ -16,9 +16,18 @@ interface BoardColumnsProps {
     onScheduleMeeting: (lead: Lead) => void;
     onNoShow: (lead: Lead) => void;
     onResendScheduleInvite: (lead: Lead) => void;
+    onConfirmMeetingPresence: (lead: Lead) => void;
+    confirmingPresenceLeadId: string | null;
 }
 
-export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, onNoShow, onResendScheduleInvite }: BoardColumnsProps) {
+export default function BoardColumns({
+    onFinalizeContract,
+    onScheduleMeeting,
+    onNoShow,
+    onResendScheduleInvite,
+    onConfirmMeetingPresence,
+    confirmingPresenceLeadId,
+}: BoardColumnsProps) {
     const {
         filtered,
         isLoading,
@@ -160,6 +169,8 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
                                         onScheduleMeeting={onScheduleMeeting}
                                         onNoShow={onNoShow}
                                         onResendScheduleInvite={onResendScheduleInvite}
+                                        onConfirmMeetingPresence={onConfirmMeetingPresence}
+                                        isConfirmingMeetingPresence={confirmingPresenceLeadId === lead.id}
                                         attachmentCount={lead.attachmentCount || 0}
                                     />
                                 ))}
