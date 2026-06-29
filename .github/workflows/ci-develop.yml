@@ -402,7 +402,11 @@ jobs:
             BUMP_SOURCE="main"
           fi
 
-          RANGE="${MAIN_BRANCH}..HEAD"
+          if [ "$BUMP_SOURCE" = "release" ]; then
+            RANGE="${RELEASE_SHA}..HEAD"
+          else
+            RANGE="${MAIN_BRANCH}..HEAD"
+          fi
           COMMITS=$(git log $RANGE --pretty=format:"%s")
           MERGES=$(git log $RANGE --merges --pretty=format:"%s")
 
@@ -686,7 +690,7 @@ jobs:
                 body,
               };
 
-              if (newVersion) {
+              if (newVersion && buildResult === 'success') {
                 updatePayload.title = `release: v${newVersion}`;
               }
 
