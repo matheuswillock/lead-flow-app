@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(
   request: NextRequest,
@@ -28,6 +29,7 @@ export async function POST(
     );
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[PerformanceFilterPresetsRoute][USE] Erro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao marcar preset como usado"], null),

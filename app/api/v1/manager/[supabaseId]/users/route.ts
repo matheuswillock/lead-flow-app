@@ -26,6 +26,7 @@ import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementa
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import type { Prisma } from "@prisma/client";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -304,6 +305,7 @@ async function getPendingPaymentStatus(paymentId?: string | null) {
       paymentMethod: payment?.billingType || "UNDEFINED",
     };
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[ManagerUsersRoute] Erro ao consultar pagamento pendente:", error);
     return {
       paymentId,
@@ -554,6 +556,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: 202 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[ManagerUsersRoute][POST] Erro ao criar usuário:", {
       error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
     });
@@ -796,6 +799,7 @@ export async function GET(
 
     return NextResponse.json(responseWithStats, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao listar usuários:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -1078,6 +1082,7 @@ export async function PUT(
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao gerenciar usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -1185,6 +1190,7 @@ export async function DELETE(
     const output = new Output(true, ["Usuário removido do time com sucesso"], [], null);
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao excluir usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

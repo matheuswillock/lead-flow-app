@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { asaasFetch } from '@/lib/asaas';
 import { Output } from '@/lib/output';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(
   request: NextRequest,
@@ -39,6 +40,7 @@ export async function GET(
     return NextResponse.json(result, { status: 200 });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('Erro ao verificar status do pagamento:', error);
     
     const errorResult = new Output(

@@ -10,6 +10,7 @@ import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
 import { isPreScheduleSlotAvailable } from "@/app/api/services/preSchedule/PreScheduleSlotService";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 async function getCachedLeadSchedule(leadId: string) {
   "use cache";
@@ -225,6 +226,7 @@ export async function POST(
     invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(result, { status: existingSchedule ? 200 : 201 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadScheduleRoute][POST] Erro ao criar agendamento:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -266,6 +268,7 @@ export async function GET(
     const output = new Output(true, [], [], schedules);
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadScheduleRoute][GET] Erro ao buscar agendamentos:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

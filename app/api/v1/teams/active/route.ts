@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -91,6 +92,7 @@ export async function PUT(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in PUT /api/v1/teams/active:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),

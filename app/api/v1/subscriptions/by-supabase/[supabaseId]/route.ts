@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { getSubscriptionBySupabaseIdUseCase } from "@/app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET /api/v1/subscriptions/by-supabase/[supabaseId]
@@ -32,6 +33,7 @@ export async function GET(
 
     return NextResponse.json(output, { status: 500 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("❌ [SubscriptionBySupabaseRoute][GET] Erro inesperado:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao consultar assinatura"], null),

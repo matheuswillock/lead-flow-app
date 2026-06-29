@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeCalendarAvailabilityUseCase } from "@/app/api/useCases/backofficeCalendarAvailability/BackofficeCalendarAvailabilityUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const schema = z
   .object({
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeCalendarAvailabilityRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

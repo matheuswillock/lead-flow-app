@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   backofficeProfileUserTypeUseCase,
   type BackofficeProfileUserTypeInput,
@@ -44,6 +45,7 @@ export async function PATCH(
     const output = await backofficeProfileUserTypeUseCase.convert(profileId, result.access.profileId, input)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeProfileUserTypeRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { preScheduleSlotUseCase } from "@/app/api/useCases/preSchedule/PreScheduleSlotUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET /api/v1/teams/[teamId]/pre-schedule-slots?date=YYYY-MM-DD
@@ -40,6 +41,7 @@ export async function GET(
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 500 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[PreScheduleSlotsRoute][GET] Erro:", error)
     const output = new Output(false, [], ["Erro interno do servidor."], null)
     return NextResponse.json(output, { status: 500 })

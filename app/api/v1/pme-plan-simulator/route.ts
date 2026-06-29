@@ -6,6 +6,7 @@ import { cacheTags } from "@/lib/cache/cacheTags";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
 import { pmePlanSimulatorUseCase, PME_SIMULATOR_ERROR_MESSAGES } from "@/app/api/useCases/pmePlanSimulator/PmePlanSimulatorUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const ageRangeCountSchema = z.object({
   rangeKey: z.string(),
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
     const catalog = await getCachedPmeCatalog();
     return NextResponse.json(new Output(true, [], [], catalog), { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[PmePlanSimulatorRoute][GET] Erro:", error);
     return NextResponse.json(
       new Output(false, [], [PME_SIMULATOR_ERROR_MESSAGES.INTERNAL_CATALOG_ERROR], null),
@@ -107,6 +109,7 @@ export async function POST(request: NextRequest) {
     const output = await pmePlanSimulatorUseCase.simulate(parsed.data);
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[PmePlanSimulatorRoute][POST] Erro:", error);
     return NextResponse.json(
       new Output(false, [], [PME_SIMULATOR_ERROR_MESSAGES.INTERNAL_SIMULATION_ERROR], null),

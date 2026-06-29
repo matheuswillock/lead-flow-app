@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 export async function GET(request: NextRequest) {
   try {
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro no debug:", error);
     return NextResponse.json(
       { error: "Erro interno", details: error instanceof Error ? error.message : String(error) },

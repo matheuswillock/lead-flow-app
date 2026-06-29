@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 type RouteParams = { params: Promise<{ id: string; teamId: string }> }
 
@@ -48,6 +49,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserTeamByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -66,6 +68,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const output = await backofficePlatformUsersUseCase.deleteTeamFromMasterUser(id, teamId)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserTeamByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

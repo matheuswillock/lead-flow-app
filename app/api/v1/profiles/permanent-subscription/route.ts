@@ -1,6 +1,7 @@
 // app/api/v1/profiles/permanent-subscription/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { togglePermanentSubscriptionUseCase } from '@/app/api/useCases/profiles/TogglePermanentSubscriptionUseCase';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * POST /api/v1/profiles/permanent-subscription
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { status: statusCode });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [POST /api/v1/profiles/permanent-subscription] Erro inesperado:', error);
     
     const errorResult = {

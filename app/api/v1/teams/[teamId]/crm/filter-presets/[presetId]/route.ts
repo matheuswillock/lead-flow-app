@@ -5,6 +5,7 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
 import type { TeamFilterPresetUpdateInput } from "@/app/api/useCases/teamFilterPresets/ITeamFilterPresetsUseCase";
 import { invalidateTeamFilterPresetsCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const updateFilterPresetSchema = z
   .object({
@@ -68,6 +69,7 @@ export async function PATCH(
     }
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamFilterPresetByIdRoute][PATCH] Erro ao atualizar preset:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao atualizar filtro pré-definido"], null),
@@ -104,6 +106,7 @@ export async function DELETE(
     }
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamFilterPresetByIdRoute][DELETE] Erro ao remover preset:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao remover filtro pré-definido"], null),

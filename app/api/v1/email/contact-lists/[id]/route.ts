@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const output = await useCase.getById(id, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailContactListByIdRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -57,6 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const output = await useCase.update(id, validation.data, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailContactListByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -81,6 +84,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const output = await useCase.deleteList(id, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailContactListByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

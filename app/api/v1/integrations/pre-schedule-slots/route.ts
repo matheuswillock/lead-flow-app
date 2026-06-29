@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 
 const routePrefix = "[IntegrationPreScheduleSlotsRoute][GET]";
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
     console.info(`${routePrefix} Slots de pré-agendamento carregados`, { teamId, date });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error(`${routePrefix} Erro:`, error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno do servidor"], null),

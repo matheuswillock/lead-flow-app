@@ -12,6 +12,7 @@ import {
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { getAccountSubscriptionStatus } from "@/lib/subscription/isAccountSubscriptionActive";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -29,6 +30,7 @@ async function getPendingPaymentStatus(paymentId?: string | null) {
       paymentMethod: payment?.billingType || "UNDEFINED",
     };
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamsRoute][GET] Erro ao consultar pagamento pendente:", error);
     const is404 = (error as any)?.statusCode === 404;
     return {
@@ -364,6 +366,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in GET /api/v1/teams:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),
@@ -481,6 +484,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in POST /api/v1/teams:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
 import { asaasApi, asaasFetch } from '@/lib/asaas';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET /api/v1/operators/pending/[id]/status
@@ -64,6 +65,7 @@ export async function GET(
           confirmedDate: payment.confirmedDate,
         };
       } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
         console.error('Erro ao verificar status no Asaas:', error);
       }
     }
@@ -116,6 +118,7 @@ export async function GET(
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('Erro ao verificar status:', error);
     return NextResponse.json(
       new Output(false, [], ['Erro interno do servidor'], null),
@@ -175,6 +178,7 @@ export async function POST(
     return NextResponse.json(result, { status: statusCode });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('Erro ao forçar criação:', error);
     return NextResponse.json(
       new Output(false, [], ['Erro interno do servidor'], null),

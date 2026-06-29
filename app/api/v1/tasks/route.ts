@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { listTasksUseCase } from "@/app/api/useCases/task/ListTasksUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TasksRoute][GET] Erro:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

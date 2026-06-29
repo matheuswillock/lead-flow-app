@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 async function getTeamMasterId(teamId: string) {
   const team = await prisma.team.findUnique({
@@ -130,6 +131,7 @@ export async function GET(
     const output = new Output(true, [], [], { teams });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao listar times do usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { crossAccountMembersUseCase } from "@/app/api/useCases/crossAccountMembers/CrossAccountMembersUseCase";
 import { z } from "zod";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const InviteExternalMemberSchema = z.object({
   email: z.string().email("E-mail inválido"),
@@ -42,6 +43,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamExternalMembersRoute][POST]", error);
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 });
   }

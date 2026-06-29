@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getAssociateBackofficeAccess } from "@/app/api/v1/associates/utils/getAssociateBackofficeAccess";
 import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const linkDocumentSchema = z.object({
   documentType: z.enum(["rg", "address_proof", "social_contract"]),
@@ -33,6 +34,7 @@ export async function POST(
     );
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[AssociateProposalLinkDocumentRoute][POST]", error);
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 });
   }

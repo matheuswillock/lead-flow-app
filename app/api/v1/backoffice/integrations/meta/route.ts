@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeMetaWebhookUseCase } from "@/app/api/useCases/backofficeMetaWebhook/BackofficeMetaWebhookUseCase"
 import type { BackofficeWebhookTokenExpiryModeValue } from "@/lib/webhooks/backofficeWebhookSecurity"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const EXPIRY_MODE_VALUES = ["hours_24", "months_6", "indeterminate"] as const
 
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
     const output = await backofficeMetaWebhookUseCase.getIntegrationConfig()
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMetaIntegrationRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -86,6 +88,7 @@ async function handleGenerateToken(request: NextRequest) {
     })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMetaIntegrationRoute][GENERATE_TOKEN]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
 import { leadTransferUseCase } from "@/app/api/useCases/leadTransfers/LeadTransferUseCase";
 import { leadStatusLabels } from "@/lib/lead-status";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadStatusValues = Object.keys(leadStatusLabels) as [string, ...string[]];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,6 +112,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadTransfersRoute][GET] Erro ao listar transferências:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno do servidor"], null),

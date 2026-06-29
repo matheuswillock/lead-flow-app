@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { notificationUseCase } from "@/app/api/useCases/notifications/NotificationUseCase";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[NotificationsUnreadCountRoute][GET] Erro ao contar notificações:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao consultar notificações"], null),

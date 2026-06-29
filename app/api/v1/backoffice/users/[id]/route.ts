@@ -6,6 +6,7 @@ import { profileRepository } from "@/app/api/infra/data/repositories/profile/Pro
 import { noopMailboxProvisioningService } from "@/app/api/services/mailbox/NoopMailboxProvisioningService"
 import { BackofficeUserUseCase } from "@/app/api/useCases/backoffice/BackofficeUserUseCase"
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PATCH(
   request: NextRequest,
@@ -30,6 +31,7 @@ export async function PATCH(
     const output = await useCase.updateUser(id, body, result.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeUserByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -56,6 +58,7 @@ export async function DELETE(
     const output = await useCase.deleteUser(id, result.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeUserByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { updateTaskAssigneeStatusUseCase } from "@/app/api/useCases/task/UpdateTaskAssigneeStatusUseCase";
 import { invalidateTeamCalendarCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const bodySchema = z.object({
   status: z.enum(["PENDING", "IN_PROGRESS", "DONE", "CANCELED", "OVERDUE"]),
@@ -49,6 +50,7 @@ export async function PATCH(
     invalidateTeamTasksCache({ teamId: teamAccess.access.teamId });
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TaskAssigneeStatusRoute][PATCH] Erro:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

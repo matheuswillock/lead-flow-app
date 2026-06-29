@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { meetingFollowUpUseCase } from "@/app/api/useCases/notifications/MeetingFollowUpUseCase";
 
 export async function GET(request: NextRequest) {
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
     const output = await meetingFollowUpUseCase.processDigests();
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[MeetingFollowUpCronRoute][GET] Erro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno no cron de reuniões pendentes"], null),

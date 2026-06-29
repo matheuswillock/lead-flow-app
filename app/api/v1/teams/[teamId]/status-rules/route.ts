@@ -5,6 +5,7 @@ import { invalidateTeamStatusRulesCache } from "@/lib/cache/invalidation";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamStatusRulesUseCase } from "@/app/api/useCases/teamStatusRules/TeamStatusRulesUseCase";
 import { isManagerLikeRole } from "@/lib/roles";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const leadStatusSchema = z.enum([
   "new_opportunity",
@@ -70,6 +71,7 @@ export async function GET(
     const output = await teamStatusRulesUseCase.getRules(teamId);
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamStatusRulesRoute][GET] Erro ao carregar regras:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao carregar regras do time"], null),
@@ -137,6 +139,7 @@ export async function PUT(
     }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamStatusRulesRoute][PUT] Erro ao atualizar regras:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao atualizar regras do time"], null),

@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   getDashboardTeamScopeFromRequest,
   resolveDashboardTeamScope,
@@ -142,6 +143,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(output, { status: 200 });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao buscar agendamentos:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

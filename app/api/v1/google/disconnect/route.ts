@@ -5,6 +5,7 @@ import { profileRepository } from "@/app/api/infra/data/repositories/profile/Pro
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository";
 import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const LOG_PREFIX = "[GoogleDisconnect]";
 
@@ -135,6 +136,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(new Output(true, ["Google desconectado"], [], null), { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     logError("Erro inesperado ao desconectar Google.", {
       status: "error",
       step: "unexpected",

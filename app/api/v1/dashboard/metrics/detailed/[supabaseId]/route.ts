@@ -5,6 +5,7 @@ import { IMetricsUseCase } from '@/app/api/useCases';
 import { MetricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 import { NextRequest, NextResponse } from 'next/server';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   getDashboardTeamScopeFromRequest,
   resolveDashboardTeamScope,
@@ -43,6 +44,7 @@ export async function GET(
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('[DashboardMetricsDetailedRoute][GET] Erro inesperado:', error);
     return NextResponse.json(
       { isValid: false, successMessages: [], errorMessages: ['Erro inesperado no servidor'], result: null },

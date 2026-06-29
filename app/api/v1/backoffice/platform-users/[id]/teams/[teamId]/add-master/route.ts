@@ -4,6 +4,7 @@ import { invalidateTeamMembersCache } from "@/lib/cache/invalidation"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 type RouteParams = { params: Promise<{ id: string; teamId: string }> }
 
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserTeamAddMasterRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

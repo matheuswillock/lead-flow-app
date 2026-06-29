@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(new Output(true, [], [], summary), { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao buscar resumo de cobrança:", error);
     return NextResponse.json(new Output(false, [], ["Erro interno do servidor"], null), { status: 500 });
   }

@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
 import { backofficeMemberAccessEmailUseCase } from "@/app/api/useCases/backoffice/BackofficeMemberAccessEmailUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const bodySchema = z.object({
   mode: z.enum(["invite", "reset_password"]),
@@ -43,6 +44,7 @@ export async function POST(
 
     return NextResponse.json(output, { status })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMemberAccessEmailRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

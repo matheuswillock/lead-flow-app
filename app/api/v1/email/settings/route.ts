@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTeamSettingsUseCase } from "@/app/api/useCases/email/EmailTeamSettingsUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const dateRe = /^\d{4}-\d{2}-\d{2}$/
 const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
     const output = await useCase.get(teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailSettingsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -68,6 +70,7 @@ export async function PATCH(request: NextRequest) {
     const output = await useCase.update(validation.data, teamAccess.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailSettingsRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const SENSITIVE_KEYS = new Set([
   "email",
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[ClientError] Failed to process:", error);
     return NextResponse.json({ ok: false }, { status: 500 });
   }

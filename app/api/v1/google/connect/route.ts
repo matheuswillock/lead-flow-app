@@ -7,6 +7,7 @@ import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositori
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 import { fetchGoogleGrantedScopes } from "@/lib/google/scopes";
 import { shouldNotifyGoogleConnected as shouldNotifyGoogleConnectedDecision } from "@/lib/google/should-notify-google-connect";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const LOG_PREFIX = "[GoogleConnect]";
 
@@ -220,6 +221,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(new Output(true, ["Google conectado"], [], null), { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     logError("Erro inesperado ao conectar Google.", {
       status: "error",
       step: "unexpected",
