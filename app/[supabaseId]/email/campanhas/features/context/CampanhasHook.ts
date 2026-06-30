@@ -171,7 +171,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [fetchCampaigns, statusFilter])
 
   const handleSend = useCallback(async (id: string) => {
-    if (!credits?.hasSubscription && !isCampaignsBetaAccess) {
+    if (!credits?.hasSubscription && !isCampaignsBetaAccess && !credits?.isBetaExempt) {
       toast.error("Ative um plano em Assinaturas para disparar campanhas")
       return
     }

@@ -79,6 +79,12 @@
       "skillPath": "skills/email-best-practices/SKILL.md",
       "computedHash": "cf53e0d7ad72c440818c64a104ab220f527f26f10c7d8163fa99e066bf747eed"
     },
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/impeccable/SKILL.md",
+      "computedHash": "e237e1c1c8dfe6c74fb24502669219a846d25834b1a104fdf865f2830a48cf49"
+    },
     "project-context-doc": {
       "source": "local",
       "sourceType": "local",

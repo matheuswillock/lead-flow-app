@@ -1,10 +1,13 @@
 import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+import type { Prisma } from "@prisma/client"
 
 export interface CreateWhatsAppConfigInput {
   teamId: string
   profileId: string
   usageLimitMonthly?: number
   hostBaseUrl?: string
+  reuseFromTeamId?: string
+  callerIsMaster?: boolean
 }
 
 export interface ConfigOutput {
@@ -13,6 +16,8 @@ export interface ConfigOutput {
   status: string
   instanceName: string
   phoneNumber: string | null
+  normalizedPhone: string | null
+  primaryConfigId: string | null
   qrCodeImageUrl: string | null
   qrCodeText: string | null
   usageLimitMonthly: number
@@ -96,6 +101,9 @@ export interface IWhatsAppService {
   syncTeamHistory(teamId: string): Promise<{ chats: number; messages: number }>
   syncContacts(teamId: string, conversationId?: string): Promise<SyncContactsOutput>
   syncGroupParticipants(teamId: string, conversationId: string): Promise<SyncGroupParticipantsOutput>
-  listContacts(teamId: string, params?: { q?: string; groupJid?: string }): Promise<WhatsAppContactOutput[]>
+  listContacts(
+    teamId: string,
+    params?: { q?: string; groupJid?: string; contactWhere?: Prisma.TeamWhatsAppContactWhereInput }
+  ): Promise<WhatsAppContactOutput[]>
   getUsageSummary(teamId: string): Promise<UsageSummaryOutput>
 }

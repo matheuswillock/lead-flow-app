@@ -29,8 +29,8 @@ export function CreditBalanceBar() {
     return <Skeleton className="h-14 w-full rounded-lg" />
   }
 
-  if (!credits || !credits.hasSubscription) {
-    if (isCampaignsBetaAccess) {
+  if (!credits || (!credits.hasSubscription && !credits.isBetaExempt)) {
+    if (isCampaignsBetaAccess || credits?.isBetaExempt) {
       return null
     }
 

@@ -139,6 +139,10 @@
       "app/backoffice/(app)/clients",
       "app/backoffice/(app)/payments",
       "app/backoffice/(app)/users",
+      "app/backoffice/(app)/studio-bot/conversas",
+      "app/backoffice/(app)/studio-bot/canal",
+      "app/backoffice/(app)/studio-bot/vinculacoes",
+      "app/backoffice/(app)/studio-bot/verificacoes",
       "app/prime"
     ],
     "nonTypeScriptFileAllowlist": [

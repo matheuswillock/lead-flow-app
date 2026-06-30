@@ -57,8 +57,9 @@ export interface CreateBackofficeAdhesionInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   createdByBackofficeUserId?: string | null
-  requestedUserTypeSlug?: "common" | "member_pro" | null
+  requestedUserTypeSlug?: "common" | "member_pro" | "associate" | "guest" | null
   requestedMemberProAccessExpiresAt?: Date | null
+  sponsorMasterId?: string | null
   additionalUsersData?: unknown[]
   additionalTeamsData?: unknown[]
 }
@@ -137,6 +138,8 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   complement?: string | null
   city?: string | null
   state?: string | null
+  hasPermanentSubscription?: boolean
+  sponsorMasterId?: string | null
 }
 
 export interface ListBackofficeAdhesionsInput {
@@ -154,6 +157,7 @@ export interface ListBackofficeAdhesionsResult {
 export interface BackofficeAdhesionOptions {
   leads: BackofficeAdhesionLeadRelation[]
   users: BackofficeAdhesionUserRelation[]
+  sponsorOptions: Array<{ id: string; fullName: string | null; email: string | null }>
 }
 
 export interface IBackofficeAdhesionRepository {

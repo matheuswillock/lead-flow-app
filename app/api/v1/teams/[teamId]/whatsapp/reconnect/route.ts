@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { reconnectWhatsAppUseCase } from "@/app/api/useCases/whatsapp/ReconnectWhatsAppUseCase"
+import { denyIfCannotManageWhatsAppInfrastructure } from "@/app/api/v1/teams/[teamId]/whatsapp/utils/requireWhatsAppInfrastructureAccess"
 
 function resolveStatus(output: Output): number {
   const msg = output.errorMessages.join(" ")
@@ -27,6 +28,9 @@ export async function POST(
       { status: 403 }
     )
   }
+
+  const denied = denyIfCannotManageWhatsAppInfrastructure(teamAccess.access)
+  if (denied) return denied
 
   const output = await reconnectWhatsAppUseCase.execute({
     teamId,

@@ -9,9 +9,14 @@ import {
 } from "./evo/parseEvoMessageContent"
 import { generateWebhookSecret, buildPeriodKey, normalizePhone, normalizeRemoteJid, extractOpaqueId, toWhatsAppJid, resolveNormalizedPhone, isGroupChat } from "./phoneUtils"
 import { resolveConfigStatusFromEvo, toQrCodeImageUrl } from "./qrCodeUtils"
-import type { Prisma } from "@prisma/client"
+import type { Prisma, WhatsAppConnectionStatus } from "@prisma/client"
 import type { WhatsAppConfigSelect, WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature"
+import {
+  assertNoConflictingPhoneOnSameTeam,
+  assertPhoneNumberCanConnect,
+  toStoredNormalizedPhone,
+} from "./WhatsAppPhonePolicy"
 
 export const WHATSAPP_HISTORY_SYNC_DAYS = 30
 
@@ -30,6 +35,8 @@ function toConfigOutput(config: WhatsAppConfigSelect): ConfigOutput {
     status: config.status,
     instanceName: config.instanceName,
     phoneNumber: config.phoneNumber,
+    normalizedPhone: config.normalizedPhone,
+    primaryConfigId: config.primaryConfigId,
     qrCodeImageUrl: config.qrCodeImageUrl
       ? toQrCodeImageUrl(config.qrCodeImageUrl)
       : null,
@@ -57,6 +64,13 @@ class WhatsAppService implements IWhatsAppService {
     const existing = await whatsAppRepository.findConfigByTeamId(input.teamId)
     if (existing) {
       throw new Error("Configuração já existe para este time")
+    }
+
+    if (input.reuseFromTeamId) {
+      if (!input.callerIsMaster) {
+        throw new Error("Apenas o master da conta pode reutilizar número de outro time")
+      }
+      return this.createMirroredConfig(input)
     }
 
     const instanceName = `team_${input.teamId.replace(/-/g, "").slice(0, 16)}`
@@ -118,6 +132,54 @@ class WhatsAppService implements IWhatsAppService {
     }
   }
 
+  private async createMirroredConfig(input: CreateWhatsAppConfigInput): Promise<ConfigOutput> {
+    const sourceConfig = await whatsAppRepository.findConfigByTeamId(input.reuseFromTeamId!)
+    if (!sourceConfig || sourceConfig.status !== "CONNECTED" || !sourceConfig.phoneNumber) {
+      throw new Error("Time de origem não possui WhatsApp conectado")
+    }
+
+    const [sourceTeam, targetTeam] = await Promise.all([
+      whatsAppRepository.findTeamMasterContext(sourceConfig.teamId),
+      whatsAppRepository.findTeamMasterContext(input.teamId),
+    ])
+
+    if (!sourceTeam || !targetTeam || sourceTeam.masterId !== targetTeam.masterId) {
+      throw new Error("Só é possível reutilizar número entre times do mesmo master")
+    }
+
+    const primaryConfig = sourceConfig.primaryConfigId
+      ? await whatsAppRepository.findConfigById(sourceConfig.primaryConfigId)
+      : sourceConfig
+
+    if (!primaryConfig) {
+      throw new Error("Configuração primária não encontrada")
+    }
+
+    const webhookSecret = generateWebhookSecret()
+    const normalizedPhone =
+      primaryConfig.normalizedPhone ??
+      (primaryConfig.phoneNumber ? toStoredNormalizedPhone(primaryConfig.phoneNumber) : null)
+
+    const config = await whatsAppRepository.createConfig({
+      team: { connect: { id: input.teamId } },
+      instanceName: primaryConfig.instanceName,
+      instanceId: primaryConfig.instanceId,
+      phoneNumber: primaryConfig.phoneNumber,
+      normalizedPhone,
+      hostBaseUrl: primaryConfig.hostBaseUrl,
+      usageLimitMonthly: input.usageLimitMonthly ?? primaryConfig.usageLimitMonthly,
+      status: primaryConfig.status as WhatsAppConnectionStatus,
+      webhookSecret,
+      primaryConfig: { connect: { id: primaryConfig.id } },
+      lastConnectedAt: primaryConfig.lastConnectedAt,
+      createdBy: { connect: { id: input.profileId } },
+      updatedBy: { connect: { id: input.profileId } },
+    })
+
+    await whatsAppAutoResponseRepository.seedDefaultRules(config.id)
+    return toConfigOutput(config)
+  }
+
   async getConfig(teamId: string): Promise<ConfigOutput | null> {
     const config = await whatsAppRepository.findConfigByTeamId(teamId)
     if (!config) return null
@@ -151,13 +213,38 @@ class WhatsAppService implements IWhatsAppService {
           }
         }
 
+        if (phoneNumber) {
+          const normalizedPhone = toStoredNormalizedPhone(phoneNumber)
+          await assertNoConflictingPhoneOnSameTeam({
+            teamId: config.teamId,
+            configId: config.id,
+            nextNormalizedPhone: normalizedPhone,
+          })
+          if (!config.primaryConfigId) {
+            await assertPhoneNumberCanConnect({
+              teamId: config.teamId,
+              normalizedPhone,
+              configId: config.id,
+            })
+          }
+
+          return whatsAppRepository.updateConfig(config.id, {
+            status: "CONNECTED",
+            lastConnectedAt: config.lastConnectedAt ?? now,
+            lastSyncAt: now,
+            qrCodeText: null,
+            qrCodeImageUrl: null,
+            phoneNumber,
+            normalizedPhone,
+          })
+        }
+
         return whatsAppRepository.updateConfig(config.id, {
           status: "CONNECTED",
           lastConnectedAt: config.lastConnectedAt ?? now,
           lastSyncAt: now,
           qrCodeText: null,
           qrCodeImageUrl: null,
-          ...(phoneNumber ? { phoneNumber } : {}),
         })
       }
 
@@ -212,13 +299,38 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("Configuração não encontrada")
     }
 
+    if (existing.primaryConfigId) {
+      const updated = await whatsAppRepository.updateConfig(existing.id, {
+        status: "DISCONNECTED",
+        lastDisconnectedAt: new Date(),
+        phoneNumber: null,
+        normalizedPhone: null,
+        updatedBy: { connect: { id: profileId } },
+      })
+      return toConfigOutput(updated)
+    }
+
     console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
 
     await evoApiService.disconnectInstance(existing.instanceName, existing.hostBaseUrl ?? undefined)
 
+    const mirrors = await whatsAppRepository.findMirroredConfigs(existing.id)
+    await Promise.all(
+      mirrors.map((mirror) =>
+        whatsAppRepository.updateConfig(mirror.id, {
+          status: "DISCONNECTED",
+          lastDisconnectedAt: new Date(),
+          phoneNumber: null,
+          normalizedPhone: null,
+        })
+      )
+    )
+
     const updated = await whatsAppRepository.updateConfig(existing.id, {
       status: "DISCONNECTED",
       lastDisconnectedAt: new Date(),
+      phoneNumber: null,
+      normalizedPhone: null,
       updatedBy: { connect: { id: profileId } },
     })
 
@@ -233,6 +345,8 @@ class WhatsAppService implements IWhatsAppService {
     if (config.status !== "CONNECTED") {
       throw new Error("WhatsApp não está conectado")
     }
+
+    const effectiveConfig = await whatsAppRepository.resolveEffectiveConfig(config)
 
     const conversation = await whatsAppRepository.findConversationById(input.conversationId)
 
@@ -269,14 +383,14 @@ class WhatsAppService implements IWhatsAppService {
       preview = input.media.caption ?? `[${messageType === "IMAGE" ? "Imagem" : messageType === "DOCUMENT" ? "Documento" : messageType === "AUDIO" ? "Áudio" : "Vídeo"}]`
 
       evoResult = await evoApiService.sendMediaMessage({
-        instanceName: config.instanceName,
+        instanceName: effectiveConfig.instanceName,
         recipientJid,
         mediatype: input.media.mediatype,
         mimeType: input.media.mimeType,
         fileName: input.media.fileName,
         base64: input.media.base64,
         caption: input.media.caption,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
+        hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
       })
     } else {
       const text = input.contentText?.trim()
@@ -285,12 +399,12 @@ class WhatsAppService implements IWhatsAppService {
       }
       preview = text.slice(0, 100)
       evoResult = await evoApiService.sendTextMessage({
-        instanceName: config.instanceName,
+        instanceName: effectiveConfig.instanceName,
         recipientJid,
         text,
         mentioned: input.mentionedJids,
         linkPreview: true,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
+        hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
       })
     }
 
@@ -429,15 +543,16 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("WhatsApp não está conectado")
     }
 
+    const effectiveConfig = await whatsAppRepository.resolveEffectiveConfig(config)
     const normalizedPhone = normalizePhone(input.phone)
     const externalChatId = toWhatsAppJid(normalizedPhone)
 
     let contactAvatarUrl: string | null = null
     try {
       contactAvatarUrl = await evoApiService.fetchProfilePictureUrl({
-        instanceName: config.instanceName,
+        instanceName: effectiveConfig.instanceName,
         remoteJid: externalChatId,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
+        hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
       })
     } catch {
       contactAvatarUrl = null
@@ -456,6 +571,7 @@ class WhatsAppService implements IWhatsAppService {
       ...(contactAvatarUrl ? { contactAvatarUrl } : {}),
       ...(input.contactName ? { contactName: input.contactName } : {}),
       assignedProfile: { connect: { id: input.profileId } },
+      createdByProfile: { connect: { id: input.profileId } },
     })
 
     if (input.initialMessage?.trim()) {
@@ -785,12 +901,17 @@ class WhatsAppService implements IWhatsAppService {
 
   async listContacts(
     teamId: string,
-    params?: { q?: string; groupJid?: string }
+    params?: {
+      q?: string
+      groupJid?: string
+      contactWhere?: Prisma.TeamWhatsAppContactWhereInput
+    }
   ): Promise<WhatsAppContactOutput[]> {
     const rows = await whatsAppContactRepository.listByTeam(teamId, {
       q: params?.q,
       groupJid: params?.groupJid,
       limit: 500,
+      extraWhere: params?.contactWhere,
     })
 
     return rows.map((row) => ({

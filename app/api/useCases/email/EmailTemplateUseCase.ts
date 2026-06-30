@@ -7,6 +7,7 @@ import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
 import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
+import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import {
   type EmailTemplateFunctionDefinition,
   type EmailTemplateVariableKind,
@@ -26,6 +27,7 @@ const templateDetailSelect = {
   previewText: true,
   mailyJson: true,
   html: true,
+  editorMode: true,
   variables: true,
   status: true,
   publishedAt: true,
@@ -86,6 +88,7 @@ export interface CreateTemplateInput {
   previewText?: string
   mailyJson?: unknown
   html?: string
+  editorMode?: "blocks" | "html"
   variables?: TemplateVariableInput[]
 }
 
@@ -95,6 +98,7 @@ export interface UpdateTemplateInput {
   previewText?: string
   mailyJson?: unknown
   html?: string
+  editorMode?: "blocks" | "html"
   variables?: TemplateVariableInput[]
 }
 
@@ -179,6 +183,7 @@ export class EmailTemplateUseCase {
           previewText: true,
           mailyJson: true,
           html: true,
+          editorMode: true,
           variables: true,
           status: true,
           publishedAt: true,
@@ -273,6 +278,7 @@ export class EmailTemplateUseCase {
           previewText: data.previewText?.trim() ?? null,
           mailyJson: (data.mailyJson as object) ?? null,
           html: data.html ?? null,
+          editorMode: data.editorMode ?? "html",
           variables: (data.variables as object) ?? undefined,
           approvalStatus: approvalSeed.approvalStatus,
           approvedBy: approvalSeed.approvedBy,
@@ -319,6 +325,7 @@ export class EmailTemplateUseCase {
           previewText: true,
           mailyJson: true,
           html: true,
+          editorMode: true,
           variables: true,
           status: true,
           approvalStatus: true,
@@ -335,6 +342,7 @@ export class EmailTemplateUseCase {
         ...(data.previewText !== undefined && { previewText: data.previewText?.trim() ?? null }),
         ...(data.mailyJson !== undefined && { mailyJson: data.mailyJson as object }),
         ...(data.html !== undefined && { html: data.html }),
+        ...(data.editorMode !== undefined && { editorMode: data.editorMode }),
         ...(data.variables !== undefined && { variables: (data.variables as object) ?? Prisma.JsonNull }),
       }
 
@@ -393,6 +401,7 @@ export class EmailTemplateUseCase {
             previewText: data.previewText !== undefined ? data.previewText?.trim() ?? null : existing.previewText,
             mailyJson: data.mailyJson !== undefined ? data.mailyJson as object : existing.mailyJson ?? Prisma.JsonNull,
             html: data.html !== undefined ? data.html : existing.html,
+            editorMode: data.editorMode ?? existing.editorMode,
             variables: data.variables !== undefined ? (data.variables as object) ?? Prisma.JsonNull : existing.variables ?? Prisma.JsonNull,
             status: "draft",
             publishedAt: null,
@@ -530,7 +539,12 @@ export class EmailTemplateUseCase {
         : {}
 
       const renderedSubject = interpolateEmailTemplate(data.subject, recipient, globalDefaults, variableInputs)
-      const renderedHtml = interpolateEmailTemplate(data.html, recipient, globalDefaults, variableInputs)
+      const renderedHtml = interpolateEmailTemplate(
+        inlineEmailHtml(data.html),
+        recipient,
+        globalDefaults,
+        variableInputs
+      )
       const unresolvedTokens = extractTemplateVariableKeys(`${renderedSubject}\n${renderedHtml}`).filter(
         (token) => !["nome", "nome_do_lead", "name", "email"].includes(token.toLowerCase())
       )

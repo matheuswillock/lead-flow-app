@@ -62,10 +62,17 @@ export interface BackofficeAdhesionUserOption {
   email: string
 }
 
+export interface BackofficeAdhesionSponsorOption {
+  id: string
+  name: string
+  email: string
+}
+
 export interface BackofficeAdhesionOptions {
   leads: BackofficeAdhesionLeadOption[]
   sdrOptions: BackofficeAdhesionUserOption[]
   closerOptions: BackofficeAdhesionUserOption[]
+  sponsorOptions: BackofficeAdhesionSponsorOption[]
   pricing: {
     cycles: Record<
       BackofficeAdhesionBillingCycleKey,
@@ -93,8 +100,9 @@ export interface BackofficeAdhesionFormValues {
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
   activationMode: "checkout" | "external_paid"
-  userType: "common" | "member_pro"
+  userType: "common" | "member_pro" | "associate" | "guest"
   memberProAccessDays: string
+  sponsorMasterId: string | null
   additionalUsers: BackofficeAdhesionAdditionalUser[]
   additionalTeams: BackofficeAdhesionAdditionalTeam[]
 }

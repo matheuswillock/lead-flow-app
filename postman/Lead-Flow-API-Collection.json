@@ -8734,7 +8734,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 1,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"additionalUsers\": [\n    {\n      \"name\": \"Usuário Adicional\",\n      \"email\": \"usuario.adicional@example.com\",\n      \"role\": \"operator\",\n      \"functions\": [\"SDR\"]\n    }\n  ],\n  \"additionalTeams\": [\n    {\n      \"name\": \"Time Adicional\"\n    }\n  ]\n}"
+                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 1,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sponsorMasterId\": null,\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"additionalUsers\": [\n    {\n      \"name\": \"Usuário Adicional\",\n      \"email\": \"usuario.adicional@example.com\",\n      \"role\": \"operator\",\n      \"functions\": [\"SDR\"]\n    }\n  ],\n  \"additionalTeams\": [\n    {\n      \"name\": \"Time Adicional\"\n    }\n  ]\n}\n\n// Exemplo para tipo Convidado (guest): sem cobrança, recursos ilimitados\n// {\n//   \"leadId\": \"{{backofficeLeadId}}\",\n//   \"fullName\": \"Cliente Convidado\",\n//   \"phone\": \"11999999999\",\n//   \"email\": \"convidado@example.com\",\n//   \"cycle\": \"monthly\",\n//   \"userType\": \"guest\",\n//   \"sponsorMasterId\": \"{{sponsorProfileId}}\"\n// }\n\n// Exemplo para tipo Associado (associate): com cobrança + patrocinador\n// {\n//   \"leadId\": \"{{backofficeLeadId}}\",\n//   \"fullName\": \"Cliente Associado\",\n//   \"phone\": \"11999999999\",\n//   \"email\": \"associado@example.com\",\n//   \"cpfCnpj\": \"12345678901\",\n//   \"cycle\": \"monthly\",\n//   \"userType\": \"associate\",\n//   \"sponsorMasterId\": \"{{sponsorProfileId}}\",\n//   \"activationMode\": \"external_paid\"\n// }"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/adhesions",
@@ -9589,7 +9589,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T23:59:59.000Z\"\n}"
+                  "raw": "{\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T23:59:59.000Z\"\n}\n\n// Para Associado: { \"userType\": \"associate\", \"sponsorMasterId\": \"{{sponsorProfileId}}\" }\n// Para Convidado: { \"userType\": \"guest\", \"sponsorMasterId\": \"{{sponsorProfileId}}\" }\n// Para Comum: { \"userType\": \"common\" }"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users/:profileId/user-type",
@@ -10584,7 +10584,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"subject\": \"Novidades do mes\",\n  \"previewText\": \"Confira as novidades\",\n  \"sourceMode\": \"visual\",\n  \"editorJson\": {\n    \"type\": \"doc\",\n    \"content\": []\n  },\n  \"html\": \"<h1>Ola!</h1>\"\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"subject\": \"Novidades do mes\",\n  \"previewText\": \"Confira as novidades\",\n  \"editorMode\": \"blocks\",\n  \"mailyJson\": {\n    \"type\": \"doc\",\n    \"content\": []\n  },\n  \"html\": \"<h1>Ola!</h1>\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -10635,7 +10635,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio v2\",\n  \"subject\": \"Novidades atualizadas\",\n  \"sourceMode\": \"html\",\n  \"html\": \"<h1>Novidades atualizadas</h1>\"\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio v2\",\n  \"subject\": \"Novidades atualizadas\",\n  \"editorMode\": \"html\",\n  \"html\": \"<h1>Novidades atualizadas</h1>\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -12037,6 +12037,39 @@
           "response": []
         },
         {
+          "name": "Listar números WhatsApp reutilizáveis (master)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/reusable-numbers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "reusable-numbers"
+              ]
+            },
+            "description": "Lista números WhatsApp CONNECTED de outros times do mesmo master, para reutilização via reuseFromTeamId no POST config."
+          },
+          "response": []
+        },
+        {
           "name": "Reconectar WhatsApp (novo QR code)",
           "request": {
             "method": "POST",
@@ -12685,6 +12718,78 @@
             }
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Studio Bot (Bethânia)",
+      "description": "APIs do bot Bethânia — produto, backoffice e webhooks N8N",
+      "item": [
+        {
+          "name": "GET Bot Context",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bot/context?userLinkId={{botUserLinkId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bot", "context"],
+              "query": [{ "key": "userLinkId", "value": "{{botUserLinkId}}" }]
+            }
+          }
+        },
+        {
+          "name": "POST Bot Action list_leads",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userLinkId\": \"{{botUserLinkId}}\",\n  \"teamId\": \"{{teamId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bot/actions/list_leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bot", "actions", "list_leads"]
+            }
+          }
+        },
+        {
+          "name": "GET Backoffice Bot Channel",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/channel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "channel"]
+            }
+          }
+        },
+        {
+          "name": "POST Studio Bot Inbound Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" },
+              { "key": "x-idempotency-key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"normalizedPhone\": \"5511999999999\",\n  \"payload\": {\n    \"messageType\": \"text\",\n    \"contentText\": \"oi\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/backoffice/studio-bot/inbound",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks", "backoffice", "studio-bot", "inbound"]
+            }
+          }
         }
       ]
     }

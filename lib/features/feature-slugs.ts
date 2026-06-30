@@ -22,6 +22,7 @@ export const FEATURE_SLUGS = {
   WHATSAPP_SETTINGS: "whatsapp-settings",
   WHATSAPP_AUTO_RESPONSES: "whatsapp-auto-responses",
   CDP: "cdp",
+  STUDIO_BOT: "studio-bot",
 } as const
 
 export type FeatureSlug = (typeof FEATURE_SLUGS)[keyof typeof FEATURE_SLUGS]

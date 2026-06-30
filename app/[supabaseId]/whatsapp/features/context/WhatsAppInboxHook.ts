@@ -164,6 +164,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [activeTeamId, supabaseId])
 
   const filterModeRef = useRef<ConversationFilterMode>('all')
+  const conversationIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    conversationIdsRef.current = new Set(conversations.map((c) => c.id))
+  }, [conversations])
 
   // Fresh unread total for sidebar tab badge (independent of current filter page)
   const fetchUnreadTotal = useCallback(async () => {
@@ -692,6 +697,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       leadId: string | null
       isArchived: boolean
     }) => {
+      if (!isTeamMaster && !conversationIdsRef.current.has(row.id)) return
       setConversations((prev) =>
         prev.map((c) =>
           c.id === row.id
@@ -711,7 +717,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       )
       void fetchUnreadTotal()
     },
-    [selectedConversationId, fetchUnreadTotal]
+    [selectedConversationId, fetchUnreadTotal, isTeamMaster]
   )
 
   const handleConversationInserted = useCallback(
@@ -735,6 +741,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       createdAt: string
       updatedAt: string
     }) => {
+      if (!isTeamMaster) return
+
       const conversation: WhatsAppConversation = {
         id: row.id,
         teamId: row.teamId,
@@ -762,7 +770,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       })
       setTotalConversations((prev) => prev + 1)
     },
-    []
+    [isTeamMaster]
   )
 
   useWhatsAppRealtime({

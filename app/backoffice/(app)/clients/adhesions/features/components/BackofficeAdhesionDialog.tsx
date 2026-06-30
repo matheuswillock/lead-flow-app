@@ -131,6 +131,7 @@ function defaultValues(): BackofficeAdhesionFormValues {
     activationMode: "checkout",
     userType: "common",
     memberProAccessDays: "",
+    sponsorMasterId: null,
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -157,6 +158,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     activationMode: "checkout",
     userType: "common",
     memberProAccessDays: "",
+    sponsorMasterId: null,
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -301,21 +303,25 @@ export function BackofficeAdhesionDialog({
   const hasValidOptionalCpfCnpj =
     sanitizedCpfCnpj.length === 0 || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)
   const isMemberPro = values.userType === "member_pro"
+  const isAssociate = values.userType === "associate"
+  const isGuest = values.userType === "guest"
+  const needsSponsor = isAssociate || isGuest
   const memberProAccessDaysValue = parsePositiveInt(values.memberProAccessDays)
   const memberProAccessDaysValid =
     !isMemberPro ||
     (memberProAccessDaysValue !== null &&
       memberProAccessDaysValue >= MEMBER_PRO_MIN_DAYS &&
       memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
-  const isDocRequired = mode === "create" || isExternalBilling
+  const isDocRequired = mode === "create" && !isGuest || isExternalBilling
   const canSubmit =
     values.fullName.trim().length >= 2 &&
     (sanitizePhone(values.phone).length === 0 || /^\d{10,11}$/.test(sanitizePhone(values.phone))) &&
     (mode === "edit" || Boolean(values.leadId)) &&
     (!isDocRequired ? hasValidOptionalCpfCnpj : /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
-    (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
-    (isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
+    (!(isExternalPaid || isExternalBilling || isGuest) || isValidEmail(values.email.trim())) &&
+    (isGuest || isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
     (mode === "edit" || memberProAccessDaysValid) &&
+    (!needsSponsor || Boolean(values.sponsorMasterId)) &&
     !isSubmitting
 
   useEffect(() => {
@@ -362,6 +368,9 @@ export function BackofficeAdhesionDialog({
       }
       if (key === "userType" && value !== "member_pro") {
         next.memberProAccessDays = ""
+      }
+      if (key === "userType" && value !== "associate" && value !== "guest") {
+        next.sponsorMasterId = null
       }
       return next
     })
@@ -566,7 +575,7 @@ export function BackofficeAdhesionDialog({
               </div>
             ) : null}
 
-            {mode === "create" ? (
+            {mode === "create" && !isGuest ? (
               <div className="flex items-center justify-between gap-3 rounded-md border p-3">
                 <div>
                   <Label htmlFor="adhesion-external-paid">Pago por fora</Label>
@@ -744,6 +753,8 @@ export function BackofficeAdhesionDialog({
                       <SelectGroup>
                         <SelectItem value="common">Comum</SelectItem>
                         <SelectItem value="member_pro">Member PRO</SelectItem>
+                        <SelectItem value="associate">Associado</SelectItem>
+                        <SelectItem value="guest">Convidado</SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -769,54 +780,87 @@ export function BackofficeAdhesionDialog({
                     )}
                   </div>
                 )}
+                {needsSponsor && (
+                  <div className="flex flex-col gap-2">
+                    <Label>Patrocinador *</Label>
+                    <Select
+                      value={values.sponsorMasterId ?? ""}
+                      onValueChange={(value) => updateValue("sponsorMasterId", value || null)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o patrocinador" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {(options?.sponsorOptions ?? []).map((sponsor) => (
+                            <SelectItem key={sponsor.id} value={sponsor.id}>
+                              {sponsor.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              <Label>Forma de pagamento *</Label>
-              <RadioGroup
-                value={mode === "edit" ? (values.billingType ?? "PIX") : chargeBillingType}
-                onValueChange={(value) => {
-                  if (value === "EXTERNAL") {
-                    updateValue("billingType", "EXTERNAL")
-                    return
-                  }
-                  updateValue("billingType", value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
-                }}
-                className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
-                disabled={isSubmitting}
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="PIX" id="adhesion-billing-pix" />
-                  <Label htmlFor="adhesion-billing-pix">PIX</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
-                  <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
-                </div>
-                {mode === "edit" ? (
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="EXTERNAL" id="adhesion-billing-external" />
-                    <Label htmlFor="adhesion-billing-external">Pagamento externo</Label>
-                  </div>
-                ) : null}
-              </RadioGroup>
-            </div>
+            {mode === "create" && isGuest && (
+              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                Conta gratuita — recursos ilimitados (times e usuários), sem cobrança.
+              </div>
+            )}
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <NumberStepper
-                label="Mais times"
-                value={values.extraTeams}
-                onChange={(value) => updateValue("extraTeams", value)}
-                disabled={isSubmitting}
-              />
-              <NumberStepper
-                label="Usuários adicionais"
-                value={values.extraUsers}
-                onChange={(value) => updateValue("extraUsers", value)}
-                disabled={isSubmitting}
-              />
-            </div>
+            {!isGuest && (
+              <div className="flex flex-col gap-2">
+                <Label>Forma de pagamento *</Label>
+                <RadioGroup
+                  value={mode === "edit" ? (values.billingType ?? "PIX") : chargeBillingType}
+                  onValueChange={(value) => {
+                    if (value === "EXTERNAL") {
+                      updateValue("billingType", "EXTERNAL")
+                      return
+                    }
+                    updateValue("billingType", value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
+                  }}
+                  className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
+                  disabled={isSubmitting}
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="PIX" id="adhesion-billing-pix" />
+                    <Label htmlFor="adhesion-billing-pix">PIX</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
+                    <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
+                  </div>
+                  {mode === "edit" ? (
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="EXTERNAL" id="adhesion-billing-external" />
+                      <Label htmlFor="adhesion-billing-external">Pagamento externo</Label>
+                    </div>
+                  ) : null}
+                </RadioGroup>
+              </div>
+            )}
+
+            {!isGuest && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <NumberStepper
+                  label="Mais times"
+                  value={values.extraTeams}
+                  onChange={(value) => updateValue("extraTeams", value)}
+                  disabled={isSubmitting}
+                />
+                <NumberStepper
+                  label="Usuários adicionais"
+                  value={values.extraUsers}
+                  onChange={(value) => updateValue("extraUsers", value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
 
             {mode === "create" && values.extraUsers > 0 && (
               <div className="flex flex-col gap-3">
@@ -924,64 +968,66 @@ export function BackofficeAdhesionDialog({
               </div>
             )}
 
-            <div className="rounded-md border bg-muted/30 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">Resumo comercial</p>
-                  <p className="text-xs text-muted-foreground">
-                    {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]} com cobrança
-                    {isExternalPaid ? " paga por fora." : " antecipada."}
-                  </p>
+            {!isGuest && (
+              <div className="rounded-md border bg-muted/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Resumo comercial</p>
+                    <p className="text-xs text-muted-foreground">
+                      {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]} com cobrança
+                      {isExternalPaid ? " paga por fora." : " antecipada."}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">
+                      {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
+                    </p>
+                    <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground">
-                    {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
-                  </p>
-                  <p className="text-lg font-semibold">{formatCurrency(total)}</p>
-                </div>
-              </div>
-              <div className="mt-4 divide-y rounded-md border bg-background/60">
-                {commercialItems.map((item) => (
-                  <div
-                    key={item.key}
-                    className="grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1fr)_7rem_8rem]"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium">{item.name}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        {item.description}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 md:block md:text-right">
-                      <span className="text-xs text-muted-foreground md:hidden">Qtd.</span>
-                      <span>{item.quantity}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 md:block md:text-right">
-                      <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
-                      <div>
-                        <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatCurrency(item.monthlyUnitPrice)}/mês
+                <div className="mt-4 divide-y rounded-md border bg-background/60">
+                  {commercialItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className="grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1fr)_7rem_8rem]"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {item.description}
                         </p>
                       </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Qtd.</span>
+                        <span>{item.quantity}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
+                        <div>
+                          <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCurrency(item.monthlyUnitPrice)}/mês
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>PIX: {formatCurrency(pixTotal)}</span>
+                  <span>Cartão: {formatCurrency(cardTotal)}</span>
+                  <span>
+                    Ciclo: {cycleMonths}{" "}
+                    {cycleMonths === 1 ? "mês" : "meses"}
+                  </span>
+                </div>
+                {selectedLead ? (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Lead vinculado: {selectedLead.name}
+                  </p>
+                ) : null}
               </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>PIX: {formatCurrency(pixTotal)}</span>
-                <span>Cartão: {formatCurrency(cardTotal)}</span>
-                <span>
-                  Ciclo: {cycleMonths}{" "}
-                  {cycleMonths === 1 ? "mês" : "meses"}
-                </span>
-              </div>
-              {selectedLead ? (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Lead vinculado: {selectedLead.name}
-                </p>
-              ) : null}
-            </div>
+            )}
           </div>
         )}
 

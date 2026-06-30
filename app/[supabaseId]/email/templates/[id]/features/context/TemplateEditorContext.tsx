@@ -20,7 +20,6 @@ interface ITemplateEditorContext extends TemplateEditorState {
   rejectTemplate: (reviewNote: string) => Promise<void>;
   sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
-  setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
 }
 

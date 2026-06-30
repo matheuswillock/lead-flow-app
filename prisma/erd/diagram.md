@@ -194,6 +194,7 @@ whatsapp whatsapp
 email email
 status_change status_change
 task task
+studio_bot studio_bot
         }
     
 
@@ -416,6 +417,7 @@ LEAD_TRANSFER_ACTIVATED LEAD_TRANSFER_ACTIVATED
 MEETING_REMINDER MEETING_REMINDER
 LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
 MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
+BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
         }
     
 
@@ -686,6 +688,59 @@ missing_identity missing_identity
 CDP CDP
         }
     
+
+
+        backoffice_bot_channel_type {
+            whatsapp whatsapp
+        }
+    
+
+
+        backoffice_bot_channel_status {
+            pending pending
+connected connected
+disconnected disconnected
+error error
+        }
+    
+
+
+        backoffice_bot_auth_challenge_source {
+            channel_email channel_email
+web_otp web_otp
+        }
+    
+
+
+        backoffice_bot_auth_challenge_status {
+            pending pending
+verified verified
+expired expired
+failed failed
+        }
+    
+
+
+        backoffice_bot_user_link_source {
+            channel_email channel_email
+web_otp web_otp
+        }
+    
+
+
+        backoffice_bot_message_direction {
+            inbound inbound
+outbound outbound
+        }
+    
+
+
+        backoffice_bot_event_outbox_status {
+            pending pending
+sent sent
+failed failed
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -706,6 +761,7 @@ CDP CDP
     UserFunction functions 
     Boolean isMaster 
     Boolean hasPermanentSubscription 
+    Boolean canSponsorAccounts 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
@@ -868,6 +924,7 @@ CDP CDP
     String createdSupabaseId "❓"
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
+    String sponsorMasterId "❓"
     Json additional_users_data 
     Json additional_teams_data 
     DateTime createdAt 
@@ -1367,6 +1424,7 @@ CDP CDP
     String previewText "❓"
     Json mailyJson "❓"
     String html "❓"
+    String editorMode 
     Json variables "❓"
     Int versionNumber 
     Boolean isCurrentPublished 
@@ -1693,6 +1751,7 @@ CDP CDP
     String instanceName 
     String instanceId "❓"
     String phoneNumber "❓"
+    String normalizedPhone "❓"
     String displayName "❓"
     WhatsAppConnectionStatus status 
     String qrCodeText "❓"
@@ -1861,6 +1920,99 @@ CDP CDP
     String sourceId "❓"
     DateTime updatedAt 
     DateTime createdAt 
+    }
+  
+
+  "backoffice_bot_channels" {
+    String id "🗝️"
+    String displayName 
+    String avatarUrl "❓"
+    String avatarStoragePath "❓"
+    String aboutText "❓"
+    String phoneNumber "❓"
+    DateTime lastProfileSyncAt "❓"
+    BackofficeBotChannelType channelType 
+    BackofficeBotChannelStatus status 
+    Json providerConfig "❓"
+    String webhookSecret 
+    String n8nInboundUrl "❓"
+    String n8nOutboundSecret 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_auth_challenges" {
+    String id "🗝️"
+    BackofficeBotAuthChallengeSource source 
+    String normalizedPhone "❓"
+    String emailRequested "❓"
+    String codeHash 
+    BackofficeBotAuthChallengeStatus status 
+    Int attemptCount 
+    DateTime expiresAt 
+    DateTime verifiedAt "❓"
+    Json ipMetadata "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_user_links" {
+    String id "🗝️"
+    String normalizedPhone 
+    DateTime linkedAt 
+    BackofficeBotUserLinkSource linkedBy 
+    Boolean isActive 
+    DateTime lastInteractionAt "❓"
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_sessions" {
+    String id "🗝️"
+    String currentLeadId "❓"
+    String flowId "❓"
+    String flowStep "❓"
+    Json flowStack 
+    DateTime expiresAt 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_messages" {
+    String id "🗝️"
+    BackofficeBotMessageDirection direction 
+    String channelMessageId "❓"
+    String flowId "❓"
+    String errorCode "❓"
+    Json payload 
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_bot_notification_preferences" {
+    String id "🗝️"
+    String type 
+    Boolean enabled 
+    Json quietHours "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_event_outbox" {
+    String id "🗝️"
+    String eventType 
+    Json payload 
+    BackofficeBotEventOutboxStatus status 
+    String idempotencyKey 
+    DateTime createdAt 
+    DateTime sentAt "❓"
     }
   
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
@@ -2071,11 +2223,13 @@ CDP CDP
     "team_whatsapp_configs" |o--|| corretor_studio_teams : "team"
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "createdBy"
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "updatedBy"
+    "team_whatsapp_configs" |o--|o team_whatsapp_configs : "primaryConfig"
     "whatsapp_conversations" |o--|| "WhatsAppHandoffMode" : "enum:handoffMode"
     "whatsapp_conversations" }o--|| corretor_studio_teams : "team"
     "whatsapp_conversations" }o--|| team_whatsapp_configs : "config"
     "whatsapp_conversations" }o--|o corretor_studio_leads : "lead"
     "whatsapp_conversations" }o--|o corretor_studio_profiles : "assignedProfile"
+    "whatsapp_conversations" }o--|o corretor_studio_profiles : "createdByProfile"
     "whatsapp_messages" |o--|| "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_messages" |o--|| "WhatsAppMessageType" : "enum:messageType"
     "whatsapp_messages" |o--|| "WhatsAppMessageStatus" : "enum:status"
@@ -2110,4 +2264,20 @@ CDP CDP
     "corretor_studio_cdp_channel_consents" |o--|o "CustomerConsentReason" : "enum:reason"
     "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_cdp_profiles : "profile"
     "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_teams : "team"
+    "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
+    "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
+    "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"
+    "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeStatus" : "enum:status"
+    "backoffice_bot_auth_challenges" }o--|o corretor_studio_profiles : "profile"
+    "backoffice_bot_user_links" |o--|| "BackofficeBotUserLinkSource" : "enum:linkedBy"
+    "backoffice_bot_user_links" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_user_links" |o--|o backoffice_bot_auth_challenges : "authChallenge"
+    "backoffice_bot_sessions" }o--|| backoffice_bot_user_links : "userLink"
+    "backoffice_bot_sessions" }o--|| corretor_studio_teams : "team"
+    "backoffice_bot_messages" |o--|| "BackofficeBotMessageDirection" : "enum:direction"
+    "backoffice_bot_messages" }o--|| backoffice_bot_channels : "channel"
+    "backoffice_bot_messages" }o--|o backoffice_bot_user_links : "userLink"
+    "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
+    "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
 ```

@@ -28,8 +28,9 @@ export interface BackofficeAdhesionCreateInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
-  userType?: "common" | "member_pro"
+  userType?: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt?: string | null
+  sponsorMasterId?: string | null
   additionalUsers?: BackofficeAdhesionAdditionalUser[]
   additionalTeams?: BackofficeAdhesionAdditionalTeam[]
 }
@@ -163,6 +164,7 @@ export interface BackofficeAdhesionOptionsDTO {
   }>
   sdrOptions: Array<{ id: string; name: string; email: string }>
   closerOptions: Array<{ id: string; name: string; email: string }>
+  sponsorOptions: Array<{ id: string; name: string; email: string }>
   pricing: {
     cycles: Record<
       BackofficeAdhesionBillingCycle,

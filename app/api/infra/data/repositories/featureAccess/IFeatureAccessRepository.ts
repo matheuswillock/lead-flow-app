@@ -31,6 +31,13 @@ export interface BetaEligibilityContext {
   isMaster: boolean
 }
 
+export interface EmailBetaAccessContext {
+  profileId: string
+  managerId: string
+  isMaster: boolean
+  teamId: string
+}
+
 export interface IFeatureAccessRepository {
   listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>>
   findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null>
@@ -44,6 +51,7 @@ export interface IFeatureAccessRepository {
   >
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>
+  resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>
   findUserTypeAssignment(ownerProfileId: string): Promise<OwnerUserTypeAssignment | null>
 }

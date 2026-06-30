@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   IWhatsAppContactRepository,
@@ -62,17 +63,27 @@ class WhatsAppContactRepository implements IWhatsAppContactRepository {
 
   async listByTeam(
     teamId: string,
-    params?: { q?: string; groupJid?: string; limit?: number }
+    params?: {
+      q?: string
+      groupJid?: string
+      limit?: number
+      extraWhere?: Prisma.TeamWhatsAppContactWhereInput
+    }
   ): Promise<TeamWhatsAppContactSelect[]> {
     const limit = Math.min(params?.limit ?? 500, 1000)
     const q = params?.q?.trim()
 
     if (q) {
-      return this.search(teamId, q, params?.groupJid, limit)
+      return this.search(teamId, q, params?.groupJid, limit, params?.extraWhere)
+    }
+
+    const where: Prisma.TeamWhatsAppContactWhereInput = {
+      teamId,
+      ...(params?.extraWhere ? { AND: [params.extraWhere] } : {}),
     }
 
     return prisma.teamWhatsAppContact.findMany({
-      where: { teamId },
+      where,
       select: CONTACT_SELECT,
       orderBy: [{ displayName: "asc" }, { pushName: "asc" }],
       take: limit,
@@ -95,28 +106,41 @@ class WhatsAppContactRepository implements IWhatsAppContactRepository {
     teamId: string,
     q: string,
     _groupJid?: string,
-    limit = 50
+    limit = 50,
+    extraWhere?: Prisma.TeamWhatsAppContactWhereInput
   ): Promise<TeamWhatsAppContactSelect[]> {
     const term = q.trim()
+    const baseTeamWhere: Prisma.TeamWhatsAppContactWhereInput = { teamId }
+
     if (!term) {
+      const where: Prisma.TeamWhatsAppContactWhereInput = extraWhere
+        ? { AND: [baseTeamWhere, extraWhere] }
+        : baseTeamWhere
       return prisma.teamWhatsAppContact.findMany({
-        where: { teamId },
+        where,
         select: CONTACT_SELECT,
         orderBy: [{ displayName: "asc" }, { pushName: "asc" }],
         take: limit,
       })
     }
 
+    const searchWhere: Prisma.TeamWhatsAppContactWhereInput = {
+      AND: [
+        baseTeamWhere,
+        ...(extraWhere ? [extraWhere] : []),
+        {
+          OR: [
+            { displayName: { contains: term, mode: "insensitive" } },
+            { pushName: { contains: term, mode: "insensitive" } },
+            { phoneNumber: { contains: term } },
+            { opaqueId: { contains: term } },
+          ],
+        },
+      ],
+    }
+
     return prisma.teamWhatsAppContact.findMany({
-      where: {
-        teamId,
-        OR: [
-          { displayName: { contains: term, mode: "insensitive" } },
-          { pushName: { contains: term, mode: "insensitive" } },
-          { phoneNumber: { contains: term } },
-          { opaqueId: { contains: term } },
-        ],
-      },
+      where: searchWhere,
       select: CONTACT_SELECT,
       orderBy: [{ displayName: "asc" }, { pushName: "asc" }],
       take: limit,

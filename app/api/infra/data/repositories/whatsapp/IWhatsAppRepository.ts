@@ -7,6 +7,8 @@ export interface WhatsAppConfigSelect {
   instanceName: string
   instanceId: string | null
   phoneNumber: string | null
+  normalizedPhone: string | null
+  primaryConfigId: string | null
   displayName: string | null
   status: string
   qrCodeText: string | null
@@ -37,6 +39,7 @@ export interface WhatsAppConversationSelect {
   contactAvatarUrl: string | null
   normalizedPhone: string
   assignedProfileId: string | null
+  createdByProfileId: string | null
   lastMessageAt: Date | null
   lastMessagePreview: string | null
   unreadCount: number
@@ -104,6 +107,7 @@ export interface IWhatsAppRepository {
     search?: string
     page?: number
     limit?: number
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
   }): Promise<{ conversations: WhatsAppConversationSelect[]; total: number }>
 
   updateConversation(
@@ -163,4 +167,45 @@ export interface IWhatsAppRepository {
   listConversationsForTeam(teamId: string): Promise<WhatsAppConversationSelect[]>
 
   findTeamMasterContext(teamId: string): Promise<{ masterId: string; timezone: string | null } | null>
+
+  findConnectedConfigByNormalizedPhone(
+    normalizedPhone: string,
+    excludeConfigId?: string
+  ): Promise<{ id: string; teamId: string; masterId: string; primaryConfigId: string | null } | null>
+
+  findMirroredConfigs(primaryConfigId: string): Promise<WhatsAppConfigSelect[]>
+
+  findConfigByInstanceName(instanceName: string): Promise<WhatsAppConfigSelect | null>
+
+  resolveEffectiveConfig(config: WhatsAppConfigSelect): Promise<WhatsAppConfigSelect>
+
+  findLeadTeamIdByPhoneForMaster(
+    masterId: string,
+    normalizedPhone: string,
+    fallbackTeamId: string
+  ): Promise<string>
+
+  listConnectedConfigsForMaster(
+    masterId: string
+  ): Promise<Array<WhatsAppConfigSelect & { teamName: string }>>
+
+  getOperatorProfileIdsForTeam(teamId: string): Promise<string[]>
+
+  getOperatorLeadPhones(teamId: string, profileId: string): Promise<string[]>
+
+  countConversationsWithVisibility(
+    conversationId: string,
+    teamId: string,
+    visibilityWhere: Prisma.WhatsAppConversationWhereInput
+  ): Promise<number>
+
+  findConversationByIdForTeam(
+    conversationId: string,
+    teamId: string
+  ): Promise<WhatsAppConversationSelect | null>
+
+  listConversationContactKeysForTeam(
+    teamId: string,
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  ): Promise<Array<{ normalizedPhone: string; externalChatId: string | null }>>
 }

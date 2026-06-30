@@ -12,7 +12,7 @@ const MAX_ACCESS_DAYS = 365
 const MIN_ACCESS_TOLERANCE_MS = 60 * 1000
 
 export interface BackofficeProfileUserTypeInput {
-  userType: "common" | "member_pro" | "associate"
+  userType: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt?: string
   sponsorMasterId?: string
 }
@@ -78,6 +78,37 @@ export class BackofficeProfileUserTypeUseCase {
           ["Tipo de usuário atualizado para Associado"],
           [],
           { userType, asaasCustomerId: asaasResult.asaasCustomerId }
+        )
+      }
+
+      if (input.userType === "guest") {
+        if (!input.sponsorMasterId) {
+          return new Output(false, [], ["Informe o patrocinador da conta Convidado"], null)
+        }
+
+        if (input.sponsorMasterId === profileId) {
+          return new Output(false, [], ["A conta não pode ser patrocinada por ela mesma"], null)
+        }
+
+        const sponsorIsMaster = await this.repository.findIsMaster(input.sponsorMasterId)
+        if (!sponsorIsMaster) {
+          return new Output(false, [], ["Patrocinador inválido"], null)
+        }
+
+        const userType = await this.repository.upsertUserTypeAssignment(profileId, {
+          userType: "guest",
+          accessExpiresAt: null,
+          assignedByProfileId,
+        })
+
+        await this.repository.updateSponsorMasterId(profileId, input.sponsorMasterId)
+        await this.repository.setHasPermanentSubscription(profileId, true)
+
+        return new Output(
+          true,
+          ["Tipo de usuário atualizado para Convidado"],
+          [],
+          { userType }
         )
       }
 

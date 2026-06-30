@@ -30,6 +30,7 @@ type CreditPlan = 'starter' | 'plus' | 'pro' | 'business'
 
 type CreditStatus = {
   hasSubscription: boolean
+  isBetaExempt?: boolean
   plan: CreditPlan | null
   monthlyCredits: number
   creditsUsed: number
@@ -142,11 +143,21 @@ export function EmailCreditsCard() {
       </CardHeader>
 
       <CardContent className="space-y-5">
-        {/* Status atual */}
         {loading ? (
           <div className="space-y-2">
             <Skeleton className="h-5 w-48" />
             <Skeleton className="h-3 w-full" />
+          </div>
+        ) : status?.isBetaExempt ? (
+          <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-orange-500/15 text-orange-600 border-0">Beta</Badge>
+              <span className="font-medium">Acesso Beta de e-mail</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Você está no grupo Beta do módulo de e-mail. Campanhas podem ser disparadas sem
+              assinatura de créditos e sem cobrança adicional enquanto o acesso beta estiver ativo.
+            </p>
           </div>
         ) : status?.hasSubscription ? (
           <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
@@ -203,7 +214,7 @@ export function EmailCreditsCard() {
           </p>
         )}
 
-        {/* Grade de planos */}
+        {!status?.isBetaExempt ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {PLANS.map((plan) => {
             const isCurrent = status?.hasSubscription && status.plan === plan.id
@@ -253,6 +264,7 @@ export function EmailCreditsCard() {
             )
           })}
         </div>
+        ) : null}
       </CardContent>
 
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>

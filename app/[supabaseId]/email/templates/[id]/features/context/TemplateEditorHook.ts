@@ -7,6 +7,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import type {
   Template,
   TemplateEditorDraft,
+  TemplateEditorMode,
   TemplateEditorState,
   TemplateTestRequest,
   TemplateVariable,
@@ -21,8 +22,13 @@ const EMPTY_DRAFT: TemplateEditorDraft = {
   previewText: "",
   html: "",
   mailyJson: null,
+  editorMode: "html",
   variables: [],
 };
+
+function resolveEditorMode(_template: Template): TemplateEditorMode {
+  return "html";
+}
 
 interface UseTemplateEditorReturn extends TemplateEditorState {
   activeRole: "manager" | "backoffice" | "operator" | null;
@@ -35,7 +41,6 @@ interface UseTemplateEditorReturn extends TemplateEditorState {
   rejectTemplate: (reviewNote: string) => Promise<void>;
   sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
-  setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
 }
 
@@ -46,6 +51,7 @@ function createDraftFromTemplate(template: Template): TemplateEditorDraft {
     previewText: template.previewText ?? "",
     html: template.html ?? "",
     mailyJson: template.mailyJson ?? null,
+    editorMode: resolveEditorMode(template),
     variables: template.variables ?? [],
   };
 }
@@ -134,11 +140,6 @@ export function useTemplateEditor(
   const updateDraft = useCallback((patch: Partial<TemplateEditorDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   }, []);
-
-  const setMailyJson = useCallback(
-    (json: unknown) => updateDraft({ mailyJson: json }),
-    [updateDraft]
-  );
 
   const setHtml = useCallback(
     (html: string) => updateDraft({ html }),
@@ -356,7 +357,6 @@ export function useTemplateEditor(
     rejectTemplate,
     sendTestTemplate,
     updateDraft,
-    setMailyJson,
     setHtml,
   };
 }

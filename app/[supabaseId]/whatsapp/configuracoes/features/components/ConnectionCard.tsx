@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 import { useTimezone } from '@/app/context/TimezoneContext'
 import { formatIntimezone } from '@/lib/dates'
 import { useTeamContext } from '@/app/context/TeamContext'
+import { isManagerLikeRole } from '@/lib/roles'
 import { useWhatsAppSettingsContext } from '../context/WhatsAppSettingsContext'
 import type { WhatsAppConnectionStatus, WhatsAppUsage } from '../context/WhatsAppSettingsTypes'
 
@@ -77,11 +78,14 @@ function formatSyncDate(value: string | null, tz: string): string {
 
 export function ConnectionCard() {
   const { tz } = useTimezone()
-  const { isTeamMaster } = useTeamContext()
+  const { isTeamMaster, activeTeam } = useTeamContext()
+  const canManageInfrastructure = isTeamMaster || isManagerLikeRole(activeTeam?.role)
   const {
     config,
     usage,
+    reusableNumbers,
     isLoading,
+    isLoadingReusableNumbers,
     isRefreshing,
     isConnecting,
     isReconnecting,
@@ -136,6 +140,9 @@ export function ConnectionCard() {
               ) : (
                 <Badge variant="outline">Não configurado</Badge>
               )}
+              {config?.primaryConfigId ? (
+                <Badge variant="outline">Número compartilhado</Badge>
+              ) : null}
               {isRefreshing ? (
                 <RefreshCw className="size-4 animate-spin text-muted-foreground" />
               ) : null}
@@ -159,10 +166,36 @@ export function ConnectionCard() {
                 Configure a integração para enviar mensagens e acompanhar seus leads diretamente pelo WhatsApp.
               </p>
             </div>
-            <Button onClick={() => void connect()} disabled={isConnecting}>
-              {isConnecting ? <RefreshCw className="animate-spin" /> : <PlugZap />}
-              {isConnecting ? 'Conectando...' : 'Conectar WhatsApp'}
-            </Button>
+            {canManageInfrastructure ? (
+              <div className="flex flex-col items-center gap-3">
+                <Button onClick={() => void connect()} disabled={isConnecting}>
+                  {isConnecting ? <RefreshCw className="animate-spin" /> : <PlugZap />}
+                  {isConnecting ? 'Conectando...' : 'Conectar WhatsApp'}
+                </Button>
+                {isTeamMaster && reusableNumbers.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs text-muted-foreground">Ou reutilize um número já conectado:</p>
+                    {reusableNumbers.map((item) => (
+                      <Button
+                        key={item.teamId}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isConnecting || isLoadingReusableNumbers}
+                        onClick={() => void connect(item.teamId)}
+                      >
+                        <Phone />
+                        Usar número do time {item.teamName} ({item.phoneNumber})
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Apenas gestores podem configurar a integração do WhatsApp.
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -237,8 +270,9 @@ export function ConnectionCard() {
 
             <Separator />
 
+            {canManageInfrastructure ? (
             <div className="flex flex-wrap gap-2">
-              {config.status === 'CONNECTED' && isTeamMaster ? (
+              {config.status === 'CONNECTED' && canManageInfrastructure ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -291,6 +325,7 @@ export function ConnectionCard() {
                 </AlertDialogContent>
               </AlertDialog>
             </div>
+            ) : null}
           </div>
         )}
       </CardContent>

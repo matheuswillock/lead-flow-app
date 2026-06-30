@@ -200,6 +200,7 @@ enum ActivityType {
   email
   status_change
   task
+  studio_bot
 }
 
 enum TaskType {
@@ -418,6 +419,7 @@ enum NotificationType {
   MEETING_REMINDER
   LEAD_TRANSFER_SCHEDULE_FAILED
   MEETING_FOLLOW_UP_DIGEST
+  BETHANIA_AUTH_CODE
 
   @@map("notification_type")
 }
@@ -563,6 +565,7 @@ model Profile {
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
+  canSponsorAccounts       Boolean             @default(false) // Indica se pode patrocinar contas Associado/Convidado
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
   sponsorMasterId          String?             @db.Uuid
@@ -645,6 +648,11 @@ model Profile {
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
   backofficeFeatureGrants BackofficeFeatureGrant[]     @relation("BackofficeFeatureProfileGrants")
 
+  backofficeBotUserLinks               BackofficeBotUserLink[]
+  backofficeBotAuthChallenges          BackofficeBotAuthChallenge[]
+  backofficeBotNotificationPreferences BackofficeBotNotificationPreference[]
+  backofficeBotEventOutbox             BackofficeBotEventOutbox[]
+
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
 
@@ -655,8 +663,9 @@ model Profile {
   // WhatsApp relations
   whatsappConfigsCreated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigCreatedBy")
   whatsappConfigsUpdated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigUpdatedBy")
-  whatsappConversations   WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
-  whatsappMessagesSent    WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
+  whatsappConversations         WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
+  whatsappConversationsCreated  WhatsAppConversation[] @relation("WhatsAppConversationCreator")
+  whatsappMessagesSent          WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
 
   proposalReviewsReviewed LeadProposalReview[]  @relation("LeadProposalReviewReviewer")
   requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
@@ -664,6 +673,7 @@ model Profile {
   @@index([role])
   @@index([managerId])
   @@index([sponsorMasterId])
+  @@index([canSponsorAccounts])
   @@index([cpfCnpj])
   @@index([googleConnectionId])
   @@map("corretor_studio_profiles")
@@ -897,6 +907,7 @@ model BackofficeAdhesion {
   createdSupabaseId         String?                        @map("createdSupabaseId") @db.Uuid
   requestedUserTypeSlug             String?   @map("requestedUserTypeSlug") @db.Text
   requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
+  sponsorMasterId                   String?   @map("sponsorMasterId") @db.Uuid
   additionalUsersData       Json                           @default("[]") @map("additional_users_data")
   additionalTeamsData       Json                           @default("[]") @map("additional_teams_data")
   createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
@@ -1501,6 +1512,7 @@ model Team {
   customerSourceLinks   CustomerSourceLink[]
   customerEvents        CustomerEvent[]
   customerChannelConsents CustomerChannelConsent[]
+  backofficeBotSessions   BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
@@ -1808,6 +1820,7 @@ model EmailTemplate {
   previewText String?  @db.Text
   mailyJson   Json?
   html        String?  @db.Text
+  editorMode  String   @default("blocks") @db.Text
   variables   Json?
   versionGroupId String   @db.Uuid
   versionNumber  Int      @default(1)
@@ -2434,6 +2447,8 @@ model TeamWhatsAppConfig {
   instanceName       String                   @db.Text
   instanceId         String?                  @db.Text
   phoneNumber        String?                  @db.Text
+  normalizedPhone    String?                  @db.Text
+  primaryConfigId    String?                  @db.Uuid
   displayName        String?                  @db.Text
   status             WhatsAppConnectionStatus @default(PENDING)
   qrCodeText         String?                  @db.Text
@@ -2457,11 +2472,15 @@ model TeamWhatsAppConfig {
   team          Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
   createdBy     Profile                @relation("WhatsAppConfigCreatedBy", fields: [createdByProfileId], references: [id])
   updatedBy     Profile                @relation("WhatsAppConfigUpdatedBy", fields: [updatedByProfileId], references: [id])
+  primaryConfig TeamWhatsAppConfig?    @relation("WhatsAppConfigPrimary", fields: [primaryConfigId], references: [id], onDelete: SetNull)
+  mirroredConfigs TeamWhatsAppConfig[] @relation("WhatsAppConfigPrimary")
   conversations WhatsAppConversation[]
   usageEvents   WhatsAppUsageEvent[]
   messages      WhatsAppMessage[]
   autoResponseRules WhatsAppAutoResponseRule[]
 
+  @@index([normalizedPhone])
+  @@index([primaryConfigId])
   @@map("team_whatsapp_configs")
 }
 
@@ -2476,6 +2495,7 @@ model WhatsAppConversation {
   contactAvatarUrl   String?   @db.Text
   normalizedPhone    String    @db.Text
   assignedProfileId  String?   @db.Uuid
+  createdByProfileId String?   @db.Uuid
   lastMessageAt      DateTime? @db.Timestamptz(6)
   lastInboundAt      DateTime? @db.Timestamptz(6)
   lastOutboundAt     DateTime? @db.Timestamptz(6)
@@ -2491,6 +2511,7 @@ model WhatsAppConversation {
   config          TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   lead            Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
   assignedProfile Profile?           @relation("WhatsAppConversationAssignee", fields: [assignedProfileId], references: [id], onDelete: SetNull)
+  createdByProfile Profile?          @relation("WhatsAppConversationCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
   messages        WhatsAppMessage[]
   autoResponseLogs WhatsAppAutoResponseLog[]
 
@@ -2498,6 +2519,7 @@ model WhatsAppConversation {
   @@index([teamId, lastMessageAt(sort: Desc)])
   @@index([teamId, normalizedPhone])
   @@index([leadId])
+  @@index([createdByProfileId])
   @@map("whatsapp_conversations")
 }
 
@@ -2775,4 +2797,200 @@ model CustomerChannelConsent {
   @@unique([profileId, channel])
   @@index([teamId, channel, status])
   @@map("corretor_studio_cdp_channel_consents")
+}
+
+// ==============================
+// STUDIO BOT (BETHÂNIA) — BACKOFFICE
+// ==============================
+
+enum BackofficeBotChannelType {
+  whatsapp
+
+  @@map("backoffice_bot_channel_type")
+}
+
+enum BackofficeBotChannelStatus {
+  pending
+  connected
+  disconnected
+  error
+
+  @@map("backoffice_bot_channel_status")
+}
+
+enum BackofficeBotAuthChallengeSource {
+  channel_email
+  web_otp
+
+  @@map("backoffice_bot_auth_challenge_source")
+}
+
+enum BackofficeBotAuthChallengeStatus {
+  pending
+  verified
+  expired
+  failed
+
+  @@map("backoffice_bot_auth_challenge_status")
+}
+
+enum BackofficeBotUserLinkSource {
+  channel_email
+  web_otp
+
+  @@map("backoffice_bot_user_link_source")
+}
+
+enum BackofficeBotMessageDirection {
+  inbound
+  outbound
+
+  @@map("backoffice_bot_message_direction")
+}
+
+enum BackofficeBotEventOutboxStatus {
+  pending
+  sent
+  failed
+
+  @@map("backoffice_bot_event_outbox_status")
+}
+
+model BackofficeBotChannel {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  displayName       String                     @default("Bethânia") @db.Text
+  avatarUrl         String?                    @db.Text
+  avatarStoragePath String?                    @db.Text
+  aboutText         String?                    @db.Text
+  phoneNumber       String?                    @db.Text
+  lastProfileSyncAt DateTime?                  @db.Timestamptz(6)
+  channelType       BackofficeBotChannelType   @default(whatsapp)
+  status            BackofficeBotChannelStatus @default(pending)
+  providerConfig    Json?
+  webhookSecret     String                     @db.Text
+  n8nInboundUrl     String?                    @db.Text
+  n8nOutboundSecret String                     @db.Text
+  isActive          Boolean                    @default(true)
+  createdAt         DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                   @updatedAt @db.Timestamptz(6)
+
+  messages BackofficeBotMessage[]
+
+  @@map("backoffice_bot_channels")
+}
+
+model BackofficeBotAuthChallenge {
+  id              String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source          BackofficeBotAuthChallengeSource
+  normalizedPhone String?                          @db.Text
+  emailRequested  String?                          @db.Text
+  profileId       String?                          @db.Uuid
+  codeHash        String                           @db.Text
+  status          BackofficeBotAuthChallengeStatus @default(pending)
+  attemptCount    Int                              @default(0)
+  expiresAt       DateTime                         @db.Timestamptz(6)
+  verifiedAt      DateTime?                        @db.Timestamptz(6)
+  ipMetadata      Json?
+  createdAt       DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                         @updatedAt @db.Timestamptz(6)
+
+  profile  Profile?              @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  userLink BackofficeBotUserLink?
+
+  @@index([normalizedPhone, status])
+  @@index([profileId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_auth_challenges")
+}
+
+model BackofficeBotUserLink {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId         String                      @db.Uuid
+  normalizedPhone   String                      @db.Text
+  linkedAt          DateTime                    @default(now()) @db.Timestamptz(6)
+  linkedBy          BackofficeBotUserLinkSource
+  authChallengeId   String?                     @unique @db.Uuid
+  isActive          Boolean                     @default(true)
+  lastInteractionAt DateTime?                   @db.Timestamptz(6)
+  revokedAt         DateTime?                   @db.Timestamptz(6)
+  createdAt         DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                    @updatedAt @db.Timestamptz(6)
+
+  profile       Profile                     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  authChallenge BackofficeBotAuthChallenge? @relation(fields: [authChallengeId], references: [id], onDelete: SetNull)
+  sessions      BackofficeBotSession[]
+  messages      BackofficeBotMessage[]
+
+  @@index([profileId])
+  @@index([normalizedPhone, isActive])
+  @@map("backoffice_bot_user_links")
+}
+
+model BackofficeBotSession {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userLinkId    String   @db.Uuid
+  teamId        String   @db.Uuid
+  currentLeadId String?  @db.Uuid
+  flowId        String?  @db.Text
+  flowStep      String?  @db.Text
+  flowStack     Json     @default("[]")
+  expiresAt     DateTime @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  userLink BackofficeBotUserLink @relation(fields: [userLinkId], references: [id], onDelete: Cascade)
+  team     Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([userLinkId, expiresAt])
+  @@map("backoffice_bot_sessions")
+}
+
+model BackofficeBotMessage {
+  id               String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId        String                        @db.Uuid
+  userLinkId       String?                       @db.Uuid
+  direction        BackofficeBotMessageDirection
+  channelMessageId String?                       @unique @db.Text
+  flowId           String?                       @db.Text
+  errorCode        String?                       @db.Text
+  payload          Json
+  createdAt        DateTime                      @default(now()) @db.Timestamptz(6)
+
+  channel  BackofficeBotChannel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userLink BackofficeBotUserLink?  @relation(fields: [userLinkId], references: [id], onDelete: SetNull)
+
+  @@index([userLinkId, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_messages")
+}
+
+model BackofficeBotNotificationPreference {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId  String   @db.Uuid
+  type       String   @db.Text
+  enabled    Boolean  @default(true)
+  quietHours Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, type])
+  @@map("backoffice_bot_notification_preferences")
+}
+
+model BackofficeBotEventOutbox {
+  id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType      String                         @db.Text
+  profileId      String                         @db.Uuid
+  payload        Json
+  status         BackofficeBotEventOutboxStatus @default(pending)
+  idempotencyKey String                         @unique @db.Text
+  createdAt      DateTime                       @default(now()) @db.Timestamptz(6)
+  sentAt         DateTime?                      @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([profileId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_event_outbox")
 }

@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { meetingReminderRepository } from "@/app/api/infra/data/repositories/meetingReminder/MeetingReminderRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
 
 export class MeetingReminderUseCase {
   async processDueReminders(): Promise<Output> {
@@ -42,6 +43,18 @@ export class MeetingReminderUseCase {
           meetingLink: schedule.meetingLink,
           recipientProfileIds,
         });
+
+        for (const profileId of recipientProfileIds) {
+          await studioBotOutboxService.enqueueMeetingReminder({
+            profileId,
+            teamId: lead.teamId,
+            leadId: lead.id,
+            leadCode: lead.leadCode ?? null,
+            leadName: lead.name,
+            meetingDate: schedule.date,
+            scheduleId: schedule.id,
+          });
+        }
 
         await meetingReminderRepository.markReminderSent(schedule.id, now);
         processedCount += 1;

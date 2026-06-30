@@ -6,6 +6,7 @@ import type {
 
 export type TemplateStatus = "draft" | "published";
 export type TemplateApprovalStatus = "pending_approval" | "approved" | "rejected";
+export type TemplateEditorMode = "html";
 
 export type TemplateVariableKind = "variable" | "function";
 export type TemplateFunctionDefinition = EmailTemplateFunctionDefinition;
@@ -33,6 +34,7 @@ export interface Template {
   previewText: string | null;
   mailyJson: unknown | null;
   html: string | null;
+  editorMode: TemplateEditorMode;
   variables: TemplateVariable[] | null;
   status: TemplateStatus;
   approvalStatus: TemplateApprovalStatus;
@@ -64,6 +66,7 @@ export interface TemplateEditorDraft {
   previewText: string;
   html: string;
   mailyJson: unknown | null;
+  editorMode: TemplateEditorMode;
   variables: TemplateVariable[];
 }
 

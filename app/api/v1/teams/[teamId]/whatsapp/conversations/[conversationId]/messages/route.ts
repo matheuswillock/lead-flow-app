@@ -30,6 +30,7 @@ const sendMessageSchema = z.union([
 function resolveStatus(output: Output): number {
   const msg = output.errorMessages.join(" ")
   if (msg.includes("não encontrad")) return 404
+  if (msg.includes("Acesso negado")) return 403
   if (msg.includes("não está conectado")) return 409
   if (msg.includes("Erro interno") || msg.includes("inesperado")) return 500
   return 400
@@ -56,7 +57,13 @@ export async function GET(
   const page = parseInt(url.searchParams.get("page") ?? "1", 10)
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10), 100)
 
-  const output = await getMessagesUseCase.execute({ conversationId, teamId, page, limit })
+  const output = await getMessagesUseCase.execute({
+    conversationId,
+    teamId,
+    access: teamAccess.access,
+    page,
+    limit,
+  })
   if (!output.isValid) {
     return NextResponse.json(output, { status: resolveStatus(output) })
   }
@@ -103,6 +110,7 @@ export async function POST(
     conversationId,
     teamId,
     sentByProfileId: teamAccess.access.profileId,
+    access: teamAccess.access,
     contentText: parsed.data.contentText,
     mentionedJids: parsed.data.mentionedJids,
     media: "media" in parsed.data ? parsed.data.media : undefined,

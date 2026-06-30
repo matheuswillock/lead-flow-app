@@ -146,7 +146,8 @@ export function CampaignList() {
     credits,
   } = useCampanhasContext()
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
-  const canSendCampaign = !!credits?.hasSubscription || isCampaignsBetaAccess
+  const canSendCampaign =
+    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 
   return (
     <div className="space-y-3">

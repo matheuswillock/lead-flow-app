@@ -58,6 +58,7 @@ import { getProfileTimezoneOptions, type TimezoneOption } from "@/lib/dates";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { MemberProCountdownBadge } from "./features/components/MemberProCountdownBadge";
+import { BethaniaConnectionCard } from "./features/components/BethaniaConnectionCard";
 
 const ALL_GOOGLE_SCOPES = [
   {
@@ -1028,6 +1029,13 @@ export default function AccountProfilePage() {
                       </div>
                     )}
                   </section>
+
+                  <Separator />
+
+                  <BethaniaConnectionCard
+                    supabaseId={supabaseId}
+                    teamId={user?.activeTeamId ?? null}
+                  />
 
                   <Separator />
 

@@ -89,6 +89,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           createdByBackofficeUserId: data.createdByBackofficeUserId ?? null,
           requestedUserTypeSlug: data.requestedUserTypeSlug ?? null,
           requestedMemberProAccessExpiresAt: data.requestedMemberProAccessExpiresAt ?? null,
+          sponsorMasterId: data.sponsorMasterId ?? null,
           additionalUsersData: (data.additionalUsersData ?? []) as Prisma.InputJsonValue,
           additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
         },
@@ -309,6 +310,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       complement: data.complement ?? undefined,
       city: data.city ?? undefined,
       state: data.state ?? undefined,
+      hasPermanentSubscription: data.hasPermanentSubscription ?? false,
+      sponsorMasterId: data.sponsorMasterId ?? undefined,
     }
 
     const profile = await prisma.$transaction(async (tx) => {
@@ -436,7 +439,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
   }
 
   async getOptions(): Promise<BackofficeAdhesionOptions> {
-    const [leads, users] = await Promise.all([
+    const [leads, users, sponsorOptions] = await Promise.all([
       prisma.backofficeLead.findMany({
         where: {
           status: { in: [...eligibleLeadStatuses] },
@@ -450,9 +453,14 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         select: backofficeAdhesionUserSelect,
         orderBy: { profile: { fullName: "asc" } },
       }),
+      prisma.profile.findMany({
+        where: { canSponsorAccounts: true },
+        select: { id: true, fullName: true, email: true },
+        orderBy: { fullName: "asc" },
+      }),
     ])
 
-    return { leads, users }
+    return { leads, users, sponsorOptions }
   }
 
   async cancelAdhesionAndRestoreLead(

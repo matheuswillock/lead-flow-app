@@ -186,6 +186,7 @@ class TemplateEditorService implements ITemplateEditorService {
       previewText: draft.previewText,
       html: draft.html,
       mailyJson: draft.mailyJson,
+      editorMode: draft.editorMode,
       variables: draft.variables,
     };
   }

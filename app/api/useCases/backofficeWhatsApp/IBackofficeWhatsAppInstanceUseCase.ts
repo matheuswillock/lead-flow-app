@@ -24,7 +24,7 @@ export interface IBackofficeWhatsAppInstanceUseCase {
   }): Promise<Output>
   reconnectInstance(configId: string, profileId: string): Promise<Output>
   disconnectInstance(configId: string, profileId: string): Promise<Output>
-  syncHistory(configId: string): Promise<Output>
+  syncHistory(configId: string, profileId: string): Promise<Output>
   listTeamsWithoutInstance(
     filters: { q?: string },
     pagination: { page: number; pageSize: number }

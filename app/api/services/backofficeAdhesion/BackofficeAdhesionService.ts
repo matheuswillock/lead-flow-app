@@ -318,6 +318,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerOptions: users
         .filter((user) => user.isCloser)
         .map((user) => ({ id: user.id, name: user.name, email: user.email })),
+      sponsorOptions: options.sponsorOptions.map((s) => ({
+        id: s.id,
+        name: s.fullName ?? s.email ?? s.id,
+        email: s.email ?? "",
+      })),
       pricing: {
         cycles: pricingCycles,
       },
@@ -382,14 +387,49 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerBackofficeUserId:
         normalized.closerBackofficeUserId ?? lead.closerBackofficeUserId,
       createdByBackofficeUserId,
-      requestedUserTypeSlug: normalized.userType === "member_pro" ? "member_pro" : null,
+      requestedUserTypeSlug:
+        normalized.userType === "member_pro" || normalized.userType === "associate" || normalized.userType === "guest"
+          ? normalized.userType
+          : null,
       requestedMemberProAccessExpiresAt:
         normalized.userType === "member_pro" && normalized.accessExpiresAt
           ? new Date(normalized.accessExpiresAt)
           : null,
+      sponsorMasterId: normalized.sponsorMasterId ?? null,
       additionalUsersData: normalized.additionalUsers ?? [],
       additionalTeamsData: normalized.additionalTeams ?? [],
     })
+
+    if (normalized.userType === "guest") {
+      const guestEmail = normalized.email
+      if (!guestEmail) {
+        throw new Error("E-mail é obrigatório para conta Convidado")
+      }
+      const paidAt = new Date()
+      try {
+        const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
+          fullName: normalized.fullName,
+          phone: normalized.phone ?? "",
+          email: guestEmail,
+          cpfCnpj: normalized.cpfCnpj ?? null,
+          paidAt,
+          asaasCustomerId: null,
+        })
+        await this.ensureAccountForPaidAdhesion(paidAdhesion)
+
+        return {
+          adhesion: mapAdhesion(paidAdhesion),
+          publicUrl: null,
+          expiresAt: paidAdhesion.expiresAt.toISOString(),
+          activationMode: "external_paid",
+        }
+      } catch (guestErr) {
+        await this.repo.cancelAdhesionAndRestoreLead(adhesion.id, lead.status).catch((rollbackErr) => {
+          console.error("[BackofficeAdhesionService][create][rollback]", rollbackErr)
+        })
+        throw guestErr
+      }
+    }
 
     if (normalized.activationMode === "external_paid") {
       const externalEmail = normalized.email
@@ -931,7 +971,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const email = normalizeText(input.email)?.toLowerCase() ?? null
     const cpfCnpj = normalizeDigits(input.cpfCnpj, 14)
 
-    if (activationMode === "external_paid") {
+    if (activationMode === "external_paid" || input.userType === "guest") {
       if (!email || !isValidEmail(email)) {
         throw new Error("E-mail inválido")
       }
@@ -956,6 +996,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       billingType,
       userType: input.userType ?? "common",
       accessExpiresAt: input.accessExpiresAt ?? null,
+      sponsorMasterId: normalizeText(input.sponsorMasterId) ?? null,
       additionalUsers: input.additionalUsers ?? [],
       additionalTeams: input.additionalTeams ?? [],
     }
@@ -1234,6 +1275,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       const subscriptionStartDate = adhesion.paidAt ?? new Date()
       const subscriptionEndDate = addMonthsInTz(subscriptionStartDate, cycleMonths, DEFAULT_TZ)
 
+      const isGuest = adhesion.requestedUserTypeSlug === "guest"
       const createdProfile = await this.repo.createPaidManagerProfile({
         supabaseId,
         fullName: adhesion.fullName,
@@ -1253,6 +1295,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         complement: adhesion.complement,
         city: adhesion.city,
         state: adhesion.state,
+        hasPermanentSubscription: isGuest,
+        sponsorMasterId: adhesion.sponsorMasterId ?? null,
       })
 
       await this.repo.activateCreatedProfileSubscription(createdProfile.profileId, {
@@ -1270,6 +1314,18 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
           userType: "member_pro",
           accessExpiresAt: adhesion.requestedMemberProAccessExpiresAt,
+          assignedByProfileId: null,
+        })
+      } else if (adhesion.requestedUserTypeSlug === "guest") {
+        await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
+          userType: "guest",
+          accessExpiresAt: null,
+          assignedByProfileId: null,
+        })
+      } else if (adhesion.requestedUserTypeSlug === "associate") {
+        await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
+          userType: "associate",
+          accessExpiresAt: null,
           assignedByProfileId: null,
         })
       }

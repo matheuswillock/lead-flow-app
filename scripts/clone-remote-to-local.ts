@@ -304,6 +304,71 @@ function reapplyPostCloneMigrations() {
   }
 }
 
+function repairBetaGrantFeatureIds() {
+  const remoteDbUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  if (!remoteDbUrl) {
+    console.warn("\n⚠ DIRECT_URL não definida — pulando reparo de grants beta.");
+    return;
+  }
+
+  step("Repair beta grant featureId references (post-catalog seed)");
+  const mappingResult = run(
+    "psql",
+    [
+      remoteDbUrl,
+      "-t",
+      "-A",
+      "-c",
+      `SELECT g.id || E'\\t' || f.slug
+       FROM backoffice_feature_grants g
+       JOIN backoffice_features f ON f.id = g."featureId"
+       WHERE g."grantType" = 'BETA';`,
+    ],
+    { stdio: "pipe" },
+  );
+
+  const lines = (mappingResult.stdout ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let repaired = 0;
+  for (const line of lines) {
+    const tabIndex = line.indexOf("\t");
+    if (tabIndex === -1) continue;
+
+    const grantId = line.slice(0, tabIndex).trim();
+    const slug = line.slice(tabIndex + 1).trim();
+    if (!grantId || !slug) continue;
+
+    const escapedGrantId = grantId.replace(/'/g, "''");
+    const escapedSlug = slug.replace(/'/g, "''");
+
+    const updateResult = run(
+      "psql",
+      [
+        LOCAL_DB_URL,
+        "-t",
+        "-A",
+        "-c",
+        `UPDATE backoffice_feature_grants AS g
+         SET "featureId" = f.id,
+             "updatedAt" = now()
+         FROM backoffice_features AS f
+         WHERE g.id = '${escapedGrantId}'
+           AND f.slug = '${escapedSlug}';`,
+      ],
+      { stdio: "pipe" },
+    );
+
+    if ((updateResult.stdout ?? "").includes("UPDATE 1")) {
+      repaired += 1;
+    }
+  }
+
+  console.info(`[db:clone:remote] Beta grants reparados: ${repaired}/${lines.length}`);
+}
+
 function cleanup() {
   if (keepDumps) {
     console.info(`\nKeeping dumps under ${DUMP_DIR} (passed --keep-dumps).`);
@@ -324,6 +389,7 @@ async function main() {
   reapplyPostCloneMigrations();
   step("Sync backoffice feature catalog (post-clone seed)");
   syncBackofficeCatalog(LOCAL_DB_URL);
+  repairBetaGrantFeatureIds();
   cleanup();
   const seconds = Math.round((Date.now() - started) / 1000);
   console.info(`\n✅ Done in ${seconds}s. Local DB now mirrors remote data.`);
