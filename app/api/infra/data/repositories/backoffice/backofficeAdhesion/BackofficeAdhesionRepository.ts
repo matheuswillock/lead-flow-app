@@ -182,6 +182,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
         ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
+        ...(data.productId !== undefined ? { productId: data.productId } : {}),
         ...(data.cycle !== undefined ? { cycle: data.cycle } : {}),
         ...(data.modules !== undefined ? { modules: data.modules } : {}),
         ...(data.extraTeams !== undefined ? { extraTeams: data.extraTeams } : {}),

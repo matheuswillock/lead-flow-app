@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -457,6 +458,23 @@ export async function POST(request: NextRequest) {
         masterFunctions,
         requesterFunctions,
       });
+
+      return NextResponse.json(
+        new Output(true, ["Time criado com sucesso"], [], { teamId: team.id }),
+        { status: 201 }
+      );
+    }
+
+    if (await memberProBillingUseCase.shouldBypassIncrementalCharge(managerId)) {
+      const team = await createTeamForAccount({
+        teamName: validatedData.name,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        masterFunctions,
+        requesterFunctions,
+      });
+
+      await memberProBillingUseCase.syncUsageToSubscription(managerId, "add_team");
 
       return NextResponse.json(
         new Output(true, ["Time criado com sucesso"], [], { teamId: team.id }),

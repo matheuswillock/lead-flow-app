@@ -96,6 +96,11 @@ export interface SyncRecurringSubscriptionInput {
   master: BillingOwnerProfile;
   targetRecurringTotal: number;
   reason: string;
+  nextDueDateOverride?: Date | string | null;
+}
+
+export interface EnsureOrSyncRecurringSubscriptionInput extends SyncRecurringSubscriptionInput {
+  defaultBillingType?: "PIX" | "CREDIT_CARD";
 }
 
 export interface ProportionalChargeData {
@@ -109,5 +114,6 @@ export interface IIncrementalBillingService {
   projectBilling(masterId: string, input: ProjectBillingInput): Promise<ProjectedBillingSummary>;
   createIncrementalCharge(input: CreateIncrementalChargeInput): Promise<IncrementalChargeResult>;
   syncRecurringSubscription(input: SyncRecurringSubscriptionInput): Promise<void>;
+  ensureOrSyncRecurringSubscription(input: EnsureOrSyncRecurringSubscriptionInput): Promise<void>;
   calculateProportionalAmount(masterId: string, addonType: "user" | "team"): Promise<ProportionalChargeData>;
 }

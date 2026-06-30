@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { cacheTags } from "@/lib/cache/cacheTags";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import type { ITeamMembersRepository, TeamMembersListItem, TeamMembersTeam, TeamMembersProfileOption } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 
@@ -245,6 +246,8 @@ export class TeamMembersUseCase {
       }
 
       await this.repository.deleteMember(teamId, profileId);
+
+      await memberProBillingUseCase.syncBillingAfterUsageChange(team.masterId, "remove_member");
 
       return new Output(true, ["Membro removido com sucesso"], [], null);
     } catch (error) {

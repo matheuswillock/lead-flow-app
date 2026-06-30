@@ -20,7 +20,7 @@ export interface BackofficeProductPaymentRuleFormEntry {
 export interface BackofficeProductItem {
   id: string
   name: string
-  slug: string
+  featureSlug: string
   description: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -29,6 +29,7 @@ export interface BackofficeProductItem {
   priceSemiannual: number | null
   priceAnnual: number | null
   priceLifetime: number | null
+  isDefault: boolean
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -37,7 +38,7 @@ export interface BackofficeProductItem {
 
 export interface BackofficeProductFormData {
   name: string
-  slug: string
+  featureSlug: string
   description: string
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -46,6 +47,7 @@ export interface BackofficeProductFormData {
   priceSemiannual: string
   priceAnnual: string
   priceLifetime: string
+  isDefault: boolean
   isActive: boolean
   paymentRules: {
     monthly: BackofficeProductPaymentRuleFormEntry
@@ -63,7 +65,7 @@ const EMPTY_RULE_ENTRY: BackofficeProductPaymentRuleFormEntry = {
 
 export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
   name: "",
-  slug: "",
+  featureSlug: "",
   description: "",
   type: "PLAN",
   billingMode: "RECURRING",
@@ -72,6 +74,7 @@ export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
   priceSemiannual: "",
   priceAnnual: "",
   priceLifetime: "",
+  isDefault: false,
   isActive: true,
   paymentRules: {
     monthly: { ...EMPTY_RULE_ENTRY, maxInstallments: "1" },

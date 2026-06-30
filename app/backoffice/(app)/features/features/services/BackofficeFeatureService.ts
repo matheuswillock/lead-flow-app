@@ -12,6 +12,7 @@ function formToPayload(data: BackofficeFeatureFormData | Partial<BackofficeFeatu
   if (data.inheritParentSettings !== undefined) {
     payload.inheritParentSettings = data.inheritParentSettings
   }
+  if (data.billedSeparately !== undefined) payload.billedSeparately = data.billedSeparately
   if (data.isActive !== undefined) payload.isActive = data.isActive
   if ("sortOrder" in data) payload.sortOrder = parseInt(data.sortOrder ?? "0", 10) || 0
   if ("productSlug" in data) payload.productSlug = data.productSlug || null

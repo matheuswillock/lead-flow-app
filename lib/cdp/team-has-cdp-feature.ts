@@ -22,12 +22,12 @@ export async function teamHasCdpFeature(teamId: string): Promise<boolean> {
               status: "active",
               OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
             },
-            select: { product: { select: { slug: true } } },
+            select: { product: { select: { featureSlug: true } } },
           },
           subscription: {
             select: {
               hasPermanentSubscription: true,
-              product: { select: { slug: true } },
+              product: { select: { featureSlug: true } },
             },
           },
         },
@@ -49,10 +49,10 @@ export async function teamHasCdpFeature(teamId: string): Promise<boolean> {
 
   const paidProductSlugs = new Set<string>()
   for (const subscription of owner.backofficeSubscriptions) {
-    paidProductSlugs.add(subscription.product.slug)
+    paidProductSlugs.add(subscription.product.featureSlug)
   }
-  if (owner.subscription?.product?.slug) {
-    paidProductSlugs.add(owner.subscription.product.slug)
+  if (owner.subscription?.product?.featureSlug) {
+    paidProductSlugs.add(owner.subscription.product.featureSlug)
   }
 
   return paidProductSlugs.has("cdp")

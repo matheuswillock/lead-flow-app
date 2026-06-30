@@ -3,12 +3,11 @@ import { z } from "zod";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { createClient } from "@supabase/supabase-js";
-import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import {
   getTeamAccess,
   hasDelegatedTeamManagementAccess,
 } from "@/app/api/v1/utils/teamAccess";
-import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const updateTeamSchema = z.object({
@@ -231,14 +230,10 @@ export async function DELETE(
 
     await prisma.team.delete({ where: { id: teamId } });
 
-    if (!billingOwner.hasPermanentSubscription) {
-      const summary = await getBillingSummary(billingOwner.id);
-      await incrementalBillingService.syncRecurringSubscription({
-        master: billingOwner,
-        targetRecurringTotal: summary.totalPrice,
-        reason: "Atualização recorrente após deleção de time",
-      });
-    }
+    await memberProBillingUseCase.syncBillingAfterUsageChange(
+      billingOwner.id,
+      "remove_team"
+    );
 
     return NextResponse.json(
       new Output(true, ["Time deletado com sucesso"], [], { teamId }),

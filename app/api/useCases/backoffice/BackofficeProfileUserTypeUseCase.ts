@@ -5,6 +5,7 @@ import {
   profileAsaasCustomerSyncUseCase,
   ProfileAsaasCustomerSyncUseCase,
 } from "@/app/api/useCases/profileAsaasCustomer/ProfileAsaasCustomerSyncUseCase"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const MIN_ACCESS_DAYS = 1
@@ -125,11 +126,19 @@ export class BackofficeProfileUserTypeUseCase {
       await this.repository.updateSponsorMasterId(profileId, null)
 
       if (input.userType === "common") {
+        const memberProContext = await memberProBillingUseCase.getMemberProContext(profileId)
         const userType = await this.repository.upsertUserTypeAssignment(profileId, {
           userType: "common",
           accessExpiresAt: null,
           assignedByProfileId,
         })
+
+        if (memberProContext.slug === "member_pro") {
+          await memberProBillingUseCase.syncBillingAfterUsageChange(
+            profileId,
+            "member_pro_to_common"
+          )
+        }
 
         return new Output(true, ["Tipo de usuário atualizado para Comum"], [], { userType })
       }

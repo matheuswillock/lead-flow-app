@@ -21,6 +21,7 @@ import { profileRepository } from "@/app/api/infra/data/repositories/profile/Pro
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { isManagerLikeRole } from "@/lib/roles";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
@@ -449,6 +450,29 @@ export async function POST(
         profile,
         teamMemberRecord,
       });
+
+      const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
+      return NextResponse.json(output, { status: 200 });
+    }
+
+    if (await memberProBillingUseCase.shouldBypassIncrementalCharge(managerId)) {
+      const { profile, teamMemberRecord } = await createUserRecords(
+        { teamId, masterId: managerId, userData: validatedData, delegatedPermissions },
+        prisma
+      );
+      const createdUser = await finalizeUserCreation({
+        teamId,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        actorName,
+        teamName,
+        userData: validatedData,
+        delegatedPermissions,
+        profile,
+        teamMemberRecord,
+      });
+
+      await memberProBillingUseCase.syncUsageToSubscription(managerId, "add_user");
 
       const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
       return NextResponse.json(output, { status: 200 });
@@ -1186,6 +1210,8 @@ export async function DELETE(
         },
       },
     });
+
+    await memberProBillingUseCase.syncBillingAfterUsageChange(managerId, "remove_user");
 
     const output = new Output(true, ["Usuário removido do time com sucesso"], [], null);
     return NextResponse.json(output, { status: 200 });

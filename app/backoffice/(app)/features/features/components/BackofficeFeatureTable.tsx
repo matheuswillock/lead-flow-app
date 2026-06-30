@@ -44,6 +44,11 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
   const { canManage, openEditDialog, openDeleteDialog } = useBackofficeFeature()
 
   const inheritsAccess = Boolean(isChild && parent && feature.inheritParentSettings)
+  const billingLabel = isChild
+    ? feature.billedSeparately
+      ? "cobrado à parte"
+      : "incluso"
+    : null
 
   return (
     <TableRow className={cn(isChild && "bg-muted/20")}>
@@ -59,6 +64,11 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
           </Badge>
           {inheritsAccess && (
             <span className="text-[10px] text-muted-foreground/60">herdado</span>
+          )}
+          {billingLabel && (
+            <Badge variant="outline" className="text-[10px]">
+              {billingLabel}
+            </Badge>
           )}
         </div>
       </TableCell>

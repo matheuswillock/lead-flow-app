@@ -122,6 +122,7 @@ function defaultValues(): BackofficeAdhesionFormValues {
     phone: "",
     email: "",
     cpfCnpj: "",
+    productId: "",
     cycle: "monthly",
     extraTeams: 0,
     extraUsers: 0,
@@ -144,6 +145,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     phone: adhesion.phone,
     email: adhesion.email ?? "",
     cpfCnpj: adhesion.cpfCnpj ?? "",
+    productId: adhesion.productId ?? "",
     cycle: adhesion.cycle,
     extraTeams: adhesion.extraTeams,
     extraUsers: adhesion.extraUsers,
@@ -243,12 +245,32 @@ export function BackofficeAdhesionDialog({
     () => options?.leads.find((lead) => lead.id === values.leadId) ?? null,
     [options?.leads, values.leadId]
   )
-  const cyclePrices = options?.pricing.cycles[values.cycle] ?? {
+  const selectedVariant = useMemo(() => {
+    if (!options?.productVariants.length) return null
+    return (
+      options.productVariants.find((variant) => variant.id === values.productId) ??
+      options.productVariants.find((variant) => variant.isDefault) ??
+      options.productVariants[0]
+    )
+  }, [options?.productVariants, values.productId])
+
+  const addonCyclePrices = options?.pricing.cycles[values.cycle] ?? {
     baseMonthlyPrice: 0,
     extraTeamPrice: 0,
     extraUserPrice: 0,
     pixBaseMonthlyPrice: null,
     cardBaseMonthlyPrice: null,
+  }
+  const variantCyclePrices = selectedVariant?.pricesByCycle[values.cycle]
+  const cyclePrices = {
+    baseMonthlyPrice:
+      variantCyclePrices?.cardMonthlyPrice ?? addonCyclePrices.baseMonthlyPrice,
+    extraTeamPrice: addonCyclePrices.extraTeamPrice,
+    extraUserPrice: addonCyclePrices.extraUserPrice,
+    pixBaseMonthlyPrice:
+      variantCyclePrices?.pixMonthlyPrice ?? addonCyclePrices.pixBaseMonthlyPrice,
+    cardBaseMonthlyPrice:
+      variantCyclePrices?.cardMonthlyPrice ?? addonCyclePrices.cardBaseMonthlyPrice,
   }
   const extrasMonthly =
     values.extraTeams * cyclePrices.extraTeamPrice +
@@ -266,7 +288,7 @@ export function BackofficeAdhesionDialog({
   const commercialItems = [
     {
       key: "crm",
-      name: "CRM",
+      name: selectedVariant?.name ?? "CRM",
       description: "Plano principal do Corretor Studio",
       quantity: "1 plano",
       monthlyUnitPrice: selectedBaseMonthly,
@@ -332,7 +354,19 @@ export function BackofficeAdhesionDialog({
     setIsLoadingOptions(true)
     service
       .getOptions()
-      .then(setOptions)
+      .then((loaded) => {
+        setOptions(loaded)
+        const defaultVariant =
+          loaded.productVariants.find((variant) => variant.isDefault) ??
+          loaded.productVariants[0]
+        if (mode === "create" && defaultVariant) {
+          setValues((current) =>
+            current.productId ? current : { ...current, productId: defaultVariant.id }
+          )
+        } else if (mode === "edit" && adhesion && !adhesion.productId && defaultVariant) {
+          setValues((current) => ({ ...current, productId: defaultVariant.id }))
+        }
+      })
       .catch((err) => {
         console.error("[BackofficeAdhesionDialog][options]", err)
         toast.error(err instanceof Error ? err.message : "Erro ao carregar opções")
@@ -438,6 +472,7 @@ export function BackofficeAdhesionDialog({
           phone: sanitizePhone(values.phone),
           email: values.email.trim().toLowerCase(),
           cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
+          productId: values.productId || undefined,
           cycle: values.cycle,
           extraTeams: values.extraTeams,
           extraUsers: values.extraUsers,
@@ -704,10 +739,38 @@ export function BackofficeAdhesionDialog({
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label>Plano</Label>
-                <div className="flex h-10 items-center rounded-md border px-3">
-                  <Badge variant="secondary">CRM</Badge>
-                </div>
+                <Label>Plano / precificação</Label>
+                {options?.productVariants.length ? (
+                  <Select
+                    value={values.productId}
+                    onValueChange={(value) => updateValue("productId", value)}
+                    disabled={isSubmitting || isLoadingOptions}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o plano" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {options.productVariants.map((variant) => {
+                          const prices = variant.pricesByCycle[values.cycle]
+                          const displayPrice =
+                            prices.cardMonthlyPrice ?? prices.pixMonthlyPrice ?? 0
+                          return (
+                            <SelectItem key={variant.id} value={variant.id}>
+                              {variant.name}
+                              {variant.isDefault ? " (padrão)" : ""} —{" "}
+                              {formatCurrency(displayPrice)}/mês
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex h-10 items-center rounded-md border px-3">
+                    <Badge variant="secondary">CRM</Badge>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Ciclo *</Label>

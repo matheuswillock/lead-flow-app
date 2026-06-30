@@ -17,7 +17,7 @@ const prisma = new PrismaClient()
 
 const PRODUCTS = [
   {
-    slug: "crm",
+    featureSlug: "crm",
     name: "CRM",
     description: "Plano CRM — acesso completo ao módulo de gestão de leads.",
     type: BackofficeProductType.PLAN,
@@ -28,9 +28,10 @@ const PRODUCTS = [
     priceAnnual: 69.9,
     priceLifetime: null,
     isActive: true,
+    isDefault: true,
   },
   {
-    slug: "crm-lifetime",
+    featureSlug: "crm-lifetime",
     name: "CRM Vitalício",
     description: "Plano CRM com acesso vitalício — pagamento único, sem mensalidade.",
     type: BackofficeProductType.PLAN,
@@ -41,9 +42,10 @@ const PRODUCTS = [
     priceAnnual: null,
     priceLifetime: null,
     isActive: true,
+    isDefault: true,
   },
   {
-    slug: "extra-team",
+    featureSlug: "extra-team",
     name: "Time Adicional",
     description: "Adiciona um time extra à conta.",
     type: BackofficeProductType.ADDON,
@@ -54,9 +56,10 @@ const PRODUCTS = [
     priceAnnual: 29.9,
     priceLifetime: null,
     isActive: true,
+    isDefault: true,
   },
   {
-    slug: "extra-user",
+    featureSlug: "extra-user",
     name: "Usuário Adicional",
     description: "Adiciona um usuário operador extra à conta.",
     type: BackofficeProductType.ADDON,
@@ -67,9 +70,10 @@ const PRODUCTS = [
     priceAnnual: 19.9,
     priceLifetime: null,
     isActive: true,
+    isDefault: true,
   },
   {
-    slug: "email",
+    featureSlug: "email",
     name: "Email",
     description: "Módulo de email para campanhas, contatos, templates e analytics.",
     type: BackofficeProductType.ADDON,
@@ -80,9 +84,10 @@ const PRODUCTS = [
     priceAnnual: 29.9,
     priceLifetime: null,
     isActive: true,
+    isDefault: true,
   },
   {
-    slug: "whatsapp",
+    featureSlug: "whatsapp",
     name: "WhatsApp",
     description: "Módulo WhatsApp — inbox, conversas e envio de mensagens via Evolution API.",
     type: BackofficeProductType.ADDON,
@@ -93,9 +98,10 @@ const PRODUCTS = [
     priceAnnual: 29.9,
     priceLifetime: null,
     isActive: true,
+    isDefault: true,
   },
   {
-    slug: "cdp",
+    featureSlug: "cdp",
     name: "CDP",
     description: "CDP — perfis unificados, segmentos e timeline para campanhas de e-mail.",
     type: BackofficeProductType.ADDON,
@@ -106,6 +112,7 @@ const PRODUCTS = [
     priceAnnual: 29.9,
     priceLifetime: null,
     isActive: true,
+    isDefault: true,
   },
 ]
 
@@ -120,6 +127,11 @@ const FEATURES_WITHOUT_PARENT_INHERITANCE = new Set([
 function resolveInheritParentSettings(slug: string, parentSlug?: string): boolean {
   if (!parentSlug) return false
   return !FEATURES_WITHOUT_PARENT_INHERITANCE.has(slug)
+}
+
+function resolveBilledSeparately(parentSlug?: string, inheritParentSettings?: boolean): boolean {
+  if (!parentSlug) return false
+  return inheritParentSettings === false
 }
 
 const FEATURES: Array<{
@@ -384,30 +396,43 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
 async function main() {
   console.info("[seed:backoffice-products] Iniciando...")
 
-  // 1. Upsert products
+  // 1. Upsert products (default variant per featureSlug)
   for (const product of PRODUCTS) {
-    await prisma.backofficeProduct.upsert({
-      where: { slug: product.slug },
-      create: product,
-      update: {
-        name: product.name,
-        description: product.description,
-        type: product.type,
-        billingMode: product.billingMode,
-        priceMonthly: product.priceMonthly,
-        priceQuarterly: product.priceQuarterly,
-        priceSemiannual: product.priceSemiannual,
-        priceAnnual: product.priceAnnual,
-        isActive: product.isActive,
-      },
+    const existing = await prisma.backofficeProduct.findFirst({
+      where: { featureSlug: product.featureSlug, isDefault: true },
     })
-    console.info(`[seed:backoffice-products] Produto pronto: ${product.slug}`)
+
+    const data = {
+      featureSlug: product.featureSlug,
+      name: product.name,
+      description: product.description,
+      type: product.type,
+      billingMode: product.billingMode,
+      priceMonthly: product.priceMonthly,
+      priceQuarterly: product.priceQuarterly,
+      priceSemiannual: product.priceSemiannual,
+      priceAnnual: product.priceAnnual,
+      priceLifetime: product.priceLifetime,
+      isActive: product.isActive,
+      isDefault: product.isDefault,
+    }
+
+    if (existing) {
+      await prisma.backofficeProduct.update({
+        where: { id: existing.id },
+        data,
+      })
+    } else {
+      await prisma.backofficeProduct.create({ data })
+    }
+    console.info(`[seed:backoffice-products] Produto pronto: ${product.featureSlug}`)
   }
 
   // 2. Upsert features without parentId first (resolve parents in second pass)
   for (const feature of FEATURES) {
     const inheritParentSettings = feature.inheritParentSettings
     const betaEnabled = inheritParentSettings ? false : feature.betaEnabled
+    const billedSeparately = resolveBilledSeparately(feature.parentSlug, inheritParentSettings)
 
     await prisma.backofficeFeature.upsert({
       where: { slug: feature.slug },
@@ -418,6 +443,7 @@ async function main() {
         defaultAccessLevel: feature.defaultAccessLevel,
         betaEnabled,
         inheritParentSettings,
+        billedSeparately,
         sortOrder: feature.sortOrder,
         productSlug: feature.productSlug,
         isActive: true,
@@ -428,6 +454,7 @@ async function main() {
         defaultAccessLevel: feature.defaultAccessLevel,
         betaEnabled,
         inheritParentSettings,
+        billedSeparately,
         sortOrder: feature.sortOrder,
         productSlug: feature.productSlug,
         isActive: true,
@@ -449,6 +476,10 @@ async function main() {
       data: {
         parentId: parent.id,
         inheritParentSettings: resolveInheritParentSettings(feature.slug, feature.parentSlug),
+        billedSeparately: resolveBilledSeparately(
+          feature.parentSlug,
+          resolveInheritParentSettings(feature.slug, feature.parentSlug)
+        ),
       },
     })
     console.info(`[seed:backoffice-products] parentId definido: ${feature.slug} → ${feature.parentSlug}`)
@@ -485,7 +516,9 @@ async function main() {
   console.info("[seed:backoffice-products] Regras de acesso por principal atualizadas")
 
   // 6. CRM payment rules
-  const crmProduct = await prisma.backofficeProduct.findUnique({ where: { slug: "crm" } })
+  const crmProduct = await prisma.backofficeProduct.findFirst({
+    where: { featureSlug: "crm", isDefault: true },
+  })
   if (crmProduct) {
     for (const rule of CRM_PAYMENT_RULES) {
       await prisma.backofficeProductPaymentRule.upsert({
@@ -504,7 +537,9 @@ async function main() {
   }
 
   // 7. WhatsApp payment rules
-  const whatsappProduct = await prisma.backofficeProduct.findUnique({ where: { slug: "whatsapp" } })
+  const whatsappProduct = await prisma.backofficeProduct.findFirst({
+    where: { featureSlug: "whatsapp", isDefault: true },
+  })
   if (whatsappProduct) {
     for (const rule of WHATSAPP_PAYMENT_RULES) {
       await prisma.backofficeProductPaymentRule.upsert({
@@ -522,7 +557,9 @@ async function main() {
     console.info("[seed:backoffice-products] Regras de pagamento WhatsApp prontas")
   }
 
-  const cdpProduct = await prisma.backofficeProduct.findUnique({ where: { slug: "cdp" } })
+  const cdpProduct = await prisma.backofficeProduct.findFirst({
+    where: { featureSlug: "cdp", isDefault: true },
+  })
   if (cdpProduct) {
     for (const rule of CDP_PAYMENT_RULES) {
       await prisma.backofficeProductPaymentRule.upsert({

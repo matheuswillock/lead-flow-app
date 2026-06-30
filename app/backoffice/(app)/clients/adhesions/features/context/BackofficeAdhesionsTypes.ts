@@ -43,6 +43,21 @@ export interface BackofficeAdhesionItem {
   paidAt: string | null
   billingType: string | null
   asaasPaymentId: string | null
+  productId: string | null
+}
+
+export interface BackofficeAdhesionProductVariant {
+  id: string
+  name: string
+  featureSlug: string
+  isDefault: boolean
+  pricesByCycle: Record<
+    BackofficeAdhesionBillingCycleKey,
+    {
+      pixMonthlyPrice: number | null
+      cardMonthlyPrice: number | null
+    }
+  >
 }
 
 export interface BackofficeAdhesionLeadOption {
@@ -73,6 +88,7 @@ export interface BackofficeAdhesionOptions {
   sdrOptions: BackofficeAdhesionUserOption[]
   closerOptions: BackofficeAdhesionUserOption[]
   sponsorOptions: BackofficeAdhesionSponsorOption[]
+  productVariants: BackofficeAdhesionProductVariant[]
   pricing: {
     cycles: Record<
       BackofficeAdhesionBillingCycleKey,
@@ -93,6 +109,7 @@ export interface BackofficeAdhesionFormValues {
   phone: string
   email: string
   cpfCnpj: string
+  productId: string
   cycle: BackofficeAdhesionBillingCycleKey
   extraTeams: number
   extraUsers: number

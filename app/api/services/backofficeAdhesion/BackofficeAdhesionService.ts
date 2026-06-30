@@ -23,7 +23,7 @@ import type {
   IBackofficeAdhesionRepository,
 } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/IBackofficeAdhesionRepository"
 import { BackofficeAdhesionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository"
-import type { IBackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
+import type { IBackofficeProductRepository, BackofficeProductWithPaymentRules } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
 import { BackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
 import type { IBackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/IBackofficeUserSubscriptionRepository"
 import { BackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/BackofficeUserSubscriptionRepository"
@@ -119,6 +119,7 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
     paidAt: adhesion.paidAt?.toISOString() ?? null,
     billingType: adhesion.billingType,
     asaasPaymentId: adhesion.asaasPaymentId,
+    productId: adhesion.productId,
   }
 }
 
@@ -300,6 +301,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }))
 
     const pricingCycles = await this.resolvePricingOptions()
+    const crmVariants = await this.productRepo.findByFeatureSlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    const productVariants = this.mapProductVariants(crmVariants)
 
     return {
       leads: options.leads.map((lead) => ({
@@ -326,6 +329,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       pricing: {
         cycles: pricingCycles,
       },
+      productVariants,
     }
   }
 
@@ -334,7 +338,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     createdByBackofficeUserId: string | null
   ): Promise<BackofficeAdhesionCreationResult> {
     const normalized = this.normalizeCommercialInput(input)
-    const crmWithRules = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    const crmWithRules = await this.getProductForAdhesion(CRM_PRODUCT_SLUG, normalized.productId)
     const options = await this.repo.getOptions()
     const lead = options.leads.find((item) => item.id === normalized.leadId)
 
@@ -358,7 +362,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
     }
 
-    const prices = await this.resolvePrices(normalized.cycle)
+    const prices = await this.resolvePrices(normalized.cycle, crmWithRules.id)
     const pricing = calculateBackofficeAdhesionPricing(normalized, prices, crmWithRules.paymentRules)
     const resolvedBillingType = normalized.billingType ?? "PIX"
     const resolvedMonthlyTotalAmount =
@@ -372,6 +376,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       phone: normalized.phone ?? "",
       billingType: resolvedBillingType,
       plan: "crm",
+      productId: crmWithRules.id,
       cycle: normalized.cycle,
       modules: CRM_MODULES,
       extraTeams: normalized.extraTeams,
@@ -532,8 +537,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           : existing.closerBackofficeUserId,
       activationMode,
     })
-    const prices = await this.resolvePrices(next.cycle)
-    const crmWithRules = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    const crmWithRules = await this.getProductForAdhesion(
+      CRM_PRODUCT_SLUG,
+      input.productId ?? existing.productId
+    )
+    const prices = await this.resolvePrices(next.cycle, crmWithRules.id)
     if (!crmWithRules?.isActive) {
       throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
     }
@@ -572,6 +580,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       phone: next.phone ?? undefined,
       email: next.email,
       cpfCnpj: next.cpfCnpj,
+      productId: crmWithRules.id,
       cycle: next.cycle,
       modules: CRM_MODULES,
       extraTeams: next.extraTeams,
@@ -751,7 +760,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return tokenError("not_found")
     }
 
-    const crmProduct = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    const crmProduct = await this.getProductForAdhesion(
+      CRM_PRODUCT_SLUG,
+      adhesion.productId
+    )
     const paymentRules = crmProduct?.paymentRules ?? []
 
     return mapPublicAdhesion(adhesion, paymentRules)
@@ -806,7 +818,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Já existe uma conta cadastrada com este e-mail")
     }
 
-    const crmProduct = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    const crmProduct = await this.getProductForAdhesion(
+      CRM_PRODUCT_SLUG,
+      adhesion.productId
+    )
     const paymentRules = crmProduct?.paymentRules ?? []
     const publicDetails = mapPublicAdhesion(adhesion, paymentRules)
     const chargeAmount =
@@ -987,6 +1002,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       phone: phone || "",
       email,
       cpfCnpj: cpfCnpj || null,
+      productId: input.productId ?? null,
       cycle: input.cycle,
       extraTeams,
       extraUsers,
@@ -1332,7 +1348,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
       await this.ensureUserSubscriptionForPaidAdhesion(adhesion, createdProfile.profileId)
 
-      const crmProduct = await this.getActiveProductBySlug(CRM_PRODUCT_SLUG)
+      const crmProduct = await this.getProductForAdhesion(CRM_PRODUCT_SLUG, adhesion.productId)
       await this.repo.upsertProfileSubscription({
         profileId: createdProfile.profileId,
         adhesionId: adhesion.id,
@@ -1358,9 +1374,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     BackofficeAdhesionOptionsDTO["pricing"]["cycles"]
   > {
     const [crmWithRules, extraTeamProduct, extraUserProduct] = await Promise.all([
-      this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG),
-      this.getActiveProductBySlug(EXTRA_TEAM_PRODUCT_SLUG),
-      this.getActiveProductBySlug(EXTRA_USER_PRODUCT_SLUG),
+      this.getProductForAdhesion(CRM_PRODUCT_SLUG),
+      this.getDefaultProductByFeatureSlug(EXTRA_TEAM_PRODUCT_SLUG),
+      this.getDefaultProductByFeatureSlug(EXTRA_USER_PRODUCT_SLUG),
     ])
 
     if (!crmWithRules?.isActive) {
@@ -1394,12 +1410,20 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   }
 
   private async resolvePrices(
-    cycle: BackofficeAdhesionBillingCycle
+    cycle: BackofficeAdhesionBillingCycle,
+    baseProductId?: string | null
   ): Promise<BackofficeAdhesionPrices> {
     const [crmProduct, extraTeamProduct, extraUserProduct] = await Promise.all([
-      this.getActiveProductBySlug(CRM_PRODUCT_SLUG),
-      this.getActiveProductBySlug(EXTRA_TEAM_PRODUCT_SLUG),
-      this.getActiveProductBySlug(EXTRA_USER_PRODUCT_SLUG),
+      baseProductId
+        ? this.productRepo.findById(baseProductId).then((product) => {
+            if (!product?.isActive) {
+              throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
+            }
+            return product
+          })
+        : this.getDefaultProductByFeatureSlug(CRM_PRODUCT_SLUG),
+      this.getDefaultProductByFeatureSlug(EXTRA_TEAM_PRODUCT_SLUG),
+      this.getDefaultProductByFeatureSlug(EXTRA_USER_PRODUCT_SLUG),
     ])
 
     return {
@@ -1409,26 +1433,75 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
   }
 
-  private async getActiveProductBySlug(slug: string): Promise<BackofficeProduct> {
-    const product = await this.productRepo.findBySlug(slug)
+  private async getDefaultProductByFeatureSlug(featureSlug: string): Promise<BackofficeProduct> {
+    const product = await this.productRepo.findDefaultByFeatureSlug(featureSlug)
     if (!product || !product.isActive) {
-      throw new Error(`Produto obrigatório indisponível: ${slug}`)
+      throw new Error(`Produto obrigatório indisponível: ${featureSlug}`)
     }
     return product
+  }
+
+  private async getProductForAdhesion(
+    featureSlug: string,
+    productId?: string | null
+  ): Promise<BackofficeProductWithPaymentRules> {
+    if (productId) {
+      const product = await this.productRepo.findByIdWithPaymentRules(productId)
+      if (!product || !product.isActive || product.featureSlug !== featureSlug) {
+        throw new Error(`Variante de produto inválida para ${featureSlug}`)
+      }
+      return product
+    }
+
+    const product = await this.productRepo.findDefaultByFeatureSlugWithPaymentRules(featureSlug)
+    if (!product || !product.isActive) {
+      throw new Error(`Produto obrigatório indisponível: ${featureSlug}`)
+    }
+    return product
+  }
+
+  private mapProductVariants(
+    products: BackofficeProductWithPaymentRules[]
+  ): BackofficeAdhesionOptionsDTO["productVariants"] {
+    const cycles = Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]
+
+    return products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      featureSlug: product.featureSlug,
+      isDefault: product.isDefault,
+      pricesByCycle: Object.fromEntries(
+        cycles.map((cycle) => {
+          const pixRule = product.paymentRules.find(
+            (rule) => rule.billingCycle === cycle && rule.paymentMethod === "PIX"
+          )
+          const cardRule = product.paymentRules.find(
+            (rule) => rule.billingCycle === cycle && rule.paymentMethod === "CREDIT_CARD"
+          )
+          return [
+            cycle,
+            {
+              pixMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
+              cardMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
+            },
+          ] as const
+        })
+      ) as BackofficeAdhesionOptionsDTO["productVariants"][number]["pricesByCycle"],
+    }))
   }
 
   private async ensureUserSubscriptionForPaidAdhesion(
     adhesion: BackofficeAdhesionWithRelations,
     profileId: string
   ): Promise<void> {
-    const crmProduct = await this.getActiveProductBySlug(CRM_PRODUCT_SLUG)
+    const product = await this.getProductForAdhesion(CRM_PRODUCT_SLUG, adhesion.productId)
     const startDate = adhesion.paidAt ?? new Date()
     const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
     const endDate = addMonthsInTz(startDate, cycleMonths, DEFAULT_TZ)
 
     await this.userSubscriptionRepo.upsertForAdhesion({
       profileId,
-      productId: crmProduct.id,
+      productId: product.id,
       status: "active",
       cycle: adhesion.cycle,
       startDate,

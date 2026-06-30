@@ -21,6 +21,7 @@ export interface BackofficeAdhesionCreateInput {
   phone?: string | null
   email?: string | null
   cpfCnpj?: string | null
+  productId?: string | null
   cycle: BackofficeAdhesionBillingCycle
   extraTeams: number
   extraUsers: number
@@ -99,6 +100,7 @@ export interface BackofficeAdhesionDTO {
   paidAt: string | null
   billingType: string | null
   asaasPaymentId: string | null
+  productId: string | null
 }
 
 export interface BackofficeAdhesionPublicDTO {
