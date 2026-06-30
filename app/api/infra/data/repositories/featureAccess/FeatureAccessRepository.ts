@@ -46,7 +46,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     ownerProfileId: string
   ): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
-      product: { slug: string } | null
+      product: { featureSlug: string } | null
     }) | null
   > {
     return prisma.profileSubscription.findUnique({
@@ -54,14 +54,14 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
-        product: { select: { slug: true } },
+        product: { select: { featureSlug: true } },
       },
     })
   }
 
   async listActiveUserSubscriptions(
     profileId: string
-  ): Promise<Array<BackofficeUserSubscription & { product: { slug: string } }>> {
+  ): Promise<Array<BackofficeUserSubscription & { product: { featureSlug: string } }>> {
     const now = new Date()
     return prisma.backofficeUserSubscription.findMany({
       where: {
@@ -71,7 +71,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       },
       include: {
         product: {
-          select: { slug: true },
+          select: { featureSlug: true },
         },
       },
     })

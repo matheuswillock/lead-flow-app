@@ -873,6 +873,7 @@ model BackofficeAdhesion {
   city                      String?                        @db.Text
   state                     String?                        @db.Text
   plan                      BackofficeAdhesionPlan         @default(crm)
+  productId                 String?                        @map("productId") @db.Uuid
   cycle                     BackofficeAdhesionBillingCycle
   modules                   String[]                       @default(["crm"])
   extraTeams                Int                            @default(0) @map("extraTeams")
@@ -913,13 +914,15 @@ model BackofficeAdhesion {
   createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
-  lead                    BackofficeLead  @relation(fields: [leadId], references: [id], onDelete: Restrict)
-  sdrBackofficeUser       BackofficeUser? @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
-  closerBackofficeUser    BackofficeUser? @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
-  createdByBackofficeUser BackofficeUser? @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  lead                    BackofficeLead      @relation(fields: [leadId], references: [id], onDelete: Restrict)
+  product                 BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  sdrBackofficeUser       BackofficeUser?     @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
+  closerBackofficeUser    BackofficeUser?     @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
+  createdByBackofficeUser BackofficeUser?     @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
 
   profileSubscription ProfileSubscription?
 
+  @@index([productId], map: "backoffice_adhesions_product_id_idx")
   @@index([status], map: "backoffice_adhesions_status_idx")
   @@index([expiresAt], map: "backoffice_adhesions_expires_at_idx")
   @@index([leadId], map: "backoffice_adhesions_lead_id_idx")
@@ -2007,7 +2010,7 @@ model EmailEvent {
 model BackofficeProduct {
   id              String                       @id @default(uuid()) @db.Uuid
   name            String                       @db.Text
-  slug            String                       @unique @db.Text
+  featureSlug     String                       @map("featureSlug") @db.Text
   description     String?                      @db.Text
   type            BackofficeProductType
   billingMode     BackofficeProductBillingMode @default(RECURRING)
@@ -2016,6 +2019,7 @@ model BackofficeProduct {
   priceSemiannual Decimal?                     @db.Decimal(10, 2)
   priceAnnual     Decimal?                     @db.Decimal(10, 2)
   priceLifetime   Decimal?                     @db.Decimal(10, 2)
+  isDefault       Boolean                      @default(false)
   isActive        Boolean                      @default(true)
   createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
@@ -2023,9 +2027,10 @@ model BackofficeProduct {
   paymentRules         BackofficeProductPaymentRule[]
   userSubscriptions    BackofficeUserSubscription[]
   profileSubscriptions ProfileSubscription[]
-  features             BackofficeFeature[]
+  adhesions            BackofficeAdhesion[]
 
-  @@index([slug])
+  @@index([featureSlug])
+  @@index([featureSlug, isDefault])
   @@index([type, isActive])
   @@map("backoffice_products")
 }
@@ -2041,6 +2046,7 @@ model BackofficeFeature {
   defaultAccessLevel BackofficeFeatureAccessLevel @default(FULL)
   betaEnabled        Boolean                      @default(false)
   inheritParentSettings Boolean                   @default(false)
+  billedSeparately   Boolean                      @default(false)
   isActive           Boolean                      @default(true)
   sortOrder          Int                          @default(0)
   createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
@@ -2048,7 +2054,6 @@ model BackofficeFeature {
 
   parent   BackofficeFeature?  @relation("BackofficeFeatureTree", fields: [parentId], references: [id], onDelete: SetNull)
   children BackofficeFeature[] @relation("BackofficeFeatureTree")
-  product  BackofficeProduct?  @relation(fields: [productSlug], references: [slug], onDelete: SetNull)
   grants   BackofficeFeatureGrant[]
   accessRules BackofficeFeatureAccessRule[]
 

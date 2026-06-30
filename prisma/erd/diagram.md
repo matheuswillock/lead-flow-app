@@ -1529,7 +1529,7 @@ failed failed
   "backoffice_products" {
     String id "🗝️"
     String name 
-    String slug 
+    String featureSlug 
     String description "❓"
     BackofficeProductType type 
     BackofficeProductBillingMode billingMode 
@@ -1538,6 +1538,7 @@ failed failed
     Decimal priceSemiannual "❓"
     Decimal priceAnnual "❓"
     Decimal priceLifetime "❓"
+    Boolean isDefault 
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
@@ -1549,10 +1550,12 @@ failed failed
     String slug 
     String name 
     String description "❓"
+    String productSlug "❓"
     BackofficeFeatureAccessMode accessMode 
     BackofficeFeatureAccessLevel defaultAccessLevel 
     Boolean betaEnabled 
     Boolean inheritParentSettings 
+    Boolean billedSeparately 
     Boolean isActive 
     Int sortOrder 
     DateTime createdAt 
@@ -2041,6 +2044,7 @@ failed failed
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"
     "backoffice_adhesions" |o--|| backoffice_leads : "lead"
+    "backoffice_adhesions" }o--|o backoffice_products : "product"
     "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
@@ -2177,7 +2181,6 @@ failed failed
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessLevel" : "enum:defaultAccessLevel"
     "backoffice_features" |o--|o backoffice_features : "parent"
-    "backoffice_features" }o--|o backoffice_products : "product"
     "backoffice_feature_access_rules" |o--|| "BackofficeAccessPrincipal" : "enum:principal"
     "backoffice_feature_access_rules" |o--|| "BackofficeFeatureAccessLevel" : "enum:accessLevel"
     "backoffice_feature_access_rules" }o--|| backoffice_features : "feature"

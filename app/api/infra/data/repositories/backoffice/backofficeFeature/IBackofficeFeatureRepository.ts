@@ -42,6 +42,7 @@ export interface CreateBackofficeFeatureInput {
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
 }
@@ -55,6 +56,7 @@ export interface UpdateBackofficeFeatureInput {
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
 }

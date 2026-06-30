@@ -43,11 +43,11 @@ export interface IFeatureAccessRepository {
   findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null>
   findOwnerProfileSubscription(ownerProfileId: string): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
-      product: { slug: string } | null
+      product: { featureSlug: string } | null
     }) | null
   >
   listActiveUserSubscriptions(profileId: string): Promise<
-    Array<BackofficeUserSubscription & { product: { slug: string } }>
+    Array<BackofficeUserSubscription & { product: { featureSlug: string } }>
   >
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>

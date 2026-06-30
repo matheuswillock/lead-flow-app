@@ -26,7 +26,7 @@ export interface BackofficeProductPaymentRuleDTO {
 export interface BackofficeProductDTO {
   id: string
   name: string
-  slug: string
+  featureSlug: string
   description: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -35,6 +35,7 @@ export interface BackofficeProductDTO {
   priceSemiannual: number | null
   priceAnnual: number | null
   priceLifetime: number | null
+  isDefault: boolean
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -43,7 +44,7 @@ export interface BackofficeProductDTO {
 
 export interface CreateBackofficeProductUseCaseInput {
   name: string
-  slug: string
+  featureSlug: string
   description?: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -52,13 +53,14 @@ export interface CreateBackofficeProductUseCaseInput {
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
+  isDefault?: boolean
   isActive?: boolean
   paymentRules?: UpsertPaymentRuleInput[]
 }
 
 export interface UpdateBackofficeProductUseCaseInput {
   name?: string
-  slug?: string
+  featureSlug?: string
   description?: string | null
   type?: BackofficeProductType
   billingMode?: BackofficeProductBillingMode
@@ -67,6 +69,7 @@ export interface UpdateBackofficeProductUseCaseInput {
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
+  isDefault?: boolean
   isActive?: boolean
   paymentRules?: UpsertPaymentRuleInput[]
 }
@@ -87,23 +90,33 @@ export class BackofficeProductUseCase {
     }
   }
 
+  async listByFeatureSlug(featureSlug: string): Promise<Output> {
+    try {
+      const trimmed = featureSlug?.trim()
+      if (!trimmed) {
+        return new Output(false, [], ["Slug da funcionalidade é obrigatório"], null)
+      }
+      const products = await this.productRepo.findByFeatureSlugWithPaymentRules(trimmed)
+      return new Output(true, [], [], products.map(mapProductWithRulesDTO))
+    } catch (error) {
+      console.error("[BackofficeProductUseCase][listByFeatureSlug]", error)
+      return new Output(false, [], ["Erro ao listar variantes do produto"], null)
+    }
+  }
+
   async create(input: CreateBackofficeProductUseCaseInput): Promise<Output> {
     try {
       if (!input.name?.trim()) {
         return new Output(false, [], ["Nome é obrigatório"], null)
       }
-      if (!input.slug?.trim()) {
+      if (!input.featureSlug?.trim()) {
         return new Output(false, [], ["Slug é obrigatório"], null)
       }
 
-      const feature = await this.featureRepo.findBySlug(input.slug.trim())
+      const featureSlug = input.featureSlug.trim()
+      const feature = await this.featureRepo.findBySlug(featureSlug)
       if (!feature) {
         return new Output(false, [], ["Slug inválido: selecione um slug de funcionalidade"], null)
-      }
-
-      const existing = await this.productRepo.findBySlug(input.slug)
-      if (existing) {
-        return new Output(false, [], ["Já existe um produto com este slug"], null)
       }
 
       const validationError = this.validatePrices(input.billingMode, input)
@@ -111,12 +124,24 @@ export class BackofficeProductUseCase {
         return new Output(false, [], [validationError], null)
       }
 
-      const product = await this.productRepo.create(input)
+      const existingCount = await this.productRepo.countByFeatureSlug(featureSlug)
+      const isDefault = existingCount === 0 ? true : (input.isDefault ?? false)
+
+      if (isDefault) {
+        await this.productRepo.clearDefaultForFeatureSlug(featureSlug)
+      }
+
+      const product = await this.productRepo.create({ ...input, featureSlug, isDefault })
       if (input.billingMode === "RECURRING" && input.paymentRules?.length) {
         await this.productRepo.upsertPaymentRules(product.id, input.paymentRules)
       }
       const withRules = await this.productRepo.findByIdWithPaymentRules(product.id)
-      return new Output(true, ["Produto criado com sucesso"], [], mapProductWithRulesDTO(withRules ?? { ...product, paymentRules: [] }))
+      return new Output(
+        true,
+        ["Produto criado com sucesso"],
+        [],
+        mapProductWithRulesDTO(withRules ?? { ...product, paymentRules: [] })
+      )
     } catch (error) {
       console.error("[BackofficeProductUseCase][create]", error)
       return new Output(false, [], ["Erro ao criar produto"], null)
@@ -130,15 +155,10 @@ export class BackofficeProductUseCase {
         return new Output(false, [], ["Produto não encontrado"], null)
       }
 
-      if (input.slug && input.slug !== existing.slug) {
-        const feature = await this.featureRepo.findBySlug(input.slug.trim())
+      if (input.featureSlug && input.featureSlug !== existing.featureSlug) {
+        const feature = await this.featureRepo.findBySlug(input.featureSlug.trim())
         if (!feature) {
           return new Output(false, [], ["Slug inválido: selecione um slug de funcionalidade"], null)
-        }
-
-        const slugConflict = await this.productRepo.findBySlug(input.slug)
-        if (slugConflict) {
-          return new Output(false, [], ["Já existe um produto com este slug"], null)
         }
       }
 
@@ -174,13 +194,36 @@ export class BackofficeProductUseCase {
         return new Output(false, [], [validationError], null)
       }
 
+      const targetFeatureSlug = input.featureSlug?.trim() ?? existing.featureSlug
+      const willBeDefault = input.isDefault === true
+
+      if (willBeDefault) {
+        await this.productRepo.clearDefaultForFeatureSlug(targetFeatureSlug, id)
+      } else if (input.isDefault === false && existing.isDefault) {
+        const siblings = await this.productRepo.findByFeatureSlug(targetFeatureSlug)
+        const otherActive = siblings.filter((s) => s.id !== id && s.isActive)
+        if (otherActive.length === 0) {
+          return new Output(
+            false,
+            [],
+            ["Não é possível remover o padrão: este é o único produto ativo do slug"],
+            null
+          )
+        }
+      }
+
       const { paymentRules, ...productInput } = input
       const product = await this.productRepo.update(id, productInput)
       if (paymentRules?.length) {
         await this.productRepo.upsertPaymentRules(id, paymentRules)
       }
       const withRules = await this.productRepo.findByIdWithPaymentRules(id)
-      return new Output(true, ["Produto atualizado com sucesso"], [], mapProductWithRulesDTO(withRules ?? { ...product, paymentRules: [] }))
+      return new Output(
+        true,
+        ["Produto atualizado com sucesso"],
+        [],
+        mapProductWithRulesDTO(withRules ?? { ...product, paymentRules: [] })
+      )
     } catch (error) {
       console.error("[BackofficeProductUseCase][update]", error)
       return new Output(false, [], ["Erro ao atualizar produto"], null)
@@ -205,6 +248,16 @@ export class BackofficeProductUseCase {
       }
 
       await this.productRepo.delete(id)
+
+      if (existing.isDefault) {
+        const siblings = await this.productRepo.findByFeatureSlug(existing.featureSlug)
+        const nextDefault = siblings.find((s) => s.isActive)
+        if (nextDefault) {
+          await this.productRepo.clearDefaultForFeatureSlug(existing.featureSlug)
+          await this.productRepo.update(nextDefault.id, { isDefault: true })
+        }
+      }
+
       return new Output(true, ["Produto excluído com sucesso"], [], null)
     } catch (error) {
       console.error("[BackofficeProductUseCase][delete]", error)
@@ -262,7 +315,7 @@ export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO 
   return {
     id: product.id,
     name: product.name,
-    slug: product.slug,
+    featureSlug: product.featureSlug,
     description: product.description,
     type: product.type,
     billingMode: product.billingMode,
@@ -271,6 +324,7 @@ export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO 
     priceSemiannual: decimalToNumber(product.priceSemiannual),
     priceAnnual: decimalToNumber(product.priceAnnual),
     priceLifetime: decimalToNumber(product.priceLifetime),
+    isDefault: product.isDefault,
     isActive: product.isActive,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),

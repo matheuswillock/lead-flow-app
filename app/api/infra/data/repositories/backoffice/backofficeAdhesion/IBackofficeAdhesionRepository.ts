@@ -41,6 +41,7 @@ export interface CreateBackofficeAdhesionInput {
   cpfCnpj?: string | null
   billingType?: string | null
   plan: BackofficeAdhesionPlan
+  productId?: string | null
   cycle: BackofficeAdhesionBillingCycle
   modules: string[]
   extraTeams: number
@@ -69,6 +70,7 @@ export interface UpdateBackofficeAdhesionInput {
   phone?: string
   email?: string | null
   cpfCnpj?: string | null
+  productId?: string | null
   cycle?: BackofficeAdhesionBillingCycle
   modules?: string[]
   extraTeams?: number

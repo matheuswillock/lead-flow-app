@@ -40,6 +40,7 @@ export interface BackofficeAdhesionUpdateInput {
   phone?: string
   email?: string | null
   cpfCnpj?: string | null
+  productId?: string | null
   cycle?: BackofficeAdhesionBillingCycle
   extraTeams?: number
   extraUsers?: number
@@ -165,6 +166,19 @@ export interface BackofficeAdhesionOptionsDTO {
   sdrOptions: Array<{ id: string; name: string; email: string }>
   closerOptions: Array<{ id: string; name: string; email: string }>
   sponsorOptions: Array<{ id: string; name: string; email: string }>
+  productVariants: Array<{
+    id: string
+    name: string
+    featureSlug: string
+    isDefault: boolean
+    pricesByCycle: Record<
+      BackofficeAdhesionBillingCycle,
+      {
+        pixMonthlyPrice: number | null
+        cardMonthlyPrice: number | null
+      }
+    >
+  }>
   pricing: {
     cycles: Record<
       BackofficeAdhesionBillingCycle,

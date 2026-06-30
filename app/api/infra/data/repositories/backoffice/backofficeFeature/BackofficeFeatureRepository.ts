@@ -94,8 +94,8 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
   }
 
   async productSlugExists(slug: string): Promise<boolean> {
-    const product = await prisma.backofficeProduct.findUnique({
-      where: { slug },
+    const product = await prisma.backofficeProduct.findFirst({
+      where: { featureSlug: slug },
       select: { id: true },
     })
     return !!product
@@ -121,6 +121,7 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
         defaultAccessLevel: data.defaultAccessLevel,
         betaEnabled: data.betaEnabled ?? false,
         inheritParentSettings: data.inheritParentSettings ?? false,
+        billedSeparately: data.billedSeparately ?? false,
         isActive: data.isActive ?? true,
         sortOrder: data.sortOrder ?? 0,
       },
@@ -148,6 +149,9 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
         ...(data.betaEnabled !== undefined && { betaEnabled: data.betaEnabled }),
         ...(data.inheritParentSettings !== undefined && {
           inheritParentSettings: data.inheritParentSettings,
+        }),
+        ...(data.billedSeparately !== undefined && {
+          billedSeparately: data.billedSeparately,
         }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
         ...(data.sortOrder !== undefined && { sortOrder: data.sortOrder }),

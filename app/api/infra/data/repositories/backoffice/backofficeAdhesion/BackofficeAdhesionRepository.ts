@@ -71,6 +71,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           cpfCnpj: data.cpfCnpj,
           billingType: data.billingType ?? null,
           plan: data.plan,
+          productId: data.productId ?? null,
           cycle: data.cycle,
           modules: data.modules,
           extraTeams: data.extraTeams,
