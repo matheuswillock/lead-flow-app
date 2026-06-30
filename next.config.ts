@@ -2,6 +2,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from "next";
 import path from "node:path";
 import { validateEnv } from "./lib/env";
+import { getLeadFormEmbedHeaders } from "./lib/security/lead-form-embed-headers";
 
 // Validate environment variables at build time
 // Skip in CI — secrets are not injected during the build step
@@ -60,8 +61,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/(.*)",
+        source: "/((?!lead-form).*)",
         headers: securityHeaders,
+      },
+      {
+        source: "/lead-form/:path*",
+        headers: getLeadFormEmbedHeaders(),
       },
       {
         source: "/:supabaseId/whatsapp/:path*",
