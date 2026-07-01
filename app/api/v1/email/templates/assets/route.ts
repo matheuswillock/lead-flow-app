@@ -5,8 +5,8 @@ import { isManagerLikeRole } from "@/lib/roles"
 import { SupabaseStorageService, STORAGE_BUCKETS } from "@/lib/supabase/storage"
 import {
   buildEmailTemplateAssetPublicUrl,
-  type EmailTemplateAssetItem,
-} from "@/lib/email/email-template-assets"
+} from "@/lib/email/email-template-assets-url"
+import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 export async function POST(request: NextRequest) {
