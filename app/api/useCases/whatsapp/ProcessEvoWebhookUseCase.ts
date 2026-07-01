@@ -17,7 +17,11 @@ import {
 import { syncWhatsAppHistoryUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsAppHistoryUseCase"
 import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsappMessageToCdpUseCase"
 import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
-import type { Prisma, WhatsAppConnectionStatus, WhatsAppMessageStatus } from "@prisma/client"
+import { Prisma, type WhatsAppConnectionStatus, type WhatsAppMessageStatus } from "@prisma/client"
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+}
 
 const MESSAGE_STATUS_RANK: Record<string, number> = {
   FAILED: 0,
@@ -162,10 +166,7 @@ class ProcessEvoWebhookUseCase {
     })
 
     const existing = await this.repository.findMessageByProviderMessageId(routed.teamId, providerMessageId)
-    if (existing) {
-      console.info("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Message already exists, skipping", providerMessageId)
-      return
-    }
+    const isRedelivery = existing !== null
 
     const direction = fromMe ? "OUTBOUND" : "INBOUND"
     const now = new Date()
@@ -173,26 +174,59 @@ class ProcessEvoWebhookUseCase {
     const parsed = parseEvoMessageContent(data["message"])
     const preview = buildMessagePreview(parsed)
 
-    await this.repository.createMessage({
-      conversation: { connect: { id: conversation.id } },
-      team: { connect: { id: routed.teamId } },
-      config: { connect: { id: routed.configId } },
-      providerMessageId,
-      direction,
-      messageType: parsed.messageType,
-      status: fromMe ? "SENT" : "RECEIVED",
-      contentText: parsed.contentText,
-      mediaUrl: parsed.mediaUrl,
-      mediaMimeType: parsed.mediaMimeType,
-      mediaFileName: parsed.mediaFileName,
-      linkPreview: parsed.linkPreview ?? undefined,
-      caption: parsed.caption,
-      senderDisplayName: !fromMe && isGroup ? pushName ?? null : undefined,
-      senderPhone: fromMe ? undefined : normalizedPhone,
-      recipientPhone: fromMe ? normalizedPhone : undefined,
-      sentAt: now,
-      rawPayload: data as Prisma.InputJsonValue,
-    })
+    if (!isRedelivery) {
+      try {
+        await this.repository.createMessage({
+          conversation: { connect: { id: conversation.id } },
+          team: { connect: { id: routed.teamId } },
+          config: { connect: { id: routed.configId } },
+          providerMessageId,
+          direction,
+          messageType: parsed.messageType,
+          status: fromMe ? "SENT" : "RECEIVED",
+          contentText: parsed.contentText,
+          mediaUrl: parsed.mediaUrl,
+          mediaMimeType: parsed.mediaMimeType,
+          mediaFileName: parsed.mediaFileName,
+          linkPreview: parsed.linkPreview ?? undefined,
+          caption: parsed.caption,
+          senderDisplayName: !fromMe && isGroup ? pushName ?? null : undefined,
+          senderPhone: fromMe ? undefined : normalizedPhone,
+          recipientPhone: fromMe ? normalizedPhone : undefined,
+          sentAt: now,
+          rawPayload: data as Prisma.InputJsonValue,
+        })
+
+        // Efeitos abaixo não são naturalmente idempotentes (increment de unread) —
+        // só devem rodar na primeira criação bem-sucedida da mensagem.
+        await this.repository.updateConversation(conversation.id, {
+          lastMessageAt: now,
+          lastMessagePreview: preview,
+          ...(!isGroup && pushName && pushName !== conversation.contactName
+            ? { contactName: pushName }
+            : {}),
+          ...(fromMe
+            ? { lastOutboundAt: now }
+            : { lastInboundAt: now, unreadCount: { increment: 1 } }),
+        })
+      } catch (createError) {
+        if (!isUniqueConstraintError(createError)) {
+          throw createError
+        }
+        // Corrida concorrente: outra requisição já criou a mensagem entre o
+        // findMessageByProviderMessageId e o createMessage. Segue o fluxo
+        // tratando como redelivery para curar efeitos pendentes com segurança.
+        console.info(
+          "[ProcessEvoWebhookUseCase][handleMessagesUpsert] Race on createMessage, healing as redelivery",
+          providerMessageId
+        )
+      }
+    } else {
+      console.info(
+        "[ProcessEvoWebhookUseCase][handleMessagesUpsert] Message already exists, healing pending side effects",
+        providerMessageId
+      )
+    }
 
     const createdMessage = await this.repository.findMessageByProviderMessageId(
       routed.teamId,
@@ -200,25 +234,25 @@ class ProcessEvoWebhookUseCase {
     )
 
     if (!fromMe) {
-      await this.repository.createUsageEvent({
-        team: { connect: { id: routed.teamId } },
-        config: { connect: { id: routed.configId } },
-        periodKey,
-        eventType: "INBOUND_MESSAGE",
-        direction: "INBOUND",
-        countedTowardsQuota: false,
-        providerMessageId,
-      })
+      try {
+        await this.repository.createUsageEvent({
+          team: { connect: { id: routed.teamId } },
+          config: { connect: { id: routed.configId } },
+          periodKey,
+          eventType: "INBOUND_MESSAGE",
+          direction: "INBOUND",
+          countedTowardsQuota: false,
+          providerMessageId,
+        })
+      } catch (usageError) {
+        if (!isUniqueConstraintError(usageError)) {
+          console.error(
+            "[ProcessEvoWebhookUseCase][handleMessagesUpsert] Usage event creation failed",
+            usageError
+          )
+        }
+      }
     }
-
-    await this.repository.updateConversation(conversation.id, {
-      lastMessageAt: now,
-      lastMessagePreview: preview,
-      ...(!isGroup && pushName && pushName !== conversation.contactName
-        ? { contactName: pushName }
-        : {}),
-      ...(fromMe ? { lastOutboundAt: now } : { lastInboundAt: now, unreadCount: { increment: 1 } }),
-    })
 
     if (createdMessage) {
       try {

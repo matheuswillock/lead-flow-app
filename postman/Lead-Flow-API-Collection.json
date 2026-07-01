@@ -1578,16 +1578,35 @@
               "request": {
                 "method": "GET",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals?page=1&pageSize=20",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals"
+                  ],
                   "query": [
-                    { "key": "page", "value": "1" },
-                    { "key": "pageSize", "value": "20" }
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    }
                   ]
                 },
                 "description": "Fila de propostas (offerSubmission) de contas associadas ao patrocinador ativo."
@@ -1599,13 +1618,27 @@
               "request": {
                 "method": "GET",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals",
+                    "{{leadId}}"
+                  ]
                 }
               },
               "response": []
@@ -1615,9 +1648,18 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -1625,8 +1667,17 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/criticize",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "criticize"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals",
+                    "{{leadId}}",
+                    "criticize"
+                  ]
                 }
               },
               "response": []
@@ -1636,13 +1687,30 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents/rg/approve",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents", "rg", "approve"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals",
+                    "{{leadId}}",
+                    "documents",
+                    "rg",
+                    "approve"
+                  ]
                 }
               },
               "response": []
@@ -1652,9 +1720,18 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -1662,8 +1739,17 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals",
+                    "{{leadId}}",
+                    "documents"
+                  ]
                 }
               },
               "response": []
@@ -1673,9 +1759,18 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -1683,8 +1778,19 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/documents/rg/reject",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "documents", "rg", "reject"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals",
+                    "{{leadId}}",
+                    "documents",
+                    "rg",
+                    "reject"
+                  ]
                 }
               },
               "response": []
@@ -1694,9 +1800,18 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -1704,8 +1819,17 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/register-sale",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "register-sale"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals",
+                    "{{leadId}}",
+                    "register-sale"
+                  ]
                 }
               },
               "response": []
@@ -1715,9 +1839,18 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -1725,8 +1858,17 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/associates/proposals/{{leadId}}/payment-proof",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "associates", "proposals", "{{leadId}}", "payment-proof"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "associates",
+                    "proposals",
+                    "{{leadId}}",
+                    "payment-proof"
+                  ]
                 }
               },
               "response": []
@@ -1735,6 +1877,8 @@
         }
       ]
     },
+    {
+      "name": "Notifications",
       "item": [
         {
           "name": "Web Push Consent",
@@ -1744,13 +1888,27 @@
               "request": {
                 "method": "GET",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/notifications/push/consent",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "notifications", "push", "consent"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "notifications",
+                    "push",
+                    "consent"
+                  ]
                 },
                 "description": "Retorna status de consentimento de notificações web push e se o prompt deve ser exibido."
               },
@@ -1761,9 +1919,18 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -1771,8 +1938,16 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/notifications/push/consent",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "notifications", "push", "consent"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "notifications",
+                    "push",
+                    "consent"
+                  ]
                 },
                 "description": "Registra recusa temporária (dismissed) ou permanente (declined) do prompt de notificações."
               },
@@ -1783,9 +1958,18 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-                  { "key": "x-team-id", "value": "{{teamId}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -1793,8 +1977,16 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/notifications/push/subscribe",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "notifications", "push", "subscribe"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "notifications",
+                    "push",
+                    "subscribe"
+                  ]
                 },
                 "description": "Salva inscrição web push e registra consentimento accepted quando consentVersion é enviado."
               },
@@ -1807,8 +1999,16 @@
                 "header": [],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/notifications/push/vapid-public-key",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "notifications", "push", "vapid-public-key"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "notifications",
+                    "push",
+                    "vapid-public-key"
+                  ]
                 },
                 "description": "Retorna chave pública VAPID para subscribe no navegador."
               },
@@ -9250,7 +9450,9 @@
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users",
-                  "host": ["{{baseUrl}}"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
                   "path": [
                     "api",
                     "v1",
@@ -9289,7 +9491,9 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users",
-                  "host": ["{{baseUrl}}"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
                   "path": [
                     "api",
                     "v1",
@@ -9328,7 +9532,9 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users",
-                  "host": ["{{baseUrl}}"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
                   "path": [
                     "api",
                     "v1",
@@ -9359,7 +9565,9 @@
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/features/:featureId/beta-users/:profileId",
-                  "host": ["{{baseUrl}}"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
                   "path": [
                     "api",
                     "v1",
@@ -9395,13 +9603,33 @@
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/platform-users?mastersOnly=true&page=1&pageSize=10",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "platform-users"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users"
+                  ],
                   "query": [
-                    { "key": "mastersOnly", "value": "true" },
-                    { "key": "page", "value": "1" },
-                    { "key": "pageSize", "value": "10" },
-                    { "key": "q", "value": "", "disabled": true }
+                    {
+                      "key": "mastersOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "10"
+                    },
+                    {
+                      "key": "q",
+                      "value": "",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Busca paginada de masters para adicionar ao grupo beta."
@@ -11984,6 +12212,10 @@
             }
           ]
         }
+      ]
+    },
+    {
+      "name": "Addon Checkout",
       "item": [
         {
           "name": "GET Detalhes do Checkout",
@@ -12300,6 +12532,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "body": {
@@ -12337,6 +12574,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
@@ -12370,6 +12612,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
@@ -12403,6 +12650,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
@@ -12436,6 +12688,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
@@ -12469,12 +12726,26 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/sync-history",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "sync-history"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "sync-history"
+              ]
             },
             "description": "Importa conversas e mensagens dos últimos 30 dias da Evolution API."
           },
@@ -12493,6 +12764,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "body": {
@@ -12501,8 +12777,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/sync-contacts",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "sync-contacts"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "sync-contacts"
+              ]
             },
             "description": "Sincroniza agenda Evolution para o diretório de contatos do time e atualiza nomes nas conversas. Apenas master do time."
           },
@@ -12517,12 +12802,26 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/contacts?q=&groupJid=",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "contacts"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "contacts"
+              ],
               "query": [
                 {
                   "key": "q",
@@ -12551,6 +12850,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "body": {
@@ -12559,8 +12863,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/sync-group-participants",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "sync-group-participants"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "sync-group-participants"
+              ]
             },
             "description": "Sincroniza participantes de um grupo WhatsApp para o diretório de contatos. Apenas master do time."
           },
@@ -12575,12 +12888,28 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages/{{messageId}}/media",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "messages", "{{messageId}}", "media"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "messages",
+                "{{messageId}}",
+                "media"
+              ]
             },
             "description": "Proxy para baixar mídia inbound via Evolution API (imagem, documento, áudio)."
           },
@@ -12599,6 +12928,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
@@ -12657,6 +12991,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "body": {
@@ -12665,8 +13004,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "conversations"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations"
+              ]
             },
             "description": "Cria ou reutiliza conversa por telefone. Opcionalmente envia mensagem inicial."
           },
@@ -12685,6 +13033,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
@@ -12732,6 +13085,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "body": {
@@ -12769,6 +13127,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "body": {
@@ -12808,6 +13171,11 @@
                 "key": "x-supabase-user-id",
                 "value": "{{supabaseUserId}}",
                 "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
               }
             ],
             "url": {
@@ -12833,13 +13201,33 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/auto-response-rules",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "auto-response-rules"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "auto-response-rules"
+              ]
             },
             "description": "Lista regras de boas-vindas, fora do horário e palavras-chave do time."
           },
@@ -12850,8 +13238,19 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -12859,8 +13258,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/auto-response-rules/{{ruleId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "auto-response-rules", "{{ruleId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "auto-response-rules",
+                "{{ruleId}}"
+              ]
             },
             "description": "Atualiza mensagem, keywords, horário ou status de uma regra."
           },
@@ -12871,8 +13280,19 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -12880,8 +13300,19 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/auto-response-rules/{{ruleId}}/toggle",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "auto-response-rules", "{{ruleId}}", "toggle"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "auto-response-rules",
+                "{{ruleId}}",
+                "toggle"
+              ]
             },
             "description": "Ativa ou desativa uma regra de auto-resposta."
           },
@@ -12892,15 +13323,238 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/takeover",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "teams", "{{teamId}}", "whatsapp", "conversations", "{{conversationId}}", "takeover"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}",
+                "takeover"
+              ]
             },
             "description": "Transfere conversa do modo bot para atendimento humano."
+          },
+          "response": []
+        },
+        {
+          "name": "Marcar conversa como lida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversation-read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversation-read"
+              ]
+            },
+            "description": "Marca a conversa como lida (zera unreadCount) para o usuário atual."
+          },
+          "response": []
+        },
+        {
+          "name": "Atribuir responsável pela conversa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profileId\": \"{{profileId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}",
+                "assign"
+              ]
+            },
+            "description": "Atribui um membro do time como responsável pela conversa. Gestores/master podem atribuir a qualquer membro; demais papéis só a si mesmos."
+          },
+          "response": []
+        },
+        {
+          "name": "Arquivar conversa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/archive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}",
+                "archive"
+              ]
+            },
+            "description": "Arquiva a conversa para o time ativo."
+          },
+          "response": []
+        },
+        {
+          "name": "Desarquivar conversa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/unarchive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}",
+                "unarchive"
+              ]
+            },
+            "description": "Remove o arquivamento da conversa para o time ativo."
+          },
+          "response": []
+        },
+        {
+          "name": "Excluir conversa",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}"
+              ]
+            },
+            "description": "Exclui a conversa e mensagens associadas. Apenas gerentes ou master do time."
           },
           "response": []
         }
@@ -12914,12 +13568,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/sync/crm",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "sync", "crm"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "sync",
+                "crm"
+              ]
             }
           },
           "response": []
@@ -12929,12 +13594,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/sync/portfolio",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "sync", "portfolio"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "sync",
+                "portfolio"
+              ]
             }
           },
           "response": []
@@ -12944,12 +13620,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/sync/email",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "sync", "email"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "sync",
+                "email"
+              ]
             }
           },
           "response": []
@@ -12959,12 +13646,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/sync/whatsapp",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "sync", "whatsapp"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "sync",
+                "whatsapp"
+              ]
             }
           },
           "response": []
@@ -12974,17 +13672,41 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/profiles?page=1&pageSize=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "profiles"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "profiles"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "pageSize", "value": "20" },
-                { "key": "lastSeenFrom", "value": "", "disabled": true },
-                { "key": "lastSeenTo", "value": "", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "lastSeenFrom",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "lastSeenTo",
+                  "value": "",
+                  "disabled": true
+                }
               ]
             }
           },
@@ -12995,12 +13717,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/segments",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "segments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "segments"
+              ]
             }
           },
           "response": []
@@ -13010,12 +13742,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/available-fields",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "available-fields"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "available-fields"
+              ]
             }
           },
           "response": []
@@ -13025,8 +13767,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "x-supabase-user-id", "value": "{{supabaseUserId}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -13034,8 +13782,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/cdp/interpolation-preview",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "cdp", "interpolation-preview"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cdp",
+                "interpolation-preview"
+              ]
             }
           },
           "response": []
@@ -13051,13 +13806,28 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" }
+              {
+                "key": "x-studio-bot-signature",
+                "value": "{{studioBotHmac}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/bot/context?userLinkId={{botUserLinkId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "bot", "context"],
-              "query": [{ "key": "userLinkId", "value": "{{botUserLinkId}}" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bot",
+                "context"
+              ],
+              "query": [
+                {
+                  "key": "userLinkId",
+                  "value": "{{botUserLinkId}}"
+                }
+              ]
             }
           }
         },
@@ -13066,8 +13836,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-studio-bot-signature",
+                "value": "{{studioBotHmac}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -13075,8 +13851,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/bot/actions/list_leads",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "bot", "actions", "list_leads"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bot",
+                "actions",
+                "list_leads"
+              ]
             }
           }
         },
@@ -13084,11 +13868,24 @@
           "name": "GET Backoffice Bot Channel",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/channel",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "channel"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "channel"
+              ]
             }
           }
         },
@@ -13097,9 +13894,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" },
-              { "key": "x-idempotency-key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-studio-bot-signature",
+                "value": "{{studioBotHmac}}"
+              },
+              {
+                "key": "x-idempotency-key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -13107,8 +13913,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/webhooks/backoffice/studio-bot/inbound",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "webhooks", "backoffice", "studio-bot", "inbound"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "backoffice",
+                "studio-bot",
+                "inbound"
+              ]
             }
           }
         }

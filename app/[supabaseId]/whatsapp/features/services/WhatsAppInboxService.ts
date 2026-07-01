@@ -256,8 +256,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await this.parseJsonResponse(response).catch(() => null)
+    const output: unknown = await this.parseJsonResponse(response).catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível marcar a conversa como lida'))
     }
   }
@@ -281,8 +281,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível atribuir o responsável'))
     }
   }
@@ -332,8 +332,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível vincular o lead'))
     }
   }
@@ -347,8 +347,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível arquivar a conversa'))
     }
   }
@@ -362,8 +362,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível desarquivar a conversa'))
     }
   }

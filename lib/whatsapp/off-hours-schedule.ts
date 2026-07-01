@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { TZDate } from "@date-fns/tz"
 import { formatLocalDateValue } from "@/lib/dates"
 import { resolveTimezone } from "@/lib/dates"
@@ -14,6 +15,34 @@ export type OffHoursSchedule = {
 }
 
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const
+
+const timeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Horário inválido (use HH:mm)")
+
+const offHoursTimeRangeSchema = z
+  .object({
+    start: timeSchema,
+    end: timeSchema,
+  })
+  .strict()
+
+const offHoursDayKeySchema = z.enum(DAY_KEYS)
+
+/**
+ * Valida a estrutura de OffHoursSchedule enviada pelo frontend antes de
+ * persistir como JSON (evita salvar objetos malformados que quebrariam a
+ * avaliação de regras em lib/whatsapp/auto-response-evaluation.ts).
+ */
+export const offHoursScheduleSchema = z
+  .object({
+    timezone: z.string().min(1, "Timezone inválido").optional(),
+    days: z.partialRecord(offHoursDayKeySchema, z.array(offHoursTimeRangeSchema)).optional(),
+    holidays: z
+      .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida (use YYYY-MM-DD)"))
+      .optional(),
+  })
+  .strict()
 
 function parseMinutes(value: string): number | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim())

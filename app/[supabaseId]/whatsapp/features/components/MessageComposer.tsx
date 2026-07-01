@@ -109,7 +109,9 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   const handleSendAudio = useCallback(
     async (file: File) => {
       const base64 = await fileToBase64(file)
-      await sendMessage("", {
+      // sendMessage é fire-and-forget (retorna void, não Promise) — o envio
+      // real acontece de forma assíncrona via performSend/optimistic update.
+      sendMessage("", {
         mediatype: "audio",
         mimeType: file.type,
         fileName: file.name,
