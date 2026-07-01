@@ -10,9 +10,11 @@ const BATCH_SIZE = 50
 
 /** Extrai IDs de e-mails da resposta do Resend batch (SDK v6). */
 export function parseResendBatchSendItems(
-  batchData: { data?: Array<{ id?: string }> } | null | undefined
+  batchData: Array<{ id?: string }> | { data?: Array<{ id?: string }> } | null | undefined
 ): Array<{ id?: string }> {
-  return batchData?.data ?? []
+  if (batchData == null) return []
+  if (Array.isArray(batchData)) return batchData
+  return batchData.data ?? []
 }
 
 export class EmailCampaignDispatchService implements IEmailCampaignDispatchService {
