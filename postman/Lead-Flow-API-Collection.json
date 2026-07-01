@@ -12566,7 +12566,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/messages",
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages?conversationId={{conversationId}}&page=1&limit=50",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12576,11 +12576,13 @@
                 "teams",
                 "{{teamId}}",
                 "whatsapp",
-                "conversations",
-                "{{conversationId}}",
                 "messages"
               ],
               "query": [
+                {
+                  "key": "conversationId",
+                  "value": "{{conversationId}}"
+                },
                 {
                   "key": "page",
                   "value": "1"
@@ -12612,10 +12614,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"contentText\": \"Ol\\u00e1 @Jo\\u00e3o, segue o link: https://meet.google.com/abc-defg-hij\",\n  \"mentionedJids\": [\"5511999999999@s.whatsapp.net\"]\n}"
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"contentText\": \"Ol\\u00e1 @Jo\\u00e3o, segue o link: https://meet.google.com/abc-defg-hij\",\n  \"mentionedJids\": [\"5511999999999@s.whatsapp.net\"]\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/messages",
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12625,8 +12627,6 @@
                 "teams",
                 "{{teamId}}",
                 "whatsapp",
-                "conversations",
-                "{{conversationId}}",
                 "messages"
               ]
             },
