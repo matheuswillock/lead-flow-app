@@ -2,6 +2,9 @@ import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { assertResend } from "@/lib/email"
+import {
+  emailTeamDomainEventRepository,
+} from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
 export type BlockedDateRange =
@@ -43,6 +46,18 @@ const senderSelect = {
   isDefault: true,
 } satisfies Prisma.EmailTeamSenderSelect
 
+const DEFAULT_DOMAIN_REGION = "sa-east-1"
+
+const CLEAR_DOMAIN_DATA = {
+  resendDomainId: null,
+  resendDomainName: null,
+  resendDomainStatus: null,
+  resendDomainRegion: null,
+  resendDomainConnectedAt: null,
+  resendOpenTracking: false,
+  resendClickTracking: false,
+} as const
+
 const DEFAULTS = {
   fromName: "Corretor Studio",
   fromEmail: "no-reply@corretorstudio.com",
@@ -58,6 +73,10 @@ const DEFAULTS = {
   resendDomainId: null,
   resendDomainName: null,
   resendDomainStatus: null,
+  resendDomainRegion: null,
+  resendDomainConnectedAt: null,
+  resendOpenTracking: false,
+  resendClickTracking: false,
 }
 
 function validateRoles(roles: string[]): string | null {
@@ -125,7 +144,13 @@ export class EmailTeamSettingsUseCase {
   private composeResult(
     settings: Awaited<ReturnType<EmailTeamSettingsUseCase["getSettingsRecord"]>>,
     senders: Awaited<ReturnType<EmailTeamSettingsUseCase["getSenders"]>>,
-    globalVariables: Awaited<ReturnType<EmailTeamSettingsUseCase["getVariables"]>> = []
+    globalVariables: Awaited<ReturnType<EmailTeamSettingsUseCase["getVariables"]>> = [],
+    domainEvents: Array<{
+      id: string
+      type: string
+      occurredAt: string
+      metadata: Record<string, unknown> | null
+    }> = []
   ) {
     const defaultSender = senders.find((sender) => sender.isDefault) ?? null
 
@@ -147,6 +172,11 @@ export class EmailTeamSettingsUseCase {
       resendDomainId: settings?.resendDomainId ?? DEFAULTS.resendDomainId,
       resendDomainName: settings?.resendDomainName ?? DEFAULTS.resendDomainName,
       resendDomainStatus: settings?.resendDomainStatus ?? DEFAULTS.resendDomainStatus,
+      resendDomainRegion: settings?.resendDomainRegion ?? DEFAULTS.resendDomainRegion,
+      resendDomainConnectedAt: settings?.resendDomainConnectedAt?.toISOString() ?? null,
+      resendOpenTracking: settings?.resendOpenTracking ?? DEFAULTS.resendOpenTracking,
+      resendClickTracking: settings?.resendClickTracking ?? DEFAULTS.resendClickTracking,
+      domainEvents,
       senders,
       defaultSenderId: defaultSender?.id ?? null,
       globalVariables,
@@ -209,11 +239,18 @@ export class EmailTeamSettingsUseCase {
 
   async get(ctx: TeamContext): Promise<Output> {
     try {
+      const rawEvents = await emailTeamDomainEventRepository.listEvents(ctx.teamId)
+      const domainEvents = rawEvents.map((event) => ({
+        id: event.id,
+        type: event.type,
+        occurredAt: event.occurredAt.toISOString(),
+        metadata: event.metadata,
+      }))
       const result = await prisma.$transaction(async (tx) => {
         const settings = await this.getSettingsRecord(tx, ctx.teamId)
         const senders = await this.getSenders(tx, ctx.teamId)
         const variables = await this.getVariables(tx, ctx.teamId)
-        return this.composeResult(settings, senders, variables)
+        return this.composeResult(settings, senders, variables, domainEvents)
       })
 
       return new Output(true, [], [], result)
@@ -466,12 +503,38 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Nome de domínio inválido"], null)
       }
 
+      const existing = await prisma.emailTeamSettings.findUnique({
+        where: { teamId: ctx.teamId },
+        select: { resendDomainId: true },
+      })
+      if (existing?.resendDomainId) {
+        return new Output(
+          false,
+          [],
+          ["Já existe um domínio conectado. Remova o domínio atual antes de conectar outro."],
+          null
+        )
+      }
+
       const resend = assertResend()
-      const { data, error } = await resend.domains.create({ name: domainName.trim() })
+      const { data, error } = await resend.domains.create({
+        name: domainName.trim(),
+        region: DEFAULT_DOMAIN_REGION,
+        openTracking: true,
+        clickTracking: true,
+      })
       if (error || !data) {
         console.error("[EmailTeamSettingsUseCase][connectDomain] Resend error", error)
         return new Output(false, [], [error?.message ?? "Erro ao criar domínio no Resend"], null)
       }
+
+      await resend.domains.update({
+        id: data.id,
+        openTracking: true,
+        clickTracking: true,
+      })
+
+      const connectedAt = new Date()
 
       await prisma.emailTeamSettings.upsert({
         where: { teamId: ctx.teamId },
@@ -482,6 +545,10 @@ export class EmailTeamSettingsUseCase {
           resendDomainId: data.id,
           resendDomainName: data.name,
           resendDomainStatus: "pending",
+          resendDomainRegion: DEFAULT_DOMAIN_REGION,
+          resendDomainConnectedAt: connectedAt,
+          resendOpenTracking: true,
+          resendClickTracking: true,
           dispatchAllowedRoles: DEFAULTS.dispatchAllowedRoles,
           templateCreateRoles: DEFAULTS.templateCreateRoles,
           templateApprovalRequired: DEFAULTS.templateApprovalRequired,
@@ -492,13 +559,26 @@ export class EmailTeamSettingsUseCase {
           resendDomainId: data.id,
           resendDomainName: data.name,
           resendDomainStatus: "pending",
+          resendDomainRegion: DEFAULT_DOMAIN_REGION,
+          resendDomainConnectedAt: connectedAt,
+          resendOpenTracking: true,
+          resendClickTracking: true,
         },
+      })
+
+      await emailTeamDomainEventRepository.recordEventIfMissing(ctx.teamId, "domain_added", connectedAt, {
+        domainId: data.id,
+        domainName: data.name,
       })
 
       return new Output(true, ["Domínio conectado. Configure os registros DNS abaixo."], [], {
         domainId: data.id,
         domainName: data.name,
         status: "pending",
+        region: DEFAULT_DOMAIN_REGION,
+        connectedAt: connectedAt.toISOString(),
+        openTracking: true,
+        clickTracking: true,
         records: data.records ?? [],
       })
     } catch (error) {
@@ -511,18 +591,31 @@ export class EmailTeamSettingsUseCase {
     try {
       const settings = await prisma.emailTeamSettings.findUnique({
         where: { teamId: ctx.teamId },
-        select: { resendDomainId: true },
+        select: { resendDomainId: true, resendDomainName: true },
       })
       if (!settings?.resendDomainId) {
         return new Output(false, [], ["Nenhum domínio conectado"], null)
       }
 
-      await prisma.emailTeamSettings.update({
-        where: { teamId: ctx.teamId },
-        data: { resendDomainId: null, resendDomainName: null, resendDomainStatus: null },
+      const resend = assertResend()
+      const { error } = await resend.domains.remove(settings.resendDomainId)
+      if (error) {
+        console.error("[EmailTeamSettingsUseCase][disconnectDomain] Resend error", error)
+        return new Output(false, [], [error.message ?? "Erro ao remover domínio no Resend"], null)
+      }
+
+      const deletedAt = new Date()
+      await emailTeamDomainEventRepository.recordEventIfMissing(ctx.teamId, "domain_deleted", deletedAt, {
+        domainId: settings.resendDomainId,
+        domainName: settings.resendDomainName,
       })
 
-      return new Output(true, ["Domínio desconectado com sucesso"], [], null)
+      await prisma.emailTeamSettings.update({
+        where: { teamId: ctx.teamId },
+        data: { ...CLEAR_DOMAIN_DATA },
+      })
+
+      return new Output(true, ["Domínio removido com sucesso"], [], null)
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][disconnectDomain]", error)
       return new Output(false, [], ["Erro ao desconectar domínio"], null)
@@ -547,13 +640,22 @@ export class EmailTeamSettingsUseCase {
       }
 
       const { data: domainData } = await resend.domains.get(settings.resendDomainId)
-      const status: ResendDomainStatus = (domainData?.status as ResendDomainStatus | undefined) ?? "pending"
-      await prisma.emailTeamSettings.update({
-        where: { teamId: ctx.teamId },
-        data: { resendDomainStatus: status },
-      })
+      if (!domainData) {
+        return new Output(false, [], ["Domínio não encontrado no Resend"], null)
+      }
 
-      return new Output(true, ["Verificação iniciada"], [], { status })
+      const synced = await emailTeamDomainEventRepository.syncFromResendDomain(
+        ctx.teamId,
+        domainData,
+        new Date()
+      )
+
+      return new Output(true, ["Verificação iniciada"], [], {
+        status: synced.status as ResendDomainStatus,
+        region: synced.region,
+        openTracking: synced.openTracking,
+        clickTracking: synced.clickTracking,
+      })
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][verifyDomain]", error)
       return new Output(false, [], ["Erro ao verificar domínio"], null)
@@ -564,7 +666,15 @@ export class EmailTeamSettingsUseCase {
     try {
       const settings = await prisma.emailTeamSettings.findUnique({
         where: { teamId: ctx.teamId },
-        select: { resendDomainId: true, resendDomainName: true, resendDomainStatus: true },
+        select: {
+          resendDomainId: true,
+          resendDomainName: true,
+          resendDomainStatus: true,
+          resendDomainRegion: true,
+          resendDomainConnectedAt: true,
+          resendOpenTracking: true,
+          resendClickTracking: true,
+        },
       })
       if (!settings?.resendDomainId) {
         return new Output(false, [], ["Nenhum domínio conectado"], null)
@@ -577,19 +687,27 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], [error?.message ?? "Erro ao buscar registros DNS"], null)
       }
 
-      const newStatus = (data.status as ResendDomainStatus | undefined) ?? settings.resendDomainStatus
-      if (newStatus !== settings.resendDomainStatus) {
-        await prisma.emailTeamSettings.update({
-          where: { teamId: ctx.teamId },
-          data: { resendDomainStatus: newStatus },
-        })
-      }
+      const synced = await emailTeamDomainEventRepository.syncFromResendDomain(
+        ctx.teamId,
+        data,
+        new Date()
+      )
+
+      const domainEvents = await emailTeamDomainEventRepository.listEvents(ctx.teamId)
 
       return new Output(true, [], [], {
         domainId: data.id,
         domainName: data.name,
-        status: newStatus,
+        status: synced.status,
+        region: synced.region ?? settings.resendDomainRegion,
+        connectedAt: settings.resendDomainConnectedAt?.toISOString() ?? null,
+        openTracking: synced.openTracking,
+        clickTracking: synced.clickTracking,
         records: data.records ?? [],
+        events: domainEvents.map((event) => ({
+          ...event,
+          occurredAt: event.occurredAt.toISOString(),
+        })),
       })
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][getDomainRecords]", error)

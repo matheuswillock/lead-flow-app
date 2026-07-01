@@ -1,7 +1,11 @@
-import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../context/TemplateEditorTypes";
+import type { Template, TemplateEditorDraft, TemplateTestRequest, TemplateVersionItem } from "../context/TemplateEditorTypes";
 
 export interface ITemplateEditorService {
   getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }>;
+  getEmailSettingsForTips(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ fromEmail: string | null }>;
   getTemplate(
     supabaseId: string,
     templateId: string,
@@ -50,4 +54,15 @@ export interface ITemplateEditorService {
     teamId: string | null | undefined,
     input: TemplateTestRequest
   ): Promise<void>;
+  listVersions(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<{ versions: TemplateVersionItem[] }>;
+  restoreVersion(
+    supabaseId: string,
+    templateId: string,
+    versionId: string,
+    teamId?: string | null
+  ): Promise<Template>;
 }

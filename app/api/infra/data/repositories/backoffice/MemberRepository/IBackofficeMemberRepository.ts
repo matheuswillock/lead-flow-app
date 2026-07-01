@@ -36,6 +36,7 @@ export interface MemberAccountMembershipTemplate {
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
   canTransferAccountLeads: boolean
+  canViewAllTeams: boolean
 }
 
 export interface IBackofficeMemberRepository {
@@ -61,6 +62,7 @@ export interface IBackofficeMemberRepository {
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
     }
   ): Promise<void>
 

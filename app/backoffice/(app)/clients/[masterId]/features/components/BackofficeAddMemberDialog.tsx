@@ -81,9 +81,9 @@ interface BackofficeAddMemberDialogProps {
 }
 
 function defaultGenerateCharge(
-  userType?: { slug: "common" | "member_pro"; isExpired: boolean }
+  _userType?: { slug: "common" | "member_pro"; isExpired: boolean }
 ): boolean {
-  return userType?.slug === "member_pro" && !userType.isExpired
+  return false
 }
 
 export function BackofficeAddMemberDialog({
@@ -331,7 +331,7 @@ export function BackofficeAddMemberDialog({
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-medium">Gerar cobrança</span>
                   <span className="text-xs text-muted-foreground">
-                    Quando desligado, o usuário é adicionado sem cobrar o master.
+                    Quando ligado, gera cobrança imediata (ex.: pagamento externo).
                   </span>
                 </div>
                 <Switch

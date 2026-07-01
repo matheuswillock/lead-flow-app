@@ -60,6 +60,22 @@ class TemplateEditorService implements ITemplateEditorService {
     return { templateApprovalRequired: settings.templateApprovalRequired ?? false };
   }
 
+  async getEmailSettingsForTips(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ fromEmail: string | null }> {
+    const response = await fetch(this.settingsUrl, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+    const settings = await this.parseResponse<{ fromEmail?: string | null }>(
+      response,
+      "Erro ao buscar configurações de e-mail"
+    );
+
+    return { fromEmail: settings.fromEmail ?? null };
+  }
+
   async createTemplate(
     supabaseId: string,
     draft: TemplateEditorDraft,
@@ -179,6 +195,34 @@ class TemplateEditorService implements ITemplateEditorService {
     await this.parseResponse<null>(response, "Erro ao enviar email de teste");
   }
 
+  async listVersions(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<{ versions: import("../context/TemplateEditorTypes").TemplateVersionItem[] }> {
+    const response = await fetch(`${this.baseUrl}/${templateId}/versions`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse(response, "Erro ao listar versões do template");
+  }
+
+  async restoreVersion(
+    supabaseId: string,
+    templateId: string,
+    versionId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    const response = await fetch(`${this.baseUrl}/${templateId}/restore-version`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify({ versionId }),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao recuperar HTML da versão");
+  }
+
   private toPayload(draft: TemplateEditorDraft) {
     return {
       name: draft.name,
@@ -186,6 +230,7 @@ class TemplateEditorService implements ITemplateEditorService {
       previewText: draft.previewText,
       html: draft.html,
       mailyJson: draft.mailyJson,
+      editorMode: draft.editorMode,
       variables: draft.variables,
     };
   }

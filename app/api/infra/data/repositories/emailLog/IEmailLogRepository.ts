@@ -1,4 +1,4 @@
-import type { EmailEventType, EmailLogCategory, Prisma } from "@prisma/client"
+import type { EmailEventType, EmailLogCategory } from "@prisma/client"
 
 export type EmailLogWebhookRecord = {
   id: string
@@ -7,6 +7,12 @@ export type EmailLogWebhookRecord = {
   recipientEmail: string
   recipientName: string | null
   campaignId: string | null
+  dispatchId: string | null
+  deliveredAt: Date | null
+  openedAt: Date | null
+  clickedAt: Date | null
+  bouncedAt: Date | null
+  complainedAt: Date | null
 }
 
 export type ApplyEmailLogWebhookInput = {
@@ -21,6 +27,7 @@ export type CreateTeamEmailLogInput = {
   id: string
   teamId: string
   campaignId?: string | null
+  dispatchId?: string | null
   recipientEmail: string
   recipientName?: string | null
   subject: string

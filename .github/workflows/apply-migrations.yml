@@ -46,7 +46,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Link Supabase project
         run: bunx supabase link --project-ref "$SUPABASE_PROJECT_REF"

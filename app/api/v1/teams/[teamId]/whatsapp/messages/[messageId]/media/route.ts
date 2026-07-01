@@ -20,9 +20,14 @@ export async function GET(
     )
   }
 
-  const output = await getMessageMediaUseCase.execute({ teamId, messageId })
+  const output = await getMessageMediaUseCase.execute({
+    teamId,
+    messageId,
+    access: teamAccess.access,
+  })
   if (!output.isValid || !output.result) {
-    return NextResponse.json(output, { status: 404 })
+    const status = output.errorMessages.some((m) => m.includes("Acesso negado")) ? 403 : 404
+    return NextResponse.json(output, { status })
   }
 
   const result = output.result as Record<string, unknown>

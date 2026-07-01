@@ -12,7 +12,7 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
   const payload: Record<string, unknown> = {}
 
   if (data.name !== undefined) payload.name = data.name
-  if (data.slug !== undefined) payload.slug = data.slug
+  if (data.featureSlug !== undefined) payload.featureSlug = data.featureSlug
   if ("description" in data) payload.description = data.description || null
   if (data.type !== undefined) payload.type = data.type
   if (data.billingMode !== undefined) payload.billingMode = data.billingMode
@@ -21,6 +21,7 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
   if ("priceSemiannual" in data) payload.priceSemiannual = parsePrice(data.priceSemiannual ?? "")
   if ("priceAnnual" in data) payload.priceAnnual = parsePrice(data.priceAnnual ?? "")
   if ("priceLifetime" in data) payload.priceLifetime = parsePrice(data.priceLifetime ?? "")
+  if (data.isDefault !== undefined) payload.isDefault = data.isDefault
   if (data.isActive !== undefined) payload.isActive = data.isActive
 
   if (data.paymentRules && data.billingMode === "RECURRING") {

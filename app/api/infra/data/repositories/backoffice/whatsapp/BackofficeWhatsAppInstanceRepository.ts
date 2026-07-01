@@ -1,4 +1,4 @@
-import type { Prisma, WhatsAppConnectionStatus } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   BackofficeWhatsAppInstanceRow,

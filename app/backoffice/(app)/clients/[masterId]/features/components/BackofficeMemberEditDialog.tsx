@@ -48,6 +48,7 @@ interface FormState {
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
   canTransferAccountLeads: boolean
+  canViewAllTeams: boolean
 }
 
 function toRole(value: string): MemberRole {
@@ -69,6 +70,7 @@ function initForm(member: BackofficeClientTeamMember): FormState {
     canCreateAccountUsers: member.canCreateAccountUsers,
     canManageAccountTeams: member.canManageAccountTeams,
     canTransferAccountLeads: member.canTransferAccountLeads,
+    canViewAllTeams: member.canViewAllTeams,
   }
 }
 
@@ -105,7 +107,7 @@ export function BackofficeMemberEditDialog({
   const [form, setForm] = useState<FormState>(() =>
     member
       ? initForm(member)
-      : { fullName: "", phone: "", email: "", role: "operator", functions: [], canCreateAccountUsers: false, canManageAccountTeams: false, canTransferAccountLeads: false }
+      : { fullName: "", phone: "", email: "", role: "operator", functions: [], canCreateAccountUsers: false, canManageAccountTeams: false, canTransferAccountLeads: false, canViewAllTeams: false }
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [removingTeamId, setRemovingTeamId] = useState<string | null>(null)
@@ -172,11 +174,12 @@ export function BackofficeMemberEditDialog({
       const canCreateChanged = form.canCreateAccountUsers !== member.canCreateAccountUsers
       const canManageChanged = form.canManageAccountTeams !== member.canManageAccountTeams
       const canTransferChanged = form.canTransferAccountLeads !== member.canTransferAccountLeads
+      const canViewAllTeamsChanged = form.canViewAllTeams !== member.canViewAllTeams
 
       const hasTransferPermission = form.role === "manager" || form.role === "backoffice"
       const effectiveCanTransfer = hasTransferPermission ? form.canTransferAccountLeads : false
 
-      if (!fullNameChanged && !phoneChanged && !emailChanged && !roleChanged && !functionsChanged && !canCreateChanged && !canManageChanged && !canTransferChanged) {
+      if (!fullNameChanged && !phoneChanged && !emailChanged && !roleChanged && !functionsChanged && !canCreateChanged && !canManageChanged && !canTransferChanged && !canViewAllTeamsChanged) {
         toast.info("Nenhuma alteração para salvar")
         onOpenChange(false)
         return
@@ -184,6 +187,7 @@ export function BackofficeMemberEditDialog({
 
       const effectiveCanCreate = form.role === "manager" ? form.canCreateAccountUsers : false
       const effectiveCanManage = form.role === "manager" ? form.canManageAccountTeams : false
+      const effectiveCanViewAllTeams = (form.role === "manager" || form.role === "backoffice") ? form.canViewAllTeams : false
 
       await service.updateMember(member.id, {
         ...(fullNameChanged ? { fullName: form.fullName.trim() } : {}),
@@ -194,6 +198,7 @@ export function BackofficeMemberEditDialog({
         canCreateAccountUsers: effectiveCanCreate,
         canManageAccountTeams: effectiveCanManage,
         canTransferAccountLeads: effectiveCanTransfer,
+        canViewAllTeams: effectiveCanViewAllTeams,
         ...(teamId ? { teamId } : {}),
       })
 
@@ -426,6 +431,22 @@ export function BackofficeMemberEditDialog({
                         checked={form.canTransferAccountLeads}
                         onCheckedChange={(checked) =>
                           setForm((prev) => ({ ...prev, canTransferAccountLeads: checked }))
+                        }
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium">Pode visualizar todos os times</span>
+                        <span className="text-xs text-muted-foreground">
+                          Permite ver métricas do Dashboard e Performance de todos os times da conta.
+                        </span>
+                      </div>
+                      <Switch
+                        checked={form.canViewAllTeams}
+                        onCheckedChange={(checked) =>
+                          setForm((prev) => ({ ...prev, canViewAllTeams: checked }))
                         }
                         disabled={isSubmitting}
                       />

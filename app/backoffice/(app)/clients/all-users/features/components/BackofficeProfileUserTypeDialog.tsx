@@ -88,10 +88,12 @@ export function BackofficeProfileUserTypeDialog({
 
   const isMemberPro = form.userType === "member_pro"
   const isAssociate = form.userType === "associate"
+  const isGuest = form.userType === "guest"
+  const needsSponsor = isAssociate || isGuest
   const accessDaysValue = parsePositiveInt(form.accessDays)
   const accessDaysValid =
     !isMemberPro || (accessDaysValue !== null && accessDaysValue >= MIN_DAYS && accessDaysValue <= MAX_DAYS)
-  const sponsorValid = !isAssociate || form.sponsorMasterId.length > 0
+  const sponsorValid = !needsSponsor || form.sponsorMasterId.length > 0
   const isValid = accessDaysValid && sponsorValid
 
   async function handleSubmit(event: React.FormEvent) {
@@ -111,6 +113,12 @@ export function BackofficeProfileUserTypeDialog({
           sponsorMasterId: form.sponsorMasterId,
         })
         toast.success("Tipo de usuário atualizado para Associado")
+      } else if (form.userType === "guest") {
+        await service.updateUserType(item.id, {
+          userType: "guest",
+          sponsorMasterId: form.sponsorMasterId,
+        })
+        toast.success("Tipo de usuário atualizado para Convidado")
       } else {
         const accessExpiresAt = new Date(Date.now() + (accessDaysValue as number) * DAY_MS).toISOString()
         await service.updateUserType(item.id, {
@@ -159,6 +167,7 @@ export function BackofficeProfileUserTypeDialog({
                       <SelectItem value="common">Comum</SelectItem>
                       <SelectItem value="member_pro">Member PRO</SelectItem>
                       <SelectItem value="associate">Associado</SelectItem>
+                      <SelectItem value="guest">Convidado</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -169,7 +178,7 @@ export function BackofficeProfileUserTypeDialog({
                     {item.userType.isExpired ? " (expirado)" : ""}.
                   </FieldDescription>
                 )}
-                {item.userType.slug === "associate" && item.userType.sponsorMasterName && (
+                {(item.userType.slug === "associate" || item.userType.slug === "guest") && item.userType.sponsorMasterName && (
                   <FieldDescription>
                     Patrocinador atual: {item.userType.sponsorMasterName}
                   </FieldDescription>
@@ -196,7 +205,7 @@ export function BackofficeProfileUserTypeDialog({
                 </Field>
               )}
 
-              {isAssociate && (
+              {needsSponsor && (
                 <Field>
                   <FieldLabel htmlFor="sponsor-master-select">Patrocinador</FieldLabel>
                   <Select
@@ -217,9 +226,11 @@ export function BackofficeProfileUserTypeDialog({
                       </SelectGroup>
                     </SelectContent>
                   </Select>
-                  <FieldDescription>
-                    Conta Associado exige CPF/CNPJ válido no master para sincronizar cliente Asaas.
-                  </FieldDescription>
+                  {isAssociate && (
+                    <FieldDescription>
+                      Conta Associado exige CPF/CNPJ válido no master para sincronizar cliente Asaas.
+                    </FieldDescription>
+                  )}
                   {!sponsorValid && <FieldError>Selecione um patrocinador</FieldError>}
                 </Field>
               )}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import prisma from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { emailService } from "@/lib/services/EmailService";
 import { isManagerLikeRole } from "@/lib/roles";
 import { getFullUrl } from "@/lib/utils/app-url";
@@ -102,6 +103,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         new Output(false, [], ["Ja existe um operador pendente para este email"], null),
         { status: 400 }
+      );
+    }
+
+    if (await memberProBillingUseCase.shouldBypassIncrementalCharge(manager.id)) {
+      const newOperator = await prisma.profile.create({
+        data: {
+          supabaseId: crypto.randomUUID(),
+          email: operatorData.email,
+          fullName: operatorData.name,
+          role: operatorData.role || "operator",
+          functions: operatorData.functions ?? [],
+        },
+      });
+
+      await prisma.teamMember.create({
+        data: {
+          profileId: newOperator.id,
+          teamId: team.id,
+          role: operatorData.role || "operator",
+        },
+      });
+
+      await emailService.sendAddOnConfirmedEmail({
+        masterName: manager.fullName || manager.email,
+        masterEmail: manager.email,
+        addonType: "user",
+        addonLabel: "Licença Usuário",
+        addonDetail: `${operatorData.name} (${operatorData.email})`,
+      });
+
+      await memberProBillingUseCase.syncUsageToSubscription(manager.id, "add_user");
+
+      return NextResponse.json(
+        new Output(true, ["Usuário criado com sucesso sem cobrança adicional"], [], { created: true }),
+        { status: 201 }
       );
     }
 

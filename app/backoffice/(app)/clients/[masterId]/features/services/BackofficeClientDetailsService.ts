@@ -196,6 +196,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
       teamId?: string
     }
   ): Promise<void> {

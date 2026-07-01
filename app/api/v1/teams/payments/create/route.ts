@@ -6,6 +6,7 @@ import {
   hasDelegatedTeamManagementAccess,
 } from "@/app/api/v1/utils/teamAccess";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { emailService } from "@/lib/services/EmailService";
 import { getFullUrl } from "@/lib/utils/app-url";
 
@@ -116,6 +117,41 @@ export async function POST(request: NextRequest) {
         requesterName: requester.fullName || requester.email,
         requesterEmail: requester.email,
       });
+
+      return NextResponse.json(
+        new Output(true, ["Time criado com sucesso sem cobrança adicional"], [], { created: true }),
+        { status: 201 }
+      );
+    }
+
+    if (await memberProBillingUseCase.shouldBypassIncrementalCharge(master.id)) {
+      const newTeam = await prisma.team.create({
+        data: {
+          masterId: master.id,
+          name: teamName,
+        },
+      });
+
+      await prisma.teamMember.create({
+        data: {
+          profileId: requester.id,
+          teamId: newTeam.id,
+          role: teamMember.role,
+          functions: teamMember.functions ?? [],
+        },
+      });
+
+      await emailService.sendAddOnConfirmedEmail({
+        masterName: master.fullName || master.email,
+        masterEmail: master.email,
+        addonType: "team",
+        addonLabel: "Time adicional",
+        addonDetail: teamName,
+        requesterName: requester.fullName || requester.email,
+        requesterEmail: requester.email,
+      });
+
+      await memberProBillingUseCase.syncUsageToSubscription(master.id, "add_team");
 
       return NextResponse.json(
         new Output(true, ["Time criado com sucesso sem cobrança adicional"], [], { created: true }),

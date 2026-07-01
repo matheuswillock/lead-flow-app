@@ -8,12 +8,14 @@ import { getWhatsAppConfigUseCase } from "@/app/api/useCases/whatsapp/GetWhatsAp
 const createConfigSchema = z.object({
   usageLimitMonthly: z.number().int().positive().optional(),
   hostBaseUrl: z.string().url().optional(),
+  reuseFromTeamId: z.string().uuid().optional(),
 })
 
 function resolveStatus(output: Output): number {
   const msg = output.errorMessages.join(" ")
   if (msg.includes("não encontrad")) return 404
   if (msg.includes("já existe")) return 409
+  if (msg.includes("já está conectado") || msg.includes("já possui outro número")) return 409
   if (
     msg.includes("autorização") ||
     msg.includes("acesso negado") ||
@@ -90,6 +92,7 @@ export async function POST(
     callerRole: teamAccess.access.teamMember.role,
     usageLimitMonthly: parsed.data.usageLimitMonthly,
     hostBaseUrl: parsed.data.hostBaseUrl,
+    reuseFromTeamId: parsed.data.reuseFromTeamId,
   })
 
   if (!output.isValid) {

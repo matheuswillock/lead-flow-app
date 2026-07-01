@@ -1,8 +1,13 @@
-import type { WhatsAppConfig, WhatsAppUsage } from '../context/WhatsAppSettingsTypes'
+import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber } from '../context/WhatsAppSettingsTypes'
 
 export interface IWhatsAppSettingsService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
-  createConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig>
+  fetchReusableNumbers(teamId: string, supabaseId: string): Promise<ReusableWhatsAppNumber[]>
+  createConfig(
+    teamId: string,
+    supabaseId: string,
+    options?: { reuseFromTeamId?: string }
+  ): Promise<WhatsAppConfig>
   reconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig>
   disconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig>
   fetchUsage(teamId: string, supabaseId: string): Promise<WhatsAppUsage | null>

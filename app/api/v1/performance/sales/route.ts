@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { isManagerLikeRole } from '@/lib/roles';
+import { getDashboardTeamScopeFromRequest, resolveDashboardTeamScope } from '@/app/api/v1/utils/dashboardTeamScope';
 import { performanceSalesRequestSchema } from './DTO/performanceSalesRequestDTO';
 import { performanceUseCase, PerformanceUseCase } from '@/app/api/useCases/performance/PerformanceUseCase';
 import { endOfDayInTz, parseDateKeyToUtc } from '@/lib/dates';
@@ -39,6 +40,12 @@ export async function GET(request: NextRequest) {
 
   const { preset, startDate, endDate, sdrId, closerId, search, page, pageSize } = parsed.data;
 
+  const teamScope = getDashboardTeamScopeFromRequest(request);
+  const resolvedScope = await resolveDashboardTeamScope(teamAccess.access, teamScope);
+  if ('error' in resolvedScope) {
+    return NextResponse.json(resolvedScope.error, { status: resolvedScope.status });
+  }
+
   let resolvedStartDate: Date;
   let resolvedEndDate: Date;
 
@@ -56,6 +63,7 @@ export async function GET(request: NextRequest) {
 
   const result = await performanceUseCase.getSalesPerformance({
     teamId,
+    teamIds: resolvedScope.teamIds,
     profileId,
     isManager,
     isCloser,

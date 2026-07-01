@@ -7,6 +7,7 @@ import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
 import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
+import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import {
   type EmailTemplateFunctionDefinition,
   type EmailTemplateVariableKind,
@@ -26,6 +27,7 @@ const templateDetailSelect = {
   previewText: true,
   mailyJson: true,
   html: true,
+  editorMode: true,
   variables: true,
   status: true,
   publishedAt: true,
@@ -86,6 +88,7 @@ export interface CreateTemplateInput {
   previewText?: string
   mailyJson?: unknown
   html?: string
+  editorMode?: "blocks" | "html"
   variables?: TemplateVariableInput[]
 }
 
@@ -95,6 +98,7 @@ export interface UpdateTemplateInput {
   previewText?: string
   mailyJson?: unknown
   html?: string
+  editorMode?: "blocks" | "html"
   variables?: TemplateVariableInput[]
 }
 
@@ -179,6 +183,7 @@ export class EmailTemplateUseCase {
           previewText: true,
           mailyJson: true,
           html: true,
+          editorMode: true,
           variables: true,
           status: true,
           publishedAt: true,
@@ -273,6 +278,7 @@ export class EmailTemplateUseCase {
           previewText: data.previewText?.trim() ?? null,
           mailyJson: (data.mailyJson as object) ?? null,
           html: data.html ?? null,
+          editorMode: data.editorMode ?? "html",
           variables: (data.variables as object) ?? undefined,
           approvalStatus: approvalSeed.approvalStatus,
           approvedBy: approvalSeed.approvedBy,
@@ -319,6 +325,7 @@ export class EmailTemplateUseCase {
           previewText: true,
           mailyJson: true,
           html: true,
+          editorMode: true,
           variables: true,
           status: true,
           approvalStatus: true,
@@ -335,6 +342,7 @@ export class EmailTemplateUseCase {
         ...(data.previewText !== undefined && { previewText: data.previewText?.trim() ?? null }),
         ...(data.mailyJson !== undefined && { mailyJson: data.mailyJson as object }),
         ...(data.html !== undefined && { html: data.html }),
+        ...(data.editorMode !== undefined && { editorMode: data.editorMode }),
         ...(data.variables !== undefined && { variables: (data.variables as object) ?? Prisma.JsonNull }),
       }
 
@@ -393,6 +401,7 @@ export class EmailTemplateUseCase {
             previewText: data.previewText !== undefined ? data.previewText?.trim() ?? null : existing.previewText,
             mailyJson: data.mailyJson !== undefined ? data.mailyJson as object : existing.mailyJson ?? Prisma.JsonNull,
             html: data.html !== undefined ? data.html : existing.html,
+            editorMode: data.editorMode ?? existing.editorMode,
             variables: data.variables !== undefined ? (data.variables as object) ?? Prisma.JsonNull : existing.variables ?? Prisma.JsonNull,
             status: "draft",
             publishedAt: null,
@@ -530,7 +539,12 @@ export class EmailTemplateUseCase {
         : {}
 
       const renderedSubject = interpolateEmailTemplate(data.subject, recipient, globalDefaults, variableInputs)
-      const renderedHtml = interpolateEmailTemplate(data.html, recipient, globalDefaults, variableInputs)
+      const renderedHtml = interpolateEmailTemplate(
+        inlineEmailHtml(data.html),
+        recipient,
+        globalDefaults,
+        variableInputs
+      )
       const unresolvedTokens = extractTemplateVariableKeys(`${renderedSubject}\n${renderedHtml}`).filter(
         (token) => !["nome", "nome_do_lead", "name", "email"].includes(token.toLowerCase())
       )
@@ -751,6 +765,135 @@ export class EmailTemplateUseCase {
     } catch (error) {
       console.error("[EmailTemplateUseCase][unpublish]", error)
       return new Output(false, [], ["Erro ao despublicar template"], null)
+    }
+  }
+
+  async listVersions(id: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const ref = await prisma.emailTemplate.findFirst({
+        where: { id, teamId: ctx.teamId, isArchived: false },
+        select: { versionGroupId: true },
+      })
+
+      if (!ref) {
+        return new Output(false, [], ["Template não encontrado"], null)
+      }
+
+      const versions = await prisma.emailTemplate.findMany({
+        where: {
+          teamId: ctx.teamId,
+          versionGroupId: ref.versionGroupId,
+          status: "published",
+          isArchived: false,
+        },
+        select: {
+          id: true,
+          versionNumber: true,
+          name: true,
+          subject: true,
+          publishedAt: true,
+          approvedAt: true,
+          createdAt: true,
+          html: true,
+          creator: { select: { id: true, fullName: true, email: true } },
+          approver: { select: { id: true, fullName: true, email: true } },
+        },
+        orderBy: { versionNumber: "desc" },
+      })
+
+      return new Output(true, [], [], { versions })
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][listVersions]", error)
+      return new Output(false, [], ["Erro ao listar versões do template"], null)
+    }
+  }
+
+  async restoreVersion(id: string, versionId: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const current = await prisma.emailTemplate.findFirst({
+        where: { id, teamId: ctx.teamId, isArchived: false },
+        select: {
+          id: true,
+          versionGroupId: true,
+          status: true,
+          versionNumber: true,
+        },
+      })
+
+      if (!current) {
+        return new Output(false, [], ["Template não encontrado"], null)
+      }
+
+      const version = await prisma.emailTemplate.findFirst({
+        where: {
+          id: versionId,
+          teamId: ctx.teamId,
+          versionGroupId: current.versionGroupId,
+          status: "published",
+          isArchived: false,
+        },
+        select: { id: true, html: true, subject: true, versionNumber: true },
+      })
+
+      if (!version?.html?.trim()) {
+        return new Output(false, [], ["Versão não encontrada ou sem HTML"], null)
+      }
+
+      const updateData = {
+        html: version.html,
+        subject: version.subject,
+      }
+
+      if (current.status === "published") {
+        const existingDraft = await prisma.emailTemplate.findFirst({
+          where: {
+            teamId: ctx.teamId,
+            versionGroupId: current.versionGroupId,
+            isArchived: false,
+            status: "draft",
+          },
+          select: { id: true },
+          orderBy: { versionNumber: "desc" },
+        })
+
+        const targetId = existingDraft?.id ?? current.id
+        const template = await prisma.emailTemplate.update({
+          where: { id: targetId },
+          select: templateDetailSelect,
+          data: updateData,
+        })
+
+        await this.recordHistory({
+          templateId: template.id,
+          teamId: ctx.teamId,
+          actorProfileId: ctx.profileId,
+          eventType: "draft_saved",
+          description: `HTML recuperado da versão ${version.versionNumber}.0`,
+          metadata: { versionNumber: template.versionNumber, restoredFromVersionId: version.id },
+        })
+
+        return new Output(true, [`HTML da versão ${version.versionNumber}.0 recuperado no rascunho`], [], template)
+      }
+
+      const template = await prisma.emailTemplate.update({
+        where: { id: current.id },
+        select: templateDetailSelect,
+        data: updateData,
+      })
+
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "draft_saved",
+        description: `HTML recuperado da versão ${version.versionNumber}.0`,
+        metadata: { versionNumber: template.versionNumber, restoredFromVersionId: version.id },
+      })
+
+      return new Output(true, [`HTML da versão ${version.versionNumber}.0 recuperado`], [], template)
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][restoreVersion]", error)
+      return new Output(false, [], ["Erro ao recuperar HTML da versão"], null)
     }
   }
 

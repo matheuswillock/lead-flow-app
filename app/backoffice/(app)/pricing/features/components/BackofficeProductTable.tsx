@@ -55,6 +55,7 @@ export function BackofficeProductTable({ products }: Props) {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>Slug</TableHead>
             <TableHead>Nome</TableHead>
             <TableHead className="text-center">Tipo</TableHead>
             <TableHead className="text-center">Modo</TableHead>
@@ -83,6 +84,12 @@ export function BackofficeProductTable({ products }: Props) {
 
             return (
               <TableRow key={product.id}>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  <div className="flex flex-col gap-1">
+                    <span>{product.featureSlug}</span>
+                    {product.isDefault && <Badge variant="secondary">Padrão</Badge>}
+                  </div>
+                </TableCell>
                 <TableCell className="font-medium">
                   <div>
                     <p>{product.name}</p>

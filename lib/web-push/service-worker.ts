@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { APP_NOTIFICATION_TITLE, DEFAULT_NOTIFICATION_URL } from "./constants";
+import { DEFAULT_NOTIFICATION_URL } from "./constants";
 import { handleNotificationClick, handlePushEvent } from "./service-worker-handlers";
 
 declare const self: ServiceWorkerGlobalScope;

@@ -1,5 +1,6 @@
 import type { Prisma, WhatsAppMessageStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { normalizePhone } from "@/lib/whatsapp/normalize-phone"
 import type {
   IWhatsAppRepository,
   WhatsAppConfigSelect,
@@ -14,6 +15,8 @@ const CONFIG_SELECT = {
   instanceName: true,
   instanceId: true,
   phoneNumber: true,
+  normalizedPhone: true,
+  primaryConfigId: true,
   displayName: true,
   status: true,
   qrCodeText: true,
@@ -44,6 +47,7 @@ const CONVERSATION_SELECT = {
   contactAvatarUrl: true,
   normalizedPhone: true,
   assignedProfileId: true,
+  createdByProfileId: true,
   lastMessageAt: true,
   lastMessagePreview: true,
   unreadCount: true,
@@ -176,12 +180,13 @@ class WhatsAppRepository implements IWhatsAppRepository {
     search?: string
     page?: number
     limit?: number
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
   }): Promise<{ conversations: WhatsAppConversationSelect[]; total: number }> {
     const page = params.page ?? 1
     const limit = params.limit ?? 20
     const skip = (page - 1) * limit
 
-    const where: Prisma.WhatsAppConversationWhereInput = {
+    const baseWhere: Prisma.WhatsAppConversationWhereInput = {
       teamId: params.teamId,
       isArchived: params.isArchived ?? false,
       ...(params.leadId !== undefined ? { leadId: params.leadId } : {}),
@@ -199,6 +204,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
           }
         : {}),
     }
+
+    const where: Prisma.WhatsAppConversationWhereInput = params.visibilityWhere
+      ? { AND: [baseWhere, params.visibilityWhere] }
+      : baseWhere
 
     const [conversations, total] = await prisma.$transaction([
       prisma.whatsAppConversation.findMany({
@@ -379,6 +388,193 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
     if (!team) return null
     return { masterId: team.masterId, timezone: team.master.timezone }
+  }
+
+  async findConnectedConfigByNormalizedPhone(
+    normalizedPhone: string,
+    excludeConfigId?: string
+  ): Promise<{ id: string; teamId: string; masterId: string; primaryConfigId: string | null } | null> {
+    const config = await prisma.teamWhatsAppConfig.findFirst({
+      where: {
+        normalizedPhone,
+        status: "CONNECTED",
+        ...(excludeConfigId ? { id: { not: excludeConfigId } } : {}),
+      },
+      select: {
+        id: true,
+        teamId: true,
+        primaryConfigId: true,
+        team: { select: { masterId: true } },
+      },
+    })
+    if (!config) return null
+    return {
+      id: config.id,
+      teamId: config.teamId,
+      masterId: config.team.masterId,
+      primaryConfigId: config.primaryConfigId,
+    }
+  }
+
+  async findMirroredConfigs(primaryConfigId: string): Promise<WhatsAppConfigSelect[]> {
+    return prisma.teamWhatsAppConfig.findMany({
+      where: { primaryConfigId },
+      select: CONFIG_SELECT,
+    })
+  }
+
+  async findConfigByInstanceName(instanceName: string): Promise<WhatsAppConfigSelect | null> {
+    return prisma.teamWhatsAppConfig.findFirst({
+      where: { instanceName, primaryConfigId: null },
+      select: CONFIG_SELECT,
+    })
+  }
+
+  async resolveEffectiveConfig(config: WhatsAppConfigSelect): Promise<WhatsAppConfigSelect> {
+    if (!config.primaryConfigId) return config
+    const primary = await this.findConfigById(config.primaryConfigId)
+    return primary ?? config
+  }
+
+  async findLeadTeamIdByPhoneForMaster(
+    masterId: string,
+    normalizedPhone: string,
+    fallbackTeamId: string
+  ): Promise<string> {
+    const digits = normalizedPhone.replace(/\D/g, "")
+    const leads = await prisma.lead.findMany({
+      where: {
+        team: { masterId },
+        phone: { not: null },
+        OR: [
+          { phone: normalizedPhone },
+          ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+        ],
+      },
+      select: { teamId: true, updatedAt: true },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+    })
+
+    const withTeam = leads.filter((l) => l.teamId)
+    if (withTeam.length === 0) return fallbackTeamId
+    return withTeam[0]!.teamId!
+  }
+
+  async listConnectedConfigsForMaster(masterId: string): Promise<
+    Array<WhatsAppConfigSelect & { teamName: string }>
+  > {
+    const configs = await prisma.teamWhatsAppConfig.findMany({
+      where: {
+        status: "CONNECTED",
+        phoneNumber: { not: null },
+        team: { masterId },
+        primaryConfigId: null,
+      },
+      select: {
+        id: true,
+        teamId: true,
+        provider: true,
+        instanceName: true,
+        instanceId: true,
+        phoneNumber: true,
+        normalizedPhone: true,
+        primaryConfigId: true,
+        displayName: true,
+        status: true,
+        qrCodeText: true,
+        qrCodeImageUrl: true,
+        webhookSecret: true,
+        hostBaseUrl: true,
+        lastConnectedAt: true,
+        lastDisconnectedAt: true,
+        lastSyncAt: true,
+        historySyncStatus: true,
+        historySyncStartedAt: true,
+        historySyncCompletedAt: true,
+        historySyncError: true,
+        usageLimitMonthly: true,
+        billingEnabled: true,
+        createdAt: true,
+        updatedAt: true,
+        team: { select: { name: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    })
+
+    return configs.map(({ team, ...config }) => ({
+      ...config,
+      teamName: team.name,
+    }))
+  }
+
+  async getOperatorProfileIdsForTeam(teamId: string): Promise<string[]> {
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, role: "operator" },
+      select: { profileId: true },
+    })
+    return members.map((m) => m.profileId)
+  }
+
+  async getOperatorLeadPhones(teamId: string, profileId: string): Promise<string[]> {
+    const leads = await prisma.lead.findMany({
+      where: {
+        teamId,
+        phone: { not: null },
+        OR: [{ assignedTo: profileId }, { closerId: profileId }],
+      },
+      select: { phone: true },
+    })
+
+    const phones = new Set<string>()
+    for (const lead of leads) {
+      if (!lead.phone) continue
+      try {
+        phones.add(normalizePhone(lead.phone))
+      } catch {
+        const digits = lead.phone.replace(/\D/g, "")
+        if (digits) phones.add(digits)
+      }
+    }
+    return Array.from(phones)
+  }
+
+  async countConversationsWithVisibility(
+    conversationId: string,
+    teamId: string,
+    visibilityWhere: Prisma.WhatsAppConversationWhereInput
+  ): Promise<number> {
+    return prisma.whatsAppConversation.count({
+      where: {
+        id: conversationId,
+        teamId,
+        AND: [visibilityWhere],
+      },
+    })
+  }
+
+  async findConversationByIdForTeam(
+    conversationId: string,
+    teamId: string
+  ): Promise<WhatsAppConversationSelect | null> {
+    return prisma.whatsAppConversation.findFirst({
+      where: { id: conversationId, teamId },
+      select: CONVERSATION_SELECT,
+    })
+  }
+
+  async listConversationContactKeysForTeam(
+    teamId: string,
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  ): Promise<Array<{ normalizedPhone: string; externalChatId: string | null }>> {
+    return prisma.whatsAppConversation.findMany({
+      where: {
+        teamId,
+        ...(visibilityWhere ? { AND: [visibilityWhere] } : {}),
+      },
+      select: { normalizedPhone: true, externalChatId: true },
+      take: 5000,
+    })
   }
 }
 

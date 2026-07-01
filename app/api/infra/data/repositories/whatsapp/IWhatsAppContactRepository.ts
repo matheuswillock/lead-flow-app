@@ -1,4 +1,5 @@
 import type { TeamWhatsAppContactSource } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 
 export interface TeamWhatsAppContactSelect {
   id: string
@@ -27,7 +28,21 @@ export interface UpsertWhatsAppContactInput {
 
 export interface IWhatsAppContactRepository {
   upsertMany(contacts: UpsertWhatsAppContactInput[]): Promise<number>
-  listByTeam(teamId: string, params?: { q?: string; groupJid?: string; limit?: number }): Promise<TeamWhatsAppContactSelect[]>
+  listByTeam(
+    teamId: string,
+    params?: {
+      q?: string
+      groupJid?: string
+      limit?: number
+      extraWhere?: Prisma.TeamWhatsAppContactWhereInput
+    }
+  ): Promise<TeamWhatsAppContactSelect[]>
   findByOpaqueIds(teamId: string, opaqueIds: string[]): Promise<TeamWhatsAppContactSelect[]>
-  search(teamId: string, q: string, groupJid?: string, limit?: number): Promise<TeamWhatsAppContactSelect[]>
+  search(
+    teamId: string,
+    q: string,
+    groupJid?: string,
+    limit?: number,
+    extraWhere?: Prisma.TeamWhatsAppContactWhereInput
+  ): Promise<TeamWhatsAppContactSelect[]>
 }

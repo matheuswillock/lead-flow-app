@@ -24,10 +24,15 @@ export async function POST(
     teamId,
     conversationId,
     profileId: teamAccess.access.profileId,
+    access: teamAccess.access,
   })
 
   if (!output.isValid) {
-    const status = output.errorMessages.some((m) => m.includes("não encontrada")) ? 404 : 400
+    const status = output.errorMessages.some((m) => m.includes("Acesso negado"))
+      ? 403
+      : output.errorMessages.some((m) => m.includes("não encontrada"))
+        ? 404
+        : 400
     return NextResponse.json(output, { status })
   }
 

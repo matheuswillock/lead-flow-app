@@ -6,6 +6,7 @@ import type {
   TemplateEditorDraft,
   TemplateEditorState,
   TemplateTestRequest,
+  TemplateVersionItem,
 } from "./TemplateEditorTypes";
 import { useTemplateEditor } from "./TemplateEditorHook";
 
@@ -19,9 +20,11 @@ interface ITemplateEditorContext extends TemplateEditorState {
   approveTemplate: () => Promise<void>;
   rejectTemplate: (reviewNote: string) => Promise<void>;
   sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
+  restoreTemplateVersion: (versionId: string) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
-  setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
+  versions: TemplateVersionItem[];
+  restoringVersionId: string | null;
 }
 
 const TemplateEditorContext = createContext<ITemplateEditorContext | undefined>(undefined);

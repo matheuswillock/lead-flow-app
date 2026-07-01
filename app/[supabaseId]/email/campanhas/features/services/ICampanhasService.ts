@@ -24,7 +24,7 @@ export type ListCampaignsResult = {
   totalPages: number
 }
 
-export type SendResult = { sent: number; failed: number }
+export type SendResult = { sent: number; failed: number; total: number }
 
 export interface ICampanhasService {
   list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string): Promise<ListCampaignsResult>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { whatsAppSettingsService } from '../services/WhatsAppSettingsService'
-import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage } from './WhatsAppSettingsTypes'
+import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage, ReusableWhatsAppNumber } from './WhatsAppSettingsTypes'
 
 const buildRequestKey = (teamId: string): string => `whatsapp-settings:${teamId}`
 
@@ -14,11 +14,13 @@ const QR_POLL_MAX_TICKS = 30
 
 export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContextValue {
   const router = useRouter()
-  const { activeTeamId } = useTeamContext()
+  const { activeTeamId, isTeamMaster } = useTeamContext()
 
   const [config, setConfig] = useState<WhatsAppConfig | null>(null)
   const [usage, setUsage] = useState<WhatsAppUsage | null>(null)
+  const [reusableNumbers, setReusableNumbers] = useState<ReusableWhatsAppNumber[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingReusableNumbers, setIsLoadingReusableNumbers] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
@@ -39,6 +41,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       lastSuccessKeyRef.current = null
       setConfig(null)
       setUsage(null)
+      setReusableNumbers([])
       setIsLoading(false)
       return
     }
@@ -63,6 +66,22 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       setConfig(fetchedConfig)
       setUsage(fetchedUsage)
       lastSuccessKeyRef.current = requestKey
+
+      if (isTeamMaster && !fetchedConfig) {
+        setIsLoadingReusableNumbers(true)
+        try {
+          const numbers = await whatsAppSettingsService.fetchReusableNumbers(activeTeamId, supabaseId)
+          if (currentKeyRef.current === requestKey) {
+            setReusableNumbers(numbers)
+          }
+        } catch (error) {
+          console.error('[useWhatsAppSettings] Erro ao carregar números reutilizáveis:', error)
+        } finally {
+          if (currentKeyRef.current === requestKey) setIsLoadingReusableNumbers(false)
+        }
+      } else if (currentKeyRef.current === requestKey) {
+        setReusableNumbers([])
+      }
     } catch (error) {
       if (currentKeyRef.current === requestKey) {
         setConfig(null)
@@ -74,7 +93,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       if (currentKeyRef.current === requestKey) setIsLoading(false)
       if (inFlightKeyRef.current === requestKey) inFlightKeyRef.current = null
     }
-  }, [activeTeamId, supabaseId])
+  }, [activeTeamId, supabaseId, isTeamMaster])
 
   const refreshConfig = useCallback(async () => {
     if (!activeTeamId || pollInFlightRef.current) return
@@ -147,20 +166,30 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     router.push(`/${supabaseId}/whatsapp`)
   }, [config?.status, activeTeamId, supabaseId, router])
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (reuseFromTeamId?: string) => {
     if (!activeTeamId) {
       toast.error('Selecione um time para conectar o WhatsApp')
       return
     }
     setIsConnecting(true)
     try {
-      const result = await whatsAppSettingsService.createConfig(activeTeamId, supabaseId)
+      const result = await whatsAppSettingsService.createConfig(activeTeamId, supabaseId, {
+        reuseFromTeamId,
+      })
       setConfig(result)
       lastSuccessKeyRef.current = null
       if (result.status === 'CONNECTED') {
-        toast.success('WhatsApp conectado com sucesso')
+        toast.success(
+          reuseFromTeamId
+            ? 'Número compartilhado vinculado com sucesso'
+            : 'WhatsApp conectado com sucesso'
+        )
       } else {
-        toast.success('Integração iniciada. Escaneie o QR Code para conectar.')
+        toast.success(
+          reuseFromTeamId
+            ? 'Número compartilhado vinculado ao time'
+            : 'Integração iniciada. Escaneie o QR Code para conectar.'
+        )
       }
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao conectar:', error)
@@ -232,7 +261,9 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
   return {
     config,
     usage,
+    reusableNumbers,
     isLoading,
+    isLoadingReusableNumbers,
     isRefreshing,
     isConnecting,
     isReconnecting,

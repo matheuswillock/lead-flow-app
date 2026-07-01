@@ -203,19 +203,43 @@ export default function HomePage() {
                   Ver como funciona
                 </Link>
               </div>
+
+              {/* Compact pipeline preview — visible below lg */}
+              <div className="mt-10 w-full max-w-sm sm:max-w-md lg:hidden">
+                <div className="relative rounded-2xl overflow-hidden border border-border bg-card">
+                  <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 rounded-xl border border-border bg-card/90 px-2.5 py-1.5 text-xs font-semibold shadow-sm">
+                    <UserPlus className="h-3.5 w-3.5 text-primary" />
+                    <span>Novo lead</span>
+                  </div>
+                  <Image
+                    src="/images/product-banner.svg"
+                    alt="Pipeline Kanban do Corretor Studio"
+                    width={600}
+                    height={400}
+                    className="w-full h-auto"
+                  />
+                  <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-xl border border-border bg-card/90 px-2.5 py-1.5 text-xs font-semibold shadow-sm">
+                    <CalendarCheck className="h-3.5 w-3.5 text-primary" />
+                    <span>Reunião agendada</span>
+                  </div>
+                </div>
+                <p className="mt-3 text-center text-xs text-muted-foreground">
+                  Pipeline visual · leads organizados em tempo real
+                </p>
+              </div>
             </div>
 
             {/* Right: Product visual */}
             <div className="hidden lg:flex lg:col-span-5 items-center justify-center mt-12 lg:mt-0">
               <div className="relative w-full max-w-lg">
                 {/* Floating badge top-left */}
-                <div className="absolute -top-4 -left-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating">
+                <div className="absolute -top-4 -left-4 z-10 flex items-center gap-2 rounded-2xl border border-border bg-card px-3.5 py-2.5 text-sm font-semibold shadow-md">
                   <UserPlus className="h-4 w-4 text-primary" />
                   <span>Novo lead no pipeline</span>
                 </div>
 
                 {/* Product image */}
-                <div className="rounded-3xl overflow-hidden shadow-2xl landing-hero-floating">
+                <div className="rounded-3xl overflow-hidden border border-border shadow-lg">
                   <Image
                     src="/images/product-banner.svg"
                     alt="Corretor Studio — pipeline e gestão de leads"
@@ -227,7 +251,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating badge bottom-right */}
-                <div className="absolute -bottom-4 -right-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating">
+                <div className="absolute -bottom-4 -right-4 z-10 flex items-center gap-2 rounded-2xl border border-border bg-card px-3.5 py-2.5 text-sm font-semibold shadow-md">
                   <CalendarCheck className="h-4 w-4 text-primary" />
                   <span>Reunião agendada</span>
                 </div>

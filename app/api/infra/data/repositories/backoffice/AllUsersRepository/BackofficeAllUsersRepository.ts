@@ -201,7 +201,9 @@ function mapUserType(
       ? "member_pro"
       : rawSlug === "associate"
         ? "associate"
-        : "common"
+        : rawSlug === "guest"
+          ? "guest"
+          : "common"
   const accessExpiresAt = assignment?.accessExpiresAt ? assignment.accessExpiresAt.toISOString() : null
   const isExpired = slug === "member_pro" && accessExpiresAt !== null && new Date(accessExpiresAt).getTime() <= Date.now()
 
@@ -210,6 +212,8 @@ function mapUserType(
     label = isExpired ? "MEMBER PRO (EXPIRADO)" : "MEMBER PRO"
   } else if (slug === "associate") {
     label = "Associado"
+  } else if (slug === "guest") {
+    label = "Convidado"
   }
 
   return {
@@ -725,9 +729,16 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
     })
   }
 
+  async setHasPermanentSubscription(profileId: string, value: boolean): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { hasPermanentSubscription: value },
+    })
+  }
+
   async findSponsorMasterOptions(): Promise<BackofficeSponsorMasterOption[]> {
     const masters = await prisma.profile.findMany({
-      where: { isMaster: true },
+      where: { canSponsorAccounts: true },
       select: { id: true, fullName: true, email: true },
       orderBy: [{ fullName: "asc" }, { email: "asc" }],
     })

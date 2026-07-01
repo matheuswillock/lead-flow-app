@@ -3,6 +3,7 @@
 import { Loader2 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
+import { MessagingInboxLayout } from '@/components/messaging/MessagingInboxLayout'
 import { ConversationList } from '../components/ConversationList'
 import { MessagePanel } from '../components/MessagePanel'
 import { InboxSkeleton } from '../components/InboxSkeleton'
@@ -33,10 +34,7 @@ export function WhatsAppInboxContainer({ supabaseId }: WhatsAppInboxContainerPro
           <AlertDescription>Sincronizando conversas dos últimos 30 dias…</AlertDescription>
         </Alert>
       ) : null}
-      <div className="flex flex-1 overflow-hidden rounded-lg border border-border">
-        <ConversationList />
-        <MessagePanel />
-      </div>
+      <MessagingInboxLayout list={<ConversationList />} panel={<MessagePanel />} />
     </div>
   )
 }

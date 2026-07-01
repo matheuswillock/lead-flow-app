@@ -202,7 +202,6 @@ export function MonacoCodeEditor({
 
   useEffect(() => {
     return () => {
-      editorRef.current?.dispose()
       editorRef.current = null
     }
   }, [])

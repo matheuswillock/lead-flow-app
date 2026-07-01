@@ -1,0 +1,13 @@
+# Variáveis Vercel — produção (Lead Flow / Corretor Studio)
+# Project → Settings → Environment Variables → Production
+
+EVO_API_BASE_URL=https://evo.corretorstudio.com
+EVO_API_KEY=<mesmo AUTHENTICATION_API_KEY de .env.evolution na VPS>
+
+BACKOFFICE_N8N_OUTBOUND_URL=https://n8n.corretorstudio.com/webhook/bethania-outbound
+BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET=<mesmo valor de .env.n8n na VPS>
+
+EVO_BETHANIA_INSTANCE=bethania
+BACKOFFICE_BETHANIA_WHATSAPP_NUMBER=5511XXXXXXXXX
+
+# Não definir EVO_WEBHOOK_PUBLIC_URL em produção — o app usa NEXT_PUBLIC_APP_URL

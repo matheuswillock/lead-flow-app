@@ -5,7 +5,7 @@ export type BackofficeScheduleFunction = "sdr" | "closer"
 
 export type BackofficeAllUsersRoleFilter = "master" | "manager" | "operator"
 export type BackofficeAllUsersPlanFilter = "lifetime" | "monthly" | "trial" | "none"
-export type BackofficeAllUsersUserTypeFilter = "common" | "member_pro" | "associate"
+export type BackofficeAllUsersUserTypeFilter = "common" | "member_pro" | "associate" | "guest"
 
 export interface BackofficeAllUsersFiltersInput {
   query?: string
@@ -15,7 +15,7 @@ export interface BackofficeAllUsersFiltersInput {
 }
 
 export interface BackofficeAllUsersUserTypeRef {
-  slug: "common" | "member_pro" | "associate"
+  slug: "common" | "member_pro" | "associate" | "guest"
   label: string
   accessExpiresAt: string | null
   isExpired: boolean
@@ -30,7 +30,7 @@ export interface BackofficeSponsorMasterOption {
 }
 
 export interface BackofficeUpsertUserTypeAssignmentInput {
-  userType: "common" | "member_pro" | "associate"
+  userType: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt: Date | null
   assignedByProfileId: string | null
 }
@@ -200,6 +200,8 @@ export interface IBackofficeAllUsersRepository {
   ): Promise<BackofficeAllUsersUserTypeRef>
 
   updateSponsorMasterId(profileId: string, sponsorMasterId: string | null): Promise<void>
+
+  setHasPermanentSubscription(profileId: string, value: boolean): Promise<void>
 
   findSponsorMasterOptions(): Promise<BackofficeSponsorMasterOption[]>
 

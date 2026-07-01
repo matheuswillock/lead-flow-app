@@ -50,11 +50,15 @@ export async function POST(
     callerIsMaster: access.isMaster,
     callerRole: access.teamMember.role,
     callerProfileId: access.profileId,
+    access,
   })
 
   if (!output.isValid) {
     const isAuthz = output.errorMessages.some(
-      (m) => m.includes("só pode") || m.includes("já possui")
+      (m) =>
+        m.includes("só pode") ||
+        m.includes("já possui") ||
+        m.includes("Acesso negado")
     )
     return NextResponse.json(output, { status: isAuthz ? 403 : 500 })
   }

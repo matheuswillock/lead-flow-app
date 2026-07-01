@@ -27,7 +27,7 @@ export const DashboardProvider: React.FC<IDashboardProviderProps> = ({
 }) => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const { activeTeamId, activeTeam, teams } = useTeamContext();
+  const { activeTeamId, activeTeam, teams, isTeamMaster } = useTeamContext();
   const [teamScope, setTeamScopeState] = useState<DashboardTeamScope>('active');
   const masterIdRef = useRef<string | null>(null);
 
@@ -37,8 +37,9 @@ export const DashboardProvider: React.FC<IDashboardProviderProps> = ({
   }, [teams, activeTeam?.masterId]);
 
   const canUseAllTeamsScope = useMemo(() => {
-    return isManagerLikeRole(activeTeam?.role) && accountTeams.length > 1;
-  }, [activeTeam?.role, accountTeams.length]);
+    const isDelegated = isManagerLikeRole(activeTeam?.role) && !!activeTeam?.canViewAllTeams;
+    return (isTeamMaster || isDelegated) && accountTeams.length > 1;
+  }, [isTeamMaster, activeTeam?.role, activeTeam?.canViewAllTeams, accountTeams.length]);
 
   const teamScopeStorageKey = supabaseId ? `${TEAM_SCOPE_STORAGE_PREFIX}:${supabaseId}` : null;
 

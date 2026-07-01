@@ -19,6 +19,7 @@ import {
 import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 import { BackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
 import { incrementalBillingService } from "../../services/billing/IncrementalBillingService"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 import type { BillingOwnerProfile } from "../../services/billing/IIncrementalBillingService"
 import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncrementalBillingCoordinator"
 
@@ -464,6 +465,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             canCreateAccountUsers: member.canCreateAccountUsers,
             canManageAccountTeams: member.canManageAccountTeams,
             canTransferAccountLeads: member.canTransferAccountLeads,
+            canViewAllTeams: member.canViewAllTeams,
             ...(accessByProfileId.get(member.id) ?? {
               accessStatus: "pending_first_access",
               hasCompletedFirstAccess: false,
@@ -988,43 +990,50 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
 
         if (!belongsToMaster) {
           const billingOwner = master as BillingOwnerProfile
-          const projectedBilling = await incrementalBillingService.projectBilling(masterProfileId, {
-            additionalUsers: 1,
-          })
+          const bypassCharge = await memberProBillingUseCase.shouldBypassIncrementalCharge(
+            masterProfileId,
+            { forceCharge: data.generateCharge }
+          )
 
-          if (!billingOwner.hasPermanentSubscription && projectedBilling.billingDelta > 0) {
-            const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
-            if (chargeError) {
-              return new Output(false, [], [chargeError], null)
-            }
-
-            const pending = await backofficeIncrementalBillingCoordinator.createAddMemberPendingAction({
-              master: billingOwner,
-              teamId: data.teamId,
-              profileId: existingProfile.id,
-              profileEmail: existingProfile.email,
-              profileName: existingDisplayName,
-              role: data.role,
-              functions: data.functions,
-              ...delegatedPermissions,
-              initiatedBy: "backoffice",
+          if (!bypassCharge) {
+            const projectedBilling = await incrementalBillingService.projectBilling(masterProfileId, {
+              additionalUsers: 1,
             })
 
-            return new Output(
-              true,
-              ["Cobrança pendente criada. O usuário será adicionado após o pagamento."],
-              [],
-              {
-                requiresPayment: true,
-                pendingActionId: pending.pendingActionId,
-                checkoutUrl: pending.checkoutUrl,
-                totalCharge: pending.totalCharge,
-                remainingMonths: pending.remainingMonths,
+            if (!billingOwner.hasPermanentSubscription && projectedBilling.billingDelta > 0) {
+              const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
+              if (chargeError) {
+                return new Output(false, [], [chargeError], null)
               }
-            )
-          }
 
-          await this.platformUsersRepository.assertUserSubscriptionCapacity(masterProfileId)
+              const pending = await backofficeIncrementalBillingCoordinator.createAddMemberPendingAction({
+                master: billingOwner,
+                teamId: data.teamId,
+                profileId: existingProfile.id,
+                profileEmail: existingProfile.email,
+                profileName: existingDisplayName,
+                role: data.role,
+                functions: data.functions,
+                ...delegatedPermissions,
+                initiatedBy: "backoffice",
+              })
+
+              return new Output(
+                true,
+                ["Cobrança pendente criada. O usuário será adicionado após o pagamento."],
+                [],
+                {
+                  requiresPayment: true,
+                  pendingActionId: pending.pendingActionId,
+                  checkoutUrl: pending.checkoutUrl,
+                  totalCharge: pending.totalCharge,
+                  remainingMonths: pending.remainingMonths,
+                }
+              )
+            }
+
+            await this.platformUsersRepository.assertUserSubscriptionCapacity(masterProfileId)
+          }
         }
 
         await this.platformUsersRepository.addExistingProfileToTeam(
@@ -1052,13 +1061,18 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         })
 
         console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Usuário existente adicionado ao time:", email)
+        await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_member")
         return new Output(true, ["Usuário adicionado ao time com sucesso"], [], { profileId: existingProfile.id })
       }
 
       const billingOwner = master as BillingOwnerProfile
       const generateCharge = data.generateCharge === true
+      const bypassCharge = await memberProBillingUseCase.shouldBypassIncrementalCharge(
+        masterProfileId,
+        { forceCharge: generateCharge }
+      )
 
-      if (generateCharge && !billingOwner.hasPermanentSubscription) {
+      if (!bypassCharge && generateCharge && !billingOwner.hasPermanentSubscription) {
         const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
         if (chargeError) {
           return new Output(false, [], [chargeError], null)
@@ -1148,6 +1162,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       })
 
       console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Membro adicionado:", email)
+      await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_user")
       return new Output(true, ["Usuário convidado com sucesso"], [], { profileId })
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser]", error)
@@ -1221,8 +1236,12 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
 
       const billingOwner = master as BillingOwnerProfile
       const generateCharge = data.generateCharge === true
+      const bypassCharge = await memberProBillingUseCase.shouldBypassIncrementalCharge(
+        masterProfileId,
+        { forceCharge: generateCharge }
+      )
 
-      if (generateCharge && !billingOwner.hasPermanentSubscription) {
+      if (!bypassCharge && generateCharge && !billingOwner.hasPermanentSubscription) {
         const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
         if (chargeError) {
           return new Output(false, [], [chargeError], null)
@@ -1258,6 +1277,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       const team = await this.platformUsersRepository.createTeamForMaster(masterProfileId, name)
 
       console.info("[BackofficePlatformUsersUseCase][addTeamToMasterUser] Time criado:", team.id)
+      await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_team")
       return new Output(true, ["Time criado com sucesso"], [], { teamId: team.id, name: team.name })
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][addTeamToMasterUser]", error)
@@ -1322,6 +1342,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       await this.platformUsersRepository.deleteTeam(teamId, masterProfileId)
 
       console.info("[BackofficePlatformUsersUseCase][deleteTeamFromMasterUser] Time excluído:", teamId)
+      await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "remove_team")
       return new Output(true, ["Time excluído com sucesso"], [], { teamId })
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][deleteTeamFromMasterUser]", error)

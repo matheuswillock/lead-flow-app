@@ -24,6 +24,7 @@ function makeTeamAccess(role: UserRole, isMaster = false): teamAccessModule.Team
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
       canTransferAccountLeads: false,
+      canViewAllTeams: false,
       userTimezone: "America/Sao_Paulo",
       teamMember: { role, functions: [] as UserFunction[] },
     },

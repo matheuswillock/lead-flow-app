@@ -1,21 +1,29 @@
 # =============================================================================
-# docker-compose.evolution.yml — Evolution API para desenvolvimento local
+# docker-compose.evolution.yml — Evolution API (API + Redis)
 # =============================================================================
 #
-# Stack isolada do Lead Flow: API WhatsApp (Baileys) + Redis + Postgres dedicados.
-# O Postgres do Supabase (55322) NÃO é usado aqui.
+# Banco de dados: Supabase remoto (corretor-studio-evolution) via .env.evolution.
+# Não há Postgres no Docker — alivia RAM/CPU na VPS (Hostinger).
 #
 # Uso:
 #   cp .env.evolution.example .env.evolution
+#   # Preencha [PASSWORD] e AUTHENTICATION_API_KEY em .env.evolution
 #   bun run evo:up
 #   bun run evo:logs
 #   bun run evo:down
 #
-# API: http://127.0.0.1:8080
+# Dev local: API em http://127.0.0.1:8080 (EVOLUTION_API_BIND padrão)
+# VPS: EVOLUTION_API_BIND=127.0.0.1:8080 + Caddy (deploy/hostinger/Caddyfile)
+#       ou use docker-compose.vps.yml (bun run vps:up)
+#
 # Chave: AUTHENTICATION_API_KEY em .env.evolution (= EVO_API_KEY no .env do app)
 #
-# Webhooks: configure EVO_WEBHOOK_PUBLIC_URL=http://host.docker.internal:3000
-# no .env do app para a Evolution (Docker) alcançar o Next.js no host.
+# Webhooks dev: EVO_WEBHOOK_PUBLIC_URL=http://host.docker.internal:3000 no .env do app
+#
+# Migração VPS (stack antiga com Postgres local):
+#   docker compose -f docker-compose.evolution.yml --env-file .env.evolution down -v
+#   docker volume rm evolution_postgres 2>/dev/null || true
+#   bun run evo:up && bun run evo:logs
 #
 # =============================================================================
 
@@ -27,10 +35,8 @@ services:
     depends_on:
       redis:
         condition: service_started
-      evolution-postgres:
-        condition: service_started
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${EVOLUTION_API_BIND:-127.0.0.1:8080}:8080"
     volumes:
       - evolution_instances:/evolution/instances
     networks:
@@ -58,37 +64,9 @@ services:
     expose:
       - "6379"
 
-  evolution-postgres:
-    container_name: evolution_postgres
-    image: postgres:15-alpine
-    restart: unless-stopped
-    # Credenciais fixas — não use ${POSTGRES_PASSWORD} do host (colide com Supabase .env).
-    environment:
-      POSTGRES_DB: evolution
-      POSTGRES_USER: evolution
-      POSTGRES_PASSWORD: evolution
-    command:
-      - postgres
-      - -c
-      - max_connections=100
-      - -c
-      - listen_addresses=*
-    volumes:
-      - evolution_postgres:/var/lib/postgresql/data
-    networks:
-      - evolution-net
-    expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
 volumes:
   evolution_instances:
   evolution_redis:
-  evolution_postgres:
 
 networks:
   evolution-net:

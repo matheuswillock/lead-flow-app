@@ -4,27 +4,38 @@ import { div as MotionDiv } from "framer-motion/client"
 import { BarChart3, CalendarDays, Filter, UserPlus, Users2 } from "lucide-react"
 import type { ElementType } from "react"
 import { howItWorksSteps, HOW_IT_WORKS_SUBHEADING } from "@/lib/landing/how-it-works-data"
+import { useLandingReveal } from "@/lib/landing/use-landing-motion"
 
 const STEP_ICONS: ElementType[] = [UserPlus, Filter, CalendarDays, Users2, BarChart3]
 
 const steps = howItWorksSteps.map((s, i) => ({ ...s, icon: STEP_ICONS[i] }))
 
 export function HowItWorksSection() {
+  const headingMotion = useLandingReveal({ distance: 20, duration: 0.6 })
+  const desktopMotions = [
+    useLandingReveal({ distance: 20, duration: 0.5, delay: 0 }),
+    useLandingReveal({ distance: 20, duration: 0.5, delay: 0.1 }),
+    useLandingReveal({ distance: 20, duration: 0.5, delay: 0.2 }),
+    useLandingReveal({ distance: 20, duration: 0.5, delay: 0.3 }),
+    useLandingReveal({ distance: 20, duration: 0.5, delay: 0.4 }),
+  ]
+  const mobileMotions = [
+    useLandingReveal({ axis: "x", distance: -16, duration: 0.5, delay: 0 }),
+    useLandingReveal({ axis: "x", distance: -16, duration: 0.5, delay: 0.08 }),
+    useLandingReveal({ axis: "x", distance: -16, duration: 0.5, delay: 0.16 }),
+    useLandingReveal({ axis: "x", distance: -16, duration: 0.5, delay: 0.24 }),
+    useLandingReveal({ axis: "x", distance: -16, duration: 0.5, delay: 0.32 }),
+  ]
+
   return (
     <section id="how-it-works" className="relative py-20 md:py-28">
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-20 landing-how-orbs" />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
-        <MotionDiv
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-16"
-        >
+        <MotionDiv {...headingMotion} className="text-center mb-16">
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
             Como funciona o{" "}
-            <span className="landing-primary-gradient">Corretor Studio</span>
+            <span className="text-primary">Corretor Studio</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
             {HOW_IT_WORKS_SUBHEADING}
@@ -41,10 +52,7 @@ export function HowItWorksSection() {
             {steps.map((step, idx) => (
               <MotionDiv
                 key={step.number}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: idx * 0.1 }}
+                {...desktopMotions[idx]}
                 className="flex flex-col items-center text-center px-2"
               >
                 <div className="relative mb-5">
@@ -62,14 +70,11 @@ export function HowItWorksSection() {
           </div>
         </div>
 
-        <div className="lg:hidden space-y-8">
+        <div className="lg:hidden flex flex-col gap-8">
           {steps.map((step, idx) => (
             <MotionDiv
               key={step.number}
-              initial={{ opacity: 0, x: -16 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: idx * 0.08 }}
+              {...mobileMotions[idx]}
               className="flex items-start gap-5"
             >
               <div className="flex-shrink-0 flex flex-col items-center">

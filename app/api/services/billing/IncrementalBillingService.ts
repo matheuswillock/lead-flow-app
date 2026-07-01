@@ -6,6 +6,7 @@ import { buildBillingSummary } from "./TeamBillingService";
 import type {
   BillingOwnerProfile,
   CreateIncrementalChargeInput,
+  EnsureOrSyncRecurringSubscriptionInput,
   IIncrementalBillingService,
   IncrementalBillingType,
   IncrementalChargeCustomerOverride,
@@ -32,13 +33,25 @@ type AsaasSubscriptionDetails = {
 
 type AsaasSubscriptionCreationPayload = {
   customer: string;
-  billingType: "CREDIT_CARD";
+  billingType: "CREDIT_CARD" | "PIX";
   value: number;
   cycle: AsaasCycle;
   nextDueDate: string;
   description?: string;
   externalReference: string;
-  creditCardToken: string;
+  creditCardToken?: string;
+};
+
+const isRealAsaasSubscriptionId = (subscriptionId: string | null | undefined): boolean => {
+  if (!subscriptionId) return false;
+  if (subscriptionId.startsWith("external-adhesion-")) return false;
+  if (subscriptionId.startsWith("adhesion-")) return false;
+  return true;
+};
+
+const formatDueDate = (value: Date | string, timezone: string): string => {
+  const date = value instanceof Date ? value : new Date(value);
+  return formatIntimezone(date, "yyyy-MM-dd", timezone);
 };
 
 const isBillingType = (value: string): value is IncrementalBillingType =>
@@ -116,7 +129,7 @@ const getAsaasSubscription = async (subscriptionId: string): Promise<AsaasSubscr
 
 const updateAsaasSubscription = async (
   subscriptionId: string,
-  data: { value: number; updatePendingPayments: boolean }
+  data: { value: number; updatePendingPayments: boolean; nextDueDate?: string }
 ): Promise<void> => {
   await asaasFetch(`${asaasApi.subscriptions}/${subscriptionId}`, {
     method: "PUT",
@@ -320,28 +333,47 @@ export class IncrementalBillingService implements IIncrementalBillingService {
   }
 
   async syncRecurringSubscription(input: SyncRecurringSubscriptionInput): Promise<void> {
-    const { master, targetRecurringTotal, reason } = input;
+    const { master, targetRecurringTotal, reason, nextDueDateOverride } = input;
 
-    if (master.hasPermanentSubscription || !master.asaasSubscriptionId) {
+    if (master.hasPermanentSubscription || !isRealAsaasSubscriptionId(master.asaasSubscriptionId)) {
       return;
     }
 
+    const ownerTz = master.timezone ?? DEFAULT_TZ;
+    const formattedOverride =
+      nextDueDateOverride != null ? formatDueDate(nextDueDateOverride, ownerTz) : undefined;
+
     const currentSubscription = await this.getCurrentSubscription(master);
     const billingType = normalizeBillingType(currentSubscription.billingType);
+    const updatePayload: { value: number; updatePendingPayments: boolean; nextDueDate?: string } = {
+      value: roundCurrency(targetRecurringTotal),
+      updatePendingPayments: true,
+    };
+    if (formattedOverride) {
+      updatePayload.nextDueDate = formattedOverride;
+    }
 
     if (billingType !== "CREDIT_CARD") {
-      await updateAsaasSubscription(master.asaasSubscriptionId, {
-        value: roundCurrency(targetRecurringTotal),
-        updatePendingPayments: true,
-      });
+      await updateAsaasSubscription(master.asaasSubscriptionId!, updatePayload);
+      if (formattedOverride) {
+        await billingRepository.updateSubscriptionData(master.id, {
+          asaasSubscriptionId: master.asaasSubscriptionId!,
+          subscriptionNextDueDate: new Date(formattedOverride),
+          subscriptionCycle: currentSubscription.cycle || master.subscriptionCycle || "MONTHLY",
+        });
+      }
       return;
     }
 
     try {
-      await updateAsaasSubscription(master.asaasSubscriptionId, {
-        value: roundCurrency(targetRecurringTotal),
-        updatePendingPayments: true,
-      });
+      await updateAsaasSubscription(master.asaasSubscriptionId!, updatePayload);
+      if (formattedOverride) {
+        await billingRepository.updateSubscriptionData(master.id, {
+          asaasSubscriptionId: master.asaasSubscriptionId!,
+          subscriptionNextDueDate: new Date(formattedOverride),
+          subscriptionCycle: currentSubscription.cycle || master.subscriptionCycle || "MONTHLY",
+        });
+      }
       return;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
@@ -364,7 +396,8 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       );
     }
 
-    const nextDueDate = this.resolveNextDueDate(master, currentSubscription);
+    const nextDueDate =
+      formattedOverride ?? this.resolveNextDueDate(master, currentSubscription);
     const newSubscription = await createAsaasSubscription({
       customer: await this.ensureCustomer(master),
       billingType: "CREDIT_CARD",
@@ -387,6 +420,78 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     } catch (error) {
       console.error("[IncrementalBillingService] Falha ao cancelar assinatura antiga:", error);
     }
+  }
+
+  async ensureOrSyncRecurringSubscription(
+    input: EnsureOrSyncRecurringSubscriptionInput
+  ): Promise<void> {
+    const { master, defaultBillingType = "PIX" } = input;
+
+    if (master.hasPermanentSubscription) {
+      return;
+    }
+
+    if (isRealAsaasSubscriptionId(master.asaasSubscriptionId)) {
+      await this.syncRecurringSubscription(input);
+      return;
+    }
+
+    const ownerTz = master.timezone ?? DEFAULT_TZ;
+    const nextDueDate =
+      input.nextDueDateOverride != null
+        ? formatDueDate(input.nextDueDateOverride, ownerTz)
+        : formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
+
+    const cycle = normalizeAsaasCycle(master.subscriptionCycle);
+    const customerId = await this.ensureCustomer(master);
+    const description = input.reason || "Assinatura Corretor Studio";
+
+    if (defaultBillingType === "CREDIT_CARD" && master.asaasSubscriptionId) {
+      try {
+        const currentSubscription = await this.getCurrentSubscription(master);
+        const creditCardToken = currentSubscription.creditCard?.creditCardToken;
+        if (creditCardToken) {
+          const newSubscription = await createAsaasSubscription({
+            customer: customerId,
+            billingType: "CREDIT_CARD",
+            value: roundCurrency(input.targetRecurringTotal),
+            cycle,
+            nextDueDate,
+            description,
+            externalReference: `manager-${master.id}-${Date.now()}`,
+            creditCardToken,
+          });
+
+          await billingRepository.updateSubscriptionData(master.id, {
+            asaasSubscriptionId: newSubscription.subscriptionId,
+            subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+            subscriptionCycle: newSubscription.data.cycle || cycle,
+          });
+          return;
+        }
+      } catch (error) {
+        console.info(
+          "[IncrementalBillingService][ensureOrSyncRecurringSubscription] Fallback para PIX:",
+          error
+        );
+      }
+    }
+
+    const newSubscription = await createAsaasSubscription({
+      customer: customerId,
+      billingType: "PIX",
+      value: roundCurrency(input.targetRecurringTotal),
+      cycle,
+      nextDueDate,
+      description,
+      externalReference: `manager-${master.id}-${Date.now()}`,
+    });
+
+    await billingRepository.updateSubscriptionData(master.id, {
+      asaasSubscriptionId: newSubscription.subscriptionId,
+      subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+      subscriptionCycle: newSubscription.data.cycle || cycle,
+    });
   }
 
   private async ensureCustomer(

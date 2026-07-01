@@ -5,6 +5,7 @@ import { ArrowRight, BarChart2, CalendarClock, CheckCircle2, FileText, Mail, Upl
 import Link from "next/link"
 import type { ElementType } from "react"
 import { emailBenefitsData, EMAIL_SPOTLIGHT_HEADING, EMAIL_SPOTLIGHT_SUBHEADING } from "@/lib/landing/email-spotlight-data"
+import { useLandingReveal } from "@/lib/landing/use-landing-motion"
 
 const BENEFIT_ICONS: ElementType[] = [FileText, Upload, CalendarClock, BarChart2]
 
@@ -24,34 +25,33 @@ const barStyles = [
 ]
 
 export function EmailCampaignsSpotlight() {
+  const badgeMotion = useLandingReveal({ distance: 16, duration: 0.5 })
+  const headingMotion = useLandingReveal({ distance: 16, duration: 0.6 })
+  const previewMotion = useLandingReveal({ axis: "x", distance: -20, duration: 0.6 })
+  const listMotion = useLandingReveal({ axis: "x", distance: 20, duration: 0.6 })
+  const benefitMotions = [
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0 }),
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0.08 }),
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0.16 }),
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0.24 }),
+  ]
+
   return (
     <section id="email-campaigns" className="relative py-20 md:py-28 overflow-hidden">
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-20 landing-email-orbs" />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
-        <MotionDiv
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="flex justify-center mb-4"
-        >
+        <MotionDiv {...badgeMotion} className="flex justify-center mb-4">
           <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold landing-pill-badge">
             <Mail className="h-3.5 w-3.5" />
             Em breve
           </div>
         </MotionDiv>
 
-        <MotionDiv
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-14"
-        >
+        <MotionDiv {...headingMotion} className="text-center mb-14">
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
             {EMAIL_SPOTLIGHT_HEADING.split("em breve no CRM")[0]}
-            <span className="landing-primary-gradient">em breve no CRM</span>
+            <span className="text-primary">em breve no CRM</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
             {EMAIL_SPOTLIGHT_SUBHEADING}
@@ -59,14 +59,8 @@ export function EmailCampaignsSpotlight() {
         </MotionDiv>
 
         <div className="lg:grid lg:grid-cols-2 lg:gap-16 lg:items-start">
-          <MotionDiv
-            initial={{ opacity: 0, x: -20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="mb-12 lg:mb-0"
-          >
-            <div className="rounded-3xl p-6 shadow-2xl landing-surface-card">
+          <MotionDiv {...previewMotion} className="mb-12 lg:mb-0">
+            <div className="rounded-3xl border border-border bg-card p-6">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-primary/15 text-primary">
@@ -94,7 +88,7 @@ export function EmailCampaignsSpotlight() {
                 ))}
               </div>
 
-              <div className="space-y-3">
+              <div className="flex flex-col gap-3">
                 {barStyles.map((bar) => (
                   <div key={bar.label}>
                     <div className="flex justify-between text-xs text-muted-foreground mb-1">
@@ -110,20 +104,12 @@ export function EmailCampaignsSpotlight() {
             </div>
           </MotionDiv>
 
-          <MotionDiv
-            initial={{ opacity: 0, x: 20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-          >
-            <ul className="space-y-6 mb-8">
+          <MotionDiv {...listMotion}>
+            <ul className="flex flex-col gap-6 mb-8">
               {benefits.map((benefit, idx) => (
                 <li key={benefit.title} className="flex items-start gap-4">
                   <MotionDiv
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.4, delay: idx * 0.08 }}
+                    {...benefitMotions[idx]}
                     className="flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/12 text-primary"
                   >
                     <benefit.icon className="h-5 w-5" />
@@ -131,7 +117,8 @@ export function EmailCampaignsSpotlight() {
                   <div>
                     <p className="font-semibold text-foreground">{benefit.title}</p>
                     <p className="text-sm text-muted-foreground mt-0.5">
-                      {benefit.description} <span className="font-semibold landing-primary-gradient">(em breve)</span>
+                      {benefit.description}{" "}
+                      <span className="font-semibold text-primary">(em breve)</span>
                     </p>
                   </div>
                 </li>
@@ -153,7 +140,7 @@ export function EmailCampaignsSpotlight() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Você pode solicitar acesso antecipado na demonstração. Avisaremos assim que a funcionalidade for liberada.
                 </p>
-                <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                <ul className="mt-4 flex flex-col gap-2 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
                     Lista de prioridade para clientes da base

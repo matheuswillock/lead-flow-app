@@ -5,6 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { PLAN_CREDITS } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { addMonthsInTz, startOfMonthInTz } from "@/lib/dates"
+import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 
 const PLAN_PRICES: Record<EmailCreditPlan, number> = {
   starter: 25.0,
@@ -17,6 +18,16 @@ export class EmailCreditUseCase {
   async subscribe(plan: EmailCreditPlan, ctx: TeamContext): Promise<Output> {
     try {
       const { profileId } = ctx
+
+      const isBetaExempt = await featureAccessRepository.resolveEmailBetaAccess(ctx)
+      if (isBetaExempt) {
+        return new Output(
+          false,
+          [],
+          ["Usuários no grupo Beta de e-mail não precisam assinar plano de créditos"],
+          null
+        )
+      }
 
       // Verificar se já tem assinatura ativa
       const existing = await prisma.emailCreditSubscription.findUnique({
@@ -89,6 +100,23 @@ export class EmailCreditUseCase {
   async getStatus(ctx: TeamContext): Promise<Output> {
     try {
       const { profileId } = ctx
+      const isBetaExempt = await featureAccessRepository.resolveEmailBetaAccess(ctx)
+
+      if (isBetaExempt) {
+        return new Output(true, [], [], {
+          hasSubscription: false,
+          isBetaExempt: true,
+          plan: null,
+          monthlyCredits: 0,
+          creditsUsed: 0,
+          creditsAvailable: 0,
+          overageCount: 0,
+          overageCharged: 0,
+          currentPeriodEnd: null,
+          pricePerMonth: null,
+          availablePlans: this.getAvailablePlans(),
+        })
+      }
 
       const subscription = await prisma.emailCreditSubscription.findUnique({
         where: { profileId },
@@ -106,6 +134,7 @@ export class EmailCreditUseCase {
       if (!subscription || subscription.status !== "active") {
         return new Output(true, [], [], {
           hasSubscription: false,
+          isBetaExempt: false,
           plan: null,
           monthlyCredits: 0,
           creditsUsed: 0,
@@ -124,6 +153,7 @@ export class EmailCreditUseCase {
 
       return new Output(true, [], [], {
         hasSubscription: true,
+        isBetaExempt: false,
         plan: subscription.plan,
         monthlyCredits: subscription.monthlyCredits,
         creditsUsed,

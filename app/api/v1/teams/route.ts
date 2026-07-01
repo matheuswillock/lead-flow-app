@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -207,6 +208,13 @@ export async function GET(request: NextRequest) {
 
     const activeTeamIds = new Set(memberships.map((m) => m.team.id));
 
+    const memberTeamIds = memberships.map((m) => m.team.id);
+    const transferRoutes = await prisma.teamTransferRoute.findMany({
+      where: { sourceTeamId: { in: memberTeamIds } },
+      select: { sourceTeamId: true },
+    });
+    const teamsWithRoutes = new Set(transferRoutes.map((r) => r.sourceTeamId));
+
     const sponsoredTeams = await prisma.team.findMany({
       where: {
         master: {
@@ -258,6 +266,8 @@ export async function GET(request: NextRequest) {
         canCreateAccountUsers: membership.canCreateAccountUsers,
         canManageAccountTeams: membership.canManageAccountTeams,
         canTransferAccountLeads: membership.canTransferAccountLeads,
+        canViewAllTeams: membership.canViewAllTeams,
+        hasTransferRoutes: teamsWithRoutes.has(membership.team.id),
         membershipCreatedAt: membership.createdAt,
         isPending: false,
         pendingPayment: pendingByName.get(membership.team.name) ?? null,
@@ -289,6 +299,8 @@ export async function GET(request: NextRequest) {
           canCreateAccountUsers: false,
           canManageAccountTeams: true,
           canTransferAccountLeads: false,
+          canViewAllTeams: false,
+          hasTransferRoutes: false,
           membershipCreatedAt: team.createdAt,
           isPending: false,
           pendingPayment: null,
@@ -327,6 +339,8 @@ export async function GET(request: NextRequest) {
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
           canTransferAccountLeads: false,
+          canViewAllTeams: false,
+          hasTransferRoutes: false,
           membershipCreatedAt: action.createdAt,
           isPending: true,
           pendingPayment: {
@@ -444,6 +458,23 @@ export async function POST(request: NextRequest) {
         masterFunctions,
         requesterFunctions,
       });
+
+      return NextResponse.json(
+        new Output(true, ["Time criado com sucesso"], [], { teamId: team.id }),
+        { status: 201 }
+      );
+    }
+
+    if (await memberProBillingUseCase.shouldBypassIncrementalCharge(managerId)) {
+      const team = await createTeamForAccount({
+        teamName: validatedData.name,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        masterFunctions,
+        requesterFunctions,
+      });
+
+      await memberProBillingUseCase.syncUsageToSubscription(managerId, "add_team");
 
       return NextResponse.json(
         new Output(true, ["Time criado com sucesso"], [], { teamId: team.id }),

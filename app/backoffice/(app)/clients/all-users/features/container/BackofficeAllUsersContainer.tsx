@@ -74,6 +74,8 @@ const USER_TYPE_OPTIONS: { value: BackofficeAllUsersUserTypeFilter | "all"; labe
   { value: "all", label: "Todos os tipos" },
   { value: "common", label: "Comum" },
   { value: "member_pro", label: "Member PRO" },
+  { value: "associate", label: "Associado" },
+  { value: "guest", label: "Convidado" },
 ]
 
 function formatDate(value: string, tz: string) {
@@ -250,6 +252,7 @@ export function BackofficeAllUsersContainer() {
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
       canTransferAccountLeads: false,
+      canViewAllTeams: false,
       accessStatus: item.accessStatus,
       hasCompletedFirstAccess: item.hasCompletedFirstAccess,
       lastSignInAt: item.lastSignInAt,

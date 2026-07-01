@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { taskRepository } from "@/app/api/infra/data/repositories/task/TaskRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
 import { taskGoogleCalendarService } from "@/app/api/services/taskGoogleCalendar/TaskGoogleCalendarService";
 import type { ICreateTaskUseCase, CreateTaskInput } from "./ICreateTaskUseCase";
 
@@ -85,6 +86,16 @@ export class CreateTaskUseCase implements ICreateTaskUseCase {
           body: task.body,
           recipientProfileIds: notifyRecipients,
         });
+
+        for (const profileId of notifyRecipients) {
+          await studioBotOutboxService.enqueueTaskDue({
+            profileId,
+            leadId: lead.id,
+            leadName: lead.name,
+            taskId: task.id,
+            title: task.title,
+          });
+        }
       } catch (err) {
         console.error("[CreateTaskUseCase] Erro ao criar notificações de tarefa:", err);
       }

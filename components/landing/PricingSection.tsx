@@ -2,25 +2,49 @@
 
 import { useMemo, useState, type FormEvent } from "react"
 import { div as MotionDiv } from "framer-motion/client"
-import { ArrowRight, BarChart3, CalendarDays, CheckCircle2, Kanban, Mail, MessageCircle, Users2 } from "lucide-react"
+import {
+  ArrowRight,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  Headphones,
+  Kanban,
+  Lock,
+  Mail,
+  MessageCircle,
+  Sparkles,
+  Timer,
+  Users2,
+} from "lucide-react"
 import { toast } from "sonner"
 import { isValidPhone, maskPhone, unmask } from "@/lib/masks"
+import { useLandingReveal } from "@/lib/landing/use-landing-motion"
 
 const benefits = [
   { icon: Kanban, text: "Pipeline Kanban visual e intuitivo" },
   { icon: CalendarDays, text: "Integração nativa com Google Calendar" },
   { icon: Users2, text: "Gestão de times: SDR, Closer e Manager" },
   { icon: BarChart3, text: "Dashboard com métricas em tempo real" },
-  { icon: Mail, text: "Modulo de campanhas de email (em breve)" },
+  { icon: Mail, text: "Módulo de campanhas de email (em breve)" },
   { icon: MessageCircle, text: "Suporte em português, sem complicação" },
 ]
 
+const trustBadges = [
+  { icon: Lock, label: "LGPD" },
+  { icon: Headphones, label: "Suporte PT-BR" },
+  { icon: Timer, label: "Resposta em 24h" },
+  { icon: Sparkles, label: "Demo gratuita" },
+]
 
 export function PricingSection() {
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [whatsapp, setWhatsapp] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const headingMotion = useLandingReveal({ distance: 20, duration: 0.6 })
+  const leftMotion = useLandingReveal({ axis: "x", distance: -20, duration: 0.6 })
+  const rightMotion = useLandingReveal({ axis: "x", distance: 20, duration: 0.6 })
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
@@ -68,13 +92,7 @@ export function PricingSection() {
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-20 landing-pricing-orbs" />
 
       <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 lg:px-10">
-        <MotionDiv
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
-        >
+        <MotionDiv {...headingMotion} className="text-center mb-12">
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
             Agende uma <span className="text-primary">demonstração</span>
           </h2>
@@ -84,19 +102,13 @@ export function PricingSection() {
         </MotionDiv>
 
         <div className="lg:grid lg:grid-cols-2 lg:gap-14 lg:items-start">
-          <MotionDiv
-            initial={{ opacity: 0, x: -20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="mb-10 lg:mb-0"
-          >
+          <MotionDiv {...leftMotion} className="mb-10 lg:mb-0">
             <h3 className="text-xl font-bold mb-2">Por que usar o Corretor Studio?</h3>
             <p className="text-muted-foreground mb-7">
               Veja o que os corretores de alta performance têm de diferente.
             </p>
 
-            <ul className="space-y-4 mb-8">
+            <ul className="flex flex-col gap-4 mb-8">
               {benefits.map((benefit) => (
                 <li key={benefit.text} className="flex items-center gap-3">
                   <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
@@ -107,46 +119,58 @@ export function PricingSection() {
                       ? benefit.text.replace("(em breve)", "")
                       : benefit.text}
                     {benefit.text.includes("(em breve)") && (
-                      <span className="ml-1 font-semibold landing-primary-gradient">(em breve)</span>
+                      <span className="ml-1 font-semibold text-primary">(em breve)</span>
                     )}
                   </span>
                 </li>
               ))}
             </ul>
 
-            {/*
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               {trustBadges.map((badge) => (
                 <div
                   key={badge.label}
-                  className="flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-2.5 bg-card/60"
+                  className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 bg-card"
                 >
-                  <badge.icon className="h-4 w-4 flex-shrink-0 text-primary" />
+                  <badge.icon className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
                   <span className="text-xs font-semibold">{badge.label}</span>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 rounded-2xl border border-primary/25 p-5 bg-primary/5 landing-surface-card-soft">
-              <p className="text-sm font-semibold mb-1">Planos a partir de</p>
-              <p className="text-3xl font-extrabold text-primary">
-                R$ 59,90<span className="text-base font-normal text-muted-foreground">/mês</span>
+            <div className="mt-4 rounded-xl border border-primary/25 p-4 bg-primary/5">
+              <p className="text-xs font-semibold text-muted-foreground mb-0.5">Planos a partir de</p>
+              <p className="text-2xl font-extrabold text-primary">
+                R$ 59,90<span className="text-sm font-normal text-muted-foreground">/mês</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Plano semestral · R$ 79,90/mês no plano mensal · + R$ 19,90/operador
+                Plano semestral · R$ 79,90/mês no mensal · + R$ 19,90/operador
               </p>
             </div>
-            */}
           </MotionDiv>
 
-          <MotionDiv
-            initial={{ opacity: 0, x: 20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-          >
-            <div className="rounded-3xl border border-border p-8 sm:p-10 shadow-2xl backdrop-blur landing-surface-card">
-              <form className="space-y-5" onSubmit={handleSubmit}>
+          <MotionDiv {...rightMotion}>
+            <div className="mb-4 flex flex-wrap gap-2 lg:hidden">
+              {trustBadges.map((badge) => (
+                <span
+                  key={badge.label}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium"
+                >
+                  <badge.icon className="h-3 w-3 text-primary" />
+                  {badge.label}
+                </span>
+              ))}
+            </div>
+
+            <div className="mb-4 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 lg:hidden">
+              <p className="text-xs text-muted-foreground">Planos a partir de</p>
+              <p className="text-xl font-extrabold text-primary leading-tight">
+                R$ 59,90<span className="text-sm font-normal text-muted-foreground">/mês</span>
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-border bg-card p-8 sm:p-10">
+              <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
                 <div>
                   <label className="text-sm font-semibold text-foreground/90">
                     Nome completo

@@ -1,0 +1,104 @@
+{
+  "id": "f1b2c3d4-0001-4000-8000-000000000099",
+  "name": "bethania-push-outbound",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bethania-outbound",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "f1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Outbound Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "bethania-outbound"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.body ?? $input.first().json;\nconst eventType = raw.eventType ?? '';\nconst instance = $env.EVO_BETHANIA_INSTANCE || 'bethania';\nconst base = ($env.EVO_API_BASE_URL || '').replace(/\\/$/, '');\nconst apiKey = $env.EVO_API_KEY || '';\n\nlet action = 'noop';\nlet request = null;\n\nif (eventType === 'studio_bot.channel_reconnect') {\n  action = 'evolution';\n  request = {\n    method: 'GET',\n    url: `${base}/instance/connect/${encodeURIComponent(instance)}`,\n    headers: { apikey: apiKey },\n  };\n} else if (eventType === 'studio_bot.channel_sync_profile') {\n  action = 'evolution';\n  const updates = [];\n  if (raw.displayName) {\n    updates.push({\n      method: 'POST',\n      url: `${base}/chat/updateProfileName/${encodeURIComponent(instance)}`,\n      headers: { apikey: apiKey, 'Content-Type': 'application/json' },\n      body: { name: raw.displayName },\n    });\n  }\n  if (raw.aboutText) {\n    updates.push({\n      method: 'POST',\n      url: `${base}/chat/updateProfileStatus/${encodeURIComponent(instance)}`,\n      headers: { apikey: apiKey, 'Content-Type': 'application/json' },\n      body: { status: raw.aboutText },\n    });\n  }\n  request = updates[0] ?? null;\n} else if (eventType === 'studio_bot.test_ping') {\n  action = 'ping';\n} else if (raw.normalizedPhone && raw.message) {\n  action = 'evolution';\n  const phone = String(raw.normalizedPhone).replace(/\\D/g, '');\n  const text = String(raw.message);\n  if (raw.requiresHsm) {\n    request = {\n      method: 'POST',\n      url: `${base}/message/sendTemplate/${encodeURIComponent(instance)}`,\n      headers: { apikey: apiKey, 'Content-Type': 'application/json' },\n      body: {\n        number: phone,\n        name: 'bethania_meeting_reminder',\n        language: 'pt_BR',\n        components: [\n          {\n            type: 'body',\n            parameters: [{ type: 'text', text }],\n          },\n        ],\n      },\n    };\n  } else {\n    request = {\n      method: 'POST',\n      url: `${base}/message/sendText/${encodeURIComponent(instance)}`,\n      headers: { apikey: apiKey, 'Content-Type': 'application/json' },\n      body: { number: phone, text, linkPreview: true },\n    };\n  }\n}\n\nreturn [{ json: { action, request, eventType, raw } }];"
+      },
+      "id": "f1b2c3d4-0001-4000-8000-000000000002",
+      "name": "Route Outbound Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-evolution",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "evolution",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1b2c3d4-0001-4000-8000-000000000003",
+      "name": "Needs Evolution Call",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.request.method }}",
+        "url": "={{ $json.request.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.request.headers.apikey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request.body ?? {}) }}",
+        "options": {}
+      },
+      "id": "f1b2c3d4-0001-4000-8000-000000000004",
+      "name": "Evolution API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, -80]
+    }
+  ],
+  "connections": {
+    "Outbound Webhook": {
+      "main": [[{ "node": "Route Outbound Event", "type": "main", "index": 0 }]]
+    },
+    "Route Outbound Event": {
+      "main": [[{ "node": "Needs Evolution Call", "type": "main", "index": 0 }]]
+    },
+    "Needs Evolution Call": {
+      "main": [
+        [{ "node": "Evolution API", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "bethania" }]
+}

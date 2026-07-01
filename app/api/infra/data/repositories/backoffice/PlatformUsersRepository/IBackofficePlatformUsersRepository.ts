@@ -23,6 +23,7 @@ export interface TeamMemberRecord {
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
   canTransferAccountLeads: boolean
+  canViewAllTeams: boolean
 }
 
 export interface MasterPlatformUserRecord {

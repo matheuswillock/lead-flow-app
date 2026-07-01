@@ -35,7 +35,14 @@ class CreateWhatsAppConfigUseCase {
       const addonDenied = await this.assertWhatsAppAddon(input.teamId)
       if (addonDenied) return addonDenied
 
-      const result = await this.service.createConfig(input)
+      const result = await this.service.createConfig({
+        teamId: input.teamId,
+        profileId: input.profileId,
+        usageLimitMonthly: input.usageLimitMonthly,
+        hostBaseUrl: input.hostBaseUrl,
+        reuseFromTeamId: input.reuseFromTeamId,
+        callerIsMaster: input.callerIsMaster,
+      })
       return new Output(true, ["Configuração criada com sucesso"], [], result)
     } catch (error) {
       console.error("[CreateWhatsAppConfigUseCase][execute]", error)

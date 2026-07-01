@@ -1,16 +1,14 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
   Check,
-  CodeXml,
   Ellipsis,
   FileText,
   Mail,
-  PencilLine,
   Save,
   Send,
   Undo2,
@@ -36,26 +34,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
 import { TemplateTestDialog } from "../components/TemplateTestDialog";
-import type { EditorMode } from "../components/EditorStudioTypes";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
-
-const editorModeTabTriggerClassName = cn(
-  "size-9 p-0 text-muted-foreground",
-  "data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
-);
 
 function StatusBadge({ approvalStatus, status }: { approvalStatus: string | undefined; status: string | undefined }) {
   if (approvalStatus === "approved" && status !== "published") {
@@ -128,7 +112,6 @@ export function EditorContainer() {
   const [reviewNote, setReviewNote] = useState("");
   const [testOpen, setTestOpen] = useState(false);
   const [testHtml, setTestHtml] = useState("");
-  const [editorMode, setEditorMode] = useState<EditorMode>("blocks");
 
   useEffect(() => {
     if (loading) return;
@@ -136,17 +119,6 @@ export function EditorContainer() {
     setOverride({ label });
     return () => setOverride(null);
   }, [loading, template, draft.name, setOverride]);
-
-  const handleEditorModeChange = useCallback((mode: EditorMode) => {
-    setEditorMode(mode);
-  }, []);
-
-  const handleEditorModeToggle = useCallback((value: string) => {
-    if (value !== "blocks" && value !== "html") return;
-    const nextMode = value as EditorMode;
-    if (nextMode === editorMode) return;
-    editorRef.current?.requestModeSwitch(nextMode);
-  }, [editorMode]);
 
   const handleConfirmReject = async () => {
     if (!reviewNote.trim()) return;
@@ -204,38 +176,6 @@ export function EditorContainer() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <TooltipProvider delayDuration={0}>
-              <Tabs value={editorMode} onValueChange={handleEditorModeToggle}>
-                <TabsList className="h-9">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <TabsTrigger
-                        value="blocks"
-                        className={editorModeTabTriggerClassName}
-                        aria-label="Blocos"
-                        disabled={saving}
-                      >
-                        <PencilLine />
-                      </TabsTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Blocos</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <TabsTrigger
-                        value="html"
-                        className={editorModeTabTriggerClassName}
-                        aria-label="HTML"
-                        disabled={saving}
-                      >
-                        <CodeXml />
-                      </TabsTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>HTML</TooltipContent>
-                  </Tooltip>
-                </TabsList>
-              </Tabs>
-            </TooltipProvider>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -348,7 +288,7 @@ export function EditorContainer() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          <EmailEditorStudio ref={editorRef} onModeChange={handleEditorModeChange} />
+          <EmailEditorStudio ref={editorRef} />
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { Output } from "@/lib/output"
 import type { IWhatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { normalizePhone, buildPeriodKey, normalizeRemoteJid, resolveNormalizedPhone, isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
+import { buildPeriodKey, normalizeRemoteJid, resolveNormalizedPhone, isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
 import {
   buildMessagePreview,
   normalizeMessageStatus,
@@ -9,6 +9,11 @@ import {
   parseEvoMessageContent,
 } from "@/app/api/services/whatsapp/evo/parseEvoMessageContent"
 import { toQrCodeImageUrl } from "@/app/api/services/whatsapp/qrCodeUtils"
+import {
+  assertNoConflictingPhoneOnSameTeam,
+  assertPhoneNumberCanConnect,
+  toStoredNormalizedPhone,
+} from "@/app/api/services/whatsapp/WhatsAppPhonePolicy"
 import { syncWhatsAppHistoryUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsAppHistoryUseCase"
 import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsappMessageToCdpUseCase"
 import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
@@ -145,16 +150,18 @@ class ProcessEvoWebhookUseCase {
     const normalizedPhone = resolveNormalizedPhone(remoteJid, phoneRaw)
     const isGroup = isGroupChat(remoteJid)
 
+    const routed = await this.resolveTargetTeamContext(teamId, configId, normalizedPhone, isGroup)
+
     const conversation = await this.repository.findOrCreateConversation({
-      teamId,
-      configId,
+      teamId: routed.teamId,
+      configId: routed.configId,
       externalChatId: remoteJid,
       contactPhone: phoneRaw,
       normalizedPhone,
       contactName: isGroup ? undefined : pushName,
     })
 
-    const existing = await this.repository.findMessageByProviderMessageId(teamId, providerMessageId)
+    const existing = await this.repository.findMessageByProviderMessageId(routed.teamId, providerMessageId)
     if (existing) {
       console.info("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Message already exists, skipping", providerMessageId)
       return
@@ -168,8 +175,8 @@ class ProcessEvoWebhookUseCase {
 
     await this.repository.createMessage({
       conversation: { connect: { id: conversation.id } },
-      team: { connect: { id: teamId } },
-      config: { connect: { id: configId } },
+      team: { connect: { id: routed.teamId } },
+      config: { connect: { id: routed.configId } },
       providerMessageId,
       direction,
       messageType: parsed.messageType,
@@ -187,12 +194,15 @@ class ProcessEvoWebhookUseCase {
       rawPayload: data as Prisma.InputJsonValue,
     })
 
-    const createdMessage = await this.repository.findMessageByProviderMessageId(teamId, providerMessageId)
+    const createdMessage = await this.repository.findMessageByProviderMessageId(
+      routed.teamId,
+      providerMessageId
+    )
 
     if (!fromMe) {
       await this.repository.createUsageEvent({
-        team: { connect: { id: teamId } },
-        config: { connect: { id: configId } },
+        team: { connect: { id: routed.teamId } },
+        config: { connect: { id: routed.configId } },
         periodKey,
         eventType: "INBOUND_MESSAGE",
         direction: "INBOUND",
@@ -215,7 +225,7 @@ class ProcessEvoWebhookUseCase {
         const refreshedConversation = await this.repository.findConversationById(conversation.id)
         if (refreshedConversation) {
           await syncWhatsappMessageToCdpUseCase.execute({
-            teamId,
+            teamId: routed.teamId,
             message: createdMessage,
             conversation: refreshedConversation,
           })
@@ -227,8 +237,8 @@ class ProcessEvoWebhookUseCase {
       if (!fromMe) {
         try {
           await processWhatsAppInboundAutoResponseUseCase.execute({
-            teamId,
-            configId,
+            teamId: routed.teamId,
+            configId: routed.configId,
             conversationId: conversation.id,
             externalChatId: remoteJid,
             inboundMessageId: createdMessage.id,
@@ -243,6 +253,39 @@ class ProcessEvoWebhookUseCase {
     }
   }
 
+  private async resolveTargetTeamContext(
+    fallbackTeamId: string,
+    fallbackConfigId: string,
+    normalizedPhone: string,
+    isGroup: boolean
+  ): Promise<{ teamId: string; configId: string }> {
+    if (isGroup) {
+      return { teamId: fallbackTeamId, configId: fallbackConfigId }
+    }
+
+    const masterCtx = await this.repository.findTeamMasterContext(fallbackTeamId)
+    if (!masterCtx) {
+      return { teamId: fallbackTeamId, configId: fallbackConfigId }
+    }
+
+    const targetTeamId = await this.repository.findLeadTeamIdByPhoneForMaster(
+      masterCtx.masterId,
+      normalizedPhone,
+      fallbackTeamId
+    )
+
+    if (targetTeamId === fallbackTeamId) {
+      return { teamId: fallbackTeamId, configId: fallbackConfigId }
+    }
+
+    const targetConfig = await this.repository.findConfigByTeamId(targetTeamId)
+    if (!targetConfig) {
+      return { teamId: fallbackTeamId, configId: fallbackConfigId }
+    }
+
+    return { teamId: targetTeamId, configId: targetConfig.id }
+  }
+
   private async handleConnectionUpdate(
     configId: string,
     data: unknown
@@ -254,22 +297,45 @@ class ProcessEvoWebhookUseCase {
     const now = new Date()
 
     let status: WhatsAppConnectionStatus
-    const extraFields: Record<string, unknown> = {}
+    const extraFields: Prisma.TeamWhatsAppConfigUpdateInput = {}
 
     if (state === "open") {
       status = "CONNECTED"
-      extraFields["lastConnectedAt"] = now
-      extraFields["qrCodeText"] = null
-      extraFields["qrCodeImageUrl"] = null
+      extraFields.lastConnectedAt = now
+      extraFields.qrCodeText = null
+      extraFields.qrCodeImageUrl = null
 
       const instanceObj = (record["instance"] as Record<string, unknown> | undefined) ?? {}
       const owner = typeof instanceObj["owner"] === "string" ? instanceObj["owner"] : undefined
       if (owner) {
-        extraFields["phoneNumber"] = normalizeRemoteJid(owner)
+        const phoneNumber = normalizeRemoteJid(owner)
+        extraFields.phoneNumber = phoneNumber
+        const normalizedPhone = toStoredNormalizedPhone(phoneNumber)
+        extraFields.normalizedPhone = normalizedPhone
+
+        if (config && !config.primaryConfigId) {
+          try {
+            await assertNoConflictingPhoneOnSameTeam({
+              teamId: config.teamId,
+              configId: config.id,
+              nextNormalizedPhone: normalizedPhone,
+            })
+            await assertPhoneNumberCanConnect({
+              teamId: config.teamId,
+              normalizedPhone,
+              configId: config.id,
+            })
+          } catch (error) {
+            console.error("[ProcessEvoWebhookUseCase][handleConnectionUpdate] Phone policy rejected", error)
+            return
+          }
+        }
       }
     } else if (state === "close") {
       status = "DISCONNECTED"
-      extraFields["lastDisconnectedAt"] = now
+      extraFields.lastDisconnectedAt = now
+      extraFields.phoneNumber = null
+      extraFields.normalizedPhone = null
     } else {
       status = "QR_READY"
     }
@@ -280,6 +346,33 @@ class ProcessEvoWebhookUseCase {
       status,
       ...extraFields,
     })
+
+    if (config && !config.primaryConfigId) {
+      const mirrors = await this.repository.findMirroredConfigs(configId)
+      if (mirrors.length > 0) {
+        const mirrorFields: Prisma.TeamWhatsAppConfigUpdateInput = {
+          status,
+          ...(state === "open"
+            ? {
+                lastConnectedAt: now,
+                qrCodeText: null,
+                qrCodeImageUrl: null,
+                phoneNumber: extraFields.phoneNumber ?? undefined,
+                normalizedPhone: extraFields.normalizedPhone ?? undefined,
+              }
+            : state === "close"
+              ? {
+                  lastDisconnectedAt: now,
+                  phoneNumber: null,
+                  normalizedPhone: null,
+                }
+              : {}),
+        }
+        await Promise.all(
+          mirrors.map((mirror) => this.repository.updateConfig(mirror.id, mirrorFields))
+        )
+      }
+    }
 
     if (state === "open" && config && config.historySyncStatus !== "COMPLETED") {
       void syncWhatsAppHistoryUseCase.execute({ teamId: config.teamId }).catch((error) => {

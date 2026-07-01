@@ -247,10 +247,19 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
     }
   }
 
-  async syncHistory(configId: string): Promise<Output> {
+  async syncHistory(configId: string, profileId: string): Promise<Output> {
     try {
       const row = await this.requireInstance(configId)
       if (row instanceof Output) return row
+
+      console.info(
+        "[BackofficeWhatsAppInstanceUseCase][syncHistory] profileId:",
+        profileId,
+        "configId:",
+        configId,
+        "teamId:",
+        row.teamId
+      )
 
       const syncResult = await whatsAppService.syncTeamHistory(row.teamId)
       const refreshed = await backofficeWhatsAppInstanceRepository.findInstanceById(configId)

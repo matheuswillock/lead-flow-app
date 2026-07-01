@@ -1,5 +1,4 @@
 import { normalizeCdpEmail } from "@/lib/cdp/normalization"
-import { cdpRepository } from "@/app/api/infra/data/repositories/cdp/CdpRepository"
 import { teamHasCdpFeature } from "@/lib/cdp/team-has-cdp-feature"
 import {
   mergeRecipientInterpolationFields,

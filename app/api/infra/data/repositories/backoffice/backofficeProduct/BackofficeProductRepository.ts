@@ -19,13 +19,13 @@ function toDecimalOrNull(value: number | null | undefined): Prisma.Decimal | nul
 export class BackofficeProductRepository implements IBackofficeProductRepository {
   async findAll(): Promise<BackofficeProduct[]> {
     return prisma.backofficeProduct.findMany({
-      orderBy: [{ type: "asc" }, { name: "asc" }],
+      orderBy: [{ featureSlug: "asc" }, { isDefault: "desc" }, { name: "asc" }],
     })
   }
 
   async findAllWithPaymentRules(): Promise<BackofficeProductWithPaymentRules[]> {
     return prisma.backofficeProduct.findMany({
-      orderBy: [{ type: "asc" }, { name: "asc" }],
+      orderBy: [{ featureSlug: "asc" }, { isDefault: "desc" }, { name: "asc" }],
       include: paymentRulesInclude,
     })
   }
@@ -41,22 +41,47 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     })
   }
 
-  async findBySlug(slug: string): Promise<BackofficeProduct | null> {
-    return prisma.backofficeProduct.findUnique({ where: { slug } })
+  async findByFeatureSlug(featureSlug: string): Promise<BackofficeProduct[]> {
+    return prisma.backofficeProduct.findMany({
+      where: { featureSlug },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+    })
   }
 
-  async findBySlugWithPaymentRules(slug: string): Promise<BackofficeProductWithPaymentRules | null> {
-    return prisma.backofficeProduct.findUnique({
-      where: { slug },
+  async findByFeatureSlugWithPaymentRules(
+    featureSlug: string
+  ): Promise<BackofficeProductWithPaymentRules[]> {
+    return prisma.backofficeProduct.findMany({
+      where: { featureSlug, isActive: true },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
       include: paymentRulesInclude,
     })
+  }
+
+  async findDefaultByFeatureSlug(featureSlug: string): Promise<BackofficeProduct | null> {
+    return prisma.backofficeProduct.findFirst({
+      where: { featureSlug, isDefault: true, isActive: true },
+    })
+  }
+
+  async findDefaultByFeatureSlugWithPaymentRules(
+    featureSlug: string
+  ): Promise<BackofficeProductWithPaymentRules | null> {
+    return prisma.backofficeProduct.findFirst({
+      where: { featureSlug, isDefault: true, isActive: true },
+      include: paymentRulesInclude,
+    })
+  }
+
+  async countByFeatureSlug(featureSlug: string): Promise<number> {
+    return prisma.backofficeProduct.count({ where: { featureSlug } })
   }
 
   async create(data: CreateBackofficeProductInput): Promise<BackofficeProduct> {
     return prisma.backofficeProduct.create({
       data: {
         name: data.name,
-        slug: data.slug,
+        featureSlug: data.featureSlug,
         description: data.description ?? null,
         type: data.type,
         billingMode: data.billingMode,
@@ -65,6 +90,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         priceSemiannual: toDecimalOrNull(data.priceSemiannual),
         priceAnnual: toDecimalOrNull(data.priceAnnual),
         priceLifetime: toDecimalOrNull(data.priceLifetime),
+        isDefault: data.isDefault ?? false,
         isActive: data.isActive ?? true,
       },
     })
@@ -75,7 +101,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name }),
-        ...(data.slug !== undefined && { slug: data.slug }),
+        ...(data.featureSlug !== undefined && { featureSlug: data.featureSlug }),
         ...(Object.prototype.hasOwnProperty.call(data, "description") && {
           description: data.description ?? null,
         }),
@@ -96,8 +122,19 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         ...(Object.prototype.hasOwnProperty.call(data, "priceLifetime") && {
           priceLifetime: toDecimalOrNull(data.priceLifetime),
         }),
+        ...(data.isDefault !== undefined && { isDefault: data.isDefault }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
       },
+    })
+  }
+
+  async clearDefaultForFeatureSlug(featureSlug: string, exceptId?: string): Promise<void> {
+    await prisma.backofficeProduct.updateMany({
+      where: {
+        featureSlug,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      data: { isDefault: false },
     })
   }
 
