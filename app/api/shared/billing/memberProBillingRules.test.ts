@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { BILLING_PRICES } from "@/app/api/shared/billing/billingConfig";
 import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary";
-import { resolveMemberProBypass } from "@/app/api/services/billing/memberProBillingRules";
+import { resolveMemberProBypass } from "@/app/api/shared/billing/memberProBillingRules";
 
 describe("resolveMemberProBypass", () => {
   it("retorna true para Member PRO ativo sem forceCharge", () => {

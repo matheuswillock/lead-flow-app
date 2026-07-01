@@ -13,7 +13,7 @@ import type {
 import {
   buildMemberProContextFromAssignment,
   resolveMemberProBypass,
-} from "@/app/api/services/billing/memberProBillingRules";
+} from "@/app/api/shared/billing/memberProBillingRules";
 import { createEmailService } from "@/lib/services/EmailService";
 import { getFullUrl } from "@/lib/utils/app-url";
 

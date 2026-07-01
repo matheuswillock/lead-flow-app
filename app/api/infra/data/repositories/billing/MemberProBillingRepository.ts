@@ -1,5 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
-import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
+import type { BillingOwnerProfile } from "@/app/api/shared/billing/billingOwnerProfile";
 
 export interface MemberProAssignmentRecord {
   profileId: string;

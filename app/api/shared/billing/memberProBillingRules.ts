@@ -1,4 +1,7 @@
-import type { MemberProBillingContext, MemberProBypassOptions } from "@/app/api/services/billing/IMemberProBillingService";
+import type {
+  MemberProBillingContext,
+  MemberProBypassOptions,
+} from "@/app/api/shared/billing/memberProBillingTypes";
 
 const MEMBER_PRO_SLUG = "member_pro";
 

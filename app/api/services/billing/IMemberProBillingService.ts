@@ -1,12 +1,12 @@
-export interface MemberProBillingContext {
-  slug: string;
-  isActive: boolean;
-  accessExpiresAt: Date | null;
-}
+import type {
+  MemberProBillingContext,
+  MemberProBypassOptions,
+} from "@/app/api/shared/billing/memberProBillingTypes";
 
-export interface MemberProBypassOptions {
-  forceCharge?: boolean;
-}
+export type {
+  MemberProBillingContext,
+  MemberProBypassOptions,
+} from "@/app/api/shared/billing/memberProBillingTypes";
 
 export interface IMemberProBillingService {
   getMemberProContext(masterId: string): Promise<MemberProBillingContext>;
