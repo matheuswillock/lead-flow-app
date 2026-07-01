@@ -1,5 +1,8 @@
 import { Output } from "@/lib/output"
-import { prisma } from "@/app/api/infra/data/prisma"
+import {
+  emailAnalyticsRepository,
+  type IEmailAnalyticsRepository,
+} from "@/app/api/infra/data/repositories/emailAnalytics/EmailAnalyticsRepository"
 
 function safeRate(numerator: number, denominator: number): number {
   return denominator === 0 ? 0 : Math.round((numerator / denominator) * 10000) / 100
@@ -23,6 +26,8 @@ function buildRates(totals: {
 }
 
 export class EmailAnalyticsUseCase {
+  constructor(private readonly repository: IEmailAnalyticsRepository = emailAnalyticsRepository) {}
+
   async getAnalytics(options: {
     teamId: string
     from: Date
@@ -32,17 +37,18 @@ export class EmailAnalyticsUseCase {
     try {
       const logWhere = {
         teamId: options.teamId,
-        sentAt: { gte: options.from, lte: options.to },
-        ...(options.campaignId && { campaignId: options.campaignId }),
+        from: options.from,
+        to: options.to,
+        campaignId: options.campaignId,
       }
 
       const [total, delivered, opened, clicked, bounced, complained] = await Promise.all([
-        prisma.emailLog.count({ where: logWhere }),
-        prisma.emailLog.count({ where: { ...logWhere, deliveredAt: { not: null } } }),
-        prisma.emailLog.count({ where: { ...logWhere, openedAt: { not: null } } }),
-        prisma.emailLog.count({ where: { ...logWhere, clickedAt: { not: null } } }),
-        prisma.emailLog.count({ where: { ...logWhere, bouncedAt: { not: null } } }),
-        prisma.emailLog.count({ where: { ...logWhere, complainedAt: { not: null } } }),
+        this.repository.countLogs(logWhere),
+        this.repository.countLogs(logWhere, "delivered"),
+        this.repository.countLogs(logWhere, "opened"),
+        this.repository.countLogs(logWhere, "clicked"),
+        this.repository.countLogs(logWhere, "bounced"),
+        this.repository.countLogs(logWhere, "complained"),
       ])
 
       const totals = {
@@ -64,31 +70,11 @@ export class EmailAnalyticsUseCase {
         return new Output(true, [], [], base)
       }
 
-      const dispatches = await prisma.emailCampaignDispatch.findMany({
-        where: {
-          teamId: options.teamId,
-          campaignId: options.campaignId,
-          dispatchedAt: { gte: options.from, lte: options.to },
-        },
-        select: {
-          id: true,
-          dispatchNumber: true,
-          templateName: true,
-          templateVersionNumber: true,
-          templateSubject: true,
-          contactListName: true,
-          cdpSegmentSlug: true,
-          dispatchedAt: true,
-          totalRecipients: true,
-          totalSent: true,
-          totalDelivered: true,
-          totalOpened: true,
-          totalClicked: true,
-          totalBounced: true,
-          totalComplained: true,
-          status: true,
-        },
-        orderBy: { dispatchNumber: "desc" },
+      const dispatches = await this.repository.listDispatches({
+        teamId: options.teamId,
+        campaignId: options.campaignId,
+        from: options.from,
+        to: options.to,
       })
 
       return new Output(true, [], [], {
@@ -117,19 +103,7 @@ export class EmailAnalyticsUseCase {
     dispatchId: string
   }): Promise<Output> {
     try {
-      const dispatch = await prisma.emailCampaignDispatch.findFirst({
-        where: {
-          id: options.dispatchId,
-          campaignId: options.campaignId,
-          teamId: options.teamId,
-        },
-        select: {
-          templateSubject: true,
-          templateHtml: true,
-          templateVersionNumber: true,
-          templateName: true,
-        },
-      })
+      const dispatch = await this.repository.findDispatchPreview(options)
 
       if (!dispatch) {
         return new Output(false, [], ["Disparo não encontrado"], null)

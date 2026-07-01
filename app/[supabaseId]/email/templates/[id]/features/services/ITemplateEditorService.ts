@@ -2,6 +2,10 @@ import type { Template, TemplateEditorDraft, TemplateTestRequest, TemplateVersio
 
 export interface ITemplateEditorService {
   getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }>;
+  getEmailSettingsForTips(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ fromEmail: string | null }>;
   getTemplate(
     supabaseId: string,
     templateId: string,

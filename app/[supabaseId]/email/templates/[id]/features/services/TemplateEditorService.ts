@@ -60,6 +60,22 @@ class TemplateEditorService implements ITemplateEditorService {
     return { templateApprovalRequired: settings.templateApprovalRequired ?? false };
   }
 
+  async getEmailSettingsForTips(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ fromEmail: string | null }> {
+    const response = await fetch(this.settingsUrl, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+    const settings = await this.parseResponse<{ fromEmail?: string | null }>(
+      response,
+      "Erro ao buscar configurações de e-mail"
+    );
+
+    return { fromEmail: settings.fromEmail ?? null };
+  }
+
   async createTemplate(
     supabaseId: string,
     draft: TemplateEditorDraft,

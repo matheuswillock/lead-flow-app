@@ -100,7 +100,7 @@ function CampaignActionsMenu({
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
             <BarChart3 className="mr-2 h-4 w-4" />
-            Analytics
+            Métricas
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

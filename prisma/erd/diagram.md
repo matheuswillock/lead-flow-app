@@ -1716,8 +1716,21 @@ failed failed
     String resendDomainId "❓"
     String resendDomainName "❓"
     String resendDomainStatus "❓"
+    String resendDomainRegion "❓"
+    DateTime resendDomainConnectedAt "❓"
+    Boolean resendOpenTracking 
+    Boolean resendClickTracking 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_email_team_domain_events" {
+    String id "🗝️"
+    String type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -2250,6 +2263,7 @@ failed failed
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
     "email_team_variables" |o--|| "EmailVariableValueSource" : "enum:valueSource"
     "email_team_variables" }o--|| corretor_studio_teams : "team"

@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CampaignAnalyticsService } from "../../services/CampaignAnalyticsService"
 import { DispatchEmailPreviewDialog } from "./DispatchEmailPreviewDialog"
 import type { AnalyticsData, DispatchPreviewData } from "./AnalyticsTypes"
+import { cn } from "@/lib/utils"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 
@@ -128,7 +129,7 @@ export function DispatchAccordionTable({
                           {dispatch.totalRecipients.toLocaleString("pt-BR")}
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-sm lg:grid-cols-5">
+                      <div className="grid grid-cols-2 gap-2 text-sm lg:grid-cols-7">
                         <div>
                           <p className="text-muted-foreground">Enviados</p>
                           <p className="font-medium">{dispatch.totalSent}</p>
@@ -146,8 +147,23 @@ export function DispatchAccordionTable({
                           <p className="font-medium">{dispatch.totalClicked}</p>
                         </div>
                         <div>
+                          <p className="text-muted-foreground">Taxa de cliques</p>
+                          <p className="font-medium">{dispatch.rates.clickRate.toFixed(1)}%</p>
+                        </div>
+                        <div>
                           <p className="text-muted-foreground">Bounces</p>
                           <p className="font-medium">{dispatch.totalBounced}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Taxa de bounce</p>
+                          <p
+                            className={cn(
+                              "font-medium",
+                              dispatch.rates.bounceRate > 4 && "text-destructive"
+                            )}
+                          >
+                            {dispatch.rates.bounceRate.toFixed(1)}%
+                          </p>
                         </div>
                       </div>
                       <div>

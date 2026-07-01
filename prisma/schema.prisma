@@ -1508,6 +1508,7 @@ model Team {
   emailCampaignDispatches EmailCampaignDispatch[] @relation("TeamEmailCampaignDispatches")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
   emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
+  emailDomainEvents EmailTeamDomainEvent[] @relation("TeamEmailDomainEvents")
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
   emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
   emailTemplateHistory EmailTemplateHistory[]
@@ -2314,9 +2315,13 @@ model EmailTeamSettings {
   templateApprovalRoles    String[] @default(["manager", "backoffice"])
   blockedDispatchDays      Int[]    @default([])
 
-  resendDomainId     String? @db.Text
-  resendDomainName   String? @db.Text
-  resendDomainStatus String? @db.Text
+  resendDomainId          String?   @db.Text
+  resendDomainName        String?   @db.Text
+  resendDomainStatus      String?   @db.Text
+  resendDomainRegion      String?   @db.Text
+  resendDomainConnectedAt DateTime? @db.Timestamptz(6)
+  resendOpenTracking      Boolean   @default(false)
+  resendClickTracking     Boolean   @default(false)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -2324,6 +2329,20 @@ model EmailTeamSettings {
   team Team @relation("TeamEmailSettings", fields: [teamId], references: [id], onDelete: Cascade)
 
   @@map("email_team_settings")
+}
+
+model EmailTeamDomainEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  teamId     String   @db.Uuid
+  type       String   @db.Text
+  occurredAt DateTime @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailDomainEvents", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, occurredAt(sort: Desc)])
+  @@map("corretor_studio_email_team_domain_events")
 }
 
 model EmailTeamSender {

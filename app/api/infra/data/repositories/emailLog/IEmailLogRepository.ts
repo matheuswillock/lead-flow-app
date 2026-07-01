@@ -8,6 +8,11 @@ export type EmailLogWebhookRecord = {
   recipientName: string | null
   campaignId: string | null
   dispatchId: string | null
+  deliveredAt: Date | null
+  openedAt: Date | null
+  clickedAt: Date | null
+  bouncedAt: Date | null
+  complainedAt: Date | null
 }
 
 export type ApplyEmailLogWebhookInput = {

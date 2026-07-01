@@ -48,7 +48,7 @@ export function CampanhasContainer() {
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={openGeneralAnalytics}>
             <BarChart3 data-icon="inline-start" />
-            Analytics
+            Métricas
           </Button>
           <Button size="sm" onClick={() => void openWizard()}>
             + Nova Campanha

@@ -19,6 +19,11 @@ export class EmailLogRepository implements IEmailLogRepository {
         recipientName: true,
         campaignId: true,
         dispatchId: true,
+        deliveredAt: true,
+        openedAt: true,
+        clickedAt: true,
+        bouncedAt: true,
+        complainedAt: true,
       },
     })
   }
@@ -87,11 +92,11 @@ export class EmailLogRepository implements IEmailLogRepository {
 
       if (log.campaignId) {
         const campaignIncrements: Record<string, number> = {}
-        if (eventType === "delivered") campaignIncrements.totalDelivered = 1
-        if (eventType === "opened") campaignIncrements.totalOpened = 1
-        if (eventType === "clicked") campaignIncrements.totalClicked = 1
-        if (eventType === "bounced") campaignIncrements.totalBounced = 1
-        if (eventType === "complained") campaignIncrements.totalComplained = 1
+        if (eventType === "delivered" && !log.deliveredAt) campaignIncrements.totalDelivered = 1
+        if (eventType === "opened" && !log.openedAt) campaignIncrements.totalOpened = 1
+        if (eventType === "clicked" && !log.clickedAt) campaignIncrements.totalClicked = 1
+        if (eventType === "bounced" && !log.bouncedAt) campaignIncrements.totalBounced = 1
+        if (eventType === "complained" && !log.complainedAt) campaignIncrements.totalComplained = 1
 
         if (Object.keys(campaignIncrements).length > 0) {
           await tx.emailCampaign.update({

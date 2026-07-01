@@ -32,8 +32,8 @@ export function CampaignAnalyticsDialog({
   )
 
   const title = campaignName
-    ? `Analytics — ${campaignName}`
-    : "Analytics de E-mail"
+    ? `Métricas — ${campaignName}`
+    : "Métricas de E-mail"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

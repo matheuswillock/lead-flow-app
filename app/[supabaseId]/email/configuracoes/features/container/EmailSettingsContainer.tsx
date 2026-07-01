@@ -47,12 +47,12 @@ export function EmailSettingsContainer() {
         </div>
       </section>
 
+      <CustomDomainCard />
       <SenderCard />
       <GlobalVariablesCard />
       <DispatchRestrictionsCard />
       <AccessPermissionsCard />
       <TemplateApprovalCard />
-      <CustomDomainCard />
 
       <div className="sticky bottom-4 z-10 mt-2">
         <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/95 p-4 shadow-[var(--precision-shadow-2)] backdrop-blur md:flex-row md:items-center md:justify-between">
