@@ -8,6 +8,30 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 export default [
+  // Ignora build, dependências e diretórios de ferramentas de agente (não são código do produto).
+  // Alinhado com IGNORED_DIRECTORIES em scripts/ai-governance.ts.
+  {
+    ignores: [
+      'node_modules/**',
+      '.next/**',
+      'dist/**',
+      'coverage/**',
+      'test-results/**',
+      'worktrees/**',
+      '.agents/**',
+      '.claude/**',
+      '.codestudio/**',
+      '.commandcode/**',
+      '.continue/**',
+      '.hermes/**',
+      '.mcpjam/**',
+      '.openhands/**',
+      '.tabnine/**',
+      '.windsurf/**',
+      '.zencoder/**',
+      'skills/**',
+    ],
+  },
   // Regras base TypeScript (sem type-aware para manter velocidade)
   ...tseslint.configs.recommended,
   // Plugin Next declarado também no escopo raiz para ferramentas que verificam presença
@@ -46,16 +70,5 @@ export default [
     rules: {
       '@typescript-eslint/triple-slash-reference': 'off',
     },
-  },
-  // Ignora arquivos de build/gerados
-  {
-    ignores: [
-      'node_modules/**',
-      '.next/**',
-      'dist/**',
-      'coverage/**',
-      '.agents/**',
-      '.claude/**',
-    ],
   },
 ]
