@@ -120,7 +120,7 @@ export function useTemplateEditor(
     setLoading(true);
     setError(null);
     try {
-      const [nextTemplate, versionsResult] = await Promise.all([
+      const [nextTemplate, , versionsResult] = await Promise.all([
         service.getTemplate(supabaseId, templateId, activeTeamId),
         loadApprovalSettings(),
         service.listVersions(supabaseId, templateId, activeTeamId).catch(() => ({ versions: [] })),
