@@ -1,5 +1,6 @@
 export type PerformancePreset = '1d' | '7d' | '15d' | '1m' | '3m';
 export const DEFAULT_PRESET: PerformancePreset = '7d';
+export type PerformanceTeamScope = 'active' | 'all';
 
 export interface PerformanceFiltersState {
   preset: PerformancePreset;

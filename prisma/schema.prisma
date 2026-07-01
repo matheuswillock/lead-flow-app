@@ -200,6 +200,7 @@ enum ActivityType {
   email
   status_change
   task
+  studio_bot
 }
 
 enum TaskType {
@@ -418,6 +419,7 @@ enum NotificationType {
   MEETING_REMINDER
   LEAD_TRANSFER_SCHEDULE_FAILED
   MEETING_FOLLOW_UP_DIGEST
+  BETHANIA_AUTH_CODE
 
   @@map("notification_type")
 }
@@ -500,6 +502,14 @@ enum EmailCampaignStatus {
   @@map("email_campaign_status")
 }
 
+enum EmailCampaignDispatchStatus {
+  sending
+  completed
+  failed
+
+  @@map("email_campaign_dispatch_status")
+}
+
 enum EmailLogStatus {
   queued
   sent
@@ -563,6 +573,7 @@ model Profile {
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
+  canSponsorAccounts       Boolean             @default(false) // Indica se pode patrocinar contas Associado/Convidado
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
   sponsorMasterId          String?             @db.Uuid
@@ -640,10 +651,16 @@ model Profile {
   emailTemplateHistory     EmailTemplateHistory[]   @relation("EmailTemplateHistoryActor")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
+  emailCampaignDispatchesTriggered EmailCampaignDispatch[] @relation("EmailCampaignDispatchTriggerer")
 
   // Backoffice subscriptions
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
   backofficeFeatureGrants BackofficeFeatureGrant[]     @relation("BackofficeFeatureProfileGrants")
+
+  backofficeBotUserLinks               BackofficeBotUserLink[]
+  backofficeBotAuthChallenges          BackofficeBotAuthChallenge[]
+  backofficeBotNotificationPreferences BackofficeBotNotificationPreference[]
+  backofficeBotEventOutbox             BackofficeBotEventOutbox[]
 
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
@@ -655,8 +672,9 @@ model Profile {
   // WhatsApp relations
   whatsappConfigsCreated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigCreatedBy")
   whatsappConfigsUpdated  TeamWhatsAppConfig[]   @relation("WhatsAppConfigUpdatedBy")
-  whatsappConversations   WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
-  whatsappMessagesSent    WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
+  whatsappConversations         WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
+  whatsappConversationsCreated  WhatsAppConversation[] @relation("WhatsAppConversationCreator")
+  whatsappMessagesSent          WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
 
   proposalReviewsReviewed LeadProposalReview[]  @relation("LeadProposalReviewReviewer")
   requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
@@ -664,6 +682,7 @@ model Profile {
   @@index([role])
   @@index([managerId])
   @@index([sponsorMasterId])
+  @@index([canSponsorAccounts])
   @@index([cpfCnpj])
   @@index([googleConnectionId])
   @@map("corretor_studio_profiles")
@@ -863,6 +882,7 @@ model BackofficeAdhesion {
   city                      String?                        @db.Text
   state                     String?                        @db.Text
   plan                      BackofficeAdhesionPlan         @default(crm)
+  productId                 String?                        @map("productId") @db.Uuid
   cycle                     BackofficeAdhesionBillingCycle
   modules                   String[]                       @default(["crm"])
   extraTeams                Int                            @default(0) @map("extraTeams")
@@ -897,18 +917,21 @@ model BackofficeAdhesion {
   createdSupabaseId         String?                        @map("createdSupabaseId") @db.Uuid
   requestedUserTypeSlug             String?   @map("requestedUserTypeSlug") @db.Text
   requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
+  sponsorMasterId                   String?   @map("sponsorMasterId") @db.Uuid
   additionalUsersData       Json                           @default("[]") @map("additional_users_data")
   additionalTeamsData       Json                           @default("[]") @map("additional_teams_data")
   createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
-  lead                    BackofficeLead  @relation(fields: [leadId], references: [id], onDelete: Restrict)
-  sdrBackofficeUser       BackofficeUser? @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
-  closerBackofficeUser    BackofficeUser? @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
-  createdByBackofficeUser BackofficeUser? @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  lead                    BackofficeLead      @relation(fields: [leadId], references: [id], onDelete: Restrict)
+  product                 BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  sdrBackofficeUser       BackofficeUser?     @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
+  closerBackofficeUser    BackofficeUser?     @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
+  createdByBackofficeUser BackofficeUser?     @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
 
   profileSubscription ProfileSubscription?
 
+  @@index([productId], map: "backoffice_adhesions_product_id_idx")
   @@index([status], map: "backoffice_adhesions_status_idx")
   @@index([expiresAt], map: "backoffice_adhesions_expires_at_idx")
   @@index([leadId], map: "backoffice_adhesions_lead_id_idx")
@@ -1482,8 +1505,10 @@ model Team {
   emailTemplates    EmailTemplate[]    @relation("TeamEmailTemplates")
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
+  emailCampaignDispatches EmailCampaignDispatch[] @relation("TeamEmailCampaignDispatches")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
   emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
+  emailDomainEvents EmailTeamDomainEvent[] @relation("TeamEmailDomainEvents")
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
   emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
   emailTemplateHistory EmailTemplateHistory[]
@@ -1501,6 +1526,7 @@ model Team {
   customerSourceLinks   CustomerSourceLink[]
   customerEvents        CustomerEvent[]
   customerChannelConsents CustomerChannelConsent[]
+  backofficeBotSessions   BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
@@ -1704,6 +1730,7 @@ model TeamMember {
   canCreateAccountUsers   Boolean        @default(false)
   canManageAccountTeams   Boolean        @default(false)
   canTransferAccountLeads Boolean        @default(false)
+  canViewAllTeams         Boolean        @default(false) @map("canViewAllTeams")
   createdAt               DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt               DateTime       @updatedAt @db.Timestamptz(6)
 
@@ -1807,6 +1834,7 @@ model EmailTemplate {
   previewText String?  @db.Text
   mailyJson   Json?
   html        String?  @db.Text
+  editorMode  String   @default("blocks") @db.Text
   variables   Json?
   versionGroupId String   @db.Uuid
   versionNumber  Int      @default(1)
@@ -1831,6 +1859,7 @@ model EmailTemplate {
   versions     EmailTemplate[] @relation("EmailTemplateVersionGroup")
   history      EmailTemplateHistory[]
   campaigns EmailCampaign[]
+  campaignDispatches EmailCampaignDispatch[]
 
   @@index([teamId, isArchived])
   @@index([teamId, approvalStatus])
@@ -1878,6 +1907,7 @@ model EmailContactList {
   creator   Profile         @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   contacts  EmailContact[]
   campaigns EmailCampaign[]
+  campaignDispatches EmailCampaignDispatch[]
 
   @@index([teamId, isArchived])
   @@index([createdBy])
@@ -1932,6 +1962,7 @@ model EmailCampaign {
   template    EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
   contactList EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: Restrict)
   logs        EmailLog[]
+  dispatches  EmailCampaignDispatch[]
 
   @@index([teamId, status])
   @@index([teamId, scheduledAt])
@@ -1939,10 +1970,50 @@ model EmailCampaign {
   @@map("corretor_studio_email_campaigns")
 }
 
+model EmailCampaignDispatch {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  campaignId            String                      @db.Uuid
+  teamId                String                      @db.Uuid
+  dispatchNumber        Int
+  templateId            String                      @db.Uuid
+  templateVersionNumber Int
+  templateName          String                      @db.Text
+  templateSubject       String                      @db.Text
+  templateHtml          String                      @db.Text
+  contactListId         String?                     @db.Uuid
+  contactListName       String?                     @db.Text
+  cdpSegmentSlug        String?                     @db.Text
+  dispatchedAt          DateTime                    @default(now()) @db.Timestamptz(6)
+  triggeredBy           String                      @db.Uuid
+  totalRecipients       Int                         @default(0)
+  totalSent             Int                         @default(0)
+  totalDelivered        Int                         @default(0)
+  totalOpened           Int                         @default(0)
+  totalClicked          Int                         @default(0)
+  totalBounced          Int                         @default(0)
+  totalComplained       Int                         @default(0)
+  status                EmailCampaignDispatchStatus @default(sending)
+  createdAt             DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime                    @updatedAt @db.Timestamptz(6)
+
+  campaign    EmailCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  team        Team              @relation("TeamEmailCampaignDispatches", fields: [teamId], references: [id], onDelete: Cascade)
+  template    EmailTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  contactList EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: SetNull)
+  triggerer   Profile           @relation("EmailCampaignDispatchTriggerer", fields: [triggeredBy], references: [id], onDelete: Restrict)
+  logs        EmailLog[]
+
+  @@unique([campaignId, dispatchNumber])
+  @@index([teamId, dispatchedAt(sort: Desc)])
+  @@index([campaignId, dispatchedAt(sort: Desc)])
+  @@map("corretor_studio_email_campaign_dispatches")
+}
+
 model EmailLog {
   id             String           @id @default(uuid()) @db.Uuid
   teamId         String           @db.Uuid
   campaignId     String?          @db.Uuid
+  dispatchId     String?          @db.Uuid
   resendEmailId  String?          @unique @db.Text
   recipientEmail String           @db.Text
   recipientName  String?          @db.Text
@@ -1960,12 +2031,14 @@ model EmailLog {
   createdAt      DateTime         @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
 
-  team     Team           @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
-  campaign EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  team     Team                  @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
+  campaign EmailCampaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  dispatch EmailCampaignDispatch? @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
   events   EmailEvent[]
 
   @@index([teamId, status])
   @@index([teamId, campaignId])
+  @@index([campaignId, dispatchId])
   @@index([teamId, category, sentAt(sort: Desc)], map: "corretor_studio_email_logs_team_category_sent_idx")
   @@index([recipientEmail])
   @@index([sentAt(sort: Desc)])
@@ -1993,7 +2066,7 @@ model EmailEvent {
 model BackofficeProduct {
   id              String                       @id @default(uuid()) @db.Uuid
   name            String                       @db.Text
-  slug            String                       @unique @db.Text
+  featureSlug     String                       @map("featureSlug") @db.Text
   description     String?                      @db.Text
   type            BackofficeProductType
   billingMode     BackofficeProductBillingMode @default(RECURRING)
@@ -2002,6 +2075,7 @@ model BackofficeProduct {
   priceSemiannual Decimal?                     @db.Decimal(10, 2)
   priceAnnual     Decimal?                     @db.Decimal(10, 2)
   priceLifetime   Decimal?                     @db.Decimal(10, 2)
+  isDefault       Boolean                      @default(false)
   isActive        Boolean                      @default(true)
   createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
@@ -2009,9 +2083,10 @@ model BackofficeProduct {
   paymentRules         BackofficeProductPaymentRule[]
   userSubscriptions    BackofficeUserSubscription[]
   profileSubscriptions ProfileSubscription[]
-  features             BackofficeFeature[]
+  adhesions            BackofficeAdhesion[]
 
-  @@index([slug])
+  @@index([featureSlug])
+  @@index([featureSlug, isDefault])
   @@index([type, isActive])
   @@map("backoffice_products")
 }
@@ -2027,6 +2102,7 @@ model BackofficeFeature {
   defaultAccessLevel BackofficeFeatureAccessLevel @default(FULL)
   betaEnabled        Boolean                      @default(false)
   inheritParentSettings Boolean                   @default(false)
+  billedSeparately   Boolean                      @default(false)
   isActive           Boolean                      @default(true)
   sortOrder          Int                          @default(0)
   createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
@@ -2034,7 +2110,6 @@ model BackofficeFeature {
 
   parent   BackofficeFeature?  @relation("BackofficeFeatureTree", fields: [parentId], references: [id], onDelete: SetNull)
   children BackofficeFeature[] @relation("BackofficeFeatureTree")
-  product  BackofficeProduct?  @relation(fields: [productSlug], references: [slug], onDelete: SetNull)
   grants   BackofficeFeatureGrant[]
   accessRules BackofficeFeatureAccessRule[]
 
@@ -2240,9 +2315,13 @@ model EmailTeamSettings {
   templateApprovalRoles    String[] @default(["manager", "backoffice"])
   blockedDispatchDays      Int[]    @default([])
 
-  resendDomainId     String? @db.Text
-  resendDomainName   String? @db.Text
-  resendDomainStatus String? @db.Text
+  resendDomainId          String?   @db.Text
+  resendDomainName        String?   @db.Text
+  resendDomainStatus      String?   @db.Text
+  resendDomainRegion      String?   @db.Text
+  resendDomainConnectedAt DateTime? @db.Timestamptz(6)
+  resendOpenTracking      Boolean   @default(false)
+  resendClickTracking     Boolean   @default(false)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -2250,6 +2329,20 @@ model EmailTeamSettings {
   team Team @relation("TeamEmailSettings", fields: [teamId], references: [id], onDelete: Cascade)
 
   @@map("email_team_settings")
+}
+
+model EmailTeamDomainEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  teamId     String   @db.Uuid
+  type       String   @db.Text
+  occurredAt DateTime @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailDomainEvents", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, occurredAt(sort: Desc)])
+  @@map("corretor_studio_email_team_domain_events")
 }
 
 model EmailTeamSender {
@@ -2433,6 +2526,8 @@ model TeamWhatsAppConfig {
   instanceName       String                   @db.Text
   instanceId         String?                  @db.Text
   phoneNumber        String?                  @db.Text
+  normalizedPhone    String?                  @db.Text
+  primaryConfigId    String?                  @db.Uuid
   displayName        String?                  @db.Text
   status             WhatsAppConnectionStatus @default(PENDING)
   qrCodeText         String?                  @db.Text
@@ -2456,11 +2551,15 @@ model TeamWhatsAppConfig {
   team          Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
   createdBy     Profile                @relation("WhatsAppConfigCreatedBy", fields: [createdByProfileId], references: [id])
   updatedBy     Profile                @relation("WhatsAppConfigUpdatedBy", fields: [updatedByProfileId], references: [id])
+  primaryConfig TeamWhatsAppConfig?    @relation("WhatsAppConfigPrimary", fields: [primaryConfigId], references: [id], onDelete: SetNull)
+  mirroredConfigs TeamWhatsAppConfig[] @relation("WhatsAppConfigPrimary")
   conversations WhatsAppConversation[]
   usageEvents   WhatsAppUsageEvent[]
   messages      WhatsAppMessage[]
   autoResponseRules WhatsAppAutoResponseRule[]
 
+  @@index([normalizedPhone])
+  @@index([primaryConfigId])
   @@map("team_whatsapp_configs")
 }
 
@@ -2475,6 +2574,7 @@ model WhatsAppConversation {
   contactAvatarUrl   String?   @db.Text
   normalizedPhone    String    @db.Text
   assignedProfileId  String?   @db.Uuid
+  createdByProfileId String?   @db.Uuid
   lastMessageAt      DateTime? @db.Timestamptz(6)
   lastInboundAt      DateTime? @db.Timestamptz(6)
   lastOutboundAt     DateTime? @db.Timestamptz(6)
@@ -2490,6 +2590,7 @@ model WhatsAppConversation {
   config          TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   lead            Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
   assignedProfile Profile?           @relation("WhatsAppConversationAssignee", fields: [assignedProfileId], references: [id], onDelete: SetNull)
+  createdByProfile Profile?          @relation("WhatsAppConversationCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
   messages        WhatsAppMessage[]
   autoResponseLogs WhatsAppAutoResponseLog[]
 
@@ -2497,6 +2598,7 @@ model WhatsAppConversation {
   @@index([teamId, lastMessageAt(sort: Desc)])
   @@index([teamId, normalizedPhone])
   @@index([leadId])
+  @@index([createdByProfileId])
   @@map("whatsapp_conversations")
 }
 
@@ -2774,4 +2876,200 @@ model CustomerChannelConsent {
   @@unique([profileId, channel])
   @@index([teamId, channel, status])
   @@map("corretor_studio_cdp_channel_consents")
+}
+
+// ==============================
+// STUDIO BOT (BETHÂNIA) — BACKOFFICE
+// ==============================
+
+enum BackofficeBotChannelType {
+  whatsapp
+
+  @@map("backoffice_bot_channel_type")
+}
+
+enum BackofficeBotChannelStatus {
+  pending
+  connected
+  disconnected
+  error
+
+  @@map("backoffice_bot_channel_status")
+}
+
+enum BackofficeBotAuthChallengeSource {
+  channel_email
+  web_otp
+
+  @@map("backoffice_bot_auth_challenge_source")
+}
+
+enum BackofficeBotAuthChallengeStatus {
+  pending
+  verified
+  expired
+  failed
+
+  @@map("backoffice_bot_auth_challenge_status")
+}
+
+enum BackofficeBotUserLinkSource {
+  channel_email
+  web_otp
+
+  @@map("backoffice_bot_user_link_source")
+}
+
+enum BackofficeBotMessageDirection {
+  inbound
+  outbound
+
+  @@map("backoffice_bot_message_direction")
+}
+
+enum BackofficeBotEventOutboxStatus {
+  pending
+  sent
+  failed
+
+  @@map("backoffice_bot_event_outbox_status")
+}
+
+model BackofficeBotChannel {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  displayName       String                     @default("Bethânia") @db.Text
+  avatarUrl         String?                    @db.Text
+  avatarStoragePath String?                    @db.Text
+  aboutText         String?                    @db.Text
+  phoneNumber       String?                    @db.Text
+  lastProfileSyncAt DateTime?                  @db.Timestamptz(6)
+  channelType       BackofficeBotChannelType   @default(whatsapp)
+  status            BackofficeBotChannelStatus @default(pending)
+  providerConfig    Json?
+  webhookSecret     String                     @db.Text
+  n8nInboundUrl     String?                    @db.Text
+  n8nOutboundSecret String                     @db.Text
+  isActive          Boolean                    @default(true)
+  createdAt         DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                   @updatedAt @db.Timestamptz(6)
+
+  messages BackofficeBotMessage[]
+
+  @@map("backoffice_bot_channels")
+}
+
+model BackofficeBotAuthChallenge {
+  id              String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source          BackofficeBotAuthChallengeSource
+  normalizedPhone String?                          @db.Text
+  emailRequested  String?                          @db.Text
+  profileId       String?                          @db.Uuid
+  codeHash        String                           @db.Text
+  status          BackofficeBotAuthChallengeStatus @default(pending)
+  attemptCount    Int                              @default(0)
+  expiresAt       DateTime                         @db.Timestamptz(6)
+  verifiedAt      DateTime?                        @db.Timestamptz(6)
+  ipMetadata      Json?
+  createdAt       DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                         @updatedAt @db.Timestamptz(6)
+
+  profile  Profile?              @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  userLink BackofficeBotUserLink?
+
+  @@index([normalizedPhone, status])
+  @@index([profileId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_auth_challenges")
+}
+
+model BackofficeBotUserLink {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId         String                      @db.Uuid
+  normalizedPhone   String                      @db.Text
+  linkedAt          DateTime                    @default(now()) @db.Timestamptz(6)
+  linkedBy          BackofficeBotUserLinkSource
+  authChallengeId   String?                     @unique @db.Uuid
+  isActive          Boolean                     @default(true)
+  lastInteractionAt DateTime?                   @db.Timestamptz(6)
+  revokedAt         DateTime?                   @db.Timestamptz(6)
+  createdAt         DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                    @updatedAt @db.Timestamptz(6)
+
+  profile       Profile                     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  authChallenge BackofficeBotAuthChallenge? @relation(fields: [authChallengeId], references: [id], onDelete: SetNull)
+  sessions      BackofficeBotSession[]
+  messages      BackofficeBotMessage[]
+
+  @@index([profileId])
+  @@index([normalizedPhone, isActive])
+  @@map("backoffice_bot_user_links")
+}
+
+model BackofficeBotSession {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userLinkId    String   @db.Uuid
+  teamId        String   @db.Uuid
+  currentLeadId String?  @db.Uuid
+  flowId        String?  @db.Text
+  flowStep      String?  @db.Text
+  flowStack     Json     @default("[]")
+  expiresAt     DateTime @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  userLink BackofficeBotUserLink @relation(fields: [userLinkId], references: [id], onDelete: Cascade)
+  team     Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([userLinkId, expiresAt])
+  @@map("backoffice_bot_sessions")
+}
+
+model BackofficeBotMessage {
+  id               String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId        String                        @db.Uuid
+  userLinkId       String?                       @db.Uuid
+  direction        BackofficeBotMessageDirection
+  channelMessageId String?                       @unique @db.Text
+  flowId           String?                       @db.Text
+  errorCode        String?                       @db.Text
+  payload          Json
+  createdAt        DateTime                      @default(now()) @db.Timestamptz(6)
+
+  channel  BackofficeBotChannel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userLink BackofficeBotUserLink?  @relation(fields: [userLinkId], references: [id], onDelete: SetNull)
+
+  @@index([userLinkId, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_messages")
+}
+
+model BackofficeBotNotificationPreference {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId  String   @db.Uuid
+  type       String   @db.Text
+  enabled    Boolean  @default(true)
+  quietHours Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, type])
+  @@map("backoffice_bot_notification_preferences")
+}
+
+model BackofficeBotEventOutbox {
+  id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType      String                         @db.Text
+  profileId      String                         @db.Uuid
+  payload        Json
+  status         BackofficeBotEventOutboxStatus @default(pending)
+  idempotencyKey String                         @unique @db.Text
+  createdAt      DateTime                       @default(now()) @db.Timestamptz(6)
+  sentAt         DateTime?                      @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([profileId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_event_outbox")
 }

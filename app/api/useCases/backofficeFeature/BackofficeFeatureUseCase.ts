@@ -26,6 +26,7 @@ export interface CreateBackofficeFeatureInput {
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
   accessRules?: Array<{ principal: string; accessLevel: string }>
@@ -40,6 +41,7 @@ export interface UpdateBackofficeFeatureInput {
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
   accessRules?: Array<{ principal: string; accessLevel: string }>
@@ -103,6 +105,9 @@ export class BackofficeFeatureUseCase {
       }
 
       const createInheritParentSettings = input.inheritParentSettings ?? false
+      const createBilledSeparately =
+        createInheritParentSettings ? false : (input.billedSeparately ?? false)
+
       if (createInheritParentSettings && input.betaEnabled) {
         return new Output(
           false,
@@ -131,6 +136,7 @@ export class BackofficeFeatureUseCase {
         defaultAccessLevel: input.defaultAccessLevel ?? "FULL",
         betaEnabled: createInheritParentSettings ? false : (input.betaEnabled ?? false),
         inheritParentSettings: createInheritParentSettings,
+        billedSeparately: input.parentId ? createBilledSeparately : false,
         isActive: input.isActive ?? true,
         sortOrder: input.sortOrder ?? 0,
       })
@@ -201,9 +207,16 @@ export class BackofficeFeatureUseCase {
         )
       }
 
+      const effectiveBilledSeparately = effectiveInheritParentSettings
+        ? false
+        : input.billedSeparately !== undefined
+          ? input.billedSeparately
+          : existing.billedSeparately
+
       const normalizedInput: UpdateBackofficeFeatureInput = {
         ...input,
-        ...(effectiveInheritParentSettings ? { betaEnabled: false } : {}),
+        ...(effectiveInheritParentSettings ? { betaEnabled: false, billedSeparately: false } : {}),
+        ...(!effectiveParentId ? { billedSeparately: false } : { billedSeparately: effectiveBilledSeparately }),
       }
 
       const updated = await this.featureRepo.update(id, normalizedInput)

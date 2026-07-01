@@ -1,12 +1,16 @@
 "use client"
 
 import { useEffect } from "react"
+import { formatDistanceToNow } from "date-fns"
+import { ptBR } from "date-fns/locale"
 import {
   AlertCircle,
   CheckCircle2,
   Clock,
   Globe,
   LoaderCircle,
+  MoreHorizontal,
+  Trash2,
   XCircle,
 } from "lucide-react"
 import {
@@ -23,12 +27,17 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldTitle,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -36,10 +45,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { ResendDomainStatus } from "../context/EmailSettingsTypes"
+import { DomainEventsTimeline } from "./DomainEventsTimeline"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
+import { formatResendRegion } from "../utils/resend-region-labels"
 
 function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
-  if (!status) return null
+  if (!status) {
+    return (
+      <Badge variant="outline" className="rounded-lg text-muted-foreground">
+        Não conectado
+      </Badge>
+    )
+  }
 
   const map: Record<ResendDomainStatus, { label: string; icon: React.ReactNode; className: string }> = {
     verified: {
@@ -79,6 +96,22 @@ function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
   )
 }
 
+function TrackingBadge({ enabled, label }: { enabled: boolean; label: string }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "rounded-lg",
+        enabled
+          ? "border-semantic-success/30 text-semantic-success"
+          : "border-border text-muted-foreground"
+      )}
+    >
+      {label}: {enabled ? "Habilitado" : "Desabilitado"}
+    </Badge>
+  )
+}
+
 export function CustomDomainCard() {
   const {
     loading,
@@ -87,6 +120,11 @@ export function CustomDomainCard() {
     domainRecords,
     domainStatus,
     domainName,
+    domainRegion,
+    domainConnectedAt,
+    domainOpenTracking,
+    domainClickTracking,
+    domainEvents,
     connectingDomain,
     verifyingDomain,
     loadingRecords,
@@ -103,6 +141,8 @@ export function CustomDomainCard() {
     }
   }, [domainName, domainRecords.length, handleLoadDomainRecords])
 
+  const isConnected = Boolean(domainName)
+
   return (
     <EmailSettingsSectionCard
       icon={Globe}
@@ -115,63 +155,112 @@ export function CustomDomainCard() {
           <Skeleton className="h-24 w-full rounded-2xl" />
           <Skeleton className="h-56 w-full rounded-2xl" />
         </div>
-      ) : domainName ? (
+      ) : isConnected ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-[family-name:var(--font-poppins)] text-base font-semibold text-foreground">
-                  {domainName}
+          <div className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 flex-1 items-start gap-4">
+                <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-semantic-success/30 bg-semantic-success/10 text-semantic-success">
+                  <Globe className="size-5" />
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Domínio
+                  </p>
+                  <p className="truncate font-[family-name:var(--font-poppins)] text-xl font-semibold text-foreground">
+                    {domainName}
+                  </p>
+                </div>
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="icon" disabled={disconnectingDomain}>
+                    <MoreHorizontal className="size-4" />
+                    <span className="sr-only">Ações do domínio</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    disabled={verifyingDomain || loadingRecords}
+                    onClick={() => void handleVerifyDomain()}
+                  >
+                    <Clock data-icon="inline-start" />
+                    Verificar DNS
+                  </DropdownMenuItem>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        disabled={disconnectingDomain}
+                        onSelect={(event) => event.preventDefault()}
+                      >
+                        <Trash2 data-icon="inline-start" />
+                        Deletar domínio
+                      </DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Deletar domínio</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Tem certeza que deseja remover o domínio <strong>{domainName}</strong>? Esta ação
+                          remove o domínio no Resend e os disparos voltarão ao domínio padrão.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void handleDisconnectDomain()}>
+                          Deletar
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Criado
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {domainConnectedAt
+                    ? formatDistanceToNow(new Date(domainConnectedAt), { addSuffix: true, locale: ptBR })
+                    : "—"}
+                </p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Status
                 </p>
                 <DomainStatusBadge status={domainStatus} />
               </div>
-              <p className="text-sm text-muted-foreground">
-                Quando verificado, os emails passam a sair do seu domínio corporativo.
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Região
+                </p>
+                <p className="text-sm font-medium text-foreground">{formatResendRegion(domainRegion)}</p>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void handleVerifyDomain()}
-                disabled={verifyingDomain || loadingRecords}
-              >
-                {verifyingDomain ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Clock data-icon="inline-start" />}
-                Verificar DNS
-              </Button>
-
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button type="button" variant="outline" disabled={disconnectingDomain}>
-                    Desconectar
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Desconectar domínio</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Tem certeza que deseja desconectar o domínio <strong>{domainName}</strong>? Os disparos voltarão a usar o domínio padrão do Corretor Studio.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => void handleDisconnectDomain()}>
-                      Desconectar
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+            <div className="flex flex-wrap gap-2">
+              <TrackingBadge enabled={domainOpenTracking} label="Abertura" />
+              <TrackingBadge enabled={domainClickTracking} label="Cliques" />
             </div>
           </div>
+
+          <DomainEventsTimeline events={domainEvents} domainStatus={domainStatus} />
 
           {domainStatus !== "verified" ? (
             <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
               <div className="flex flex-col gap-1">
-                <FieldTitle>Registros DNS necessários</FieldTitle>
-                <FieldDescription>
+                <p className="font-[family-name:var(--font-poppins)] text-sm font-semibold text-foreground">
+                  Registros DNS necessários
+                </p>
+                <p className="text-sm text-muted-foreground">
                   Configure os registros abaixo no seu provedor DNS e depois execute a verificação.
-                </FieldDescription>
+                </p>
               </div>
 
               {loadingRecords ? (
@@ -211,20 +300,12 @@ export function CustomDomainCard() {
                   </Table>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Nenhum registro retornado pelo Resend para este domínio.</p>
+                <p className="text-sm text-muted-foreground">
+                  Nenhum registro retornado pelo Resend para este domínio.
+                </p>
               )}
             </div>
-          ) : (
-            <div className="rounded-2xl border border-semantic-success/30 bg-semantic-success/10 p-5 text-sm text-foreground">
-              <div className="flex items-center gap-2 font-[family-name:var(--font-poppins)] font-semibold text-semantic-success">
-                <CheckCircle2 className="size-4" />
-                Domínio verificado
-              </div>
-              <p className="mt-2 text-muted-foreground">
-                Seus emails já podem sair a partir de <strong>{domainName}</strong>.
-              </p>
-            </div>
-          )}
+          ) : null}
         </>
       ) : (
         <div className="rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
@@ -248,12 +329,17 @@ export function CustomDomainCard() {
                     onClick={() => void handleConnectDomain()}
                     disabled={connectingDomain || !domainInput.trim()}
                   >
-                    {connectingDomain ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Globe data-icon="inline-start" />}
+                    {connectingDomain ? (
+                      <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                    ) : (
+                      <Globe data-icon="inline-start" />
+                    )}
                     Conectar
                   </Button>
                 </div>
                 <FieldDescription>
-                  Nenhum domínio conectado. Após a conexão, a tela exibirá os registros DNS exigidos pelo Resend.
+                  Nenhum domínio conectado. Após a conexão, a tela exibirá os registros DNS exigidos pelo
+                  Resend.
                 </FieldDescription>
               </FieldContent>
             </Field>

@@ -45,9 +45,11 @@ class PerformanceService implements IPerformanceService {
   async getSalesPerformance(
     supabaseId: string,
     teamId: string,
-    filters: PerformanceFiltersState
+    filters: PerformanceFiltersState,
+    teamScope?: import('../context/PerformanceTypes').PerformanceTeamScope
   ): Promise<PerformanceData> {
-    const key = buildCacheKey(supabaseId, teamId, filters);
+    const scopeKey = teamScope ?? 'active';
+    const key = `${buildCacheKey(supabaseId, teamId, filters)}_scope_${scopeKey}`;
 
     const cached = readCache(key);
     if (cached) return cached;
@@ -69,6 +71,7 @@ class PerformanceService implements IPerformanceService {
     if (filters.search) params.set('search', filters.search);
     params.set('page', String(filters.page));
     params.set('pageSize', String(filters.pageSize));
+    if (scopeKey === 'all') params.set('teamScope', 'all');
 
     const request = fetch(`/api/v1/performance/sales?${params.toString()}`, {
       headers: {

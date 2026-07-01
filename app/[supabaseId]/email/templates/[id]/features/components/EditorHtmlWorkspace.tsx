@@ -1,8 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
+import { AlertTriangle } from "lucide-react";
 import { MonacoCodeEditor } from "@/components/editors/MonacoCodeEditor";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { analyzeEmailHtml } from "../utils/analyze-email-html";
 
 function getFallbackPreviewHtml() {
   return '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:360px;color:#8a8a8a;font-family:sans-serif;font-size:14px;">Sem HTML para renderizar</div>';
@@ -12,10 +16,12 @@ interface EditorHtmlWorkspaceProps {
   value: string;
   onChange: (value: string) => void;
   remountKey?: string;
+  ready?: boolean;
 }
 
-export function EditorHtmlWorkspace({ value, onChange, remountKey }: EditorHtmlWorkspaceProps) {
+export function EditorHtmlWorkspace({ value, onChange, remountKey, ready = true }: EditorHtmlWorkspaceProps) {
   const htmlPreviewContent = value.trim() ? value : getFallbackPreviewHtml();
+  const htmlAlerts = useMemo(() => analyzeEmailHtml(value), [value]);
   const htmlEditorOptions = useMemo(
     () => ({
       formatOnPaste: true,
@@ -38,16 +44,20 @@ export function EditorHtmlWorkspace({ value, onChange, remountKey }: EditorHtmlW
           <Badge variant="secondary">HTML</Badge>
         </div>
         <div className="min-h-[360px] flex-1">
-          <MonacoCodeEditor
-            editorKey={remountKey}
-            value={value}
-            onChange={onChange}
-            language="html"
-            height="100%"
-            themeVariant="resend-dark"
-            placeholder="Cole ou edite o HTML do e-mail..."
-            options={htmlEditorOptions}
-          />
+          {ready ? (
+            <MonacoCodeEditor
+              editorKey={remountKey}
+              value={value}
+              onChange={onChange}
+              language="html"
+              height="100%"
+              themeVariant="resend-dark"
+              placeholder="Cole ou edite o HTML do e-mail..."
+              options={htmlEditorOptions}
+            />
+          ) : (
+            <Skeleton className="h-full w-full bg-[#05050A]" />
+          )}
         </div>
       </section>
 
@@ -59,6 +69,15 @@ export function EditorHtmlWorkspace({ value, onChange, remountKey }: EditorHtmlW
           </div>
           <Badge variant="outline">Preview</Badge>
         </div>
+        {htmlAlerts.length > 0 ? (
+          <Alert className="mx-3 mt-3 shrink-0 border-warning/30 bg-warning/10">
+            <AlertTriangle data-icon="inline-start" className="text-warning" />
+            <AlertDescription className="text-xs text-muted-foreground">
+              A prévia usa um navegador completo; o e-mail real pode renderizar diferente.
+              Consulte <strong className="font-medium text-foreground">Dicas</strong> no painel lateral.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <div className="min-h-0 flex-1 bg-background">
           <iframe
             srcDoc={htmlPreviewContent}

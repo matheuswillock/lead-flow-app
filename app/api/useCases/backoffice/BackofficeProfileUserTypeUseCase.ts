@@ -5,6 +5,7 @@ import {
   profileAsaasCustomerSyncUseCase,
   ProfileAsaasCustomerSyncUseCase,
 } from "@/app/api/useCases/profileAsaasCustomer/ProfileAsaasCustomerSyncUseCase"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const MIN_ACCESS_DAYS = 1
@@ -12,7 +13,7 @@ const MAX_ACCESS_DAYS = 365
 const MIN_ACCESS_TOLERANCE_MS = 60 * 1000
 
 export interface BackofficeProfileUserTypeInput {
-  userType: "common" | "member_pro" | "associate"
+  userType: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt?: string
   sponsorMasterId?: string
 }
@@ -81,6 +82,37 @@ export class BackofficeProfileUserTypeUseCase {
         )
       }
 
+      if (input.userType === "guest") {
+        if (!input.sponsorMasterId) {
+          return new Output(false, [], ["Informe o patrocinador da conta Convidado"], null)
+        }
+
+        if (input.sponsorMasterId === profileId) {
+          return new Output(false, [], ["A conta não pode ser patrocinada por ela mesma"], null)
+        }
+
+        const sponsorIsMaster = await this.repository.findIsMaster(input.sponsorMasterId)
+        if (!sponsorIsMaster) {
+          return new Output(false, [], ["Patrocinador inválido"], null)
+        }
+
+        const userType = await this.repository.upsertUserTypeAssignment(profileId, {
+          userType: "guest",
+          accessExpiresAt: null,
+          assignedByProfileId,
+        })
+
+        await this.repository.updateSponsorMasterId(profileId, input.sponsorMasterId)
+        await this.repository.setHasPermanentSubscription(profileId, true)
+
+        return new Output(
+          true,
+          ["Tipo de usuário atualizado para Convidado"],
+          [],
+          { userType }
+        )
+      }
+
       const hasOpenReviews = await this.repository.hasOpenProposalReviewsForAssociate(profileId)
       if (hasOpenReviews) {
         return new Output(
@@ -94,11 +126,19 @@ export class BackofficeProfileUserTypeUseCase {
       await this.repository.updateSponsorMasterId(profileId, null)
 
       if (input.userType === "common") {
+        const memberProContext = await memberProBillingUseCase.getMemberProContext(profileId)
         const userType = await this.repository.upsertUserTypeAssignment(profileId, {
           userType: "common",
           accessExpiresAt: null,
           assignedByProfileId,
         })
+
+        if (memberProContext.slug === "member_pro") {
+          await memberProBillingUseCase.syncBillingAfterUsageChange(
+            profileId,
+            "member_pro_to_common"
+          )
+        }
 
         return new Output(true, ["Tipo de usuário atualizado para Comum"], [], { userType })
       }

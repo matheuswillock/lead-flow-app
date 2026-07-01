@@ -1,5 +1,5 @@
 import type { IWhatsAppSettingsService } from './IWhatsAppSettingsService'
-import type { WhatsAppConfig, WhatsAppUsage } from '../context/WhatsAppSettingsTypes'
+import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber } from '../context/WhatsAppSettingsTypes'
 
 class WhatsAppSettingsService implements IWhatsAppSettingsService {
   private buildHeaders(supabaseId: string): HeadersInit {
@@ -28,11 +28,30 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
     return output.result as WhatsAppConfig
   }
 
-  async createConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig> {
+  async fetchReusableNumbers(teamId: string, supabaseId: string): Promise<ReusableWhatsAppNumber[]> {
+    const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/reusable-numbers`, {
+      method: 'GET',
+      headers: this.buildHeaders(supabaseId),
+    })
+    if (response.status === 403) return []
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      return []
+    }
+    return (output.result as ReusableWhatsAppNumber[]) ?? []
+  }
+
+  async createConfig(
+    teamId: string,
+    supabaseId: string,
+    options?: { reuseFromTeamId?: string }
+  ): Promise<WhatsAppConfig> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/config`, {
       method: 'POST',
       headers: this.buildHeaders(supabaseId),
-      body: JSON.stringify({}),
+      body: JSON.stringify(
+        options?.reuseFromTeamId ? { reuseFromTeamId: options.reuseFromTeamId } : {}
+      ),
     })
     const output = await response.json() as Record<string, unknown>
     if (!response.ok || !output?.isValid) {

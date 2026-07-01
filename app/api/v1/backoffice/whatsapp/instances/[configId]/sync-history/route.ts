@@ -15,7 +15,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (denied) return denied
 
     const { configId } = await context.params
-    const output = await backofficeWhatsAppInstanceUseCase.syncHistory(configId)
+    const output = await backofficeWhatsAppInstanceUseCase.syncHistory(
+      configId,
+      access.access.profileId
+    )
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

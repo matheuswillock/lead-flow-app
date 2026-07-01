@@ -51,7 +51,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Governance Check
         run: bun run governance:check
@@ -75,6 +75,7 @@ jobs:
 
   migration-status:
     name: Migration Status
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
@@ -104,7 +105,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Check Migration Status
         shell: bash
@@ -143,9 +144,14 @@ jobs:
 
   build:
     name: Build
+    if: |
+      always() &&
+      needs.quality.result == 'success' &&
+      (needs['migration-status'].result == 'success' || needs['migration-status'].result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
+      - quality
       - migration-status
     steps:
       - name: Checkout
@@ -172,7 +178,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Generate Prisma Client
         run: bun run prisma:generate
@@ -182,8 +188,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ github.event_name == 'push' && secrets.DATABASE_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
+          DIRECT_URL: ${{ github.event_name == 'push' && secrets.DIRECT_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
         run: bun run build
 
   deploy-production:

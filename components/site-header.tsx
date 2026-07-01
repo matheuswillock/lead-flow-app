@@ -24,6 +24,13 @@ const EMAIL_SECTION_LABELS: Record<string, string> = {
   configuracoes: 'Configurações',
 }
 
+const STUDIO_BOT_SECTION_LABELS: Record<string, string> = {
+  canal: 'Canal e perfil',
+  conversas: 'Conversas',
+  vinculacoes: 'Vinculações',
+  verificacoes: 'Verificações',
+}
+
 export function SiteHeader() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -40,6 +47,12 @@ export function SiteHeader() {
   const isPerformanceSection = section === 'performance'
   const isBackofficeClientDetails =
     pathSegments[0] === 'backoffice' && pathSegments[1] === 'clients' && Boolean(pathSegments[2])
+  const isBackofficeStudioBot =
+    pathSegments[0] === 'backoffice' && pathSegments[1] === 'studio-bot'
+  const studioBotSection = isBackofficeStudioBot ? (pathSegments[2] ?? '') : ''
+  const studioBotSectionLabel = studioBotSection
+    ? STUDIO_BOT_SECTION_LABELS[studioBotSection]
+    : null
 
   const routeName = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0] || ''
   const titleMap: Record<string, string> = {
@@ -123,6 +136,28 @@ export function SiteHeader() {
                   {override?.label ?? 'Reuniões realizadas'}
                 </BreadcrumbPage>
               </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        ) : isBackofficeStudioBot ? (
+          <Breadcrumb>
+            <BreadcrumbList>
+              {studioBotSectionLabel ? (
+                <>
+                  <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbLink asChild>
+                      <Link href="/backoffice/studio-bot">Bethânia</Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator className="hidden md:block" />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{studioBotSectionLabel}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </>
+              ) : (
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Bethânia</BreadcrumbPage>
+                </BreadcrumbItem>
+              )}
             </BreadcrumbList>
           </Breadcrumb>
         ) : isBackofficeClientDetails ? (

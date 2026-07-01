@@ -32,7 +32,12 @@ export async function GET(
   const q = url.searchParams.get("q") ?? undefined
   const groupJid = url.searchParams.get("groupJid") ?? undefined
 
-  const output = await listWhatsAppContactsUseCase.execute({ teamId, q, groupJid })
+  const output = await listWhatsAppContactsUseCase.execute({
+    teamId,
+    access: teamAccess.access,
+    q,
+    groupJid,
+  })
   if (!output.isValid) {
     return NextResponse.json(output, { status: resolveStatus(output) })
   }

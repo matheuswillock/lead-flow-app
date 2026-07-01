@@ -1,10 +1,16 @@
 import { Output } from "@/lib/output"
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import {
+  assertCanAccessConversation,
+  WhatsAppAccessDeniedError,
+} from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { evoApiService } from "@/app/api/services/whatsapp/evo/EvoApiService"
 
 interface GetMessageMediaInput {
   teamId: string
   messageId: string
+  access: TeamAccess
 }
 
 function extractMessageKey(rawPayload: unknown): Record<string, unknown> | null {
@@ -40,6 +46,8 @@ class GetMessageMediaUseCase {
         return new Output(false, [], ["Mensagem não encontrada"], null)
       }
 
+      await assertCanAccessConversation(input.access, message.conversationId)
+
       const outboundMedia = extractOutboundMedia(message.rawPayload)
       if (outboundMedia) {
         return new Output(true, [], [], {
@@ -53,6 +61,7 @@ class GetMessageMediaUseCase {
       if (!config) {
         return new Output(false, [], ["Configuração WhatsApp não encontrada"], null)
       }
+      const effectiveConfig = await whatsAppRepository.resolveEffectiveConfig(config)
 
       const messageKey = extractMessageKey(message.rawPayload)
       if (!messageKey && message.providerMessageId) {
@@ -82,9 +91,9 @@ class GetMessageMediaUseCase {
       }
 
       const media = await evoApiService.getBase64FromMediaMessage({
-        instanceName: config.instanceName,
+        instanceName: effectiveConfig.instanceName,
         messageKey,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
+        hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
       })
 
       if (!media) {
@@ -97,6 +106,9 @@ class GetMessageMediaUseCase {
         fileName: message.mediaFileName,
       })
     } catch (error) {
+      if (error instanceof WhatsAppAccessDeniedError) {
+        return new Output(false, [], [error.message], null)
+      }
       console.error("[GetMessageMediaUseCase][execute]", error)
       const msg = error instanceof Error ? error.message : "Erro ao obter mídia"
       return new Output(false, [], [msg], null)

@@ -43,6 +43,21 @@ export interface BackofficeAdhesionItem {
   paidAt: string | null
   billingType: string | null
   asaasPaymentId: string | null
+  productId: string | null
+}
+
+export interface BackofficeAdhesionProductVariant {
+  id: string
+  name: string
+  featureSlug: string
+  isDefault: boolean
+  pricesByCycle: Record<
+    BackofficeAdhesionBillingCycleKey,
+    {
+      pixMonthlyPrice: number | null
+      cardMonthlyPrice: number | null
+    }
+  >
 }
 
 export interface BackofficeAdhesionLeadOption {
@@ -62,10 +77,18 @@ export interface BackofficeAdhesionUserOption {
   email: string
 }
 
+export interface BackofficeAdhesionSponsorOption {
+  id: string
+  name: string
+  email: string
+}
+
 export interface BackofficeAdhesionOptions {
   leads: BackofficeAdhesionLeadOption[]
   sdrOptions: BackofficeAdhesionUserOption[]
   closerOptions: BackofficeAdhesionUserOption[]
+  sponsorOptions: BackofficeAdhesionSponsorOption[]
+  productVariants: BackofficeAdhesionProductVariant[]
   pricing: {
     cycles: Record<
       BackofficeAdhesionBillingCycleKey,
@@ -86,6 +109,7 @@ export interface BackofficeAdhesionFormValues {
   phone: string
   email: string
   cpfCnpj: string
+  productId: string
   cycle: BackofficeAdhesionBillingCycleKey
   extraTeams: number
   extraUsers: number
@@ -93,8 +117,9 @@ export interface BackofficeAdhesionFormValues {
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
   activationMode: "checkout" | "external_paid"
-  userType: "common" | "member_pro"
+  userType: "common" | "member_pro" | "associate" | "guest"
   memberProAccessDays: string
+  sponsorMasterId: string | null
   additionalUsers: BackofficeAdhesionAdditionalUser[]
   additionalTeams: BackofficeAdhesionAdditionalTeam[]
 }

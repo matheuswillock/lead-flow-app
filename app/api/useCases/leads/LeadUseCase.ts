@@ -48,8 +48,8 @@ import {
   resolveMissingLeadFields,
 } from "@/lib/leadStatusTransitionFields";
 import { resolveLeadRazaoSocial } from "@/app/api/services/cnpjLookup/CnpjLookupService";
-import type { LeadRequiredDocumentType } from "@prisma/client";
 import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
+import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -447,6 +447,13 @@ export class LeadUseCase implements ILeadUseCase {
       if (lead.isTransfer === true && lead.status !== null) {
         this.handleTransferActivationAlert(lead).catch((err) =>
           console.error("[LeadUseCase][handleTransferActivationAlert] Background error:", err)
+        );
+      }
+
+      if (assignedTo) {
+        this.enqueueLeadAssignedPush(
+          { id: lead.id, leadCode: lead.leadCode ?? null, name: lead.name },
+          assignedTo,
         );
       }
 
@@ -944,6 +951,13 @@ export class LeadUseCase implements ILeadUseCase {
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de atribuição:", error);
+        }
+
+        if (data.assignedTo) {
+          this.enqueueLeadAssignedPush(
+            { id: lead.id, leadCode: lead.leadCode ?? null, name: lead.name },
+            data.assignedTo,
+          );
         }
       }
 
@@ -1592,6 +1606,11 @@ export class LeadUseCase implements ILeadUseCase {
         } catch (error) {
           console.warn("Não foi possível registrar atividade de atribuição:", error);
         }
+
+        this.enqueueLeadAssignedPush(
+          { id: lead.id, leadCode: lead.leadCode ?? null, name: lead.name },
+          operatorId,
+        );
       }
 
       return new Output(true, ["Lead atribuído ao operador com sucesso"], [], this.transformToDTO(lead));
@@ -2428,6 +2447,24 @@ export class LeadUseCase implements ILeadUseCase {
     void lead;
 
     return null;
+  }
+
+  private enqueueLeadAssignedPush(
+    lead: { id: string; leadCode: string | null; name: string },
+    assigneeProfileId: string | null | undefined,
+  ): void {
+    if (!assigneeProfileId) return;
+
+    void studioBotOutboxService
+      .enqueueLeadAssigned({
+        profileId: assigneeProfileId,
+        leadId: lead.id,
+        leadCode: lead.leadCode,
+        leadName: lead.name,
+      })
+      .catch((error) => {
+        console.error("[LeadUseCase][enqueueLeadAssignedPush]", error);
+      });
   }
 
   private async handleTransferActivationAlert(lead: any): Promise<void> {

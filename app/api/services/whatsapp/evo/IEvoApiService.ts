@@ -38,12 +38,32 @@ export interface EvoSendTextResult {
   messageKey?: Record<string, unknown>
 }
 
+export const WHATSAPP_EVO_WEBHOOK_EVENTS = [
+  "MESSAGES_UPSERT",
+  "MESSAGES_UPDATE",
+  "CONNECTION_UPDATE",
+  "QRCODE_UPDATED",
+  "SEND_MESSAGE",
+] as const
+
 export interface IEvoApiService {
   createInstance(params: {
     instanceName: string
     webhookUrl: string
     hostBaseUrl?: string
   }): Promise<EvoCreateInstanceResult>
+
+  adoptOrCreateInstance(params: {
+    instanceName: string
+    webhookUrl: string
+    hostBaseUrl?: string
+  }): Promise<EvoCreateInstanceResult & { adopted: boolean }>
+
+  setWebhook(params: {
+    instanceName: string
+    webhookUrl: string
+    hostBaseUrl?: string
+  }): Promise<void>
 
   getQrCode(instanceName: string, hostBaseUrl?: string): Promise<{ text: string; base64: string }>
 

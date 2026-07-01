@@ -11,7 +11,7 @@ export type BackofficeProductWithPaymentRules = BackofficeProduct & {
 
 export interface CreateBackofficeProductInput {
   name: string
-  slug: string
+  featureSlug: string
   description?: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -20,12 +20,13 @@ export interface CreateBackofficeProductInput {
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
+  isDefault?: boolean
   isActive?: boolean
 }
 
 export interface UpdateBackofficeProductInput {
   name?: string
-  slug?: string
+  featureSlug?: string
   description?: string | null
   type?: BackofficeProductType
   billingMode?: BackofficeProductBillingMode
@@ -34,6 +35,7 @@ export interface UpdateBackofficeProductInput {
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
+  isDefault?: boolean
   isActive?: boolean
 }
 
@@ -42,10 +44,16 @@ export interface IBackofficeProductRepository {
   findAllWithPaymentRules(): Promise<BackofficeProductWithPaymentRules[]>
   findById(id: string): Promise<BackofficeProduct | null>
   findByIdWithPaymentRules(id: string): Promise<BackofficeProductWithPaymentRules | null>
-  findBySlug(slug: string): Promise<BackofficeProduct | null>
-  findBySlugWithPaymentRules(slug: string): Promise<BackofficeProductWithPaymentRules | null>
+  findByFeatureSlug(featureSlug: string): Promise<BackofficeProduct[]>
+  findByFeatureSlugWithPaymentRules(featureSlug: string): Promise<BackofficeProductWithPaymentRules[]>
+  findDefaultByFeatureSlug(featureSlug: string): Promise<BackofficeProduct | null>
+  findDefaultByFeatureSlugWithPaymentRules(
+    featureSlug: string
+  ): Promise<BackofficeProductWithPaymentRules | null>
+  countByFeatureSlug(featureSlug: string): Promise<number>
   create(data: CreateBackofficeProductInput): Promise<BackofficeProduct>
   update(id: string, data: UpdateBackofficeProductInput): Promise<BackofficeProduct>
+  clearDefaultForFeatureSlug(featureSlug: string, exceptId?: string): Promise<void>
   upsertPaymentRules(productId: string, rules: UpsertPaymentRuleInput[]): Promise<void>
   delete(id: string): Promise<void>
   hasActiveSubscriptions(id: string): Promise<boolean>

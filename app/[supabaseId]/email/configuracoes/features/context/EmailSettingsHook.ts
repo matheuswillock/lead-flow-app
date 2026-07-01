@@ -7,6 +7,7 @@ import type { UpsertEmailSenderData, UpsertEmailVariableData } from "../services
 import type {
   BlockedDateRange,
   DomainConnectResult,
+  DomainEvent,
   DomainRecord,
   EmailGlobalVariable,
   EmailSender,
@@ -59,6 +60,11 @@ export type EmailSettingsHookReturn = {
   domainRecords: DomainRecord[]
   domainStatus: ResendDomainStatus | null
   domainName: string | null
+  domainRegion: string | null
+  domainConnectedAt: string | null
+  domainOpenTracking: boolean
+  domainClickTracking: boolean
+  domainEvents: DomainEvent[]
   connectingDomain: boolean
   verifyingDomain: boolean
   loadingRecords: boolean
@@ -109,6 +115,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainRecords, setDomainRecords] = useState<DomainRecord[]>([])
   const [domainStatus, setDomainStatus] = useState<ResendDomainStatus | null>(null)
   const [domainName, setDomainName] = useState<string | null>(null)
+  const [domainRegion, setDomainRegion] = useState<string | null>(null)
+  const [domainConnectedAt, setDomainConnectedAt] = useState<string | null>(null)
+  const [domainOpenTracking, setDomainOpenTracking] = useState(false)
+  const [domainClickTracking, setDomainClickTracking] = useState(false)
+  const [domainEvents, setDomainEvents] = useState<DomainEvent[]>([])
   const [connectingDomain, setConnectingDomain] = useState(false)
   const [verifyingDomain, setVerifyingDomain] = useState(false)
   const [loadingRecords, setLoadingRecords] = useState(false)
@@ -128,6 +139,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     setTemplateApprovalRoles(result.templateApprovalRoles ?? ["manager", "backoffice"])
     setDomainStatus(result.resendDomainStatus)
     setDomainName(result.resendDomainName)
+    setDomainRegion(result.resendDomainRegion ?? null)
+    setDomainConnectedAt(result.resendDomainConnectedAt ?? null)
+    setDomainOpenTracking(result.resendOpenTracking ?? false)
+    setDomainClickTracking(result.resendClickTracking ?? false)
+    setDomainEvents(result.domainEvents ?? [])
     setSenders(result.senders ?? [])
     setDefaultSenderId(result.defaultSenderId ?? null)
     setGlobalVariables(result.globalVariables ?? [])
@@ -343,8 +359,14 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       const result: DomainConnectResult = await service.connectDomain(domainInput.trim())
       setDomainName(result.domainName)
       setDomainStatus(result.status as ResendDomainStatus)
+      setDomainRegion(result.region ?? null)
+      setDomainConnectedAt(result.connectedAt ?? new Date().toISOString())
+      setDomainOpenTracking(result.openTracking ?? true)
+      setDomainClickTracking(result.clickTracking ?? true)
       setDomainRecords(result.records)
+      setDomainEvents(result.events ?? [])
       setDomainInput("")
+      await fetchSettings()
       toast.success("Domínio conectado. Configure os registros DNS abaixo.")
     } catch (err) {
       console.error("[useEmailSettings] handleConnectDomain error", err)
@@ -352,7 +374,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     } finally {
       setConnectingDomain(false)
     }
-  }, [domainInput])
+  }, [domainInput, fetchSettings])
 
   const handleDisconnectDomain = useCallback(async () => {
     setDisconnectingDomain(true)
@@ -360,8 +382,13 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       await service.disconnectDomain()
       setDomainName(null)
       setDomainStatus(null)
+      setDomainRegion(null)
+      setDomainConnectedAt(null)
+      setDomainOpenTracking(false)
+      setDomainClickTracking(false)
       setDomainRecords([])
-      toast.success("Domínio desconectado")
+      setDomainEvents([])
+      toast.success("Domínio removido")
     } catch (err) {
       console.error("[useEmailSettings] handleDisconnectDomain error", err)
       toast.error("Erro ao desconectar domínio")
@@ -376,6 +403,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       const result: DomainConnectResult = await service.getDomainRecords()
       setDomainRecords(result.records)
       setDomainStatus(result.status as ResendDomainStatus)
+      setDomainRegion(result.region ?? domainRegion)
+      setDomainConnectedAt(result.connectedAt ?? domainConnectedAt)
+      setDomainOpenTracking(result.openTracking ?? domainOpenTracking)
+      setDomainClickTracking(result.clickTracking ?? domainClickTracking)
+      if (result.events) setDomainEvents(result.events)
     } catch (err) {
       console.error("[useEmailSettings] handleLoadDomainRecords error", err)
     } finally {
@@ -435,6 +467,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     domainRecords,
     domainStatus,
     domainName,
+    domainRegion,
+    domainConnectedAt,
+    domainOpenTracking,
+    domainClickTracking,
+    domainEvents,
     connectingDomain,
     verifyingDomain,
     loadingRecords,

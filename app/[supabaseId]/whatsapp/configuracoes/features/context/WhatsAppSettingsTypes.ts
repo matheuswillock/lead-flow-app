@@ -8,6 +8,8 @@ export interface WhatsAppConfig {
   status: WhatsAppConnectionStatus
   instanceName: string
   phoneNumber: string | null
+  normalizedPhone?: string | null
+  primaryConfigId?: string | null
   qrCodeImageUrl: string | null
   qrCodeText: string | null
   usageLimitMonthly: number
@@ -29,10 +31,19 @@ export interface WhatsAppUsage {
   status: 'WITHIN_LIMIT' | 'ATTENTION' | 'EXCEEDED'
 }
 
+export interface ReusableWhatsAppNumber {
+  teamId: string
+  teamName: string
+  phoneNumber: string
+  configId: string
+}
+
 export interface WhatsAppSettingsState {
   config: WhatsAppConfig | null
   usage: WhatsAppUsage | null
+  reusableNumbers: ReusableWhatsAppNumber[]
   isLoading: boolean
+  isLoadingReusableNumbers: boolean
   isRefreshing: boolean
   isConnecting: boolean
   isReconnecting: boolean
@@ -41,7 +52,7 @@ export interface WhatsAppSettingsState {
 }
 
 export interface WhatsAppSettingsActions {
-  connect: () => Promise<void>
+  connect: (reuseFromTeamId?: string) => Promise<void>
   reconnect: () => Promise<void>
   disconnect: () => Promise<void>
   reload: () => void

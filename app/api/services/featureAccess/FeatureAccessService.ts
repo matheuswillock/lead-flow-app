@@ -4,11 +4,13 @@ import type {
   IFeatureAccessRepository,
   UserRoleInfo,
 } from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
-import type { BackofficeFeatureAccessRule } from "@prisma/client"
+import type { BackofficeFeature, BackofficeFeatureAccessRule } from "@prisma/client"
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
+
+type ActiveFeature = BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }
 
 function roleHasPublicAccess(level: string): boolean {
   switch (level) {
@@ -45,6 +47,32 @@ function evaluatePrincipalRules(
   }
 
   return roleHasPublicAccess(defaultAccessLevel)
+}
+
+function resolveBillingProductSlug(
+  feature: ActiveFeature,
+  featureById: Map<string, ActiveFeature>
+): string | null {
+  if (!feature.parentId || !feature.billedSeparately) {
+    const visited = new Set<string>()
+    let current: ActiveFeature | undefined = feature
+
+    while (current?.parentId && !visited.has(current.id)) {
+      visited.add(current.id)
+      const parent = featureById.get(current.parentId)
+      if (!parent) break
+      if (!parent.billedSeparately) {
+        current = parent
+        continue
+      }
+      break
+    }
+
+    const slug = current?.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[current?.slug ?? ""]
+    return slug ?? null
+  }
+
+  return feature.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[feature.slug] ?? null
 }
 
 export class FeatureAccessService implements IFeatureAccessService {
@@ -116,14 +144,14 @@ export class FeatureAccessService implements IFeatureAccessService {
 
     const paidProductSlugs = new Set<string>()
     for (const item of userSubscriptions) {
-      paidProductSlugs.add(item.product.slug)
+      paidProductSlugs.add(item.product.featureSlug)
     }
     for (const item of ownerSubscriptions) {
-      paidProductSlugs.add(item.product.slug)
+      paidProductSlugs.add(item.product.featureSlug)
     }
 
-    if (hasActiveMainSubscription && ownerProfileSubscription?.product?.slug) {
-      paidProductSlugs.add(ownerProfileSubscription.product.slug)
+    if (hasActiveMainSubscription && ownerProfileSubscription?.product?.featureSlug) {
+      paidProductSlugs.add(ownerProfileSubscription.product.featureSlug)
     }
 
     const featureById = new Map(features.map((f) => [f.id, f]))
@@ -132,7 +160,7 @@ export class FeatureAccessService implements IFeatureAccessService {
     const resolveEffectiveFeature = (
       featureId: string,
       visited = new Set<string>()
-    ): (typeof features)[number] | undefined => {
+    ): ActiveFeature | undefined => {
       const feature = featureById.get(featureId)
       if (!feature) return undefined
 
@@ -230,11 +258,10 @@ export class FeatureAccessService implements IFeatureAccessService {
           resolvedUserPrincipals
         )
       } else if (effectiveFeature.accessMode === "PAID" || effectiveFeature.accessMode === "ADDON") {
-        const effectiveProductSlug =
-          effectiveFeature.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[effectiveFeature.slug]
+        const billingProductSlug = resolveBillingProductSlug(feature, featureById)
         const hasSubscription =
           hasPermanentAccess ||
-          (effectiveProductSlug ? paidProductSlugs.has(effectiveProductSlug) : false)
+          (billingProductSlug ? paidProductSlugs.has(billingProductSlug) : false)
 
         if (hasSubscription && effectiveFeature.accessRules.length > 0) {
           hasAccess = evaluatePrincipalRules(

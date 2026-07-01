@@ -1,4 +1,9 @@
 import { Output } from "@/lib/output"
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import {
+  assertCanAccessConversation,
+  WhatsAppAccessDeniedError,
+} from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { isManagerLikeRole } from "@/lib/roles"
 
@@ -8,11 +13,14 @@ interface AssignConversationInput {
   callerIsMaster: boolean
   callerRole: string
   callerProfileId: string
+  access: TeamAccess
 }
 
 class AssignConversationUseCase {
   async execute(input: AssignConversationInput): Promise<Output> {
     try {
+      await assertCanAccessConversation(input.access, input.conversationId)
+
       const canAssignToAnyone = input.callerIsMaster || isManagerLikeRole(input.callerRole)
 
       if (!canAssignToAnyone) {
@@ -39,6 +47,9 @@ class AssignConversationUseCase {
 
       return new Output(true, ["Responsável atribuído com sucesso"], [], updated)
     } catch (error) {
+      if (error instanceof WhatsAppAccessDeniedError) {
+        return new Output(false, [], [error.message], null)
+      }
       console.error("[AssignConversationUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao atribuir conversa"
       return new Output(false, [], [message], null)

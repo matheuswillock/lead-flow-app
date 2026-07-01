@@ -363,7 +363,7 @@ export function PerfFiltersBar() {
             Presets
           </Button>
         </SheetTrigger>
-        <SheetContent side="right" className="w-[420px] sm:w-[480px]">
+        <SheetContent side="right" className="w-105 sm:w-120">
           <SheetHeader>
             <SheetTitle>Filtros pré-definidos</SheetTitle>
             <SheetDescription>

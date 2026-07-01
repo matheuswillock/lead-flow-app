@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, Send, Trash2, Pencil } from "lucide-react"
+import { MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -45,6 +45,7 @@ function CampaignActionsMenu({
   openEdit,
   handleSend,
   handleDeleteDraft,
+  onOpenAnalytics,
 }: {
   campaign: Campaign
   canSendCampaign: boolean
@@ -52,12 +53,16 @@ function CampaignActionsMenu({
   openEdit: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
+  onOpenAnalytics: (campaign: Campaign) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
-  const canSendByStatus = campaign.status === "draft" || campaign.status === "scheduled"
-  const canEdit = true
-  const canDelete = true
+  const canSendByStatus =
+    campaign.status === "draft" ||
+    campaign.status === "scheduled" ||
+    campaign.status === "sent"
+  const canEdit = campaign.status === "draft" || campaign.status === "scheduled"
+  const canDelete = campaign.status === "draft"
 
   async function handleSendConfirm() {
     setSending(true)
@@ -92,6 +97,10 @@ function CampaignActionsMenu({
           <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
             <Pencil className="mr-2 h-4 w-4" />
             Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Métricas
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -129,7 +138,11 @@ function CampaignActionsMenu({
   )
 }
 
-export function CampaignList() {
+export function CampaignList({
+  onOpenAnalytics,
+}: {
+  onOpenAnalytics: (campaign: Campaign) => void
+}) {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
   const {
@@ -146,7 +159,8 @@ export function CampaignList() {
     credits,
   } = useCampanhasContext()
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
-  const canSendCampaign = !!credits?.hasSubscription || isCampaignsBetaAccess
+  const canSendCampaign =
+    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 
   return (
     <div className="space-y-3">
@@ -220,6 +234,7 @@ export function CampaignList() {
                           openEdit={openEdit}
                           handleSend={handleSend}
                           handleDeleteDraft={handleDeleteDraft}
+                          onOpenAnalytics={onOpenAnalytics}
                         />
                       )}
                     </div>

@@ -46,10 +46,12 @@ export async function POST(
   const output = await linkConversationToLeadUseCase.execute({
     conversationId,
     leadId: parsed.data.leadId,
+    access: teamAccess.access,
   })
 
   if (!output.isValid) {
-    return NextResponse.json(output, { status: 500 })
+    const status = output.errorMessages.some((m) => m.includes("Acesso negado")) ? 403 : 500
+    return NextResponse.json(output, { status })
   }
 
   return NextResponse.json(output)

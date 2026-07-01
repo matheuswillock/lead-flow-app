@@ -20,6 +20,7 @@ export type Campaign = {
 
 export type CreditStatus = {
   hasSubscription: boolean
+  isBetaExempt?: boolean
   plan: string | null
   monthlyCredits: number
   creditsUsed: number

@@ -120,7 +120,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
 
     setFormData({
       name: product.name,
-      slug: product.slug,
+      featureSlug: product.featureSlug,
       description: product.description ?? "",
       type: product.type,
       billingMode: product.billingMode,
@@ -129,6 +129,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
       priceSemiannual: product.priceSemiannual != null ? String(product.priceSemiannual) : "",
       priceAnnual: product.priceAnnual != null ? String(product.priceAnnual) : "",
       priceLifetime: product.priceLifetime != null ? String(product.priceLifetime) : "",
+      isDefault: product.isDefault,
       isActive: product.isActive,
       paymentRules: {
         monthly: ruleEntry("monthly", "1"),

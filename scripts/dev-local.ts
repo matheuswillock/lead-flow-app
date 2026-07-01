@@ -1,5 +1,5 @@
 /**
- * Local dev orchestrator: Supabase + Evolution API + Next.js.
+ * Local dev orchestrator: Supabase + Evolution API + N8N + Next.js.
  *
  * `bun run dev` and `bun run dev:local` are aliases — both use the local Docker
  * stack (not the remote DATABASE_URL from `.env`).
@@ -8,6 +8,7 @@
  *   --skip-clone  Do not auto-clone even if auth.users is empty.
  *   --no-start    Fail fast if Supabase local stack is not running.
  *   --skip-evo    Do not start Evolution API (WhatsApp unavailable).
+ *   --skip-n8n    Do not start N8N (Bethânia workflows unavailable).
  *   --turbo       Force Turbopack on Windows (default no Windows é Webpack por EPERM).
  *
  * Remaining args are forwarded to `next dev` (e.g. `--port 3001`).
@@ -28,6 +29,9 @@ const LOCAL_DB_URL = CATALOG_LOCAL_DB_URL;
 const LOCAL_EVO_API_URL = "http://127.0.0.1:8080";
 const LOCAL_EVO_WEBHOOK_PUBLIC_URL = "http://host.docker.internal:3000";
 const LOCAL_EVO_DEFAULT_API_KEY = "leadflow-local-evo-key";
+const LOCAL_N8N_URL = "http://127.0.0.1:5678";
+const N8N_ENV_FILE = join(process.cwd(), ".env.n8n");
+const N8N_ENV_EXAMPLE = join(process.cwd(), ".env.n8n.example");
 const EVO_ENV_FILE = join(process.cwd(), ".env.evolution");
 const EVO_ENV_EXAMPLE = join(process.cwd(), ".env.evolution.example");
 
@@ -35,12 +39,14 @@ const rawArgs = process.argv.slice(2);
 const skipClone = rawArgs.includes("--skip-clone");
 const noStart = rawArgs.includes("--no-start");
 const skipEvo = rawArgs.includes("--skip-evo");
+const skipN8n = rawArgs.includes("--skip-n8n");
 const forceTurbo = rawArgs.includes("--turbo") || rawArgs.includes("--turbopack");
 const nextArgs = rawArgs.filter(
   (arg) =>
     arg !== "--skip-clone" &&
     arg !== "--no-start" &&
     arg !== "--skip-evo" &&
+    arg !== "--skip-n8n" &&
     arg !== "--turbo" &&
     arg !== "--turbopack",
 );
@@ -143,6 +149,30 @@ function bootstrapEvolutionEnv() {
   info("⚠ Created .env.evolution from .env.evolution.example");
 }
 
+function bootstrapN8nEnv() {
+  if (existsSync(N8N_ENV_FILE)) return;
+  if (!existsSync(N8N_ENV_EXAMPLE)) {
+    info("⚠ .env.n8n.example not found — `n8n:up` may fail.");
+    return;
+  }
+  copyFileSync(N8N_ENV_EXAMPLE, N8N_ENV_FILE);
+  info("⚠ Created .env.n8n from .env.n8n.example");
+}
+
+function readN8nEnvValue(key: string): string | undefined {
+  if (!existsSync(N8N_ENV_FILE)) return undefined;
+  const content = readFileSync(N8N_ENV_FILE, "utf8");
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    if (trimmed.slice(0, eq) !== key) continue;
+    return trimmed.slice(eq + 1).trim();
+  }
+  return undefined;
+}
+
 function probeSupabase(): boolean {
   return run("supabase", ["status"], { env: supabaseEnv }).status === 0;
 }
@@ -203,9 +233,9 @@ async function startEvolution(): Promise<void> {
     const status = getEvolutionContainerStatus();
     if (status === "restarting") {
       info(
-        "⚠ Evolution container is crash-looping (geralmente senha Postgres desatualizada no volume).",
+        "⚠ Evolution container is crash-looping (geralmente DATABASE_* inválido no .env.evolution ou Supabase inacessível).",
       );
-      info("  Rode `bun run evo:reset` e reinicie `bun dev`.");
+      info("  Confira senha/URIs Supabase em .env.evolution, rode `bun run evo:reset` e reinicie `bun dev`.");
     } else {
       info("⚠ Evolution API não respondeu — veja `bun run evo:logs`.");
     }
@@ -214,11 +244,44 @@ async function startEvolution(): Promise<void> {
   info("✓ Evolution API ready");
 }
 
+function probeN8n(): boolean {
+  return run("curl", ["-sf", `${LOCAL_N8N_URL}/healthz`], { stdio: "pipe" }).status === 0;
+}
+
+async function waitForN8n(maxWaitMs = 90_000): Promise<boolean> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    if (probeN8n()) return true;
+    await sleep(2_000);
+  }
+  return false;
+}
+
+async function startN8n(): Promise<void> {
+  bootstrapN8nEnv();
+  info("⚠ N8N not reachable — starting (`bun run n8n:up`)…");
+  const start = await runAsync("bun", ["run", "n8n:up"], { stdio: "inherit" });
+  if (start.status !== 0) {
+    info("⚠ `n8n:up` failed — continue without N8N (Bethânia workflows unavailable).");
+    return;
+  }
+
+  info("  waiting for N8N on :5678…");
+  const ready = await waitForN8n();
+  if (!ready) {
+    info("⚠ N8N não respondeu — veja `bun run n8n:logs`.");
+    return;
+  }
+  info("✓ N8N ready");
+}
+
+
 async function ensureLocalStacks(): Promise<void> {
-  step("Checking local stacks (Supabase + Evolution)");
+  step("Checking local stacks (Supabase + Evolution + N8N)");
 
   const supabaseUp = probeSupabase();
   const evoUp = skipEvo ? true : probeEvolution();
+  const n8nUp = skipN8n ? true : probeN8n();
 
   if (supabaseUp) {
     info("✓ Supabase running");
@@ -232,9 +295,16 @@ async function ensureLocalStacks(): Promise<void> {
     info("✓ Evolution API reachable");
   }
 
+  if (skipN8n) {
+    info("⊘ N8N skipped (--skip-n8n)");
+  } else if (n8nUp) {
+    info("✓ N8N reachable");
+  }
+
   const startTasks: Promise<void>[] = [];
   if (!supabaseUp) startTasks.push(startSupabase());
   if (!skipEvo && !evoUp) startTasks.push(startEvolution());
+  if (!skipN8n && !n8nUp) startTasks.push(startN8n());
 
   if (startTasks.length > 0) {
     await Promise.all(startTasks);
@@ -392,6 +462,39 @@ function getLocalEvoOverrides(): EnvOverrides {
   };
 }
 
+
+function getLocalN8nOverrides(): EnvOverrides {
+  const n8nBase = process.env.N8N_BASE_URL?.replace(/\/$/, "");
+  const isLocalN8n =
+    !n8nBase ||
+    n8nBase === LOCAL_N8N_URL ||
+    n8nBase === "http://localhost:5678";
+
+  if (!isLocalN8n) return {};
+
+  const webhookSecret =
+    process.env.BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET?.trim() ??
+    readN8nEnvValue("BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET") ??
+    "leadflow-local-studio-bot-secret";
+
+  return {
+    N8N_BASE_URL: n8nBase ?? LOCAL_N8N_URL,
+    N8N_WEBHOOK_BASE_URL:
+      process.env.N8N_WEBHOOK_BASE_URL ??
+      readN8nEnvValue("N8N_WEBHOOK_BASE_URL") ??
+      "http://host.docker.internal:5678",
+    BACKOFFICE_N8N_OUTBOUND_URL:
+      process.env.BACKOFFICE_N8N_OUTBOUND_URL?.trim() ??
+      `${n8nBase ?? LOCAL_N8N_URL}/webhook/bethania-outbound`,
+    BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET: webhookSecret,
+    N8N_BETHANIA_INBOUND_PATH:
+      process.env.N8N_BETHANIA_INBOUND_PATH ??
+      readN8nEnvValue("N8N_BETHANIA_INBOUND_PATH") ??
+      "/webhook/bethania-inbound",
+    EVO_BETHANIA_INSTANCE: process.env.EVO_BETHANIA_INSTANCE ?? "bethania",
+  };
+}
+
 function buildNextDevArgs(): string[] {
   const args = ["dev"];
   if (process.platform === "win32" && !forceTurbo) {
@@ -405,12 +508,16 @@ function startNextDev(): never {
   const localOverrides = {
     ...getLocalDatabaseOverrides(),
     ...getLocalEvoOverrides(),
+    ...getLocalN8nOverrides(),
   };
 
   step("Starting Next.js with local database overrides");
   info(`DATABASE_URL → ${localOverrides.DATABASE_URL ?? LOCAL_DB_URL}`);
   if (localOverrides.EVO_API_BASE_URL) {
     info(`EVO_API_BASE_URL → ${localOverrides.EVO_API_BASE_URL}`);
+  }
+  if (localOverrides.N8N_BASE_URL) {
+    info(`N8N_BASE_URL → ${localOverrides.N8N_BASE_URL}`);
   }
   if (process.platform === "win32" && !forceTurbo) {
     info("Windows: usando Webpack no dev (evita EPERM do Turbopack). Use --turbo para forçar Turbopack.");

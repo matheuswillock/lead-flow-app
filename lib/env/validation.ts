@@ -134,6 +134,16 @@ export const envSchema = z.object({
   WEB_PUSH_VAPID_PRIVATE_KEY: z.string().optional().describe('VAPID private key for Web Push'),
   WEB_PUSH_VAPID_SUBJECT: z.string().optional().describe('VAPID subject (mailto: or https:)'),
   NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional().describe('VAPID public key exposed to client'),
+
+  // Bethânia / N8N (optional — dev local)
+  N8N_BASE_URL: urlSchema.optional().describe('N8N base URL'),
+  N8N_WEBHOOK_BASE_URL: urlSchema.optional().describe('N8N webhook URL for containers'),
+  BACKOFFICE_N8N_OUTBOUND_URL: urlSchema.optional().describe('CS to N8N outbound webhook URL'),
+  BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET: z.string().optional().describe('HMAC secret N8N ↔ CS'),
+  N8N_BETHANIA_INBOUND_PATH: z.string().optional().describe('N8N inbound workflow path'),
+  EVO_BETHANIA_INSTANCE: z.string().optional().describe('Evolution instance name for Bethânia'),
+  BACKOFFICE_BETHANIA_WHATSAPP_NUMBER: z.string().optional().describe('Bethânia WhatsApp number E.164'),
+  SUPABASE_BACKOFFICE_BOT_BUCKET: z.string().optional().describe('Storage bucket for Bethânia avatar'),
 });
 
 // Infer the type from the schema

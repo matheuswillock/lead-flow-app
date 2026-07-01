@@ -40,6 +40,7 @@ const updateSchema = z.object({
   previewText: z.string().optional(),
   mailyJson: z.unknown().optional(),
   html: z.string().optional(),
+  editorMode: z.enum(["blocks", "html"]).optional(),
   variables: z.array(variableSchema).optional(),
 })
 

@@ -364,6 +364,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
               canCreateAccountUsers: true,
               canManageAccountTeams: true,
               canTransferAccountLeads: true,
+              canViewAllTeams: true,
               createdAt: true,
               profile: {
                 select: {
@@ -476,6 +477,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           canCreateAccountUsers: member.canCreateAccountUsers,
           canManageAccountTeams: member.canManageAccountTeams,
           canTransferAccountLeads: member.canTransferAccountLeads,
+          canViewAllTeams: member.canViewAllTeams,
         })),
         transferRoutes: team.transferRoutesFrom.map((r) => ({
           teamId: r.targetTeamId,

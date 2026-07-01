@@ -18,11 +18,30 @@ export type DomainRecord = {
   status?: string
 }
 
+export type DomainEventType =
+  | "domain_added"
+  | "dns_verified"
+  | "domain_verified"
+  | "domain_deleted"
+  | "domain_failed"
+
+export type DomainEvent = {
+  id: string
+  type: DomainEventType
+  occurredAt: string
+  metadata: Record<string, unknown> | null
+}
+
 export type DomainConnectResult = {
   domainId: string
   domainName: string
   status: ResendDomainStatus
+  region?: string | null
+  connectedAt?: string | null
+  openTracking?: boolean
+  clickTracking?: boolean
   records: DomainRecord[]
+  events?: DomainEvent[]
 }
 
 export type EmailSender = {
@@ -62,6 +81,11 @@ export type EmailSettings = {
   resendDomainId: string | null
   resendDomainName: string | null
   resendDomainStatus: ResendDomainStatus | null
+  resendDomainRegion: string | null
+  resendDomainConnectedAt: string | null
+  resendOpenTracking: boolean
+  resendClickTracking: boolean
+  domainEvents: DomainEvent[]
   senders: EmailSender[]
   defaultSenderId: string | null
   globalVariables: EmailGlobalVariable[]

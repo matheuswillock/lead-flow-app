@@ -3,7 +3,7 @@ import type { Campaign, CreditStatus, Template, ContactList } from '../context/C
 export interface ICampanhasService {
   list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
   create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; cdpSegmentSlug?: string; scheduledAt?: string }): Promise<Campaign>
-  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{ sent: number; failed: number }>
+  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{ sent: number; failed: number; total: number }>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
@@ -54,7 +54,7 @@ export class CampanhasService implements ICampanhasService {
     const json = await res.json().catch(() => null)
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json?.isValid) throw new Error(json?.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as { sent: number; failed: number }
+    return json.result as { sent: number; failed: number; total: number }
   }
 
   async cancel(supabaseId: string, teamId: string | null | undefined, id: string) {

@@ -21,6 +21,7 @@ export interface BackofficeAdhesionCreateInput {
   phone?: string | null
   email?: string | null
   cpfCnpj?: string | null
+  productId?: string | null
   cycle: BackofficeAdhesionBillingCycle
   extraTeams: number
   extraUsers: number
@@ -28,8 +29,9 @@ export interface BackofficeAdhesionCreateInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
-  userType?: "common" | "member_pro"
+  userType?: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt?: string | null
+  sponsorMasterId?: string | null
   additionalUsers?: BackofficeAdhesionAdditionalUser[]
   additionalTeams?: BackofficeAdhesionAdditionalTeam[]
 }
@@ -39,6 +41,7 @@ export interface BackofficeAdhesionUpdateInput {
   phone?: string
   email?: string | null
   cpfCnpj?: string | null
+  productId?: string | null
   cycle?: BackofficeAdhesionBillingCycle
   extraTeams?: number
   extraUsers?: number
@@ -97,6 +100,7 @@ export interface BackofficeAdhesionDTO {
   paidAt: string | null
   billingType: string | null
   asaasPaymentId: string | null
+  productId: string | null
 }
 
 export interface BackofficeAdhesionPublicDTO {
@@ -163,6 +167,20 @@ export interface BackofficeAdhesionOptionsDTO {
   }>
   sdrOptions: Array<{ id: string; name: string; email: string }>
   closerOptions: Array<{ id: string; name: string; email: string }>
+  sponsorOptions: Array<{ id: string; name: string; email: string }>
+  productVariants: Array<{
+    id: string
+    name: string
+    featureSlug: string
+    isDefault: boolean
+    pricesByCycle: Record<
+      BackofficeAdhesionBillingCycle,
+      {
+        pixMonthlyPrice: number | null
+        cardMonthlyPrice: number | null
+      }
+    >
+  }>
   pricing: {
     cycles: Record<
       BackofficeAdhesionBillingCycle,

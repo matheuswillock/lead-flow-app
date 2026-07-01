@@ -112,6 +112,7 @@ export function BackofficeFeatureProvider({ children, featureService }: Props) {
       defaultAccessLevel: feature.defaultAccessLevel,
       betaEnabled: feature.betaEnabled,
       inheritParentSettings: feature.inheritParentSettings,
+      billedSeparately: feature.billedSeparately,
       isActive: feature.isActive,
       sortOrder: String(feature.sortOrder),
       productSlug: feature.productSlug ?? "",

@@ -8538,6 +8538,33 @@
               }
             },
             {
+              "name": "GET Backoffice Pricing By Feature Slug",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/pricing/by-feature-slug/crm",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "pricing",
+                    "by-feature-slug",
+                    "crm"
+                  ]
+                },
+                "description": "Lista variantes de precificação ativas para um featureSlug (ex.: seletor de adesão)."
+              }
+            },
+            {
               "name": "POST Create Backoffice Product",
               "request": {
                 "method": "POST",
@@ -8553,7 +8580,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Produto Exemplo\",\n  \"slug\": \"produto-exemplo\",\n  \"description\": \"Produto de teste\",\n  \"type\": \"PLAN\",\n  \"billingMode\": \"RECURRING\",\n  \"priceMonthly\": 89.9,\n  \"priceQuarterly\": 79.9,\n  \"priceSemiannual\": 69.9,\n  \"priceLifetime\": null,\n  \"isActive\": true,\n  \"paymentRules\": [\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"monthly\", \"price\": 89.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"quarterly\", \"price\": 79.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"semiannual\", \"price\": 69.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"monthly\", \"price\": 102.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"quarterly\", \"price\": 91.4, \"canInstallment\": true, \"maxInstallments\": 3 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"semiannual\", \"price\": 79.9, \"canInstallment\": true, \"maxInstallments\": 6 }\n  ]\n}"
+                  "raw": "{\n  \"name\": \"Produto Exemplo\",\n  \"featureSlug\": \"crm\",\n  \"isDefault\": false,\n  \"description\": \"Segunda variante de teste\",\n  \"type\": \"PLAN\",\n  \"billingMode\": \"RECURRING\",\n  \"priceMonthly\": 89.9,\n  \"priceQuarterly\": 79.9,\n  \"priceSemiannual\": 69.9,\n  \"isActive\": true,\n  \"paymentRules\": [\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"monthly\", \"price\": 89.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"quarterly\", \"price\": 79.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"semiannual\", \"price\": 69.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"monthly\", \"price\": 102.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"quarterly\", \"price\": 91.4, \"canInstallment\": true, \"maxInstallments\": 3 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"semiannual\", \"price\": 79.9, \"canInstallment\": true, \"maxInstallments\": 6 }\n  ]\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/pricing",
@@ -8586,7 +8613,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Produto Exemplo Atualizado\",\n  \"priceMonthly\": 39.9,\n  \"priceQuarterly\": 34.9,\n  \"priceSemiannual\": 29.9,\n  \"isActive\": true\n}"
+                  "raw": "{\n  \"name\": \"Produto Exemplo Atualizado\",\n  \"isDefault\": true,\n  \"priceMonthly\": 39.9,\n  \"priceQuarterly\": 34.9,\n  \"priceSemiannual\": 29.9,\n  \"isActive\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/pricing/:id",
@@ -8734,7 +8761,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 1,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"additionalUsers\": [\n    {\n      \"name\": \"Usuário Adicional\",\n      \"email\": \"usuario.adicional@example.com\",\n      \"role\": \"operator\",\n      \"functions\": [\"SDR\"]\n    }\n  ],\n  \"additionalTeams\": [\n    {\n      \"name\": \"Time Adicional\"\n    }\n  ]\n}"
+                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"productId\": \"{{backofficeProductId}}\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 1,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sponsorMasterId\": null,\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"additionalUsers\": [\n    {\n      \"name\": \"Usuário Adicional\",\n      \"email\": \"usuario.adicional@example.com\",\n      \"role\": \"operator\",\n      \"functions\": [\"SDR\"]\n    }\n  ],\n  \"additionalTeams\": [\n    {\n      \"name\": \"Time Adicional\"\n    }\n  ]\n}\n\n// productId opcional — omita para usar a variante padrão do CRM\n\n// Exemplo para tipo Convidado (guest): sem cobrança, recursos ilimitados\n// {\n//   \"leadId\": \"{{backofficeLeadId}}\",\n//   \"fullName\": \"Cliente Convidado\",\n//   \"phone\": \"11999999999\",\n//   \"email\": \"convidado@example.com\",\n//   \"cycle\": \"monthly\",\n//   \"userType\": \"guest\",\n//   \"sponsorMasterId\": \"{{sponsorProfileId}}\"\n// }\n\n// Exemplo para tipo Associado (associate): com cobrança + patrocinador\n// {\n//   \"leadId\": \"{{backofficeLeadId}}\",\n//   \"fullName\": \"Cliente Associado\",\n//   \"phone\": \"11999999999\",\n//   \"email\": \"associado@example.com\",\n//   \"cpfCnpj\": \"12345678901\",\n//   \"cycle\": \"monthly\",\n//   \"userType\": \"associate\",\n//   \"sponsorMasterId\": \"{{sponsorProfileId}}\",\n//   \"activationMode\": \"external_paid\"\n// }"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/adhesions",
@@ -8767,7 +8794,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"fullName\": \"Cliente Atualizado\",\n  \"phone\": \"11999999999\",\n  \"cycle\": \"quarterly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 2\n}"
+                  "raw": "{\n  \"fullName\": \"Cliente Atualizado\",\n  \"phone\": \"11999999999\",\n  \"productId\": \"{{backofficeProductId}}\",\n  \"cycle\": \"quarterly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 2\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/:id",
@@ -9589,7 +9616,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T23:59:59.000Z\"\n}"
+                  "raw": "{\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T23:59:59.000Z\"\n}\n\n// Para Associado: { \"userType\": \"associate\", \"sponsorMasterId\": \"{{sponsorProfileId}}\" }\n// Para Convidado: { \"userType\": \"guest\", \"sponsorMasterId\": \"{{sponsorProfileId}}\" }\n// Para Comum: { \"userType\": \"common\" }"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users/:profileId/user-type",
@@ -10584,7 +10611,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"subject\": \"Novidades do mes\",\n  \"previewText\": \"Confira as novidades\",\n  \"sourceMode\": \"visual\",\n  \"editorJson\": {\n    \"type\": \"doc\",\n    \"content\": []\n  },\n  \"html\": \"<h1>Ola!</h1>\"\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"subject\": \"Novidades do mes\",\n  \"previewText\": \"Confira as novidades\",\n  \"editorMode\": \"blocks\",\n  \"mailyJson\": {\n    \"type\": \"doc\",\n    \"content\": []\n  },\n  \"html\": \"<h1>Ola!</h1>\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -10635,7 +10662,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio v2\",\n  \"subject\": \"Novidades atualizadas\",\n  \"sourceMode\": \"html\",\n  \"html\": \"<h1>Novidades atualizadas</h1>\"\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio v2\",\n  \"subject\": \"Novidades atualizadas\",\n  \"editorMode\": \"html\",\n  \"html\": \"<h1>Novidades atualizadas</h1>\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -10736,6 +10763,59 @@
                     "templates",
                     "{{templateId}}",
                     "publish"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Listar Versoes Publicadas do Template",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/{{templateId}}/versions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "{{templateId}}",
+                    "versions"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Recuperar HTML de Versao do Template",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"versionId\": \"{{templateVersionId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/{{templateId}}/restore-version",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "{{templateId}}",
+                    "restore-version"
                   ]
                 }
               },
@@ -11021,6 +11101,101 @@
                     "settings",
                     "variables",
                     "{{variableId}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Conectar Domínio Resend",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/domain",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "domain"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"domainName\": \"mail.suaempresa.com.br\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Remover Domínio Resend",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/domain",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "domain"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Verificar Domínio Resend",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/domain/verify",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "domain",
+                    "verify"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Registros DNS do Domínio",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/domain/records",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "domain",
+                    "records"
                   ]
                 }
               },
@@ -11554,7 +11729,7 @@
           ]
         },
         {
-          "name": "Analytics",
+          "name": "Métricas",
           "item": [
             {
               "name": "Metricas de Email",
@@ -11585,6 +11760,30 @@
                       "key": "campaignId",
                       "value": ""
                     }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Previa do Disparo de Campanha",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/dispatches/{{dispatchId}}/preview",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}",
+                    "dispatches",
+                    "{{dispatchId}}",
+                    "preview"
                   ]
                 }
               },
@@ -12033,6 +12232,39 @@
               ]
             },
             "description": "Retorna configuração atual, status de conexão, telefone conectado e uso do período."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar números WhatsApp reutilizáveis (master)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/reusable-numbers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "reusable-numbers"
+              ]
+            },
+            "description": "Lista números WhatsApp CONNECTED de outros times do mesmo master, para reutilização via reuseFromTeamId no POST config."
           },
           "response": []
         },
@@ -12685,6 +12917,78 @@
             }
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Studio Bot (Bethânia)",
+      "description": "APIs do bot Bethânia — produto, backoffice e webhooks N8N",
+      "item": [
+        {
+          "name": "GET Bot Context",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bot/context?userLinkId={{botUserLinkId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bot", "context"],
+              "query": [{ "key": "userLinkId", "value": "{{botUserLinkId}}" }]
+            }
+          }
+        },
+        {
+          "name": "POST Bot Action list_leads",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userLinkId\": \"{{botUserLinkId}}\",\n  \"teamId\": \"{{teamId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bot/actions/list_leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bot", "actions", "list_leads"]
+            }
+          }
+        },
+        {
+          "name": "GET Backoffice Bot Channel",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/channel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "channel"]
+            }
+          }
+        },
+        {
+          "name": "POST Studio Bot Inbound Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-studio-bot-signature", "value": "{{studioBotHmac}}" },
+              { "key": "x-idempotency-key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"normalizedPhone\": \"5511999999999\",\n  \"payload\": {\n    \"messageType\": \"text\",\n    \"contentText\": \"oi\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/backoffice/studio-bot/inbound",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks", "backoffice", "studio-bot", "inbound"]
+            }
+          }
         }
       ]
     }

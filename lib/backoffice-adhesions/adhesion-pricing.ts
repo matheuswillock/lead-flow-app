@@ -65,12 +65,12 @@ export function resolveProductPriceForCycle(
         : product.priceMonthly
 
   if (value == null) {
-    throw new Error(`Produto ${product.slug} sem preço para o ciclo ${cycle}`)
+    throw new Error(`Produto ${product.featureSlug} sem preço para o ciclo ${cycle}`)
   }
 
   const price = Number(value.toString())
   if (!Number.isFinite(price) || price <= 0) {
-    throw new Error(`Produto ${product.slug} com preço inválido para o ciclo ${cycle}`)
+    throw new Error(`Produto ${product.featureSlug} com preço inválido para o ciclo ${cycle}`)
   }
 
   return price

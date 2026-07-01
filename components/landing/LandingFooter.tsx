@@ -53,13 +53,13 @@ export function LandingFooter() {
             <p className="text-sm text-muted-foreground inline-flex items-baseline gap-2">
               <span>Made with</span>
               <Heart className="w-4 h-4 text-primary pulsing-heart fill-primary flex-shrink-0 translate-y-[1px]" />
-              <span className="font-semibold landing-primary-gradient">Willock&apos;s House</span>
+              <span className="font-semibold text-primary">Willock&apos;s House</span>
             </p>
           </div>
 
           <div>
             <h3 className="font-semibold mb-4 text-foreground">{footerLinks.recursos.title}</h3>
-            <ul className="space-y-3">
+            <ul className="flex flex-col gap-3">
               {footerLinks.recursos.links.map((link) => (
                 <li key={link.label}>
                   <Link
@@ -75,7 +75,7 @@ export function LandingFooter() {
 
           <div>
             <h3 className="font-semibold mb-4 text-foreground">{footerLinks.legal.title}</h3>
-            <ul className="space-y-3">
+            <ul className="flex flex-col gap-3">
               {footerLinks.legal.links.map((link) => (
                 <li key={link.label}>
                   <Link

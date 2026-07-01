@@ -52,6 +52,7 @@ export function BackofficeFeatureDialog() {
   const title = isEdit ? "Editar funcionalidade" : "Nova funcionalidade"
   const isChildFeature = Boolean(formData.parentId || dialogFeature?.parentId)
   const isInheritingFromParent = isChildFeature && formData.inheritParentSettings
+  const isBilledSeparatelyDisabled = isSaving || !isChildFeature || isInheritingFromParent
 
   return (
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
@@ -151,6 +152,22 @@ export function BackofficeFeatureDialog() {
               disabled={isSaving || !isChildFeature}
             />
           </div>
+
+          {isChildFeature && (
+            <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Cobrado separadamente do pai</span>
+                <span className="text-xs text-muted-foreground">
+                  Desligado = incluso na assinatura do produto do pai. Ligado = exige assinatura do produto próprio.
+                </span>
+              </div>
+              <Switch
+                checked={formData.billedSeparately}
+                onCheckedChange={(value) => setFormField("billedSeparately", value)}
+                disabled={isBilledSeparatelyDisabled}
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">

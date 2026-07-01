@@ -1,0 +1,67 @@
+{
+  "name": "bethania-verification-web",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEAD_FLOW_API_BASE_URL }}/api/v1/bot/auth/verify-code",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-studio-bot-signature",
+              "value": "REPLACE_WITH_HMAC_SIGNATURE"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"normalizedPhone\": \"{{ $json.normalizedPhone ?? '5511999999999' }}\",\n  \"code\": \"{{ $json.code ?? '123456' }}\"\n}",
+        "options": {}
+      },
+      "id": "c1b2c3d4-0001-4000-8000-000000000002",
+      "name": "Verify Code",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Verify Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "bethania-verification-web-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "bethania"
+    }
+  ]
+}

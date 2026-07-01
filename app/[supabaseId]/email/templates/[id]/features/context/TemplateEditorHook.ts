@@ -7,9 +7,11 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import type {
   Template,
   TemplateEditorDraft,
+  TemplateEditorMode,
   TemplateEditorState,
   TemplateTestRequest,
   TemplateVariable,
+  TemplateVersionItem,
 } from "./TemplateEditorTypes";
 import { createTemplateEditorService } from "../services/TemplateEditorService";
 
@@ -21,8 +23,13 @@ const EMPTY_DRAFT: TemplateEditorDraft = {
   previewText: "",
   html: "",
   mailyJson: null,
+  editorMode: "html",
   variables: [],
 };
+
+function resolveEditorMode(_template: Template): TemplateEditorMode {
+  return "html";
+}
 
 interface UseTemplateEditorReturn extends TemplateEditorState {
   activeRole: "manager" | "backoffice" | "operator" | null;
@@ -34,9 +41,11 @@ interface UseTemplateEditorReturn extends TemplateEditorState {
   approveTemplate: () => Promise<void>;
   rejectTemplate: (reviewNote: string) => Promise<void>;
   sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
+  restoreTemplateVersion: (versionId: string) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
-  setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
+  versions: TemplateVersionItem[];
+  restoringVersionId: string | null;
 }
 
 function createDraftFromTemplate(template: Template): TemplateEditorDraft {
@@ -46,6 +55,7 @@ function createDraftFromTemplate(template: Template): TemplateEditorDraft {
     previewText: template.previewText ?? "",
     html: template.html ?? "",
     mailyJson: template.mailyJson ?? null,
+    editorMode: resolveEditorMode(template),
     variables: template.variables ?? [],
   };
 }
@@ -67,6 +77,8 @@ export function useTemplateEditor(
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [templateApprovalRequired, setTemplateApprovalRequired] = useState(false);
+  const [versions, setVersions] = useState<TemplateVersionItem[]>([]);
+  const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
   const initialDraftRef = useRef<TemplateEditorDraft>(EMPTY_DRAFT);
 
   const isFetchingRef = useRef(false);
@@ -108,13 +120,15 @@ export function useTemplateEditor(
     setLoading(true);
     setError(null);
     try {
-      const [nextTemplate] = await Promise.all([
+      const [nextTemplate, , versionsResult] = await Promise.all([
         service.getTemplate(supabaseId, templateId, activeTeamId),
         loadApprovalSettings(),
+        service.listVersions(supabaseId, templateId, activeTeamId).catch(() => ({ versions: [] })),
       ]);
       const nextDraft = createDraftFromTemplate(nextTemplate);
       setTemplate(nextTemplate);
       setDraft(nextDraft);
+      setVersions(versionsResult.versions);
       initialDraftRef.current = nextDraft;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao carregar template";
@@ -134,11 +148,6 @@ export function useTemplateEditor(
   const updateDraft = useCallback((patch: Partial<TemplateEditorDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   }, []);
-
-  const setMailyJson = useCallback(
-    (json: unknown) => updateDraft({ mailyJson: json }),
-    [updateDraft]
-  );
 
   const setHtml = useCallback(
     (html: string) => updateDraft({ html }),
@@ -337,6 +346,30 @@ export function useTemplateEditor(
     }
   }, [activeTeamId, saving, supabaseId, templateId]);
 
+  const restoreTemplateVersion = useCallback(async (versionId: string) => {
+    if (restoringVersionId || saving || isNewTemplate || !activeTeamId) return;
+
+    setRestoringVersionId(versionId);
+    setError(null);
+    try {
+      const updated = await service.restoreVersion(supabaseId, templateId, versionId, activeTeamId);
+      const updatedDraft = createDraftFromTemplate(updated);
+      setTemplate(updated);
+      setDraft(updatedDraft);
+      initialDraftRef.current = updatedDraft;
+      const versionsResult = await service.listVersions(supabaseId, templateId, activeTeamId);
+      setVersions(versionsResult.versions);
+      toast.success("HTML da versão recuperado no rascunho");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao recuperar HTML da versão";
+      console.error("[useTemplateEditor] Failed to restore version", err);
+      setError(message);
+      toast.error("Erro ao recuperar HTML", { description: message });
+    } finally {
+      setRestoringVersionId(null);
+    }
+  }, [activeTeamId, isNewTemplate, restoringVersionId, saving, supabaseId, templateId]);
+
   return {
     template,
     draft,
@@ -355,8 +388,10 @@ export function useTemplateEditor(
     approveTemplate,
     rejectTemplate,
     sendTestTemplate,
+    restoreTemplateVersion,
     updateDraft,
-    setMailyJson,
     setHtml,
+    versions,
+    restoringVersionId,
   };
 }

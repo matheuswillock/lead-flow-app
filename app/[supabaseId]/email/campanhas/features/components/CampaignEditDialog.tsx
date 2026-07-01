@@ -52,7 +52,7 @@ export function CampaignEditDialog() {
     <Dialog open={!!editingCampaign} onOpenChange={(open) => { if (!open) closeEdit() }}>
       <DialogContent className="max-h-[90vh] flex flex-col max-w-md">
         <DialogHeader>
-          <DialogTitle>Editar Rascunho</DialogTitle>
+          <DialogTitle>Editar campanha</DialogTitle>
         </DialogHeader>
 
         <div className="overflow-y-auto flex-1 space-y-4 py-1">

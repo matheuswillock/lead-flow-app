@@ -3,6 +3,7 @@ import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { syncWhatsAppContactsUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsAppContactsUseCase"
+import { denyIfCannotManageWhatsAppInfrastructure } from "@/app/api/v1/teams/[teamId]/whatsapp/utils/requireWhatsAppInfrastructureAccess"
 
 const bodySchema = z.object({
   conversationId: z.string().uuid().optional(),
@@ -33,12 +34,8 @@ export async function POST(
     )
   }
 
-  if (!teamAccess.access.isMaster) {
-    return NextResponse.json(
-      new Output(false, [], ["Apenas o dono do time pode sincronizar contatos"], null),
-      { status: 403 }
-    )
-  }
+  const denied = denyIfCannotManageWhatsAppInfrastructure(teamAccess.access)
+  if (denied) return denied
 
   let body: unknown = {}
   try {

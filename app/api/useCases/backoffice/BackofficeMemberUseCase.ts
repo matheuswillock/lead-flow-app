@@ -4,6 +4,7 @@ import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/A
 import { createEmailService } from "@/lib/services/EmailService"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 
 type MemberRole = "manager" | "backoffice" | "operator"
 
@@ -16,6 +17,7 @@ interface UpdateMemberInput {
   canCreateAccountUsers?: boolean
   canManageAccountTeams?: boolean
   canTransferAccountLeads?: boolean
+  canViewAllTeams?: boolean
   teamId?: string
 }
 
@@ -100,7 +102,8 @@ export class BackofficeMemberUseCase {
         data.functions !== undefined ||
         data.canCreateAccountUsers !== undefined ||
         data.canManageAccountTeams !== undefined ||
-        data.canTransferAccountLeads !== undefined
+        data.canTransferAccountLeads !== undefined ||
+        data.canViewAllTeams !== undefined
 
       if (hasTeamAccessUpdate && data.teamId === undefined) {
         return new Output(false, [], ["teamId é obrigatório para alterar permissões do membro"], null)
@@ -136,6 +139,10 @@ export class BackofficeMemberUseCase {
             canTransferAccountLeads:
               role === "manager" || role === "backoffice" || (role === undefined && data.canTransferAccountLeads !== undefined)
                 ? data.canTransferAccountLeads
+                : false,
+            canViewAllTeams:
+              role === "manager" || role === "backoffice" || (role === undefined && data.canViewAllTeams !== undefined)
+                ? data.canViewAllTeams
                 : false,
           }
         )
@@ -247,6 +254,10 @@ export class BackofficeMemberUseCase {
 
       await this.repository.deleteMemberCascade(memberId)
 
+      if (member.managerId) {
+        await memberProBillingUseCase.syncBillingAfterUsageChange(member.managerId, "remove_user")
+      }
+
       if (member.supabaseId) {
         try {
           await supabase.auth.admin.deleteUser(member.supabaseId)
@@ -289,7 +300,15 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Membro não pertence a este time"], null)
       }
 
+      const team = await this.repository.findTeamById(teamId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado"], null)
+      }
+
       await this.repository.deleteTeamMembership(teamId, memberId)
+
+      await memberProBillingUseCase.syncBillingAfterUsageChange(team.masterId, "remove_member")
+
       return new Output(true, ["Membro removido do time"], [], { teamId, memberId })
     } catch (error) {
       console.error("[BackofficeMemberUseCase][removeFromTeam]", error)

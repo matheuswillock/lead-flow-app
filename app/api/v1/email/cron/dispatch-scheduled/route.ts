@@ -7,6 +7,7 @@ import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignD
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import { formatIntimezone, resolveTimezone } from "@/lib/dates"
 import { interpolateEmailTemplate } from "@/lib/email/interpolate"
+import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const FALLBACK_FROM_NAME = "Corretor Studio"
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
       },
       include: {
         template: true,
+        contactList: { select: { id: true, name: true } },
         team: { select: { master: { select: { id: true, timezone: true } } } },
       },
       take: MAX_CAMPAIGNS_PER_RUN,
@@ -50,7 +52,8 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        const templateHtml = campaign.template.html
+        const templateHtml = inlineEmailHtml(campaign.template.html)
+        const publishedTemplate = campaign.template
 
         const teamSettings = await prisma.emailTeamSettings.findUnique({
           where: { teamId: campaign.teamId },
@@ -161,6 +164,27 @@ export async function GET(request: NextRequest) {
           continue
         }
 
+        const dispatchNumber = campaign.dispatchCount + 1
+        const dispatchRecord = await prisma.emailCampaignDispatch.create({
+          data: {
+            id: randomUUID(),
+            campaignId: campaign.id,
+            teamId: campaign.teamId,
+            dispatchNumber,
+            templateId: publishedTemplate.id,
+            templateVersionNumber: publishedTemplate.versionNumber,
+            templateName: publishedTemplate.name,
+            templateSubject: publishedTemplate.subject,
+            templateHtml,
+            contactListId: campaign.contactListId,
+            contactListName: campaign.contactList?.name ?? null,
+            cdpSegmentSlug: campaign.cdpSegmentSlug,
+            triggeredBy: campaign.createdBy,
+            totalRecipients: dispatchInput.recipients.length,
+            status: "sending",
+          },
+        })
+
         const result = await dispatchService.dispatchBatch({
           from: dispatchInput.from,
           replyTo: dispatchInput.replyTo,
@@ -192,6 +216,7 @@ export async function GET(request: NextRequest) {
                 id: randomUUID(),
                 teamId: campaign.teamId,
                 campaignId: campaign.id,
+                dispatchId: dispatchRecord.id,
                 resendEmailId: resendId,
                 recipientEmail: email,
                 recipientName: contact?.name ?? null,
@@ -207,16 +232,27 @@ export async function GET(request: NextRequest) {
           await creditService.deductCredits(masterId, result.sent)
         }
 
-        await prisma.emailCampaign.update({
-          where: { id: campaign.id },
-          data: {
-            status: "sent",
-            sentAt: new Date(),
-            totalRecipients: dispatchInput.recipients.length,
-            totalSent: result.sent,
-            dispatchCount: { increment: 1 },
-          },
-        })
+        const dispatchStatus = result.sent === 0 ? "failed" : "completed"
+
+        await prisma.$transaction([
+          prisma.emailCampaignDispatch.update({
+            where: { id: dispatchRecord.id },
+            data: {
+              totalSent: result.sent,
+              status: dispatchStatus,
+            },
+          }),
+          prisma.emailCampaign.update({
+            where: { id: campaign.id },
+            data: {
+              status: "sent",
+              sentAt: new Date(),
+              totalRecipients: dispatchInput.recipients.length,
+              totalSent: { increment: result.sent },
+              dispatchCount: { increment: 1 },
+            },
+          }),
+        ])
 
         dispatched++
         const scheduledLabel = campaign.scheduledAt

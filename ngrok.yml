@@ -1,0 +1,11 @@
+version: 3
+
+endpoints:
+  - name: lead-flow
+    url: https://nonzero-rodrick-mentholated.ngrok-free.dev
+    upstream:
+      url: http://127.0.0.1:3000
+  - name: n8n
+    url: https://nonzero-rodrick-mentholated.ngrok-free.dev
+    upstream:
+      url: http://127.0.0.1:5678

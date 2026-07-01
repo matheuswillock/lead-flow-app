@@ -60,7 +60,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Governance Sync
         id: governance-sync
@@ -169,7 +169,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Detect Migration Status
         id: detect
@@ -249,7 +249,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Link Supabase project
         run: bunx supabase link --project-ref "$SUPABASE_PROJECT_REF"
@@ -319,7 +319,7 @@ jobs:
             ${{ runner.os }}-next-
 
       - name: Install deps
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Generate Prisma Client
         run: bun run prisma:generate

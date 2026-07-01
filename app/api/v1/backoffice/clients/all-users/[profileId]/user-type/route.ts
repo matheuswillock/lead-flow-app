@@ -8,7 +8,7 @@ import {
   type BackofficeProfileUserTypeInput,
 } from "@/app/api/useCases/backoffice/BackofficeProfileUserTypeUseCase"
 
-const USER_TYPE_VALUES = ["common", "member_pro", "associate"] as const
+const USER_TYPE_VALUES = ["common", "member_pro", "associate", "guest"] as const
 
 function parseUserType(value: unknown): BackofficeProfileUserTypeInput["userType"] | undefined {
   return (USER_TYPE_VALUES as readonly unknown[]).includes(value)

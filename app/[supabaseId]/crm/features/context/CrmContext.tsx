@@ -68,7 +68,7 @@ export function CrmProvider({
   const searchParams = useSearchParams();
   const searchViewParam = searchParams.get("view");
 
-  const [isReady, setIsReady] = useState(true);
+  const [isReady] = useState(true);
   const [viewMode, setViewModeState] = useState<CrmViewMode>(CRM_DEFAULT_VIEW_MODE);
   const [crmFilters, setCrmFiltersState] = useState<CrmFiltersState>(DEFAULT_CRM_FILTERS);
 

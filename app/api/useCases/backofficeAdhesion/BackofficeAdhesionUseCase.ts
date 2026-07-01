@@ -124,6 +124,12 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
         validateMemberProAccessExpiresAt(input.accessExpiresAt)
       }
 
+      if (input.userType === "associate" || input.userType === "guest") {
+        if (!input.sponsorMasterId) {
+          return new Output(false, [], ["Selecione o patrocinador da conta"], null)
+        }
+      }
+
       const result = await this.service.create(input, createdByBackofficeUserId)
       return new Output(true, ["Nova adesão gerada com sucesso"], [], result)
     } catch (error) {

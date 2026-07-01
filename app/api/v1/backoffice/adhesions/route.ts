@@ -26,7 +26,7 @@ type BackofficeAdhesionActivationMode = (typeof ACTIVATION_MODES)[number]
 const BILLING_TYPES = ["PIX", "CREDIT_CARD"] as const
 type BackofficeAdhesionBillingTypeValue = (typeof BILLING_TYPES)[number]
 
-const USER_TYPES = ["common", "member_pro"] as const
+const USER_TYPES = ["common", "member_pro", "associate", "guest"] as const
 type BackofficeAdhesionUserTypeValue = (typeof USER_TYPES)[number]
 
 function parseUserType(value: unknown): BackofficeAdhesionUserTypeValue | undefined {
@@ -171,6 +171,7 @@ export async function POST(request: NextRequest) {
         activationMode: parseActivationMode(data.activationMode),
         userType: parseUserType(data.userType),
         accessExpiresAt: optionalString(data, "accessExpiresAt"),
+        sponsorMasterId: optionalString(data, "sponsorMasterId"),
         additionalUsers: parseAdditionalUsers(data),
         additionalTeams: parseAdditionalTeams(data),
       },

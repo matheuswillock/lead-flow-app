@@ -3,6 +3,7 @@ import { createEmailService } from "@/lib/services/EmailService";
 import { getAppUrl } from "@/lib/utils/app-url";
 import { buildAddedToTeamEmail } from "@/lib/emails/buildAddedToTeamEmail";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { backofficeIncrementalBillingCoordinator } from "@/app/api/useCases/backoffice/BackofficeIncrementalBillingCoordinator";
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
@@ -155,6 +156,32 @@ export class CrossAccountMembersUseCase implements ICrossAccountMembersUseCase {
       }
 
       const billingOwner = master;
+
+      if (await memberProBillingUseCase.shouldBypassIncrementalCharge(team.masterId)) {
+        await this.platformUsersRepository.addExistingProfileToTeam(
+          targetProfile.id,
+          teamId,
+          data.role,
+          data.functions,
+          delegatedPermissions
+        );
+
+        await this.sendAddedNotifications({
+          requester,
+          team,
+          targetProfileId: targetProfile.id,
+          targetEmail: targetProfile.email,
+          targetName: getDisplayName(targetProfile),
+        });
+
+        await memberProBillingUseCase.syncUsageToSubscription(team.masterId, "add_member");
+
+        return new Output(true, ["Membro externo adicionado com sucesso"], [], {
+          profileId: targetProfile.id,
+          teamId,
+        });
+      }
+
       const projectedBilling = await incrementalBillingService.projectBilling(team.masterId, {
         additionalUsers: 1,
       });

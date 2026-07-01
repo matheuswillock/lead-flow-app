@@ -194,6 +194,7 @@ whatsapp whatsapp
 email email
 status_change status_change
 task task
+studio_bot studio_bot
         }
     
 
@@ -416,6 +417,7 @@ LEAD_TRANSFER_ACTIVATED LEAD_TRANSFER_ACTIVATED
 MEETING_REMINDER MEETING_REMINDER
 LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
 MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
+BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
         }
     
 
@@ -493,6 +495,14 @@ scheduled scheduled
 sending sending
 sent sent
 canceled canceled
+failed failed
+        }
+    
+
+
+        email_campaign_dispatch_status {
+            sending sending
+completed completed
 failed failed
         }
     
@@ -686,6 +696,59 @@ missing_identity missing_identity
 CDP CDP
         }
     
+
+
+        backoffice_bot_channel_type {
+            whatsapp whatsapp
+        }
+    
+
+
+        backoffice_bot_channel_status {
+            pending pending
+connected connected
+disconnected disconnected
+error error
+        }
+    
+
+
+        backoffice_bot_auth_challenge_source {
+            channel_email channel_email
+web_otp web_otp
+        }
+    
+
+
+        backoffice_bot_auth_challenge_status {
+            pending pending
+verified verified
+expired expired
+failed failed
+        }
+    
+
+
+        backoffice_bot_user_link_source {
+            channel_email channel_email
+web_otp web_otp
+        }
+    
+
+
+        backoffice_bot_message_direction {
+            inbound inbound
+outbound outbound
+        }
+    
+
+
+        backoffice_bot_event_outbox_status {
+            pending pending
+sent sent
+failed failed
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -706,6 +769,7 @@ CDP CDP
     UserFunction functions 
     Boolean isMaster 
     Boolean hasPermanentSubscription 
+    Boolean canSponsorAccounts 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
@@ -868,6 +932,7 @@ CDP CDP
     String createdSupabaseId "❓"
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
+    String sponsorMasterId "❓"
     Json additional_users_data 
     Json additional_teams_data 
     DateTime createdAt 
@@ -1311,6 +1376,7 @@ CDP CDP
     Boolean canCreateAccountUsers 
     Boolean canManageAccountTeams 
     Boolean canTransferAccountLeads 
+    Boolean canViewAllTeams 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1366,6 +1432,7 @@ CDP CDP
     String previewText "❓"
     Json mailyJson "❓"
     String html "❓"
+    String editorMode 
     Json variables "❓"
     Int versionNumber 
     Boolean isCurrentPublished 
@@ -1437,6 +1504,29 @@ CDP CDP
     }
   
 
+  "corretor_studio_email_campaign_dispatches" {
+    String id "🗝️"
+    Int dispatchNumber 
+    Int templateVersionNumber 
+    String templateName 
+    String templateSubject 
+    String templateHtml 
+    String contactListName "❓"
+    String cdpSegmentSlug "❓"
+    DateTime dispatchedAt 
+    Int totalRecipients 
+    Int totalSent 
+    Int totalDelivered 
+    Int totalOpened 
+    Int totalClicked 
+    Int totalBounced 
+    Int totalComplained 
+    EmailCampaignDispatchStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_logs" {
     String id "🗝️"
     String resendEmailId "❓"
@@ -1470,7 +1560,7 @@ CDP CDP
   "backoffice_products" {
     String id "🗝️"
     String name 
-    String slug 
+    String featureSlug 
     String description "❓"
     BackofficeProductType type 
     BackofficeProductBillingMode billingMode 
@@ -1479,6 +1569,7 @@ CDP CDP
     Decimal priceSemiannual "❓"
     Decimal priceAnnual "❓"
     Decimal priceLifetime "❓"
+    Boolean isDefault 
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
@@ -1490,10 +1581,12 @@ CDP CDP
     String slug 
     String name 
     String description "❓"
+    String productSlug "❓"
     BackofficeFeatureAccessMode accessMode 
     BackofficeFeatureAccessLevel defaultAccessLevel 
     Boolean betaEnabled 
     Boolean inheritParentSettings 
+    Boolean billedSeparately 
     Boolean isActive 
     Int sortOrder 
     DateTime createdAt 
@@ -1623,8 +1716,21 @@ CDP CDP
     String resendDomainId "❓"
     String resendDomainName "❓"
     String resendDomainStatus "❓"
+    String resendDomainRegion "❓"
+    DateTime resendDomainConnectedAt "❓"
+    Boolean resendOpenTracking 
+    Boolean resendClickTracking 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_email_team_domain_events" {
+    String id "🗝️"
+    String type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -1692,6 +1798,7 @@ CDP CDP
     String instanceName 
     String instanceId "❓"
     String phoneNumber "❓"
+    String normalizedPhone "❓"
     String displayName "❓"
     WhatsAppConnectionStatus status 
     String qrCodeText "❓"
@@ -1862,6 +1969,99 @@ CDP CDP
     DateTime createdAt 
     }
   
+
+  "backoffice_bot_channels" {
+    String id "🗝️"
+    String displayName 
+    String avatarUrl "❓"
+    String avatarStoragePath "❓"
+    String aboutText "❓"
+    String phoneNumber "❓"
+    DateTime lastProfileSyncAt "❓"
+    BackofficeBotChannelType channelType 
+    BackofficeBotChannelStatus status 
+    Json providerConfig "❓"
+    String webhookSecret 
+    String n8nInboundUrl "❓"
+    String n8nOutboundSecret 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_auth_challenges" {
+    String id "🗝️"
+    BackofficeBotAuthChallengeSource source 
+    String normalizedPhone "❓"
+    String emailRequested "❓"
+    String codeHash 
+    BackofficeBotAuthChallengeStatus status 
+    Int attemptCount 
+    DateTime expiresAt 
+    DateTime verifiedAt "❓"
+    Json ipMetadata "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_user_links" {
+    String id "🗝️"
+    String normalizedPhone 
+    DateTime linkedAt 
+    BackofficeBotUserLinkSource linkedBy 
+    Boolean isActive 
+    DateTime lastInteractionAt "❓"
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_sessions" {
+    String id "🗝️"
+    String currentLeadId "❓"
+    String flowId "❓"
+    String flowStep "❓"
+    Json flowStack 
+    DateTime expiresAt 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_messages" {
+    String id "🗝️"
+    BackofficeBotMessageDirection direction 
+    String channelMessageId "❓"
+    String flowId "❓"
+    String errorCode "❓"
+    Json payload 
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_bot_notification_preferences" {
+    String id "🗝️"
+    String type 
+    Boolean enabled 
+    Json quietHours "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_event_outbox" {
+    String id "🗝️"
+    String eventType 
+    Json payload 
+    BackofficeBotEventOutboxStatus status 
+    String idempotencyKey 
+    DateTime createdAt 
+    DateTime sentAt "❓"
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -1888,6 +2088,7 @@ CDP CDP
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"
     "backoffice_adhesions" |o--|| backoffice_leads : "lead"
+    "backoffice_adhesions" }o--|o backoffice_products : "product"
     "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
@@ -2013,10 +2214,17 @@ CDP CDP
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignDispatchStatus" : "enum:status"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_campaigns : "campaign"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_templates : "template"
+    "corretor_studio_email_campaign_dispatches" }o--|o corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_profiles : "triggerer"
     "corretor_studio_email_logs" |o--|| "EmailLogCategory" : "enum:category"
     "corretor_studio_email_logs" |o--|| "EmailLogStatus" : "enum:status"
     "corretor_studio_email_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_logs" }o--|o corretor_studio_email_campaigns : "campaign"
+    "corretor_studio_email_logs" }o--|o corretor_studio_email_campaign_dispatches : "dispatch"
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
@@ -2024,7 +2232,6 @@ CDP CDP
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessLevel" : "enum:defaultAccessLevel"
     "backoffice_features" |o--|o backoffice_features : "parent"
-    "backoffice_features" }o--|o backoffice_products : "product"
     "backoffice_feature_access_rules" |o--|| "BackofficeAccessPrincipal" : "enum:principal"
     "backoffice_feature_access_rules" |o--|| "BackofficeFeatureAccessLevel" : "enum:accessLevel"
     "backoffice_feature_access_rules" }o--|| backoffice_features : "feature"
@@ -2056,6 +2263,7 @@ CDP CDP
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
     "email_team_variables" |o--|| "EmailVariableValueSource" : "enum:valueSource"
     "email_team_variables" }o--|| corretor_studio_teams : "team"
@@ -2070,11 +2278,13 @@ CDP CDP
     "team_whatsapp_configs" |o--|| corretor_studio_teams : "team"
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "createdBy"
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "updatedBy"
+    "team_whatsapp_configs" |o--|o team_whatsapp_configs : "primaryConfig"
     "whatsapp_conversations" |o--|| "WhatsAppHandoffMode" : "enum:handoffMode"
     "whatsapp_conversations" }o--|| corretor_studio_teams : "team"
     "whatsapp_conversations" }o--|| team_whatsapp_configs : "config"
     "whatsapp_conversations" }o--|o corretor_studio_leads : "lead"
     "whatsapp_conversations" }o--|o corretor_studio_profiles : "assignedProfile"
+    "whatsapp_conversations" }o--|o corretor_studio_profiles : "createdByProfile"
     "whatsapp_messages" |o--|| "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_messages" |o--|| "WhatsAppMessageType" : "enum:messageType"
     "whatsapp_messages" |o--|| "WhatsAppMessageStatus" : "enum:status"
@@ -2109,4 +2319,20 @@ CDP CDP
     "corretor_studio_cdp_channel_consents" |o--|o "CustomerConsentReason" : "enum:reason"
     "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_cdp_profiles : "profile"
     "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_teams : "team"
+    "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
+    "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
+    "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"
+    "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeStatus" : "enum:status"
+    "backoffice_bot_auth_challenges" }o--|o corretor_studio_profiles : "profile"
+    "backoffice_bot_user_links" |o--|| "BackofficeBotUserLinkSource" : "enum:linkedBy"
+    "backoffice_bot_user_links" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_user_links" |o--|o backoffice_bot_auth_challenges : "authChallenge"
+    "backoffice_bot_sessions" }o--|| backoffice_bot_user_links : "userLink"
+    "backoffice_bot_sessions" }o--|| corretor_studio_teams : "team"
+    "backoffice_bot_messages" |o--|| "BackofficeBotMessageDirection" : "enum:direction"
+    "backoffice_bot_messages" }o--|| backoffice_bot_channels : "channel"
+    "backoffice_bot_messages" }o--|o backoffice_bot_user_links : "userLink"
+    "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
+    "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
 ```

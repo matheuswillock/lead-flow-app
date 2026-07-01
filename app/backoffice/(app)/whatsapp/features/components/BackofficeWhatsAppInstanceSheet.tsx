@@ -133,7 +133,6 @@ export function BackofficeWhatsAppInstanceSheet() {
               {selectedDetail.qrCodeImageUrl && (
                 <div className="flex flex-col items-center gap-2 rounded-md border p-4">
                   <span className="text-sm font-medium">QR Code</span>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={selectedDetail.qrCodeImageUrl}
                     alt="QR Code WhatsApp"

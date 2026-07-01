@@ -71,7 +71,6 @@
       "app/api/v1/teams/route.ts",
       "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
-      "app/api/v1/email/analytics/route.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
       "app/api/v1/email/cron/reset-credits/route.ts",
       "app/api/v1/email/logs/[logId]/route.ts",
@@ -139,25 +138,16 @@
       "app/backoffice/(app)/clients",
       "app/backoffice/(app)/payments",
       "app/backoffice/(app)/users",
+      "app/backoffice/(app)/studio-bot/conversas",
+      "app/backoffice/(app)/studio-bot/canal",
+      "app/backoffice/(app)/studio-bot/vinculacoes",
+      "app/backoffice/(app)/studio-bot/verificacoes",
       "app/prime"
     ],
     "nonTypeScriptFileAllowlist": [
       "eslint.config.mjs",
       "postcss.config.mjs",
       ".github/scripts/claude-pr-description.py",
-      ".agents/skills/caveman-compress/scripts/__init__.py",
-      ".agents/skills/caveman-compress/scripts/__main__.py",
-      ".agents/skills/caveman-compress/scripts/benchmark.py",
-      ".agents/skills/caveman-compress/scripts/cli.py",
-      ".agents/skills/caveman-compress/scripts/compress.py",
-      ".agents/skills/caveman-compress/scripts/detect.py",
-      ".agents/skills/caveman-compress/scripts/validate.py",
-      ".agents/skills/resend/references/fetch-all-templates.mjs",
-      ".claude/skills/resend/references/fetch-all-templates.mjs",
-      ".codestudio/skills/resend/references/fetch-all-templates.mjs",
-      ".commandcode/skills/resend/references/fetch-all-templates.mjs",
-      ".continue/skills/resend/references/fetch-all-templates.mjs",
-      "skills/resend/references/fetch-all-templates.mjs",
       "public/sw.js"
     ],
     "routeRepositoryImportAllowlist": [
@@ -231,7 +221,6 @@
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/teams/route.ts",
       "app/api/v1/teams/payments/create/route.ts",
-      "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
       "app/api/webhooks/asaas/route.ts",
       "app/api/webhooks/meta/route.ts",
@@ -270,8 +259,7 @@
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/email/EmailTemplateUseCase.ts",
       "app/api/useCases/email/EmailTeamSettingsUseCase.ts",
-      "app/api/useCases/email/EmailTeamVariablesUseCase.ts",
-      "app/api/webhooks/resend/route.ts"
+      "app/api/useCases/email/EmailTeamVariablesUseCase.ts"
     ]
   }
 }

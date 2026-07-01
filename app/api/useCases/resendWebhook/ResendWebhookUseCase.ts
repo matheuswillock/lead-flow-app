@@ -13,9 +13,17 @@ import {
 import {
   customerDataPlatformService,
 } from "@/app/api/services/cdp/CustomerDataPlatformService"
+import {
+  resendDomainWebhookUseCase,
+} from "@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
 
-const ORPHAN_BACKFILL_EVENTS = new Set(["email.sent", "email.delivered"])
+const ORPHAN_BACKFILL_EVENTS = new Set([
+  "email.sent",
+  "email.delivered",
+  "email.clicked",
+  "email.bounced",
+])
 const LOG_LOOKUP_RETRY_MS = 400
 
 function sleep(ms: number): Promise<void> {
@@ -35,6 +43,11 @@ export class ResendWebhookUseCase {
 
   async handle(input: HandleResendWebhookInput): Promise<Output> {
     const { event, svixId } = input
+
+    if (event.type.startsWith("domain.")) {
+      return resendDomainWebhookUseCase.handle(event)
+    }
+
     const resendEmailId = event.data?.email_id
     const eventType = this.webhookService.mapEventType(event.type)
     const backofficeEventType =
@@ -57,6 +70,9 @@ export class ResendWebhookUseCase {
     }
     if (event.data.bounce) {
       metadata.bounceMessage = event.data.bounce.message
+      if (event.data.bounce.type) {
+        metadata.bounceType = event.data.bounce.type
+      }
     }
 
     if (eventType) {

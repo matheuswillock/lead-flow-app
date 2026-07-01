@@ -11,7 +11,6 @@ import {
   parseBlockTargetsWhenFieldEqualsConfig,
   parseRequireCloserConfig,
   parseRequireFinalizeContractConfig,
-  parseRequireFinalizeContractFlowConfig,
   parseRequireMeetingHealdOnExitConfig,
   parseRequireSalesInfoConfig,
   type LeadStatusTransitionGateRow,
@@ -142,7 +141,7 @@ export class LeadStatusTransitionGateEvaluatorService {
     },
     statusUpdatePatch: Prisma.LeadUpdateInput
   ): Promise<TransitionGateEvaluationBlock | null> {
-    const { lead, targetStatus, trigger, mode, profileInfo, createTransition } = params;
+    const { lead, targetStatus, trigger, profileInfo, createTransition } = params;
     const blockerType = asBlockerType(gate.blockerType);
     const message =
       gate.errorMessage?.trim() ||

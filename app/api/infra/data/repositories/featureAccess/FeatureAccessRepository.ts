@@ -7,7 +7,8 @@ import type {
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
-import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo, BetaEligibilityContext } from "./IFeatureAccessRepository"
+import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo, BetaEligibilityContext, EmailBetaAccessContext } from "./IFeatureAccessRepository"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 export class FeatureAccessRepository implements IFeatureAccessRepository {
   async listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>> {
@@ -45,7 +46,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     ownerProfileId: string
   ): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
-      product: { slug: string } | null
+      product: { featureSlug: string } | null
     }) | null
   > {
     return prisma.profileSubscription.findUnique({
@@ -53,14 +54,14 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
-        product: { select: { slug: true } },
+        product: { select: { featureSlug: true } },
       },
     })
   }
 
   async listActiveUserSubscriptions(
     profileId: string
-  ): Promise<Array<BackofficeUserSubscription & { product: { slug: string } }>> {
+  ): Promise<Array<BackofficeUserSubscription & { product: { featureSlug: string } }>> {
     const now = new Date()
     return prisma.backofficeUserSubscription.findMany({
       where: {
@@ -70,7 +71,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       },
       include: {
         product: {
-          select: { slug: true },
+          select: { featureSlug: true },
         },
       },
     })
@@ -136,6 +137,107 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     }
 
     return eligible
+  }
+
+  async resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean> {
+    const grantOwnerId = ctx.isMaster ? ctx.profileId : ctx.managerId
+    if (!grantOwnerId) return false
+
+    type FeatureNode = {
+      id: string
+      parentId: string | null
+      inheritParentSettings: boolean
+      betaEnabled: boolean
+      isActive: boolean
+    }
+
+    const visited = new Set<string>()
+    let current: FeatureNode | null = await prisma.backofficeFeature.findFirst({
+      where: { slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS, isActive: true },
+      select: {
+        id: true,
+        parentId: true,
+        inheritParentSettings: true,
+        betaEnabled: true,
+        isActive: true,
+      },
+    })
+
+    if (!current) {
+      current = await prisma.backofficeFeature.findFirst({
+        where: { slug: FEATURE_SLUGS.EMAIL, isActive: true },
+        select: {
+          id: true,
+          parentId: true,
+          inheritParentSettings: true,
+          betaEnabled: true,
+          isActive: true,
+        },
+      })
+    }
+
+    if (!current) return false
+
+    while (current.inheritParentSettings && current.parentId && !visited.has(current.id)) {
+      visited.add(current.id)
+      const parent: FeatureNode | null = await prisma.backofficeFeature.findUnique({
+        where: { id: current.parentId },
+        select: {
+          id: true,
+          parentId: true,
+          inheritParentSettings: true,
+          betaEnabled: true,
+          isActive: true,
+        },
+      })
+      if (!parent || !parent.isActive) break
+      current = parent
+    }
+
+    if (!current.betaEnabled) return false
+
+    const emailRoot = await prisma.backofficeFeature.findFirst({
+      where: { slug: FEATURE_SLUGS.EMAIL, isActive: true },
+      select: { id: true },
+    })
+
+    const candidateFeatureIds = Array.from(
+      new Set([current.id, emailRoot?.id].filter((id): id is string => Boolean(id)))
+    )
+
+    const grants = await prisma.backofficeFeatureGrant.findMany({
+      where: {
+        profileId: grantOwnerId,
+        grantType: "BETA",
+        isActive: true,
+        featureId: { in: candidateFeatureIds },
+      },
+      select: {
+        betaTeamScope: true,
+        teams: {
+          select: { teamId: true },
+        },
+      },
+    })
+
+    if (grants.length === 0) return false
+
+    for (const grant of grants) {
+      if (grant.betaTeamScope === "ALL_TEAMS") {
+        return true
+      }
+
+      if (ctx.isMaster) {
+        return true
+      }
+
+      const scopedTeamIds = grant.teams.map((item) => item.teamId)
+      if (scopedTeamIds.includes(ctx.teamId)) {
+        return true
+      }
+    }
+
+    return false
   }
 
   async findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null> {
@@ -212,3 +314,5 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     )
   }
 }
+
+export const featureAccessRepository = new FeatureAccessRepository()

@@ -3,10 +3,10 @@ import type { ScheduleMeetingStatus } from "@/lib/lead-meeting"
 export type BackofficeAllUsersRole = "manager" | "operator" | "backoffice"
 export type BackofficeAllUsersRoleFilter = "master" | "manager" | "operator"
 export type BackofficeAllUsersPlanFilter = "lifetime" | "monthly" | "trial" | "none"
-export type BackofficeAllUsersUserTypeFilter = "common" | "member_pro" | "associate"
+export type BackofficeAllUsersUserTypeFilter = "common" | "member_pro" | "associate" | "guest"
 
 export interface BackofficeAllUsersUserType {
-  slug: "common" | "member_pro" | "associate"
+  slug: "common" | "member_pro" | "associate" | "guest"
   label: string
   accessExpiresAt: string | null
   isExpired: boolean

@@ -18,6 +18,7 @@ export type TeamAccess = {
   canCreateAccountUsers: boolean;
   canManageAccountTeams: boolean;
   canTransferAccountLeads: boolean;
+  canViewAllTeams: boolean;
   userTimezone: string;
   teamMember: {
     role: UserRole;
@@ -58,6 +59,7 @@ const resolveTeamMembershipForAccess = cache(async (teamId: string, profileId: s
       canCreateAccountUsers: true,
       canManageAccountTeams: true,
       canTransferAccountLeads: true,
+      canViewAllTeams: true,
       team: {
         select: {
           masterId: true,
@@ -163,6 +165,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         canCreateAccountUsers: false,
         canManageAccountTeams: true,
         canTransferAccountLeads: false,
+        canViewAllTeams: false,
         userTimezone: resolveTimezone(profile.timezone),
         teamMember: {
           role: "backoffice" as UserRole,
@@ -203,6 +206,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       canTransferAccountLeads:
         (teamMember.role === "manager" || teamMember.role === "backoffice") &&
         teamMember.canTransferAccountLeads === true,
+      canViewAllTeams:
+        (teamMember.role === "manager" || teamMember.role === "backoffice") &&
+        teamMember.canViewAllTeams === true,
       userTimezone: resolveTimezone(profile.timezone),
       teamMember,
     },
