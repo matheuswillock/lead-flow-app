@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { assertResend } from "@/lib/email"
+import { mapResendDomainError } from "@/lib/email/map-resend-domain-error"
 import {
   emailTeamDomainEventRepository,
 } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
@@ -525,7 +526,12 @@ export class EmailTeamSettingsUseCase {
       })
       if (error || !data) {
         console.error("[EmailTeamSettingsUseCase][connectDomain] Resend error", error)
-        return new Output(false, [], [error?.message ?? "Erro ao criar domínio no Resend"], null)
+        return new Output(
+          false,
+          [],
+          [mapResendDomainError(error?.message, "connect", domainName.trim())],
+          null
+        )
       }
 
       await resend.domains.update({
@@ -601,7 +607,18 @@ export class EmailTeamSettingsUseCase {
       const { error } = await resend.domains.remove(settings.resendDomainId)
       if (error) {
         console.error("[EmailTeamSettingsUseCase][disconnectDomain] Resend error", error)
-        return new Output(false, [], [error.message ?? "Erro ao remover domínio no Resend"], null)
+        return new Output(
+          false,
+          [],
+          [
+            mapResendDomainError(
+              error.message,
+              "disconnect",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
+          null
+        )
       }
 
       const deletedAt = new Date()
@@ -636,7 +653,7 @@ export class EmailTeamSettingsUseCase {
       const { error } = await resend.domains.verify(settings.resendDomainId)
       if (error) {
         console.error("[EmailTeamSettingsUseCase][verifyDomain] Resend error", error)
-        return new Output(false, [], [error.message ?? "Erro ao verificar domínio"], null)
+        return new Output(false, [], [mapResendDomainError(error.message, "verify")], null)
       }
 
       const { data: domainData } = await resend.domains.get(settings.resendDomainId)
@@ -684,7 +701,18 @@ export class EmailTeamSettingsUseCase {
       const { data, error } = await resend.domains.get(settings.resendDomainId)
       if (error || !data) {
         console.error("[EmailTeamSettingsUseCase][getDomainRecords] Resend error", error)
-        return new Output(false, [], [error?.message ?? "Erro ao buscar registros DNS"], null)
+        return new Output(
+          false,
+          [],
+          [
+            mapResendDomainError(
+              error?.message,
+              "records",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
+          null
+        )
       }
 
       const synced = await emailTeamDomainEventRepository.syncFromResendDomain(
