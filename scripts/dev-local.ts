@@ -483,6 +483,9 @@ function getLocalN8nOverrides(): EnvOverrides {
       process.env.N8N_WEBHOOK_BASE_URL ??
       readN8nEnvValue("N8N_WEBHOOK_BASE_URL") ??
       "http://host.docker.internal:5678",
+    BACKOFFICE_N8N_OUTBOUND_URL:
+      process.env.BACKOFFICE_N8N_OUTBOUND_URL?.trim() ??
+      `${n8nBase ?? LOCAL_N8N_URL}/webhook/bethania-outbound`,
     BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET: webhookSecret,
     N8N_BETHANIA_INBOUND_PATH:
       process.env.N8N_BETHANIA_INBOUND_PATH ??

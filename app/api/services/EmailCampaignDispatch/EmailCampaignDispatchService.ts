@@ -8,6 +8,13 @@ import type { IEmailCampaignDispatchService, DispatchBatchResult } from "./IEmai
 
 const BATCH_SIZE = 50
 
+/** Extrai IDs de e-mails da resposta do Resend batch (SDK v6). */
+export function parseResendBatchSendItems(
+  batchData: { data?: Array<{ id?: string }> } | null | undefined
+): Array<{ id?: string }> {
+  return batchData?.data ?? []
+}
+
 export class EmailCampaignDispatchService implements IEmailCampaignDispatchService {
   async dispatchBatch(params: {
     from: string
@@ -61,19 +68,30 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           ),
         })
 
-        if (batchResult.data) {
-          const items = Array.isArray(batchResult.data) ? batchResult.data : []
+        if (batchResult.error) {
+          console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
+          result.failed += chunk.length
+        } else {
+          const items = parseResendBatchSendItems(batchResult.data)
+          if (items.length === 0 && chunk.length > 0) {
+            console.error(
+              "[EmailCampaignDispatchService][dispatchBatch] Resposta sem IDs de e-mail para chunk",
+              { campaignId: params.campaignId, chunkIndex, chunkSize: chunk.length }
+            )
+          }
           items.forEach((item, idx) => {
+            const recipient = chunk[idx]
+            if (!recipient) return
             if (item?.id) {
-              result.dispatched.push({ email: chunk[idx].email, resendId: item.id })
+              result.dispatched.push({ email: recipient.email, resendId: item.id })
               result.sent++
             } else {
               result.failed++
             }
           })
-        } else if (batchResult.error) {
-          console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
-          result.failed += chunk.length
+          if (items.length < chunk.length) {
+            result.failed += chunk.length - items.length
+          }
         }
       } catch (error) {
         console.error("[EmailCampaignDispatchService][dispatchBatch] Erro no batch:", error)

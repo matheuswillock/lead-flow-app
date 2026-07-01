@@ -243,7 +243,7 @@ Espelhar [`scripts/dev-local.ts`](../scripts/dev-local.ts):
 |----------|-----------|----------|
 | `N8N_BASE_URL` | `http://127.0.0.1:5678` | URL do serviço N8N |
 | `N8N_WEBHOOK_BASE_URL` | `http://host.docker.internal:5678` | URL que Evolution e outros containers usam para chamar N8N |
-| `BACKOFFICE_N8N_OUTBOUND_URL` | `http://127.0.0.1:5678/webhook/bethania-events` | Webhook CS → N8N (eventos outbound) |
+| `BACKOFFICE_N8N_OUTBOUND_URL` | `http://127.0.0.1:5678/webhook/bethania-outbound` | Webhook CS → N8N (eventos outbound) |
 | `BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET` | chave local compartilhada (HMAC) | Secret produção |
 | `N8N_BETHANIA_INBOUND_PATH` | `/webhook/bethania-inbound` | Path do workflow inbound |
 | `EVO_BETHANIA_INSTANCE` | `bethania` | Nome da instância Evolution da Bethânia |

@@ -1,27 +1,39 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Braces, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import { Braces, ChevronLeft, ChevronRight, Clock3, Lightbulb, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { extractTemplateVariableKeys } from "@/lib/email/interpolate";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import type { TemplateHistoryItem } from "../context/TemplateEditorTypes";
+import { analyzeEmailHtml } from "../utils/analyze-email-html";
 import { EditorFloatingPanel } from "./EditorFloatingPanel";
 import type { SidebarSection } from "./EditorStudioTypes";
+import { EmailCreationTipsPanel } from "./EmailCreationTipsPanel";
 import { TemplateHistoryPanel } from "./TemplateHistoryPanel";
 import { VariablesPanel } from "./VariablesPanel";
 
 const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   variables: "Variáveis",
   history: "Histórico",
+  tips: "Dicas",
 };
 
 interface EditorSidebarProps {
   history: TemplateHistoryItem[];
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 }
 
-export function EditorSidebar({ history }: EditorSidebarProps) {
+export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorSidebarProps) {
   const { draft } = useTemplateEditorContext();
 
   const [section, setSection] = useState<SidebarSection>("menu");
@@ -31,10 +43,52 @@ export function EditorSidebar({ history }: EditorSidebarProps) {
     return keys.length;
   }, [draft.subject, draft.html]);
 
+  const tipsAlertCount = useMemo(() => analyzeEmailHtml(draft.html).length, [draft.html]);
+
+  if (collapsed) {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <aside
+          className={cn(
+            "flex max-h-full min-h-0 w-12 shrink-0 flex-col items-center gap-2 overflow-hidden rounded-xl border bg-card py-3 shadow-md transition-[width]"
+          )}
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => onCollapsedChange(false)}
+                aria-label="Expandir painel do editor"
+              >
+                <PanelLeftOpen />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Expandir editor</TooltipContent>
+          </Tooltip>
+        </aside>
+      </TooltipProvider>
+    );
+  }
+
   if (section === "menu") {
     return (
-      <EditorFloatingPanel width="sidebar" className="overflow-y-auto p-4">
-        <h2 className="text-sm font-semibold">Editor</h2>
+      <EditorFloatingPanel width="sidebar" className="overflow-y-auto p-4 transition-[width]">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Editor</h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            onClick={() => onCollapsedChange(true)}
+            aria-label="Recolher painel do editor"
+          >
+            <PanelLeftClose />
+          </Button>
+        </div>
 
         <div className="mt-4 flex flex-col gap-2">
           <Button
@@ -70,13 +124,33 @@ export function EditorSidebar({ history }: EditorSidebarProps) {
               <ChevronRight />
             </span>
           </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto justify-between px-3 py-3"
+            onClick={() => setSection("tips")}
+          >
+            <span className="flex items-center gap-2">
+              <Lightbulb data-icon="inline-start" />
+              Dicas
+            </span>
+            <span className="flex items-center gap-2">
+              {tipsAlertCount > 0 ? (
+                <Badge variant="outline" className="border-warning/40 text-warning">
+                  {tipsAlertCount}
+                </Badge>
+              ) : null}
+              <ChevronRight />
+            </span>
+          </Button>
         </div>
       </EditorFloatingPanel>
     );
   }
 
   return (
-    <EditorFloatingPanel width="sidebar" className="overflow-hidden">
+    <EditorFloatingPanel width="sidebar" className="overflow-hidden transition-[width]">
       <div className="flex shrink-0 items-center gap-2 border-b p-3">
         <Button
           type="button"
@@ -88,12 +162,23 @@ export function EditorSidebar({ history }: EditorSidebarProps) {
           <ChevronLeft data-icon="inline-start" />
           Voltar
         </Button>
-        <h2 className="text-sm font-semibold">{SECTION_TITLES[section]}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{SECTION_TITLES[section]}</h2>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          onClick={() => onCollapsedChange(true)}
+          aria-label="Recolher painel do editor"
+        >
+          <PanelLeftClose />
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {section === "variables" ? <VariablesPanel embedded /> : null}
         {section === "history" ? <TemplateHistoryPanel history={history} embedded /> : null}
+        {section === "tips" ? <EmailCreationTipsPanel embedded /> : null}
       </div>
     </EditorFloatingPanel>
   );

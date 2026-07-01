@@ -54,13 +54,17 @@ export class StudioBotN8nDispatchService {
     idempotencyKey?: string
   ): Promise<Response> {
     const signature = signStudioBotPayload(body, secret);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "x-studio-bot-signature": signature,
+      ...(idempotencyKey ? { "x-idempotency-key": idempotencyKey } : {}),
+    };
+    if (url.includes("ngrok")) {
+      headers["ngrok-skip-browser-warning"] = "true";
+    }
     return fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-studio-bot-signature": signature,
-        ...(idempotencyKey ? { "x-idempotency-key": idempotencyKey } : {}),
-      },
+      headers,
       body,
     });
   }

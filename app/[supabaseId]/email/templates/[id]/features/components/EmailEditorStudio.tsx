@@ -3,6 +3,7 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useState,
 } from "react";
@@ -10,6 +11,8 @@ import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import type { TemplateEditorDraft } from "../context/TemplateEditorTypes";
 import { EditorHtmlWorkspace } from "./EditorHtmlWorkspace";
 import { EditorSidebar } from "./EditorSidebar";
+
+const SIDEBAR_COLLAPSED_KEY = "email-template-editor-sidebar-collapsed";
 
 type EditorSnapshot = Pick<TemplateEditorDraft, "html" | "mailyJson" | "previewText">;
 
@@ -24,6 +27,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(
     const {
       template,
       draft,
+      loading,
       saving,
       saveTemplate,
       publishTemplate,
@@ -32,6 +36,22 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(
     } = useTemplateEditorContext();
 
     const [htmlModeValue, setHtmlModeValue] = useState(() => draft.html);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+    useEffect(() => {
+      if (typeof window === "undefined") return;
+      const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      if (stored === "true") {
+        setSidebarCollapsed(true);
+      }
+    }, []);
+
+    const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
+      setSidebarCollapsed(collapsed);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+      }
+    }, []);
 
     const buildSnapshot = useCallback((): EditorSnapshot => ({
       html: htmlModeValue || draft.html,
@@ -83,10 +103,13 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(
         <div className="relative flex h-full min-h-0 flex-1 gap-3 overflow-hidden bg-muted/20 p-3">
           <EditorSidebar
             history={template?.history ?? []}
+            collapsed={sidebarCollapsed}
+            onCollapsedChange={handleSidebarCollapsedChange}
           />
 
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl">
             <EditorHtmlWorkspace
+              ready={!loading}
               remountKey={template?.id}
               value={htmlModeValue || draft.html}
               onChange={handleHtmlModeChange}

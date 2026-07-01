@@ -179,7 +179,15 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     console.info("[useCampanhas] handleSend", id)
     try {
       const result = await service.send(supabaseId, activeTeamId, id)
-      toast.success(`Campanha disparada: ${result.sent} emails enviados`)
+      const total = result.total ?? result.sent
+      const detail =
+        result.failed > 0
+          ? ` (${result.sent} enviados, ${result.failed} falharam)`
+          : ""
+      toast.success(`Campanha disparada para ${total} destinatário(s)${detail}`)
+      if (editingCampaign?.id === id) {
+        setEditingCampaign(null)
+      }
       void fetchCampaigns(page, statusFilter)
       void fetchCredits()
     } catch (err) {
@@ -188,7 +196,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setSendingId(null)
     }
-  }, [activeTeamId, credits?.hasSubscription, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter, supabaseId])
+  }, [activeTeamId, credits?.hasSubscription, editingCampaign?.id, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter, supabaseId])
 
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)
@@ -327,6 +335,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       toast.error("Nome da campanha é obrigatório")
       return
     }
+    if (editingCampaign.status !== "draft" && editingCampaign.status !== "scheduled") {
+      toast.error("Somente rascunhos e campanhas agendadas podem ser editados")
+      return
+    }
     setEditSaving(true)
     console.info("[useCampanhas] handleUpdateCampaign", editingCampaign.id)
     try {
@@ -356,7 +368,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setEditingCampaign(null)
     } catch (err) {
       console.error("[useCampanhas] handleUpdateCampaign error", err)
-      toast.error("Erro ao atualizar campanha")
+      const message = err instanceof Error ? err.message : "Erro ao atualizar campanha"
+      toast.error(message)
     } finally {
       setEditSaving(false)
     }

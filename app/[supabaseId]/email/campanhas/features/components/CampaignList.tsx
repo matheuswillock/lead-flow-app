@@ -56,8 +56,8 @@ function CampaignActionsMenu({
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const canSendByStatus = campaign.status === "draft" || campaign.status === "scheduled"
-  const canEdit = true
-  const canDelete = true
+  const canEdit = campaign.status === "draft" || campaign.status === "scheduled"
+  const canDelete = campaign.status === "draft"
 
   async function handleSendConfirm() {
     setSending(true)

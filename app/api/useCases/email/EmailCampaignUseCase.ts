@@ -263,11 +263,24 @@ export class EmailCampaignUseCase {
   async update(id: string, data: Partial<CreateCampaignInput>, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: "draft" },
+        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
       })
 
       if (!existing) {
-        return new Output(false, [], ["Campanha não encontrada ou não pode ser editada"], null)
+        const campaign = await prisma.emailCampaign.findFirst({
+          where: { id, teamId: ctx.teamId },
+          select: { status: true },
+        })
+        if (!campaign) {
+          return new Output(false, [], ["Campanha não encontrada"], null)
+        }
+        if (campaign.status === "sent") {
+          return new Output(false, [], ["Campanha já enviada não pode ser editada"], null)
+        }
+        if (campaign.status === "sending") {
+          return new Output(false, [], ["Campanha em envio não pode ser editada"], null)
+        }
+        return new Output(false, [], ["Campanha não pode ser editada no status atual"], null)
       }
 
       if (data.templateId !== undefined) {
@@ -537,9 +550,13 @@ export class EmailCampaignUseCase {
 
       return new Output(
         true,
-        [`Campanha disparada: ${dispatchResult.sent} emails enviados`],
+        [`Campanha disparada para ${recipientsList.length} destinatário(s)`],
         dispatchResult.failed > 0 ? [`${dispatchResult.failed} emails falharam`] : [],
-        { sent: dispatchResult.sent, failed: dispatchResult.failed }
+        {
+          sent: dispatchResult.sent,
+          failed: dispatchResult.failed,
+          total: recipientsList.length,
+        }
       )
     } catch (error) {
       console.error("[EmailCampaignUseCase][send]", error)

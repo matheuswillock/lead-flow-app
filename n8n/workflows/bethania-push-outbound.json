@@ -1,5 +1,7 @@
 {
+  "id": "f1b2c3d4-0001-4000-8000-000000000099",
   "name": "bethania-push-outbound",
+  "active": true,
   "nodes": [
     {
       "parameters": {

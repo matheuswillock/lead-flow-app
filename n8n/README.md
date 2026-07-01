@@ -17,7 +17,7 @@ Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows de
 | N8N UI | `http://127.0.0.1:5678` | — |
 | Lead Flow API | `http://127.0.0.1:3000` | `http://host.docker.internal:3000` |
 | Webhook inbound Bethânia | `http://127.0.0.1:5678/webhook/bethania-inbound` | `http://host.docker.internal:5678/webhook/bethania-inbound` |
-| Eventos outbound (Fase 4) | `http://127.0.0.1:5678/webhook/bethania-events` | — |
+| Eventos outbound (Fase 4) | `http://127.0.0.1:5678/webhook/bethania-outbound` | — |
 
 ## Importar workflows
 
