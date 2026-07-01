@@ -35,13 +35,13 @@ CREATE TABLE IF NOT EXISTS "public"."corretor_studio_email_campaign_dispatches" 
   CONSTRAINT "corretor_studio_email_campaign_dispatches_campaignId_fkey"
     FOREIGN KEY ("campaignId") REFERENCES "public"."corretor_studio_email_campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "corretor_studio_email_campaign_dispatches_teamId_fkey"
-    FOREIGN KEY ("teamId") REFERENCES "public"."teams"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY ("teamId") REFERENCES "public"."corretor_studio_teams"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "corretor_studio_email_campaign_dispatches_templateId_fkey"
     FOREIGN KEY ("templateId") REFERENCES "public"."corretor_studio_email_templates"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "corretor_studio_email_campaign_dispatches_contactListId_fkey"
     FOREIGN KEY ("contactListId") REFERENCES "public"."corretor_studio_email_contact_lists"("id") ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT "corretor_studio_email_campaign_dispatches_triggeredBy_fkey"
-    FOREIGN KEY ("triggeredBy") REFERENCES "public"."profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    FOREIGN KEY ("triggeredBy") REFERENCES "public"."corretor_studio_profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "corretor_studio_email_campaign_dispatches_campaignId_dispatchNumber_key"
