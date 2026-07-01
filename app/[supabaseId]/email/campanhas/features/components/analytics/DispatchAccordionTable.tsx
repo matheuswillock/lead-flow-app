@@ -104,7 +104,7 @@ export function DispatchAccordionTable({
                         Versão {dispatch.templateVersionNumber}.0
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {formatIntimezone(dispatch.dispatchedAt, "dd/MM/yyyy HH:mm", tz)}
+                        {formatIntimezone(new Date(dispatch.dispatchedAt), "dd/MM/yyyy HH:mm", tz)}
                       </span>
                     </div>
                   </AccordionTrigger>
