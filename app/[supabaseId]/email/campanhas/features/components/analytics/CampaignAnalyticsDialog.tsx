@@ -1,12 +1,14 @@
 "use client"
 
-import { BarChart3 } from "lucide-react"
+import { BarChart3, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { cn } from "@/lib/utils"
 import { DeliverabilityChart } from "./DeliverabilityChart"
 import { DispatchAccordionTable } from "./DispatchAccordionTable"
 import { MetricsSummaryCards } from "./MetricsSummaryCards"
@@ -26,10 +28,8 @@ export function CampaignAnalyticsDialog({
   campaignId,
   campaignName,
 }: CampaignAnalyticsDialogProps) {
-  const { data, loading, period, handlePeriodChange } = useCampaignAnalytics(
-    campaignId,
-    open
-  )
+  const { data, initialLoading, refreshing, period, handlePeriodChange, handleRefresh } =
+    useCampaignAnalytics(campaignId, open)
 
   const title = campaignName
     ? `Métricas — ${campaignName}`
@@ -45,14 +45,31 @@ export function CampaignAnalyticsDialog({
           </div>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
-          <PeriodSelector period={period} onPeriodChange={handlePeriodChange} />
-          <MetricsSummaryCards data={data} loading={loading} />
-          <DeliverabilityChart data={data} loading={loading} />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col gap-1">
+              <PeriodSelector period={period} onPeriodChange={handlePeriodChange} />
+              <p className="text-xs text-muted-foreground">
+                Entrega e engajamento atualizam automaticamente a cada 30s via eventos do Resend.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
+              Atualizar
+            </Button>
+          </div>
+          <MetricsSummaryCards data={data} loading={initialLoading} />
+          <DeliverabilityChart data={data} loading={initialLoading} />
           {campaignId ? (
             <DispatchAccordionTable
               campaignId={campaignId}
               data={data}
-              loading={loading}
+              loading={initialLoading}
             />
           ) : null}
         </div>

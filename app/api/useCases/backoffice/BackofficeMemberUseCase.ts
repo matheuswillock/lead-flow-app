@@ -19,6 +19,7 @@ interface UpdateMemberInput {
   canTransferAccountLeads?: boolean
   canViewAllTeams?: boolean
   teamId?: string
+  accountMasterId?: string
 }
 
 function createSupabaseAdmin() {
@@ -105,7 +106,7 @@ export class BackofficeMemberUseCase {
         data.canTransferAccountLeads !== undefined ||
         data.canViewAllTeams !== undefined
 
-      if (hasTeamAccessUpdate && data.teamId === undefined) {
+      if (hasTeamAccessUpdate && data.teamId === undefined && data.accountMasterId === undefined) {
         return new Output(false, [], ["teamId é obrigatório para alterar permissões do membro"], null)
       }
 
@@ -122,30 +123,51 @@ export class BackofficeMemberUseCase {
 
       if (hasTeamAccessUpdate) {
         const role = data.role
-        await this.repository.updateTeamMemberAccess(
-          memberId,
-          data.teamId!,
-          {
-            ...(role !== undefined ? { role } : {}),
-            ...(data.functions !== undefined ? { functions: data.functions } : {}),
-            canCreateAccountUsers:
-              role === "manager" || (role === undefined && data.canCreateAccountUsers !== undefined)
-                ? data.canCreateAccountUsers
-                : false,
-            canManageAccountTeams:
-              role === "manager" || (role === undefined && data.canManageAccountTeams !== undefined)
-                ? data.canManageAccountTeams
-                : false,
-            canTransferAccountLeads:
-              role === "manager" || role === "backoffice" || (role === undefined && data.canTransferAccountLeads !== undefined)
-                ? data.canTransferAccountLeads
-                : false,
-            canViewAllTeams:
-              role === "manager" || role === "backoffice" || (role === undefined && data.canViewAllTeams !== undefined)
-                ? data.canViewAllTeams
-                : false,
-          }
-        )
+        const accessPayload: {
+          role?: string
+          functions?: string[]
+          canCreateAccountUsers?: boolean
+          canManageAccountTeams?: boolean
+          canTransferAccountLeads?: boolean
+          canViewAllTeams?: boolean
+        } = {}
+
+        if (role !== undefined) accessPayload.role = role
+        if (data.functions !== undefined) accessPayload.functions = data.functions
+
+        if (role !== undefined || data.canCreateAccountUsers !== undefined) {
+          accessPayload.canCreateAccountUsers =
+            role === "manager" || (role === undefined && data.canCreateAccountUsers !== undefined)
+              ? data.canCreateAccountUsers
+              : false
+        }
+
+        if (role !== undefined || data.canManageAccountTeams !== undefined) {
+          accessPayload.canManageAccountTeams =
+            role === "manager" || (role === undefined && data.canManageAccountTeams !== undefined)
+              ? data.canManageAccountTeams
+              : false
+        }
+
+        if (role !== undefined || data.canTransferAccountLeads !== undefined) {
+          accessPayload.canTransferAccountLeads =
+            role === "manager" || role === "backoffice" || (role === undefined && data.canTransferAccountLeads !== undefined)
+              ? data.canTransferAccountLeads
+              : false
+        }
+
+        if (role !== undefined || data.canViewAllTeams !== undefined) {
+          accessPayload.canViewAllTeams =
+            role === "manager" || role === "backoffice" || (role === undefined && data.canViewAllTeams !== undefined)
+              ? data.canViewAllTeams
+              : false
+        }
+
+        if (data.accountMasterId) {
+          await this.repository.updateAccountMemberAccess(memberId, data.accountMasterId, accessPayload)
+        } else {
+          await this.repository.updateTeamMemberAccess(memberId, data.teamId!, accessPayload)
+        }
       }
 
       if (emailChanged && member.supabaseId) {

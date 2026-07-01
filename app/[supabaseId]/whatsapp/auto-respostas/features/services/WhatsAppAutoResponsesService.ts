@@ -6,10 +6,11 @@ import type {
 } from '../context/WhatsAppAutoResponsesTypes'
 
 class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
-  private buildHeaders(supabaseId: string): HeadersInit {
+  private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
     return {
       'Content-Type': 'application/json',
       'x-supabase-user-id': supabaseId,
+      'x-team-id': teamId,
     }
   }
 
@@ -24,7 +25,7 @@ class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules`,
       {
         method: 'GET',
-        headers: this.buildHeaders(supabaseId),
+        headers: this.buildHeaders(supabaseId, teamId),
       }
     )
     const output = (await response.json()) as Record<string, unknown>
@@ -52,7 +53,7 @@ class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules/${encodeURIComponent(ruleId)}`,
       {
         method: 'PATCH',
-        headers: this.buildHeaders(supabaseId),
+        headers: this.buildHeaders(supabaseId, teamId),
         body: JSON.stringify(payload),
       }
     )
@@ -73,7 +74,7 @@ class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules/${encodeURIComponent(ruleId)}/toggle`,
       {
         method: 'POST',
-        headers: this.buildHeaders(supabaseId),
+        headers: this.buildHeaders(supabaseId, teamId),
         body: JSON.stringify({ isActive }),
       }
     )

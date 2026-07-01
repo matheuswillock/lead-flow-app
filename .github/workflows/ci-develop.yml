@@ -6,10 +6,13 @@ on:
     branches: ["develop"]
     paths-ignore:
       - "package.json"
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 concurrency:
-  group: ci-develop-${{ github.ref }}
+  group: ci-develop-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -25,7 +28,7 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -117,7 +120,7 @@ jobs:
 
   quality-gate:
     name: Quality Gate
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     needs:
@@ -137,7 +140,15 @@ jobs:
 
   migration-check:
     name: Migration Check
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: |
+      always() && (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.quality-gate.result == 'success' &&
+          (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
@@ -184,9 +195,11 @@ jobs:
             const input = process.env.MIGRATION_LIST ?? "";
             let hasPending = false;
 
+            const stripCell = (value) => value.trim().replace(/^`|`$/g, "");
+
             for (const line of input.split(/\r?\n/)) {
               if (!/\d{14}/.test(line)) continue;
-              const parts = line.split(/[│|]/).map(v => v.trim());
+              const parts = line.split(/[│|]/).map(stripCell);
               const local = parts[0] ?? "";
               const remote = parts[1] ?? "";
 
@@ -207,7 +220,11 @@ jobs:
           echo "has_pending=$RESULT" >> "$GITHUB_OUTPUT"
 
           if [ "$RESULT" = "true" ]; then
-            echo "::notice::Pending migrations detected — dry-run and approval required before push."
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "::notice::Pending migrations in this PR — expected before merge; apply after merge to develop."
+            else
+              echo "::notice::Pending migrations detected — dry-run and approval required before push."
+            fi
           else
             echo "::notice::All migrations applied. No action required."
           fi
@@ -217,6 +234,7 @@ jobs:
   migration-dry-run:
     name: Migration Dry Run
     if: |
+      github.event_name == 'push' &&
       !cancelled() &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.migration-check.outputs.has_pending == 'true'
@@ -275,6 +293,7 @@ jobs:
   build:
     name: Build
     if: |
+      github.event_name == 'push' &&
       always() &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.migration-check.result == 'success' &&
@@ -336,6 +355,7 @@ jobs:
   version-bump:
     name: Auto Version Bump (develop)
     if: |
+      github.event_name == 'push' &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.quality-gate.result == 'success' &&
       needs.migration-check.result == 'success'
@@ -475,6 +495,7 @@ jobs:
   deploy-preview:
     name: Deploy Vercel (Preview) from develop
     if: |
+      github.event_name == 'push' &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.build.result == 'success'
     runs-on: ubuntu-latest
@@ -517,7 +538,7 @@ jobs:
 
   auto-pr-develop-to-main:
     name: Open PR develop -> main
-    if: ${{ always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: ${{ github.event_name == 'push' && always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:

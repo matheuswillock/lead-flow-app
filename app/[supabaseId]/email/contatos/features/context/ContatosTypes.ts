@@ -34,6 +34,5 @@ export type ContactsState = {
   search: string
   loadingLists: boolean
   loadingContacts: boolean
-  uploadingCsv: boolean
   deletingContactId: string | null
 }

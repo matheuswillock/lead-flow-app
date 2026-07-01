@@ -50,7 +50,11 @@ export async function POST(
   })
 
   if (!output.isValid) {
-    const status = output.errorMessages.some((m) => m.includes("Acesso negado")) ? 403 : 500
+    const status = output.errorMessages.some((m) => m.includes("não encontrad"))
+      ? 404
+      : output.errorMessages.some((m) => m.includes("Acesso negado"))
+        ? 403
+        : 500
     return NextResponse.json(output, { status })
   }
 

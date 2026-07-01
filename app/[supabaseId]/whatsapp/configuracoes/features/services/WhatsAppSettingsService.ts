@@ -2,10 +2,11 @@ import type { IWhatsAppSettingsService } from './IWhatsAppSettingsService'
 import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber } from '../context/WhatsAppSettingsTypes'
 
 class WhatsAppSettingsService implements IWhatsAppSettingsService {
-  private buildHeaders(supabaseId: string): HeadersInit {
+  private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
     return {
       'Content-Type': 'application/json',
       'x-supabase-user-id': supabaseId,
+      'x-team-id': teamId,
     }
   }
 
@@ -18,7 +19,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   async fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/config`, {
       method: 'GET',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
     })
     if (response.status === 404) return null
     const output = await response.json() as Record<string, unknown>
@@ -31,7 +32,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   async fetchReusableNumbers(teamId: string, supabaseId: string): Promise<ReusableWhatsAppNumber[]> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/reusable-numbers`, {
       method: 'GET',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
     })
     if (response.status === 403) return []
     const output = await response.json() as Record<string, unknown>
@@ -48,7 +49,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   ): Promise<WhatsAppConfig> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/config`, {
       method: 'POST',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
       body: JSON.stringify(
         options?.reuseFromTeamId ? { reuseFromTeamId: options.reuseFromTeamId } : {}
       ),
@@ -63,7 +64,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   async reconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/reconnect`, {
       method: 'POST',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
     })
     const output = await response.json() as Record<string, unknown>
     if (!response.ok || !output?.isValid) {
@@ -75,7 +76,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   async disconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/disconnect`, {
       method: 'POST',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
     })
     const output = await response.json() as Record<string, unknown>
     if (!response.ok || !output?.isValid) {
@@ -87,7 +88,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   async fetchUsage(teamId: string, supabaseId: string): Promise<WhatsAppUsage | null> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/usage`, {
       method: 'GET',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
     })
     if (response.status === 404) return null
     const output = await response.json() as Record<string, unknown>
@@ -100,7 +101,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   async syncHistory(teamId: string, supabaseId: string): Promise<void> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/sync-history`, {
       method: 'POST',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
     })
     const output = await response.json() as Record<string, unknown>
     if (!response.ok || !output?.isValid) {
@@ -114,7 +115,7 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
   ): Promise<{ imported: number; updatedConversations: number; totalContacts: number }> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/sync-contacts`, {
       method: 'POST',
-      headers: this.buildHeaders(supabaseId),
+      headers: this.buildHeaders(supabaseId, teamId),
       body: JSON.stringify({}),
     })
     const output = await response.json() as Record<string, unknown>

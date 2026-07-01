@@ -6,6 +6,10 @@ import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
 import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
+import {
+  ACCOUNT_MASTER_BANNED_MESSAGE,
+  isAccountMasterBanned,
+} from "@/lib/account/isAccountMasterBanned";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -153,6 +157,13 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       };
     }
 
+    if (await isAccountMasterBanned(accountMasterId)) {
+      return {
+        error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
+        status: 403,
+      };
+    }
+
     return {
       access: {
         supabaseId,
@@ -186,6 +197,13 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
         null
       ),
+      status: 403,
+    };
+  }
+
+  if (await isAccountMasterBanned(accountMasterId)) {
+    return {
+      error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
       status: 403,
     };
   }

@@ -88,6 +88,14 @@ export interface IWhatsAppRepository {
   updateConfig(id: string, data: Prisma.TeamWhatsAppConfigUpdateInput): Promise<WhatsAppConfigSelect>
   deleteConfig(id: string): Promise<void>
 
+  /**
+   * Reivindica atomicamente o slot de sincronização de histórico via
+   * updateMany condicional (historySyncStatus fora de RUNNING/COMPLETED).
+   * Retorna true apenas para o chamador que efetivamente iniciou o sync,
+   * eliminando a corrida leitura-depois-escrita do guard em memória.
+   */
+  claimHistorySyncSlot(configId: string): Promise<boolean>
+
   // Conversations
   findOrCreateConversation(params: {
     teamId: string
@@ -116,6 +124,14 @@ export interface IWhatsAppRepository {
   ): Promise<WhatsAppConversationSelect>
 
   findConversationById(id: string): Promise<WhatsAppConversationSelect | null>
+
+  /**
+   * Tenta reivindicar atomicamente o envio da mensagem de boas-vindas de uma
+   * conversa (compare-and-swap em welcomeSentAt). Retorna true apenas para o
+   * chamador que efetivamente marcou o campo, evitando duas respostas WELCOME
+   * quando mensagens inbound concorrentes disparam a mesma regra.
+   */
+  claimWelcomeSlot(conversationId: string): Promise<boolean>
 
   linkConversationToLead(
     conversationId: string,

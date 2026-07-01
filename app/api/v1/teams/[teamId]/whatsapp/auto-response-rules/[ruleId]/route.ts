@@ -3,12 +3,13 @@ import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { whatsAppAutoResponseRuleUseCase } from "@/app/api/useCases/whatsapp/WhatsAppAutoResponseRuleUseCase"
+import { offHoursScheduleSchema } from "@/lib/whatsapp/off-hours-schedule"
 
 const updateRuleSchema = z.object({
   replyMessage: z.string().min(1).optional(),
   triggerKeywords: z.array(z.string()).optional(),
   matchMode: z.enum(["CONTAINS", "EXACT", "STARTS_WITH"]).optional(),
-  offHoursSchedule: z.record(z.string(), z.unknown()).nullable().optional(),
+  offHoursSchedule: offHoursScheduleSchema.nullable().optional(),
   isActive: z.boolean().optional(),
   priority: z.number().int().optional(),
 })

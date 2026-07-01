@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
+import {
+  ACCOUNT_MASTER_BANNED_MESSAGE,
+  isAccountMasterBanned,
+} from "@/lib/account/isAccountMasterBanned";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PUT(request: NextRequest) {
@@ -78,6 +82,13 @@ export async function PUT(request: NextRequest) {
           ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
           null
         ),
+        { status: 403 }
+      );
+    }
+
+    if (await isAccountMasterBanned(membership.team.masterId)) {
+      return NextResponse.json(
+        new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
         { status: 403 }
       );
     }

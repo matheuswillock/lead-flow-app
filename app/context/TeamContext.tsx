@@ -23,6 +23,7 @@ export interface TeamSummary {
   associateAccountName?: string | null;
   isAccessible?: boolean;
   accountSubscriptionActive?: boolean;
+  accountMasterBanned?: boolean;
   isDefault: boolean;
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
@@ -63,6 +64,13 @@ function getStorageKey(supabaseId: string) {
 
 function isTeamSelectable(team: TeamSummary) {
   return !team.isPending && team.isAccessible !== false;
+}
+
+function getTeamBlockedMessage(team: TeamSummary) {
+  if (team.accountMasterBanned) {
+    return "O acesso a esta conta foi suspenso. Entre em contato com o administrador.";
+  }
+  return "A assinatura desta conta está inativa. Entre em contato com o administrador.";
 }
 
 interface TeamProviderProps {
@@ -206,7 +214,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
     }
 
     if (!isTeamSelectable(targetTeam)) {
-      toast.error("A assinatura desta conta está inativa. Entre em contato com o administrador.");
+      toast.error(getTeamBlockedMessage(targetTeam));
       return;
     }
 
@@ -268,7 +276,12 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
     const fallback = teams.find((team) => isTeamSelectable(team))?.id ?? null;
     if (fallback && fallback !== activeTeamId) {
-      toast.info("A assinatura desta conta está inativa. Alternamos para outro time disponível.");
+      const blockedTeam = teams.find((team) => team.id === activeTeamId);
+      toast.info(
+        blockedTeam
+          ? getTeamBlockedMessage(blockedTeam)
+          : "Esta conta não está acessível. Alternamos para outro time disponível."
+      );
       setActiveTeamIdState(fallback);
       persistActiveTeam(fallback).catch((err) => {
         console.error("Error persisting fallback team:", err);

@@ -248,4 +248,15 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     )
     return result.options
   }
+
+  async banUser(profileId: string, reason?: string | null): Promise<void> {
+    await parseOutput<Record<string, unknown>>(
+      await fetch("/api/v1/backoffice/anatemas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, reason }),
+      }),
+      "Erro ao banir usuário"
+    )
+  }
 }

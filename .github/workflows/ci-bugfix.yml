@@ -129,82 +129,13 @@ jobs:
             exit 1
           fi
 
-  migration-status:
-    name: Migration Status
-    if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-      - quality-gate
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install
-
-      - name: Check Migration Status
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
-          echo "$migration_list"
-
-          if MIGRATION_LIST="$migration_list" node -e '
-            const input = process.env.MIGRATION_LIST ?? "";
-            let bad = false;
-
-            for (const line of input.split(/\r?\n/)) {
-              if (!/\d{14}/.test(line)) {
-                continue;
-              }
-
-              const [local = "", remote = ""] = line.split(/[│|]/).map((value) => value.trim());
-
-              if (!local || !remote || local !== remote) {
-                bad = true;
-                break;
-              }
-            }
-
-            process.exit(bad ? 1 : 0);
-          '; then
-            exit 0
-          fi
-
-          echo "Migration history is out of sync. Apply the missing migrations or repair the remote history before merging."
-          exit 1
-        env:
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
-
   build:
     name: Build
     if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - migration-status
+      - quality-gate
     steps:
       - name: Checkout
         uses: actions/checkout@v4

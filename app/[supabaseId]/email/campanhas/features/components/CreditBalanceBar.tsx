@@ -62,7 +62,7 @@ export function CreditBalanceBar() {
   return (
     <Card>
       <CardContent className="flex items-center gap-4 py-3">
-        <div className="flex-1 space-y-1">
+        <div className="flex-1 flex flex-col gap-1">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">
               {PLAN_LABELS[credits.plan ?? ""] ?? credits.plan} — Créditos de Email

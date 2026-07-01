@@ -301,6 +301,145 @@ export class EmailContactListUseCase {
     }
   }
 
+  async importMapped(
+    listId: string,
+    rows: Array<{
+      line?: number
+      email: string
+      name?: string
+      customFields?: Record<string, string>
+    }>,
+    ctx: TeamContext
+  ): Promise<Output> {
+    try {
+      const existing = await prisma.emailContactList.findFirst({
+        where: { id: listId, teamId: ctx.teamId, isArchived: false },
+      })
+
+      if (!existing) {
+        return new Output(false, [], ["Lista não encontrada"], null)
+      }
+
+      const issues: Array<{ line?: number; email?: string; name?: string; reason: string }> = []
+      let imported = 0
+      let updated = 0
+      let skipped = 0
+
+      const validRows: Array<{
+        line?: number
+        email: string
+        name?: string
+        customFields?: Record<string, string>
+      }> = []
+
+      for (const row of rows) {
+        const normalizedEmail = this.normalizeEmail(row.email ?? "")
+        if (!normalizedEmail || !normalizedEmail.includes("@")) {
+          skipped += 1
+          issues.push({
+            line: row.line,
+            email: row.email,
+            name: row.name,
+            reason: "E-mail inválido ou ausente",
+          })
+          continue
+        }
+        validRows.push({
+          line: row.line,
+          email: normalizedEmail,
+          name: row.name?.trim() || undefined,
+          customFields: row.customFields,
+        })
+      }
+
+      if (validRows.length === 0) {
+        return new Output(false, [], ["Nenhum contato válido encontrado para importar"], {
+          imported: 0,
+          updated: 0,
+          skipped,
+          total: 0,
+          issues,
+        })
+      }
+
+      const BATCH_SIZE = 500
+      for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+        const batch = validRows.slice(i, i + BATCH_SIZE)
+        for (const row of batch) {
+          const existingContact = await prisma.emailContact.findUnique({
+            where: { listId_email: { listId, email: row.email } },
+          })
+
+          await prisma.emailContact.upsert({
+            where: { listId_email: { listId, email: row.email } },
+            update: {
+              name: row.name ?? null,
+              customFields: (row.customFields as object) ?? null,
+            },
+            create: {
+              id: randomUUID(),
+              listId,
+              email: row.email,
+              name: row.name ?? null,
+              customFields: (row.customFields as object) ?? null,
+            },
+          })
+
+          if (existingContact) {
+            updated += 1
+          } else {
+            imported += 1
+          }
+        }
+      }
+
+      const totalCount = await prisma.emailContact.count({ where: { listId } })
+      await prisma.emailContactList.update({
+        where: { id: listId },
+        data: { totalContacts: totalCount },
+      })
+
+      if (!existing.isSystemDefault) {
+        const defaultList = await this.ensureDefaultList(ctx)
+        for (const row of validRows) {
+          await prisma.emailContact.upsert({
+            where: {
+              listId_email: { listId: defaultList.id, email: row.email },
+            },
+            update: {
+              name: row.name ?? null,
+              customFields: (row.customFields as object) ?? null,
+            },
+            create: {
+              id: randomUUID(),
+              listId: defaultList.id,
+              email: row.email,
+              name: row.name ?? null,
+              customFields: (row.customFields as object) ?? null,
+            },
+          })
+        }
+        const defaultTotalCount = await prisma.emailContact.count({
+          where: { listId: defaultList.id },
+        })
+        await prisma.emailContactList.update({
+          where: { id: defaultList.id },
+          data: { totalContacts: defaultTotalCount },
+        })
+      }
+
+      return new Output(
+        true,
+        [`${imported + updated} contatos processados com sucesso`],
+        [],
+        { imported, updated, skipped, total: totalCount, issues }
+      )
+    } catch (error) {
+      console.error("[EmailContactListUseCase][importMapped]", error)
+      return new Output(false, [], ["Erro ao importar contatos"], null)
+    }
+  }
+
   async uploadCsv(id: string, csvContent: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailContactList.findFirst({

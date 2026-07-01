@@ -248,6 +248,42 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     })
   }
 
+  async updateAccountMemberAccess(
+    profileId: string,
+    masterId: string,
+    data: {
+      role?: string
+      functions?: string[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
+    }
+  ): Promise<void> {
+    const payload: Record<string, unknown> = {}
+    if (data.role !== undefined) payload.role = data.role as UserRole
+    if (data.functions !== undefined) payload.functions = data.functions as UserFunction[]
+    if (data.canCreateAccountUsers !== undefined) {
+      payload.canCreateAccountUsers = data.canCreateAccountUsers
+    }
+    if (data.canManageAccountTeams !== undefined) {
+      payload.canManageAccountTeams = data.canManageAccountTeams
+    }
+    if (data.canTransferAccountLeads !== undefined) {
+      payload.canTransferAccountLeads = data.canTransferAccountLeads
+    }
+    if (data.canViewAllTeams !== undefined) {
+      payload.canViewAllTeams = data.canViewAllTeams
+    }
+
+    if (Object.keys(payload).length === 0) return
+
+    await prisma.teamMember.updateMany({
+      where: { profileId, team: { masterId } },
+      data: payload,
+    })
+  }
+
   async findExternalTeamMemberships(profileId: string, excludeMasterId: string) {
     const memberships = await prisma.teamMember.findMany({
       where: {

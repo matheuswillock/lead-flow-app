@@ -7,7 +7,7 @@ export default async function CampanhasPage({ params }: Props) {
   const { supabaseId } = await params
   return (
     <CampanhasProvider supabaseId={supabaseId}>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto p-6 flex flex-col gap-6">
         <CampanhasContainer />
       </div>
     </CampanhasProvider>

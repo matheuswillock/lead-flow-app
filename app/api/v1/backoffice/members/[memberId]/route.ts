@@ -57,6 +57,7 @@ export async function PATCH(
     const canViewAllTeams =
       typeof body.canViewAllTeams === "boolean" ? body.canViewAllTeams : undefined
     const teamId = optionalString(body.teamId)
+    const accountMasterId = optionalString(body.accountMasterId)
 
     const data = {
       fullName: optionalString(body.fullName),
@@ -69,6 +70,7 @@ export async function PATCH(
       canTransferAccountLeads,
       canViewAllTeams,
       teamId,
+      accountMasterId,
     }
 
     const output = await backofficeMemberUseCase.updateMember(memberId, data)

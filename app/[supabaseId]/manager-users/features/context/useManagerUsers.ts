@@ -204,6 +204,7 @@ export function useManagerUsers({
           canCreateAccountUsers: userData.canCreateAccountUsers,
           canManageAccountTeams: userData.canManageAccountTeams,
           canTransferAccountLeads: userData.canTransferAccountLeads,
+          canViewAllTeams: userData.canViewAllTeams,
         }),
       });
 

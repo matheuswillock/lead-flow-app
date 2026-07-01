@@ -1,5 +1,8 @@
 import type { WhatsAppAutoResponseRuleType } from "@prisma/client"
-import { whatsAppAutoResponseRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppAutoResponseRepository"
+import {
+  isUniqueConstraintError,
+  whatsAppAutoResponseRepository,
+} from "@/app/api/infra/data/repositories/whatsapp/WhatsAppAutoResponseRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { whatsAppService } from "@/app/api/services/whatsapp/WhatsAppService"
 import { isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
@@ -134,36 +137,65 @@ class ProcessWhatsAppInboundAutoResponseUseCase {
         return new Output(true, [], [], { sent: false })
       }
 
-      const replyText = selectedRule.replyMessage.trim()
-      const sendResult = await whatsAppService.sendAutoResponseMessage({
-        teamId: input.teamId,
-        conversationId: input.conversationId,
-        contentText: replyText,
-        autoResponseRuleId: selectedRule.id,
-      })
-
-      await whatsAppAutoResponseRepository.createLog({
-        conversation: { connect: { id: input.conversationId } },
-        rule: { connect: { id: selectedRule.id } },
-        ruleType: selectedRule.type,
-        triggerText: inboundText,
-        sentText: replyText,
-        inboundMessageId: input.inboundMessageId,
-        outboundMessageId: sendResult.messageId,
-      })
-
+      // Compare-and-swap em welcomeSentAt: garante que, mesmo com duas
+      // mensagens inbound concorrentes disparando a regra WELCOME pela
+      // primeira vez, só uma delas "ganhe" o direito de enviar a boas-vindas.
       if (selectedRule.type === "WELCOME") {
-        await whatsAppRepository.updateConversation(input.conversationId, {
-          welcomeSentAt: new Date(),
-        })
+        const claimedWelcome = await whatsAppRepository.claimWelcomeSlot(input.conversationId)
+        if (!claimedWelcome) {
+          return new Output(true, [], [], { sent: false })
+        }
       }
 
-      return new Output(true, [], [], {
-        sent: true,
-        ruleId: selectedRule.id,
-        ruleType: selectedRule.type,
-        outboundMessageId: sendResult.messageId,
-      })
+      const replyText = selectedRule.replyMessage.trim()
+
+      // Reivindica o log ANTES de enviar: a unique constraint em
+      // (conversationId, ruleType, inboundMessageId) impede que a mesma
+      // mensagem inbound (redelivery de webhook ou corrida no
+      // ProcessEvoWebhookUseCase) dispare a mesma regra duas vezes.
+      let claimedLog: { id: string }
+      try {
+        claimedLog = await whatsAppAutoResponseRepository.createLog({
+          conversation: { connect: { id: input.conversationId } },
+          rule: { connect: { id: selectedRule.id } },
+          ruleType: selectedRule.type,
+          triggerText: inboundText,
+          sentText: replyText,
+          inboundMessageId: input.inboundMessageId,
+        })
+      } catch (claimError) {
+        if (isUniqueConstraintError(claimError)) {
+          return new Output(true, [], [], { sent: false })
+        }
+        throw claimError
+      }
+
+      try {
+        const sendResult = await whatsAppService.sendAutoResponseMessage({
+          teamId: input.teamId,
+          conversationId: input.conversationId,
+          contentText: replyText,
+          autoResponseRuleId: selectedRule.id,
+        })
+
+        await whatsAppAutoResponseRepository.updateLogOutbound(claimedLog.id, sendResult.messageId)
+
+        return new Output(true, [], [], {
+          sent: true,
+          ruleId: selectedRule.id,
+          ruleType: selectedRule.type,
+          outboundMessageId: sendResult.messageId,
+        })
+      } catch (sendError) {
+        if (selectedRule.type === "WELCOME") {
+          // Libera o slot de boas-vindas para que uma próxima mensagem
+          // inbound possa tentar novamente, já que o envio falhou.
+          await whatsAppRepository
+            .updateConversation(input.conversationId, { welcomeSentAt: null })
+            .catch(() => {})
+        }
+        throw sendError
+      }
     } catch (error) {
       console.error("[ProcessWhatsAppInboundAutoResponseUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao processar auto-resposta"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,15 +29,21 @@ function ContactListItem({ list }: { list: ContactList }) {
   const creatorLabel = list.creator?.fullName?.trim() || list.creator?.email || "—";
 
   async function confirmDelete() {
+    if (deletingList) return;
     setDeletingList(true);
     try {
       await handleDeleteList(list.id);
+      setDeleteOpen(false);
     } catch {
       // error toast handled in hook
     } finally {
       setDeletingList(false);
-      setDeleteOpen(false);
     }
+  }
+
+  function handleDeleteOpenChange(open: boolean) {
+    if (deletingList) return;
+    setDeleteOpen(open);
   }
 
   return (
@@ -89,7 +95,7 @@ function ContactListItem({ list }: { list: ContactList }) {
         </div>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog open={deleteOpen} onOpenChange={handleDeleteOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir lista?</AlertDialogTitle>
@@ -103,11 +109,21 @@ function ContactListItem({ list }: { list: ContactList }) {
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDelete();
+              }}
               disabled={deletingList}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingList ? "Excluindo..." : "Excluir"}
+              {deletingList ? (
+                <>
+                  <Loader2 className="animate-spin" data-icon="inline-start" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -5,6 +5,7 @@ import {
   WhatsAppAccessDeniedError,
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
+import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 
 interface LinkConversationToLeadInput {
   conversationId: string
@@ -15,13 +16,18 @@ interface LinkConversationToLeadInput {
 class LinkConversationToLeadUseCase {
   async execute(input: LinkConversationToLeadInput): Promise<Output> {
     try {
-      await assertCanAccessConversation(input.access, input.conversationId)
+      const conversation = await assertCanAccessConversation(input.access, input.conversationId)
 
-      const conversation = await whatsAppRepository.linkConversationToLead(
+      const lead = await leadRepository.findById(input.leadId)
+      if (!lead || lead.teamId !== conversation.teamId) {
+        return new Output(false, [], ["Lead não encontrado neste time"], null)
+      }
+
+      const updatedConversation = await whatsAppRepository.linkConversationToLead(
         input.conversationId,
         input.leadId
       )
-      return new Output(true, ["Conversa vinculada ao lead com sucesso"], [], conversation)
+      return new Output(true, ["Conversa vinculada ao lead com sucesso"], [], updatedConversation)
     } catch (error) {
       if (error instanceof WhatsAppAccessDeniedError) {
         return new Output(false, [], [error.message], null)

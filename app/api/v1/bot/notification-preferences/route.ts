@@ -37,6 +37,14 @@ async function resolveProfileId(request: NextRequest): Promise<
 
 export async function GET(request: NextRequest) {
   try {
+    const hmac = request.headers.get("x-studio-bot-signature");
+    if (hmac) {
+      const verified = await verifyStudioBotRequest(request);
+      if (!verified.ok) {
+        return NextResponse.json(verified.error, { status: verified.status });
+      }
+    }
+
     const resolved = await resolveProfileId(request);
     if (resolved.error) {
       return NextResponse.json(resolved.error, { status: resolved.status });

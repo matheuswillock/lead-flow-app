@@ -262,6 +262,7 @@ export interface IBackofficeAdhesionService {
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
   processPaymentWebhook(
     event: string,
-    payment: BackofficeAdhesionPaymentWebhookInput
+    payment: BackofficeAdhesionPaymentWebhookInput,
+    options?: { deferEmailDelivery?: boolean }
   ): Promise<{ processed: boolean; adhesionId?: string }>
 }

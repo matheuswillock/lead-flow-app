@@ -1,5 +1,5 @@
 import { ILeadRepository, type LeadCreateRepositoryInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
-import { Lead, LeadStatus, Prisma } from "@prisma/client";
+import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
@@ -200,6 +200,68 @@ export class LeadRepository implements ILeadRepository {
       select: { id: true },
       orderBy: { createdAt: "desc" },
     })
+  }
+
+  async findOrCreateLeadByPhoneInTeam(params: {
+    teamId: string;
+    normalizedPhone: string;
+    leadCode: string;
+    displayName: string;
+    masterId: string;
+    conversationId: string;
+  }): Promise<{ id: string; created: boolean }> {
+    const digits = params.normalizedPhone.replace(/\D/g, "");
+
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.teamId} || ':' || ${params.normalizedPhone}))`;
+
+      const existingLead = await tx.lead.findFirst({
+        where: {
+          teamId: params.teamId,
+          OR: [
+            { phone: params.normalizedPhone },
+            ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+          ],
+        },
+        select: { id: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingLead) {
+        return { id: existingLead.id, created: false };
+      }
+
+      const lead = await tx.lead.create({
+        data: {
+          manager: { connect: { id: params.masterId } },
+          team: { connect: { id: params.teamId } },
+          leadCode: params.leadCode,
+          name: params.displayName,
+          phone: params.normalizedPhone,
+          status: LeadStatus.new_opportunity,
+          creator: { connect: { id: params.masterId } },
+          updater: { connect: { id: params.masterId } },
+          activities: {
+            create: {
+              type: ActivityType.note,
+              body: "Lead criado automaticamente via WhatsApp",
+              payload: {
+                kind: "lead_creation",
+                channel: "whatsapp",
+                provider: "evolution",
+                source: "whatsapp_inbound",
+                conversationId: params.conversationId,
+                importedAt: new Date().toISOString(),
+              },
+              author: { connect: { id: params.masterId } },
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      return { id: lead.id, created: true };
+    });
   }
 
   async findByManagerId(

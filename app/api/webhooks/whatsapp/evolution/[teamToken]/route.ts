@@ -31,7 +31,12 @@ export async function POST(
       "[WhatsAppEvoWebhookRoute][POST] processing failed",
       output.errorMessages
     )
-    return NextResponse.json({ processed: false }, { status: 200 })
+    // isValid só é false quando o processamento lança uma exceção interna
+    // (nenhum ramo de "evento ignorado intencionalmente" seta isValid=false).
+    // Retornar 500 permite que a Evolution reentregue o evento; o
+    // processamento agora é seguro para redelivery (dedupe por
+    // providerMessageId, healing de efeitos pendentes e P2002 tratado).
+    return NextResponse.json({ processed: false }, { status: 500 })
   }
 
   return NextResponse.json({ processed: true }, { status: 200 })
