@@ -34,7 +34,7 @@ interface EditorSidebarProps {
 }
 
 export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorSidebarProps) {
-  const { draft } = useTemplateEditorContext();
+  const { draft, versions, restoringVersionId, restoreTemplateVersion } = useTemplateEditorContext();
 
   const [section, setSection] = useState<SidebarSection>("menu");
 
@@ -120,7 +120,7 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
               Histórico
             </span>
             <span className="flex items-center gap-2">
-              <Badge variant="outline">{history.length}</Badge>
+              <Badge variant="outline">{versions.length}</Badge>
               <ChevronRight />
             </span>
           </Button>
@@ -177,7 +177,15 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {section === "variables" ? <VariablesPanel embedded /> : null}
-        {section === "history" ? <TemplateHistoryPanel history={history} embedded /> : null}
+        {section === "history" ? (
+          <TemplateHistoryPanel
+            versions={versions}
+            history={history}
+            restoringVersionId={restoringVersionId}
+            onRestoreVersion={restoreTemplateVersion}
+            embedded
+          />
+        ) : null}
         {section === "tips" ? <EmailCreationTipsPanel embedded /> : null}
       </div>
     </EditorFloatingPanel>
