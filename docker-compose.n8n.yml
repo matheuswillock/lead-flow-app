@@ -6,6 +6,7 @@
 #
 # Uso:
 #   cp .env.n8n.example .env.n8n
+# Produção VPS: prefira docker-compose.vps.yml (bun run vps:up)
 #   bun run n8n:up
 #   bun run n8n:logs
 #   bun run n8n:down
@@ -46,7 +47,7 @@ services:
     environment:
       POSTGRES_DB: n8n
       POSTGRES_USER: n8n
-      POSTGRES_PASSWORD: n8n
+      POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:-n8n}
     command:
       - postgres
       - -c

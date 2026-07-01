@@ -15,7 +15,7 @@ Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows de
 | Serviço | URL (host) | URL (container → host) |
 |---------|------------|--------------------------|
 | N8N UI | `http://127.0.0.1:5678` | — |
-| Lead Flow API | `http://127.0.0.1:3000` | `http://host.docker.internal:3000` |
+| Lead Flow API | `http://127.0.0.1:3000` | `{{ $env.LEAD_FLOW_API_BASE_URL }}` (ver `.env.n8n`) |
 | Webhook inbound Bethânia | `http://127.0.0.1:5678/webhook/bethania-inbound` | `http://host.docker.internal:5678/webhook/bethania-inbound` |
 | Eventos outbound (Fase 4) | `http://127.0.0.1:5678/webhook/bethania-outbound` | — |
 
@@ -107,10 +107,28 @@ Base URL nos nós HTTP (container): `http://host.docker.internal:3000`
 | `EVO_BETHANIA_INSTANCE` | `bethania` |
 | `BACKOFFICE_BETHANIA_WHATSAPP_NUMBER` | número E.164 de teste |
 
+Base URL nos nós HTTP (container): definida por `LEAD_FLOW_API_BASE_URL` em `.env.n8n` (dev: `http://host.docker.internal:3000`; produção: `https://corretorstudio.com`).
+
+## Produção VPS (Hostinger)
+
+Ver [`deploy/hostinger/README.md`](../deploy/hostinger/README.md).
+
+```bash
+# Na VPS após bootstrap:
+bun run n8n:import:all   # importa todos os workflows Bethânia
+```
+
+| Variável | Produção |
+|----------|----------|
+| `LEAD_FLOW_API_BASE_URL` | `https://corretorstudio.com` |
+| `N8N_WEBHOOK_BASE_URL` | `http://n8n:5678` |
+| `WEBHOOK_URL` | `https://n8n.corretorstudio.com/` |
+
 ## Comandos úteis
 
 ```bash
 bun run n8n:up
+bun run n8n:import:all
 bun run n8n:import   # importa e publica bethania-push-outbound
 bun run n8n:logs
 bun run n8n:down

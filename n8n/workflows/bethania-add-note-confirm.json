@@ -12,7 +12,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:3000/api/v1/bot/actions/add_note",
+        "url": "={{ $env.LEAD_FLOW_API_BASE_URL }}/api/v1/bot/actions/add_note",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"userLinkId\": \"{{ $json.userLinkId }}\",\n  \"teamId\": \"{{ $json.teamId }}\",\n  \"params\": {\n    \"leadId\": \"{{ $json.leadId }}\",\n    \"body\": \"{{ $json.noteBody }}\"\n  },\n  \"flowId\": \"add_note_confirm\"\n}",

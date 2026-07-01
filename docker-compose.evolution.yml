@@ -13,7 +13,8 @@
 #   bun run evo:down
 #
 # Dev local: API em http://127.0.0.1:8080 (EVOLUTION_API_BIND padrão)
-# VPS: defina EVOLUTION_API_BIND=0.0.0.0:8080 em .env.evolution
+# VPS: EVOLUTION_API_BIND=127.0.0.1:8080 + Caddy (deploy/hostinger/Caddyfile)
+#       ou use docker-compose.vps.yml (bun run vps:up)
 #
 # Chave: AUTHENTICATION_API_KEY em .env.evolution (= EVO_API_KEY no .env do app)
 #

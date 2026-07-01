@@ -61,9 +61,11 @@ bun run evo:logs   # confirmar migrations sem erro
 Na VPS, em `.env.evolution`:
 
 - Preencher `[PASSWORD]` nas URIs Supabase
-- `EVOLUTION_API_BIND=0.0.0.0:8080` (ou atrás de reverse proxy)
-- `SERVER_URL=https://<URL-EVOLUTION>`
+- `EVOLUTION_API_BIND=127.0.0.1:8080` (Caddy faz HTTPS — ver `deploy/hostinger/Caddyfile`)
+- `SERVER_URL=https://evo.corretorstudio.com`
 - `AUTHENTICATION_API_KEY` forte (= `EVO_API_KEY` no app)
+
+Deploy completo: [`deploy/hostinger/README.md`](../deploy/hostinger/README.md)
 
 No app Lead Flow (produção):
 

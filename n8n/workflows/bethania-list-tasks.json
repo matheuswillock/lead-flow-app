@@ -12,7 +12,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:3000/api/v1/bot/actions/list_tasks",
+        "url": "={{ $env.LEAD_FLOW_API_BASE_URL }}/api/v1/bot/actions/list_tasks",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
