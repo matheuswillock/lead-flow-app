@@ -426,6 +426,9 @@ export class PendingActionUseCase {
         canTransferAccountLeads:
           (role === "manager" || role === "backoffice") &&
           payload.canTransferAccountLeads === true,
+        canViewAllTeams:
+          (role === "manager" || role === "backoffice") &&
+          payload.canViewAllTeams === true,
       };
 
     let profile = await tx.profile.findFirst({
@@ -474,6 +477,7 @@ export class PendingActionUseCase {
           canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
           canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
           canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+          canViewAllTeams: delegatedPermissions.canViewAllTeams,
         },
       });
     } else {
@@ -490,6 +494,7 @@ export class PendingActionUseCase {
           canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
           canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
           canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+          canViewAllTeams: delegatedPermissions.canViewAllTeams,
         },
       });
     }

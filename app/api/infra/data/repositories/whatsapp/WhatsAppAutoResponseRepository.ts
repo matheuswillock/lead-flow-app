@@ -126,6 +126,10 @@ export class WhatsAppAutoResponseRepository {
     })
   }
 
+  async deleteLog(logId: string): Promise<void> {
+    await prisma.whatsAppAutoResponseLog.delete({ where: { id: logId } })
+  }
+
   async seedDefaultRules(configId: string): Promise<void> {
     const existing = await prisma.whatsAppAutoResponseRule.count({ where: { configId } })
     if (existing > 0) return

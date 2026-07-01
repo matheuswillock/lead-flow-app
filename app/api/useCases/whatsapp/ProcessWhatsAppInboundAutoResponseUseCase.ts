@@ -187,6 +187,8 @@ class ProcessWhatsAppInboundAutoResponseUseCase {
           outboundMessageId: sendResult.messageId,
         })
       } catch (sendError) {
+        await whatsAppAutoResponseRepository.deleteLog(claimedLog.id).catch(() => {})
+
         if (selectedRule.type === "WELCOME") {
           // Libera o slot de boas-vindas para que uma próxima mensagem
           // inbound possa tentar novamente, já que o envio falhou.
