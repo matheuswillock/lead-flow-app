@@ -189,17 +189,29 @@ export function BackofficeMemberEditDialog({
       const effectiveCanManage = form.role === "manager" ? form.canManageAccountTeams : false
       const effectiveCanViewAllTeams = (form.role === "manager" || form.role === "backoffice") ? form.canViewAllTeams : false
 
+      const hasAccessChange =
+        roleChanged ||
+        functionsChanged ||
+        canCreateChanged ||
+        canManageChanged ||
+        canTransferChanged ||
+        canViewAllTeamsChanged
+
+      const effectiveTeamId = teamId ?? memberTeams[0]?.id ?? null
+      const accountMasterId = details?.id
+
       await service.updateMember(member.id, {
         ...(fullNameChanged ? { fullName: form.fullName.trim() } : {}),
         ...(phoneChanged ? { phone: phoneRaw.length > 0 ? phoneRaw : null } : {}),
         ...(emailChanged ? { email: form.email.trim().toLowerCase() } : {}),
-        role: form.role,
-        functions: form.functions,
-        canCreateAccountUsers: effectiveCanCreate,
-        canManageAccountTeams: effectiveCanManage,
-        canTransferAccountLeads: effectiveCanTransfer,
-        canViewAllTeams: effectiveCanViewAllTeams,
-        ...(teamId ? { teamId } : {}),
+        ...(roleChanged ? { role: form.role } : {}),
+        ...(roleChanged || functionsChanged ? { functions: form.functions } : {}),
+        ...(roleChanged || canCreateChanged ? { canCreateAccountUsers: effectiveCanCreate } : {}),
+        ...(roleChanged || canManageChanged ? { canManageAccountTeams: effectiveCanManage } : {}),
+        ...(roleChanged || canTransferChanged ? { canTransferAccountLeads: effectiveCanTransfer } : {}),
+        ...(roleChanged || canViewAllTeamsChanged ? { canViewAllTeams: effectiveCanViewAllTeams } : {}),
+        ...(hasAccessChange && accountMasterId ? { accountMasterId } : {}),
+        ...(hasAccessChange && !accountMasterId && effectiveTeamId ? { teamId: effectiveTeamId } : {}),
       })
 
       toast.success("Membro atualizado com sucesso")

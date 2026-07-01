@@ -17,6 +17,7 @@ export interface ManagerUser {
   canCreateAccountUsers?: boolean;
   canManageAccountTeams?: boolean;
   canTransferAccountLeads?: boolean;
+  canViewAllTeams?: boolean;
   leadsCount?: number; // Contador de leads
   meetingsCount?: number; // Contador de agendamentos (closer)
   hasPermanentSubscription?: boolean; // Indica assinatura permanente
@@ -91,6 +92,7 @@ export const CreateManagerUserSchema = z.object({
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
   canTransferAccountLeads: z.boolean().optional(),
+  canViewAllTeams: z.boolean().optional(),
 });
 
 export const UpdateManagerUserSchema = z.object({
@@ -105,6 +107,7 @@ export const UpdateManagerUserSchema = z.object({
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
   canTransferAccountLeads: z.boolean().optional(),
+  canViewAllTeams: z.boolean().optional(),
 });
 
 // Tipos inferidos dos schemas

@@ -99,6 +99,7 @@ export function UserFormDialog({
           canCreateAccountUsers: user?.canCreateAccountUsers ?? false,
           canManageAccountTeams: user?.canManageAccountTeams ?? false,
           canTransferAccountLeads: user?.canTransferAccountLeads ?? false,
+          canViewAllTeams: user?.canViewAllTeams ?? false,
         }
       : {
           name: "",
@@ -109,6 +110,7 @@ export function UserFormDialog({
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
           canTransferAccountLeads: false,
+          canViewAllTeams: false,
         },
   });
 
@@ -124,6 +126,7 @@ export function UserFormDialog({
           canCreateAccountUsers: user.canCreateAccountUsers ?? false,
           canManageAccountTeams: user.canManageAccountTeams ?? false,
           canTransferAccountLeads: user.canTransferAccountLeads ?? false,
+          canViewAllTeams: user.canViewAllTeams ?? false,
         });
       } else {
         form.reset({
@@ -135,6 +138,7 @@ export function UserFormDialog({
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
           canTransferAccountLeads: false,
+          canViewAllTeams: false,
         });
       }
     }
@@ -247,6 +251,10 @@ export function UserFormDialog({
         canTransferAccountLeads:
           currentUser?.isMaster && (selectedRole === "manager" || selectedRole === "backoffice")
             ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canTransferAccountLeads === true
+            : undefined,
+        canViewAllTeams:
+          currentUser?.isMaster && (selectedRole === "manager" || selectedRole === "backoffice")
+            ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canViewAllTeams === true
             : undefined,
       };
 
@@ -536,6 +544,28 @@ export function UserFormDialog({
                         <FormLabel className="m-0">Pode transferir leads entre times</FormLabel>
                         <FormDescription className="m-0">
                           Permite repassar leads para outro time da mesma conta e concluir a transferência com pré-agendamento.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value === true}
+                          onCheckedChange={field.onChange}
+                          disabled={loading || !canEditDelegatedPermissions}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="canViewAllTeams"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                      <div className="space-y-1">
+                        <FormLabel className="m-0">Pode visualizar todos os times</FormLabel>
+                        <FormDescription className="m-0">
+                          Permite ver métricas do Dashboard e Performance de todos os times da conta.
                         </FormDescription>
                       </div>
                       <FormControl>
