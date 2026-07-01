@@ -13,10 +13,10 @@ export type ContactsActions = {
   handleDeleteList: (id: string) => Promise<void>
   handleAddContact: (email: string, name?: string) => Promise<void>
   handleSelectList: (id: string) => void
-  handleUploadCsv: (file: File) => Promise<void>
   handleDeleteContact: (contactId: string) => Promise<void>
   handleSearch: (query: string) => void
   handlePageChange: (page: number) => void
+  refreshSelectedList: () => Promise<void>
 }
 
 export type ContactsHookReturn = ContactsState & ContactsActions
@@ -31,7 +31,6 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
   const [search, setSearch] = useState("");
   const [loadingLists, setLoadingLists] = useState(false);
   const [loadingContacts, setLoadingContacts] = useState(false);
-  const [uploadingCsv, setUploadingCsv] = useState(false);
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   const fetchingListsRef = useRef(false);
@@ -130,35 +129,20 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         toast.success("Lista excluída com sucesso");
       } catch (error) {
         console.error("[useContatos] handleDeleteList error", error);
-        toast.error("Erro ao excluir lista");
+        const message = error instanceof Error ? error.message : "Erro ao excluir lista";
+        toast.error(message);
         throw error;
       }
     },
     [fetchLists, selectedListId]
   );
 
-  const handleUploadCsv = useCallback(
-    async (file: File) => {
-      if (!selectedListId) return;
-      setUploadingCsv(true);
-      console.info("[useContatos] handleUploadCsv", file.name);
-      try {
-        const result = await service.uploadCsv(selectedListId, file);
-        toast.success(
-          `Importação concluída: ${result.imported} adicionados, ${result.updated} atualizados (total: ${result.total})`
-        );
-        await fetchLists();
-        void fetchContacts(selectedListId, 1, search);
-        setPage(1);
-      } catch (error) {
-        console.error("[useContatos] handleUploadCsv error", error);
-        toast.error("Erro ao importar arquivo CSV");
-      } finally {
-        setUploadingCsv(false);
-      }
-    },
-    [selectedListId, fetchLists, fetchContacts, search]
-  );
+  const refreshSelectedList = useCallback(async () => {
+    await fetchLists();
+    if (selectedListId) {
+      await fetchContacts(selectedListId, page, search);
+    }
+  }, [fetchLists, fetchContacts, selectedListId, page, search]);
 
   const handleDeleteContact = useCallback(
     async (contactId: string) => {
@@ -241,15 +225,14 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     search,
     loadingLists,
     loadingContacts,
-    uploadingCsv,
     deletingContactId,
     handleCreateList,
     handleDeleteList,
     handleAddContact,
     handleSelectList,
-    handleUploadCsv,
     handleDeleteContact,
     handleSearch,
     handlePageChange,
+    refreshSelectedList,
   };
 }
