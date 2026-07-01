@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
+import { ImportProgressSummary } from "@/components/import/ImportProgressSummary";
 import type { ContactImportPreview } from "@/lib/emailContactImport/buildContactImportPreview";
 import { EMAIL_CONTACT_IMPORT_FIELDS } from "@/lib/emailContactImport/emailContactImportFields";
 import type { EmailContactImportFieldKey } from "@/lib/emailContactImport/emailContactImportFields";
@@ -17,6 +18,7 @@ interface ContactImportSummaryProps {
   preview: ContactImportPreview;
   mapping: EmailContactImportMapping;
   isSubmitting: boolean;
+  importProgress?: { processed: number; total: number } | null;
   result: EmailContactImportResult | null;
 }
 
@@ -25,6 +27,7 @@ export function ContactImportSummary({
   preview,
   mapping,
   isSubmitting,
+  importProgress,
   result,
 }: ContactImportSummaryProps) {
   const mappedFields = EMAIL_CONTACT_IMPORT_FIELDS.filter(
@@ -130,9 +133,13 @@ export function ContactImportSummary({
         Contatos com e-mail inválido ou duplicado na mesma linha serão ignorados e listados no
         resumo final.
       </p>
-      {isSubmitting && (
-        <p className="text-sm text-muted-foreground">Processando importação...</p>
-      )}
+      {isSubmitting && importProgress ? (
+        <ImportProgressSummary
+          mapped={importProgress.processed}
+          total={importProgress.total}
+          label="contatos importados"
+        />
+      ) : null}
     </div>
   );
 }

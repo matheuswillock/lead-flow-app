@@ -68,6 +68,10 @@ export function ContactImportDialog({
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<EmailContactImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
 
   const resetState = () => {
     setStep("upload");
@@ -78,6 +82,7 @@ export function ContactImportDialog({
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
+    setImportProgress(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -149,9 +154,13 @@ export function ContactImportDialog({
     }
 
     setIsSubmitting(true);
+    setImportProgress({ processed: 0, total: mappedRows.length });
     try {
-      const importResult = await service.importMapped(listId, mappedRows);
+      const importResult = await service.importMappedInBatches(listId, mappedRows, {
+        onProgress: (processed, total) => setImportProgress({ processed, total }),
+      });
       setResult(importResult);
+      setImportProgress(null);
       toast.success(
         `Importação concluída: ${importResult.imported} adicionados, ${importResult.updated} atualizados.`
       );
@@ -161,6 +170,7 @@ export function ContactImportDialog({
     } catch (error) {
       console.error("[ContactImportDialog] handleImport error", error);
       toast.error(error instanceof Error ? error.message : "Erro ao importar contatos");
+      setImportProgress(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -217,6 +227,7 @@ export function ContactImportDialog({
               preview={importPreview}
               mapping={mapping}
               isSubmitting={isSubmitting}
+              importProgress={importProgress}
               result={result}
             />
           )}
