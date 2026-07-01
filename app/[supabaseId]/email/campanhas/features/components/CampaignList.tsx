@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -106,7 +106,7 @@ function CampaignActionsMenu({
           <DropdownMenuItem
             onClick={() => handleDeleteDraft(campaign.id)}
             disabled={deletingId === campaign.id || !canDelete}
-            className="text-red-600"
+            className="text-destructive"
           >
             <Trash2 className="mr-2 h-4 w-4" />
             {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
@@ -152,6 +152,7 @@ export function CampaignList({
     totalPages,
     loading,
     deletingId,
+    sendingId,
     handleSend,
     handleDeleteDraft,
     handlePageChange,
@@ -163,7 +164,7 @@ export function CampaignList({
     !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -195,7 +196,11 @@ export function CampaignList({
                 </TableCell>
               </TableRow>
             ) : (
-              campaigns.map((campaign) => (
+              campaigns.map((campaign) => {
+              const isSending =
+                campaign.status === "sending" || sendingId === campaign.id
+
+              return (
                 <TableRow key={campaign.id}>
                   <TableCell className="align-middle font-medium">{campaign.name}</TableCell>
                   <TableCell className="align-middle text-sm text-muted-foreground">
@@ -206,7 +211,7 @@ export function CampaignList({
                     <div className="text-xs">{campaign.contactList?.name ?? '—'}</div>
                   </TableCell>
                   <TableCell className="align-middle">
-                    <CampaignStatusBadge status={campaign.status} />
+                    <CampaignStatusBadge status={isSending ? "sending" : campaign.status} />
                   </TableCell>
                   <TableCell className="align-middle text-sm">
                     {campaign.totalRecipients.toLocaleString("pt-BR")}
@@ -224,8 +229,11 @@ export function CampaignList({
                   </TableCell>
                   <TableCell className="align-middle">
                     <div className="flex items-center justify-end gap-1">
-                      {campaign.status === "sending" ? (
-                        <span className="text-xs text-muted-foreground">Enviando...</span>
+                      {isSending ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-semantic-warning">
+                          <Loader2 className="size-3.5 animate-spin" />
+                          Enviando...
+                        </span>
                       ) : (
                         <CampaignActionsMenu
                           campaign={campaign}
@@ -240,7 +248,8 @@ export function CampaignList({
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
+              )
+            })
             )}
           </TableBody>
         </Table>

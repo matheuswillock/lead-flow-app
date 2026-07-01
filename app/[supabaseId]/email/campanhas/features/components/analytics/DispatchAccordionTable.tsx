@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Eye } from "lucide-react"
+import { AlertTriangle, Eye } from "lucide-react"
 import { toast } from "sonner"
 import {
   Accordion,
@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CampaignAnalyticsService } from "../../services/CampaignAnalyticsService"
 import { DispatchEmailPreviewDialog } from "./DispatchEmailPreviewDialog"
+import { DispatchStatusBadge } from "./DispatchStatusBadge"
 import type { AnalyticsData, DispatchPreviewData } from "./AnalyticsTypes"
 import { cn } from "@/lib/utils"
 import { useTimezone } from "@/app/context/TimezoneContext"
@@ -26,6 +27,30 @@ type DispatchAccordionTableProps = {
   campaignId: string
   data: AnalyticsData | null
   loading: boolean
+}
+
+function MetricCell({
+  label,
+  value,
+  valueClassName,
+  showWarning,
+}: {
+  label: string
+  value: string | number
+  valueClassName?: string
+  showWarning?: boolean
+}) {
+  return (
+    <div>
+      <p className="text-muted-foreground">{label}</p>
+      <p className={cn("flex items-center gap-1 font-medium", valueClassName)}>
+        {showWarning ? (
+          <AlertTriangle className="size-3.5 shrink-0 text-destructive" aria-hidden />
+        ) : null}
+        <span>{value}</span>
+      </p>
+    </div>
+  )
 }
 
 export function DispatchAccordionTable({
@@ -95,12 +120,14 @@ export function DispatchAccordionTable({
               const audienceLabel = dispatch.cdpSegmentSlug
                 ? `Segmento CDP: ${dispatch.cdpSegmentSlug}`
                 : dispatch.contactListName ?? "Lista não informada"
+              const highBounceRate = dispatch.rates.bounceRate > 4
 
               return (
                 <AccordionItem key={dispatch.id} value={dispatch.id}>
                   <AccordionTrigger className="text-sm hover:no-underline">
                     <div className="flex flex-wrap items-center gap-2 text-left">
                       <span className="font-medium">Disparo #{dispatch.dispatchNumber}</span>
+                      <DispatchStatusBadge status={dispatch.status} />
                       <Badge variant="outline">
                         Versão {dispatch.templateVersionNumber}.0
                       </Badge>
@@ -110,7 +137,7 @@ export function DispatchAccordionTable({
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <div className="flex flex-col gap-3 pb-2">
+                    <div className="flex flex-col gap-4 pb-2">
                       <div className="grid gap-2 text-sm sm:grid-cols-2">
                         <p>
                           <span className="text-muted-foreground">Template: </span>
@@ -129,41 +156,31 @@ export function DispatchAccordionTable({
                           {dispatch.totalRecipients.toLocaleString("pt-BR")}
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-sm lg:grid-cols-7">
-                        <div>
-                          <p className="text-muted-foreground">Enviados</p>
-                          <p className="font-medium">{dispatch.totalSent}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Entregues</p>
-                          <p className="font-medium">{dispatch.totalDelivered}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Abertos</p>
-                          <p className="font-medium">{dispatch.totalOpened}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Cliques</p>
-                          <p className="font-medium">{dispatch.totalClicked}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Taxa de cliques</p>
-                          <p className="font-medium">{dispatch.rates.clickRate.toFixed(1)}%</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Bounces</p>
-                          <p className="font-medium">{dispatch.totalBounced}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Taxa de bounce</p>
-                          <p
-                            className={cn(
-                              "font-medium",
-                              dispatch.rates.bounceRate > 4 && "text-destructive"
-                            )}
-                          >
-                            {dispatch.rates.bounceRate.toFixed(1)}%
+                      <div className="flex flex-col gap-3">
+                        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                          <p className="col-span-full text-xs font-medium text-muted-foreground">
+                            Entrega
                           </p>
+                          <MetricCell label="Enviados" value={dispatch.totalSent} />
+                          <MetricCell label="Entregues" value={dispatch.totalDelivered} />
+                          <MetricCell label="Bounces" value={dispatch.totalBounced} />
+                          <MetricCell
+                            label="Taxa de bounce"
+                            value={`${dispatch.rates.bounceRate.toFixed(1)}%`}
+                            valueClassName={highBounceRate ? "text-destructive" : undefined}
+                            showWarning={highBounceRate}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                          <p className="col-span-full text-xs font-medium text-muted-foreground">
+                            Engajamento
+                          </p>
+                          <MetricCell label="Abertos" value={dispatch.totalOpened} />
+                          <MetricCell label="Cliques" value={dispatch.totalClicked} />
+                          <MetricCell
+                            label="Taxa de cliques"
+                            value={`${dispatch.rates.clickRate.toFixed(1)}%`}
+                          />
                         </div>
                       </div>
                       <div>

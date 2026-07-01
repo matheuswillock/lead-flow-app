@@ -8,29 +8,48 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 
 const service = new CampaignAnalyticsService()
 
+const WEBHOOK_POLL_INTERVAL_MS = 30_000
+
 export function useCampaignAnalytics(campaignId?: string, open = false) {
   const { tz } = useTimezone()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [period, setPeriod] = useState<AnalyticsPeriod>("30d")
   const fetchingRef = useRef(false)
   const lastKeyRef = useRef("")
 
   const fetchData = useCallback(
-    async (p: AnalyticsPeriod, cId?: string) => {
+    async (
+      p: AnalyticsPeriod,
+      cId?: string,
+      options?: { force?: boolean; silent?: boolean }
+    ) => {
+      const force = options?.force ?? false
+      const silent = options?.silent ?? false
       const key = `${p}:${cId ?? "all"}:${tz}`
-      if (fetchingRef.current || lastKeyRef.current === key) return
+      if (fetchingRef.current || (!force && lastKeyRef.current === key)) return
       fetchingRef.current = true
-      setLoading(true)
+      if (silent) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
       try {
         const result = await service.getAnalytics(p, tz, cId)
         setData(result)
         lastKeyRef.current = key
       } catch (err) {
         console.error("[useCampaignAnalytics] fetchData error", err)
-        toast.error("Erro ao carregar analytics")
+        if (!silent) {
+          toast.error("Erro ao carregar analytics")
+        }
       } finally {
-        setLoading(false)
+        if (silent) {
+          setRefreshing(false)
+        } else {
+          setLoading(false)
+        }
         fetchingRef.current = false
       }
     },
@@ -43,10 +62,33 @@ export function useCampaignAnalytics(campaignId?: string, open = false) {
     void fetchData(period, campaignId)
   }, [open, period, campaignId, fetchData])
 
+  useEffect(() => {
+    if (!open) return
+
+    const intervalId = window.setInterval(() => {
+      void fetchData(period, campaignId, { force: true, silent: true })
+    }, WEBHOOK_POLL_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [open, period, campaignId, fetchData])
+
   const handlePeriodChange = useCallback((next: AnalyticsPeriod) => {
     lastKeyRef.current = ""
     setPeriod(next)
   }, [])
 
-  return { data, loading, period, handlePeriodChange }
+  const handleRefresh = useCallback(() => {
+    void fetchData(period, campaignId, { force: true, silent: true })
+  }, [fetchData, period, campaignId])
+
+  const initialLoading = loading && !data
+
+  return {
+    data,
+    initialLoading,
+    refreshing,
+    period,
+    handlePeriodChange,
+    handleRefresh,
+  }
 }

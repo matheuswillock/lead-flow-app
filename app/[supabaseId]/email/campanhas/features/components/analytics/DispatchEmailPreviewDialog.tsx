@@ -17,18 +17,20 @@ type DispatchEmailPreviewDialogProps = {
   preview: DispatchPreviewData | null
 }
 
+function getFallbackPreviewHtml() {
+  return '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:360px;color:var(--muted-foreground,#8a8a8a);font-family:sans-serif;font-size:14px;">Sem HTML para renderizar</div>'
+}
+
 export function DispatchEmailPreviewDialog({
   open,
   onOpenChange,
   preview,
 }: DispatchEmailPreviewDialogProps) {
-  const htmlContent = preview?.html?.trim()
-    ? preview.html
-    : '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:360px;color:#8a8a8a;font-family:sans-serif;font-size:14px;">Sem HTML para renderizar</div>'
+  const htmlContent = preview?.html?.trim() ? preview.html : getFallbackPreviewHtml()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-3xl">
+      <DialogContent className="flex h-[90vh] max-h-[90vh] flex-col gap-0 p-0 sm:max-w-3xl">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <div className="flex flex-wrap items-center gap-2">
             <DialogTitle className="text-base">
@@ -44,14 +46,14 @@ export function DispatchEmailPreviewDialog({
             <p className="text-xs text-muted-foreground">{preview.templateName}</p>
           ) : null}
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
           <Alert className="shrink-0 border-warning/30 bg-warning/10">
             <AlertTriangle data-icon="inline-start" className="text-warning" />
             <AlertDescription className="text-xs text-muted-foreground">
               A prévia usa um navegador completo; o e-mail real pode renderizar diferente.
             </AlertDescription>
           </Alert>
-          <div className="min-h-[min(60vh,480px)] flex-1 overflow-hidden rounded-lg border bg-background">
+          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border bg-background">
             <iframe
               srcDoc={htmlContent}
               title="Prévia do e-mail do disparo"

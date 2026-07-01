@@ -1,3 +1,4 @@
+// Webhook URL canônica (sem redirect): https://www.corretorstudio.com/api/webhooks/resend
 import { NextResponse, type NextRequest } from "next/server"
 import { Webhook } from "svix"
 import { resendWebhookUseCase } from "@/app/api/useCases/resendWebhook/ResendWebhookUseCase"

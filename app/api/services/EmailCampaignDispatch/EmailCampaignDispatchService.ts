@@ -26,6 +26,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     html: string
     campaignId: string
     teamId: string
+    dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
   }): Promise<DispatchBatchResult> {
@@ -66,7 +67,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         const batchResult = await resend.batch.send(batchPayload, {
           idempotencyKey: buildResendBatchIdempotencyKey(
             "campaign",
-            `${params.campaignId}/${chunkIndex}`
+            `${params.campaignId}/${params.dispatchNumber}/${chunkIndex}`
           ),
         })
 

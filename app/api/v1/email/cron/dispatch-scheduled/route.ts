@@ -164,7 +164,11 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        const dispatchNumber = campaign.dispatchCount + 1
+        const { _max } = await prisma.emailCampaignDispatch.aggregate({
+          where: { campaignId: campaign.id },
+          _max: { dispatchNumber: true },
+        })
+        const dispatchNumber = (_max.dispatchNumber ?? 0) + 1
         const dispatchRecord = await prisma.emailCampaignDispatch.create({
           data: {
             id: randomUUID(),
@@ -193,6 +197,7 @@ export async function GET(request: NextRequest) {
           html: dispatchInput.html,
           campaignId: campaign.id,
           teamId: campaign.teamId,
+          dispatchNumber,
           globalDefaults: dispatchInput.globalDefaults,
           templateVariables: dispatchInput.templateVariables,
         })

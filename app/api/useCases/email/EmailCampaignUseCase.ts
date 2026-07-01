@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto"
 import type { EmailCampaignStatus } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
@@ -362,7 +363,18 @@ export class EmailCampaignUseCase {
     }
   }
 
+  private async getNextDispatchNumber(campaignId: string): Promise<number> {
+    const { _max } = await prisma.emailCampaignDispatch.aggregate({
+      where: { campaignId },
+      _max: { dispatchNumber: true },
+    })
+    return (_max.dispatchNumber ?? 0) + 1
+  }
+
   async send(id: string, ctx: TeamContext): Promise<Output> {
+    let previousStatus: EmailCampaignStatus | null = null
+    let dispatchRecordId: string | null = null
+
     try {
       const campaign = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "sent"] } },
@@ -382,6 +394,8 @@ export class EmailCampaignUseCase {
       if (!campaign) {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser disparada"], null)
       }
+
+      previousStatus = campaign.status
 
       const publishedTemplate = await this.resolvePublishedTemplate(campaign.templateId, ctx.teamId)
       if (!publishedTemplate) {
@@ -493,7 +507,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou já está sendo enviada"], null)
       }
 
-      const dispatchNumber = campaign.dispatchCount + 1
+      const dispatchNumber = await this.getNextDispatchNumber(campaign.id)
       const dispatchRecord = await prisma.emailCampaignDispatch.create({
         data: {
           id: randomUUID(),
@@ -513,6 +527,7 @@ export class EmailCampaignUseCase {
           status: "sending",
         },
       })
+      dispatchRecordId = dispatchRecord.id
 
       const recipientsList = dispatchInput.recipients
       const { globalDefaults, templateVariables, from, replyTo } = dispatchInput
@@ -549,6 +564,7 @@ export class EmailCampaignUseCase {
         html: dispatchInput.html,
         campaignId: campaign.id,
         teamId: ctx.teamId,
+        dispatchNumber,
         globalDefaults,
         templateVariables,
       })
@@ -612,10 +628,35 @@ export class EmailCampaignUseCase {
       )
     } catch (error) {
       console.error("[EmailCampaignUseCase][send]", error)
-      await prisma.emailCampaign.update({
-        where: { id },
-        data: { status: "failed", errorMessage: "Erro interno durante o disparo" },
-      }).catch(() => null)
+
+      if (dispatchRecordId) {
+        await prisma.emailCampaignDispatch
+          .update({
+            where: { id: dispatchRecordId },
+            data: { status: "failed" },
+          })
+          .catch(() => null)
+      }
+
+      const restoreStatus: EmailCampaignStatus =
+        previousStatus && ["draft", "scheduled", "sent"].includes(previousStatus)
+          ? previousStatus
+          : "failed"
+
+      await prisma.emailCampaign
+        .update({
+          where: { id },
+          data: {
+            status: restoreStatus,
+            errorMessage: "Erro interno durante o disparo",
+          },
+        })
+        .catch(() => null)
+
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return new Output(false, [], ["Conflito de numeração de disparo. Tente novamente."], null)
+      }
+
       return new Output(false, [], ["Erro ao disparar campanha"], null)
     }
   }

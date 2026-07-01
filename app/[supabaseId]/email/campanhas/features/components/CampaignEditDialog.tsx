@@ -55,8 +55,8 @@ export function CampaignEditDialog() {
           <DialogTitle>Editar campanha</DialogTitle>
         </DialogHeader>
 
-        <div className="overflow-y-auto flex-1 space-y-4 py-1">
-          <div className="space-y-2">
+        <div className="overflow-y-auto flex-1 flex flex-col gap-4 py-1">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="edit-name">Nome da campanha *</Label>
             <Input
               id="edit-name"
@@ -67,7 +67,7 @@ export function CampaignEditDialog() {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Template</Label>
             <Select value={editTemplateId} onValueChange={setEditTemplateId} disabled={editSaving}>
               <SelectTrigger>
@@ -83,7 +83,7 @@ export function CampaignEditDialog() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Lista de contatos</Label>
             <Select value={editContactListId} onValueChange={setEditContactListId} disabled={editSaving}>
               <SelectTrigger>
@@ -99,7 +99,7 @@ export function CampaignEditDialog() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="edit-scheduled">Agendar envio (opcional)</Label>
             <Input
               id="edit-scheduled"
