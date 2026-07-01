@@ -141,6 +141,15 @@ enum BackofficeWebhookEventStatus {
   @@map("backoffice_webhook_event_status")
 }
 
+enum AsaasWebhookEventStatus {
+  pending
+  processing
+  processed
+  failed
+
+  @@map("asaas_webhook_event_status")
+}
+
 enum BackofficeWebhookTokenStatus {
   active
   replaced
@@ -3072,4 +3081,18 @@ model BackofficeBotEventOutbox {
   @@index([status, createdAt])
   @@index([profileId, createdAt(sort: Desc)])
   @@map("backoffice_bot_event_outbox")
+}
+
+model AsaasWebhookEvent {
+  id           String                  @id @db.Text
+  eventType    String?                 @map("eventType") @db.Text
+  payload      Json
+  status       AsaasWebhookEventStatus @default(pending)
+  errorMessage String?                 @map("errorMessage") @db.Text
+  receivedAt   DateTime                @default(now()) @map("receivedAt") @db.Timestamptz(6)
+  processedAt  DateTime?               @map("processedAt") @db.Timestamptz(6)
+  updatedAt    DateTime                @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  @@index([status, receivedAt(sort: Desc)], map: "asaas_webhook_events_status_received_at_idx")
+  @@map("asaas_webhook_events")
 }

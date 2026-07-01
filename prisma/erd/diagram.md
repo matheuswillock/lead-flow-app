@@ -127,6 +127,15 @@ failed failed
     
 
 
+        asaas_webhook_event_status {
+            pending pending
+processing processing
+processed processed
+failed failed
+        }
+    
+
+
         backoffice_webhook_token_status {
             active active
 replaced replaced
@@ -2062,6 +2071,18 @@ failed failed
     DateTime sentAt "❓"
     }
   
+
+  "asaas_webhook_events" {
+    String id "🗝️"
+    String eventType "❓"
+    Json payload 
+    AsaasWebhookEventStatus status 
+    String errorMessage "❓"
+    DateTime receivedAt 
+    DateTime processedAt "❓"
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -2335,4 +2356,5 @@ failed failed
     "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
     "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
     "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
+    "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
 ```

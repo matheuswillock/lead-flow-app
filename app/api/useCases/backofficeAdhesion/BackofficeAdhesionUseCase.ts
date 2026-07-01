@@ -261,10 +261,11 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
 
   async processPaymentWebhook(
     event: string,
-    payment: BackofficeAdhesionPaymentWebhookInput
+    payment: BackofficeAdhesionPaymentWebhookInput,
+    options?: { deferEmailDelivery?: boolean }
   ): Promise<Output> {
     try {
-      const result = await this.service.processPaymentWebhook(event, payment)
+      const result = await this.service.processPaymentWebhook(event, payment, options)
       return new Output(true, [], [], result)
     } catch (error) {
       console.error("[BackofficeAdhesionUseCase][processPaymentWebhook]", error)
