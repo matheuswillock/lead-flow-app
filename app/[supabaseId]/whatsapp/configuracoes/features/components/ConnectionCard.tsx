@@ -99,10 +99,14 @@ export function ConnectionCard() {
 
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
 
+  const isSharedNumber = Boolean(config?.primaryConfigId)
+  const isAwaitingQrAfterDisconnect =
+    config?.status === 'DISCONNECTED' && !config.qrCodeImageUrl && !isSharedNumber
   const showQrCode =
-    Boolean(config?.qrCodeImageUrl) &&
-    config?.status !== 'CONNECTED' &&
-    config?.status !== 'DISCONNECTED'
+    Boolean(config?.qrCodeImageUrl) && config?.status !== 'CONNECTED'
+  const showReconnectActions =
+    canManageInfrastructure && !isSharedNumber && config?.status !== 'CONNECTED'
+  const reconnectButtonVariant = config?.status === 'CONNECTED' ? 'outline' : 'default'
 
   if (isLoading && !config) {
     return (
@@ -212,6 +216,36 @@ export function ConnectionCard() {
               </div>
             </div>
 
+            {isSharedNumber && config.status !== 'CONNECTED' ? (
+              <>
+                <Separator />
+                <Alert>
+                  <AlertTriangle className="size-4" />
+                  <AlertDescription>
+                    Este time usa um número compartilhado. A reconexão deve ser feita pelo time que
+                    gerencia a instância principal.
+                  </AlertDescription>
+                </Alert>
+              </>
+            ) : null}
+
+            {isAwaitingQrAfterDisconnect ? (
+              <>
+                <Separator />
+                <Alert>
+                  <AlertTriangle className="size-4" />
+                  <AlertDescription>
+                    Conexão encerrada. Estamos gerando um novo QR Code para você reconectar o
+                    WhatsApp.
+                  </AlertDescription>
+                </Alert>
+                <div className="flex flex-col items-center gap-3 py-2">
+                  <Skeleton className="size-48 rounded-lg" />
+                  <p className="text-sm text-muted-foreground">Gerando QR Code...</p>
+                </div>
+              </>
+            ) : null}
+
             {showQrCode ? (
               <>
                 <Separator />
@@ -280,26 +314,39 @@ export function ConnectionCard() {
                   disabled={isSyncingContacts}
                   onClick={() => void syncPhoneContacts()}
                 >
-                  <RefreshCw className={cn(isSyncingContacts && 'animate-spin')} />
+                  <RefreshCw className={cn(isSyncingContacts && 'animate-spin')} data-icon="inline-start" />
                   {isSyncingContacts ? 'Sincronizando...' : 'Sincronizar contatos do celular'}
                 </Button>
               ) : null}
-              {showQrCode ? (
-                <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
-                  <RefreshCw className={cn(isReconnecting && 'animate-spin')} />
-                  {isReconnecting ? 'Atualizando...' : 'Atualizar QR Code'}
-                </Button>
-              ) : config.status !== 'CONNECTED' ? (
-                <Button variant="outline" size="sm" onClick={() => void reconnect()} disabled={isReconnecting}>
-                  <RefreshCw className={cn(isReconnecting && 'animate-spin')} />
-                  {isReconnecting ? 'Reconectando...' : 'Reconectar'}
-                </Button>
+              {showReconnectActions ? (
+                showQrCode ? (
+                  <Button
+                    variant={reconnectButtonVariant}
+                    size="sm"
+                    onClick={() => void reconnect()}
+                    disabled={isReconnecting}
+                  >
+                    <RefreshCw className={cn(isReconnecting && 'animate-spin')} data-icon="inline-start" />
+                    {isReconnecting ? 'Atualizando...' : 'Atualizar QR Code'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant={reconnectButtonVariant}
+                    size="sm"
+                    onClick={() => void reconnect()}
+                    disabled={isReconnecting || isAwaitingQrAfterDisconnect}
+                  >
+                    <RefreshCw className={cn(isReconnecting && 'animate-spin')} data-icon="inline-start" />
+                    {isReconnecting ? 'Reconectando...' : 'Reconectar'}
+                  </Button>
+                )
               ) : null}
 
+              {config.status !== 'DISCONNECTED' ? (
               <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm" disabled={isDisconnecting}>
-                    <WifiOff />
+                    <WifiOff data-icon="inline-start" />
                     {isDisconnecting ? 'Desconectando...' : 'Desconectar'}
                   </Button>
                 </AlertDialogTrigger>
@@ -307,8 +354,8 @@ export function ConnectionCard() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Desconectar WhatsApp</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Esta ação irá desconectar o número WhatsApp vinculado ao time. Mensagens automáticas serão
-                      interrompidas até uma nova conexão ser estabelecida.
+                      Esta ação irá desconectar o número WhatsApp vinculado ao time. Um novo QR Code
+                      será gerado automaticamente para reconectar quando você quiser.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -324,6 +371,7 @@ export function ConnectionCard() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+              ) : null}
             </div>
             ) : null}
           </div>

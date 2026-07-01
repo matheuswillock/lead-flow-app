@@ -255,6 +255,31 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return { conversations, total }
   }
 
+  async getUnreadTotals(params: {
+    teamId: string
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  }): Promise<{ totalMessages: number; totalConversations: number }> {
+    const baseWhere: Prisma.WhatsAppConversationWhereInput = {
+      teamId: params.teamId,
+      isArchived: false,
+      unreadCount: { gt: 0 },
+    }
+
+    const where: Prisma.WhatsAppConversationWhereInput = params.visibilityWhere
+      ? { AND: [baseWhere, params.visibilityWhere] }
+      : baseWhere
+
+    const [aggregate, totalConversations] = await prisma.$transaction([
+      prisma.whatsAppConversation.aggregate({ where, _sum: { unreadCount: true } }),
+      prisma.whatsAppConversation.count({ where }),
+    ])
+
+    return {
+      totalMessages: aggregate._sum.unreadCount ?? 0,
+      totalConversations,
+    }
+  }
+
   async updateConversation(
     id: string,
     data: Prisma.WhatsAppConversationUpdateInput

@@ -118,6 +118,11 @@ export interface IWhatsAppRepository {
     visibilityWhere?: Prisma.WhatsAppConversationWhereInput
   }): Promise<{ conversations: WhatsAppConversationSelect[]; total: number }>
 
+  getUnreadTotals(params: {
+    teamId: string
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  }): Promise<{ totalMessages: number; totalConversations: number }>
+
   updateConversation(
     id: string,
     data: Prisma.WhatsAppConversationUpdateInput

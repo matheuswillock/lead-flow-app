@@ -307,42 +307,91 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("Configuração não encontrada")
     }
 
+    const disconnectedFields = {
+      status: "DISCONNECTED" as const,
+      lastDisconnectedAt: new Date(),
+      phoneNumber: null,
+      normalizedPhone: null,
+      qrCodeText: null,
+      qrCodeImageUrl: null,
+    }
+
     if (existing.primaryConfigId) {
       const updated = await whatsAppRepository.updateConfig(existing.id, {
-        status: "DISCONNECTED",
-        lastDisconnectedAt: new Date(),
-        phoneNumber: null,
-        normalizedPhone: null,
+        ...disconnectedFields,
         updatedBy: { connect: { id: profileId } },
       })
       return toConfigOutput(updated)
     }
 
-    console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
+    if (existing.status === "DISCONNECTED") {
+      return toConfigOutput(existing)
+    }
 
-    await evoApiService.disconnectInstance(existing.instanceName, existing.hostBaseUrl ?? undefined)
+    let needsLogout = existing.status === "CONNECTED"
+    if (!needsLogout) {
+      try {
+        const { state } = await evoApiService.getConnectionState(
+          existing.instanceName,
+          existing.hostBaseUrl ?? undefined
+        )
+        needsLogout = state === "open"
+      } catch (error) {
+        console.error("[WhatsAppService][disconnect] getConnectionState failed", error)
+      }
+    }
+
+    if (needsLogout) {
+      console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
+      await evoApiService.disconnectInstance(
+        existing.instanceName,
+        existing.hostBaseUrl ?? undefined
+      )
+    }
 
     const mirrors = await whatsAppRepository.findMirroredConfigs(existing.id)
     await Promise.all(
-      mirrors.map((mirror) =>
-        whatsAppRepository.updateConfig(mirror.id, {
-          status: "DISCONNECTED",
-          lastDisconnectedAt: new Date(),
-          phoneNumber: null,
-          normalizedPhone: null,
-        })
-      )
+      mirrors.map((mirror) => whatsAppRepository.updateConfig(mirror.id, disconnectedFields))
     )
 
-    const updated = await whatsAppRepository.updateConfig(existing.id, {
-      status: "DISCONNECTED",
-      lastDisconnectedAt: new Date(),
-      phoneNumber: null,
-      normalizedPhone: null,
+    await whatsAppRepository.updateConfig(existing.id, {
+      ...disconnectedFields,
       updatedBy: { connect: { id: profileId } },
     })
 
-    return toConfigOutput(updated)
+    return this.promoteConfigToQrReady(
+      existing.id,
+      existing.instanceName,
+      existing.hostBaseUrl,
+      profileId,
+      "disconnect"
+    )
+  }
+
+  private async promoteConfigToQrReady(
+    configId: string,
+    instanceName: string,
+    hostBaseUrl: string | null,
+    profileId: string,
+    label: string
+  ): Promise<ConfigOutput> {
+    try {
+      const qr = await evoApiService.getQrCode(instanceName, hostBaseUrl ?? undefined)
+      const updated = await whatsAppRepository.updateConfig(configId, {
+        status: "QR_READY",
+        qrCodeText: qr.text,
+        qrCodeImageUrl: toQrCodeImageUrl(qr.base64),
+        updatedBy: { connect: { id: profileId } },
+      })
+      return toConfigOutput(updated)
+    } catch (error) {
+      console.error(`[WhatsAppService][${label}] QR fetch failed`, error)
+      const config = await whatsAppRepository.findConfigById(configId)
+      if (!config) {
+        throw new Error("Configuração não encontrada")
+      }
+      return toConfigOutput(config)
+    }
   }
 
   async sendMessage(input: SendMessageInput): Promise<{ messageId: string }> {

@@ -797,14 +797,33 @@ export class EvoApiService implements IEvoApiService {
 
     console.info("[EvoApiService][disconnectInstance] Logging out", instanceName)
 
-    await fetchEvo<unknown>(
-      url,
-      {
-        method: "DELETE",
-        headers: buildHeaders(apiKey),
-      },
-      "disconnectInstance"
-    )
+    try {
+      await fetchEvo<unknown>(
+        url,
+        {
+          method: "DELETE",
+          headers: buildHeaders(apiKey),
+        },
+        "disconnectInstance"
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const alreadyDisconnected =
+        (message.includes("HTTP 400") || message.includes("HTTP 404")) &&
+        (message.includes("not connected") ||
+          message.includes("already disconnected") ||
+          message.includes("is not connected"))
+
+      if (alreadyDisconnected) {
+        console.info(
+          "[EvoApiService][disconnectInstance] Instance already disconnected",
+          instanceName
+        )
+        return
+      }
+
+      throw error
+    }
   }
 
   async deleteInstance(instanceName: string, hostBaseUrl?: string): Promise<void> {

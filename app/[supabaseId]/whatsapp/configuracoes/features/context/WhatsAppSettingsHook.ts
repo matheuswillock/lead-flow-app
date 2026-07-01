@@ -123,7 +123,12 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
 
   const status = config?.status
   useEffect(() => {
-    if (status !== 'QR_READY' && status !== 'PENDING') return
+    const shouldPollForQr =
+      status === 'QR_READY' ||
+      status === 'PENDING' ||
+      (status === 'DISCONNECTED' && !config?.qrCodeImageUrl)
+
+    if (!shouldPollForQr) return
 
     let ticks = 0
     const intervalId = window.setInterval(() => {
@@ -136,7 +141,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }, QR_POLL_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
-  }, [status, refreshConfig])
+  }, [status, config?.qrCodeImageUrl, refreshConfig])
 
   useEffect(() => {
     const qrCodeText = config?.qrCodeText
@@ -229,14 +234,27 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       setConfig(result)
       setUsage(null)
       lastSuccessKeyRef.current = null
-      toast.success('WhatsApp desconectado com sucesso')
+      if (result.status === 'QR_READY' && result.qrCodeImageUrl) {
+        toast.success('WhatsApp desconectado. Escaneie o novo QR Code para reconectar.')
+      } else if (result.status === 'DISCONNECTED') {
+        toast.success('WhatsApp desconectado. Gerando QR Code para reconexão...')
+        void refreshConfig()
+      } else {
+        toast.success('WhatsApp desconectado com sucesso')
+      }
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao desconectar:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível desconectar o WhatsApp')
+      const message = error instanceof Error ? error.message : 'Não foi possível desconectar o WhatsApp'
+      if (message.includes('já está desconectado')) {
+        toast.info(message)
+        void refreshConfig()
+        return
+      }
+      toast.error(message)
     } finally {
       setIsDisconnecting(false)
     }
-  }, [activeTeamId, supabaseId])
+  }, [activeTeamId, supabaseId, refreshConfig])
 
   const syncPhoneContacts = useCallback(async () => {
     if (!activeTeamId) {
