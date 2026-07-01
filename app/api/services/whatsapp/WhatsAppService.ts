@@ -12,6 +12,7 @@ import { resolveConfigStatusFromEvo, toQrCodeImageUrl } from "./qrCodeUtils"
 import type { Prisma, WhatsAppConnectionStatus } from "@prisma/client"
 import type { WhatsAppConfigSelect, WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature"
+import { WhatsAppAutoResponseSendError } from "@/lib/whatsapp/whatsappAutoResponseSendError"
 import {
   assertNoConflictingPhoneOnSameTeam,
   assertPhoneNumberCanConnect,
@@ -473,15 +474,21 @@ class WhatsAppService implements IWhatsAppService {
   async sendAutoResponseMessage(input: SendAutoResponseMessageInput): Promise<{ messageId: string }> {
     const config = await whatsAppRepository.findConfigByTeamId(input.teamId)
     if (!config) {
-      throw new Error("Configuração não encontrada")
+      throw new WhatsAppAutoResponseSendError("Configuração não encontrada", {
+        providerMessageSent: false,
+      })
     }
     if (config.status !== "CONNECTED") {
-      throw new Error("WhatsApp não está conectado")
+      throw new WhatsAppAutoResponseSendError("WhatsApp não está conectado", {
+        providerMessageSent: false,
+      })
     }
 
     const conversation = await whatsAppRepository.findConversationById(input.conversationId)
     if (!conversation) {
-      throw new Error("Conversa não encontrada")
+      throw new WhatsAppAutoResponseSendError("Conversa não encontrada", {
+        providerMessageSent: false,
+      })
     }
 
     const recipientJid =
@@ -489,56 +496,75 @@ class WhatsAppService implements IWhatsAppService {
 
     const text = input.contentText.trim()
     if (!text) {
-      throw new Error("Mensagem não pode ser vazia")
+      throw new WhatsAppAutoResponseSendError("Mensagem não pode ser vazia", {
+        providerMessageSent: false,
+      })
     }
 
     const now = new Date()
     const periodKey = buildPeriodKey(now)
     const preview = text.slice(0, 100)
 
-    const evoResult = await evoApiService.sendTextMessage({
-      instanceName: config.instanceName,
-      recipientJid,
-      text,
-      hostBaseUrl: config.hostBaseUrl ?? undefined,
-    })
+    let evoResult: Awaited<ReturnType<typeof evoApiService.sendTextMessage>>
+    try {
+      evoResult = await evoApiService.sendTextMessage({
+        instanceName: config.instanceName,
+        recipientJid,
+        text,
+        hostBaseUrl: config.hostBaseUrl ?? undefined,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao enviar mensagem via WhatsApp"
+      throw new WhatsAppAutoResponseSendError(message, { providerMessageSent: false })
+    }
 
     console.info("[WhatsAppService][sendAutoResponseMessage] Sending auto reply to", recipientJid)
 
-    const message = await whatsAppRepository.createMessage({
-      conversation: { connect: { id: input.conversationId } },
-      team: { connect: { id: input.teamId } },
-      config: { connect: { id: config.id } },
-      ...(conversation.leadId ? { lead: { connect: { id: conversation.leadId } } } : {}),
-      providerMessageId: evoResult.providerMessageId,
-      direction: "OUTBOUND",
-      messageType: "TEXT",
-      status: "SENT",
-      contentText: text,
-      recipientPhone: normalizePhone(conversation.contactPhone),
-      isAutoResponse: true,
-      autoResponseRule: { connect: { id: input.autoResponseRuleId } },
-      sentAt: now,
-      rawPayload: {},
-    })
+    let localMessageId: string | undefined
+    try {
+      const message = await whatsAppRepository.createMessage({
+        conversation: { connect: { id: input.conversationId } },
+        team: { connect: { id: input.teamId } },
+        config: { connect: { id: config.id } },
+        ...(conversation.leadId ? { lead: { connect: { id: conversation.leadId } } } : {}),
+        providerMessageId: evoResult.providerMessageId,
+        direction: "OUTBOUND",
+        messageType: "TEXT",
+        status: "SENT",
+        contentText: text,
+        recipientPhone: normalizePhone(conversation.contactPhone),
+        isAutoResponse: true,
+        autoResponseRule: { connect: { id: input.autoResponseRuleId } },
+        sentAt: now,
+        rawPayload: {},
+      })
+      localMessageId = message.id
 
-    await whatsAppRepository.createUsageEvent({
-      team: { connect: { id: input.teamId } },
-      config: { connect: { id: config.id } },
-      periodKey,
-      eventType: "OUTBOUND_MESSAGE",
-      direction: "OUTBOUND",
-      countedTowardsQuota: true,
-      providerMessageId: evoResult.providerMessageId,
-    })
+      await whatsAppRepository.createUsageEvent({
+        team: { connect: { id: input.teamId } },
+        config: { connect: { id: config.id } },
+        periodKey,
+        eventType: "OUTBOUND_MESSAGE",
+        direction: "OUTBOUND",
+        countedTowardsQuota: true,
+        providerMessageId: evoResult.providerMessageId,
+      })
 
-    await whatsAppRepository.updateConversation(input.conversationId, {
-      lastOutboundAt: now,
-      lastMessageAt: now,
-      lastMessagePreview: preview,
-    })
+      await whatsAppRepository.updateConversation(input.conversationId, {
+        lastOutboundAt: now,
+        lastMessageAt: now,
+        lastMessagePreview: preview,
+      })
 
-    return { messageId: message.id }
+      return { messageId: message.id }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro ao persistir auto-resposta enviada"
+      throw new WhatsAppAutoResponseSendError(message, {
+        providerMessageSent: true,
+        messageId: localMessageId,
+      })
+    }
   }
 
   async createConversation(input: CreateConversationInput): Promise<WhatsAppConversationSelect> {

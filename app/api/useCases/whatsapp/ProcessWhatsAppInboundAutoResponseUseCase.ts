@@ -11,6 +11,7 @@ import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature
 import { resolveTimezone } from "@/lib/dates"
 import { whatsAppLeadSyncUseCase } from "@/app/api/useCases/whatsapp/WhatsAppLeadSyncUseCase"
 import { Output } from "@/lib/output"
+import { isWhatsAppAutoResponseSendError } from "@/lib/whatsapp/whatsappAutoResponseSendError"
 
 const KEYWORD_DEDUP_MS = 60_000
 const OFF_HOURS_DEDUP_MS = 60_000
@@ -187,15 +188,25 @@ class ProcessWhatsAppInboundAutoResponseUseCase {
           outboundMessageId: sendResult.messageId,
         })
       } catch (sendError) {
-        await whatsAppAutoResponseRepository.deleteLog(claimedLog.id).catch(() => {})
+        const failedBeforeProviderSend =
+          isWhatsAppAutoResponseSendError(sendError) && !sendError.providerMessageSent
 
-        if (selectedRule.type === "WELCOME") {
-          // Libera o slot de boas-vindas para que uma próxima mensagem
-          // inbound possa tentar novamente, já que o envio falhou.
-          await whatsAppRepository
-            .updateConversation(input.conversationId, { welcomeSentAt: null })
+        if (failedBeforeProviderSend) {
+          await whatsAppAutoResponseRepository.deleteLog(claimedLog.id).catch(() => {})
+
+          if (selectedRule.type === "WELCOME") {
+            // Libera o slot de boas-vindas para que uma próxima mensagem
+            // inbound possa tentar novamente, já que o envio falhou.
+            await whatsAppRepository
+              .updateConversation(input.conversationId, { welcomeSentAt: null })
+              .catch(() => {})
+          }
+        } else if (isWhatsAppAutoResponseSendError(sendError) && sendError.messageId) {
+          await whatsAppAutoResponseRepository
+            .updateLogOutbound(claimedLog.id, sendError.messageId)
             .catch(() => {})
         }
+
         throw sendError
       }
     } catch (error) {
