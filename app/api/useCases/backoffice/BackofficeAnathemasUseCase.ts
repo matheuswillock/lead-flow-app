@@ -1,4 +1,3 @@
-import type { BackofficeBanScope } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import type { BackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
