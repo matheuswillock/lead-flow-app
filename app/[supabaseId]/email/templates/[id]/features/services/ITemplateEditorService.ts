@@ -81,4 +81,9 @@ export interface ITemplateEditorService {
     teamId: string | null | undefined,
     file: File
   ): Promise<EmailTemplateAssetUploadResult>;
+  deleteAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    fileId: string
+  ): Promise<void>;
 }

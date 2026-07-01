@@ -1,6 +1,7 @@
 import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../context/TemplateEditorTypes";
 import type { ITemplateEditorService, EmailTemplateAssetUploadResult } from "./ITemplateEditorService";
 import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 type ApiOutput<T> = {
   isValid: boolean;
@@ -26,7 +27,7 @@ class TemplateEditorService implements ITemplateEditorService {
     const body = (await response.json().catch(() => null)) as ApiOutput<T> | null;
     if (!response.ok || !body?.isValid) {
       const message = body?.errorMessages?.join(", ") || fallbackMessage;
-      throw new Error(message);
+      throw new ApiRequestError(message);
     }
 
     return body.result;
@@ -252,6 +253,20 @@ class TemplateEditorService implements ITemplateEditorService {
     });
 
     return this.parseResponse(response, "Erro ao enviar imagem");
+  }
+
+  async deleteAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    fileId: string
+  ): Promise<void> {
+    const params = new URLSearchParams({ fileId })
+    const response = await fetch(`${this.assetsUrl}?${params.toString()}`, {
+      method: "DELETE",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+
+    await this.parseResponse<null>(response, "Erro ao excluir imagem")
   }
 
   private toPayload(draft: TemplateEditorDraft) {

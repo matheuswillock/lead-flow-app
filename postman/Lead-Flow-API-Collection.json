@@ -10977,6 +10977,34 @@
               "response": []
             },
             {
+              "name": "Excluir Asset de Template",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/assets?fileId={{emailTemplateAssetFileId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "assets"
+                  ],
+                  "query": [
+                    {
+                      "key": "fileId",
+                      "value": "{{emailTemplateAssetFileId}}"
+                    }
+                  ]
+                },
+                "description": "Remove imagem do bucket email-template-assets. fileId deve pertencer ao teamId do usuário."
+              },
+              "response": []
+            },
+            {
               "name": "Listar Templates",
               "request": {
                 "method": "GET",

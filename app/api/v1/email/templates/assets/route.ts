@@ -125,3 +125,57 @@ export async function GET(request: NextRequest) {
     })
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const teamAccess = await getTeamAccess(request)
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+    }
+
+    if (!isManagerLikeRole(teamAccess.access.teamMember.role)) {
+      return NextResponse.json(
+        new Output(false, [], ["Apenas managers podem excluir imagens de template"], null),
+        { status: 403 }
+      )
+    }
+
+    const fileId = new URL(request.url).searchParams.get("fileId")?.trim()
+    if (!fileId) {
+      return NextResponse.json(new Output(false, [], ["fileId é obrigatório"], null), {
+        status: 400,
+      })
+    }
+
+    const teamId = teamAccess.access.teamId
+    const teamPrefix = `${teamId}/`
+    if (!fileId.startsWith(teamPrefix)) {
+      return NextResponse.json(
+        new Output(false, [], ["Não é permitido excluir imagens de outro time"], null),
+        { status: 403 }
+      )
+    }
+
+    const deleted = await SupabaseStorageService.deleteFile(
+      fileId,
+      STORAGE_BUCKETS.EMAIL_TEMPLATE_ASSETS
+    )
+
+    if (!deleted.success) {
+      return NextResponse.json(
+        new Output(false, [], [deleted.error ?? "Erro ao excluir imagem"], null),
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json(new Output(true, ["Imagem excluída com sucesso"], [], null), {
+      status: 200,
+    })
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[EmailTemplateAssetsUploadRoute][DELETE]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno ao excluir imagem"], null), {
+      status: 500,
+    })
+  }
+}
