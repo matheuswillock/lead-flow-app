@@ -92,11 +92,18 @@ class WhatsAppService implements IWhatsAppService {
     })
 
     try {
-      const evoResult = await evoApiService.createInstance({
+      const evoResult = await evoApiService.adoptOrCreateInstance({
         instanceName,
         webhookUrl,
         hostBaseUrl: input.hostBaseUrl,
       })
+
+      if (evoResult.adopted) {
+        console.info(
+          "[WhatsAppService][createConfig] Adopting existing Evolution instance",
+          instanceName
+        )
+      }
 
       let qrCodeText = evoResult.qrCode?.text ?? null
       let qrCodeImageUrl = evoResult.qrCode?.base64

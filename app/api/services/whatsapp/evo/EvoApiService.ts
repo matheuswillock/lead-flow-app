@@ -7,6 +7,7 @@ import type {
   EvoSendTextResult,
   IEvoApiService,
 } from "./IEvoApiService"
+import { WHATSAPP_EVO_WEBHOOK_EVENTS } from "./IEvoApiService"
 import { normalizePhone, normalizeRemoteJid } from "../phoneUtils"
 
 function getBaseUrl(hostBaseUrl?: string): string {
@@ -60,6 +61,20 @@ function buildHeaders(apiKey: string): HeadersInit {
   return {
     "Content-Type": "application/json",
     apikey: apiKey,
+  }
+}
+
+export function isInstanceNameAlreadyInUseError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return message.includes("403") && message.includes("already in use")
+}
+
+function buildWebhookPayload(webhookUrl: string) {
+  return {
+    enabled: true,
+    url: webhookUrl,
+    events: [...WHATSAPP_EVO_WEBHOOK_EVENTS],
   }
 }
 
@@ -248,16 +263,7 @@ export class EvoApiService implements IEvoApiService {
           instanceName: params.instanceName,
           qrcode: true,
           integration: "WHATSAPP-BAILEYS",
-          webhook: {
-            url: params.webhookUrl,
-            events: [
-              "MESSAGES_UPSERT",
-              "MESSAGES_UPDATE",
-              "CONNECTION_UPDATE",
-              "QRCODE_UPDATED",
-              "SEND_MESSAGE",
-            ],
-          },
+          webhook: buildWebhookPayload(params.webhookUrl),
         }),
       },
       "createInstance"
@@ -279,6 +285,76 @@ export class EvoApiService implements IEvoApiService {
       instanceId: instance.instanceId ?? null,
       status,
       qrCode,
+    }
+  }
+
+  async setWebhook(params: {
+    instanceName: string
+    webhookUrl: string
+    hostBaseUrl?: string
+  }): Promise<void> {
+    const base = getBaseUrl(params.hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/webhook/set/${encodeURIComponent(params.instanceName)}`
+
+    console.info("[EvoApiService][setWebhook] Updating webhook for", params.instanceName)
+
+    await fetchEvo<unknown>(
+      url,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({
+          webhook: buildWebhookPayload(params.webhookUrl),
+        }),
+      },
+      "setWebhook"
+    )
+  }
+
+  async adoptOrCreateInstance(params: {
+    instanceName: string
+    webhookUrl: string
+    hostBaseUrl?: string
+  }): Promise<EvoCreateInstanceResult & { adopted: boolean }> {
+    try {
+      const created = await this.createInstance(params)
+      return { ...created, adopted: false }
+    } catch (error) {
+      if (!isInstanceNameAlreadyInUseError(error)) {
+        throw error
+      }
+
+      console.info(
+        "[EvoApiService][adoptOrCreateInstance] Adopting existing instance",
+        params.instanceName
+      )
+
+      const existing = await this.fetchInstance(params.instanceName, params.hostBaseUrl)
+      if (!existing) {
+        throw error
+      }
+
+      await this.setWebhook(params)
+
+      const { state } = await this.getConnectionState(params.instanceName, params.hostBaseUrl)
+
+      let qrCode: { text: string; base64: string } | null = null
+      if (state !== "open") {
+        try {
+          qrCode = await this.getQrCode(params.instanceName, params.hostBaseUrl)
+        } catch (qrError) {
+          console.error("[EvoApiService][adoptOrCreateInstance] QR fetch failed", qrError)
+        }
+      }
+
+      return {
+        instanceName: existing.instanceName,
+        instanceId: null,
+        status: state,
+        qrCode,
+        adopted: true,
+      }
     }
   }
 
