@@ -10923,6 +10923,60 @@
           "name": "Templates",
           "item": [
             {
+              "name": "Listar Assets de Template",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/assets",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "assets"
+                  ]
+                },
+                "description": "Lista imagens PNG/JPG enviadas pelo time para uso em templates de e-mail."
+              },
+              "response": []
+            },
+            {
+              "name": "Upload Asset de Template",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/assets",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "assets"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "file",
+                      "type": "file",
+                      "src": []
+                    }
+                  ]
+                },
+                "description": "Envia PNG/JPG/WebP para o bucket email-template-assets. Retorna publicUrl."
+              },
+              "response": []
+            },
+            {
               "name": "Listar Templates",
               "request": {
                 "method": "GET",
