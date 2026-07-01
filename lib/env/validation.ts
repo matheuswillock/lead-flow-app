@@ -63,6 +63,9 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: nonEmptyString.describe('Supabase service role key'),
   SUPABASE_LEAD_ATTACHMENTS_BUCKET: nonEmptyString.describe('Supabase bucket name for lead attachments'),
   SUPABASE_PROFILE_ICONS_BUCKET: nonEmptyString.describe('Supabase bucket name for profile icons'),
+  SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET: nonEmptyString.describe(
+    'Supabase bucket name for email template images (PNG/JPG)'
+  ),
 
   // Database PostgreSQL
   POSTGRES_USER: nonEmptyString.describe('PostgreSQL username'),

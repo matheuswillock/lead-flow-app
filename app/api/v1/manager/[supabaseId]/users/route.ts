@@ -80,6 +80,7 @@ function resolveDelegatedPermissions(
     canCreateAccountUsers?: boolean;
     canManageAccountTeams?: boolean;
     canTransferAccountLeads?: boolean;
+    canViewAllTeams?: boolean;
   },
   options: {
     canManageDelegation: boolean;
@@ -90,6 +91,7 @@ function resolveDelegatedPermissions(
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
       canTransferAccountLeads: false,
+      canViewAllTeams: false,
     };
   }
 
@@ -99,6 +101,7 @@ function resolveDelegatedPermissions(
     canCreateAccountUsers: role === "manager" && requestedPermissions.canCreateAccountUsers === true,
     canManageAccountTeams: role === "manager" && requestedPermissions.canManageAccountTeams === true,
     canTransferAccountLeads: isManagerLike && requestedPermissions.canTransferAccountLeads === true,
+    canViewAllTeams: isManagerLike && requestedPermissions.canViewAllTeams === true,
   };
 }
 
@@ -111,6 +114,7 @@ async function createUserRecords(
       canCreateAccountUsers: boolean;
       canManageAccountTeams: boolean;
       canTransferAccountLeads: boolean;
+      canViewAllTeams: boolean;
     };
   },
   db: Prisma.TransactionClient | typeof prisma
@@ -145,6 +149,7 @@ async function createUserRecords(
       canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
       canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
       canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
+      canViewAllTeams: args.delegatedPermissions.canViewAllTeams,
     },
     select: {
       role: true,
@@ -154,6 +159,7 @@ async function createUserRecords(
       canCreateAccountUsers: true,
       canManageAccountTeams: true,
       canTransferAccountLeads: true,
+      canViewAllTeams: true,
     },
   });
 
@@ -171,6 +177,7 @@ async function finalizeUserCreation(args: {
     canCreateAccountUsers: boolean;
     canManageAccountTeams: boolean;
     canTransferAccountLeads: boolean;
+    canViewAllTeams: boolean;
   };
   profile: {
     id: string;
@@ -286,6 +293,7 @@ async function finalizeUserCreation(args: {
     canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
     canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
     canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
+    canViewAllTeams: args.delegatedPermissions.canViewAllTeams,
     createdAt: teamMemberRecord.createdAt,
     updatedAt: teamMemberRecord.updatedAt,
   };
@@ -387,7 +395,7 @@ export async function POST(
 
     if (
       !isMaster &&
-      (validatedData.canCreateAccountUsers || validatedData.canManageAccountTeams || validatedData.canTransferAccountLeads)
+      (validatedData.canCreateAccountUsers || validatedData.canManageAccountTeams || validatedData.canTransferAccountLeads || validatedData.canViewAllTeams)
     ) {
       const output = new Output(
         false,
@@ -708,6 +716,7 @@ export async function GET(
         canCreateAccountUsers: member.canCreateAccountUsers,
         canManageAccountTeams: member.canManageAccountTeams,
         canTransferAccountLeads: member.canTransferAccountLeads,
+        canViewAllTeams: member.canViewAllTeams,
         leadsCount: member.profile._count?.leadsAsAssignee ?? 0,
         meetingsCount: member.profile._count?.leadsAsCloser ?? 0,
         createdAt: member.createdAt,
@@ -1004,7 +1013,8 @@ export async function PUT(
       (
         validatedData.canCreateAccountUsers !== undefined ||
         validatedData.canManageAccountTeams !== undefined ||
-        validatedData.canTransferAccountLeads !== undefined
+        validatedData.canTransferAccountLeads !== undefined ||
+        validatedData.canViewAllTeams !== undefined
       )
     ) {
       const output = new Output(
@@ -1021,7 +1031,8 @@ export async function PUT(
       (
         validatedData.canCreateAccountUsers !== undefined ||
         validatedData.canManageAccountTeams !== undefined ||
-        validatedData.canTransferAccountLeads !== undefined
+        validatedData.canTransferAccountLeads !== undefined ||
+        validatedData.canViewAllTeams !== undefined
       )
     ) {
       const output = new Output(
@@ -1054,7 +1065,8 @@ export async function PUT(
       validatedData.functions ||
       validatedData.canCreateAccountUsers !== undefined ||
       validatedData.canManageAccountTeams !== undefined ||
-      validatedData.canTransferAccountLeads !== undefined
+      validatedData.canTransferAccountLeads !== undefined ||
+      validatedData.canViewAllTeams !== undefined
     ) {
       await prisma.teamMember.updateMany({
         where: {
@@ -1067,6 +1079,7 @@ export async function PUT(
           canCreateAccountUsers: nextDelegatedPermissions.canCreateAccountUsers,
           canManageAccountTeams: nextDelegatedPermissions.canManageAccountTeams,
           canTransferAccountLeads: nextDelegatedPermissions.canTransferAccountLeads,
+          canViewAllTeams: nextDelegatedPermissions.canViewAllTeams,
         },
       });
     }
@@ -1102,6 +1115,7 @@ export async function PUT(
       canCreateAccountUsers: updatedMember?.canCreateAccountUsers ?? false,
       canManageAccountTeams: updatedMember?.canManageAccountTeams ?? false,
       canTransferAccountLeads: updatedMember?.canTransferAccountLeads ?? false,
+      canViewAllTeams: updatedMember?.canViewAllTeams ?? false,
     });
 
     return NextResponse.json(output, { status: 200 });

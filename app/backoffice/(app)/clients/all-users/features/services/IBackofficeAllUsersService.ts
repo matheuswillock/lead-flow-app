@@ -52,4 +52,6 @@ export interface IBackofficeAllUsersService {
   updateUserType(profileId: string, data: BackofficeAllUsersUpdateUserTypeInput): Promise<BackofficeAllUsersUserType>
 
   listSponsorMasters(): Promise<BackofficeSponsorMasterOption[]>
+
+  banUser(profileId: string, reason?: string | null): Promise<void>
 }

@@ -176,6 +176,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       return
     }
     setSendingId(id)
+    setCampaigns((prev) =>
+      prev.map((campaign) =>
+        campaign.id === id ? { ...campaign, status: "sending" } : campaign
+      )
+    )
     console.info("[useCampanhas] handleSend", id)
     try {
       const result = await service.send(supabaseId, activeTeamId, id)
@@ -192,11 +197,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       void fetchCredits()
     } catch (err) {
       console.error("[useCampanhas] handleSend error", err)
-      toast.error("Erro ao disparar campanha")
+      const message = err instanceof Error ? err.message : "Erro ao disparar campanha"
+      toast.error(message || "Erro ao disparar campanha")
+      void fetchCampaigns(page, statusFilter)
     } finally {
       setSendingId(null)
     }
-  }, [activeTeamId, credits?.hasSubscription, editingCampaign?.id, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter, supabaseId])
+  }, [activeTeamId, credits?.hasSubscription, credits?.isBetaExempt, editingCampaign?.id, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter, supabaseId])
 
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)

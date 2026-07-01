@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { CalendarRange, CircleCheckBig, CircleX, Crown, ExternalLink, KeyRound, Mail, Send } from "lucide-react"
+import { CalendarRange, CircleCheckBig, CircleX, Crown, ExternalLink, KeyRound, Mail, Send, ShieldBan } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,9 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { maskPhone } from "@/lib/masks"
 import { toast } from "sonner"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import { useBackofficeAllUsers } from "../context/BackofficeAllUsersContext"
+import { BanUserDialog } from "./BanUserDialog"
 
 function getInitials(name: string | null, email: string) {
   const source = (name || email).trim()
@@ -55,6 +57,8 @@ function RoleBadge({ role, isMaster }: { role: string; isMaster: boolean }) {
 
 export function BackofficeAllUsersDetailSheet() {
   const { tz } = useTimezone()
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const {
     service,
     sheetOpen,
@@ -65,8 +69,11 @@ export function BackofficeAllUsersDetailSheet() {
     closeUserSheet,
     openSchedulesDialog,
     openEmailDispatchesDialog,
+    fetchUsers,
   } = useBackofficeAllUsers()
   const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | null>(null)
+  const [banDialogOpen, setBanDialogOpen] = useState(false)
+  const [isBanning, setIsBanning] = useState(false)
 
   async function handleSendAccessEmail(mode: "invite" | "reset_password") {
     if (!selectedDetail || accessAction) return
@@ -85,6 +92,24 @@ export function BackofficeAllUsersDetailSheet() {
       toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.")
     } finally {
       setAccessAction(null)
+    }
+  }
+
+  async function handleBanUser(reason?: string | null) {
+    if (!selectedDetail || isBanning) return
+
+    setIsBanning(true)
+    try {
+      await service.banUser(selectedDetail.id, reason)
+      toast.success("Usuário banido com sucesso")
+      setBanDialogOpen(false)
+      await fetchUsers()
+      await openUserSheet(selectedDetail.id)
+    } catch (error) {
+      console.error("[BackofficeAllUsersDetailSheet][handleBanUser]", error)
+      toast.error(error instanceof Error ? error.message : "Erro ao banir usuário")
+    } finally {
+      setIsBanning(false)
     }
   }
 
@@ -118,7 +143,12 @@ export function BackofficeAllUsersDetailSheet() {
                   {selectedDetail.fullName || "Sem nome"}
                 </p>
                 <p className="text-sm text-muted-foreground truncate">{selectedDetail.email}</p>
-                <RoleBadge role={selectedDetail.role} isMaster={selectedDetail.isMaster} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <RoleBadge role={selectedDetail.role} isMaster={selectedDetail.isMaster} />
+                  {selectedDetail.isBanned ? (
+                    <Badge variant="destructive">Banido</Badge>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -239,6 +269,22 @@ export function BackofficeAllUsersDetailSheet() {
                     Enviar reset de senha
                   </Button>
                 ) : null}
+                {canManage && !selectedDetail.isBanned ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setBanDialogOpen(true)}
+                    disabled={isBanning}
+                  >
+                    <ShieldBan data-icon="inline-start" />
+                    Banir usuário
+                  </Button>
+                ) : null}
+                {selectedDetail.isBanned ? (
+                  <Button type="button" variant="outline" asChild>
+                    <Link href="/backoffice/anatemas">Ver em Anatemas</Link>
+                  </Button>
+                ) : null}
               </div>
             </div>
 
@@ -295,6 +341,14 @@ export function BackofficeAllUsersDetailSheet() {
           </div>
         )}
       </SheetContent>
+      <BanUserDialog
+        open={banDialogOpen}
+        isSubmitting={isBanning}
+        isMaster={selectedDetail?.isMaster ?? false}
+        userLabel={selectedDetail?.fullName || selectedDetail?.email || "usuário"}
+        onOpenChange={setBanDialogOpen}
+        onConfirm={handleBanUser}
+      />
     </Sheet>
   )
 }

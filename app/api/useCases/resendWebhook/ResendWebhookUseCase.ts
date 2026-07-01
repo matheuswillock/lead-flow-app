@@ -21,6 +21,7 @@ import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/rese
 const ORPHAN_BACKFILL_EVENTS = new Set([
   "email.sent",
   "email.delivered",
+  "email.opened",
   "email.clicked",
   "email.bounced",
 ])

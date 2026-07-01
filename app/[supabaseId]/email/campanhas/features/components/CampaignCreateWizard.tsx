@@ -16,6 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { CircleHelp } from "lucide-react"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, formatLocalInputValue, parseLocalToUtc } from "@/lib/dates"
@@ -155,7 +162,27 @@ export function CampaignCreateWizard() {
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                <Label>Segmento CDP *</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>Segmento CDP *</Label>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-foreground"
+                          aria-label="O que é segmento CDP?"
+                        >
+                          <CircleHelp className="size-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        Segmento dinâmico do Customer Data Platform: contatos filtrados por
+                        regras (ex.: leads ativos, inativos). Atualiza automaticamente antes
+                        de cada disparo.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <Select value={wizardCdpSegmentSlug} onValueChange={setWizardCdpSegmentSlug} disabled={wizardCreating}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione um segmento..." />

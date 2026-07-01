@@ -92,6 +92,23 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSearchRef = useRef<string>('')
 
+  // Guards síncronos de double-submit: setados/checados ANTES de qualquer
+  // await, diferente dos states React (isSending, isAssigning, etc.) cuja
+  // atualização é assíncrona e não bloqueia um segundo clique no mesmo tick.
+  const isSendingRef = useRef(false)
+  const isAssigningRef = useRef(false)
+  const isLinkingLeadRef = useRef(false)
+  const isArchivingRef = useRef(false)
+  const isDeletingRef = useRef(false)
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+      }
+    }
+  }, [])
+
   const messagesRef = useRef<WhatsAppMessage[]>([])
   useEffect(() => {
     messagesRef.current = messages
@@ -256,6 +273,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             : result.conversations
         )
         setTotalConversations(result.total)
+        if (pageNum > 1) {
+          setPage(pageNum)
+        }
       } catch (error) {
         if (currentConvsKeyRef.current === key) {
           setConversations([])
@@ -311,7 +331,19 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         setTotalMessages(result.total)
         if (pageNum === 1) {
           // API returns newest-first (DESC); reverse so oldest is at top, newest at bottom
-          setMessages(result.messages.slice().reverse())
+          const fetched = result.messages.slice().reverse()
+          const fetchedIds = new Set(fetched.map((m) => m.id))
+          setMessages((prev) => {
+            // Preserva mensagens inseridas via Realtime durante o fetch inicial
+            // (mesma conversa) que ainda não vieram na resposta paginada.
+            const realtimeOnly = prev.filter(
+              (m) => m.conversationId === conversationId && !fetchedIds.has(m.id)
+            )
+            if (realtimeOnly.length === 0) return fetched
+            return [...fetched, ...realtimeOnly].sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            )
+          })
         } else {
           // Older messages go at the top; API returns newest-first so reverse before prepending
           setMessages((prev) => {
@@ -319,6 +351,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             const fresh = result.messages.filter((m) => !existingIds.has(m.id)).slice().reverse()
             return [...fresh, ...prev]
           })
+          setMessagePage(pageNum)
         }
       } catch (error) {
         if (currentMessagesConvIdRef.current === conversationId) {
@@ -346,21 +379,29 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   useEffect(() => {
     if (!activeTeamId || config?.historySyncStatus !== 'RUNNING') return
 
+    let cancelled = false
+
     const intervalId = window.setInterval(() => {
       void (async () => {
         try {
           const refreshed = await whatsAppInboxService.fetchConfig(activeTeamId, supabaseId)
+          if (cancelled) return
           setConfig(refreshed)
           if (refreshed?.historySyncStatus === 'COMPLETED') {
             void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
           }
         } catch (error) {
-          console.error('[useWhatsAppInbox] Erro ao atualizar status de sincronização:', error)
+          if (!cancelled) {
+            console.error('[useWhatsAppInbox] Erro ao atualizar status de sincronização:', error)
+          }
         }
       })()
     }, 10000)
 
-    return () => window.clearInterval(intervalId)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
   }, [activeTeamId, supabaseId, config?.historySyncStatus, loadConversations])
 
   useEffect(() => {
@@ -400,16 +441,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   const loadOlderMessages = useCallback(() => {
     if (!selectedConversationId || isLoadingOlderMessages) return
-    const nextPage = messagePage + 1
-    setMessagePage(nextPage)
-    void loadMessages(selectedConversationId, nextPage)
+    // messagePage só avança dentro de loadMessages após sucesso do fetch,
+    // evitando pular uma página quando a requisição falha.
+    void loadMessages(selectedConversationId, messagePage + 1)
   }, [selectedConversationId, messagePage, isLoadingOlderMessages, loadMessages])
 
   const loadMoreConversations = useCallback(() => {
     if (isLoadingConversations) return
-    const nextPage = page + 1
-    setPage(nextPage)
-    void loadConversations(nextPage, pendingSearchRef.current, filterModeRef.current)
+    // page só avança dentro de loadConversations após sucesso do fetch,
+    // evitando pular uma página quando a requisição falha.
+    void loadConversations(page + 1, pendingSearchRef.current, filterModeRef.current)
   }, [page, loadConversations, isLoadingConversations])
 
   const setSearchQuery = useCallback(
@@ -450,6 +491,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       mentionedJids?: string[]
     ) => {
       if (!activeTeamId) return
+      isSendingRef.current = true
       setIsSending(true)
       try {
         const result = await whatsAppInboxService.sendMessage(
@@ -487,6 +529,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         toast.error(error instanceof Error ? error.message : 'Não foi possível enviar a mensagem')
       } finally {
         setIsSending(false)
+        isSendingRef.current = false
       }
     },
     [activeTeamId, supabaseId, currentProfileId]
@@ -494,7 +537,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   const sendMessage = useCallback(
     (text: string, media?: SendMessageMediaInput, mentionedJids?: string[]) => {
-      if (!activeTeamId || !selectedConversationId || isSending) return
+      if (!activeTeamId || !selectedConversationId || isSendingRef.current) return
 
       const trimmedText = text.trim()
       if (!trimmedText && !media) return
@@ -538,14 +581,15 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       performSend(selectedConversationId, trimmedText, optimisticId, media, mentionedJids).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao enviar mensagem:', error)
         setIsSending(false)
+        isSendingRef.current = false
       })
     },
-    [activeTeamId, selectedConversationId, isSending, performSend, currentProfileId]
+    [activeTeamId, selectedConversationId, performSend, currentProfileId]
   )
 
   const resendMessage = useCallback(
     (messageId: string) => {
-      if (isSending) return
+      if (isSendingRef.current) return
 
       const target = messagesRef.current.find((m) => m.id === messageId)
       if (!target || !target.contentText) return
@@ -559,9 +603,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       performSend(target.conversationId, target.contentText, messageId).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao reenviar mensagem:', error)
         setIsSending(false)
+        isSendingRef.current = false
       })
     },
-    [isSending, performSend]
+    [performSend]
   )
 
   const loadTeamMembersInternal = useCallback(async () => {
@@ -652,8 +697,23 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         }
         return [...prev, msg]
       })
+
+      // Conversa aberta recebendo mensagem nova: marca como lida no servidor
+      // para o badge de não lidos não ficar dessincronizado (local mostra 0,
+      // mas o servidor ainda contava como não lida).
+      if (row.direction === 'INBOUND' && activeTeamId) {
+        void whatsAppInboxService
+          .markConversationRead(activeTeamId, supabaseId, row.conversationId)
+          .then(() => {
+            dispatchWhatsAppUnreadChanged()
+            void fetchUnreadTotal()
+          })
+          .catch((err: unknown) => {
+            console.error('[useWhatsAppInbox] Erro ao marcar como lida automaticamente:', err)
+          })
+      }
     },
-    []
+    [activeTeamId, supabaseId, fetchUnreadTotal]
   )
 
   const handleMessageUpdated = useCallback(
@@ -785,7 +845,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   const assignConversation = useCallback(
     (conversationId: string, profileId: string) => {
-      if (!activeTeamId || isAssigning) return
+      if (!activeTeamId || isAssigningRef.current) return
+      isAssigningRef.current = true
 
       const executeAssign = async () => {
         setIsAssigning(true)
@@ -804,20 +865,23 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.error(error instanceof Error ? error.message : 'Não foi possível atribuir o responsável')
         } finally {
           setIsAssigning(false)
+          isAssigningRef.current = false
         }
       }
 
       executeAssign().catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao atribuir conversa:', error)
         setIsAssigning(false)
+        isAssigningRef.current = false
       })
     },
-    [activeTeamId, supabaseId, isAssigning]
+    [activeTeamId, supabaseId]
   )
 
   const linkLead = useCallback(
     (conversationId: string, leadId: string) => {
-      if (!activeTeamId || isLinkingLead) return
+      if (!activeTeamId || isLinkingLeadRef.current) return
+      isLinkingLeadRef.current = true
 
       const execute = async () => {
         setIsLinkingLead(true)
@@ -832,15 +896,17 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.error(error instanceof Error ? error.message : 'Não foi possível vincular o lead')
         } finally {
           setIsLinkingLead(false)
+          isLinkingLeadRef.current = false
         }
       }
 
       execute().catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao vincular lead:', error)
         setIsLinkingLead(false)
+        isLinkingLeadRef.current = false
       })
     },
-    [activeTeamId, supabaseId, isLinkingLead]
+    [activeTeamId, supabaseId]
   )
 
   const searchLeads = useCallback(
@@ -863,7 +929,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   const archiveConversation = useCallback(
     (conversationId: string) => {
-      if (!activeTeamId || isArchiving) return
+      if (!activeTeamId || isArchivingRef.current) return
+      isArchivingRef.current = true
 
       const execute = async () => {
         setIsArchiving(true)
@@ -877,20 +944,23 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.error(error instanceof Error ? error.message : 'Não foi possível arquivar a conversa')
         } finally {
           setIsArchiving(false)
+          isArchivingRef.current = false
         }
       }
 
       execute().catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao arquivar conversa:', error)
         setIsArchiving(false)
+        isArchivingRef.current = false
       })
     },
-    [activeTeamId, supabaseId, isArchiving, selectedConversationId]
+    [activeTeamId, supabaseId, selectedConversationId]
   )
 
   const unarchiveConversation = useCallback(
     (conversationId: string) => {
-      if (!activeTeamId || isArchiving) return
+      if (!activeTeamId || isArchivingRef.current) return
+      isArchivingRef.current = true
 
       const execute = async () => {
         setIsArchiving(true)
@@ -904,20 +974,23 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.error(error instanceof Error ? error.message : 'Não foi possível desarquivar a conversa')
         } finally {
           setIsArchiving(false)
+          isArchivingRef.current = false
         }
       }
 
       execute().catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao desarquivar conversa:', error)
         setIsArchiving(false)
+        isArchivingRef.current = false
       })
     },
-    [activeTeamId, supabaseId, isArchiving, selectedConversationId]
+    [activeTeamId, supabaseId, selectedConversationId]
   )
 
   const deleteConversation = useCallback(
     (conversationId: string) => {
-      if (!activeTeamId || isDeleting) return
+      if (!activeTeamId || isDeletingRef.current) return
+      isDeletingRef.current = true
 
       const execute = async () => {
         setIsDeleting(true)
@@ -931,15 +1004,17 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.error(error instanceof Error ? error.message : 'Não foi possível excluir a conversa')
         } finally {
           setIsDeleting(false)
+          isDeletingRef.current = false
         }
       }
 
       execute().catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao excluir conversa:', error)
         setIsDeleting(false)
+        isDeletingRef.current = false
       })
     },
-    [activeTeamId, supabaseId, isDeleting, selectedConversationId]
+    [activeTeamId, supabaseId, selectedConversationId]
   )
 
   const createConversation = useCallback(

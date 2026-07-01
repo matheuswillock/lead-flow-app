@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.132.0",
+  "version": "0.134.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -172,6 +172,7 @@
     "prisma": "6.19.3",
     "prisma-erd-generator": "2.4.2",
     "shadcn": "^4.7.0",
+    "sharp": "^0.35.3",
     "supabase": "^2.109.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",

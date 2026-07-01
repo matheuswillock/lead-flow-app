@@ -599,6 +599,8 @@ class WhatsAppService implements IWhatsAppService {
   }
 
   async syncTeamHistory(teamId: string): Promise<{ chats: number; messages: number }> {
+    // Otimização local (evita round-trip ao banco em disparos repetidos no
+    // mesmo processo); a fonte de verdade é o claim atômico via updateMany.
     if (this.historySyncInFlightByTeam.has(teamId)) {
       return { chats: 0, messages: 0 }
     }
@@ -610,18 +612,13 @@ class WhatsAppService implements IWhatsAppService {
     if (config.status !== "CONNECTED") {
       throw new Error("WhatsApp não está conectado")
     }
-    if (config.historySyncStatus === "COMPLETED" || config.historySyncStatus === "RUNNING") {
+
+    const claimed = await whatsAppRepository.claimHistorySyncSlot(config.id)
+    if (!claimed) {
       return { chats: 0, messages: 0 }
     }
 
     this.historySyncInFlightByTeam.add(teamId)
-
-    await whatsAppRepository.updateConfig(config.id, {
-      historySyncStatus: "RUNNING",
-      historySyncStartedAt: new Date(),
-      historySyncCompletedAt: null,
-      historySyncError: null,
-    })
 
     const since = new Date(Date.now() - WHATSAPP_HISTORY_SYNC_DAYS * 24 * 60 * 60 * 1000)
     let chatCount = 0

@@ -140,6 +140,7 @@ export function BackofficeAllUsersContainer() {
 
   const [localFilters, setLocalFilters] = useState<BackofficeAllUsersFilters>(filters)
   const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
+  const [selectedMemberTeamId, setSelectedMemberTeamId] = useState<string | null>(null)
   const [selectedDetails, setSelectedDetails] = useState<BackofficeClientDetails | null>(null)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
@@ -275,6 +276,7 @@ export function BackofficeAllUsersContainer() {
       const fallbackMember = buildFallbackMember(item)
       let details: BackofficeClientDetails | null = null
       let member: BackofficeClientTeamMember = fallbackMember
+      let memberTeamId: string | null = null
 
       if (options?.loadDetails) {
         const masterId = getMasterId(item)
@@ -286,14 +288,17 @@ export function BackofficeAllUsersContainer() {
               page: 1,
               pageSize: 100,
             })
-            const foundMember = details.teams
-              .flatMap((team) => team.members)
-              .find((teamMember) => teamMember.id === item.id)
-            if (foundMember) {
-              member = foundMember
-            } else if (details.allTeams.length > 0) {
+            for (const team of details.teams) {
+              const foundMember = team.members.find((teamMember) => teamMember.id === item.id)
+              if (foundMember) {
+                member = foundMember
+                memberTeamId = team.id
+                break
+              }
+            }
+            if (!memberTeamId && details.allTeams.length > 0) {
               member = fallbackMember
-            } else {
+            } else if (!memberTeamId) {
               toast.info("Usuário sem vínculo de time no cliente. Edição/deleção disponível com dados básicos.")
             }
           } catch (err) {
@@ -305,7 +310,8 @@ export function BackofficeAllUsersContainer() {
 
       setSelectedDetails(details)
       setSelectedMember(member)
-      return { details, member }
+      setSelectedMemberTeamId(memberTeamId)
+      return { details, member, memberTeamId }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar dados do usuário")
       return null
@@ -335,11 +341,13 @@ export function BackofficeAllUsersContainer() {
         pageSize: 100,
       })
       setSelectedDetails(details)
-      const foundMember = details.teams
-        .flatMap((team) => team.members)
-        .find((teamMember) => teamMember.id === selectedMember.id)
-      if (foundMember) {
-        setSelectedMember(foundMember)
+      for (const team of details.teams) {
+        const foundMember = team.members.find((teamMember) => teamMember.id === selectedMember.id)
+        if (foundMember) {
+          setSelectedMember(foundMember)
+          setSelectedMemberTeamId(team.id)
+          break
+        }
       }
     } catch (err) {
       console.error("[BackofficeAllUsersContainer][handleMemberEditSuccess]", err)
@@ -488,7 +496,12 @@ export function BackofficeAllUsersContainer() {
             ) : (
               items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.fullName || "Sem nome"}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{item.fullName || "Sem nome"}</span>
+                      {item.isBanned ? <Badge variant="destructive">Banido</Badge> : null}
+                    </div>
+                  </TableCell>
                   <TableCell>{item.email}</TableCell>
                   <TableCell>{maskPhone(item.phone ?? "") || "—"}</TableCell>
                   <TableCell>{getRoleBadge(item.role, item.isMaster)}</TableCell>
@@ -644,7 +657,7 @@ export function BackofficeAllUsersContainer() {
         open={memberEditOpen}
         onOpenChange={setMemberEditOpen}
         member={selectedMember}
-        teamId={null}
+        teamId={selectedMemberTeamId}
         details={selectedDetails}
         service={clientDetailsService}
         canManage={canManage}

@@ -198,6 +198,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       canTransferAccountLeads?: boolean
       canViewAllTeams?: boolean
       teamId?: string
+      accountMasterId?: string
     }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {

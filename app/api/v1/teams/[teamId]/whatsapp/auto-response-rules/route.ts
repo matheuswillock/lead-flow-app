@@ -4,13 +4,14 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { whatsAppAutoResponseRuleUseCase } from "@/app/api/useCases/whatsapp/WhatsAppAutoResponseRuleUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { offHoursScheduleSchema } from "@/lib/whatsapp/off-hours-schedule"
 
 const createRuleSchema = z.object({
   type: z.enum(["WELCOME", "OFF_HOURS", "KEYWORD"]),
   replyMessage: z.string().min(1, "Mensagem de resposta é obrigatória"),
   triggerKeywords: z.array(z.string()).optional(),
   matchMode: z.enum(["CONTAINS", "EXACT", "STARTS_WITH"]).optional(),
-  offHoursSchedule: z.record(z.string(), z.unknown()).optional(),
+  offHoursSchedule: offHoursScheduleSchema.optional(),
   isActive: z.boolean().optional(),
   priority: z.number().int().optional(),
 })

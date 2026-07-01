@@ -17,6 +17,7 @@ import {
   Building2,
   MessageCircle,
   Bot,
+  ShieldBan,
   EllipsisVertical,
   ListChecks,
   LogOut,
@@ -148,6 +149,17 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             isActive={pathname.startsWith("/backoffice/clients/all-users")}
                           >
                             <Link href="/backoffice/clients/all-users">Todos os usuários</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/anatemas")}
+                          >
+                            <Link href="/backoffice/anatemas">
+                              <ShieldBan className="h-4 w-4" />
+                              Anatemas
+                            </Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                         <SidebarMenuSubItem>

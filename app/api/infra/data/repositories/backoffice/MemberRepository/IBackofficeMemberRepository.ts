@@ -66,6 +66,19 @@ export interface IBackofficeMemberRepository {
     }
   ): Promise<void>
 
+  updateAccountMemberAccess(
+    profileId: string,
+    masterId: string,
+    data: {
+      role?: string
+      functions?: string[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
+    }
+  ): Promise<void>
+
   findMemberForDeletion(memberId: string): Promise<MemberForDeletionRecord | null>
 
   deleteMemberCascade(memberId: string): Promise<void>

@@ -127,6 +127,15 @@ failed failed
     
 
 
+        asaas_webhook_event_status {
+            pending pending
+processing processing
+processed processed
+failed failed
+        }
+    
+
+
         backoffice_webhook_token_status {
             active active
 replaced replaced
@@ -344,6 +353,20 @@ FULL FULL
 
         backoffice_feature_grant_type {
             BETA BETA
+        }
+    
+
+
+        backoffice_ban_status {
+            ACTIVE ACTIVE
+LIFTED LIFTED
+        }
+    
+
+
+        backoffice_ban_scope {
+            INDIVIDUAL INDIVIDUAL
+ACCOUNT ACCOUNT
         }
     
 
@@ -813,6 +836,22 @@ failed failed
     String mailboxStatus 
     String mailboxAddress "❓"
     DateTime mailboxProvisionedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_banned_users" {
+    String id "🗝️"
+    String supabaseId "❓"
+    String email 
+    String fullName "❓"
+    String reason "❓"
+    BackofficeBanStatus status 
+    BackofficeBanScope scope 
+    DateTime bannedAt 
+    DateTime liftedAt "❓"
+    String liftReason "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2062,6 +2101,18 @@ failed failed
     DateTime sentAt "❓"
     }
   
+
+  "asaas_webhook_events" {
+    String id "🗝️"
+    String eventType "❓"
+    Json payload 
+    AsaasWebhookEventStatus status 
+    String errorMessage "❓"
+    DateTime receivedAt 
+    DateTime processedAt "❓"
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -2074,6 +2125,11 @@ failed failed
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" }o--|o google_oauth_connections : "googleConnection"
     "backoffice_users" }o--|o corretor_studio_profiles : "linkedCorretorStudioProfile"
+    "backoffice_banned_users" |o--|| "BackofficeBanStatus" : "enum:status"
+    "backoffice_banned_users" |o--|| "BackofficeBanScope" : "enum:scope"
+    "backoffice_banned_users" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_banned_users" }o--|| corretor_studio_profiles : "bannedByProfile"
+    "backoffice_banned_users" }o--|o corretor_studio_profiles : "liftedByProfile"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -2335,4 +2391,5 @@ failed failed
     "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
     "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
     "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
+    "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
 ```

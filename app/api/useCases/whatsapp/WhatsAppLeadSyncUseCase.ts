@@ -1,4 +1,3 @@
-import { ActivityType, LeadStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
@@ -39,48 +38,29 @@ class WhatsAppLeadSyncUseCase {
         return new Output(true, [], [], conversation.leadId)
       }
 
-      const existingLead = await leadRepository.findLeadByPhoneInTeam(
-        input.teamId,
-        input.normalizedPhone
-      )
-
-      if (existingLead) {
-        await whatsAppRepository.linkConversationToLead(input.conversationId, existingLead.id)
-        return new Output(true, [], [], existingLead.id)
-      }
-
       const displayName = input.contactName?.trim() || input.normalizedPhone
       const leadCode = await this.generateLeadCode(displayName)
 
-      const lead = await leadRepository.create({
-        manager: { connect: { id: input.masterId } },
-        team: { connect: { id: input.teamId } },
+      // findOrCreateLeadByPhoneInTeam serializa a operação com um advisory
+      // lock por (teamId, normalizedPhone) dentro de uma transação, evitando
+      // que mensagens inbound concorrentes criem leads duplicados para o
+      // mesmo contato (não há constraint única (teamId, phone) viável hoje
+      // por poder já existir dados legados duplicados).
+      const result = await leadRepository.findOrCreateLeadByPhoneInTeam({
+        teamId: input.teamId,
+        normalizedPhone: input.normalizedPhone,
         leadCode,
-        name: displayName,
-        phone: input.normalizedPhone,
-        status: LeadStatus.new_opportunity,
-        creator: { connect: { id: input.masterId } },
-        updater: { connect: { id: input.masterId } },
-        activities: {
-          create: {
-            type: ActivityType.note,
-            body: "Lead criado automaticamente via WhatsApp",
-            payload: {
-              kind: "lead_creation",
-              channel: "whatsapp",
-              provider: "evolution",
-              source: "whatsapp_inbound",
-              conversationId: input.conversationId,
-              importedAt: new Date().toISOString(),
-            },
-            author: { connect: { id: input.masterId } },
-          },
-        },
+        displayName,
+        masterId: input.masterId,
+        conversationId: input.conversationId,
       })
 
-      await whatsAppRepository.linkConversationToLead(input.conversationId, lead.id)
-      console.info("[WhatsAppLeadSyncUseCase][execute] Lead created", lead.id)
-      return new Output(true, [], [], lead.id)
+      if (result.created) {
+        console.info("[WhatsAppLeadSyncUseCase][execute] Lead created", result.id)
+      }
+
+      await whatsAppRepository.linkConversationToLead(input.conversationId, result.id)
+      return new Output(true, [], [], result.id)
     } catch (error) {
       console.error("[WhatsAppLeadSyncUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao sincronizar lead"

@@ -1,4 +1,4 @@
-import type { Prisma, WhatsAppMessageStatus } from "@prisma/client"
+import { Prisma, type WhatsAppMessageStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone"
 import type {
@@ -127,6 +127,22 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
   }
 
+  async claimHistorySyncSlot(configId: string): Promise<boolean> {
+    const result = await prisma.teamWhatsAppConfig.updateMany({
+      where: {
+        id: configId,
+        historySyncStatus: { notIn: ["RUNNING", "COMPLETED"] },
+      },
+      data: {
+        historySyncStatus: "RUNNING",
+        historySyncStartedAt: new Date(),
+        historySyncCompletedAt: null,
+        historySyncError: null,
+      },
+    })
+    return result.count > 0
+  }
+
   async deleteConfig(id: string): Promise<void> {
     await prisma.teamWhatsAppConfig.delete({ where: { id } })
   }
@@ -158,17 +174,33 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
     if (existing) return existing
 
-    return prisma.whatsAppConversation.create({
-      data: {
-        teamId: params.teamId,
-        configId: params.configId,
-        externalChatId: params.externalChatId,
-        contactPhone: params.contactPhone,
-        normalizedPhone: params.normalizedPhone,
-        contactName: params.contactName ?? null,
-      },
-      select: CONVERSATION_SELECT,
-    })
+    try {
+      return await prisma.whatsAppConversation.create({
+        data: {
+          teamId: params.teamId,
+          configId: params.configId,
+          externalChatId: params.externalChatId,
+          contactPhone: params.contactPhone,
+          normalizedPhone: params.normalizedPhone,
+          contactName: params.contactName ?? null,
+        },
+        select: CONVERSATION_SELECT,
+      })
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const racedWinner = await prisma.whatsAppConversation.findUnique({
+          where: {
+            configId_externalChatId: {
+              configId: params.configId,
+              externalChatId: params.externalChatId,
+            },
+          },
+          select: CONVERSATION_SELECT,
+        })
+        if (racedWinner) return racedWinner
+      }
+      throw error
+    }
   }
 
   async listConversations(params: {
@@ -232,6 +264,14 @@ class WhatsAppRepository implements IWhatsAppRepository {
       data,
       select: CONVERSATION_SELECT,
     })
+  }
+
+  async claimWelcomeSlot(conversationId: string): Promise<boolean> {
+    const result = await prisma.whatsAppConversation.updateMany({
+      where: { id: conversationId, welcomeSentAt: null },
+      data: { welcomeSentAt: new Date() },
+    })
+    return result.count > 0
   }
 
   async linkConversationToLead(

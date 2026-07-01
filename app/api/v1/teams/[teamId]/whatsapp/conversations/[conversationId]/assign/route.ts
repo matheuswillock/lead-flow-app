@@ -54,13 +54,16 @@ export async function POST(
   })
 
   if (!output.isValid) {
+    const isNotFound = output.errorMessages.some((m) => m.includes("não encontrad"))
     const isAuthz = output.errorMessages.some(
       (m) =>
         m.includes("só pode") ||
         m.includes("já possui") ||
-        m.includes("Acesso negado")
+        m.includes("Acesso negado") ||
+        m.includes("inválido para este time")
     )
-    return NextResponse.json(output, { status: isAuthz ? 403 : 500 })
+    const status = isNotFound ? 404 : isAuthz ? 403 : 500
+    return NextResponse.json(output, { status })
   }
 
   return NextResponse.json(output)

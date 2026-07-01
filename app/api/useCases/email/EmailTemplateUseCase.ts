@@ -817,6 +817,11 @@ export class EmailTemplateUseCase {
           versionGroupId: true,
           status: true,
           versionNumber: true,
+          name: true,
+          previewText: true,
+          mailyJson: true,
+          editorMode: true,
+          variables: true,
         },
       })
 
@@ -856,20 +861,71 @@ export class EmailTemplateUseCase {
           orderBy: { versionNumber: "desc" },
         })
 
-        const targetId = existingDraft?.id ?? current.id
-        const template = await prisma.emailTemplate.update({
-          where: { id: targetId },
+        if (existingDraft) {
+          const template = await prisma.emailTemplate.update({
+            where: { id: existingDraft.id },
+            select: templateDetailSelect,
+            data: updateData,
+          })
+
+          await this.recordHistory({
+            templateId: template.id,
+            teamId: ctx.teamId,
+            actorProfileId: ctx.profileId,
+            eventType: "draft_saved",
+            description: `HTML recuperado da versão ${version.versionNumber}.0`,
+            metadata: { versionNumber: template.versionNumber, restoredFromVersionId: version.id },
+          })
+
+          return new Output(true, [`HTML da versão ${version.versionNumber}.0 recuperado no rascunho`], [], template)
+        }
+
+        const latestVersion = await prisma.emailTemplate.aggregate({
+          where: { teamId: ctx.teamId, versionGroupId: current.versionGroupId },
+          _max: { versionNumber: true },
+        })
+        const teamSettings = await prisma.emailTeamSettings.findUnique({
+          where: { teamId: ctx.teamId },
+          select: { templateApprovalRequired: true },
+        }).catch(() => null)
+        const requiresApproval = teamSettings?.templateApprovalRequired ?? false
+        const isManager = isManagerLikeRole(ctx.teamMember.role)
+        const approvalSeed = resolveTemplateApprovalSeed(requiresApproval, isManager, ctx.profileId)
+        const nextId = randomUUID()
+        const template = await prisma.emailTemplate.create({
           select: templateDetailSelect,
-          data: updateData,
+          data: {
+            id: nextId,
+            teamId: ctx.teamId,
+            createdBy: ctx.profileId,
+            versionGroupId: current.versionGroupId,
+            versionNumber: (latestVersion._max.versionNumber ?? current.versionNumber) + 1,
+            isCurrentPublished: false,
+            name: current.name,
+            subject: version.subject,
+            previewText: current.previewText,
+            mailyJson: current.mailyJson ?? Prisma.JsonNull,
+            html: version.html,
+            editorMode: current.editorMode,
+            variables: current.variables ?? Prisma.JsonNull,
+            status: "draft",
+            publishedAt: null,
+            approvalStatus: approvalSeed.approvalStatus,
+            approvedBy: approvalSeed.approvedBy,
+            approvedAt: approvalSeed.approvedAt,
+            rejectedBy: null,
+            rejectedAt: null,
+            reviewNote: null,
+          },
         })
 
         await this.recordHistory({
           templateId: template.id,
           teamId: ctx.teamId,
           actorProfileId: ctx.profileId,
-          eventType: "draft_saved",
-          description: `HTML recuperado da versão ${version.versionNumber}.0`,
-          metadata: { versionNumber: template.versionNumber, restoredFromVersionId: version.id },
+          eventType: "version_created",
+          description: `Versão ${template.versionNumber}.0 criada com HTML da versão ${version.versionNumber}.0`,
+          metadata: { versionNumber: template.versionNumber, restoredFromVersionId: version.id, sourceTemplateId: current.id },
         })
 
         return new Output(true, [`HTML da versão ${version.versionNumber}.0 recuperado no rascunho`], [], template)

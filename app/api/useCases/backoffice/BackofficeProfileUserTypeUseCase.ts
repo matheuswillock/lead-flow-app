@@ -73,6 +73,7 @@ export class BackofficeProfileUserTypeUseCase {
         })
 
         await this.repository.updateSponsorMasterId(profileId, input.sponsorMasterId)
+        await this.repository.setHasPermanentSubscription(profileId, false)
 
         return new Output(
           true,
@@ -140,6 +141,8 @@ export class BackofficeProfileUserTypeUseCase {
           )
         }
 
+        await this.repository.setHasPermanentSubscription(profileId, false)
+
         return new Output(true, ["Tipo de usuário atualizado para Comum"], [], { userType })
       }
 
@@ -165,6 +168,8 @@ export class BackofficeProfileUserTypeUseCase {
         accessExpiresAt,
         assignedByProfileId,
       })
+
+      await this.repository.setHasPermanentSubscription(profileId, false)
 
       return new Output(true, ["Tipo de usuário atualizado para Member PRO"], [], { userType })
     } catch (error) {

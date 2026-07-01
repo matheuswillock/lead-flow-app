@@ -246,6 +246,13 @@
       "type": "default",
       "enabled": true,
       "description": "ID da conversa WhatsApp - será preenchido automaticamente"
+    },
+    {
+      "key": "profileId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID do profile a ser atribuído como responsável por uma conversa WhatsApp"
     }
   ],
   "_postman_variable_scope": "environment"

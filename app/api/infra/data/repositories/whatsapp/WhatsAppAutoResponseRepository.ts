@@ -1,9 +1,13 @@
-import type {
+import {
   Prisma,
-  WhatsAppAutoResponseMatchMode,
-  WhatsAppAutoResponseRuleType,
+  type WhatsAppAutoResponseMatchMode,
+  type WhatsAppAutoResponseRuleType,
 } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+
+export function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+}
 
 export type WhatsAppAutoResponseRuleSelect = {
   id: string
@@ -112,6 +116,14 @@ export class WhatsAppAutoResponseRepository {
       select: { id: true },
     })
     return log
+  }
+
+  async updateLogOutbound(logId: string, outboundMessageId: string | undefined): Promise<void> {
+    if (!outboundMessageId) return
+    await prisma.whatsAppAutoResponseLog.update({
+      where: { id: logId },
+      data: { outboundMessageId },
+    })
   }
 
   async seedDefaultRules(configId: string): Promise<void> {

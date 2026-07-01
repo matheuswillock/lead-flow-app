@@ -18,6 +18,8 @@ export type AnalyticsData = {
   dispatches?: DispatchAnalyticsItem[]
 }
 
+export type DispatchAnalyticsStatus = "sending" | "completed" | "failed"
+
 export type DispatchAnalyticsItem = {
   id: string
   dispatchNumber: number
@@ -34,7 +36,7 @@ export type DispatchAnalyticsItem = {
   totalClicked: number
   totalBounced: number
   totalComplained: number
-  status: string
+  status: DispatchAnalyticsStatus
   rates: AnalyticsData["rates"]
 }
 

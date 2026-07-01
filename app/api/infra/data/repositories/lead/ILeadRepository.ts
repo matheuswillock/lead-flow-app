@@ -24,6 +24,20 @@ export interface ILeadRepository {
   findById(id: string): Promise<LeadRecord | null>;
   findByLeadCode(leadCode: string): Promise<Lead | null>;
   findLeadByPhoneInTeam(teamId: string, normalizedPhone: string): Promise<Pick<Lead, "id"> | null>;
+  /**
+   * Localiza ou cria um lead para o telefone dentro de uma transação com
+   * advisory lock por (teamId, normalizedPhone), evitando que mensagens
+   * inbound concorrentes do WhatsApp criem leads duplicados para o mesmo
+   * contato antes que a primeira criação seja visível para a segunda.
+   */
+  findOrCreateLeadByPhoneInTeam(params: {
+    teamId: string;
+    normalizedPhone: string;
+    leadCode: string;
+    displayName: string;
+    masterId: string;
+    conversationId: string;
+  }): Promise<{ id: string; created: boolean }>;
   findByManagerId(
     managerId: string, 
     options?: {

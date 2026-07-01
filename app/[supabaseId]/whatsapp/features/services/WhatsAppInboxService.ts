@@ -2,6 +2,14 @@ import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
 import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 class WhatsAppInboxService implements IWhatsAppInboxService {
+  private async parseJsonResponse(response: Response): Promise<unknown> {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('application/json')) {
+      throw new Error('Resposta inválida do servidor')
+    }
+    return response.json()
+  }
+
   private extractErrorMessage(output: unknown, fallback: string): string {
     if (!output || typeof output !== 'object') return fallback
     const out = output as Record<string, unknown>
@@ -17,6 +25,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       method: 'GET',
       headers: {
         'x-supabase-user-id': supabaseId,
+        'x-team-id': teamId,
       },
     })
 
@@ -24,7 +33,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       return null
     }
 
-    const output: unknown = await response.json()
+    const output: unknown = await this.parseJsonResponse(response)
     if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar a configuração do WhatsApp'))
     }
@@ -52,11 +61,12 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         method: 'GET',
         headers: {
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
       }
     )
 
-    const output: unknown = await response.json()
+    const output: unknown = await this.parseJsonResponse(response)
     if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar as conversas'))
     }
@@ -75,20 +85,22 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     params: { page?: number; limit?: number }
   ): Promise<{ messages: WhatsAppMessage[]; total: number }> {
     const searchParams = new URLSearchParams()
+    searchParams.set('conversationId', conversationId)
     if (params.page !== undefined) searchParams.set('page', String(params.page))
     if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
 
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages?${searchParams.toString()}`,
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages?${searchParams.toString()}`,
       {
         method: 'GET',
         headers: {
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
       }
     )
 
-    const output: unknown = await response.json()
+    const output: unknown = await this.parseJsonResponse(response)
     if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar as mensagens'))
     }
@@ -109,25 +121,26 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     mentionedJids?: string[]
   ): Promise<{ messageId: string }> {
     const body: Record<string, unknown> = media
-      ? { contentText: text || undefined, media }
-      : { contentText: text }
+      ? { conversationId, contentText: text || undefined, media }
+      : { conversationId, contentText: text }
     if (mentionedJids && mentionedJids.length > 0) {
       body.mentionedJids = mentionedJids
     }
 
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages`,
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         body: JSON.stringify(body),
       }
     )
 
-    const output: unknown = await response.json()
+    const output: unknown = await this.parseJsonResponse(response)
     if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível enviar a mensagem'))
     }
@@ -150,6 +163,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         method: 'GET',
         headers: {
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
       }
     )
@@ -175,6 +189,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         body: JSON.stringify(conversationId ? { conversationId } : {}),
       }
@@ -206,6 +221,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         body: JSON.stringify({ conversationId }),
       }
@@ -228,17 +244,20 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async markConversationRead(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/read`,
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversation-read`,
       {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
+        body: JSON.stringify({ conversationId }),
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await this.parseJsonResponse(response).catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível marcar a conversa como lida'))
     }
   }
@@ -256,13 +275,14 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         body: JSON.stringify({ profileId }),
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível atribuir o responsável'))
     }
   }
@@ -274,6 +294,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         method: 'GET',
         headers: {
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
       }
     )
@@ -305,13 +326,14 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         body: JSON.stringify({ leadId }),
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível vincular o lead'))
     }
   }
@@ -321,12 +343,12 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/archive`,
       {
         method: 'POST',
-        headers: { 'x-supabase-user-id': supabaseId },
+        headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível arquivar a conversa'))
     }
   }
@@ -336,12 +358,12 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/unarchive`,
       {
         method: 'POST',
-        headers: { 'x-supabase-user-id': supabaseId },
+        headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
       }
     )
 
-    if (!response.ok) {
-      const output: unknown = await response.json().catch(() => null)
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível desarquivar a conversa'))
     }
   }
@@ -351,7 +373,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}`,
       {
         method: 'DELETE',
-        headers: { 'x-supabase-user-id': supabaseId },
+        headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
       }
     )
 
@@ -373,6 +395,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         body: JSON.stringify(input),
       }

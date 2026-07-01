@@ -29,10 +29,11 @@ export async function DELETE(
     )
   }
 
-  const output = await deleteConversationUseCase.execute({ conversationId })
+  const output = await deleteConversationUseCase.execute({ conversationId, teamId })
 
   if (!output.isValid) {
-    return NextResponse.json(output, { status: 500 })
+    const status = output.errorMessages.some((m) => m.includes("não encontrada")) ? 404 : 500
+    return NextResponse.json(output, { status })
   }
 
   return new NextResponse(null, { status: 204 })

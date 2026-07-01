@@ -29,10 +29,11 @@ export async function POST(
     )
   }
 
-  const output = await archiveConversationUseCase.execute({ conversationId, archived: false })
+  const output = await archiveConversationUseCase.execute({ conversationId, teamId, archived: false })
 
   if (!output.isValid) {
-    return NextResponse.json(output, { status: 500 })
+    const status = output.errorMessages.some((m) => m.includes("não encontrada")) ? 404 : 500
+    return NextResponse.json(output, { status })
   }
 
   return NextResponse.json(output)

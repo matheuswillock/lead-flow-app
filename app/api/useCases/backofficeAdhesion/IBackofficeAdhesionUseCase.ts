@@ -26,6 +26,7 @@ export interface IBackofficeAdhesionUseCase {
   getPaymentStatus(token: string, options?: { sync?: boolean }): Promise<Output>
   processPaymentWebhook(
     event: string,
-    payment: BackofficeAdhesionPaymentWebhookInput
+    payment: BackofficeAdhesionPaymentWebhookInput,
+    options?: { deferEmailDelivery?: boolean }
   ): Promise<Output>
 }

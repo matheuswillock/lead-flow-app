@@ -5,7 +5,10 @@ import {
   WhatsAppAccessDeniedError,
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
+import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository"
 import { isManagerLikeRole } from "@/lib/roles"
+
+const teamMembersRepository = new TeamMembersRepository()
 
 interface AssignConversationInput {
   conversationId: string
@@ -22,6 +25,25 @@ class AssignConversationUseCase {
       await assertCanAccessConversation(input.access, input.conversationId)
 
       const canAssignToAnyone = input.callerIsMaster || isManagerLikeRole(input.callerRole)
+
+      if (canAssignToAnyone && input.assigneeProfileId !== input.callerProfileId) {
+        const team = await teamMembersRepository.findTeam(input.access.teamId)
+        const isAssigneeMaster = team?.masterId === input.assigneeProfileId
+        if (!isAssigneeMaster) {
+          const membership = await teamMembersRepository.findExistingMember(
+            input.access.teamId,
+            input.assigneeProfileId
+          )
+          if (!membership) {
+            return new Output(
+              false,
+              [],
+              ["Responsável inválido para este time"],
+              null
+            )
+          }
+        }
+      }
 
       if (!canAssignToAnyone) {
         if (input.assigneeProfileId !== input.callerProfileId) {

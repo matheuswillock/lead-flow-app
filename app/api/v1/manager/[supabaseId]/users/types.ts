@@ -18,6 +18,7 @@ export const CreateUserSchema = z.object({
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
   canTransferAccountLeads: z.boolean().optional(),
+  canViewAllTeams: z.boolean().optional(),
 });
 
 export const UpdateUserSchema = z.object({
@@ -34,6 +35,7 @@ export const UpdateUserSchema = z.object({
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
   canTransferAccountLeads: z.boolean().optional(),
+  canViewAllTeams: z.boolean().optional(),
 });
 
 export const AssociateOperatorSchema = z.object({

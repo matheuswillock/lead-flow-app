@@ -8,7 +8,7 @@ import { ContactListPanel } from "../components/ContactListPanel"
 import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
-import { CsvUploadDropzone } from "../components/CsvUploadDropzone"
+import { ContactImportButton } from "../components/ContactImportButton"
 
 export function ContatosContainer() {
   const { selectedListId, lists } = useContactsContext()
@@ -59,7 +59,7 @@ export function ContatosContainer() {
                       <Button size="sm" variant="outline">+ Adicionar contato</Button>
                     }
                   />
-                  <CsvUploadDropzone />
+                  <ContactImportButton />
                 </div>
               </div>
               <ContactsTable />

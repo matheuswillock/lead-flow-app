@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Braces, ChevronLeft, ChevronRight, Clock3, Lightbulb, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Braces, ChevronLeft, ChevronRight, Clock3, ImageIcon, Lightbulb, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import { analyzeEmailHtml } from "../utils/analyze-email-html";
 import { EditorFloatingPanel } from "./EditorFloatingPanel";
 import type { SidebarSection } from "./EditorStudioTypes";
 import { EmailCreationTipsPanel } from "./EmailCreationTipsPanel";
+import { EmailTemplateAssetsPanel } from "./EmailTemplateAssetsPanel";
 import { TemplateHistoryPanel } from "./TemplateHistoryPanel";
 import { VariablesPanel } from "./VariablesPanel";
 
@@ -25,6 +26,7 @@ const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   variables: "Variáveis",
   history: "Histórico",
   tips: "Dicas",
+  assets: "Imagens",
 };
 
 interface EditorSidebarProps {
@@ -129,6 +131,19 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             type="button"
             variant="outline"
             className="h-auto justify-between px-3 py-3"
+            onClick={() => setSection("assets")}
+          >
+            <span className="flex items-center gap-2">
+              <ImageIcon data-icon="inline-start" />
+              Imagens
+            </span>
+            <ChevronRight />
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto justify-between px-3 py-3"
             onClick={() => setSection("tips")}
           >
             <span className="flex items-center gap-2">
@@ -187,6 +202,7 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
           />
         ) : null}
         {section === "tips" ? <EmailCreationTipsPanel embedded /> : null}
+        {section === "assets" ? <EmailTemplateAssetsPanel embedded /> : null}
       </div>
     </EditorFloatingPanel>
   );

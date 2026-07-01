@@ -4,6 +4,7 @@ import { useState } from "react"
 import { BarChart3, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCampanhasContext } from "../context/CampanhasContext"
+import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
 import { CreditBalanceBar } from "../components/CreditBalanceBar"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
@@ -39,7 +40,7 @@ export function CampanhasContainer() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Send className="h-6 w-6" />
@@ -57,6 +58,7 @@ export function CampanhasContainer() {
       </div>
 
       <CreditBalanceBar />
+      <CampaignDispatchProgressBanner />
 
       <div className="flex gap-1 overflow-x-auto pb-1">
         {STATUS_TABS.map((tab) => (

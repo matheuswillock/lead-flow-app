@@ -891,7 +891,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
   async processPaymentWebhook(
     event: string,
-    payment: BackofficeAdhesionPaymentWebhookInput
+    payment: BackofficeAdhesionPaymentWebhookInput,
+    options?: { deferEmailDelivery?: boolean }
   ): Promise<{ processed: boolean; adhesionId?: string }> {
     if (!payment.id) {
       return { processed: false }
@@ -929,7 +930,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       const paidAt = this.resolvePaymentDate(payment) ?? new Date()
       const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
       try {
-        await this.ensureAccountForPaidAdhesion(updated)
+        await this.ensureAccountForPaidAdhesion(updated, {
+          deferEmailDelivery: options?.deferEmailDelivery,
+        })
       } catch (accountError) {
         console.error("[BackofficeAdhesionService][processPaymentWebhook][ensureAccount]", {
           adhesionId: adhesion.id,
@@ -1243,7 +1246,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   }
 
   private async ensureAccountForPaidAdhesion(
-    adhesion: BackofficeAdhesionWithRelations
+    adhesion: BackofficeAdhesionWithRelations,
+    options?: { deferEmailDelivery?: boolean }
   ): Promise<void> {
     if (adhesion.createdSupabaseId || adhesion.createdProfileId) {
       if (adhesion.createdProfileId) {
@@ -1361,7 +1365,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionNextDueDate: subscriptionEndDate,
       })
 
-      await this.sendSetPasswordEmail(adhesion, "invite", linkData)
+      if (options?.deferEmailDelivery) {
+        void this.sendSetPasswordEmail(adhesion, "invite", linkData).catch((emailError) => {
+          console.error(
+            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][deferred-email]",
+            { adhesionId: adhesion.id, error: emailError }
+          )
+        })
+      } else {
+        await this.sendSetPasswordEmail(adhesion, "invite", linkData)
+      }
     } catch (accountError) {
       await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
         console.error("[BackofficeAdhesionService][ensureAccountForPaidAdhesion][rollback]", deleteError)
