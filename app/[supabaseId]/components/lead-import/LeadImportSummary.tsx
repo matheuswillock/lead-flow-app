@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
+import { ImportProgressSummary } from "@/components/import/ImportProgressSummary";
 import { LEAD_IMPORT_FIELDS } from "@/lib/leadImport/leadImportFields";
 import { getLeadImportStatusLabel } from "@/lib/leadImport/leadImportStatus";
 import type { LeadImportMapping } from "./autoMapColumns";
@@ -19,6 +20,8 @@ interface LeadImportSummaryProps {
   mapping: LeadImportMapping;
   statusMapping: LeadStatusMapping;
   planMapping: LeadSoldPlanMapping;
+  isSubmitting: boolean;
+  importProgress?: { processed: number; total: number } | null;
   result: LeadImportResult | null;
 }
 
@@ -76,6 +79,8 @@ export function LeadImportSummary({
   mapping,
   statusMapping,
   planMapping,
+  isSubmitting,
+  importProgress,
   result,
 }: LeadImportSummaryProps) {
   const mappedFields = LEAD_IMPORT_FIELDS.filter((field) => mapping[field.key]);
@@ -193,6 +198,13 @@ export function LeadImportSummary({
         Leads que já existem no time com o mesmo e-mail ou CNPJ serão recusados e contabilizados no
         resumo final.
       </p>
+      {isSubmitting && importProgress ? (
+        <ImportProgressSummary
+          mapped={importProgress.processed}
+          total={importProgress.total}
+          label="leads importados"
+        />
+      ) : null}
     </div>
   );
 }

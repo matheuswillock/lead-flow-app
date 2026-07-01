@@ -69,6 +69,10 @@ export function PortfolioImportDialog({
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<CarteiraImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
 
   const { members: closerMembers } = useTeamClosers(supabaseId, teamId ?? undefined);
 
@@ -83,6 +87,7 @@ export function PortfolioImportDialog({
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
+    setImportProgress(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -171,14 +176,22 @@ export function PortfolioImportDialog({
     }
 
     setIsSubmitting(true);
+    setImportProgress({ processed: 0, total: mappedRows.length });
     try {
-      const importResult = await carteiraImportService.importMappedClients(mappedRows, {
-        supabaseId,
-        teamId,
-        closerId,
-        source,
-      });
+      const importResult = await carteiraImportService.importMappedClientsInBatches(
+        mappedRows,
+        {
+          supabaseId,
+          teamId,
+          closerId,
+          source,
+        },
+        {
+          onProgress: (processed, total) => setImportProgress({ processed, total }),
+        }
+      );
       setResult(importResult);
+      setImportProgress(null);
       toast.success(`Importação concluída. Criados: ${importResult.created}.`);
       if (onImportComplete) {
         await onImportComplete();
@@ -186,6 +199,7 @@ export function PortfolioImportDialog({
     } catch (error) {
       console.error("Erro ao importar clientes:", error);
       toast.error(error instanceof Error ? error.message : "Erro ao importar clientes");
+      setImportProgress(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -252,6 +266,7 @@ export function PortfolioImportDialog({
               source={source}
               onSourceChange={setSource}
               isSubmitting={isSubmitting}
+              importProgress={importProgress}
               result={result}
             />
           )}

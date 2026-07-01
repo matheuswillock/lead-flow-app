@@ -1,16 +1,13 @@
 "use client";
 
 import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContactImportFields";
+import {
+  getImportHttpErrorMessage,
+  parseImportOutputResponse,
+  runImportInBatches,
+} from "@/lib/import/importBatchClient";
 import type { ContactList, Contact } from "../context/ContatosTypes";
 import type { EmailContactImportResult } from "./IContatosService";
-
-export const IMPORT_BATCH_SIZE = 25;
-
-type OutputResponse = {
-  isValid?: boolean
-  errorMessages?: string[]
-  result?: EmailContactImportResult
-};
 
 function mergeImportResults(
   current: EmailContactImportResult,
@@ -23,36 +20,6 @@ function mergeImportResults(
     total: batch.total,
     issues: [...current.issues, ...batch.issues],
   };
-}
-
-function getImportHttpErrorMessage(status: number): string {
-  if (status === 504 || status === 502) {
-    return "A importação demorou demais e foi interrompida. Tente novamente — os contatos já importados foram salvos.";
-  }
-  if (status === 429) {
-    return "Muitas requisições em sequência. Aguarde alguns segundos e tente novamente.";
-  }
-  if (status === 403) {
-    return "Você não tem permissão para importar contatos.";
-  }
-  return "Erro ao importar contatos";
-}
-
-async function parseImportResponse(response: Response): Promise<OutputResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    if (!response.ok) {
-      throw new Error(getImportHttpErrorMessage(response.status));
-    }
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as OutputResponse;
-  } catch {
-    throw new Error(getImportHttpErrorMessage(response.status));
-  }
 }
 
 export interface IContatosService {
@@ -155,10 +122,13 @@ export class ContatosService implements IContatosService {
       body: JSON.stringify({ rows }),
     });
 
-    const data = await parseImportResponse(response);
+    const data = await parseImportOutputResponse<EmailContactImportResult>(
+      response,
+      "contatos"
+    );
     if (!response.ok || !data.isValid) {
       throw new Error(
-        data.errorMessages?.join(", ") || getImportHttpErrorMessage(response.status)
+        data.errorMessages?.join(", ") || getImportHttpErrorMessage(response.status, "contatos")
       );
     }
 
@@ -172,25 +142,19 @@ export class ContatosService implements IContatosService {
       onProgress?: (processed: number, total: number) => void
     }
   ): Promise<EmailContactImportResult> {
-    const total = rows.length;
-    let aggregated: EmailContactImportResult = {
-      imported: 0,
-      updated: 0,
-      skipped: 0,
-      total: 0,
-      issues: [],
-    };
-
-    options?.onProgress?.(0, total);
-
-    for (let index = 0; index < rows.length; index += IMPORT_BATCH_SIZE) {
-      const batch = rows.slice(index, index + IMPORT_BATCH_SIZE);
-      const batchResult = await this.importMapped(listId, batch);
-      aggregated = mergeImportResults(aggregated, batchResult);
-      options?.onProgress?.(Math.min(index + batch.length, total), total);
-    }
-
-    return aggregated;
+    return runImportInBatches({
+      rows,
+      onProgress: options?.onProgress,
+      emptyResult: {
+        imported: 0,
+        updated: 0,
+        skipped: 0,
+        total: 0,
+        issues: [],
+      },
+      importBatch: (batch) => this.importMapped(listId, batch),
+      mergeResults: mergeImportResults,
+    });
   }
 
   async getContacts(
