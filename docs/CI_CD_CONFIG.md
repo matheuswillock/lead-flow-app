@@ -28,7 +28,7 @@ jobs:
         bun-version: latest
     
     - name: Install dependencies
-      run: bun install --frozen-lockfile
+      run: bun install
     
     - name: Generate Prisma Client
       run: bun run prisma:generate
