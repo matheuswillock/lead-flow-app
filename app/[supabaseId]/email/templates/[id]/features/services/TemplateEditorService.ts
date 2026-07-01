@@ -1,5 +1,7 @@
 import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../context/TemplateEditorTypes";
-import type { ITemplateEditorService } from "./ITemplateEditorService";
+import type { ITemplateEditorService, EmailTemplateAssetUploadResult } from "./ITemplateEditorService";
+import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 type ApiOutput<T> = {
   isValid: boolean;
@@ -10,11 +12,12 @@ type ApiOutput<T> = {
 
 class TemplateEditorService implements ITemplateEditorService {
   private readonly baseUrl = "/api/v1/email/templates";
+  private readonly assetsUrl = "/api/v1/email/templates/assets";
   private readonly settingsUrl = "/api/v1/email/settings";
 
-  private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
+  private buildHeaders(supabaseId: string, teamId?: string | null, json = true): HeadersInit {
     return {
-      "Content-Type": "application/json",
+      ...(json ? { "Content-Type": "application/json" } : {}),
       "x-supabase-user-id": supabaseId,
       ...(teamId ? { "x-team-id": teamId } : {}),
     };
@@ -24,7 +27,7 @@ class TemplateEditorService implements ITemplateEditorService {
     const body = (await response.json().catch(() => null)) as ApiOutput<T> | null;
     if (!response.ok || !body?.isValid) {
       const message = body?.errorMessages?.join(", ") || fallbackMessage;
-      throw new Error(message);
+      throw new ApiRequestError(message);
     }
 
     return body.result;
@@ -221,6 +224,49 @@ class TemplateEditorService implements ITemplateEditorService {
     });
 
     return this.parseResponse<Template>(response, "Erro ao recuperar HTML da versão");
+  }
+
+  async listAssets(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ assets: EmailTemplateAssetItem[] }> {
+    const response = await fetch(this.assetsUrl, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse(response, "Erro ao listar imagens do template");
+  }
+
+  async uploadAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    file: File
+  ): Promise<EmailTemplateAssetUploadResult> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(this.assetsUrl, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId, false),
+      body: formData,
+    });
+
+    return this.parseResponse(response, "Erro ao enviar imagem");
+  }
+
+  async deleteAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    fileId: string
+  ): Promise<void> {
+    const params = new URLSearchParams({ fileId })
+    const response = await fetch(`${this.assetsUrl}?${params.toString()}`, {
+      method: "DELETE",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+
+    await this.parseResponse<null>(response, "Erro ao excluir imagem")
   }
 
   private toPayload(draft: TemplateEditorDraft) {

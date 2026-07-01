@@ -357,7 +357,10 @@ export function useTemplateEditor(
       setTemplate(updated);
       setDraft(updatedDraft);
       initialDraftRef.current = updatedDraft;
-      const versionsResult = await service.listVersions(supabaseId, templateId, activeTeamId);
+      if (updated.id !== templateId) {
+        router.replace(`/${supabaseId}/email/templates/${updated.id}`);
+      }
+      const versionsResult = await service.listVersions(supabaseId, updated.id, activeTeamId);
       setVersions(versionsResult.versions);
       toast.success("HTML da versão recuperado no rascunho");
     } catch (err) {
@@ -368,7 +371,7 @@ export function useTemplateEditor(
     } finally {
       setRestoringVersionId(null);
     }
-  }, [activeTeamId, isNewTemplate, restoringVersionId, saving, supabaseId, templateId]);
+  }, [activeTeamId, isNewTemplate, restoringVersionId, router, saving, supabaseId, templateId]);
 
   return {
     template,

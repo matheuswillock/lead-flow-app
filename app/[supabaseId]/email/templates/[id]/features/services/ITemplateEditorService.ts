@@ -1,4 +1,11 @@
 import type { Template, TemplateEditorDraft, TemplateTestRequest, TemplateVersionItem } from "../context/TemplateEditorTypes";
+import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets";
+
+export interface EmailTemplateAssetUploadResult {
+  fileId: string;
+  fileName: string;
+  publicUrl: string;
+}
 
 export interface ITemplateEditorService {
   getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }>;
@@ -65,4 +72,18 @@ export interface ITemplateEditorService {
     versionId: string,
     teamId?: string | null
   ): Promise<Template>;
+  listAssets(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ assets: EmailTemplateAssetItem[] }>;
+  uploadAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    file: File
+  ): Promise<EmailTemplateAssetUploadResult>;
+  deleteAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    fileId: string
+  ): Promise<void>;
 }
