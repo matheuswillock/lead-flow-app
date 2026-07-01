@@ -48,7 +48,6 @@ import {
   resolveMissingLeadFields,
 } from "@/lib/leadStatusTransitionFields";
 import { resolveLeadRazaoSocial } from "@/app/api/services/cnpjLookup/CnpjLookupService";
-import type { LeadRequiredDocumentType } from "@prisma/client";
 import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {

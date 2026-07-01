@@ -14,12 +14,6 @@ const upsertSchema = z.object({
 
 const patchSchema = upsertSchema.partial();
 
-function parsePositiveInt(value: string | null, fallback: number): number {
-  const parsed = Number.parseInt(value ?? "", 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return parsed;
-}
-
 export async function GET(request: NextRequest) {
   try {
     const access = await getBackofficeAccess(request);

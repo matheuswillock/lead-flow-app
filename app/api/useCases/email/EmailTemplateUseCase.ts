@@ -768,6 +768,135 @@ export class EmailTemplateUseCase {
     }
   }
 
+  async listVersions(id: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const ref = await prisma.emailTemplate.findFirst({
+        where: { id, teamId: ctx.teamId, isArchived: false },
+        select: { versionGroupId: true },
+      })
+
+      if (!ref) {
+        return new Output(false, [], ["Template não encontrado"], null)
+      }
+
+      const versions = await prisma.emailTemplate.findMany({
+        where: {
+          teamId: ctx.teamId,
+          versionGroupId: ref.versionGroupId,
+          status: "published",
+          isArchived: false,
+        },
+        select: {
+          id: true,
+          versionNumber: true,
+          name: true,
+          subject: true,
+          publishedAt: true,
+          approvedAt: true,
+          createdAt: true,
+          html: true,
+          creator: { select: { id: true, fullName: true, email: true } },
+          approver: { select: { id: true, fullName: true, email: true } },
+        },
+        orderBy: { versionNumber: "desc" },
+      })
+
+      return new Output(true, [], [], { versions })
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][listVersions]", error)
+      return new Output(false, [], ["Erro ao listar versões do template"], null)
+    }
+  }
+
+  async restoreVersion(id: string, versionId: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const current = await prisma.emailTemplate.findFirst({
+        where: { id, teamId: ctx.teamId, isArchived: false },
+        select: {
+          id: true,
+          versionGroupId: true,
+          status: true,
+          versionNumber: true,
+        },
+      })
+
+      if (!current) {
+        return new Output(false, [], ["Template não encontrado"], null)
+      }
+
+      const version = await prisma.emailTemplate.findFirst({
+        where: {
+          id: versionId,
+          teamId: ctx.teamId,
+          versionGroupId: current.versionGroupId,
+          status: "published",
+          isArchived: false,
+        },
+        select: { id: true, html: true, subject: true, versionNumber: true },
+      })
+
+      if (!version?.html?.trim()) {
+        return new Output(false, [], ["Versão não encontrada ou sem HTML"], null)
+      }
+
+      const updateData = {
+        html: version.html,
+        subject: version.subject,
+      }
+
+      if (current.status === "published") {
+        const existingDraft = await prisma.emailTemplate.findFirst({
+          where: {
+            teamId: ctx.teamId,
+            versionGroupId: current.versionGroupId,
+            isArchived: false,
+            status: "draft",
+          },
+          select: { id: true },
+          orderBy: { versionNumber: "desc" },
+        })
+
+        const targetId = existingDraft?.id ?? current.id
+        const template = await prisma.emailTemplate.update({
+          where: { id: targetId },
+          select: templateDetailSelect,
+          data: updateData,
+        })
+
+        await this.recordHistory({
+          templateId: template.id,
+          teamId: ctx.teamId,
+          actorProfileId: ctx.profileId,
+          eventType: "draft_saved",
+          description: `HTML recuperado da versão ${version.versionNumber}.0`,
+          metadata: { versionNumber: template.versionNumber, restoredFromVersionId: version.id },
+        })
+
+        return new Output(true, [`HTML da versão ${version.versionNumber}.0 recuperado no rascunho`], [], template)
+      }
+
+      const template = await prisma.emailTemplate.update({
+        where: { id: current.id },
+        select: templateDetailSelect,
+        data: updateData,
+      })
+
+      await this.recordHistory({
+        templateId: template.id,
+        teamId: ctx.teamId,
+        actorProfileId: ctx.profileId,
+        eventType: "draft_saved",
+        description: `HTML recuperado da versão ${version.versionNumber}.0`,
+        metadata: { versionNumber: template.versionNumber, restoredFromVersionId: version.id },
+      })
+
+      return new Output(true, [`HTML da versão ${version.versionNumber}.0 recuperado`], [], template)
+    } catch (error) {
+      console.error("[EmailTemplateUseCase][restoreVersion]", error)
+      return new Output(false, [], ["Erro ao recuperar HTML da versão"], null)
+    }
+  }
+
   async archive(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailTemplate.findFirst({

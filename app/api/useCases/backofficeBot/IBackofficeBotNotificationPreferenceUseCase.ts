@@ -1,4 +1,3 @@
-import type { Prisma } from "@prisma/client";
 import type { Output } from "@/lib/output";
 
 export interface IBackofficeBotNotificationPreferenceUseCase {

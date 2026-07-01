@@ -24,7 +24,7 @@ function formatCurrency(value: number | null) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function ProposalRowActions({ row, onOpen }: { row: AssociateProposalRow; onOpen: () => void }) {
+function ProposalRowActions({ onOpen }: { row: AssociateProposalRow; onOpen: () => void }) {
   return (
     <Button size="sm" variant="outline" onClick={onOpen}>
       Detalhes

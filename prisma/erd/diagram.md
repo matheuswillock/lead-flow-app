@@ -500,6 +500,14 @@ failed failed
     
 
 
+        email_campaign_dispatch_status {
+            sending sending
+completed completed
+failed failed
+        }
+    
+
+
         email_log_status {
             queued queued
 sent sent
@@ -1496,6 +1504,29 @@ failed failed
     }
   
 
+  "corretor_studio_email_campaign_dispatches" {
+    String id "🗝️"
+    Int dispatchNumber 
+    Int templateVersionNumber 
+    String templateName 
+    String templateSubject 
+    String templateHtml 
+    String contactListName "❓"
+    String cdpSegmentSlug "❓"
+    DateTime dispatchedAt 
+    Int totalRecipients 
+    Int totalSent 
+    Int totalDelivered 
+    Int totalOpened 
+    Int totalClicked 
+    Int totalBounced 
+    Int totalComplained 
+    EmailCampaignDispatchStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_logs" {
     String id "🗝️"
     String resendEmailId "❓"
@@ -2170,10 +2201,17 @@ failed failed
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignDispatchStatus" : "enum:status"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_campaigns : "campaign"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_templates : "template"
+    "corretor_studio_email_campaign_dispatches" }o--|o corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_profiles : "triggerer"
     "corretor_studio_email_logs" |o--|| "EmailLogCategory" : "enum:category"
     "corretor_studio_email_logs" |o--|| "EmailLogStatus" : "enum:status"
     "corretor_studio_email_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_logs" }o--|o corretor_studio_email_campaigns : "campaign"
+    "corretor_studio_email_logs" }o--|o corretor_studio_email_campaign_dispatches : "dispatch"
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"

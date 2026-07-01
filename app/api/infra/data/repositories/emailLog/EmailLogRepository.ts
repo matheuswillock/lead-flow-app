@@ -18,6 +18,7 @@ export class EmailLogRepository implements IEmailLogRepository {
         recipientEmail: true,
         recipientName: true,
         campaignId: true,
+        dispatchId: true,
       },
     })
   }
@@ -99,6 +100,15 @@ export class EmailLogRepository implements IEmailLogRepository {
               Object.entries(campaignIncrements).map(([k, v]) => [k, { increment: v }])
             ),
           })
+
+          if (log.dispatchId) {
+            await tx.emailCampaignDispatch.update({
+              where: { id: log.dispatchId },
+              data: Object.fromEntries(
+                Object.entries(campaignIncrements).map(([k, v]) => [k, { increment: v }])
+              ),
+            })
+          }
         }
       }
     })
@@ -110,6 +120,7 @@ export class EmailLogRepository implements IEmailLogRepository {
         id: input.id,
         teamId: input.teamId,
         campaignId: input.campaignId ?? null,
+        dispatchId: input.dispatchId ?? null,
         recipientEmail: input.recipientEmail,
         recipientName: input.recipientName ?? null,
         subject: input.subject,

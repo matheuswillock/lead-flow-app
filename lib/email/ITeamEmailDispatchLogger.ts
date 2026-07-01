@@ -9,6 +9,7 @@ export interface CreateTeamEmailLogInput {
   sourceType?: string | null
   sourceId?: string | null
   campaignId?: string | null
+  dispatchId?: string | null
 }
 
 export interface ITeamEmailDispatchLogger {

@@ -1,7 +1,7 @@
 import { Output } from "@/lib/output"
 import type { IWhatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { normalizePhone, buildPeriodKey, normalizeRemoteJid, resolveNormalizedPhone, isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
+import { buildPeriodKey, normalizeRemoteJid, resolveNormalizedPhone, isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
 import {
   buildMessagePreview,
   normalizeMessageStatus,

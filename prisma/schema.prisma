@@ -502,6 +502,14 @@ enum EmailCampaignStatus {
   @@map("email_campaign_status")
 }
 
+enum EmailCampaignDispatchStatus {
+  sending
+  completed
+  failed
+
+  @@map("email_campaign_dispatch_status")
+}
+
 enum EmailLogStatus {
   queued
   sent
@@ -643,6 +651,7 @@ model Profile {
   emailTemplateHistory     EmailTemplateHistory[]   @relation("EmailTemplateHistoryActor")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
+  emailCampaignDispatchesTriggered EmailCampaignDispatch[] @relation("EmailCampaignDispatchTriggerer")
 
   // Backoffice subscriptions
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
@@ -1496,6 +1505,7 @@ model Team {
   emailTemplates    EmailTemplate[]    @relation("TeamEmailTemplates")
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
+  emailCampaignDispatches EmailCampaignDispatch[] @relation("TeamEmailCampaignDispatches")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
   emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
@@ -1848,6 +1858,7 @@ model EmailTemplate {
   versions     EmailTemplate[] @relation("EmailTemplateVersionGroup")
   history      EmailTemplateHistory[]
   campaigns EmailCampaign[]
+  campaignDispatches EmailCampaignDispatch[]
 
   @@index([teamId, isArchived])
   @@index([teamId, approvalStatus])
@@ -1895,6 +1906,7 @@ model EmailContactList {
   creator   Profile         @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   contacts  EmailContact[]
   campaigns EmailCampaign[]
+  campaignDispatches EmailCampaignDispatch[]
 
   @@index([teamId, isArchived])
   @@index([createdBy])
@@ -1949,6 +1961,7 @@ model EmailCampaign {
   template    EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
   contactList EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: Restrict)
   logs        EmailLog[]
+  dispatches  EmailCampaignDispatch[]
 
   @@index([teamId, status])
   @@index([teamId, scheduledAt])
@@ -1956,10 +1969,50 @@ model EmailCampaign {
   @@map("corretor_studio_email_campaigns")
 }
 
+model EmailCampaignDispatch {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  campaignId            String                      @db.Uuid
+  teamId                String                      @db.Uuid
+  dispatchNumber        Int
+  templateId            String                      @db.Uuid
+  templateVersionNumber Int
+  templateName          String                      @db.Text
+  templateSubject       String                      @db.Text
+  templateHtml          String                      @db.Text
+  contactListId         String?                     @db.Uuid
+  contactListName       String?                     @db.Text
+  cdpSegmentSlug        String?                     @db.Text
+  dispatchedAt          DateTime                    @default(now()) @db.Timestamptz(6)
+  triggeredBy           String                      @db.Uuid
+  totalRecipients       Int                         @default(0)
+  totalSent             Int                         @default(0)
+  totalDelivered        Int                         @default(0)
+  totalOpened           Int                         @default(0)
+  totalClicked          Int                         @default(0)
+  totalBounced          Int                         @default(0)
+  totalComplained       Int                         @default(0)
+  status                EmailCampaignDispatchStatus @default(sending)
+  createdAt             DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime                    @updatedAt @db.Timestamptz(6)
+
+  campaign    EmailCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  team        Team              @relation("TeamEmailCampaignDispatches", fields: [teamId], references: [id], onDelete: Cascade)
+  template    EmailTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  contactList EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: SetNull)
+  triggerer   Profile           @relation("EmailCampaignDispatchTriggerer", fields: [triggeredBy], references: [id], onDelete: Restrict)
+  logs        EmailLog[]
+
+  @@unique([campaignId, dispatchNumber])
+  @@index([teamId, dispatchedAt(sort: Desc)])
+  @@index([campaignId, dispatchedAt(sort: Desc)])
+  @@map("corretor_studio_email_campaign_dispatches")
+}
+
 model EmailLog {
   id             String           @id @default(uuid()) @db.Uuid
   teamId         String           @db.Uuid
   campaignId     String?          @db.Uuid
+  dispatchId     String?          @db.Uuid
   resendEmailId  String?          @unique @db.Text
   recipientEmail String           @db.Text
   recipientName  String?          @db.Text
@@ -1977,12 +2030,14 @@ model EmailLog {
   createdAt      DateTime         @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
 
-  team     Team           @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
-  campaign EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  team     Team                  @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
+  campaign EmailCampaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  dispatch EmailCampaignDispatch? @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
   events   EmailEvent[]
 
   @@index([teamId, status])
   @@index([teamId, campaignId])
+  @@index([campaignId, dispatchId])
   @@index([teamId, category, sentAt(sort: Desc)], map: "corretor_studio_email_logs_team_category_sent_idx")
   @@index([recipientEmail])
   @@index([sentAt(sort: Desc)])

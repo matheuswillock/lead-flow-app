@@ -29,18 +29,36 @@ export class EmailCampaignUseCase {
   private recipientService = new EmailCampaignRecipientService()
   private creditService = new EmailCreditService()
 
-  private async findCurrentPublishedTemplate(templateId: string, teamId: string) {
+  private async resolvePublishedTemplate(templateId: string, teamId: string) {
+    const ref = await prisma.emailTemplate.findFirst({
+      where: { id: templateId, teamId, isArchived: false },
+      select: { versionGroupId: true },
+    })
+    if (!ref) return null
+
     return prisma.emailTemplate.findFirst({
       where: {
-        id: templateId,
         teamId,
-        isArchived: false,
-        approvalStatus: "approved",
+        versionGroupId: ref.versionGroupId,
         status: "published",
         isCurrentPublished: true,
+        approvalStatus: "approved",
+        isArchived: false,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        subject: true,
+        html: true,
+        variables: true,
+        versionNumber: true,
+      },
     })
+  }
+
+  private async findCurrentPublishedTemplate(templateId: string, teamId: string) {
+    const template = await this.resolvePublishedTemplate(templateId, teamId)
+    return template ? { id: template.id } : null
   }
 
   private async countActiveRecipients(
@@ -347,9 +365,8 @@ export class EmailCampaignUseCase {
   async send(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const campaign = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
+        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "sent"] } },
         include: {
-          template: { select: { id: true, subject: true, html: true, variables: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
           team: { select: { master: { select: { id: true, timezone: true } } } },
         },
@@ -363,11 +380,11 @@ export class EmailCampaignUseCase {
       }
 
       if (!campaign) {
-        return new Output(false, [], ["Campanha não encontrada ou já foi enviada"], null)
+        return new Output(false, [], ["Campanha não encontrada ou não pode ser disparada"], null)
       }
 
-      const currentTemplate = await this.findCurrentPublishedTemplate(campaign.templateId, ctx.teamId)
-      if (!currentTemplate) {
+      const publishedTemplate = await this.resolvePublishedTemplate(campaign.templateId, ctx.teamId)
+      if (!publishedTemplate) {
         return new Output(
           false,
           [],
@@ -413,11 +430,11 @@ export class EmailCampaignUseCase {
         }
       }
 
-      if (!campaign.template.html) {
+      if (!publishedTemplate.html) {
         return new Output(false, [], ["Template não possui HTML. Edite o template antes de disparar"], null)
       }
 
-      const templateHtml = inlineEmailHtml(campaign.template.html)
+      const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
       const masterId = campaign.team.master.id
       const hasCredits = await this.creditService.hasEnoughCredits(masterId)
@@ -431,9 +448,9 @@ export class EmailCampaignUseCase {
         contactListId: campaign.contactListId,
         cdpSegmentSlug: campaign.cdpSegmentSlug,
         template: {
-          subject: campaign.template.subject,
+          subject: publishedTemplate.subject,
           html: templateHtml,
-          variables: campaign.template.variables,
+          variables: publishedTemplate.variables,
         },
         teamSettings,
         masterTimezone: campaign.team.master.timezone,
@@ -467,15 +484,35 @@ export class EmailCampaignUseCase {
         )
       }
 
-      // Marcar como sending de forma atômica para evitar envios duplicados concorrentes
       const lockResult = await prisma.emailCampaign.updateMany({
-        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
+        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "sent"] } },
         data: { status: "sending" },
       })
 
       if (lockResult.count === 0) {
         return new Output(false, [], ["Campanha não encontrada ou já está sendo enviada"], null)
       }
+
+      const dispatchNumber = campaign.dispatchCount + 1
+      const dispatchRecord = await prisma.emailCampaignDispatch.create({
+        data: {
+          id: randomUUID(),
+          campaignId: campaign.id,
+          teamId: ctx.teamId,
+          dispatchNumber,
+          templateId: publishedTemplate.id,
+          templateVersionNumber: publishedTemplate.versionNumber,
+          templateName: publishedTemplate.name,
+          templateSubject: publishedTemplate.subject,
+          templateHtml,
+          contactListId: campaign.contactListId,
+          contactListName: campaign.contactList?.name ?? null,
+          cdpSegmentSlug: campaign.cdpSegmentSlug,
+          triggeredBy: ctx.profileId,
+          totalRecipients: dispatchInput.recipients.length,
+          status: "sending",
+        },
+      })
 
       const recipientsList = dispatchInput.recipients
       const { globalDefaults, templateVariables, from, replyTo } = dispatchInput
@@ -492,6 +529,7 @@ export class EmailCampaignUseCase {
           const logId = await teamEmailDispatchLogger.createQueuedTeamEmailLog({
             teamId: ctx.teamId,
             campaignId: campaign.id,
+            dispatchId: dispatchRecord.id,
             recipientEmail: recipient.email,
             recipientName: recipient.name,
             subject: renderedSubject,
@@ -537,16 +575,28 @@ export class EmailCampaignUseCase {
         await this.creditService.deductCredits(masterId, dispatchResult.sent)
       }
 
-      await prisma.emailCampaign.update({
-        where: { id },
-        data: {
-          status: "sent",
-          sentAt: new Date(),
-          totalRecipients: recipientsList.length,
-          totalSent: dispatchResult.sent,
-          dispatchCount: { increment: 1 },
-        },
-      })
+      const dispatchStatus =
+        dispatchResult.sent === 0 ? "failed" : dispatchResult.failed > 0 ? "completed" : "completed"
+
+      await prisma.$transaction([
+        prisma.emailCampaignDispatch.update({
+          where: { id: dispatchRecord.id },
+          data: {
+            totalSent: dispatchResult.sent,
+            status: dispatchStatus,
+          },
+        }),
+        prisma.emailCampaign.update({
+          where: { id },
+          data: {
+            status: "sent",
+            sentAt: new Date(),
+            totalRecipients: recipientsList.length,
+            totalSent: { increment: dispatchResult.sent },
+            dispatchCount: { increment: 1 },
+          },
+        }),
+      ])
 
       return new Output(
         true,
@@ -556,6 +606,8 @@ export class EmailCampaignUseCase {
           sent: dispatchResult.sent,
           failed: dispatchResult.failed,
           total: recipientsList.length,
+          dispatchId: dispatchRecord.id,
+          dispatchNumber,
         }
       )
     } catch (error) {

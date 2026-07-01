@@ -9,6 +9,7 @@ export class TeamEmailDispatchLogger implements ITeamEmailDispatchLogger {
       id,
       teamId: input.teamId,
       campaignId: input.campaignId,
+      dispatchId: input.dispatchId,
       recipientEmail: input.recipientEmail,
       recipientName: input.recipientName,
       subject: input.subject,

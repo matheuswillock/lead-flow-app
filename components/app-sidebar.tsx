@@ -89,7 +89,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const pathname = usePathname();
   const { user } = useUserContext();
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster, activeRole, activeFunctions } = useTeamContext();
-  const { hasAccess, isBeta, showsBetaLabel } = useFeatureAccess();
+  const { hasAccess, showsBetaLabel } = useFeatureAccess();
   const isManager = activeRole === "manager";
   const isCloser = activeFunctions.includes("CLOSER");
   const isSdr = activeFunctions.includes("SDR");
@@ -138,7 +138,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CONTACTS },
     { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
     { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL_HISTORY },
-    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_ANALYTICS },
     { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
   ];
 

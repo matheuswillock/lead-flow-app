@@ -60,6 +60,26 @@ export interface TemplateHistoryItem {
   } | null;
 }
 
+export interface TemplateVersionItem {
+  id: string;
+  versionNumber: number;
+  name: string;
+  subject: string;
+  publishedAt: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  creator: {
+    id: string;
+    fullName: string | null;
+    email: string | null;
+  };
+  approver: {
+    id: string;
+    fullName: string | null;
+    email: string | null;
+  } | null;
+}
+
 export interface TemplateEditorDraft {
   name: string;
   subject: string;

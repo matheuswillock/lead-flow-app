@@ -1,12 +1,14 @@
 "use client"
 
-import { Send } from "lucide-react"
+import { useState } from "react"
+import { BarChart3, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { CreditBalanceBar } from "../components/CreditBalanceBar"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
 import { CampaignEditDialog } from "../components/CampaignEditDialog"
+import { CampaignAnalyticsDialog } from "../components/analytics/CampaignAnalyticsDialog"
 
 const STATUS_TABS = [
   { value: "", label: "Todas" },
@@ -20,6 +22,21 @@ const STATUS_TABS = [
 
 export function CampanhasContainer() {
   const { statusFilter, handleStatusFilter, openWizard } = useCampanhasContext()
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [analyticsCampaign, setAnalyticsCampaign] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+
+  function openGeneralAnalytics() {
+    setAnalyticsCampaign(null)
+    setAnalyticsOpen(true)
+  }
+
+  function openCampaignAnalytics(campaign: { id: string; name: string }) {
+    setAnalyticsCampaign(campaign)
+    setAnalyticsOpen(true)
+  }
 
   return (
     <div className="space-y-6">
@@ -28,9 +45,15 @@ export function CampanhasContainer() {
           <Send className="h-6 w-6" />
           <h1 className="text-2xl font-semibold">Campanhas</h1>
         </div>
-        <Button size="sm" onClick={() => void openWizard()}>
-          + Nova Campanha
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={openGeneralAnalytics}>
+            <BarChart3 data-icon="inline-start" />
+            Analytics
+          </Button>
+          <Button size="sm" onClick={() => void openWizard()}>
+            + Nova Campanha
+          </Button>
+        </div>
       </div>
 
       <CreditBalanceBar />
@@ -51,9 +74,15 @@ export function CampanhasContainer() {
         ))}
       </div>
 
-      <CampaignList />
+      <CampaignList onOpenAnalytics={openCampaignAnalytics} />
       <CampaignCreateWizard />
       <CampaignEditDialog />
+      <CampaignAnalyticsDialog
+        open={analyticsOpen}
+        onOpenChange={setAnalyticsOpen}
+        campaignId={analyticsCampaign?.id}
+        campaignName={analyticsCampaign?.name}
+      />
     </div>
   )
 }

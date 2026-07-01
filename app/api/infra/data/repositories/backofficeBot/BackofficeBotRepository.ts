@@ -3,7 +3,6 @@ import type {
   BackofficeBotAuthChallengeStatus,
   BackofficeBotChannelStatus,
   BackofficeBotEventOutboxStatus,
-  BackofficeBotMessageDirection,
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";

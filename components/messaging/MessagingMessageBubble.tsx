@@ -87,7 +87,6 @@ function MessagingLinkPreviewCard({
       )}
     >
       {preview.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={preview.imageUrl} alt="" className="max-h-32 w-full object-cover" />
       ) : null}
       <div className="flex flex-col gap-0.5 p-2">
@@ -229,7 +228,6 @@ export function MessagingMessageBubble({
                 className="overflow-hidden rounded-md"
                 onClick={() => setLightboxOpen(true)}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={resolvedMediaUrl}
                   alt={message.caption ?? "Imagem"}
@@ -344,7 +342,6 @@ export function MessagingMessageBubble({
           onClick={() => setLightboxOpen(false)}
           aria-label="Fechar visualização"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={resolvedMediaUrl}
             alt={message.caption ?? "Imagem"}

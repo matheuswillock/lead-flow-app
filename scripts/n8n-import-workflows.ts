@@ -92,6 +92,15 @@ function publishWorkflows(): void {
   }
 }
 
+function restartN8n(): void {
+  const restarted = run("docker", ["restart", CONTAINER]);
+  if (!restarted.ok) {
+    console.warn(`[n8n:import] Falha ao reiniciar ${CONTAINER}: ${restarted.output}`);
+    return;
+  }
+  console.info(`[n8n:import] Container ${CONTAINER} reiniciado — aguarde ~15s para webhooks ativos.`);
+}
+
 function main(): void {
   ensureContainerRunning();
 
@@ -105,6 +114,7 @@ function main(): void {
   }
 
   publishWorkflows();
+  restartN8n();
   console.info("[n8n:import] Concluído.");
 }
 

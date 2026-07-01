@@ -25,7 +25,6 @@ export function LinkPreviewCard({ preview, className, variant = "inbound" }: Lin
       )}
     >
       {preview.imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={preview.imageUrl}
           alt=""

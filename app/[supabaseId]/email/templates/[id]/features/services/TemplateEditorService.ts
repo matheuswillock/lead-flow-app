@@ -179,6 +179,34 @@ class TemplateEditorService implements ITemplateEditorService {
     await this.parseResponse<null>(response, "Erro ao enviar email de teste");
   }
 
+  async listVersions(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<{ versions: import("../context/TemplateEditorTypes").TemplateVersionItem[] }> {
+    const response = await fetch(`${this.baseUrl}/${templateId}/versions`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse(response, "Erro ao listar versões do template");
+  }
+
+  async restoreVersion(
+    supabaseId: string,
+    templateId: string,
+    versionId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    const response = await fetch(`${this.baseUrl}/${templateId}/restore-version`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify({ versionId }),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao recuperar HTML da versão");
+  }
+
   private toPayload(draft: TemplateEditorDraft) {
     return {
       name: draft.name,
