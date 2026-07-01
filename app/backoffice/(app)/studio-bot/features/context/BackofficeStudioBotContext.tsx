@@ -78,6 +78,9 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isTestingPing, setIsTestingPing] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [isReconnecting, setIsReconnecting] = useState(false)
+  const [isSyncingProfile, setIsSyncingProfile] = useState(false)
   const [isLoadingUserLinks, setIsLoadingUserLinks] = useState(false)
   const [isRevokingLink, setIsRevokingLink] = useState(false)
   const [isLoadingAuthChallenges, setIsLoadingAuthChallenges] = useState(false)
@@ -166,6 +169,71 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       setIsTestingPing(false)
     }
   }, [canManage, service])
+
+  const uploadChannelAvatar = useCallback(
+    async (file: File) => {
+      if (!canManage) return false
+      setIsUploadingAvatar(true)
+      try {
+        const output = await service.uploadChannelAvatar(file)
+        if (!output.isValid) {
+          toast.error(output.errorMessages?.[0] ?? "Erro ao enviar avatar")
+          return false
+        }
+        const updated = output.result?.channel as BackofficeStudioBotChannel | undefined
+        if (updated) setChannel(updated)
+        toast.success(output.successMessages?.[0] ?? "Avatar atualizado")
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao enviar avatar")
+        return false
+      } finally {
+        setIsUploadingAvatar(false)
+      }
+    },
+    [canManage, service]
+  )
+
+  const reconnectChannel = useCallback(async () => {
+    if (!canManage) return false
+    setIsReconnecting(true)
+    try {
+      const output = await service.reconnectChannel()
+      if (!output.isValid) {
+        toast.error(output.errorMessages?.[0] ?? "Erro ao reconectar canal")
+        return false
+      }
+      const updated = output.result?.channel as BackofficeStudioBotChannel | undefined
+      if (updated) setChannel(updated)
+      toast.success("Reconexão Evolution solicitada")
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao reconectar canal")
+      return false
+    } finally {
+      setIsReconnecting(false)
+    }
+  }, [canManage, service])
+
+  const syncChannelProfile = useCallback(async () => {
+    if (!canManage) return false
+    setIsSyncingProfile(true)
+    try {
+      const output = await service.syncChannelProfile()
+      if (!output.isValid) {
+        toast.error(output.errorMessages?.[0] ?? "Erro ao sincronizar perfil")
+        return false
+      }
+      toast.success(output.successMessages?.[0] ?? "Sincronização solicitada")
+      await loadChannel()
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao sincronizar perfil")
+      return false
+    } finally {
+      setIsSyncingProfile(false)
+    }
+  }, [canManage, loadChannel, service])
 
   const loadConversations = useCallback(async () => {
     const requestId = ++conversationsRequestRef.current
@@ -327,6 +395,9 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
     isLoadingMessages,
     isSavingProfile,
     isTestingPing,
+    isUploadingAvatar,
+    isReconnecting,
+    isSyncingProfile,
     userLinks,
     userLinksPagination,
     isLoadingUserLinks,
@@ -341,6 +412,9 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
     updateChannelProfile,
     updateChannel,
     testPing,
+    uploadChannelAvatar,
+    reconnectChannel,
+    syncChannelProfile,
     setConversationsFilters,
     setConversationsPage,
     loadConversations,

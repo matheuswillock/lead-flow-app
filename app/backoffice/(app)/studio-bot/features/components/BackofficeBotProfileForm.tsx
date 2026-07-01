@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -10,15 +10,19 @@ import { Textarea } from "@/components/ui/textarea"
 import type { BackofficeStudioBotChannel } from "../context/BackofficeStudioBotTypes"
 import { useBackofficeStudioBot } from "../context/BackofficeStudioBotHook"
 
+const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"]
+
 interface Props {
   channel: BackofficeStudioBotChannel | null
   disabled?: boolean
 }
 
 export function BackofficeBotProfileForm({ channel, disabled = false }: Props) {
-  const { updateChannelProfile, isSavingProfile, canManage } = useBackofficeStudioBot()
+  const { updateChannelProfile, uploadChannelAvatar, isSavingProfile, isUploadingAvatar, canManage } =
+    useBackofficeStudioBot()
   const [displayName, setDisplayName] = useState("Bethânia")
   const [aboutText, setAboutText] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!channel) return
@@ -26,7 +30,7 @@ export function BackofficeBotProfileForm({ channel, disabled = false }: Props) {
     setAboutText(channel.aboutText ?? "")
   }, [channel])
 
-  const isDisabled = disabled || !canManage || isSavingProfile
+  const isDisabled = disabled || !canManage || isSavingProfile || isUploadingAvatar
   const initials = displayName
     .split(" ")
     .slice(0, 2)
@@ -40,20 +44,52 @@ export function BackofficeBotProfileForm({ channel, disabled = false }: Props) {
     await updateChannelProfile({ displayName, aboutText })
   }
 
+  async function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+      return
+    }
+    await uploadChannelAvatar(file)
+    event.target.value = ""
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Avatar className="size-16">
           {channel?.avatarUrl ? (
             <AvatarImage src={channel.avatarUrl} alt={displayName} />
           ) : null}
           <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
           <span className="text-sm font-medium text-foreground">Avatar do canal</span>
-          <span className="text-xs text-muted-foreground">
-            Upload de avatar será disponibilizado em versão futura.
-          </span>
+          <span className="text-xs text-muted-foreground">JPEG, PNG ou WebP.</span>
+          {canManage ? (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ALLOWED_AVATAR_TYPES.join(",")}
+                className="hidden"
+                disabled={isDisabled}
+                onChange={(e) => void handleAvatarChange(e)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isDisabled}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isUploadingAvatar ? (
+                  <Loader2 className="animate-spin" data-icon="inline-start" />
+                ) : null}
+                {isUploadingAvatar ? "Enviando..." : "Enviar avatar"}
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 

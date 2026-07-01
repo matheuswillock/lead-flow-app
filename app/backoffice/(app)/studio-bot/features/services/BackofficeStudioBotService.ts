@@ -43,6 +43,26 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
     return res.json() as Promise<ApiOutput<{ status: number; ok: boolean }>>
   }
 
+  async uploadChannelAvatar(file: File) {
+    const formData = new FormData()
+    formData.append("file", file)
+    const res = await fetch("/api/v1/backoffice/bot/channel/avatar", {
+      method: "POST",
+      body: formData,
+    })
+    return res.json() as Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
+  }
+
+  async reconnectChannel() {
+    const res = await fetch("/api/v1/backoffice/bot/channel/reconnect", { method: "POST" })
+    return res.json() as Promise<ApiOutput<{ channel: BackofficeStudioBotChannel; status: number }>>
+  }
+
+  async syncChannelProfile() {
+    const res = await fetch("/api/v1/backoffice/bot/channel/sync-profile", { method: "POST" })
+    return res.json() as Promise<ApiOutput<{ ok: boolean; status: number }>>
+  }
+
   async listConversations(
     filters: BackofficeStudioBotConversationsFilters,
     pagination: { page: number; pageSize: number }

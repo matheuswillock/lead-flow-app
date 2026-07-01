@@ -25,6 +25,9 @@ export interface IBackofficeStudioBotService {
     form: BackofficeStudioBotProfileFormData
   ): Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
   testPing(): Promise<ApiOutput<{ status: number; ok: boolean }>>
+  uploadChannelAvatar(file: File): Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
+  reconnectChannel(): Promise<ApiOutput<{ channel: BackofficeStudioBotChannel; status: number }>>
+  syncChannelProfile(): Promise<ApiOutput<{ ok: boolean; status: number }>>
   listConversations(
     filters: BackofficeStudioBotConversationsFilters,
     pagination: { page: number; pageSize: number }

@@ -1,12 +1,11 @@
 "use client"
 
 import { useEffect } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
@@ -21,9 +20,13 @@ export function BackofficeStudioBotCanalContainer() {
     channel,
     isLoadingChannel,
     isTestingPing,
+    isReconnecting,
+    isSyncingProfile,
     canManage,
     loadChannel,
     testPing,
+    reconnectChannel,
+    syncChannelProfile,
     updateChannel,
     isSavingProfile,
   } = useBackofficeStudioBot()
@@ -77,17 +80,43 @@ export function BackofficeStudioBotCanalContainer() {
                 </div>
               ) : null}
               {canManage ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isTestingPing}
-                  onClick={() => void testPing()}
-                >
-                  {isTestingPing ? (
-                    <Loader2 className="animate-spin" data-icon="inline-start" />
-                  ) : null}
-                  {isTestingPing ? "Testando..." : "Testar ping N8N"}
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isTestingPing || isReconnecting || isSyncingProfile}
+                    onClick={() => void testPing()}
+                  >
+                    {isTestingPing ? (
+                      <Loader2 className="animate-spin" data-icon="inline-start" />
+                    ) : null}
+                    {isTestingPing ? "Testando..." : "Testar ping N8N"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isReconnecting || isTestingPing || isSyncingProfile}
+                    onClick={() => void reconnectChannel()}
+                  >
+                    {isReconnecting ? (
+                      <Loader2 className="animate-spin" data-icon="inline-start" />
+                    ) : (
+                      <RefreshCw data-icon="inline-start" />
+                    )}
+                    {isReconnecting ? "Reconectando..." : "Reconectar Evolution"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSyncingProfile || isTestingPing || isReconnecting}
+                    onClick={() => void syncChannelProfile()}
+                  >
+                    {isSyncingProfile ? (
+                      <Loader2 className="animate-spin" data-icon="inline-start" />
+                    ) : null}
+                    {isSyncingProfile ? "Sincronizando..." : "Sincronizar perfil no WhatsApp"}
+                  </Button>
+                </div>
               ) : null}
             </CardContent>
           </Card>
@@ -139,10 +168,6 @@ export function BackofficeStudioBotCanalContainer() {
                   </Button>
                 ) : null}
               </form>
-              <Separator className="my-4" />
-              <p className="text-xs text-muted-foreground">
-                Reconexão Evolution e upload de avatar serão adicionados em versões futuras.
-              </p>
             </CardContent>
           </Card>
         </div>

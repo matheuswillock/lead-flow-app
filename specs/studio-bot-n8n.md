@@ -142,7 +142,7 @@ Toda mutação revalida permissões no backend — **nunca confiar só no N8N**.
 
 ### Desenvolvimento local — N8N (Docker)
 
-Espelha o padrão já estabelecido pela **Evolution API** no repositório (`docker-compose.evolution.yml`, `evo:*`, `scripts/dev-local.ts`). O N8N roda em stack Docker **isolada** do Supabase (55322) e do Postgres da Evolution.
+Espelha o padrão já estabelecido pela **Evolution API** no repositório (`docker-compose.evolution.yml`, `evo:*`, `scripts/dev-local.ts`). O N8N roda em stack Docker **isolada** do Supabase do app (55322). A Evolution usa Supabase remoto dedicado (`supabase-evolution/`) — compose só API + Redis.
 
 #### Topologia local
 

@@ -233,9 +233,9 @@ async function startEvolution(): Promise<void> {
     const status = getEvolutionContainerStatus();
     if (status === "restarting") {
       info(
-        "⚠ Evolution container is crash-looping (geralmente senha Postgres desatualizada no volume).",
+        "⚠ Evolution container is crash-looping (geralmente DATABASE_* inválido no .env.evolution ou Supabase inacessível).",
       );
-      info("  Rode `bun run evo:reset` e reinicie `bun dev`.");
+      info("  Confira senha/URIs Supabase em .env.evolution, rode `bun run evo:reset` e reinicie `bun dev`.");
     } else {
       info("⚠ Evolution API não respondeu — veja `bun run evo:logs`.");
     }

@@ -6,6 +6,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { normalizePhoneE164 } from "@/lib/studio-bot/phone";
 import type {
   CreateAuthChallengeInput,
   CreateMessageInput,
@@ -574,6 +575,43 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
       where: { profileId },
       orderBy: { type: "asc" },
     });
+  }
+
+  async findNotificationPreference(profileId: string, type: string) {
+    return prisma.backofficeBotNotificationPreference.findUnique({
+      where: { profileId_type: { profileId, type } },
+    });
+  }
+
+  async resolvePushPhoneForProfile(profileId: string): Promise<string | null> {
+    const link = await this.findActiveUserLinkByProfile(profileId);
+    if (link?.normalizedPhone) {
+      return link.normalizedPhone;
+    }
+
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { phone: true },
+    });
+
+    if (!profile?.phone) {
+      return null;
+    }
+
+    return normalizePhoneE164(profile.phone);
+  }
+
+  async findLastInboundAtByPhone(normalizedPhone: string): Promise<Date | null> {
+    const message = await prisma.backofficeBotMessage.findFirst({
+      where: {
+        direction: "inbound",
+        userLink: { normalizedPhone },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+
+    return message?.createdAt ?? null;
   }
 
   async upsertNotificationPreference(

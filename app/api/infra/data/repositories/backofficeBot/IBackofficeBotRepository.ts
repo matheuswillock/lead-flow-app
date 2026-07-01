@@ -177,6 +177,12 @@ export interface IBackofficeBotRepository {
   ): Promise<{ items: BackofficeBotConversationSummary[]; totalItems: number }>;
 
   listNotificationPreferences(profileId: string): Promise<BackofficeBotNotificationPreference[]>;
+  findNotificationPreference(
+    profileId: string,
+    type: string
+  ): Promise<BackofficeBotNotificationPreference | null>;
+  resolvePushPhoneForProfile(profileId: string): Promise<string | null>;
+  findLastInboundAtByPhone(normalizedPhone: string): Promise<Date | null>;
   upsertNotificationPreference(
     profileId: string,
     type: string,

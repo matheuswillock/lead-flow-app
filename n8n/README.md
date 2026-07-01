@@ -41,7 +41,7 @@ Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows de
 
 ## Evolution — instância `bethania`
 
-Na Evolution API (stack `docker-compose.evolution.yml`):
+Na Evolution API (stack `docker-compose.evolution.yml` — API + Redis; banco em Supabase remoto):
 
 1. Crie ou use a instância **`bethania`** (`EVO_BETHANIA_INSTANCE`).
 2. Configure o webhook da instância para:
@@ -111,11 +111,32 @@ Base URL nos nós HTTP (container): `http://host.docker.internal:3000`
 
 ```bash
 bun run n8n:up
+bun run n8n:import   # importa e publica bethania-push-outbound
 bun run n8n:logs
 bun run n8n:down
 bun run n8n:reset
 bun run dev -- --skip-n8n   # dev sem N8N/Bethânia
 ```
+
+## Vercel → N8N local (ngrok)
+
+Com uma única URL reservada no ngrok free, use **um túnel por vez**:
+
+| Comando | Domínio aponta para |
+|---------|---------------------|
+| `bun run ngrok` | App (`:3000`) |
+| `bun run ngrok:n8n` | N8N (`:5678`) — necessário para `BACKOFFICE_N8N_OUTBOUND_URL` na Vercel |
+
+Os scripts encerram automaticamente qualquer `ngrok` anterior (necessário no plano free com um único domínio).
+
+Na Vercel (production/preview):
+
+```env
+BACKOFFICE_N8N_OUTBOUND_URL=https://nonzero-rodrick-mentholated.ngrok-free.dev/webhook/bethania-outbound
+BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET=<mesmo valor de .env.n8n>
+```
+
+Redeploy após alterar variáveis. Com `bun run ngrok:n8n` ativo, teste em `/backoffice/studio-bot` → **Testar ping**.
 
 ## Troubleshooting
 

@@ -47,4 +47,6 @@ export type StudioBotEventOutboxPayload = {
   message: string;
   actionButtons: Array<{ id: string; label: string; payload: object }>;
   deepLink: string;
+  requiresHsm?: boolean;
+  lastInboundAt?: string | null;
 };

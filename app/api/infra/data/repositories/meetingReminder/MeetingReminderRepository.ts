@@ -64,6 +64,33 @@ export class MeetingReminderRepository {
       data: { reminder30MinSentAt: sentAt },
     });
   }
+
+  async findSchedulesDueFor5MinReminder(windowStart: Date, windowEnd: Date) {
+    return prisma.leadsSchedule.findMany({
+      where: {
+        date: {
+          gte: windowStart,
+          lte: windowEnd,
+        },
+      },
+      select: {
+        id: true,
+        date: true,
+        meetingLink: true,
+        lead: {
+          select: {
+            id: true,
+            leadCode: true,
+            name: true,
+            teamId: true,
+            managerId: true,
+            assignedTo: true,
+            closerId: true,
+          },
+        },
+      },
+    });
+  }
 }
 
 export const meetingReminderRepository = new MeetingReminderRepository();

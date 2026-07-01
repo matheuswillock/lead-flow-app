@@ -118,6 +118,9 @@ export interface BackofficeStudioBotState {
   isLoadingMessages: boolean
   isSavingProfile: boolean
   isTestingPing: boolean
+  isUploadingAvatar: boolean
+  isReconnecting: boolean
+  isSyncingProfile: boolean
   userLinks: BackofficeStudioBotUserLink[]
   userLinksPagination: BackofficeStudioBotPagination
   isLoadingUserLinks: boolean
@@ -135,6 +138,9 @@ export interface BackofficeStudioBotActions {
   updateChannelProfile: (form: BackofficeStudioBotProfileFormData) => Promise<boolean>
   updateChannel: (form: BackofficeStudioBotChannelFormData) => Promise<boolean>
   testPing: () => Promise<boolean>
+  uploadChannelAvatar: (file: File) => Promise<boolean>
+  reconnectChannel: () => Promise<boolean>
+  syncChannelProfile: () => Promise<boolean>
   setConversationsFilters: (filters: BackofficeStudioBotConversationsFilters) => void
   setConversationsPage: (page: number) => void
   loadConversations: () => Promise<void>
