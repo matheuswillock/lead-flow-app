@@ -357,6 +357,20 @@ FULL FULL
     
 
 
+        backoffice_ban_status {
+            ACTIVE ACTIVE
+LIFTED LIFTED
+        }
+    
+
+
+        backoffice_ban_scope {
+            INDIVIDUAL INDIVIDUAL
+ACCOUNT ACCOUNT
+        }
+    
+
+
         backoffice_beta_team_scope {
             ALL_TEAMS ALL_TEAMS
 SPECIFIC_TEAMS SPECIFIC_TEAMS
@@ -822,6 +836,22 @@ failed failed
     String mailboxStatus 
     String mailboxAddress "❓"
     DateTime mailboxProvisionedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_banned_users" {
+    String id "🗝️"
+    String supabaseId "❓"
+    String email 
+    String fullName "❓"
+    String reason "❓"
+    BackofficeBanStatus status 
+    BackofficeBanScope scope 
+    DateTime bannedAt 
+    DateTime liftedAt "❓"
+    String liftReason "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2095,6 +2125,11 @@ failed failed
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" }o--|o google_oauth_connections : "googleConnection"
     "backoffice_users" }o--|o corretor_studio_profiles : "linkedCorretorStudioProfile"
+    "backoffice_banned_users" |o--|| "BackofficeBanStatus" : "enum:status"
+    "backoffice_banned_users" |o--|| "BackofficeBanScope" : "enum:scope"
+    "backoffice_banned_users" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_banned_users" }o--|| corretor_studio_profiles : "bannedByProfile"
+    "backoffice_banned_users" }o--|o corretor_studio_profiles : "liftedByProfile"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"

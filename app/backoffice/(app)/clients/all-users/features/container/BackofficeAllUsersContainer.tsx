@@ -488,7 +488,12 @@ export function BackofficeAllUsersContainer() {
             ) : (
               items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.fullName || "Sem nome"}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{item.fullName || "Sem nome"}</span>
+                      {item.isBanned ? <Badge variant="destructive">Banido</Badge> : null}
+                    </div>
+                  </TableCell>
                   <TableCell>{item.email}</TableCell>
                   <TableCell>{maskPhone(item.phone ?? "") || "—"}</TableCell>
                   <TableCell>{getRoleBadge(item.role, item.isMaster)}</TableCell>

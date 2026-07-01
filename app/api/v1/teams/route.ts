@@ -13,6 +13,7 @@ import {
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { getAccountSubscriptionStatus } from "@/lib/subscription/isAccountSubscriptionActive";
+import { findActiveAccountBannedMasterIds } from "@/lib/account/isAccountMasterBanned";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const CreateTeamSchema = z.object({
@@ -241,9 +242,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const bannedMasterIds = await findActiveAccountBannedMasterIds([
+      ...subscriptionByMasterId.keys(),
+    ]);
+
     const activeTeams = memberships.map((membership) => {
       const accountMasterId = membership.team.masterId;
       const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+      const accountMasterBanned = bannedMasterIds.has(accountMasterId);
+      const isAccessible = accountSubscriptionActive && !accountMasterBanned;
 
       return {
         id: membership.team.id,
@@ -258,8 +265,9 @@ export async function GET(request: NextRequest) {
           membership.team.master.sponsorMasterId
             ? (membership.team.master.fullName ?? membership.team.master.email)
             : null,
-        isAccessible: accountSubscriptionActive,
+        isAccessible,
         accountSubscriptionActive,
+        accountMasterBanned,
         isDefault: membership.team.isDefault,
         role: membership.role,
         functions: membership.functions,
@@ -279,6 +287,8 @@ export async function GET(request: NextRequest) {
       .map((team) => {
         const accountMasterId = team.masterId;
         const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+        const accountMasterBanned = bannedMasterIds.has(accountMasterId);
+        const isAccessible = accountSubscriptionActive && !accountMasterBanned;
         const associateAccountName = team.master.fullName ?? team.master.email;
 
         return {
@@ -291,8 +301,9 @@ export async function GET(request: NextRequest) {
           isAssociateAccount: true,
           sponsorMasterId: team.master.sponsorMasterId ?? profile.id,
           associateAccountName,
-          isAccessible: accountSubscriptionActive,
+          isAccessible,
           accountSubscriptionActive,
+          accountMasterBanned,
           isDefault: team.isDefault,
           role: "backoffice" as const,
           functions: [] as string[],

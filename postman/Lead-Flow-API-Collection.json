@@ -9645,6 +9645,128 @@
           ]
         },
         {
+          "name": "Backoffice Anatemas",
+          "item": [
+            {
+              "name": "GET List Anatemas",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/anatemas?page=1&pageSize=20&status=ACTIVE&q=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "anatemas"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    },
+                    {
+                      "key": "status",
+                      "value": "ACTIVE"
+                    },
+                    {
+                      "key": "q",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Lista banimentos da plataforma (Anatemas)."
+              }
+            },
+            {
+              "name": "POST Ban User",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"profileId\": \"{{profileId}}\",\n  \"reason\": \"Violação dos termos de uso\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/anatemas",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "anatemas"
+                  ]
+                },
+                "description": "Bane um usuário da plataforma via Supabase Auth. Masters geram banimento de conta (scope ACCOUNT)."
+              }
+            },
+            {
+              "name": "POST Lift Ban",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"liftReason\": \"Revisão concluída\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/anatemas/:banId/lift",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "anatemas",
+                    ":banId",
+                    "lift"
+                  ],
+                  "variable": [
+                    {
+                      "key": "banId",
+                      "value": "{{banId}}"
+                    }
+                  ]
+                },
+                "description": "Remove um banimento ativo e restaura o acesso no Supabase Auth."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Members",
           "item": [
             {

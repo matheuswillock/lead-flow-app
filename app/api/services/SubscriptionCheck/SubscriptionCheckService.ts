@@ -1,6 +1,7 @@
 import { ISubscriptionRepository } from '../../infra/data/repositories/subscription/ISubscriptionRepository';
 import { CheckSubscriptionResult, ISubscriptionCheckService } from './ISubscriptionCheckService';
 import { isAccountSubscriptionActive } from '@/lib/subscription/isAccountSubscriptionActive';
+import { isAccountMasterBanned } from '@/lib/account/isAccountMasterBanned';
 
 export class SubscriptionCheckService implements ISubscriptionCheckService {
   constructor(private subscriptionRepository: ISubscriptionRepository) {}
@@ -10,6 +11,10 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
 
     for (const masterId of masterIds) {
       if (masterId === profileId) {
+        continue;
+      }
+
+      if (await isAccountMasterBanned(masterId)) {
         continue;
       }
 
@@ -71,6 +76,31 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
     }
 
     if (profile.isMaster) {
+      if (await isAccountMasterBanned(profile.id)) {
+        const hasGuestAccess = await this.hasActiveGuestMembership(profile.id);
+        if (hasGuestAccess) {
+          return {
+            success: true,
+            hasActiveSubscription: true,
+            userExists: true,
+            matchSource,
+            matchedIdentifier,
+            userId: profile.supabaseId,
+            userRole: 'master',
+          };
+        }
+
+        return {
+          success: true,
+          hasActiveSubscription: false,
+          userExists: true,
+          matchSource,
+          matchedIdentifier,
+          userId: profile.supabaseId,
+          userRole: 'master',
+        };
+      }
+
       const hasSubscription = !!profile.subscriptionId;
       const isActive = profile.subscriptionStatus === 'active';
 
@@ -150,8 +180,9 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
 
       const hasSubscription = !!manager.subscriptionId;
       const isActive = manager.subscriptionStatus === 'active';
+      const managerAccountBanned = manager.isMaster && (await isAccountMasterBanned(manager.id));
 
-      if (hasSubscription && isActive) {
+      if (!managerAccountBanned && hasSubscription && isActive) {
         console.info('✅ [SubscriptionCheckService] Manager do operador/manager tem assinatura ativa');
         return {
           success: true,

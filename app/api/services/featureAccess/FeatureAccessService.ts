@@ -7,6 +7,7 @@ import type {
 import type { BackofficeFeature, BackofficeFeatureAccessRule } from "@prisma/client"
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive"
+import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
 
@@ -123,7 +124,7 @@ export class FeatureAccessService implements IFeatureAccessService {
     }
 
     const accountSubscriptionActive = await isAccountSubscriptionActive(ownerProfileId)
-    if (!accountSubscriptionActive) {
+    if (!accountSubscriptionActive || (await isAccountMasterBanned(ownerProfileId))) {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
 

@@ -357,6 +357,20 @@ enum BackofficeFeatureGrantType {
   @@map("backoffice_feature_grant_type")
 }
 
+enum BackofficeBanStatus {
+  ACTIVE
+  LIFTED
+
+  @@map("backoffice_ban_status")
+}
+
+enum BackofficeBanScope {
+  INDIVIDUAL
+  ACCOUNT
+
+  @@map("backoffice_ban_scope")
+}
+
 enum BackofficeBetaTeamScope {
   ALL_TEAMS
   SPECIFIC_TEAMS
@@ -670,6 +684,9 @@ model Profile {
   backofficeBotAuthChallenges          BackofficeBotAuthChallenge[]
   backofficeBotNotificationPreferences BackofficeBotNotificationPreference[]
   backofficeBotEventOutbox             BackofficeBotEventOutbox[]
+  backofficeBansReceived               BackofficeBannedUser[] @relation("BackofficeBannedUserTarget")
+  backofficeBansIssued                 BackofficeBannedUser[] @relation("BackofficeBannedUserIssuer")
+  backofficeBansLifted                 BackofficeBannedUser[] @relation("BackofficeBannedUserLifter")
 
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
@@ -759,6 +776,33 @@ model BackofficeUser {
   @@index([linkedCorretorStudioProfileId], map: "backoffice_users_linked_profile_id_idx")
   @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
   @@map("backoffice_users")
+}
+
+model BackofficeBannedUser {
+  id                  String              @id @default(uuid()) @db.Uuid
+  profileId           String              @map("profileId") @db.Uuid
+  supabaseId          String?             @map("supabaseId") @db.Uuid
+  email               String              @db.Text
+  fullName            String?             @db.Text
+  reason              String?             @db.Text
+  status              BackofficeBanStatus @default(ACTIVE)
+  scope               BackofficeBanScope  @default(INDIVIDUAL)
+  bannedByProfileId   String              @map("bannedByProfileId") @db.Uuid
+  bannedAt            DateTime            @default(now()) @map("bannedAt") @db.Timestamptz(6)
+  liftedByProfileId   String?             @map("liftedByProfileId") @db.Uuid
+  liftedAt            DateTime?           @map("liftedAt") @db.Timestamptz(6)
+  liftReason          String?             @map("liftReason") @db.Text
+  createdAt           DateTime            @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt           DateTime            @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile         Profile  @relation("BackofficeBannedUserTarget", fields: [profileId], references: [id], onDelete: Cascade)
+  bannedByProfile Profile  @relation("BackofficeBannedUserIssuer", fields: [bannedByProfileId], references: [id], onDelete: Restrict)
+  liftedByProfile Profile? @relation("BackofficeBannedUserLifter", fields: [liftedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, status], map: "backoffice_banned_users_profile_status_idx")
+  @@index([status, bannedAt], map: "backoffice_banned_users_status_banned_at_idx")
+  @@index([scope, status], map: "backoffice_banned_users_scope_status_idx")
+  @@map("backoffice_banned_users")
 }
 
 model GoogleOAuthConnection {
@@ -2716,6 +2760,7 @@ model WhatsAppAutoResponseLog {
   conversation WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   rule         WhatsAppAutoResponseRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
 
+  @@unique([conversationId, ruleType, inboundMessageId], map: "whatsapp_auto_response_logs_conv_rule_inbound_key")
   @@index([conversationId, ruleType, createdAt])
   @@map("whatsapp_auto_response_logs")
 }

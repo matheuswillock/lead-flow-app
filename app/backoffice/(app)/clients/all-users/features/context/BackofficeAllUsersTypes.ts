@@ -52,6 +52,9 @@ export interface BackofficeAllUsersItem {
   lastSignInAt: string | null
   master: BackofficeAllUsersMasterRef | null
   userType: BackofficeAllUsersUserType
+  isBanned?: boolean
+  activeBanId?: string | null
+  banScope?: "INDIVIDUAL" | "ACCOUNT" | null
 }
 
 export interface BackofficeAllUsersTeamSummary {

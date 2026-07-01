@@ -4,6 +4,7 @@ import {
   getScheduleMeetingStatusLabel,
 } from "@/lib/lead-meeting"
 import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
+import { backofficeBannedUsersRepository } from "@/app/api/infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
 import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import type {
   BackofficeAllUsersFiltersInput,
@@ -52,7 +53,10 @@ function getPlanInfo(master: BackofficeAllUsersMasterRef | null): PlanInfo {
   return { label: "Sem plano ativo", amount: null, kind: "none" }
 }
 
-function serializeListItem(record: BackofficeAllUsersListRecord) {
+function serializeListItem(
+  record: BackofficeAllUsersListRecord,
+  banInfo?: { isBanned: boolean; activeBanId: string | null; banScope: string | null }
+) {
   const serializedFunctions = record.functions.map((func) => ({
     name: func,
     label: func === "CLOSER" ? "Closer" : "SDR",
@@ -76,6 +80,9 @@ function serializeListItem(record: BackofficeAllUsersListRecord) {
         }
       : null,
     userType: record.userType,
+    isBanned: banInfo?.isBanned ?? false,
+    activeBanId: banInfo?.activeBanId ?? null,
+    banScope: banInfo?.banScope ?? null,
   }
 }
 
@@ -149,6 +156,9 @@ export class BackofficeAllUsersUseCase {
       const pageSize = Math.min(Math.max(input.pageSize ?? 10, 5), 100)
 
       const result = await this.repository.list(input.filters ?? {}, { page, pageSize })
+      const banByProfileId = await backofficeBannedUsersRepository.findActiveBansByProfileIds(
+        result.items.map((item) => item.id)
+      )
       const accessByProfileId = await resolveBackofficeMemberAccess(
         result.items.map((item) => ({
           profileId: item.id,
@@ -163,14 +173,21 @@ export class BackofficeAllUsersUseCase {
       const totalPages = Math.max(1, Math.ceil(result.totalItems / pageSize))
 
       return new Output(true, [], [], {
-        items: result.items.map((item) => ({
-          ...serializeListItem(item),
-          ...(accessByProfileId.get(item.id) ?? {
-            accessStatus: "pending_first_access",
-            hasCompletedFirstAccess: false,
-            lastSignInAt: null,
-          }),
-        })),
+        items: result.items.map((item) => {
+          const ban = banByProfileId.get(item.id)
+          return {
+            ...serializeListItem(item, {
+              isBanned: Boolean(ban),
+              activeBanId: ban?.id ?? null,
+              banScope: ban?.scope ?? null,
+            }),
+            ...(accessByProfileId.get(item.id) ?? {
+              accessStatus: "pending_first_access",
+              hasCompletedFirstAccess: false,
+              lastSignInAt: null,
+            }),
+          }
+        }),
         pagination: {
           page,
           pageSize,
@@ -205,8 +222,14 @@ export class BackofficeAllUsersUseCase {
         },
       ])
 
+      const activeBan = await backofficeBannedUsersRepository.findActiveByProfileId(profileId)
+
       return new Output(true, [], [], {
-        ...serializeListItem(detail),
+        ...serializeListItem(detail, {
+          isBanned: Boolean(activeBan),
+          activeBanId: activeBan?.id ?? null,
+          banScope: activeBan?.scope ?? null,
+        }),
         ...(accessByProfileId.get(detail.id) ?? {
           accessStatus: "pending_first_access",
           hasCompletedFirstAccess: false,
