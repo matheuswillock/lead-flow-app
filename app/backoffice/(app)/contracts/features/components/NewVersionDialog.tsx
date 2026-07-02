@@ -11,8 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ImportFileDropzone } from "@/components/import/ImportFileDropzone"
+import { PDF_IMPORT_DROPZONE_CONFIG } from "@/components/import/pdfDropzoneConfig"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { useBackofficeContracts } from "../context/BackofficeContractsContext"
 
 export function NewVersionDialog({
@@ -50,7 +51,7 @@ export function NewVersionDialog({
         if (!nextOpen) setFile(null)
       }}
     >
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-md">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Importar nova versão</DialogTitle>
         </DialogHeader>
@@ -62,12 +63,14 @@ export function NewVersionDialog({
               <p className="text-sm text-muted-foreground">{contractTitle}</p>
             </Field>
             <Field>
-              <FieldLabel htmlFor="version-file">Novo arquivo PDF</FieldLabel>
-              <Input
-                id="version-file"
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              <FieldLabel>Novo arquivo PDF</FieldLabel>
+              <ImportFileDropzone
+                config={PDF_IMPORT_DROPZONE_CONFIG}
+                selectedFile={file}
+                selectedFileLabel="Nova versão"
+                onClearFile={() => setFile(null)}
+                onFileSelected={setFile}
+                onError={(message) => toast.error(message)}
                 disabled={isSaving}
               />
             </Field>

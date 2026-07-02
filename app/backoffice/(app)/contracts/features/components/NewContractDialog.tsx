@@ -12,6 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { ImportFileDropzone } from "@/components/import/ImportFileDropzone"
+import { PDF_IMPORT_DROPZONE_CONFIG } from "@/components/import/pdfDropzoneConfig"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -72,7 +74,7 @@ export function NewContractDialog() {
           Novo contrato
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-md">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Novo contrato</DialogTitle>
         </DialogHeader>
@@ -118,12 +120,14 @@ export function NewContractDialog() {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="contract-file">Arquivo PDF</FieldLabel>
-              <Input
-                id="contract-file"
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              <FieldLabel>Arquivo PDF</FieldLabel>
+              <ImportFileDropzone
+                config={PDF_IMPORT_DROPZONE_CONFIG}
+                selectedFile={file}
+                selectedFileLabel="PDF do contrato"
+                onClearFile={() => setFile(null)}
+                onFileSelected={setFile}
+                onError={(message) => toast.error(message)}
                 disabled={isSaving}
               />
             </Field>
