@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/nextjs"
-import { after, NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { processEvoWebhookUseCase } from "@/app/api/useCases/whatsapp/ProcessEvoWebhookUseCase"
 import { isValidEvoWebhookPayload } from "@/lib/whatsapp/webhook-signature"
@@ -42,47 +42,47 @@ export async function POST(
 
   const { eventType, providerMessageId } = describeEvent(rawEvent)
 
-  // Ack imediato + processamento em after(): evita segurar a conexão da
-  // Evolution durante o processamento (mesmo padrão do webhook Asaas).
-  // O processamento é idempotente (dedupe por providerMessageId), então uma
-  // falha aqui é logada/reportada em vez de depender de redelivery via 500.
-  after(async () => {
-    try {
-      const output = await processEvoWebhookUseCase.execute({
-        teamId: config.teamId,
-        configId: config.id,
-        rawEvent,
-      })
+  try {
+    const output = await processEvoWebhookUseCase.execute({
+      teamId: config.teamId,
+      configId: config.id,
+      rawEvent,
+    })
 
-      if (!output.isValid) {
-        console.error(
-          "[WhatsAppEvoWebhookRoute][after] processing failed",
-          { eventType, providerMessageId, errors: output.errorMessages }
-        )
-        Sentry.captureMessage("[WhatsAppEvoWebhookRoute] processing failed", {
-          level: "error",
-          tags: { route: "WhatsAppEvoWebhookRoute", phase: "after" },
-          extra: {
-            teamId: config.teamId,
-            eventType,
-            providerMessageId,
-            errors: output.errorMessages,
-          },
-        })
-      }
-    } catch (error) {
-      rethrowIfPrerenderInterrupted(error)
-      console.error("[WhatsAppEvoWebhookRoute][after] unexpected error", {
+    if (!output.isValid) {
+      console.error("[WhatsAppEvoWebhookRoute][POST] processing failed", {
         eventType,
         providerMessageId,
-        error,
+        errors: output.errorMessages,
       })
-      Sentry.captureException(error, {
-        tags: { route: "WhatsAppEvoWebhookRoute", phase: "after" },
-        extra: { teamId: config.teamId, eventType, providerMessageId },
+      Sentry.captureMessage("[WhatsAppEvoWebhookRoute] processing failed", {
+        level: "error",
+        tags: { route: "WhatsAppEvoWebhookRoute", phase: "process" },
+        extra: {
+          teamId: config.teamId,
+          eventType,
+          providerMessageId,
+          errors: output.errorMessages,
+        },
       })
+      return NextResponse.json(
+        { error: "Processing failed", errors: output.errorMessages },
+        { status: 500 }
+      )
     }
-  })
 
-  return NextResponse.json({ processed: true }, { status: 200 })
+    return NextResponse.json({ processed: true }, { status: 200 })
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[WhatsAppEvoWebhookRoute][POST] unexpected error", {
+      eventType,
+      providerMessageId,
+      error,
+    })
+    Sentry.captureException(error, {
+      tags: { route: "WhatsAppEvoWebhookRoute", phase: "process" },
+      extra: { teamId: config.teamId, eventType, providerMessageId },
+    })
+    return NextResponse.json({ error: "Processing failed" }, { status: 500 })
+  }
 }
