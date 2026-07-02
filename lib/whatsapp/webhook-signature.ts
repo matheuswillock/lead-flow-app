@@ -37,6 +37,14 @@ const KNOWN_EVENT_TYPES = new Set([
   "PRESENCE.UPDATE",
   "MESSAGES_DELETE",
   "MESSAGES.DELETE",
+  "GROUP_PARTICIPANTS_UPDATE",
+  "GROUP_PARTICIPANTS.UPDATE",
+  "GROUP-PARTICIPANTS.UPDATE",
+  "NEW_TOKEN",
+  "APPLICATION_STARTUP",
+  "MESSAGES_SET",
+  "CONTACTS_SET",
+  "CHATS_SET",
 ])
 
 export function isValidEvoWebhookPayload(payload: unknown): boolean {

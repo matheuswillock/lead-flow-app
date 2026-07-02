@@ -41,9 +41,14 @@ export interface EvoSendTextResult {
 export const WHATSAPP_EVO_WEBHOOK_EVENTS = [
   "MESSAGES_UPSERT",
   "MESSAGES_UPDATE",
+  "MESSAGES_DELETE",
+  "SEND_MESSAGE",
   "CONNECTION_UPDATE",
   "QRCODE_UPDATED",
-  "SEND_MESSAGE",
+  "CONTACTS_UPSERT",
+  "CONTACTS_UPDATE",
+  "GROUP_PARTICIPANTS_UPDATE",
+  "PRESENCE_UPDATE",
 ] as const
 
 export interface IEvoApiService {

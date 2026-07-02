@@ -107,6 +107,13 @@ class ProcessEvoWebhookUseCase {
         await this.handleQrCodeUpdated(input.configId, data)
       } else if (eventType === "SEND_MESSAGE" || eventType === "SEND.MESSAGE") {
         await this.handleSendMessage(input.teamId, data)
+      } else if (eventType === "MESSAGES_DELETE" || eventType === "MESSAGES.DELETE") {
+        await this.handleMessagesDelete(input.teamId, data)
+      } else if (
+        eventType === "CONTACTS_UPSERT" || eventType === "CONTACTS.UPSERT" ||
+        eventType === "CONTACTS_UPDATE" || eventType === "CONTACTS.UPDATE"
+      ) {
+        await this.handleContactsUpsert(input.teamId, data)
       } else {
         console.info("[ProcessEvoWebhookUseCase][execute] Unhandled event type:", eventType)
       }
@@ -571,6 +578,79 @@ class ProcessEvoWebhookUseCase {
         "→",
         status,
         providerMessageId
+      )
+    }
+  }
+
+  private async handleMessagesDelete(teamId: string, data: unknown): Promise<void> {
+    const record =
+      typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}
+
+    const keyObj = (record["key"] as Record<string, unknown> | undefined) ?? {}
+    const providerMessageId = typeof keyObj["id"] === "string" ? keyObj["id"] : undefined
+
+    if (!providerMessageId) {
+      console.info("[ProcessEvoWebhookUseCase][handleMessagesDelete] No message ID, skipping")
+      return
+    }
+
+    const existing = await this.repository.findMessageByProviderMessageId(teamId, providerMessageId)
+    if (!existing) {
+      console.info(
+        "[ProcessEvoWebhookUseCase][handleMessagesDelete] Message not found, skipping",
+        providerMessageId
+      )
+      return
+    }
+
+    console.info("[ProcessEvoWebhookUseCase][handleMessagesDelete] Marking message as deleted", providerMessageId)
+
+    await this.repository.updateMessageStatus(existing.id, {
+      status: "FAILED",
+      failedAt: new Date(),
+    })
+  }
+
+  private async handleContactsUpsert(teamId: string, data: unknown): Promise<void> {
+    const contacts = asRecordArray(data)
+    if (contacts.length === 0) return
+
+    let updatedCount = 0
+    for (const contact of contacts) {
+      const remoteJid = typeof contact["id"] === "string"
+        ? contact["id"]
+        : typeof contact["remoteJid"] === "string"
+          ? contact["remoteJid"]
+          : undefined
+
+      if (!remoteJid) continue
+
+      const pushName = typeof contact["pushName"] === "string"
+        ? stripHtmlTags(sanitizeDbText(contact["pushName"])) ?? undefined
+        : undefined
+      const profileName = typeof contact["name"] === "string"
+        ? stripHtmlTags(sanitizeDbText(contact["name"])) ?? undefined
+        : undefined
+
+      const displayName = profileName ?? pushName
+      if (!displayName) continue
+
+      const conversation = await this.repository.findConversationByExternalChatId(teamId, remoteJid)
+      if (!conversation) continue
+
+      if (conversation.contactName !== displayName) {
+        await this.repository.updateConversation(conversation.id, {
+          contactName: displayName,
+        })
+        updatedCount++
+      }
+    }
+
+    if (updatedCount > 0) {
+      console.info(
+        "[ProcessEvoWebhookUseCase][handleContactsUpsert] Updated",
+        updatedCount,
+        "conversation contact names"
       )
     }
   }

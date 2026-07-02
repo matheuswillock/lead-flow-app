@@ -128,6 +128,21 @@ class WhatsAppRepository implements IWhatsAppRepository {
   }
 
   async claimHistorySyncSlot(configId: string): Promise<boolean> {
+    const staleBefore = new Date(Date.now() - 30 * 60 * 1000)
+
+    await prisma.teamWhatsAppConfig.updateMany({
+      where: {
+        id: configId,
+        historySyncStatus: "RUNNING",
+        historySyncStartedAt: { lt: staleBefore },
+      },
+      data: {
+        historySyncStatus: "FAILED",
+        historySyncError: "Sincronização expirou antes de concluir.",
+        historySyncCompletedAt: new Date(),
+      },
+    })
+
     const result = await prisma.teamWhatsAppConfig.updateMany({
       where: {
         id: configId,
@@ -639,6 +654,16 @@ class WhatsAppRepository implements IWhatsAppRepository {
       },
       select: { normalizedPhone: true, externalChatId: true },
       take: 5000,
+    })
+  }
+
+  async findConversationByExternalChatId(
+    teamId: string,
+    externalChatId: string
+  ): Promise<WhatsAppConversationSelect | null> {
+    return prisma.whatsAppConversation.findFirst({
+      where: { teamId, externalChatId },
+      select: CONVERSATION_SELECT,
     })
   }
 }

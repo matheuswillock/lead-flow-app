@@ -73,6 +73,21 @@ function fromMediaMessage(
   }
 }
 
+function extractThumbnailUrl(extended: Record<string, unknown>): string | null {
+  const thumbnailUrl = extended["thumbnailUrl"]
+  if (typeof thumbnailUrl === "string" && thumbnailUrl.startsWith("http")) {
+    return thumbnailUrl
+  }
+
+  const jpegThumbnail = extended["jpegThumbnail"]
+  if (typeof jpegThumbnail === "string" && jpegThumbnail.length > 0) {
+    const isDataUrl = jpegThumbnail.startsWith("data:")
+    return isDataUrl ? jpegThumbnail : `data:image/jpeg;base64,${jpegThumbnail}`
+  }
+
+  return null
+}
+
 function parseLinkPreview(extended: Record<string, unknown>): ParsedEvoMessageContent["linkPreview"] {
   const title = stripHtmlTags(typeof extended["title"] === "string" ? extended["title"] : null)
   const description = stripHtmlTags(typeof extended["description"] === "string" ? extended["description"] : null)
@@ -80,7 +95,8 @@ function parseLinkPreview(extended: Record<string, unknown>): ParsedEvoMessageCo
   const canonicalUrl = typeof extended["canonicalUrl"] === "string" ? extended["canonicalUrl"] : null
   const url = canonicalUrl ?? matchedText
   if (!title && !description && !url) return null
-  return { title, description, imageUrl: null, url }
+  const imageUrl = extractThumbnailUrl(extended)
+  return { title, description, imageUrl, url }
 }
 
 export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageContent {

@@ -229,4 +229,9 @@ export interface IWhatsAppRepository {
     teamId: string,
     visibilityWhere?: Prisma.WhatsAppConversationWhereInput
   ): Promise<Array<{ normalizedPhone: string; externalChatId: string | null }>>
+
+  findConversationByExternalChatId(
+    teamId: string,
+    externalChatId: string
+  ): Promise<WhatsAppConversationSelect | null>
 }
