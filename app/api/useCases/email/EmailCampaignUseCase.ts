@@ -13,9 +13,11 @@ import { featureAccessRepository } from "@/app/api/infra/data/repositories/featu
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import { isCdpSegmentSlug } from "@/lib/cdp/segment-config"
 import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
+import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 
 const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
 const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretorstudio.com"
+const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 
 export interface CreateCampaignInput {
   name: string
@@ -532,29 +534,19 @@ export class EmailCampaignUseCase {
       const recipientsList = dispatchInput.recipients
       const { globalDefaults, templateVariables, from, replyTo } = dispatchInput
 
-      const logIdsByEmail = new Map<string, string>()
-      await Promise.all(
-        recipientsList.map(async (recipient) => {
-          const renderedSubject = interpolateEmailTemplate(
-            dispatchInput.subject,
-            recipient,
-            globalDefaults,
-            templateVariables
-          )
-          const logId = await teamEmailDispatchLogger.createQueuedTeamEmailLog({
-            teamId: ctx.teamId,
-            campaignId: campaign.id,
-            dispatchId: dispatchRecord.id,
-            recipientEmail: recipient.email,
-            recipientName: recipient.name,
-            subject: renderedSubject,
-            category: "campaign",
-            sourceType: "campaign",
-            sourceId: campaign.id,
-          })
-          logIdsByEmail.set(recipient.email, logId)
-        })
-      )
+      const logInputs = recipientsList.map((recipient) => ({
+        teamId: ctx.teamId,
+        campaignId: campaign.id,
+        dispatchId: dispatchRecord.id,
+        recipientEmail: recipient.email,
+        recipientName: recipient.name,
+        subject: interpolateEmailTemplate(dispatchInput.subject, recipient, globalDefaults, templateVariables),
+        category: "campaign" as const,
+        sourceType: "campaign",
+        sourceId: campaign.id,
+      }))
+      const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
+      const logIdsByEmail = new Map(createdLogs.map(({ email, logId }) => [email, logId]))
 
       const dispatchResult = await this.dispatchService.dispatchBatch({
         from,
@@ -570,21 +562,23 @@ export class EmailCampaignUseCase {
       })
 
       const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
-      await Promise.all(
-        dispatchResult.dispatched.map(({ email, resendId }) => {
+      await withConcurrencyLimit(
+        dispatchResult.dispatched,
+        EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
+        async ({ email, resendId }) => {
           const logId = logIdsByEmail.get(email)
-          if (!logId) return Promise.resolve()
-          return teamEmailDispatchLogger.markTeamEmailLogSent(logId, resendId)
-        })
+          if (!logId) return
+          await teamEmailDispatchLogger.markTeamEmailLogSent(logId, resendId)
+        }
       )
-      await Promise.all(
-        recipientsList
-          .filter((recipient) => !dispatchedEmails.has(recipient.email))
-          .map((recipient) => {
-            const logId = logIdsByEmail.get(recipient.email)
-            if (!logId) return Promise.resolve()
-            return teamEmailDispatchLogger.markTeamEmailLogFailed(logId, "Falha no envio via Resend")
-          })
+      await withConcurrencyLimit(
+        recipientsList.filter((recipient) => !dispatchedEmails.has(recipient.email)),
+        EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
+        async (recipient) => {
+          const logId = logIdsByEmail.get(recipient.email)
+          if (!logId) return
+          await teamEmailDispatchLogger.markTeamEmailLogFailed(logId, "Falha no envio via Resend")
+        }
       )
 
       if (dispatchResult.dispatched.length > 0 && hasCredits) {

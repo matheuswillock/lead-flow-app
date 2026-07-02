@@ -1,5 +1,5 @@
 import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../context/TemplateEditorTypes";
-import type { ITemplateEditorService, EmailTemplateAssetUploadResult } from "./ITemplateEditorService";
+import type { ITemplateEditorService, EmailTemplateAssetUploadResult, XPostEmbedResult } from "./ITemplateEditorService";
 import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets";
 import { ApiRequestError } from "@/lib/http/api-request-error";
 
@@ -13,6 +13,7 @@ type ApiOutput<T> = {
 class TemplateEditorService implements ITemplateEditorService {
   private readonly baseUrl = "/api/v1/email/templates";
   private readonly assetsUrl = "/api/v1/email/templates/assets";
+  private readonly xPostEmbedUrl = "/api/v1/email/templates/embeds/x-post";
   private readonly settingsUrl = "/api/v1/email/settings";
 
   private buildHeaders(supabaseId: string, teamId?: string | null, json = true): HeadersInit {
@@ -267,6 +268,20 @@ class TemplateEditorService implements ITemplateEditorService {
     })
 
     await this.parseResponse<null>(response, "Erro ao excluir imagem")
+  }
+
+  async resolveXPostEmbed(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    url: string
+  ): Promise<XPostEmbedResult> {
+    const response = await fetch(this.xPostEmbedUrl, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify({ url }),
+    })
+
+    return this.parseResponse<XPostEmbedResult>(response, "Erro ao gerar card do post do X")
   }
 
   private toPayload(draft: TemplateEditorDraft) {

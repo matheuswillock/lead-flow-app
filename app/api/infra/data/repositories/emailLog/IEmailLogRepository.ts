@@ -41,6 +41,7 @@ export interface IEmailLogRepository {
   hasDuplicateEvent(logId: string, eventType: EmailEventType, occurredAt: Date): Promise<boolean>
   applyWebhookEvent(input: ApplyEmailLogWebhookInput): Promise<void>
   createQueuedLog(input: CreateTeamEmailLogInput): Promise<string>
+  createManyQueuedLogs(inputs: CreateTeamEmailLogInput[]): Promise<void>
   markSent(logId: string, resendEmailId: string, sentAt: Date): Promise<void>
   markFailed(logId: string, eventId: string, errorMessage: string, occurredAt: Date): Promise<void>
 }

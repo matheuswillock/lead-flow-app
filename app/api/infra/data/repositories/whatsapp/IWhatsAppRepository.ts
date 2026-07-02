@@ -234,4 +234,9 @@ export interface IWhatsAppRepository {
     teamId: string,
     externalChatId: string
   ): Promise<WhatsAppConversationSelect | null>
+
+  findConversationsByExternalChatIds(
+    teamId: string,
+    externalChatIds: string[]
+  ): Promise<WhatsAppConversationSelect[]>
 }

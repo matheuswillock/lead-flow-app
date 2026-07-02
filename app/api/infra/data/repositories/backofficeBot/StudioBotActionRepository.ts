@@ -5,6 +5,7 @@ import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSc
 import { isManagerLikeRole } from "@/lib/roles";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { buildStudioBotActivityPayload } from "@/lib/studio-bot/activity-payload";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 
 class StudioBotActionRepository {
   async findLeadPolicyContext(leadId: string, teamId: string) {
@@ -111,10 +112,11 @@ class StudioBotActionRepository {
     return prisma.leadActivity.create({
       data: {
         leadId,
-        type: ActivityType.note,
-        body,
-        payload: buildStudioBotActivityPayload(userLinkId, "add_note", flowId),
-        createdBy: profileId,
+        ...buildStudioActivityData({
+          type: ActivityType.note,
+          body,
+          payload: buildStudioBotActivityPayload(userLinkId, "add_note", flowId),
+        }),
       },
       select: { id: true, body: true, createdAt: true },
     });
@@ -132,13 +134,14 @@ class StudioBotActionRepository {
     return prisma.leadActivity.create({
       data: {
         leadId,
-        type: ActivityType.studio_bot,
-        body,
-        payload: {
-          ...buildStudioBotActivityPayload(userLinkId, action, flowId),
-          ...extraPayload,
-        },
-        createdBy: profileId,
+        ...buildStudioActivityData({
+          type: ActivityType.studio_bot,
+          body,
+          payload: {
+            ...buildStudioBotActivityPayload(userLinkId, action, flowId),
+            ...extraPayload,
+          },
+        }),
       },
     });
   }

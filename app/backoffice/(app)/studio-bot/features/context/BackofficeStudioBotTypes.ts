@@ -106,8 +106,14 @@ export interface BackofficeStudioBotChannelFormData {
   status?: BackofficeBotChannelStatus
 }
 
+export interface BackofficeStudioBotQrCode {
+  imageUrl: string
+  text: string
+}
+
 export interface BackofficeStudioBotState {
   channel: BackofficeStudioBotChannel | null
+  qrCode: BackofficeStudioBotQrCode | null
   conversations: BackofficeStudioBotConversationItem[]
   conversationsPagination: BackofficeStudioBotPagination
   conversationsFilters: BackofficeStudioBotConversationsFilters
@@ -140,6 +146,7 @@ export interface BackofficeStudioBotActions {
   testPing: () => Promise<boolean>
   uploadChannelAvatar: (file: File) => Promise<boolean>
   reconnectChannel: () => Promise<boolean>
+  clearQrCode: () => void
   syncChannelProfile: () => Promise<boolean>
   setConversationsFilters: (filters: BackofficeStudioBotConversationsFilters) => void
   setConversationsPage: (page: number) => void
