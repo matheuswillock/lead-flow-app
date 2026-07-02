@@ -15,6 +15,7 @@ import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participa
 import type { Attachment } from "resend";
 import { formatIntimezone, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -111,7 +112,6 @@ const buildInviteDispatchBody = ({
 
 const registerInviteDispatchActivity = async ({
   leadId,
-  createdBy,
   provider,
   status,
   fallbackUsed,
@@ -121,7 +121,6 @@ const registerInviteDispatchActivity = async ({
   metadata,
 }: {
   leadId: string;
-  createdBy: string;
   provider: InviteDispatchProvider;
   status: InviteDispatchStatus;
   fallbackUsed: boolean;
@@ -134,26 +133,45 @@ const registerInviteDispatchActivity = async ({
     await prisma.leadActivity.create({
       data: {
         leadId,
-        type: "note",
-        body: buildInviteDispatchBody({ provider, status, fallbackUsed, error }),
-        payload: {
-          kind: "schedule",
-          action: "invite_dispatch",
-          provider,
-          status,
-          fallbackUsed,
-          attemptedAt: attemptedAt.toISOString(),
-          recipients,
-          error,
-          metadata,
-        },
-        createdBy,
+        ...buildStudioActivityData({
+          type: ActivityType.note,
+          body: buildInviteDispatchBody({ provider, status, fallbackUsed, error }),
+          payload: {
+            kind: "schedule",
+            action: "invite_dispatch",
+            provider,
+            status,
+            fallbackUsed,
+            attemptedAt: attemptedAt.toISOString(),
+            recipients,
+            error,
+            metadata,
+          },
+        }),
       },
     });
   } catch (activityError) {
     console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de disparo de convite:`, activityError);
   }
 };
+
+const buildAuthorActivityData = (
+  authorAsStudio: boolean,
+  createdByProfileId: string,
+  input: {
+    type: ActivityType;
+    body: string;
+    payload?: Prisma.InputJsonValue | Record<string, unknown> | null;
+  }
+): Prisma.LeadActivityUncheckedCreateWithoutLeadInput =>
+  authorAsStudio
+    ? buildStudioActivityData(input)
+    : {
+        type: input.type,
+        body: input.body,
+        payload: (input.payload ?? undefined) as Prisma.InputJsonValue | undefined,
+        createdBy: createdByProfileId,
+      };
 
 export class LeadScheduleService implements ILeadScheduleService {
   async createSchedule(params: CreateScheduleParams): Promise<Output> {
@@ -178,6 +196,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       createdByProfileId,
       transitionStatusToScheduled,
       confirmNoShowSchedule,
+      authorAsStudio = false,
     } = params;
 
     const resolvedMeetingType = meetingType ?? "online";
@@ -362,7 +381,6 @@ export class LeadScheduleService implements ILeadScheduleService {
 
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: createdByProfileId,
           provider: "google",
           status: "sent_google",
           fallbackUsed: false,
@@ -409,7 +427,6 @@ export class LeadScheduleService implements ILeadScheduleService {
         );
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: createdByProfileId,
           provider: "google",
           status: "failed",
           fallbackUsed: false,
@@ -444,7 +461,6 @@ export class LeadScheduleService implements ILeadScheduleService {
       console.warn(`${LOG_PREFIX} Google Calendar não conectado para closer`, { leadId, closerId });
       await registerInviteDispatchActivity({
         leadId,
-        createdBy: createdByProfileId,
         provider: "google",
         status: "failed",
         fallbackUsed: false,
@@ -512,7 +528,6 @@ export class LeadScheduleService implements ILeadScheduleService {
 
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: createdByProfileId,
           provider: "resend",
           status: "sent_resend",
           fallbackUsed: false,
@@ -542,7 +557,6 @@ export class LeadScheduleService implements ILeadScheduleService {
         });
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: createdByProfileId,
           provider: "resend",
           status: "failed",
           fallbackUsed: false,
@@ -647,15 +661,16 @@ export class LeadScheduleService implements ILeadScheduleService {
         await tx.leadActivity.create({
           data: {
             leadId,
-            type: ActivityType.status_change,
-            body: `Status alterado de ${fromLabel} para ${toLabel}`,
-            payload: {
-              from: fromStatus,
-              to: LeadStatus.scheduled,
-              fromLabel,
-              toLabel,
-            },
-            createdBy: createdByProfileId,
+            ...buildAuthorActivityData(authorAsStudio, createdByProfileId, {
+              type: ActivityType.status_change,
+              body: `Status alterado de ${fromLabel} para ${toLabel}`,
+              payload: {
+                from: fromStatus,
+                to: LeadStatus.scheduled,
+                fromLabel,
+                toLabel,
+              },
+            }),
           },
         });
       }
@@ -694,17 +709,18 @@ export class LeadScheduleService implements ILeadScheduleService {
           await prisma.leadActivity.create({
             data: {
               leadId,
-              type: "note",
-              body: closerNotificationMessage,
-              payload: {
-                kind: "schedule",
-                action: "closer_notification_failed",
-                error:
-                  closerNotificationError instanceof Error
-                    ? closerNotificationError.message
-                    : String(closerNotificationError),
-              },
-              createdBy: createdByProfileId,
+              ...buildStudioActivityData({
+                type: ActivityType.note,
+                body: closerNotificationMessage,
+                payload: {
+                  kind: "schedule",
+                  action: "closer_notification_failed",
+                  error:
+                    closerNotificationError instanceof Error
+                      ? closerNotificationError.message
+                      : String(closerNotificationError),
+                },
+              }),
             },
           });
         } catch (activityError) {
@@ -734,15 +750,16 @@ export class LeadScheduleService implements ILeadScheduleService {
         await prisma.leadActivity.create({
           data: {
             leadId,
-            type: "note",
-            body: bodyLines.join("\n"),
-            payload: {
-              kind: "schedule",
-              meetingDate: meetingDate.toISOString(),
-              meetingTitle: resolvedMeetingTitle,
-              participants,
-            },
-            createdBy: createdByProfileId,
+            ...buildAuthorActivityData(authorAsStudio, createdByProfileId, {
+              type: ActivityType.note,
+              body: bodyLines.join("\n"),
+              payload: {
+                kind: "schedule",
+                meetingDate: meetingDate.toISOString(),
+                meetingTitle: resolvedMeetingTitle,
+                participants,
+              },
+            }),
           },
         });
       } catch (activityError) {

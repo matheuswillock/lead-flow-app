@@ -19,6 +19,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useTeamContext } from '@/app/context/TeamContext';
 import type { LeadActivityResponseDTO } from '@/app/api/v1/leads/DTO/leadResponseDTO';
+import { resolveStudioActivityAuthor } from '@/lib/lead-activities/resolveActivityAuthor';
+import { isStudioAuthoredPayload } from '@/lib/studio-feed-identity';
 
 const ACTIVITY_TYPES = [
   { value: 'note',     label: 'Comentário', Icon: MessageSquare },
@@ -146,8 +148,19 @@ export function CarteiraActivityFeed({ leadId, open = true }: CarteiraActivityFe
         ) : (
           <div className="flex flex-col gap-2">
             {activities.map((activity) => {
-              const authorName = activity.author?.fullName ?? activity.author?.email ?? 'Sistema';
-              const avatarSrc = activity.author?.avatarUrl ?? `https://avatar.vercel.sh/${activity.author?.email ?? 'guest'}.png`;
+              const author =
+                activity.author ??
+                (isStudioAuthoredPayload(activity.payload)
+                  ? resolveStudioActivityAuthor(
+                      activity.payload as Record<string, unknown> | null | undefined
+                    )
+                  : null);
+              const authorName = author?.fullName ?? author?.email ?? 'Sistema';
+              const avatarSrc =
+                author?.avatarUrl ??
+                (author?.email
+                  ? `https://avatar.vercel.sh/${author.email}.png`
+                  : '/corretor-studio-icon.svg');
               const initials = getInitials(authorName);
               const TypeIcon = ACTIVITY_TYPES.find((t) => t.value === activity.type)?.Icon ?? MessageSquare;
               return (

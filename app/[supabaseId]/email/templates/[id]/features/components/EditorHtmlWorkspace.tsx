@@ -1,11 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
-import { AlertTriangle } from "lucide-react";
+import { useCallback, useMemo } from "react";
+import { AlertTriangle, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { MonacoCodeEditor } from "@/components/editors/MonacoCodeEditor";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { analyzeEmailHtml } from "../utils/analyze-email-html";
 
 function getFallbackPreviewHtml() {
@@ -33,6 +41,17 @@ export function EditorHtmlWorkspace({ value, onChange, remountKey, ready = true 
     []
   );
 
+  const handleCopyHtml = useCallback(async () => {
+    if (!value.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("HTML copiado");
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  }, [value]);
+
   return (
     <div className="grid h-full min-h-0 flex-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
       <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-background shadow-sm">
@@ -41,7 +60,27 @@ export function EditorHtmlWorkspace({ value, onChange, remountKey, ready = true 
             <h3 className="text-sm font-medium">Código HTML</h3>
             <p className="truncate text-xs text-muted-foreground">Fonte manual do template</p>
           </div>
-          <Badge variant="secondary">HTML</Badge>
+          <div className="flex shrink-0 items-center gap-1">
+            <Badge variant="secondary">HTML</Badge>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    disabled={!value.trim()}
+                    onClick={() => void handleCopyHtml()}
+                    aria-label="Copiar HTML"
+                  >
+                    <Copy />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Copiar HTML</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
         <div className="min-h-[360px] flex-1">
           {ready ? (

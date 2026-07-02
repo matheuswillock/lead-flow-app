@@ -107,7 +107,7 @@ if (!dryRun) {
 }
 
 console.info("\n▶ Aplicando schema no banco local (prisma db push)…");
-const push = run(process.execPath, ["x", "prisma", "db", "push", "--accept-data-loss"], localDbEnv);
+const push = run("bunx", ["prisma", "db", "push", "--accept-data-loss"], localDbEnv);
 
 if (push.status !== 0) {
   console.error(push.stderr || push.stdout);

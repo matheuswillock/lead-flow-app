@@ -666,6 +666,17 @@ class WhatsAppRepository implements IWhatsAppRepository {
       select: CONVERSATION_SELECT,
     })
   }
+
+  async findConversationsByExternalChatIds(
+    teamId: string,
+    externalChatIds: string[]
+  ): Promise<WhatsAppConversationSelect[]> {
+    if (externalChatIds.length === 0) return []
+    return prisma.whatsAppConversation.findMany({
+      where: { teamId, externalChatId: { in: externalChatIds } },
+      select: CONVERSATION_SELECT,
+    })
+  }
 }
 
 export const whatsAppRepository = new WhatsAppRepository()

@@ -288,6 +288,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         access.teamId,
         originContext
           ? {
+              authorAsStudio: true,
               body: "Lead criado via formulário público",
               payload: {
                 kind: "lead_creation",
@@ -342,6 +343,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
             extraGuests: data.extraGuests,
             createdByProfileId: access.profileId,
             transitionStatusToScheduled: false,
+            authorAsStudio: true,
           });
 
           if (!scheduleOutput.isValid) {

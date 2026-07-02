@@ -22,6 +22,7 @@ import {
   ListChecks,
   LogOut,
   UserRound,
+  FileText,
 } from "lucide-react"
 import {
   Sidebar,
@@ -56,6 +57,7 @@ const navigationItems = [
   { title: "CRM", url: "/backoffice/crm", icon: Kanban },
   { title: "Calendário", url: "/backoffice/calendar", icon: CalendarDays },
   { title: "Clientes", url: "/backoffice/clients", icon: Users },
+  { title: "Contratos", url: "/backoffice/contracts", icon: FileText },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
   { title: "Funcionalidades", url: "/backoffice/features", icon: Zap },

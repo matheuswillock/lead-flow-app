@@ -22,6 +22,7 @@ import type {
   BackofficeStudioBotMessage,
   BackofficeStudioBotPagination,
   BackofficeStudioBotProfileFormData,
+  BackofficeStudioBotQrCode,
   BackofficeStudioBotUserLink,
 } from "./BackofficeStudioBotTypes"
 
@@ -57,6 +58,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
   const canManage = !user?.isOperator
 
   const [channel, setChannel] = useState<BackofficeStudioBotChannel | null>(null)
+  const [qrCode, setQrCode] = useState<BackofficeStudioBotQrCode | null>(null)
   const [conversations, setConversations] = useState<BackofficeStudioBotConversationItem[]>([])
   const [conversationsPagination, setConversationsPagination] =
     useState<BackofficeStudioBotPagination>(DEFAULT_PAGINATION)
@@ -201,19 +203,28 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       const output = await service.reconnectChannel()
       if (!output.isValid) {
         toast.error(output.errorMessages?.[0] ?? "Erro ao reconectar canal")
+        if (output.result?.channel) setChannel(output.result.channel)
+        setQrCode(null)
         return false
       }
-      const updated = output.result?.channel as BackofficeStudioBotChannel | undefined
-      if (updated) setChannel(updated)
-      toast.success("Reconexão Evolution solicitada")
+      if (output.result?.channel) setChannel(output.result.channel)
+      setQrCode(output.result?.qrCode ?? null)
+      toast.success(
+        output.result?.qrCode ? "Escaneie o QR Code para conectar" : "Bethânia já está conectada"
+      )
       return true
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao reconectar canal")
+      setQrCode(null)
       return false
     } finally {
       setIsReconnecting(false)
     }
   }, [canManage, service])
+
+  const clearQrCode = useCallback(() => {
+    setQrCode(null)
+  }, [])
 
   const syncChannelProfile = useCallback(async () => {
     if (!canManage) return false
@@ -385,6 +396,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
 
   const value: BackofficeStudioBotContextValue = {
     channel,
+    qrCode,
     conversations,
     conversationsPagination,
     conversationsFilters,
@@ -414,6 +426,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
     testPing,
     uploadChannelAvatar,
     reconnectChannel,
+    clearQrCode,
     syncChannelProfile,
     setConversationsFilters,
     setConversationsPage,

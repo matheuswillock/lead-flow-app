@@ -3,10 +3,8 @@ import { Output } from "@/lib/output";
 import { getEmailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { dispatchWebPushToProfile } from "@/app/api/infra/webPush/dispatchWebPush";
-import {
-  associateProposalRepository,
-  STUDIO_FEED_IDENTITY,
-} from "@/app/api/infra/data/repositories/associateProposal/AssociateProposalRepository";
+import { associateProposalRepository } from "@/app/api/infra/data/repositories/associateProposal/AssociateProposalRepository";
+import { STUDIO_FEED_IDENTITY } from "@/lib/studio-feed-identity";
 import type { AssociateBackofficeAccess } from "@/app/api/useCases/associateProposal/AssociateBackofficeAccessTypes";
 import {
   associateProposalService,
