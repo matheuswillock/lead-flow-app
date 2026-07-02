@@ -14,6 +14,7 @@ export interface CreateTeamEmailLogInput {
 
 export interface ITeamEmailDispatchLogger {
   createQueuedTeamEmailLog(input: CreateTeamEmailLogInput): Promise<string>
+  createQueuedTeamEmailLogs(inputs: CreateTeamEmailLogInput[]): Promise<{ email: string; logId: string }[]>
   markTeamEmailLogSent(logId: string, resendEmailId: string): Promise<void>
   markTeamEmailLogFailed(logId: string, errorMessage: string): Promise<void>
 }

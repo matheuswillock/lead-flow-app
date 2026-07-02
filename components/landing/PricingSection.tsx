@@ -137,16 +137,6 @@ export function PricingSection() {
                 </div>
               ))}
             </div>
-
-            <div className="mt-4 rounded-xl border border-primary/25 p-4 bg-primary/5">
-              <p className="text-xs font-semibold text-muted-foreground mb-0.5">Planos a partir de</p>
-              <p className="text-2xl font-extrabold text-primary">
-                R$ 59,90<span className="text-sm font-normal text-muted-foreground">/mês</span>
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Plano semestral · R$ 79,90/mês no mensal · + R$ 19,90/operador
-              </p>
-            </div>
           </MotionDiv>
 
           <MotionDiv {...rightMotion}>
@@ -160,13 +150,6 @@ export function PricingSection() {
                   {badge.label}
                 </span>
               ))}
-            </div>
-
-            <div className="mb-4 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 lg:hidden">
-              <p className="text-xs text-muted-foreground">Planos a partir de</p>
-              <p className="text-xl font-extrabold text-primary leading-tight">
-                R$ 59,90<span className="text-sm font-normal text-muted-foreground">/mês</span>
-              </p>
             </div>
 
             <div className="rounded-3xl border border-border bg-card p-8 sm:p-10">

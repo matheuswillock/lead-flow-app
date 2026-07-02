@@ -13,6 +13,7 @@ import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepositor
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
 import { LeadStatus, ActivityType, Prisma, TeamStatusRuleType } from "@prisma/client";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
@@ -426,18 +427,29 @@ export class LeadUseCase implements ILeadUseCase {
           closer: { connect: { id: data.closerId } }
         }),
         activities: {
-          create: {
-            type: ActivityType.note,
-            body: saveAsDraft
-              ? "Rascunho criado"
-              : creationActivityContext?.body || "Lead criado no sistema",
-            payload:
-              creationActivityContext?.payload === null
-                ? Prisma.JsonNull
-                : (creationActivityContext?.payload ?? undefined),
-            author: { connect: { id: profileInfo.id } }
-          }
-        }
+          create: creationActivityContext?.authorAsStudio
+            ? buildStudioActivityData({
+                type: ActivityType.note,
+                body: saveAsDraft
+                  ? "Rascunho criado"
+                  : creationActivityContext?.body || "Lead criado no sistema",
+                payload:
+                  creationActivityContext?.payload === null
+                    ? null
+                    : (creationActivityContext?.payload ?? undefined),
+              })
+            : {
+                type: ActivityType.note,
+                body: saveAsDraft
+                  ? "Rascunho criado"
+                  : creationActivityContext?.body || "Lead criado no sistema",
+                payload:
+                  creationActivityContext?.payload === null
+                    ? Prisma.JsonNull
+                    : (creationActivityContext?.payload ?? undefined),
+                author: { connect: { id: profileInfo.id } },
+              },
+        },
       });
 
       if (lead.isTransfer === true && lead.meetingDate && lead.status !== null) {
@@ -1930,14 +1942,15 @@ export class LeadUseCase implements ILeadUseCase {
       await prisma.leadActivity.create({
         data: {
           leadId,
-          type: ActivityType.note,
-          body: `Lead transferido, mas o agendamento falhou: ${errorMessage}`,
-          payload: {
-            kind: "schedule",
-            action: "transfer_schedule_failed",
-            error: errorMessage,
-          },
-          createdBy: transferredByProfileId,
+          ...buildStudioActivityData({
+            type: ActivityType.note,
+            body: `Lead transferido, mas o agendamento falhou: ${errorMessage}`,
+            payload: {
+              kind: "schedule",
+              action: "transfer_schedule_failed",
+              error: errorMessage,
+            },
+          }),
         },
       });
 

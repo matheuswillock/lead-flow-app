@@ -86,7 +86,7 @@ async function fetchEvoWithRetry<T>(
 
       const delay = BASE_DELAY_MS * Math.pow(2, attempt)
       console.info(`[EvoApiService][${label}] Retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`)
-      await new Promise(r => setTimeout(r, delay))
+      await new Promise((r) => setTimeout(r, delay))
     }
   }
   throw lastError!
