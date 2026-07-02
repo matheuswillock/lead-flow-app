@@ -23,6 +23,8 @@ function getApiKey(): string {
   return key
 }
 
+const EVO_REQUEST_TIMEOUT_MS = 10_000
+
 async function fetchEvo<T>(
   url: string,
   options: RequestInit,
@@ -30,7 +32,10 @@ async function fetchEvo<T>(
 ): Promise<T> {
   let response: Response
   try {
-    response = await fetch(url, options)
+    response = await fetch(url, {
+      ...options,
+      signal: options.signal ?? AbortSignal.timeout(EVO_REQUEST_TIMEOUT_MS),
+    })
   } catch (error) {
     console.error(`[EvoApiService][${label}] Network error`, error)
     throw new Error(`[EvoApiService][${label}] Network request failed: ${String(error)}`)

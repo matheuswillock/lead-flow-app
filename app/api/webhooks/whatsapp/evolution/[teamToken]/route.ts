@@ -1,25 +1,19 @@
-import { NextRequest, NextResponse } from "next/server"
+import * as Sentry from "@sentry/nextjs"
+import { after, NextRequest, NextResponse } from "next/server"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { processEvoWebhookUseCase } from "@/app/api/useCases/whatsapp/ProcessEvoWebhookUseCase"
 import { isValidEvoWebhookPayload } from "@/lib/whatsapp/webhook-signature"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
-const MAX_WEBHOOK_RETRIES = 5
-const failedEvents = new Map<string, { count: number; firstAt: number }>()
-const DEAD_LETTER_TTL_MS = 10 * 60 * 1000
+export const maxDuration = 60
 
-function eventKey(teamId: string, rawEvent: unknown): string {
+function describeEvent(rawEvent: unknown): { eventType: string; providerMessageId: string } {
   const ev = rawEvent as Record<string, unknown>
   const data = ev?.["data"] as Record<string, unknown> | undefined
   const key = data?.["key"] as Record<string, unknown> | undefined
-  const msgId = typeof key?.["id"] === "string" ? key["id"] : ""
-  const eventType = typeof ev?.["event"] === "string" ? ev["event"] : ""
-  return `${teamId}:${eventType}:${msgId}`
-}
-
-function pruneStaleEntries() {
-  const now = Date.now()
-  for (const [k, v] of failedEvents) {
-    if (now - v.firstAt > DEAD_LETTER_TTL_MS) failedEvents.delete(k)
+  return {
+    eventType: typeof ev?.["event"] === "string" ? (ev["event"] as string) : "",
+    providerMessageId: typeof key?.["id"] === "string" ? (key["id"] as string) : "",
   }
 }
 
@@ -46,51 +40,49 @@ export async function POST(
     return NextResponse.json({ error: "Invalid payload structure" }, { status: 400 })
   }
 
-  const key = eventKey(config.teamId, rawEvent)
+  const { eventType, providerMessageId } = describeEvent(rawEvent)
 
-  if (key) {
-    const entry = failedEvents.get(key)
-    if (entry && entry.count >= MAX_WEBHOOK_RETRIES) {
-      console.error(
-        "[WhatsAppEvoWebhookRoute][POST] Dead-letter: exceeded max retries",
-        { key, count: entry.count }
-      )
-      return NextResponse.json({ processed: true }, { status: 200 })
-    }
-  }
+  // Ack imediato + processamento em after(): evita segurar a conexão da
+  // Evolution durante o processamento (mesmo padrão do webhook Asaas).
+  // O processamento é idempotente (dedupe por providerMessageId), então uma
+  // falha aqui é logada/reportada em vez de depender de redelivery via 500.
+  after(async () => {
+    try {
+      const output = await processEvoWebhookUseCase.execute({
+        teamId: config.teamId,
+        configId: config.id,
+        rawEvent,
+      })
 
-  const output = await processEvoWebhookUseCase.execute({
-    teamId: config.teamId,
-    configId: config.id,
-    rawEvent,
-  })
-
-  if (!output.isValid) {
-    console.error(
-      "[WhatsAppEvoWebhookRoute][POST] processing failed",
-      output.errorMessages
-    )
-
-    if (key) {
-      const entry = failedEvents.get(key)
-      if (entry) {
-        entry.count++
-      } else {
-        failedEvents.set(key, { count: 1, firstAt: Date.now() })
+      if (!output.isValid) {
+        console.error(
+          "[WhatsAppEvoWebhookRoute][after] processing failed",
+          { eventType, providerMessageId, errors: output.errorMessages }
+        )
+        Sentry.captureMessage("[WhatsAppEvoWebhookRoute] processing failed", {
+          level: "error",
+          tags: { route: "WhatsAppEvoWebhookRoute", phase: "after" },
+          extra: {
+            teamId: config.teamId,
+            eventType,
+            providerMessageId,
+            errors: output.errorMessages,
+          },
+        })
       }
-
-      if (failedEvents.size > 500) pruneStaleEntries()
+    } catch (error) {
+      rethrowIfPrerenderInterrupted(error)
+      console.error("[WhatsAppEvoWebhookRoute][after] unexpected error", {
+        eventType,
+        providerMessageId,
+        error,
+      })
+      Sentry.captureException(error, {
+        tags: { route: "WhatsAppEvoWebhookRoute", phase: "after" },
+        extra: { teamId: config.teamId, eventType, providerMessageId },
+      })
     }
-
-    // isValid só é false quando o processamento lança uma exceção interna
-    // (nenhum ramo de "evento ignorado intencionalmente" seta isValid=false).
-    // Retornar 500 permite que a Evolution reentregue o evento; o
-    // processamento agora é seguro para redelivery (dedupe por
-    // providerMessageId, healing de efeitos pendentes e P2002 tratado).
-    return NextResponse.json({ processed: false }, { status: 500 })
-  }
-
-  if (key) failedEvents.delete(key)
+  })
 
   return NextResponse.json({ processed: true }, { status: 200 })
 }

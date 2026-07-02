@@ -1225,6 +1225,7 @@ model Lead {
   @@index([followUpAt])
   @@index([statusEnteredAt])
   @@index([status])
+  @@index([teamId, status, createdAt(sort: Desc)])
   @@map("corretor_studio_leads")
 }
 
@@ -1247,6 +1248,7 @@ model LeadActivity {
   task      Task?
 
   @@index([leadId])
+  @@index([leadId, createdAt(sort: Desc)])
   @@index([createdBy])
   @@map("corretor_studio_lead_activities")
 }
@@ -1689,6 +1691,7 @@ model Notification {
 
   @@index([recipientProfileId, teamId, isRead])
   @@index([recipientProfileId, createdAt])
+  @@index([recipientProfileId, teamId, createdAt(sort: Desc)])
   @@index([teamId, createdAt])
   @@map("corretor_studio_notifications")
 }
@@ -2613,6 +2616,8 @@ model TeamWhatsAppConfig {
 
   @@index([normalizedPhone])
   @@index([primaryConfigId])
+  @@index([webhookSecret])
+  @@index([instanceName])
   @@map("team_whatsapp_configs")
 }
 
@@ -2649,8 +2654,10 @@ model WhatsAppConversation {
 
   @@unique([configId, externalChatId])
   @@index([teamId, lastMessageAt(sort: Desc)])
+  @@index([teamId, isArchived, lastMessageAt(sort: Desc)])
   @@index([teamId, normalizedPhone])
   @@index([leadId])
+  @@index([assignedProfileId])
   @@index([createdByProfileId])
   @@map("whatsapp_conversations")
 }
@@ -2696,6 +2703,7 @@ model WhatsAppMessage {
   @@unique([teamId, providerMessageId])
   @@unique([teamId, providerEventId])
   @@index([conversationId, createdAt(sort: Asc)])
+  @@index([sentByProfileId])
   @@map("whatsapp_messages")
 }
 
