@@ -7,6 +7,14 @@ export interface EmailTemplateAssetUploadResult {
   publicUrl: string;
 }
 
+export interface XPostEmbedResult {
+  authorName: string;
+  authorUrl: string | null;
+  text: string;
+  postUrl: string;
+  htmlSnippet: string;
+}
+
 export interface ITemplateEditorService {
   getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }>;
   getEmailSettingsForTips(
@@ -86,4 +94,9 @@ export interface ITemplateEditorService {
     teamId: string | null | undefined,
     fileId: string
   ): Promise<void>;
+  resolveXPostEmbed(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    url: string
+  ): Promise<XPostEmbedResult>;
 }

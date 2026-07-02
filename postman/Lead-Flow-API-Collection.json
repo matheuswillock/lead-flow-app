@@ -11005,6 +11005,38 @@
               "response": []
             },
             {
+              "name": "Gerar Embed de Post do X",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"https://x.com/usuario/status/1234567890123456789\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/embeds/x-post",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "embeds",
+                    "x-post"
+                  ]
+                },
+                "description": "Converte URL de post do X/Twitter em HTML estático compatível com e-mail."
+              },
+              "response": []
+            },
+            {
               "name": "Listar Templates",
               "request": {
                 "method": "GET",
