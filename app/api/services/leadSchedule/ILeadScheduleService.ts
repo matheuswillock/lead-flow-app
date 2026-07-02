@@ -21,6 +21,7 @@ export interface CreateScheduleParams {
   createdByProfileId: string;
   transitionStatusToScheduled?: boolean;
   confirmNoShowSchedule?: boolean;
+  authorAsStudio?: boolean;
 }
 
 export interface ILeadScheduleService {
