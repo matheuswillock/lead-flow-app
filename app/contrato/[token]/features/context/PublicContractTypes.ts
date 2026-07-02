@@ -2,6 +2,11 @@ export interface PublicContractShare {
   contractTitle: string
   fileName: string
   versionNumber: number
-  downloadUrl: string
   expiresAt: string
+}
+
+export interface PublicContractDownload {
+  downloadUrl: string
+  downloadExpiresAt: string
+  shareExpiresAt: string
 }

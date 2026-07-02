@@ -10824,7 +10824,28 @@
                     "{{contractShareToken}}"
                   ]
                 },
-                "description": "Auto-generated from app/api/v1/public-contracts/[token]/route.ts"
+                "description": "Metadados do link público (sem URL assinada do PDF)."
+              }
+            },
+            {
+              "name": "GET Public Contract Share Download",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-contracts/{{contractShareToken}}/download",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-contracts",
+                    "{{contractShareToken}}",
+                    "download"
+                  ]
+                },
+                "description": "Gera URL assinada de curta duração para download do PDF no clique."
               }
             }
           ]

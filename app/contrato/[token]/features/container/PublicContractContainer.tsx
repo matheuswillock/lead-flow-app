@@ -1,6 +1,6 @@
 "use client"
 
-import { FileText, Download, TriangleAlert } from "lucide-react"
+import { FileText, Download, Loader2, TriangleAlert } from "lucide-react"
 import {
   Card,
   CardHeader,
@@ -21,7 +21,7 @@ function formatExpiresAt(value: string): string {
 }
 
 export function PublicContractContainer() {
-  const { share, isLoading, error } = usePublicContract()
+  const { share, isLoading, isDownloading, error, downloadContract } = usePublicContract()
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -61,11 +61,18 @@ export function PublicContractContainer() {
               </p>
             </CardContent>
             <CardFooter>
-              <Button asChild className="w-full">
-                <a href={share.downloadUrl} target="_blank" rel="noopener noreferrer">
+              <Button
+                type="button"
+                className="w-full"
+                disabled={isDownloading}
+                onClick={() => void downloadContract()}
+              >
+                {isDownloading ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
                   <Download data-icon="inline-start" />
-                  Baixar contrato
-                </a>
+                )}
+                Baixar contrato
               </Button>
             </CardFooter>
           </>
