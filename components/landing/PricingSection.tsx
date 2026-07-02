@@ -89,7 +89,6 @@ export function PricingSection() {
 
   return (
     <section id="demo" className="relative py-20 md:py-28">
-      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-20 landing-pricing-orbs" />
 
       <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 lg:px-10">
         <MotionDiv {...headingMotion} className="text-center mb-12">
@@ -172,10 +171,11 @@ export function PricingSection() {
             <div className="rounded-3xl border border-border bg-card p-8 sm:p-10">
               <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
                 <div>
-                  <label className="text-sm font-semibold text-foreground/90">
+                  <label htmlFor="pricing-full-name" className="text-sm font-semibold text-foreground/90">
                     Nome completo
                   </label>
                   <input
+                    id="pricing-full-name"
                     type="text"
                     placeholder="Seu nome"
                     value={fullName}
@@ -186,10 +186,11 @@ export function PricingSection() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-semibold text-foreground/90">
+                  <label htmlFor="pricing-email" className="text-sm font-semibold text-foreground/90">
                     E-mail profissional
                   </label>
                   <input
+                    id="pricing-email"
                     type="email"
                     placeholder="seu@email.com"
                     value={email}
@@ -200,10 +201,11 @@ export function PricingSection() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-semibold text-foreground/90">
+                  <label htmlFor="pricing-whatsapp" className="text-sm font-semibold text-foreground/90">
                     WhatsApp
                   </label>
                   <input
+                    id="pricing-whatsapp"
                     type="tel"
                     placeholder="(00) 00000-0000"
                     value={maskPhone(whatsapp)}
@@ -220,7 +222,7 @@ export function PricingSection() {
                 <button
                   type="submit"
                   disabled={!isFormValid || isSubmitting}
-                  className="w-full inline-flex items-center justify-center rounded-2xl px-5 py-3.5 text-base font-semibold shadow-lg transition-all hover:shadow-xl hover:scale-[1.01] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 landing-primary-cta"
+                  className="w-full inline-flex items-center justify-center rounded-2xl px-5 py-3.5 text-base font-semibold shadow-lg transition-all hover:shadow-xl hover:scale-[1.01] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 landing-primary-cta"
                 >
                   {isSubmitting ? "Enviando..." : "Agendar demonstração"}
                   <ArrowRight className="ml-2 h-5 w-5" />

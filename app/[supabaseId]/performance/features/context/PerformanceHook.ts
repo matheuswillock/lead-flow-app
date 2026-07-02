@@ -19,6 +19,7 @@ export function usePerformanceHook() {
   const { activeTeamId, activeTeam, teams, isTeamMaster } = useTeamContext();
 
   const [data, setData] = useState<PerformanceData | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFiltersState] = useState<PerformanceFiltersState>(DEFAULT_PERFORMANCE_FILTERS);
@@ -55,6 +56,7 @@ export function usePerformanceHook() {
     try {
       const result = await performanceService.getSalesPerformance(supabaseId, activeTeamId, currentFilters, currentScope);
       setData(result);
+      setLastFetchedAt(new Date());
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao buscar performance';
       setError(message);
@@ -107,6 +109,7 @@ export function usePerformanceHook() {
 
   return {
     data,
+    lastFetchedAt,
     isLoading,
     error,
     filters,

@@ -6,6 +6,7 @@ import type { PerformanceFiltersState, PerformancePreset, PerformanceData, Perfo
 
 type PerformanceContextValue = {
   data: PerformanceData | null;
+  lastFetchedAt: Date | null;
   isLoading: boolean;
   error: string | null;
   filters: PerformanceFiltersState;
