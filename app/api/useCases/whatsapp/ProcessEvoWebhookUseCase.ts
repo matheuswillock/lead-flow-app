@@ -43,6 +43,17 @@ function shouldApplyMessageStatus(current: string, next: string): boolean {
   return nextRank >= currentRank
 }
 
+const CONTACTS_LOOKUP_CHUNK_SIZE = 500
+const CONTACTS_UPDATE_CONCURRENCY = 20
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
 interface ProcessEvoWebhookInput {
   teamId: string
   configId: string
@@ -671,7 +682,7 @@ class ProcessEvoWebhookUseCase {
     const contacts = asRecordArray(data)
     if (contacts.length === 0) return
 
-    let updatedCount = 0
+    const displayNameByRemoteJid = new Map<string, string>()
     for (const contact of contacts) {
       const remoteJid = typeof contact["id"] === "string"
         ? contact["id"]
@@ -691,14 +702,48 @@ class ProcessEvoWebhookUseCase {
       const displayName = profileName ?? pushName
       if (!displayName) continue
 
-      const conversation = await this.repository.findConversationByExternalChatId(teamId, remoteJid)
-      if (!conversation) continue
+      displayNameByRemoteJid.set(remoteJid, displayName)
+    }
 
-      if (conversation.contactName !== displayName) {
-        await this.repository.updateConversation(conversation.id, {
-          contactName: displayName,
-        })
-        updatedCount++
+    if (displayNameByRemoteJid.size === 0) return
+
+    const remoteJids = Array.from(displayNameByRemoteJid.keys())
+    const conversationsByRemoteJid = new Map<string, WhatsAppConversationSelect>()
+    for (const chunk of chunkArray(remoteJids, CONTACTS_LOOKUP_CHUNK_SIZE)) {
+      const found = await this.repository.findConversationsByExternalChatIds(teamId, chunk)
+      for (const conversation of found) {
+        if (conversation.externalChatId) {
+          conversationsByRemoteJid.set(conversation.externalChatId, conversation)
+        }
+      }
+    }
+
+    const pendingUpdates: Array<{ conversationId: string; contactName: string }> = []
+    for (const [remoteJid, displayName] of displayNameByRemoteJid) {
+      const conversation = conversationsByRemoteJid.get(remoteJid)
+      if (conversation && conversation.contactName !== displayName) {
+        pendingUpdates.push({ conversationId: conversation.id, contactName: displayName })
+      }
+    }
+
+    let updatedCount = 0
+    for (const chunk of chunkArray(pendingUpdates, CONTACTS_UPDATE_CONCURRENCY)) {
+      const results = await Promise.allSettled(
+        chunk.map((update) =>
+          this.repository.updateConversation(update.conversationId, {
+            contactName: update.contactName,
+          })
+        )
+      )
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          updatedCount++
+        } else {
+          console.error(
+            "[ProcessEvoWebhookUseCase][handleContactsUpsert] Failed to update conversation contact name",
+            result.reason
+          )
+        }
       }
     }
 

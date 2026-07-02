@@ -138,6 +138,26 @@ export class EmailLogRepository implements IEmailLogRepository {
     return input.id
   }
 
+  async createManyQueuedLogs(inputs: CreateTeamEmailLogInput[]): Promise<void> {
+    if (inputs.length === 0) return
+    await prisma.emailLog.createMany({
+      data: inputs.map((input) => ({
+        id: input.id,
+        teamId: input.teamId,
+        campaignId: input.campaignId ?? null,
+        dispatchId: input.dispatchId ?? null,
+        recipientEmail: input.recipientEmail,
+        recipientName: input.recipientName ?? null,
+        subject: input.subject,
+        category: input.category,
+        sourceType: input.sourceType ?? null,
+        sourceId: input.sourceId ?? null,
+        status: "queued",
+      })),
+      skipDuplicates: true,
+    })
+  }
+
   async markSent(logId: string, resendEmailId: string, sentAt: Date): Promise<void> {
     await prisma.emailLog.update({
       where: { id: logId },
