@@ -6,6 +6,10 @@ import type {
 import { Output } from "@/lib/output";
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import { studioBotN8nDispatchService } from "@/app/api/services/backofficeBot/StudioBotN8nDispatchService";
+import {
+  backofficeEvoApiService,
+  toBackofficeQrCodeImageUrl,
+} from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { IBackofficeBotChannelUseCase } from "./IBackofficeBotChannelUseCase";
 
@@ -255,24 +259,33 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
 
   async reconnectChannel(): Promise<Output> {
     try {
-      const active = await backofficeBotRepository.getActiveChannel();
-      if (!active) {
-        return new Output(false, [], ["Canal não configurado"], null);
+      const active =
+        (await backofficeBotRepository.getActiveChannel()) ??
+        (await backofficeBotRepository.upsertChannel({}));
+
+      if (!active.n8nInboundUrl) {
+        return new Output(false, [], ["Configure a URL inbound N8N antes de conectar"], {
+          channel: toChannelDto(active),
+        });
       }
 
-      const channel = await backofficeBotRepository.upsertChannel({ status: "pending" });
-      const dispatch = await studioBotN8nDispatchService.dispatchEvent(
-        {
-          eventType: "studio_bot.channel_reconnect",
-          channelId: active.id,
-          timestamp: new Date().toISOString(),
-        },
-        `channel-reconnect:${active.id}:${Date.now()}`
-      );
+      const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
 
-      return new Output(dispatch.ok, [], dispatch.ok ? [] : ["Falha ao solicitar reconexão"], {
+      const result = await backofficeEvoApiService.connectInstance({
+        instanceName,
+        webhookUrl: active.n8nInboundUrl,
+      });
+
+      const channel = await backofficeBotRepository.upsertChannel({
+        status: result.status === "open" ? "connected" : "pending",
+        providerConfig: { instanceName },
+      });
+
+      return new Output(true, [], [], {
         channel: toChannelDto(channel),
-        status: dispatch.status,
+        qrCode: result.qrCode
+          ? { imageUrl: toBackofficeQrCodeImageUrl(result.qrCode.base64), text: result.qrCode.text }
+          : null,
       });
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][reconnectChannel]", error);
