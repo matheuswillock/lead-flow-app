@@ -91,7 +91,7 @@ export function MessagingFormattedText({
     : "font-semibold text-primary"
 
   return (
-    <p className={cn("text-sm leading-relaxed whitespace-pre-wrap", className)}>
+    <p className={cn("break-words text-sm leading-relaxed whitespace-pre-wrap", className)}>
       {segments.map((segment, index) => {
         if (segment.type === "text") {
           return <Fragment key={index}>{segment.value}</Fragment>

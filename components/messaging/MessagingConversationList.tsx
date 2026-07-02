@@ -40,7 +40,7 @@ export function MessagingConversationList({
   const isInitialLoading = isLoading && conversations.length === 0
 
   return (
-    <div className={className ?? "flex w-80 shrink-0 flex-col border-r border-border"}>
+    <div className={className ?? "flex w-80 min-w-0 shrink-0 flex-col overflow-hidden border-r border-border"}>
       {header ? <div className="flex flex-col gap-2 p-3">{header}</div> : null}
 
       <ScrollArea className="flex-1">

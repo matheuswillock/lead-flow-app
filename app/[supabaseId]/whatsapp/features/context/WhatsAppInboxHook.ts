@@ -6,7 +6,7 @@ import { useTeamContext } from '@/app/context/TeamContext'
 import { useUserContext } from '@/app/context/UserContext'
 import { isManagerLikeRole } from '@/lib/roles'
 import { useWhatsAppRealtime } from '@/hooks/useWhatsAppRealtime'
-import { dispatchWhatsAppUnreadChanged, WHATSAPP_UNREAD_CHANGED_EVENT } from '@/lib/whatsapp/unread-events'
+import { dispatchWhatsAppUnreadChanged, WHATSAPP_CONFIG_CHANGED_EVENT, WHATSAPP_UNREAD_CHANGED_EVENT } from '@/lib/whatsapp/unread-events'
 import { buildContactLookupFromList } from '../utils/formatWhatsAppMessageText'
 import { whatsAppInboxService } from '../services/WhatsAppInboxService'
 import type {
@@ -32,6 +32,14 @@ function dedupeConversationsById(items: WhatsAppConversation[]): WhatsAppConvers
     byId.set(item.id, item)
   }
   return Array.from(byId.values())
+}
+
+function sortConversationsByLastMessage(items: WhatsAppConversation[]): WhatsAppConversation[] {
+  return [...items].sort((a, b) => {
+    const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
+    const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
+    return bTime - aTime
+  })
 }
 
 const configInFlightByKey = new Map<string, Promise<WhatsAppConfig | null>>()
@@ -73,6 +81,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [contacts, setContacts] = useState<WhatsAppTeamContact[]>([])
   const [isLoadingContacts, setIsLoadingContacts] = useState(false)
   const [unreadTotal, setUnreadTotal] = useState(0)
+  const [allUnreadTotal, setAllUnreadTotal] = useState(0)
+  const [mineUnreadTotal, setMineUnreadTotal] = useState(0)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
   const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
@@ -91,6 +101,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSearchRef = useRef<string>('')
+  const messageRefetchTimerRef = useRef<number | null>(null)
 
   // Guards síncronos de double-submit: setados/checados ANTES de qualquer
   // await, diferente dos states React (isSending, isAssigning, etc.) cuja
@@ -105,6 +116,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     return () => {
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current)
+      }
+      if (messageRefetchTimerRef.current !== null) {
+        window.clearTimeout(messageRefetchTimerRef.current)
       }
     }
   }, [])
@@ -136,6 +150,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     const key = `${supabaseId}:${activeTeamId}`
     currentConfigKeyRef.current = key
 
+    // Só pula refetch quando já carregamos config válida (null após 404 deve tentar de novo)
     if (lastSuccessConfigKeyRef.current === key) {
       setIsLoadingConfig(false)
       return
@@ -163,7 +178,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       const result = await promise
       if (currentConfigKeyRef.current !== key) return
       setConfig(result)
-      lastSuccessConfigKeyRef.current = key
+      if (result !== null) {
+        lastSuccessConfigKeyRef.current = key
+      } else {
+        lastSuccessConfigKeyRef.current = null
+      }
     } catch (error) {
       if (currentConfigKeyRef.current === key) {
         setConfig(null)
@@ -182,40 +201,84 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
   const filterModeRef = useRef<ConversationFilterMode>('all')
   const conversationIdsRef = useRef<Set<string>>(new Set())
+  const realtimeHealthyRef = useRef(true)
+  const selectedConversationIdRef = useRef<string | null>(null)
+  const selectedLastMessageAtRef = useRef<string | null>(null)
+  const searchQueryRef = useRef('')
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId
+  }, [selectedConversationId])
+
+  useEffect(() => {
+    selectedLastMessageAtRef.current = selectedConversation?.lastMessageAt ?? null
+  }, [selectedConversation?.lastMessageAt])
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+  }, [searchQuery])
 
   useEffect(() => {
     conversationIdsRef.current = new Set(conversations.map((c) => c.id))
   }, [conversations])
 
-  // Fresh unread total for sidebar tab badge (independent of current filter page)
-  const fetchUnreadTotal = useCallback(async () => {
+  const handleRealtimeHealthChange = useCallback((healthy: boolean) => {
+    realtimeHealthyRef.current = healthy
+  }, [])
+
+  // Fresh unread totals for filter tab badges (independent of current filter page)
+  const refreshUnreadCounts = useCallback(async () => {
     if (!activeTeamId) {
       setUnreadTotal(0)
+      setAllUnreadTotal(0)
+      setMineUnreadTotal(0)
       return
     }
+
     try {
-      const result = await whatsAppInboxService.fetchConversations(activeTeamId, supabaseId, {
-        hasUnread: true,
-        limit: 1,
-        page: 1,
-      })
-      setUnreadTotal(result.total)
+      const profileId = user?.id
+      const requests = [
+        whatsAppInboxService.fetchConversations(activeTeamId, supabaseId, {
+          hasUnread: true,
+          limit: 1,
+          page: 1,
+        }),
+      ]
+
+      if (profileId) {
+        requests.push(
+          whatsAppInboxService.fetchConversations(activeTeamId, supabaseId, {
+            hasUnread: true,
+            assignedProfileId: profileId,
+            limit: 1,
+            page: 1,
+          })
+        )
+      }
+
+      const results = await Promise.all(requests)
+      const allResult = results[0]!
+      const mineResult = profileId ? results[1] : undefined
+
+      setUnreadTotal(allResult.total)
+      setAllUnreadTotal(allResult.total)
+      setMineUnreadTotal(mineResult?.total ?? 0)
     } catch {
-      // keep previous value on transient errors
+      // keep previous values on transient errors
     }
-  }, [activeTeamId, supabaseId])
+  }, [activeTeamId, supabaseId, user?.id])
 
   useEffect(() => {
     if (!activeTeamId || !config) return
-    void fetchUnreadTotal()
-  }, [activeTeamId, config, fetchUnreadTotal])
+    void refreshUnreadCounts()
+  }, [activeTeamId, config, refreshUnreadCounts])
 
   useEffect(() => {
     if (!activeTeamId || !config) return
-    const onUnreadChanged = () => void fetchUnreadTotal()
+    const onUnreadChanged = () => void refreshUnreadCounts()
     window.addEventListener(WHATSAPP_UNREAD_CHANGED_EVENT, onUnreadChanged)
     return () => window.removeEventListener(WHATSAPP_UNREAD_CHANGED_EVENT, onUnreadChanged)
-  }, [activeTeamId, config, fetchUnreadTotal])
+  }, [activeTeamId, config, refreshUnreadCounts])
 
   // Load conversations
   const loadConversations = useCallback(
@@ -377,6 +440,15 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [loadConfig])
 
   useEffect(() => {
+    const onConfigChanged = () => {
+      lastSuccessConfigKeyRef.current = null
+      void loadConfig()
+    }
+    window.addEventListener(WHATSAPP_CONFIG_CHANGED_EVENT, onConfigChanged)
+    return () => window.removeEventListener(WHATSAPP_CONFIG_CHANGED_EVENT, onConfigChanged)
+  }, [loadConfig])
+
+  useEffect(() => {
     if (!activeTeamId || config?.historySyncStatus !== 'RUNNING') return
 
     let cancelled = false
@@ -429,14 +501,14 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           .markConversationRead(activeTeamId, supabaseId, id)
           .then(() => {
             dispatchWhatsAppUnreadChanged()
-            void fetchUnreadTotal()
+            void refreshUnreadCounts()
           })
           .catch((err: unknown) => {
             console.error('[useWhatsAppInbox] Erro ao marcar como lida:', err)
           })
       }
     },
-    [loadMessages, activeTeamId, supabaseId, teamMembers.length, fetchUnreadTotal]
+    [loadMessages, activeTeamId, supabaseId, teamMembers.length, refreshUnreadCounts]
   )
 
   const loadOlderMessages = useCallback(() => {
@@ -706,14 +778,14 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           .markConversationRead(activeTeamId, supabaseId, row.conversationId)
           .then(() => {
             dispatchWhatsAppUnreadChanged()
-            void fetchUnreadTotal()
+            void refreshUnreadCounts()
           })
           .catch((err: unknown) => {
             console.error('[useWhatsAppInbox] Erro ao marcar como lida automaticamente:', err)
           })
       }
     },
-    [activeTeamId, supabaseId, fetchUnreadTotal]
+    [activeTeamId, supabaseId, refreshUnreadCounts]
   )
 
   const handleMessageUpdated = useCallback(
@@ -757,27 +829,74 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       leadId: string | null
       isArchived: boolean
     }) => {
-      if (!isTeamMaster && !conversationIdsRef.current.has(row.id)) return
+      if (!conversationIdsRef.current.has(row.id)) {
+        if (!isTeamMaster) return
+        setConversations((prev) => {
+          if (prev.some((c) => c.id === row.id)) return prev
+          const newConv: WhatsAppConversation = {
+            id: row.id,
+            teamId: activeTeamId ?? '',
+            configId: row.configId,
+            leadId: row.leadId,
+            externalChatId: null,
+            contactPhone: row.contactPhone ?? '',
+            contactName: row.contactName ?? null,
+            contactAvatarUrl: row.contactAvatarUrl ?? null,
+            normalizedPhone: '',
+            assignedProfileId: row.assignedProfileId,
+            lastMessageAt: row.lastMessageAt,
+            lastMessagePreview: row.lastMessagePreview,
+            unreadCount: row.unreadCount,
+            isArchived: row.isArchived,
+            handoffMode: 'BOT',
+            welcomeSentAt: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          return sortConversationsByLastMessage([newConv, ...prev])
+        })
+        void refreshUnreadCounts()
+        return
+      }
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === row.id
-            ? {
-                ...c,
-                contactName: row.contactName ?? c.contactName,
-                contactAvatarUrl: row.contactAvatarUrl ?? c.contactAvatarUrl,
-                lastMessagePreview: row.lastMessagePreview,
-                lastMessageAt: row.lastMessageAt,
-                unreadCount: c.id === selectedConversationId ? 0 : row.unreadCount,
-                assignedProfileId: row.assignedProfileId,
-                leadId: row.leadId,
-                isArchived: row.isArchived,
-              }
-            : c
+        sortConversationsByLastMessage(
+          prev.map((c) =>
+            c.id === row.id
+              ? {
+                  ...c,
+                  contactName: row.contactName ?? c.contactName,
+                  contactAvatarUrl: row.contactAvatarUrl ?? c.contactAvatarUrl,
+                  lastMessagePreview: row.lastMessagePreview,
+                  lastMessageAt: row.lastMessageAt,
+                  unreadCount: c.id === selectedConversationIdRef.current ? 0 : row.unreadCount,
+                  assignedProfileId: row.assignedProfileId,
+                  leadId: row.leadId,
+                  isArchived: row.isArchived,
+                }
+              : c
+          )
         )
       )
-      void fetchUnreadTotal()
+      void refreshUnreadCounts()
+
+      const openId = selectedConversationIdRef.current
+      if (openId && row.id === openId && row.lastMessageAt) {
+        const previousAt = selectedLastMessageAtRef.current
+        if (previousAt !== row.lastMessageAt) {
+          selectedLastMessageAtRef.current = row.lastMessageAt
+          if (messageRefetchTimerRef.current !== null) {
+            window.clearTimeout(messageRefetchTimerRef.current)
+          }
+          messageRefetchTimerRef.current = window.setTimeout(() => {
+            messageRefetchTimerRef.current = null
+            if (selectedConversationIdRef.current === openId) {
+              void loadMessages(openId, 1)
+            }
+          }, 500)
+        }
+      }
     },
-    [selectedConversationId, fetchUnreadTotal, isTeamMaster]
+    [refreshUnreadCounts, isTeamMaster, loadMessages, activeTeamId]
   )
 
   const handleConversationInserted = useCallback(
@@ -826,7 +945,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
       setConversations((prev) => {
         if (prev.some((item) => item.id === conversation.id)) return prev
-        return dedupeConversationsById([conversation, ...prev])
+        return sortConversationsByLastMessage(dedupeConversationsById([conversation, ...prev]))
       })
       setTotalConversations((prev) => prev + 1)
     },
@@ -841,7 +960,48 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     onMessageUpdated: handleMessageUpdated,
     onConversationUpdated: handleConversationUpdated,
     onConversationInserted: handleConversationInserted,
+    onRealtimeHealthChange: handleRealtimeHealthChange,
   })
+
+  useEffect(() => {
+    if (!activeTeamId || !config) return
+
+    const HEALTHY_INTERVAL_MS = 60_000
+    const UNHEALTHY_INTERVAL_MS = 12_000
+
+    let currentIntervalId: number | null = null
+    let wasHealthy = realtimeHealthyRef.current
+
+    const startInterval = (healthy: boolean) => {
+      if (currentIntervalId !== null) window.clearInterval(currentIntervalId)
+      const intervalMs = healthy ? HEALTHY_INTERVAL_MS : UNHEALTHY_INTERVAL_MS
+      currentIntervalId = window.setInterval(() => {
+        if (realtimeHealthyRef.current) {
+          void refreshUnreadCounts()
+          return
+        }
+        void loadConversations(1, searchQueryRef.current, filterModeRef.current)
+        const openId = selectedConversationIdRef.current
+        if (openId) void loadMessages(openId, 1)
+        void refreshUnreadCounts()
+      }, intervalMs)
+    }
+
+    startInterval(wasHealthy)
+
+    const checkIntervalId = window.setInterval(() => {
+      const healthy = realtimeHealthyRef.current
+      if (healthy !== wasHealthy) {
+        wasHealthy = healthy
+        startInterval(healthy)
+      }
+    }, 5_000)
+
+    return () => {
+      if (currentIntervalId !== null) window.clearInterval(currentIntervalId)
+      window.clearInterval(checkIntervalId)
+    }
+  }, [activeTeamId, config, loadConversations, loadMessages, refreshUnreadCounts])
 
   const assignConversation = useCallback(
     (conversationId: string, profileId: string) => {
@@ -1180,6 +1340,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     contactLookup,
     isTeamMaster,
     unreadTotal,
+    allUnreadTotal,
+    mineUnreadTotal,
     selectConversation,
     loadMoreConversations,
     loadOlderMessages,

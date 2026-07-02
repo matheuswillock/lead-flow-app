@@ -12,6 +12,7 @@ import { resolveConfigStatusFromEvo, toQrCodeImageUrl } from "./qrCodeUtils"
 import type { Prisma, WhatsAppConnectionStatus } from "@prisma/client"
 import type { WhatsAppConfigSelect, WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature"
+import { WhatsAppAutoResponseSendError } from "@/lib/whatsapp/whatsappAutoResponseSendError"
 import {
   assertNoConflictingPhoneOnSameTeam,
   assertPhoneNumberCanConnect,
@@ -110,7 +111,7 @@ class WhatsAppService implements IWhatsAppService {
         ? toQrCodeImageUrl(evoResult.qrCode.base64)
         : null
 
-      if (!qrCodeImageUrl) {
+      if (!qrCodeImageUrl && evoResult.status !== "open") {
         try {
           const qr = await evoApiService.getQrCode(instanceName, input.hostBaseUrl ?? undefined)
           qrCodeText = qr.text
@@ -122,13 +123,17 @@ class WhatsAppService implements IWhatsAppService {
 
       const status = resolveConfigStatusFromEvo(evoResult.status, Boolean(qrCodeImageUrl))
 
-      const config = await whatsAppRepository.updateConfig(pending.id, {
+      let config = await whatsAppRepository.updateConfig(pending.id, {
         instanceId: evoResult.instanceId ?? undefined,
         status,
         qrCodeText,
         qrCodeImageUrl,
         updatedBy: { connect: { id: input.profileId } },
       })
+
+      if (evoResult.status === "open") {
+        config = await this.syncConfigWithEvolution(config)
+      }
 
       await whatsAppAutoResponseRepository.seedDefaultRules(config.id)
 
@@ -306,42 +311,100 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("Configuração não encontrada")
     }
 
+    const disconnectedFields = {
+      status: "DISCONNECTED" as const,
+      lastDisconnectedAt: new Date(),
+      phoneNumber: null,
+      normalizedPhone: null,
+      qrCodeText: null,
+      qrCodeImageUrl: null,
+    }
+
     if (existing.primaryConfigId) {
       const updated = await whatsAppRepository.updateConfig(existing.id, {
-        status: "DISCONNECTED",
-        lastDisconnectedAt: new Date(),
-        phoneNumber: null,
-        normalizedPhone: null,
+        ...disconnectedFields,
         updatedBy: { connect: { id: profileId } },
       })
       return toConfigOutput(updated)
     }
 
-    console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
+    if (existing.status === "DISCONNECTED") {
+      if (!existing.qrCodeImageUrl) {
+        return this.promoteConfigToQrReady(
+          existing.id,
+          existing.instanceName,
+          existing.hostBaseUrl,
+          profileId,
+          "disconnect-idempotent"
+        )
+      }
+      return toConfigOutput(existing)
+    }
 
-    await evoApiService.disconnectInstance(existing.instanceName, existing.hostBaseUrl ?? undefined)
+    let needsLogout = existing.status === "CONNECTED"
+    if (!needsLogout) {
+      try {
+        const { state } = await evoApiService.getConnectionState(
+          existing.instanceName,
+          existing.hostBaseUrl ?? undefined
+        )
+        needsLogout = state === "open"
+      } catch (error) {
+        console.error("[WhatsAppService][disconnect] getConnectionState failed", error)
+      }
+    }
+
+    if (needsLogout) {
+      console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
+      await evoApiService.disconnectInstance(
+        existing.instanceName,
+        existing.hostBaseUrl ?? undefined
+      )
+    }
 
     const mirrors = await whatsAppRepository.findMirroredConfigs(existing.id)
     await Promise.all(
-      mirrors.map((mirror) =>
-        whatsAppRepository.updateConfig(mirror.id, {
-          status: "DISCONNECTED",
-          lastDisconnectedAt: new Date(),
-          phoneNumber: null,
-          normalizedPhone: null,
-        })
-      )
+      mirrors.map((mirror) => whatsAppRepository.updateConfig(mirror.id, disconnectedFields))
     )
 
-    const updated = await whatsAppRepository.updateConfig(existing.id, {
-      status: "DISCONNECTED",
-      lastDisconnectedAt: new Date(),
-      phoneNumber: null,
-      normalizedPhone: null,
+    await whatsAppRepository.updateConfig(existing.id, {
+      ...disconnectedFields,
       updatedBy: { connect: { id: profileId } },
     })
 
-    return toConfigOutput(updated)
+    return this.promoteConfigToQrReady(
+      existing.id,
+      existing.instanceName,
+      existing.hostBaseUrl,
+      profileId,
+      "disconnect"
+    )
+  }
+
+  private async promoteConfigToQrReady(
+    configId: string,
+    instanceName: string,
+    hostBaseUrl: string | null,
+    profileId: string,
+    label: string
+  ): Promise<ConfigOutput> {
+    try {
+      const qr = await evoApiService.getQrCode(instanceName, hostBaseUrl ?? undefined)
+      const updated = await whatsAppRepository.updateConfig(configId, {
+        status: "QR_READY",
+        qrCodeText: qr.text,
+        qrCodeImageUrl: toQrCodeImageUrl(qr.base64),
+        updatedBy: { connect: { id: profileId } },
+      })
+      return toConfigOutput(updated)
+    } catch (error) {
+      console.error(`[WhatsAppService][${label}] QR fetch failed`, error)
+      const config = await whatsAppRepository.findConfigById(configId)
+      if (!config) {
+        throw new Error("Configuração não encontrada")
+      }
+      return toConfigOutput(config)
+    }
   }
 
   async sendMessage(input: SendMessageInput): Promise<{ messageId: string }> {
@@ -473,15 +536,21 @@ class WhatsAppService implements IWhatsAppService {
   async sendAutoResponseMessage(input: SendAutoResponseMessageInput): Promise<{ messageId: string }> {
     const config = await whatsAppRepository.findConfigByTeamId(input.teamId)
     if (!config) {
-      throw new Error("Configuração não encontrada")
+      throw new WhatsAppAutoResponseSendError("Configuração não encontrada", {
+        providerMessageSent: false,
+      })
     }
     if (config.status !== "CONNECTED") {
-      throw new Error("WhatsApp não está conectado")
+      throw new WhatsAppAutoResponseSendError("WhatsApp não está conectado", {
+        providerMessageSent: false,
+      })
     }
 
     const conversation = await whatsAppRepository.findConversationById(input.conversationId)
     if (!conversation) {
-      throw new Error("Conversa não encontrada")
+      throw new WhatsAppAutoResponseSendError("Conversa não encontrada", {
+        providerMessageSent: false,
+      })
     }
 
     const recipientJid =
@@ -489,56 +558,75 @@ class WhatsAppService implements IWhatsAppService {
 
     const text = input.contentText.trim()
     if (!text) {
-      throw new Error("Mensagem não pode ser vazia")
+      throw new WhatsAppAutoResponseSendError("Mensagem não pode ser vazia", {
+        providerMessageSent: false,
+      })
     }
 
     const now = new Date()
     const periodKey = buildPeriodKey(now)
     const preview = text.slice(0, 100)
 
-    const evoResult = await evoApiService.sendTextMessage({
-      instanceName: config.instanceName,
-      recipientJid,
-      text,
-      hostBaseUrl: config.hostBaseUrl ?? undefined,
-    })
+    let evoResult: Awaited<ReturnType<typeof evoApiService.sendTextMessage>>
+    try {
+      evoResult = await evoApiService.sendTextMessage({
+        instanceName: config.instanceName,
+        recipientJid,
+        text,
+        hostBaseUrl: config.hostBaseUrl ?? undefined,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao enviar mensagem via WhatsApp"
+      throw new WhatsAppAutoResponseSendError(message, { providerMessageSent: false })
+    }
 
     console.info("[WhatsAppService][sendAutoResponseMessage] Sending auto reply to", recipientJid)
 
-    const message = await whatsAppRepository.createMessage({
-      conversation: { connect: { id: input.conversationId } },
-      team: { connect: { id: input.teamId } },
-      config: { connect: { id: config.id } },
-      ...(conversation.leadId ? { lead: { connect: { id: conversation.leadId } } } : {}),
-      providerMessageId: evoResult.providerMessageId,
-      direction: "OUTBOUND",
-      messageType: "TEXT",
-      status: "SENT",
-      contentText: text,
-      recipientPhone: normalizePhone(conversation.contactPhone),
-      isAutoResponse: true,
-      autoResponseRule: { connect: { id: input.autoResponseRuleId } },
-      sentAt: now,
-      rawPayload: {},
-    })
+    let localMessageId: string | undefined
+    try {
+      const message = await whatsAppRepository.createMessage({
+        conversation: { connect: { id: input.conversationId } },
+        team: { connect: { id: input.teamId } },
+        config: { connect: { id: config.id } },
+        ...(conversation.leadId ? { lead: { connect: { id: conversation.leadId } } } : {}),
+        providerMessageId: evoResult.providerMessageId,
+        direction: "OUTBOUND",
+        messageType: "TEXT",
+        status: "SENT",
+        contentText: text,
+        recipientPhone: normalizePhone(conversation.contactPhone),
+        isAutoResponse: true,
+        autoResponseRule: { connect: { id: input.autoResponseRuleId } },
+        sentAt: now,
+        rawPayload: {},
+      })
+      localMessageId = message.id
 
-    await whatsAppRepository.createUsageEvent({
-      team: { connect: { id: input.teamId } },
-      config: { connect: { id: config.id } },
-      periodKey,
-      eventType: "OUTBOUND_MESSAGE",
-      direction: "OUTBOUND",
-      countedTowardsQuota: true,
-      providerMessageId: evoResult.providerMessageId,
-    })
+      await whatsAppRepository.createUsageEvent({
+        team: { connect: { id: input.teamId } },
+        config: { connect: { id: config.id } },
+        periodKey,
+        eventType: "OUTBOUND_MESSAGE",
+        direction: "OUTBOUND",
+        countedTowardsQuota: true,
+        providerMessageId: evoResult.providerMessageId,
+      })
 
-    await whatsAppRepository.updateConversation(input.conversationId, {
-      lastOutboundAt: now,
-      lastMessageAt: now,
-      lastMessagePreview: preview,
-    })
+      await whatsAppRepository.updateConversation(input.conversationId, {
+        lastOutboundAt: now,
+        lastMessageAt: now,
+        lastMessagePreview: preview,
+      })
 
-    return { messageId: message.id }
+      return { messageId: message.id }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro ao persistir auto-resposta enviada"
+      throw new WhatsAppAutoResponseSendError(message, {
+        providerMessageSent: true,
+        messageId: localMessageId,
+      })
+    }
   }
 
   async createConversation(input: CreateConversationInput): Promise<WhatsAppConversationSelect> {

@@ -27,4 +27,11 @@ export interface ICarteiraImportService {
     rows: PortfolioImportRow[],
     ctx: CarteiraImportContext
   ): Promise<CarteiraImportResult>;
+  importMappedClientsInBatches(
+    rows: PortfolioImportRow[],
+    ctx: CarteiraImportContext,
+    options?: {
+      onProgress?: (processed: number, total: number) => void;
+    }
+  ): Promise<CarteiraImportResult>;
 }

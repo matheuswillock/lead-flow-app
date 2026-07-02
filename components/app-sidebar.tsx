@@ -119,7 +119,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const [isEmailCollapsed, setIsEmailCollapsed] = useState(false);
   const [isWhatsAppCollapsed, setIsWhatsAppCollapsed] = useState(false);
   const [isBackofficeCollapsed, setIsBackofficeCollapsed] = useState(false);
-  const { unreadConversations } = useWhatsAppUnreadCount({ enabled: hasAccess(FEATURE_SLUGS.WHATSAPP) });
+  const { unreadMessages } = useWhatsAppUnreadCount({ enabled: hasAccess(FEATURE_SLUGS.WHATSAPP) });
   const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
@@ -142,7 +142,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   ];
 
   const whatsAppItems: SidebarItem[] = [
-    { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP, unreadCount: unreadConversations },
+    { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP, unreadCount: unreadMessages },
     { title: "Auto-respostas", url: `/${supabaseId}/whatsapp/auto-respostas`, icon: Bot, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES },
     { title: "Configurações", url: `/${supabaseId}/whatsapp/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
   ];
@@ -469,9 +469,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                   <span className="flex items-center justify-between w-full">
                     <span className="flex items-center gap-2">
                       WhatsApp
-                      {isWhatsAppCollapsed && unreadConversations > 0 && (
+                      {isWhatsAppCollapsed && unreadMessages > 0 && (
                         <span className="flex min-w-4.5 items-center justify-center rounded-full bg-destructive px-1 h-4 text-[10px] font-semibold leading-none text-destructive-foreground">
-                          {unreadConversations > 99 ? "99+" : unreadConversations}
+                          {unreadMessages > 99 ? "99+" : unreadMessages}
                         </span>
                       )}
                     </span>

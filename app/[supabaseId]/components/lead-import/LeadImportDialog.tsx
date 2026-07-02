@@ -77,6 +77,10 @@ export function LeadImportDialog({
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<LeadImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
 
   const { healthPlans } = useHealthPlans(supabaseId, teamId);
 
@@ -91,6 +95,7 @@ export function LeadImportDialog({
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
+    setImportProgress(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -255,12 +260,20 @@ export function LeadImportDialog({
     }
 
     setIsSubmitting(true);
+    setImportProgress({ processed: 0, total: mappedRows.length });
     try {
-      const importResult = await leadImportService.importMappedLeads(mappedRows, {
-        supabaseId,
-        teamId,
-      });
+      const importResult = await leadImportService.importMappedLeadsInBatches(
+        mappedRows,
+        {
+          supabaseId,
+          teamId,
+        },
+        {
+          onProgress: (processed, total) => setImportProgress({ processed, total }),
+        }
+      );
       setResult(importResult);
+      setImportProgress(null);
       toast.success(`Importação concluída. Criados: ${importResult.created}.`);
       if (onImportComplete) {
         await onImportComplete();
@@ -268,6 +281,7 @@ export function LeadImportDialog({
     } catch (error) {
       console.error("Erro ao importar leads:", error);
       toast.error(error instanceof Error ? error.message : "Erro ao importar leads");
+      setImportProgress(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -337,6 +351,8 @@ export function LeadImportDialog({
               mapping={mapping}
               statusMapping={statusMapping}
               planMapping={planMapping}
+              isSubmitting={isSubmitting}
+              importProgress={importProgress}
               result={result}
             />
           )}

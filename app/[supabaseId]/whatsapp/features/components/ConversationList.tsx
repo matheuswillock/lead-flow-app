@@ -11,10 +11,10 @@ import { ConversationItem } from "./ConversationItem"
 import { NewConversationDialog } from "./NewConversationDialog"
 import type { ConversationFilterMode } from "../context/WhatsAppInboxTypes"
 
-const FILTER_TABS: { label: string; value: ConversationFilterMode; operatorLabel?: string }[] = [
-  { label: "Todas", value: "all", operatorLabel: "Minhas e CRM" },
-  { label: "Não lidas", value: "unread" },
-  { label: "Minhas", value: "mine" },
+const FILTER_TABS: { label: string; value: ConversationFilterMode; operatorLabel?: string; badgeKey?: "all" | "unread" | "mine" }[] = [
+  { label: "Todas", value: "all", operatorLabel: "Minhas e CRM", badgeKey: "all" },
+  { label: "Não lidas", value: "unread", badgeKey: "unread" },
+  { label: "Minhas conversas", value: "mine", badgeKey: "mine" },
   { label: "Arquivadas", value: "archived" },
 ]
 
@@ -39,7 +39,15 @@ export function ConversationList() {
     hasMoreConversations,
     loadMoreConversations,
     unreadTotal,
+    allUnreadTotal,
+    mineUnreadTotal,
   } = useWhatsAppInboxContext()
+
+  const tabBadgeCounts: Record<"all" | "unread" | "mine", number> = {
+    all: allUnreadTotal,
+    unread: unreadTotal,
+    mine: mineUnreadTotal,
+  }
 
   const isLoadingMore = isLoadingConversations && conversations.length > 0
 
@@ -85,7 +93,9 @@ export function ConversationList() {
                 )}
               >
                 {isOperator && tab.operatorLabel ? tab.operatorLabel : tab.label}
-                {tab.value === "unread" && unreadTotal > 0 ? ` (${unreadTotal})` : ""}
+                {tab.badgeKey && tabBadgeCounts[tab.badgeKey] > 0
+                  ? ` (${tabBadgeCounts[tab.badgeKey]})`
+                  : ""}
               </button>
             ))}
           </div>

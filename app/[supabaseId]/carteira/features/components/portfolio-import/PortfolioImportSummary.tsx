@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
+import { ImportProgressSummary } from "@/components/import/ImportProgressSummary";
 import { PORTFOLIO_IMPORT_FIELDS } from "@/lib/portfolioImport/portfolioImportFields";
 import type { PortfolioImportMapping } from "./autoMapPortfolioColumns";
 import type {
@@ -36,6 +37,7 @@ interface PortfolioImportSummaryProps {
   source: CarteiraImportSource;
   onSourceChange: (source: CarteiraImportSource) => void;
   isSubmitting: boolean;
+  importProgress?: { processed: number; total: number } | null;
   result: CarteiraImportResult | null;
 }
 
@@ -49,6 +51,7 @@ export function PortfolioImportSummary({
   source,
   onSourceChange,
   isSubmitting,
+  importProgress,
   result,
 }: PortfolioImportSummaryProps) {
   const mappedFields = PORTFOLIO_IMPORT_FIELDS.filter((field) => mapping[field.key]);
@@ -152,6 +155,13 @@ export function PortfolioImportSummary({
         Clientes que já existem no time com o mesmo e-mail ou CNPJ serão recusados e contabilizados
         no resumo final.
       </p>
+      {isSubmitting && importProgress ? (
+        <ImportProgressSummary
+          mapped={importProgress.processed}
+          total={importProgress.total}
+          label="clientes importados"
+        />
+      ) : null}
     </div>
   );
 }

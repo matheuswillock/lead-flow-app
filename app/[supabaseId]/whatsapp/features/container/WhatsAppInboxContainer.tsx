@@ -8,6 +8,17 @@ import { ConversationList } from '../components/ConversationList'
 import { MessagePanel } from '../components/MessagePanel'
 import { InboxSkeleton } from '../components/InboxSkeleton'
 import { NoConfigState } from '../components/NoConfigState'
+import type { WhatsAppConfig } from '../context/WhatsAppInboxTypes'
+
+const HISTORY_SYNC_BANNER_MAX_MS = 30 * 60 * 1000
+
+function isActiveHistorySync(config: WhatsAppConfig): boolean {
+  if (config.historySyncStatus !== 'RUNNING') return false
+  if (!config.historySyncStartedAt) return true
+  const startedAt = new Date(config.historySyncStartedAt).getTime()
+  if (Number.isNaN(startedAt)) return false
+  return Date.now() - startedAt < HISTORY_SYNC_BANNER_MAX_MS
+}
 
 interface WhatsAppInboxContainerProps {
   supabaseId: string
@@ -20,15 +31,15 @@ export function WhatsAppInboxContainer({ supabaseId }: WhatsAppInboxContainerPro
     return <InboxSkeleton />
   }
 
-  if (config !== null && config.status !== 'CONNECTED') {
+  if (!config || config.status !== 'CONNECTED') {
     return <NoConfigState supabaseId={supabaseId} />
   }
 
-  const isHistorySyncRunning = config?.historySyncStatus === 'RUNNING'
+  const showHistorySyncBanner = isActiveHistorySync(config)
 
   return (
     <div className="flex h-[calc(100vh-theme(spacing.16))] flex-col gap-2 overflow-hidden">
-      {isHistorySyncRunning ? (
+      {showHistorySyncBanner ? (
         <Alert>
           <Loader2 className="animate-spin" data-icon="inline-start" />
           <AlertDescription>Sincronizando conversas dos últimos 30 dias…</AlertDescription>

@@ -23,4 +23,11 @@ export interface LeadImportResult {
 
 export interface ILeadImportService {
   importMappedLeads(rows: LeadImportRow[], ctx: LeadImportContext): Promise<LeadImportResult>;
+  importMappedLeadsInBatches(
+    rows: LeadImportRow[],
+    ctx: LeadImportContext,
+    options?: {
+      onProgress?: (processed: number, total: number) => void;
+    }
+  ): Promise<LeadImportResult>;
 }
