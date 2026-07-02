@@ -87,8 +87,19 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const serverActiveTeamIdRef = useRef<string | null>(null);
+  const activeTeamIdRef = useRef<string | null>(null);
+  const pendingActiveTeamSwitchRef = useRef<string | null>(null);
+  const teamsRef = useRef<TeamSummary[]>([]);
   const initializedRef = useRef(false);
   const bootstrapHydratedRef = useRef(false);
+
+  useEffect(() => {
+    activeTeamIdRef.current = activeTeamId;
+  }, [activeTeamId]);
+
+  useEffect(() => {
+    teamsRef.current = teams;
+  }, [teams]);
 
   useEffect(() => {
     if (bootstrapHydratedRef.current) return;
@@ -159,12 +170,18 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       setTeams(payload.teams || []);
       serverActiveTeamIdRef.current = payload.activeTeamId ?? null;
 
+      const localActiveTeamId = activeTeamIdRef.current ?? payload.activeTeamId ?? null;
+
       writeTeamsBootstrapCache(supabaseId, {
         teams: payload.teams || [],
-        activeTeamId: payload.activeTeamId ?? null,
+        activeTeamId: localActiveTeamId,
       });
 
-      if (payload.activeTeamId && payload.activeTeamId !== activeTeamId) {
+      if (
+        payload.activeTeamId &&
+        payload.activeTeamId !== activeTeamIdRef.current &&
+        !pendingActiveTeamSwitchRef.current
+      ) {
         setActiveTeamIdState(payload.activeTeamId);
         if (typeof window !== "undefined") {
           window.localStorage.setItem(storageKey, payload.activeTeamId);
@@ -176,7 +193,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTeamId, storageKey, supabaseId]);
+  }, [storageKey, supabaseId]);
 
   const persistActiveTeam = useCallback(async (teamId: string) => {
     if (typeof window !== "undefined") {
@@ -201,6 +218,11 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
         throw new Error(output.errorMessages?.join(", ") || "Não foi possível alterar o time ativo.");
       }
       serverActiveTeamIdRef.current = teamId;
+
+      writeTeamsBootstrapCache(supabaseId, {
+        teams: teamsRef.current,
+        activeTeamId: teamId,
+      });
     } catch (err) {
       console.error("Error updating active team:", err);
       throw err;
@@ -218,11 +240,15 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       return;
     }
 
+    pendingActiveTeamSwitchRef.current = teamId;
+    activeTeamIdRef.current = teamId;
     setActiveTeamIdState(teamId);
     try {
       await persistActiveTeam(teamId);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao alterar o time ativo.");
+    } finally {
+      pendingActiveTeamSwitchRef.current = null;
     }
   }, [activeTeamId, persistActiveTeam, teams]);
 
