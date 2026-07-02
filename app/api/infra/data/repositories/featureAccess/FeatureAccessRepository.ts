@@ -1,22 +1,46 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
-  BackofficeFeature,
-  BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
-  BackofficeUserSubscription,
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
-import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo, BetaEligibilityContext, EmailBetaAccessContext } from "./IFeatureAccessRepository"
+import type {
+  ActiveFeatureRecord,
+  ActiveUserSubscriptionRecord,
+  IFeatureAccessRepository,
+  OwnerUserTypeAssignment,
+  UserRoleInfo,
+  BetaEligibilityContext,
+  EmailBetaAccessContext,
+} from "./IFeatureAccessRepository"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
+const activeFeatureSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  parentId: true,
+  inheritParentSettings: true,
+  betaEnabled: true,
+  accessMode: true,
+  defaultAccessLevel: true,
+  billedSeparately: true,
+  productSlug: true,
+} as const
+
 export class FeatureAccessRepository implements IFeatureAccessRepository {
-  async listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>> {
+  async listActiveFeatures(): Promise<ActiveFeatureRecord[]> {
     try {
       return await prisma.backofficeFeature.findMany({
         where: { isActive: true },
-        include: {
-          accessRules: true,
+        select: {
+          ...activeFeatureSelect,
+          accessRules: {
+            select: {
+              principal: true,
+              accessLevel: true,
+            },
+          },
         },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       })
@@ -24,6 +48,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       if (this.isMissingAccessRulesTable(error)) {
         const features = await prisma.backofficeFeature.findMany({
           where: { isActive: true },
+          select: activeFeatureSelect,
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         })
         return features.map((feature) => ({ ...feature, accessRules: [] }))
@@ -59,9 +84,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     })
   }
 
-  async listActiveUserSubscriptions(
-    profileId: string
-  ): Promise<Array<BackofficeUserSubscription & { product: { featureSlug: string } }>> {
+  async listActiveUserSubscriptions(profileId: string): Promise<ActiveUserSubscriptionRecord[]> {
     const now = new Date()
     return prisma.backofficeUserSubscription.findMany({
       where: {
@@ -69,7 +92,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
         status: "active",
         OR: [{ endDate: null }, { endDate: { gte: now } }],
       },
-      include: {
+      select: {
         product: {
           select: { featureSlug: true },
         },
@@ -143,63 +166,38 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     const grantOwnerId = ctx.isMaster ? ctx.profileId : ctx.managerId
     if (!grantOwnerId) return false
 
-    type FeatureNode = {
-      id: string
-      parentId: string | null
-      inheritParentSettings: boolean
-      betaEnabled: boolean
-      isActive: boolean
-    }
-
-    const visited = new Set<string>()
-    let current: FeatureNode | null = await prisma.backofficeFeature.findFirst({
-      where: { slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS, isActive: true },
+    // Uma única query traz as features de e-mail e todos os nós ativos;
+    // a subida de ancestrais acontece em memória (antes era 1 query por nível).
+    const featureNodes = await prisma.backofficeFeature.findMany({
+      where: { isActive: true },
       select: {
         id: true,
+        slug: true,
         parentId: true,
         inheritParentSettings: true,
         betaEnabled: true,
-        isActive: true,
       },
     })
 
-    if (!current) {
-      current = await prisma.backofficeFeature.findFirst({
-        where: { slug: FEATURE_SLUGS.EMAIL, isActive: true },
-        select: {
-          id: true,
-          parentId: true,
-          inheritParentSettings: true,
-          betaEnabled: true,
-          isActive: true,
-        },
-      })
-    }
+    const nodeById = new Map(featureNodes.map((node) => [node.id, node]))
+    const findBySlug = (slug: string) => featureNodes.find((node) => node.slug === slug) ?? null
+
+    let current =
+      findBySlug(FEATURE_SLUGS.EMAIL_CAMPAIGNS) ?? findBySlug(FEATURE_SLUGS.EMAIL)
 
     if (!current) return false
 
+    const visited = new Set<string>()
     while (current.inheritParentSettings && current.parentId && !visited.has(current.id)) {
       visited.add(current.id)
-      const parent: FeatureNode | null = await prisma.backofficeFeature.findUnique({
-        where: { id: current.parentId },
-        select: {
-          id: true,
-          parentId: true,
-          inheritParentSettings: true,
-          betaEnabled: true,
-          isActive: true,
-        },
-      })
-      if (!parent || !parent.isActive) break
+      const parent = nodeById.get(current.parentId)
+      if (!parent) break
       current = parent
     }
 
     if (!current.betaEnabled) return false
 
-    const emailRoot = await prisma.backofficeFeature.findFirst({
-      where: { slug: FEATURE_SLUGS.EMAIL, isActive: true },
-      select: { id: true },
-    })
+    const emailRoot = findBySlug(FEATURE_SLUGS.EMAIL)
 
     const candidateFeatureIds = Array.from(
       new Set([current.id, emailRoot?.id].filter((id): id is string => Boolean(id)))

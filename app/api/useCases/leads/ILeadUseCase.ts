@@ -35,7 +35,7 @@ export interface ILeadUseCase {
     options?: LeadCreateOptions
   ): Promise<Output>;
   createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output>;
-  getLeadById(supabaseId: string, id: string): Promise<Output>;
+  getLeadById(supabaseId: string, id: string, resolvedProfileId?: string): Promise<Output>;
   getLeadsByManager(
     supabaseId: string,
     options?: {

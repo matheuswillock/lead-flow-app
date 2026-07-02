@@ -2,7 +2,6 @@ import { cacheLife, cacheTag } from "next/cache";
 import { NotificationType, type UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { cacheTags } from "@/lib/cache/cacheTags";
-import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
@@ -82,7 +81,7 @@ export class TeamMembersUseCase {
         email: member.profile.email,
         role: member.role,
         functions: member.functions,
-        googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
+        googleCalendarConnected: member.profile.googleCalendarConnected,
         profileIconUrl: member.profile.profileIconUrl,
         isMaster: member.profileId === team.masterId,
       }));

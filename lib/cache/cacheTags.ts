@@ -6,6 +6,7 @@ export const cacheTags = {
     `feature-access:${profileId}:${activeTeamId ?? "none"}`,
   featureAccessProfile: (profileId: string) => `feature-access-profile:${profileId}`,
   featureAccessOwner: (managerId: string) => `feature-access-owner:${managerId}`,
+  accountAccessStatus: (accountMasterId: string) => `account-access-status:${accountMasterId}`,
   teamStatusRules: (teamId: string) => `team-status-rules:${teamId}`,
   leadStatusTransitionFieldRules: () => "lead-status-transition-field-rules",
   leadStatusTransitionGates: () => "lead-status-transition-gates",
@@ -24,5 +25,7 @@ export const cacheTags = {
   teamTasks: (teamId: string) => `team-tasks:${teamId}`,
   publicFormBootstrap: (teamId: string) => `public-form-bootstrap:${teamId}`,
   teamFilterPresets: (teamId: string, profileId: string) => `team-filter-presets:${teamId}:${profileId}`,
+  notifications: (recipientProfileId: string, teamId: string) =>
+    `notifications:${recipientProfileId}:${teamId}`,
 } as const;
 

@@ -505,9 +505,25 @@ export class EmailService {
       return this.sendEmailDirect(options);
     }
 
+    // Caminho quente: cria todos os logs "queued" em um único createMany e
+    // marca os enviados em lote no final, em vez de 2 queries por destinatário.
+    const logIds = await teamEmailDispatchLogger.createManyQueuedTeamEmailLogs(
+      recipients.map((recipient) => ({
+        teamId: tracking.teamId,
+        recipientEmail: recipient,
+        recipientName: tracking.recipientName ?? null,
+        subject: options.subject,
+        category: tracking.category,
+        sourceType: tracking.sourceType,
+        sourceId: tracking.sourceId,
+        campaignId: tracking.campaignId,
+      }))
+    );
+
     let lastResult: Awaited<ReturnType<EmailService["sendEmailDirect"]>> | undefined;
     let successCount = 0;
     let lastError: string | undefined;
+    const sentEntries: Array<{ logId: string; resendEmailId: string }> = [];
 
     for (const [index, recipient] of recipients.entries()) {
       const idempotencyKey =
@@ -515,21 +531,37 @@ export class EmailService {
           ? `${options.idempotencyKey}/${index}`
           : options.idempotencyKey;
 
-      const result = await this.sendEmailDirect({
-        ...options,
-        to: [recipient],
-        tracking: {
-          ...tracking,
-          recipientName: tracking.recipientName,
+      const teamLogId = logIds[index];
+      const result = await this.sendEmailDirect(
+        {
+          ...options,
+          to: [recipient],
+          tracking: {
+            ...tracking,
+            recipientName: tracking.recipientName,
+          },
+          idempotencyKey,
         },
-        idempotencyKey,
-      });
+        { teamLogId, deferSentMark: true }
+      );
 
       lastResult = result;
       if (result.success) {
         successCount += 1;
+        const resendEmailId = result.data?.data?.id;
+        if (resendEmailId) {
+          sentEntries.push({ logId: teamLogId, resendEmailId });
+        }
       } else {
         lastError = result.error;
+      }
+    }
+
+    if (sentEntries.length > 0) {
+      try {
+        await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries);
+      } catch (error) {
+        console.error("[EmailService] Falha ao marcar logs enviados em lote:", error);
       }
     }
 
@@ -548,12 +580,15 @@ export class EmailService {
     return lastResult ?? { success: false, error: "Erro ao enviar email" };
   }
 
-  private async sendEmailDirect(options: Omit<EmailOptions, "dispatch">) {
+  private async sendEmailDirect(
+    options: Omit<EmailOptions, "dispatch">,
+    precreated?: { teamLogId: string; deferSentMark?: boolean }
+  ) {
     const tracking = options.tracking;
     const recipientEmail = options.to.filter(Boolean)[0];
-    let teamLogId: string | undefined;
+    let teamLogId: string | undefined = precreated?.teamLogId;
 
-    if (tracking && recipientEmail) {
+    if (!teamLogId && tracking && recipientEmail) {
       teamLogId = await teamEmailDispatchLogger.createQueuedTeamEmailLog({
         teamId: tracking.teamId,
         recipientEmail,
@@ -648,7 +683,10 @@ export class EmailService {
 
       const resendEmailId = result.data?.id;
       if (teamLogId && resendEmailId) {
-        await teamEmailDispatchLogger.markTeamEmailLogSent(teamLogId, resendEmailId);
+        // Com deferSentMark, o caller marca "sent" em lote após o loop.
+        if (!precreated?.deferSentMark) {
+          await teamEmailDispatchLogger.markTeamEmailLogSent(teamLogId, resendEmailId);
+        }
       } else if (teamLogId) {
         await teamEmailDispatchLogger.markTeamEmailLogFailed(
           teamLogId,

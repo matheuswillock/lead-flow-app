@@ -5,6 +5,7 @@ import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
+import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
 
 // Helper para detectar ambiente de produção
 function getIsProduction() {
@@ -806,6 +807,8 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           subscriptionStartDate: new Date(),
         }
       });
+
+      invalidateAccountAccessStatusCache({ accountMasterId: profile.id });
 
       console.info('✅ [processCheckoutPaid] Assinatura ativada para:', profile.email);
 

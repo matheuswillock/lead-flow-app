@@ -36,11 +36,18 @@ export type CreateTeamEmailLogInput = {
   sourceId?: string | null
 }
 
+export type MarkSentEntry = {
+  logId: string
+  resendEmailId: string
+}
+
 export interface IEmailLogRepository {
   findByResendEmailId(resendEmailId: string): Promise<EmailLogWebhookRecord | null>
   hasDuplicateEvent(logId: string, eventType: EmailEventType, occurredAt: Date): Promise<boolean>
   applyWebhookEvent(input: ApplyEmailLogWebhookInput): Promise<void>
   createQueuedLog(input: CreateTeamEmailLogInput): Promise<string>
+  createManyQueuedLogs(inputs: CreateTeamEmailLogInput[]): Promise<void>
   markSent(logId: string, resendEmailId: string, sentAt: Date): Promise<void>
+  markManySent(entries: MarkSentEntry[], sentAt: Date): Promise<void>
   markFailed(logId: string, eventId: string, errorMessage: string, occurredAt: Date): Promise<void>
 }

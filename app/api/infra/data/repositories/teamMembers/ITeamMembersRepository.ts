@@ -26,10 +26,8 @@ export interface TeamMembersListItem {
     email: string | null;
     profileIconUrl: string | null;
     supabaseId: string | null;
-    googleConnection: {
-      refreshToken: string | null;
-      revokedAt: Date | null;
-    } | null;
+    /** Derivado no repositório via filtro relacional — o refreshToken (segredo) não trafega. */
+    googleCalendarConnected: boolean;
   };
 }
 

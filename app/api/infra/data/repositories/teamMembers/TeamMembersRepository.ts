@@ -71,31 +71,46 @@ export class TeamMembersRepository implements ITeamMembersRepository {
   }
 
   async findMembers(teamId: string): Promise<TeamMembersListItem[]> {
-    return prisma.teamMember.findMany({
-      where: { teamId },
-      select: {
-        id: true,
-        profileId: true,
-        role: true,
-        functions: true,
-        profile: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profileIconUrl: true,
-            supabaseId: true,
-            googleConnection: {
-              select: {
-                refreshToken: true,
-                revokedAt: true,
-              },
+    // O boolean de conexão Google é derivado via filtro relacional em query
+    // separada para não trafegar o refreshToken (segredo) na resposta.
+    const [members, connectedProfiles] = await Promise.all([
+      prisma.teamMember.findMany({
+        where: { teamId },
+        select: {
+          id: true,
+          profileId: true,
+          role: true,
+          functions: true,
+          profile: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              profileIconUrl: true,
+              supabaseId: true,
             },
           },
         },
+        orderBy: { profile: { fullName: "asc" } },
+      }),
+      prisma.profile.findMany({
+        where: {
+          teamMemberships: { some: { teamId } },
+          googleConnection: { is: { refreshToken: { not: null }, revokedAt: null } },
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    const connectedIds = new Set(connectedProfiles.map((p) => p.id));
+
+    return members.map((member) => ({
+      ...member,
+      profile: {
+        ...member.profile,
+        googleCalendarConnected: connectedIds.has(member.profile.id),
       },
-      orderBy: { profile: { fullName: "asc" } },
-    });
+    }));
   }
 
   async findMasterAccountTeamMembers(
