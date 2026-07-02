@@ -1,4 +1,5 @@
 import type { WhatsAppMessageType } from "@prisma/client"
+import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
 
 export interface ParsedEvoMessageContent {
   messageType: WhatsAppMessageType
@@ -73,19 +74,13 @@ function fromMediaMessage(
 }
 
 function parseLinkPreview(extended: Record<string, unknown>): ParsedEvoMessageContent["linkPreview"] {
-  const title = typeof extended["title"] === "string" ? extended["title"] : null
-  const description = typeof extended["description"] === "string" ? extended["description"] : null
+  const title = stripHtmlTags(typeof extended["title"] === "string" ? extended["title"] : null)
+  const description = stripHtmlTags(typeof extended["description"] === "string" ? extended["description"] : null)
   const matchedText = typeof extended["matchedText"] === "string" ? extended["matchedText"] : null
   const canonicalUrl = typeof extended["canonicalUrl"] === "string" ? extended["canonicalUrl"] : null
   const url = canonicalUrl ?? matchedText
-  const jpegThumbnail = extended["jpegThumbnail"]
-  const imageUrl =
-    typeof jpegThumbnail === "string" && jpegThumbnail.length > 0
-      ? `data:image/jpeg;base64,${jpegThumbnail}`
-      : null
-
-  if (!title && !description && !url && !imageUrl) return null
-  return { title, description, imageUrl, url }
+  if (!title && !description && !url) return null
+  return { title, description, imageUrl: null, url }
 }
 
 export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageContent {
@@ -96,7 +91,7 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
   if (typeof conversation === "string") {
     return {
       messageType: "TEXT",
-      contentText: conversation,
+      contentText: sanitizeDbText(conversation),
       mediaUrl: null,
       mediaMimeType: null,
       mediaFileName: null,
@@ -109,7 +104,7 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
   if (extended && typeof extended["text"] === "string") {
     return {
       messageType: "TEXT",
-      contentText: extended["text"],
+      contentText: sanitizeDbText(extended["text"]),
       mediaUrl: null,
       mediaMimeType: null,
       mediaFileName: null,
@@ -145,8 +140,8 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
 }
 
 export function buildMessagePreview(parsed: ParsedEvoMessageContent): string | null {
-  if (parsed.contentText) return parsed.contentText.slice(0, 100)
-  if (parsed.caption) return parsed.caption.slice(0, 100)
+  if (parsed.contentText) return sanitizeDbText(parsed.contentText.slice(0, 100))
+  if (parsed.caption) return sanitizeDbText(parsed.caption.slice(0, 100))
   if (parsed.messageType === "IMAGE") return "[Imagem]"
   if (parsed.messageType === "AUDIO") return "[Áudio]"
   if (parsed.messageType === "VIDEO") return "[Vídeo]"

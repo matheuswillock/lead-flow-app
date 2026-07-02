@@ -38,7 +38,9 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
 
   const Icon = triggerIcon === "contact" ? UserPlus : MessageSquarePlus
   const phoneDigits = unmask(phone)
-  const canSubmit = phoneDigits.length >= 10 && !isCreatingConversation
+  const isValidPhone = phoneDigits.length >= 10 && phoneDigits.length <= 13
+  const showPhoneError = phone.length > 0 && phoneDigits.length > 0 && !isValidPhone
+  const canSubmit = isValidPhone && !isCreatingConversation
   const isContactMode = triggerIcon === "contact"
 
   const resetForm = () => {
@@ -118,6 +120,11 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
                   onChange={(e) => setPhone(maskPhone(e.target.value))}
                   autoFocus
                 />
+                {showPhoneError && (
+                  <p className="text-sm text-destructive">
+                    Número inválido. Informe DDD + telefone (10 ou 11 dígitos).
+                  </p>
+                )}
               </Field>
               <Field>
                 <FieldLabel htmlFor="new-conversation-name">Nome do contato (opcional)</FieldLabel>

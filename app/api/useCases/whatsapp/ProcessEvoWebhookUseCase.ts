@@ -18,6 +18,7 @@ import { syncWhatsAppHistoryUseCase } from "@/app/api/useCases/whatsapp/SyncWhat
 import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsappMessageToCdpUseCase"
 import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
 import { Prisma, type WhatsAppConnectionStatus, type WhatsAppMessageStatus } from "@prisma/client"
+import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
@@ -143,7 +144,7 @@ class ProcessEvoWebhookUseCase {
     const remoteJid = extractNestedString({ key: keyObj }, "key", "remoteJid") ?? ""
     const providerMessageId = extractNestedString({ key: keyObj }, "key", "id") ?? ""
     const fromMe = (keyObj["fromMe"] as boolean | undefined) ?? false
-    const pushName = typeof data["pushName"] === "string" ? data["pushName"] : undefined
+    const pushName = typeof data["pushName"] === "string" ? stripHtmlTags(sanitizeDbText(data["pushName"])) ?? undefined : undefined
 
     if (!remoteJid || !providerMessageId) {
       console.info("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Missing remoteJid or id, skipping")
@@ -173,8 +174,11 @@ class ProcessEvoWebhookUseCase {
     const periodKey = buildPeriodKey(now)
     const parsed = parseEvoMessageContent(data["message"])
     const preview = buildMessagePreview(parsed)
+    const safeContentText = sanitizeDbText(parsed.contentText)
+    const safeCaption = sanitizeDbText(parsed.caption)
 
     if (!isRedelivery) {
+      let messageCreated = false
       try {
         await this.repository.createMessage({
           conversation: { connect: { id: conversation.id } },
@@ -184,48 +188,54 @@ class ProcessEvoWebhookUseCase {
           direction,
           messageType: parsed.messageType,
           status: fromMe ? "SENT" : "RECEIVED",
-          contentText: parsed.contentText,
+          contentText: safeContentText,
           mediaUrl: parsed.mediaUrl,
           mediaMimeType: parsed.mediaMimeType,
           mediaFileName: parsed.mediaFileName,
           linkPreview: parsed.linkPreview ?? undefined,
-          caption: parsed.caption,
+          caption: safeCaption,
           senderDisplayName: !fromMe && isGroup ? pushName ?? null : undefined,
           senderPhone: fromMe ? undefined : normalizedPhone,
           recipientPhone: fromMe ? normalizedPhone : undefined,
           sentAt: now,
           rawPayload: data as Prisma.InputJsonValue,
         })
-
-        // Efeitos abaixo não são naturalmente idempotentes (increment de unread) —
-        // só devem rodar na primeira criação bem-sucedida da mensagem.
-        await this.repository.updateConversation(conversation.id, {
-          lastMessageAt: now,
-          lastMessagePreview: preview,
-          ...(!isGroup && pushName && pushName !== conversation.contactName
-            ? { contactName: pushName }
-            : {}),
-          ...(fromMe
-            ? { lastOutboundAt: now }
-            : { lastInboundAt: now, unreadCount: { increment: 1 } }),
-        })
+        messageCreated = true
       } catch (createError) {
         if (!isUniqueConstraintError(createError)) {
           throw createError
         }
-        // Corrida concorrente: outra requisição já criou a mensagem entre o
-        // findMessageByProviderMessageId e o createMessage. Segue o fluxo
-        // tratando como redelivery para curar efeitos pendentes com segurança.
         console.info(
           "[ProcessEvoWebhookUseCase][handleMessagesUpsert] Race on createMessage, healing as redelivery",
           providerMessageId
         )
+      }
+
+      if (messageCreated) {
+        await this.applyConversationSideEffects({
+          conversationId: conversation.id,
+          conversationContactName: conversation.contactName,
+          fromMe,
+          isGroup,
+          now,
+          preview,
+          pushName,
+        })
       }
     } else {
       console.info(
         "[ProcessEvoWebhookUseCase][handleMessagesUpsert] Message already exists, healing pending side effects",
         providerMessageId
       )
+      await this.applyConversationSideEffects({
+        conversationId: conversation.id,
+        conversationContactName: conversation.contactName,
+        fromMe,
+        isGroup,
+        now,
+        preview,
+        pushName,
+      })
     }
 
     const createdMessage = await this.repository.findMessageByProviderMessageId(
@@ -276,7 +286,7 @@ class ProcessEvoWebhookUseCase {
             conversationId: conversation.id,
             externalChatId: remoteJid,
             inboundMessageId: createdMessage.id,
-            inboundText: parsed.contentText,
+            inboundText: safeContentText,
             contactName: pushName,
             normalizedPhone,
           })
@@ -284,6 +294,51 @@ class ProcessEvoWebhookUseCase {
           console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Auto-response failed", autoResponseError)
         }
       }
+    }
+  }
+
+  private async applyConversationSideEffects(input: {
+    conversationId: string
+    conversationContactName: string | null
+    fromMe: boolean
+    isGroup: boolean
+    now: Date
+    preview: string | null
+    pushName: string | undefined
+  }): Promise<void> {
+    const fullUpdate: Prisma.WhatsAppConversationUpdateInput = {
+      lastMessageAt: input.now,
+      lastMessagePreview: input.preview,
+      ...(!input.isGroup && input.pushName && input.pushName !== input.conversationContactName
+        ? { contactName: input.pushName }
+        : {}),
+      ...(input.fromMe
+        ? { lastOutboundAt: input.now }
+        : { lastInboundAt: input.now, unreadCount: { increment: 1 } }),
+    }
+
+    try {
+      await this.repository.updateConversation(input.conversationId, fullUpdate)
+      return
+    } catch (error) {
+      console.error(
+        "[ProcessEvoWebhookUseCase][applyConversationSideEffects] Full update failed, retrying minimal",
+        error
+      )
+    }
+
+    try {
+      await this.repository.updateConversation(input.conversationId, {
+        lastMessageAt: input.now,
+        ...(input.fromMe
+          ? { lastOutboundAt: input.now }
+          : { lastInboundAt: input.now, unreadCount: { increment: 1 } }),
+      })
+    } catch (minimalError) {
+      console.error(
+        "[ProcessEvoWebhookUseCase][applyConversationSideEffects] Minimal update failed",
+        minimalError
+      )
     }
   }
 
