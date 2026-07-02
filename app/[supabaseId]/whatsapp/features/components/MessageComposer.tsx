@@ -18,6 +18,10 @@ import {
   getMicrophoneUnsupportedMessage,
   isMicrophoneSupported,
   MICROPHONE_PERMISSION_DENIED_MESSAGE,
+  MICROPHONE_PERMISSION_PROMPT_MESSAGE,
+  queryMicrophonePermission,
+  requestMicrophoneStream,
+  MicrophoneAccessError,
 } from "../utils/microphonePermission"
 
 interface MessageComposerProps {
@@ -26,6 +30,33 @@ interface MessageComposerProps {
 
 const MAX_FILE_BYTES = 16 * 1024 * 1024
 const MAX_CHARS = 4096
+
+const EXTENSION_MIME_MAP: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  txt: "text/plain",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  mp4: "video/mp4",
+  mp3: "audio/mpeg",
+  ogg: "audio/ogg",
+  webm: "audio/webm",
+}
+
+function inferMimeType(file: File): string {
+  if (file.type) return file.type
+  const extension = file.name.split(".").pop()?.toLowerCase()
+  if (extension && EXTENSION_MIME_MAP[extension]) {
+    return EXTENSION_MIME_MAP[extension]!
+  }
+  return "application/octet-stream"
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -45,13 +76,15 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 function resolveMediaType(file: File): SendMessageMediaInput["mediatype"] | null {
-  if (file.type.startsWith("image/")) return "image"
-  if (file.type.startsWith("audio/")) return "audio"
-  if (file.type.startsWith("video/")) return "video"
+  const mimeType = inferMimeType(file)
+  if (mimeType.startsWith("image/")) return "image"
+  if (mimeType.startsWith("audio/")) return "audio"
+  if (mimeType.startsWith("video/")) return "video"
   if (
-    file.type === "application/pdf" ||
-    file.type.startsWith("application/") ||
-    file.type === "text/plain"
+    mimeType === "application/pdf" ||
+    mimeType.startsWith("application/") ||
+    mimeType === "text/plain" ||
+    mimeType === "application/octet-stream"
   ) {
     return "document"
   }
@@ -80,6 +113,8 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   const [mentionStart, setMentionStart] = useState(0)
   const [mentionHighlight, setMentionHighlight] = useState(0)
   const [micPermissionDenied, setMicPermissionDenied] = useState(false)
+  const [micPermissionState, setMicPermissionState] = useState<PermissionState | null>(null)
+  const [isRequestingMic, setIsRequestingMic] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -134,8 +169,61 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   useEffect(() => {
     if (recorder.status === "recording") {
       setMicPermissionDenied(false)
+      setMicPermissionState("granted")
     }
   }, [recorder.status])
+
+  useEffect(() => {
+    if (!isMicrophoneSupported()) return
+
+    let permissionStatus: PermissionStatus | null = null
+
+    const syncPermissionState = (state: PermissionState) => {
+      setMicPermissionState(state)
+      setMicPermissionDenied(state === "denied")
+    }
+
+    void queryMicrophonePermission().then((state) => {
+      if (state) syncPermissionState(state)
+    })
+
+    void navigator.permissions
+      ?.query({ name: "microphone" as PermissionName })
+      .then((status) => {
+        permissionStatus = status
+        syncPermissionState(status.state)
+        status.onchange = () => syncPermissionState(status.state)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      if (permissionStatus) permissionStatus.onchange = null
+    }
+  }, [])
+
+  const handleRequestMicrophone = useCallback(async () => {
+    if (!isMicrophoneSupported()) {
+      toast.error(getMicrophoneUnsupportedMessage())
+      return
+    }
+
+    setIsRequestingMic(true)
+    try {
+      const stream = await requestMicrophoneStream()
+      stream.getTracks().forEach((track) => track.stop())
+      setMicPermissionDenied(false)
+      setMicPermissionState("granted")
+      toast.success("Microfone habilitado. Toque no ícone de gravar para começar.")
+    } catch (error) {
+      if (error instanceof MicrophoneAccessError && error.code === "NotAllowedError") {
+        setMicPermissionDenied(true)
+        setMicPermissionState("denied")
+      }
+      toast.error(error instanceof Error ? error.message : "Não foi possível acessar o microfone.")
+    } finally {
+      setIsRequestingMic(false)
+    }
+  }, [])
 
   const isRecording = recorder.isRecording
   const isDisabled = disabled || isSending || isDisconnected || isRecording
@@ -261,9 +349,9 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
       try {
         const base64 = await fileToBase64(file)
         const caption = text.trim() || undefined
-        sendMessage(caption ?? "", {
+        sendMessage("", {
           mediatype,
-          mimeType: file.type || "application/octet-stream",
+          mimeType: inferMimeType(file),
           fileName: file.name,
           base64,
           caption,
@@ -308,20 +396,39 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   const showSendButton = hasText || isRecording
   const shellDisabled = isDisabled && !isRecording
 
+  const showMicPermissionPrompt =
+    isMicrophoneSupported() &&
+    (micPermissionDenied || micPermissionState === "prompt" || micPermissionState === null)
+
   return (
     <div className="flex flex-col gap-2">
       {isDisconnected && (
         <p className="text-xs text-muted-foreground">
-          O WhatsApp está desconectado. Reconecte em Integrações para enviar mensagens.
+          O WhatsApp está desconectado. Reconecte em Configurações do WhatsApp para enviar mensagens.
         </p>
       )}
 
-      {micPermissionDenied && (
-        <Alert variant="destructive">
+      {showMicPermissionPrompt ? (
+        <Alert variant={micPermissionDenied ? "destructive" : "default"}>
           <MicOff />
-          <AlertDescription>{MICROPHONE_PERMISSION_DENIED_MESSAGE}</AlertDescription>
+          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              {micPermissionDenied
+                ? MICROPHONE_PERMISSION_DENIED_MESSAGE
+                : MICROPHONE_PERMISSION_PROMPT_MESSAGE}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant={micPermissionDenied ? "secondary" : "default"}
+              disabled={isRequestingMic || shellDisabled}
+              onClick={() => void handleRequestMicrophone()}
+            >
+              {isRequestingMic ? "Solicitando…" : "Permitir microfone"}
+            </Button>
+          </AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       <input
         ref={fileInputRef}

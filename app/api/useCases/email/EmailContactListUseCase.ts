@@ -18,6 +18,58 @@ export class EmailContactListUseCase {
     return email.trim().toLowerCase()
   }
 
+  private async upsertContactsBatch(
+    listId: string,
+    rows: Array<{
+      email: string
+      name?: string
+      customFields?: Record<string, string>
+    }>
+  ): Promise<{ imported: number; updated: number }> {
+    if (rows.length === 0) {
+      return { imported: 0, updated: 0 }
+    }
+
+    const emails = rows.map((row) => row.email)
+    const existingContacts = await prisma.emailContact.findMany({
+      where: { listId, email: { in: emails } },
+      select: { email: true },
+    })
+    const existingEmails = new Set(existingContacts.map((contact) => contact.email))
+
+    const newRows = rows.filter((row) => !existingEmails.has(row.email))
+    const updateRows = rows.filter((row) => existingEmails.has(row.email))
+
+    if (newRows.length > 0) {
+      await prisma.emailContact.createMany({
+        data: newRows.map((row) => ({
+          id: randomUUID(),
+          listId,
+          email: row.email,
+          name: row.name ?? null,
+          customFields: (row.customFields as object) ?? null,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
+    if (updateRows.length > 0) {
+      await Promise.all(
+        updateRows.map((row) =>
+          prisma.emailContact.update({
+            where: { listId_email: { listId, email: row.email } },
+            data: {
+              name: row.name ?? null,
+              customFields: (row.customFields as object) ?? null,
+            },
+          })
+        )
+      )
+    }
+
+    return { imported: newRows.length, updated: updateRows.length }
+  }
+
   private async ensureDefaultList(ctx: TeamContext): Promise<{ id: string; isSystemDefault: boolean }> {
     const existingDefault = await prisma.emailContactList.findFirst({
       where: {
@@ -362,35 +414,12 @@ export class EmailContactListUseCase {
         })
       }
 
-      const BATCH_SIZE = 500
+      const BATCH_SIZE = 100
       for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
         const batch = validRows.slice(i, i + BATCH_SIZE)
-        for (const row of batch) {
-          const existingContact = await prisma.emailContact.findUnique({
-            where: { listId_email: { listId, email: row.email } },
-          })
-
-          await prisma.emailContact.upsert({
-            where: { listId_email: { listId, email: row.email } },
-            update: {
-              name: row.name ?? null,
-              customFields: (row.customFields as object) ?? null,
-            },
-            create: {
-              id: randomUUID(),
-              listId,
-              email: row.email,
-              name: row.name ?? null,
-              customFields: (row.customFields as object) ?? null,
-            },
-          })
-
-          if (existingContact) {
-            updated += 1
-          } else {
-            imported += 1
-          }
-        }
+        const batchResult = await this.upsertContactsBatch(listId, batch)
+        imported += batchResult.imported
+        updated += batchResult.updated
       }
 
       const totalCount = await prisma.emailContact.count({ where: { listId } })
@@ -401,23 +430,9 @@ export class EmailContactListUseCase {
 
       if (!existing.isSystemDefault) {
         const defaultList = await this.ensureDefaultList(ctx)
-        for (const row of validRows) {
-          await prisma.emailContact.upsert({
-            where: {
-              listId_email: { listId: defaultList.id, email: row.email },
-            },
-            update: {
-              name: row.name ?? null,
-              customFields: (row.customFields as object) ?? null,
-            },
-            create: {
-              id: randomUUID(),
-              listId: defaultList.id,
-              email: row.email,
-              name: row.name ?? null,
-              customFields: (row.customFields as object) ?? null,
-            },
-          })
+        for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+          const batch = validRows.slice(i, i + BATCH_SIZE)
+          await this.upsertContactsBatch(defaultList.id, batch)
         }
         const defaultTotalCount = await prisma.emailContact.count({
           where: { listId: defaultList.id },

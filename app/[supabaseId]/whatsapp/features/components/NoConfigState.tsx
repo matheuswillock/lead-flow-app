@@ -37,11 +37,11 @@ export function NoConfigState({ supabaseId }: NoConfigStateProps) {
             {statusLabel
               ? `O WhatsApp do seu time está ${statusLabel}. `
               : ''}
-            Configure o número do seu time em Configurações &gt; Integrações &gt; WhatsApp para usar a inbox.
+            Configure o número do seu time em Configurações do WhatsApp para usar a inbox.
           </p>
         </div>
         <Button asChild>
-          <Link href={`/${supabaseId}/integrations`}>Ir para Integrações</Link>
+          <Link href={`/${supabaseId}/whatsapp/configuracoes`}>Ir para Configurações do WhatsApp</Link>
         </Button>
       </div>
     </div>

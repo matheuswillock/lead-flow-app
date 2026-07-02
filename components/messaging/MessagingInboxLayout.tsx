@@ -23,9 +23,9 @@ export function MessagingInboxLayout({
         className
       )}
     >
-      <div className={cn("flex flex-1 overflow-hidden", innerClassName)}>
+      <div className={cn("flex min-w-0 flex-1 overflow-hidden", innerClassName)}>
         {list}
-        {panel}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{panel}</div>
       </div>
     </div>
   )

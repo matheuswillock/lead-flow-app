@@ -13061,6 +13061,44 @@
           "response": []
         },
         {
+          "name": "Contagem de mensagens não lidas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "unread-count"
+              ]
+            },
+            "description": "Retorna totalUnreadMessages (soma de unreadCount) e totalUnreadConversations respeitando a visibilidade do usuário. Usado pelo badge do menu da inbox."
+          },
+          "response": []
+        },
+        {
           "name": "Criar conversa WhatsApp",
           "request": {
             "method": "POST",

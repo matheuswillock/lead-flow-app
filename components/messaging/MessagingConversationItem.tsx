@@ -55,7 +55,7 @@ export function MessagingConversationItem({
     <button
       type="button"
       className={cn(
-        "flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-muted",
+        "flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-md p-2 text-left transition-colors hover:bg-muted",
         isSelected && "bg-muted",
         className
       )}
@@ -100,7 +100,7 @@ export function MessagingConversationItem({
         <div className="flex items-center justify-between gap-2">
           <span
             className={cn(
-              "truncate text-xs",
+              "min-w-0 flex-1 truncate text-xs",
               hasUnread ? "font-medium text-foreground" : "text-muted-foreground"
             )}
           >

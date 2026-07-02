@@ -39,6 +39,13 @@ export interface IContatosService {
   getContacts(listId: string, page: number, pageSize: number, search: string): Promise<GetContactsResult>
   uploadCsv(listId: string, file: File): Promise<UploadCsvResult>
   importMapped(listId: string, rows: EmailContactImportRow[]): Promise<EmailContactImportResult>
+  importMappedInBatches(
+    listId: string,
+    rows: EmailContactImportRow[],
+    options?: {
+      onProgress?: (processed: number, total: number) => void
+    }
+  ): Promise<EmailContactImportResult>
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
 }

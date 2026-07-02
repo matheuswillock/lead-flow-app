@@ -121,7 +121,13 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     mentionedJids?: string[]
   ): Promise<{ messageId: string }> {
     const body: Record<string, unknown> = media
-      ? { conversationId, contentText: text || undefined, media }
+      ? {
+          conversationId,
+          media: {
+            ...media,
+            caption: media.caption ?? (text.trim() || undefined),
+          },
+        }
       : { conversationId, contentText: text }
     if (mentionedJids && mentionedJids.length > 0) {
       body.mentionedJids = mentionedJids

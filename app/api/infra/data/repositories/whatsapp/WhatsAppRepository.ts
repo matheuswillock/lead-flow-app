@@ -128,6 +128,21 @@ class WhatsAppRepository implements IWhatsAppRepository {
   }
 
   async claimHistorySyncSlot(configId: string): Promise<boolean> {
+    const staleBefore = new Date(Date.now() - 30 * 60 * 1000)
+
+    await prisma.teamWhatsAppConfig.updateMany({
+      where: {
+        id: configId,
+        historySyncStatus: "RUNNING",
+        historySyncStartedAt: { lt: staleBefore },
+      },
+      data: {
+        historySyncStatus: "FAILED",
+        historySyncError: "Sincronização expirou antes de concluir.",
+        historySyncCompletedAt: new Date(),
+      },
+    })
+
     const result = await prisma.teamWhatsAppConfig.updateMany({
       where: {
         id: configId,
@@ -253,6 +268,31 @@ class WhatsAppRepository implements IWhatsAppRepository {
     ])
 
     return { conversations, total }
+  }
+
+  async getUnreadTotals(params: {
+    teamId: string
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  }): Promise<{ totalMessages: number; totalConversations: number }> {
+    const baseWhere: Prisma.WhatsAppConversationWhereInput = {
+      teamId: params.teamId,
+      isArchived: false,
+      unreadCount: { gt: 0 },
+    }
+
+    const where: Prisma.WhatsAppConversationWhereInput = params.visibilityWhere
+      ? { AND: [baseWhere, params.visibilityWhere] }
+      : baseWhere
+
+    const [aggregate, totalConversations] = await prisma.$transaction([
+      prisma.whatsAppConversation.aggregate({ where, _sum: { unreadCount: true } }),
+      prisma.whatsAppConversation.count({ where }),
+    ])
+
+    return {
+      totalMessages: aggregate._sum.unreadCount ?? 0,
+      totalConversations,
+    }
   }
 
   async updateConversation(
@@ -614,6 +654,16 @@ class WhatsAppRepository implements IWhatsAppRepository {
       },
       select: { normalizedPhone: true, externalChatId: true },
       take: 5000,
+    })
+  }
+
+  async findConversationByExternalChatId(
+    teamId: string,
+    externalChatId: string
+  ): Promise<WhatsAppConversationSelect | null> {
+    return prisma.whatsAppConversation.findFirst({
+      where: { teamId, externalChatId },
+      select: CONVERSATION_SELECT,
     })
   }
 }

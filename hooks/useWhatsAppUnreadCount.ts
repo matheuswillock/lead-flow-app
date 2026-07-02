@@ -10,7 +10,7 @@ export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
   const { activeTeamId } = useTeamContext()
   const { user } = useUserContext()
 
-  const [unreadConversations, setUnreadConversations] = useState(0)
+  const [unreadMessages, setUnreadMessages] = useState(0)
 
   const activeTeamIdRef = useRef(activeTeamId)
   const userIdRef = useRef(user?.id)
@@ -27,21 +27,21 @@ export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
     if (!teamId || !supabaseId) return
     try {
       const res = await fetch(
-        `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations?hasUnread=true&limit=1`,
+        `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/unread-count`,
         { headers: { 'x-supabase-user-id': supabaseId } }
       )
       if (!res.ok) return
       const data = await res.json() as Record<string, unknown>
       if (data?.isValid) {
         const result = data.result as Record<string, unknown> | undefined
-        setUnreadConversations((result?.total as number | undefined) ?? 0)
+        setUnreadMessages((result?.totalUnreadMessages as number | undefined) ?? 0)
       }
     } catch {}
   }, [])
 
   useEffect(() => {
     if (!enabled || !activeTeamId) {
-      setUnreadConversations(0)
+      setUnreadMessages(0)
       return
     }
     void fetchCount()
@@ -132,5 +132,5 @@ export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
     }
   }, [enabled, activeTeamId, fetchCount])
 
-  return { unreadConversations }
+  return { unreadMessages }
 }
