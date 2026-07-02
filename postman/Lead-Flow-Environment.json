@@ -234,6 +234,13 @@
       "description": "Token público retornado no link de nova adesão para endpoints /api/v1/public-adhesions/:token"
     },
     {
+      "key": "contractShareToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token público retornado ao gerar link de compartilhamento de contrato, para endpoints /api/v1/public-contracts/:token"
+    },
+    {
       "key": "backofficeMetaActiveToken",
       "value": "",
       "type": "default",

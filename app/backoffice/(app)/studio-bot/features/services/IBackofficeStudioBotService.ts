@@ -8,6 +8,7 @@ import type {
   BackofficeStudioBotMessage,
   BackofficeStudioBotPagination,
   BackofficeStudioBotProfileFormData,
+  BackofficeStudioBotQrCode,
   BackofficeStudioBotUserLink,
 } from "../context/BackofficeStudioBotTypes"
 
@@ -26,7 +27,9 @@ export interface IBackofficeStudioBotService {
   ): Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
   testPing(): Promise<ApiOutput<{ status: number; ok: boolean }>>
   uploadChannelAvatar(file: File): Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
-  reconnectChannel(): Promise<ApiOutput<{ channel: BackofficeStudioBotChannel; status: number }>>
+  reconnectChannel(): Promise<
+    ApiOutput<{ channel: BackofficeStudioBotChannel; qrCode: BackofficeStudioBotQrCode | null }>
+  >
   syncChannelProfile(): Promise<ApiOutput<{ ok: boolean; status: number }>>
   listConversations(
     filters: BackofficeStudioBotConversationsFilters,

@@ -902,6 +902,30 @@ failed failed
     }
   
 
+  "backoffice_contracts" {
+    String id "🗝️"
+    String title 
+    String description "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_contract_versions" {
+    String id "🗝️"
+    Int versionNumber 
+    String fileName 
+    String storagePath 
+    Int fileSize 
+    String fileType 
+    DateTime importedAt 
+    String shareTokenHash "❓"
+    DateTime shareExpiresAt "❓"
+    DateTime shareGeneratedAt "❓"
+    }
+  
+
   "backoffice_leads" {
     String id "🗝️"
     String name 
@@ -2134,6 +2158,11 @@ failed failed
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
     "backoffice_payments" }o--|o corretor_studio_profiles : "creator"
+    "backoffice_contracts" }o--|o backoffice_clients : "client"
+    "backoffice_contracts" }o--|| corretor_studio_profiles : "creator"
+    "backoffice_contract_versions" }o--|| backoffice_contracts : "contract"
+    "backoffice_contract_versions" }o--|| corretor_studio_profiles : "importedBy"
+    "backoffice_contract_versions" }o--|o corretor_studio_profiles : "shareGeneratedBy"
     "backoffice_leads" |o--|| "BackofficeLeadStatus" : "enum:status"
     "backoffice_leads" |o--|| "BackofficeLeadOrigin" : "enum:origin"
     "backoffice_leads" }o--|o corretor_studio_profiles : "creator"
