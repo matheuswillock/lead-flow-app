@@ -30,6 +30,7 @@ import { normalizeHealthPlanName } from "@/lib/healthPlans";
 import { getEmailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { isManagerLikeRole } from "@/lib/roles";
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isLostStatus } from "@/lib/leadImport/normalizers";
 import { isPreScheduleSlotAvailable } from "../../services/preSchedule/PreScheduleSlotService";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
@@ -593,6 +594,59 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
+  async getAllLeadsByUserRoleWithCtx(
+    access: TeamAccess,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+      onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
+    }
+  ): Promise<Output> {
+    try {
+      const teamId = access.teamId;
+      const teamRole = access.teamMember.role;
+      let leads: Awaited<ReturnType<ILeadRepository["findAllByTeamId"]>>["leads"] = [];
+
+      if (isManagerLikeRole(teamRole)) {
+        const result = await this.leadRepository.findAllByTeamId(teamId, {
+          status: options?.status,
+          assignedTo: options?.assignedTo,
+          search: options?.search,
+          startDate: options?.startDate,
+          endDate: options?.endDate,
+          onlyTransfer: options?.onlyTransfer,
+          calendarWindowStart: options?.calendarWindowStart,
+          calendarWindowEnd: options?.calendarWindowEnd,
+        });
+        leads = result.leads;
+      } else if (teamRole === "operator") {
+        const result = await this.leadRepository.findAllByOperatorIdInTeam(access.profileId, teamId, {
+          status: options?.status,
+          assignedTo: options?.assignedTo,
+          search: options?.search,
+          startDate: options?.startDate,
+          endDate: options?.endDate,
+          onlyTransfer: options?.onlyTransfer,
+          calendarWindowStart: options?.calendarWindowStart,
+          calendarWindowEnd: options?.calendarWindowEnd,
+        });
+        leads = result.leads;
+      } else {
+        return new Output(false, [], ["Role inválido. Use 'manager', 'backoffice' ou 'operator'"], null);
+      }
+
+      return new Output(true, [], [], leads.map((lead) => this.transformToDTO(lead)));
+    } catch (error) {
+      console.error("[LeadUseCase][getAllLeadsByUserRoleWithCtx] Erro ao buscar leads:", error);
+      return new Output(false, [], ["Erro interno do servidor"], null);
+    }
+  }
+
   async getAllLeadsByUserRole(
     supabaseId: string,
     options?: {
@@ -602,6 +656,8 @@ export class LeadUseCase implements ILeadUseCase {
       startDate?: Date;
       endDate?: Date;
       onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
       role: string;
       teamId?: string;
     }
@@ -647,6 +703,8 @@ export class LeadUseCase implements ILeadUseCase {
           startDate: options.startDate,
           endDate: options.endDate,
           onlyTransfer: options.onlyTransfer,
+          calendarWindowStart: options.calendarWindowStart,
+          calendarWindowEnd: options.calendarWindowEnd,
         });
 
         leads = result.leads;
@@ -658,6 +716,8 @@ export class LeadUseCase implements ILeadUseCase {
           startDate: options.startDate,
           endDate: options.endDate,
           onlyTransfer: options.onlyTransfer,
+          calendarWindowStart: options.calendarWindowStart,
+          calendarWindowEnd: options.calendarWindowEnd,
         });
 
         leads = result.leads;

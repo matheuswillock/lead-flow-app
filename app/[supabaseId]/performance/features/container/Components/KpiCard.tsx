@@ -74,19 +74,19 @@ export function KpiCard({
           >
             <Ic size={15} style={{ color: accentMap.icon }} />
           </div>
-          <div className="text-[12.5px] font-medium text-foreground/70">{label}</div>
+          <div className="text-xs font-medium text-muted-foreground">{label}</div>
         </div>
         {delta !== undefined && <Delta value={delta} inverse={deltaInverse} />}
       </div>
 
       <div className="relative px-5">
         <div className="flex items-baseline gap-1.5">
-          <span className="font-display text-[34px] leading-none font-bold tracking-tight num">
+          <span className="font-display text-3xl leading-none font-bold tracking-tight num">
             {value}
           </span>
-          {suffix && <span className="text-base text-foreground/55 font-medium num">{suffix}</span>}
+          {suffix && <span className="text-base text-muted-foreground font-medium num">{suffix}</span>}
         </div>
-        {helper && <div className="mt-1.5 text-[11.5px] text-foreground/45">{helper}</div>}
+        {helper && <div className="mt-1.5 text-xs text-muted-foreground">{helper}</div>}
       </div>
 
       <div className="relative mt-3 px-1 pb-1">

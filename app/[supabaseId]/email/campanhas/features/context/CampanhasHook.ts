@@ -111,6 +111,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [editSaving, setEditSaving] = useState(false)
 
   const fetchingRef = useRef(false)
+  const lastCampaignsKeyRef = useRef("")
 
   const fetchCampaigns = useCallback(async (nextPage: number, nextStatus: string) => {
     if (teamLoading) return
@@ -121,7 +122,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setTotalPages(1)
       return
     }
-    if (fetchingRef.current) return
+    const key = `${supabaseId}|${activeTeamId}|${nextPage}|${nextStatus}`
+    if (fetchingRef.current || lastCampaignsKeyRef.current === key) return
     fetchingRef.current = true
     setLoading(true)
     console.info("[useCampanhas] fetchCampaigns", { nextPage, nextStatus })
@@ -131,6 +133,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setTotal(result.total)
       setPage(result.page)
       setTotalPages(result.totalPages)
+      lastCampaignsKeyRef.current = key
     } catch (err) {
       console.error("[useCampanhas] fetchCampaigns error", err)
       toast.error("Erro ao carregar campanhas")

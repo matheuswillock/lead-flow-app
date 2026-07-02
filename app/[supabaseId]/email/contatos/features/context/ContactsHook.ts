@@ -34,6 +34,8 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   const fetchingListsRef = useRef(false);
+  const fetchingContactsRef = useRef(false);
+  const lastContactsKeyRef = useRef("");
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchLists = useCallback(async () => {
@@ -55,6 +57,9 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
 
   const fetchContacts = useCallback(
     async (listId: string, nextPage: number, nextSearch: string) => {
+      const key = `${listId}|${nextPage}|${nextSearch}`;
+      if (fetchingContactsRef.current || lastContactsKeyRef.current === key) return;
+      fetchingContactsRef.current = true;
       setLoadingContacts(true);
       console.info("[useContatos] fetchContacts", { listId, nextPage, nextSearch });
       try {
@@ -68,11 +73,13 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         setTotalContacts(result.total);
         setPage(result.page);
         setTotalPages(result.totalPages);
+        lastContactsKeyRef.current = key;
       } catch (error) {
         console.error("[useContatos] fetchContacts error", error);
         toast.error("Erro ao carregar contatos");
       } finally {
         setLoadingContacts(false);
+        fetchingContactsRef.current = false;
       }
     },
     []
@@ -89,8 +96,10 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       setPage(1);
       setTotalPages(1);
       setSearch("");
+      lastContactsKeyRef.current = "";
       return;
     }
+    lastContactsKeyRef.current = "";
     void fetchContacts(selectedListId, 1, "");
     setSearch("");
     setPage(1);
@@ -198,6 +207,7 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       }
       searchDebounceRef.current = setTimeout(() => {
         if (selectedListId) {
+          lastContactsKeyRef.current = "";
           void fetchContacts(selectedListId, 1, query);
           setPage(1);
         }

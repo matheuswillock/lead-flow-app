@@ -58,7 +58,6 @@ export function TestimonialsSection() {
 
   return (
     <section id="testimonials" className="relative py-20 md:py-28">
-      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-20 landing-testimonials-orbs" />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
         <MotionDiv {...headingMotion} className="text-center mb-16">

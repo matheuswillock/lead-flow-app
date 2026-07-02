@@ -40,6 +40,7 @@ interface IBoardProviderProps {
   children: ReactNode;
   boardService?: IBoardService;
   externalFilters?: CrmFiltersState;
+  calendarWindow?: { start: Date; end: Date } | null;
 }
 
 export type LeadCardField = "name" | "entryDate" | "meetingInfo" | "notes" | "id";
@@ -207,6 +208,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   children, 
   boardService,
   externalFilters,
+  calendarWindow = null,
 }) => {
   const resolvedBoardService = useMemo(
     () => boardService ?? createBoardService(),
@@ -390,7 +392,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
     const leadTimeRulesVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}`;
+    const calendarWindowKey = calendarWindow
+      ? `${calendarWindow.start.toISOString()}:${calendarWindow.end.toISOString()}`
+      : "";
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}:${calendarWindowKey}`;
 
     if (
       !options?.force &&
@@ -446,7 +451,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           return;
         }
         
-        const result = await resolvedBoardService.fetchLeads(supabaseId, roleToSend, activeTeamId);
+        const result = await resolvedBoardService.fetchLeads(supabaseId, roleToSend, activeTeamId, {
+          ...(calendarWindow && {
+            calendarWindowStart: calendarWindow.start,
+            calendarWindowEnd: calendarWindow.end,
+          }),
+        });
 
         if (result.isValid && result.result) {
           console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
@@ -577,7 +587,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
+  }, [activeFunctions, activeRole, activeTeamId, calendarWindow, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     userRef.current = user;

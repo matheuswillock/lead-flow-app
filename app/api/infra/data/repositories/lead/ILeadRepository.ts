@@ -71,6 +71,8 @@ export interface ILeadRepository {
       startDate?: Date;
       endDate?: Date;
       onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<{ leads: Lead[] }>;
   findAllByOperatorId(
@@ -93,6 +95,8 @@ export interface ILeadRepository {
       startDate?: Date;
       endDate?: Date;
       onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<{ leads: Lead[] }>;
   update(id: string, data: LeadUpdateRepositoryInput): Promise<LeadRecord>;

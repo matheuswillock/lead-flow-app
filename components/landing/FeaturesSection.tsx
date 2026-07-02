@@ -41,10 +41,6 @@ export function FeaturesSection() {
 
   return (
     <section id="features" className="relative py-20 md:py-28">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-25 landing-features-orbs"
-      />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
         <MotionDiv {...headingMotion} className="text-center mb-16">

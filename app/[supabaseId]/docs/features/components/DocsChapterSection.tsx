@@ -123,7 +123,7 @@ function renderBlock(block: DocsBlock, chapter: DocsChapter) {
   switch (block.type) {
     case "paragraph":
       return (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           {block.title ? <h3 className="text-base font-semibold tracking-tight">{block.title}</h3> : null}
           <p className="text-sm leading-7 text-muted-foreground sm:text-[15px]">{block.content}</p>
         </div>
@@ -133,7 +133,7 @@ function renderBlock(block: DocsBlock, chapter: DocsChapter) {
       return (
         <div className="rounded-2xl border border-border/70 bg-surface-2 p-5 shadow-[var(--precision-shadow-1)]">
           <h3 className="text-base font-semibold tracking-tight">{block.title}</h3>
-          <ul className="mt-4 space-y-3">
+          <ul className="mt-4 flex flex-col gap-3">
             {block.lines.map((line) => (
               <li key={line} className="flex items-start gap-3 text-sm leading-6 text-muted-foreground">
                 <span className="mt-2 h-2 w-2 rounded-full bg-primary" aria-hidden />
@@ -158,9 +158,9 @@ function renderBlock(block: DocsBlock, chapter: DocsChapter) {
 
     case "steps":
       return (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {block.title ? <h3 className="text-base font-semibold tracking-tight">{block.title}</h3> : null}
-          <ol className="space-y-3">
+          <ol className="flex flex-col gap-3">
             {block.items.map((item, index) => {
               const marker = item.marker ?? String(index + 1).padStart(2, "0")
 
@@ -172,7 +172,7 @@ function renderBlock(block: DocsBlock, chapter: DocsChapter) {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                     {marker}
                   </div>
-                  <div className="space-y-1">
+                  <div className="flex flex-col gap-1">
                     <h3 className="text-sm font-semibold tracking-tight text-foreground">{item.title}</h3>
                     <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
                   </div>
@@ -185,7 +185,7 @@ function renderBlock(block: DocsBlock, chapter: DocsChapter) {
 
     case "features":
       return (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {block.title ? <h3 className="text-base font-semibold tracking-tight">{block.title}</h3> : null}
           <div
             className={cn(
@@ -208,7 +208,7 @@ function renderBlock(block: DocsBlock, chapter: DocsChapter) {
 
     case "table":
       return (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {block.title ? <h3 className="text-base font-semibold tracking-tight">{block.title}</h3> : null}
           <div className="overflow-hidden rounded-2xl border border-border/70 bg-surface-0 shadow-[var(--precision-shadow-1)]">
             <Table>
@@ -252,7 +252,7 @@ function renderBlock(block: DocsBlock, chapter: DocsChapter) {
 
     case "statusFlow":
       return (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <h3 className="text-base font-semibold tracking-tight">{block.title}</h3>
           <div className="rounded-2xl border border-border/70 bg-surface-0 p-4 shadow-[var(--precision-shadow-1)]">
             <div className="flex flex-wrap items-center gap-2">
@@ -330,15 +330,15 @@ export function DocsChapterSection({
   return (
     <section id={chapter.id} className="flex min-h-full flex-1 flex-col scroll-mt-24">
       <div className="flex min-h-full flex-1 flex-col">
-        <div className="space-y-6 border-b border-border/70 px-6 py-6 lg:px-8">
+        <div className="flex flex-col gap-6 border-b border-border/70 px-6 py-6 lg:px-8">
           {isHomeChapter ? (
-            <div className="space-y-6">
+            <div className="flex flex-col gap-6">
               <div className="flex flex-wrap gap-2">
                 <Badge className="border-primary/20 bg-primary/10 text-primary shadow-none hover:bg-primary/10">
                   Docs
                 </Badge>
                 <Badge variant="outline" className="border-border bg-surface-2 text-foreground">
-                  {totalChapters} capitulos
+                  {totalChapters} capítulos
                 </Badge>
                 <Badge variant="outline" className="border-border bg-surface-2 text-foreground">
                   Manual interno
@@ -348,13 +348,13 @@ export function DocsChapterSection({
                 </Badge>
               </div>
 
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <p className="text-sm font-medium text-primary">Corretor Studio</p>
                 <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                   documentação operacional centralizada
                 </h1>
                 <p className="max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">
-                  Consulte o manual completo da plataforma em uma unica rota, escolha um capitulo no
+                  Consulte o manual completo da plataforma em uma única rota, escolha um capítulo no
                   sidebar e avance pela documentação sem carregar todos os passos de uma vez.
                 </p>
               </div>
@@ -390,10 +390,10 @@ export function DocsChapterSection({
                     Em breve
                   </Badge>
                 </AlertTitle>
-                <AlertDescription className="space-y-3">
+                <AlertDescription className="flex flex-col gap-3">
                   <p>
                     Estamos preparando o <strong>gerenciamento de e-mails</strong> do Corretor Studio para
-                    ampliar a operacao comercial da plataforma.
+                    ampliar a operação comercial da plataforma.
                   </p>
                   <div className="flex items-start gap-2 rounded-xl border border-semantic-warning-border/60 bg-surface-0 px-3 py-3 text-sm text-foreground">
                     <Mail className="h-4 w-4 shrink-0 text-semantic-warning" />
@@ -418,9 +418,9 @@ export function DocsChapterSection({
                 ) : null}
               </div>
 
-              <div className="space-y-3">
+              <div className="flex flex-col gap-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  Capitulo {chapter.indexLabel}
+                  Capítulo {chapter.indexLabel}
                 </div>
                 <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">
                   {chapter.title}
@@ -453,9 +453,9 @@ export function DocsChapterSection({
           )}
         </div>
 
-        <div className="flex-1 space-y-6 border-b border-border/70 px-6 py-6 lg:px-8">
+        <div className="flex flex-1 flex-col gap-6 border-b border-border/70 px-6 py-6 lg:px-8">
           {chapter.blocks.map((block, index) => (
-            <div key={`${chapter.id}-${block.type}-${index}`} className="space-y-6">
+            <div key={`${chapter.id}-${block.type}-${index}`} className="flex flex-col gap-6">
               {renderBlock(block, chapter)}
             </div>
           ))}
@@ -483,7 +483,7 @@ export function DocsChapterSection({
             disabled={!nextChapter}
             className="w-full sm:w-auto"
           >
-            Proximo
+            Próximo
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

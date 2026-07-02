@@ -179,12 +179,12 @@ function LeadCardComponent({
             className={cn(
                 "cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent m-0",
                 showDestructivePulse &&
-                    "border-destructive/70 ring-1 ring-destructive/40 animate-pulse",
+                    "border-destructive/70 ring-1 ring-destructive/40",
                 showCriticizedHighlight &&
                     "border-semantic-danger-border bg-semantic-danger-surface/30 ring-1 ring-semantic-danger-border",
                 !showDestructivePulse &&
                     isPresenceConfirmationDue &&
-                    "border-semantic-warning/70 ring-1 ring-semantic-warning/40 animate-pulse"
+                    "border-semantic-warning/70 ring-1 ring-semantic-warning/40"
             )}
         >
             {hasHeaderInfo && (

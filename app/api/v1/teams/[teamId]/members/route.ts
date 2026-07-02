@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { invalidateTeamMembersCache } from "@/lib/cache/invalidation";
 import { teamMembersUseCase } from "@/app/api/useCases/teamMembers/TeamMembersUseCase";
+import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const addMemberSchema = z.object({
@@ -42,17 +43,17 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const supabaseId = getSupabaseId(request);
-    if (!supabaseId) {
-      return NextResponse.json(
-        new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null),
-        { status: 401 }
-      );
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
     const { teamId } = await params;
-    if (!teamId) {
-      return NextResponse.json(new Output(false, [], ["Team ID é obrigatório"], null), { status: 400 });
+    if (!teamId || teamId !== teamAccess.access.teamId) {
+      return NextResponse.json(
+        new Output(false, [], ["Acesso negado para este time"], null),
+        { status: 403 }
+      );
     }
 
     const requestedFunctionParam = new URL(request.url).searchParams.get("function");
@@ -68,7 +69,11 @@ export async function GET(
       requestedFunction = parsedFunction.data;
     }
 
-    const output = await teamMembersUseCase.listMembers(supabaseId, teamId, requestedFunction);
+    const output = await teamMembersUseCase.listMembersWithCtx(
+      teamAccess.access,
+      teamId,
+      requestedFunction
+    );
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

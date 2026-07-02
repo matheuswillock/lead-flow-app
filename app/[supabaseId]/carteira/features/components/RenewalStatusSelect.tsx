@@ -25,7 +25,7 @@ import {
 
 const STATUS_DOT_BG: Record<RenewalStatus, string> = {
   to_renew:  'bg-primary',
-  contacted: 'bg-blue-500',
+  contacted: 'bg-semantic-info',
   proposal:  'bg-semantic-warning',
   renewed:   'bg-semantic-success',
   lost:      'bg-semantic-danger',

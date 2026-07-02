@@ -47,7 +47,7 @@ function ContactStatusBadge({ contact }: { contact: Contact }) {
   if (contact.isComplained) return <Badge variant="destructive">Reclamação</Badge>
   if (contact.isBounced) return <Badge variant="destructive">Bounce</Badge>
   if (contact.isUnsubscribed) return <Badge variant="secondary">Descadastrado</Badge>
-  return <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">Ativo</Badge>
+  return <Badge className="border-semantic-success-border bg-semantic-success-surface text-semantic-success hover:bg-semantic-success-surface">Ativo</Badge>
 }
 
 function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfirm: () => Promise<void> }) {
@@ -87,7 +87,7 @@ function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfi
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => setDeleteOpen(true)}
-            className="text-red-600"
+            className="text-destructive"
           >
             <Trash2 className="mr-2 h-4 w-4" />
             Deletar

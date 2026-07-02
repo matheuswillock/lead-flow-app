@@ -105,22 +105,22 @@ export function DocsContainer() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Capitulo atual
+                Capítulo atual
               </p>
               <p className="truncate text-sm font-semibold text-foreground">
-                {activeChapter?.title ?? "Documentacao"}
+                {activeChapter?.title ?? "Documentação"}
               </p>
             </div>
             <DrawerTrigger asChild>
               <Button type="button" variant="outline" className="rounded-xl">
                 <PanelLeft className="h-4 w-4" />
-                Capitulos
+                Capítulos
               </Button>
             </DrawerTrigger>
           </div>
           <DrawerContent className="max-h-[85vh]">
             <DrawerHeader>
-              <DrawerTitle>Capitulos da documentacao</DrawerTitle>
+              <DrawerTitle>Capítulos da documentação</DrawerTitle>
               <DrawerDescription>
                 Escolha a página que você quer abrir no painel principal.
               </DrawerDescription>
