@@ -11,7 +11,10 @@ export class MicrophoneAccessError extends Error {
 }
 
 export const MICROPHONE_PERMISSION_DENIED_MESSAGE =
-  "Permissão de microfone negada. Clique no ícone de cadeado na barra de endereço e permita o microfone."
+  "Permissão de microfone negada. Use o botão abaixo para solicitar acesso ou altere a permissão nas configurações do navegador."
+
+export const MICROPHONE_PERMISSION_PROMPT_MESSAGE =
+  "Para gravar áudio, permita o acesso ao microfone do seu dispositivo."
 
 const MICROPHONE_NOT_FOUND_MESSAGE = "Nenhum microfone encontrado no dispositivo."
 

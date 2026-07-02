@@ -334,7 +334,7 @@ export function ConnectionCard() {
                     variant={reconnectButtonVariant}
                     size="sm"
                     onClick={() => void reconnect()}
-                    disabled={isReconnecting || isAwaitingQrAfterDisconnect}
+                    disabled={isReconnecting}
                   >
                     <RefreshCw className={cn(isReconnecting && 'animate-spin')} data-icon="inline-start" />
                     {isReconnecting ? 'Reconectando...' : 'Reconectar'}

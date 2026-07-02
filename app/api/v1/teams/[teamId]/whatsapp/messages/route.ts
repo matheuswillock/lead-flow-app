@@ -19,17 +19,15 @@ const mediaSchema = z.object({
 const sendMessageSchema = z.union([
   z.object({
     conversationId: conversationIdSchema,
+    contentText: z.string().max(4096).optional(),
+    mentionedJids: z.array(z.string().min(1)).optional(),
+    media: mediaSchema,
+  }),
+  z.object({
+    conversationId: conversationIdSchema,
     contentText: z.string().min(1, "Mensagem não pode ser vazia").max(4096),
     mentionedJids: z.array(z.string().min(1)).optional(),
   }),
-  z
-    .object({
-      conversationId: conversationIdSchema,
-      contentText: z.string().max(4096).optional(),
-      mentionedJids: z.array(z.string().min(1)).optional(),
-      media: mediaSchema,
-    })
-    .refine((data) => Boolean(data.media), { message: "Mídia é obrigatória" }),
 ])
 
 function resolveStatus(output: Output): number {

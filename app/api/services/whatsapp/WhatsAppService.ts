@@ -111,7 +111,7 @@ class WhatsAppService implements IWhatsAppService {
         ? toQrCodeImageUrl(evoResult.qrCode.base64)
         : null
 
-      if (!qrCodeImageUrl) {
+      if (!qrCodeImageUrl && evoResult.status !== "open") {
         try {
           const qr = await evoApiService.getQrCode(instanceName, input.hostBaseUrl ?? undefined)
           qrCodeText = qr.text
@@ -123,13 +123,17 @@ class WhatsAppService implements IWhatsAppService {
 
       const status = resolveConfigStatusFromEvo(evoResult.status, Boolean(qrCodeImageUrl))
 
-      const config = await whatsAppRepository.updateConfig(pending.id, {
+      let config = await whatsAppRepository.updateConfig(pending.id, {
         instanceId: evoResult.instanceId ?? undefined,
         status,
         qrCodeText,
         qrCodeImageUrl,
         updatedBy: { connect: { id: input.profileId } },
       })
+
+      if (evoResult.status === "open") {
+        config = await this.syncConfigWithEvolution(config)
+      }
 
       await whatsAppAutoResponseRepository.seedDefaultRules(config.id)
 
@@ -325,6 +329,15 @@ class WhatsAppService implements IWhatsAppService {
     }
 
     if (existing.status === "DISCONNECTED") {
+      if (!existing.qrCodeImageUrl) {
+        return this.promoteConfigToQrReady(
+          existing.id,
+          existing.instanceName,
+          existing.hostBaseUrl,
+          profileId,
+          "disconnect-idempotent"
+        )
+      }
       return toConfigOutput(existing)
     }
 

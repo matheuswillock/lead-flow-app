@@ -190,7 +190,7 @@ export function MessagingMessageBubble({
       <div className={cn("flex w-full", isOutbound ? "justify-end" : "justify-start")}>
         <div
           className={cn(
-            "flex max-w-[70%] flex-col gap-0.5",
+            "flex min-w-0 max-w-[70%] flex-col gap-0.5 overflow-hidden",
             isOutbound ? "items-end" : "items-start"
           )}
         >
@@ -199,7 +199,7 @@ export function MessagingMessageBubble({
           ) : null}
           <div
             className={cn(
-              "flex w-full flex-col gap-1 rounded-lg px-3 py-2",
+              "flex w-full min-w-0 flex-col gap-1 overflow-hidden rounded-lg px-3 py-2",
               isOutbound
                 ? "rounded-br-sm bg-primary text-primary-foreground"
                 : "rounded-bl-sm bg-muted text-foreground"

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useTeamContext } from '@/app/context/TeamContext'
+import { isManagerLikeRole } from '@/lib/roles'
+import { dispatchWhatsAppConfigChanged } from '@/lib/whatsapp/unread-events'
 import { whatsAppSettingsService } from '../services/WhatsAppSettingsService'
 import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage, ReusableWhatsAppNumber } from './WhatsAppSettingsTypes'
 
@@ -11,10 +13,14 @@ const buildRequestKey = (teamId: string): string => `whatsapp-settings:${teamId}
 
 const QR_POLL_INTERVAL_MS = 8000
 const QR_POLL_MAX_TICKS = 30
+const QR_GEN_MAX_ATTEMPTS = 5
+const QR_GEN_BASE_DELAY_MS = 3000
+const QR_GEN_MAX_DELAY_MS = 15000
 
 export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContextValue {
   const router = useRouter()
-  const { activeTeamId, isTeamMaster } = useTeamContext()
+  const { activeTeamId, isTeamMaster, activeTeam } = useTeamContext()
+  const canManageInfrastructure = isTeamMaster || isManagerLikeRole(activeTeam?.role)
 
   const [config, setConfig] = useState<WhatsAppConfig | null>(null)
   const [usage, setUsage] = useState<WhatsAppUsage | null>(null)
@@ -33,6 +39,8 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
   const currentKeyRef = useRef<string | null>(null)
   const lastQrCodeTextRef = useRef<string | null>(null)
   const prevStatusRef = useRef<WhatsAppConfig['status'] | null>(null)
+  const qrGenInFlightRef = useRef(false)
+  const qrGenAttemptsRef = useRef(0)
 
   const loadData = useCallback(async () => {
     if (!activeTeamId) {
@@ -112,6 +120,21 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }
   }, [activeTeamId, supabaseId])
 
+  const generateQrSilently = useCallback(async () => {
+    if (!activeTeamId || qrGenInFlightRef.current) return
+
+    qrGenInFlightRef.current = true
+    try {
+      const result = await whatsAppSettingsService.reconnect(activeTeamId, supabaseId)
+      setConfig(result)
+      lastSuccessKeyRef.current = null
+    } catch (error) {
+      console.error('[useWhatsAppSettings] Erro ao gerar QR Code automaticamente:', error)
+    } finally {
+      qrGenInFlightRef.current = false
+    }
+  }, [activeTeamId, supabaseId])
+
   useEffect(() => {
     void loadData()
   }, [loadData])
@@ -123,10 +146,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
 
   const status = config?.status
   useEffect(() => {
-    const shouldPollForQr =
-      status === 'QR_READY' ||
-      status === 'PENDING' ||
-      (status === 'DISCONNECTED' && !config?.qrCodeImageUrl)
+    const shouldPollForQr = status === 'QR_READY' || status === 'PENDING'
 
     if (!shouldPollForQr) return
 
@@ -141,7 +161,45 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }, QR_POLL_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
-  }, [status, config?.qrCodeImageUrl, refreshConfig])
+  }, [status, refreshConfig])
+
+  const hasQrImage = Boolean(config?.qrCodeImageUrl)
+  const isSharedConfig = Boolean(config?.primaryConfigId)
+  useEffect(() => {
+    const needsQrGeneration =
+      status === 'DISCONNECTED' &&
+      !hasQrImage &&
+      !isSharedConfig &&
+      canManageInfrastructure
+
+    if (!needsQrGeneration) {
+      qrGenAttemptsRef.current = 0
+      return
+    }
+
+    let cancelled = false
+    let timerId: number | null = null
+
+    const attempt = () => {
+      if (cancelled || qrGenAttemptsRef.current >= QR_GEN_MAX_ATTEMPTS) return
+      qrGenAttemptsRef.current += 1
+      void generateQrSilently().finally(() => {
+        if (cancelled) return
+        const delay = Math.min(
+          QR_GEN_BASE_DELAY_MS * 2 ** (qrGenAttemptsRef.current - 1),
+          QR_GEN_MAX_DELAY_MS
+        )
+        timerId = window.setTimeout(attempt, delay)
+      })
+    }
+
+    attempt()
+
+    return () => {
+      cancelled = true
+      if (timerId !== null) window.clearTimeout(timerId)
+    }
+  }, [status, hasQrImage, isSharedConfig, canManageInfrastructure, generateQrSilently])
 
   useEffect(() => {
     const qrCodeText = config?.qrCodeText
@@ -183,6 +241,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       })
       setConfig(result)
       lastSuccessKeyRef.current = null
+      dispatchWhatsAppConfigChanged()
       if (result.status === 'CONNECTED') {
         toast.success(
           reuseFromTeamId
@@ -214,6 +273,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       const result = await whatsAppSettingsService.reconnect(activeTeamId, supabaseId)
       setConfig(result)
       lastSuccessKeyRef.current = null
+      dispatchWhatsAppConfigChanged()
       toast.success('QR Code atualizado com sucesso')
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao reconectar:', error)
@@ -234,6 +294,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       setConfig(result)
       setUsage(null)
       lastSuccessKeyRef.current = null
+      dispatchWhatsAppConfigChanged()
       if (result.status === 'QR_READY' && result.qrCodeImageUrl) {
         toast.success('WhatsApp desconectado. Escaneie o novo QR Code para reconectar.')
       } else if (result.status === 'DISCONNECTED') {

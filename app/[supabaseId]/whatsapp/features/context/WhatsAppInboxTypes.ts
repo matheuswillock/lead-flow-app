@@ -127,6 +127,8 @@ export interface InboxState {
   contactLookup: WhatsAppContactLookup
   isTeamMaster: boolean
   unreadTotal: number
+  allUnreadTotal: number
+  mineUnreadTotal: number
 }
 
 export interface SendMessageMediaInput {
