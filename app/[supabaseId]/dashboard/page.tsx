@@ -1,12 +1,25 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import { DashboardProvider } from "./features/context/DashboardContext";
 import { useDashboardContext } from "./features/context/DashboardContext";
 import { DashboardSkeleton } from "./features/container/components/DashboardSkeleton";
 import { SectionCardsWithContext } from "./features/container/section-cards-with-context";
-import { ChartAreaInteractive } from "./features/container/chart-area-interactive";
 import { UpcomingMeetings } from "./features/container/upcoming-meetings";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Carrega o gráfico (recharts, bundle pesado) fora do bundle inicial do dashboard.
+const ChartAreaInteractive = dynamic(
+  () =>
+    import("./features/container/chart-area-interactive").then(
+      (mod) => mod.ChartAreaInteractive
+    ),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[350px] w-full" />,
+  }
+);
 import { DashboardTeamScopeToggle } from "./features/components/DashboardTeamScopeToggle";
 import { SubscriptionGuard } from "@/components/subscription-guard";
 import { useUserContext } from "@/app/context/UserContext";

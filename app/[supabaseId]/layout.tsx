@@ -9,6 +9,7 @@ import { InAppNotificationProvider } from "./notifications/features/context/InAp
 import { NotificationFaviconBadge } from "./notifications/features/components/NotificationFaviconBadge"
 import { WebPushConsentPrompt } from "./notifications/features/components/WebPushConsentPrompt"
 import { NO_INDEX_METADATA } from "@/lib/metadata/policies"
+import { getAuthenticatedLayoutBootstrapData } from "@/lib/bootstrap/getAuthenticatedLayoutBootstrapData"
 
 export const metadata: Metadata = NO_INDEX_METADATA
 
@@ -26,11 +27,25 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
   const { supabaseId } = await params
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
-  
+
+  // Bootstrap server-side: user + teams + access resolvidos no servidor para
+  // hidratar os providers sem a cascata de fetches client-side. Se falhar
+  // (ex.: sessão divergente), os providers seguem o fluxo client-side.
+  const bootstrap = await getAuthenticatedLayoutBootstrapData(supabaseId)
+
   return (
-    <UserProvider supabaseId={supabaseId}>
-      <TeamProvider supabaseId={supabaseId}>
-        <FeatureAccessProvider>
+    <UserProvider
+      supabaseId={supabaseId}
+      initialUser={bootstrap?.user ?? null}
+      initialHasActiveSubscription={bootstrap?.hasActiveSubscription ?? false}
+      initialUserRole={bootstrap?.userRole ?? null}
+    >
+      <TeamProvider
+        supabaseId={supabaseId}
+        initialTeams={bootstrap?.teams ?? null}
+        initialActiveTeamId={bootstrap?.activeTeamId ?? null}
+      >
+        <FeatureAccessProvider initialAccess={bootstrap?.featureAccess ?? null}>
           <NotificationsProvider supabaseId={supabaseId}>
             <InAppNotificationProvider>
               <NotificationFaviconBadge />

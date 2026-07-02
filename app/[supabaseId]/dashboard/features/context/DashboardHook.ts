@@ -18,6 +18,7 @@ interface UseDashboardHookReturn extends IDashboardState, IDashboardActions {}
 
 interface FetchMetricsOptions {
   forceDetailed?: boolean;
+  force?: boolean;
 }
 
 export function useDashboardHook({ 
@@ -40,6 +41,8 @@ export function useDashboardHook({
   const [customDateRange, setCustomDateRange] = useState<IDashboardState['customDateRange']>(null);
   const detailedMetricsRef = useRef<IDashboardState['detailedMetrics']>(null);
   const detailedContextKeyRef = useRef<string | null>(null);
+  const inFlightKeyRef = useRef<string | null>(null);
+  const lastSuccessKeyRef = useRef<string | null>(null);
   
   const [isBlurred, setIsBlurred] = useState<boolean>(false);
   const skipPersistBlurRef = useRef(false);
@@ -102,18 +105,40 @@ export function useDashboardHook({
   }, [supabaseId, teamId, effectiveTeamScope]);
 
   const fetchMetrics = useCallback(async (options?: FetchMetricsOptions) => {
+    const finalFilters: MetricsFilters = customDateRange
+      ? {
+          ...filters,
+          startDate: customDateRange.startDate,
+          endDate: customDateRange.endDate,
+          teamScope: effectiveTeamScope,
+        }
+      : { ...filters, teamScope: effectiveTeamScope };
+
+    // Chave estável do request: evita fetches duplicados quando o effect
+    // re-dispara com os mesmos parâmetros (ex.: StrictMode, identidade nova
+    // do callback) e deduplica requisições concorrentes idênticas.
+    const requestKey = JSON.stringify({
+      supabaseId,
+      teamId,
+      teamScope: effectiveTeamScope,
+      filters: finalFilters,
+    });
+
+    const force = options?.force === true;
+    if (!force) {
+      if (inFlightKeyRef.current === requestKey) {
+        return;
+      }
+      if (lastSuccessKeyRef.current === requestKey) {
+        return;
+      }
+    }
+
+    inFlightKeyRef.current = requestKey;
+
     try {
       setIsLoading(true);
       setError(null);
-
-      const finalFilters: MetricsFilters = customDateRange 
-        ? {
-            ...filters,
-            startDate: customDateRange.startDate,
-            endDate: customDateRange.endDate,
-            teamScope: effectiveTeamScope,
-          }
-        : { ...filters, teamScope: effectiveTeamScope };
 
       const detailedKey = `${supabaseId}:${teamId}:${effectiveTeamScope}`;
       const shouldFetchDetailed =
@@ -137,11 +162,15 @@ export function useDashboardHook({
         detailedContextKeyRef.current = detailedKey;
       }
 
+      lastSuccessKeyRef.current = requestKey;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao carregar métricas';
       setError(errorMessage);
       console.error('Erro ao buscar métricas do dashboard:', err);
     } finally {
+      if (inFlightKeyRef.current === requestKey) {
+        inFlightKeyRef.current = null;
+      }
       setIsLoading(false);
     }
   }, [supabaseId, teamId, effectiveTeamScope, dashboardService, filters, customDateRange]);
@@ -202,7 +231,7 @@ export function useDashboardHook({
       detailedMetricsRef.current = null;
     }
 
-    await fetchMetrics({ forceDetailed: true });
+    await fetchMetrics({ forceDetailed: true, force: true });
   }, [fetchMetrics, dashboardService, supabaseId, teamId, effectiveTeamScope, filters, customDateRange]);
   
   const toggleBlur = useCallback(() => {

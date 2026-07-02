@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { BarChart3, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCampanhasContext } from "../context/CampanhasContext"
@@ -9,7 +10,16 @@ import { CreditBalanceBar } from "../components/CreditBalanceBar"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
 import { CampaignEditDialog } from "../components/CampaignEditDialog"
-import { CampaignAnalyticsDialog } from "../components/analytics/CampaignAnalyticsDialog"
+
+// Dialog de analytics usa recharts (bundle pesado); carrega sob demanda,
+// somente quando o usuário abre as métricas de uma campanha.
+const CampaignAnalyticsDialog = dynamic(
+  () =>
+    import("../components/analytics/CampaignAnalyticsDialog").then(
+      (mod) => mod.CampaignAnalyticsDialog
+    ),
+  { ssr: false }
+)
 
 const STATUS_TABS = [
   { value: "", label: "Todas" },

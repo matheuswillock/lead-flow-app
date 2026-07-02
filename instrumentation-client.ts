@@ -10,19 +10,30 @@ if (sentryEnabled) {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-    tracesSampleRate: 1,
+    // Amostragem de traces reduzida: 100% gerava volume alto de envelopes
+    // (e 429 no túnel /monitoring) sem ganho proporcional de sinal.
+    tracesSampleRate: 0.1,
 
-    replaysSessionSampleRate: 0.1,
+    replaysSessionSampleRate: 0.05,
     replaysOnErrorSampleRate: 1.0,
 
     enableLogs: true,
     sendDefaultPii: true,
 
     integrations: [
-      Sentry.replayIntegration(),
-      Sentry.consoleLoggingIntegration({ levels: ["log", "info", "warn", "error", "debug"] }),
+      // Apenas warn/error: log/info/debug geravam ruído e tráfego constante.
+      Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] }),
     ],
   });
+
+  // Replay carregado de forma lazy para tirar ~90KB do bundle inicial.
+  void Sentry.lazyLoadIntegration("replayIntegration")
+    .then((replayIntegration) => {
+      Sentry.addIntegration(replayIntegration());
+    })
+    .catch(() => {
+      // Falha ao carregar o replay não deve impactar a aplicação.
+    });
 }
 
 export const onRouterTransitionStart = sentryEnabled
