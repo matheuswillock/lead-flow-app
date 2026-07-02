@@ -1,5 +1,9 @@
 import { Output } from "@/lib/output"
-import type { IWhatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+import type {
+  IWhatsAppRepository,
+  WhatsAppConversationSelect,
+  WhatsAppMessageSelect,
+} from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { buildPeriodKey, normalizeRemoteJid, resolveNormalizedPhone, isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
 import {
@@ -234,12 +238,11 @@ class ProcessEvoWebhookUseCase {
         "[ProcessEvoWebhookUseCase][handleMessagesUpsert] Message already exists, healing pending side effects",
         providerMessageId
       )
-      await this.applyConversationSideEffects({
-        conversationId: conversation.id,
-        conversationContactName: conversation.contactName,
+      await this.healConversationSideEffectsIfNeeded({
+        conversation,
+        existingMessage: existing,
         fromMe,
         isGroup,
-        now,
         preview,
         pushName,
       })
@@ -301,6 +304,59 @@ class ProcessEvoWebhookUseCase {
           console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Auto-response failed", autoResponseError)
         }
       }
+    }
+  }
+
+  private async healConversationSideEffectsIfNeeded(input: {
+    conversation: Pick<
+      WhatsAppConversationSelect,
+      "id" | "lastMessageAt" | "lastMessagePreview" | "contactName"
+    >
+    existingMessage: Pick<WhatsAppMessageSelect, "sentAt">
+    fromMe: boolean
+    isGroup: boolean
+    preview: string | null
+    pushName: string | undefined
+  }): Promise<void> {
+    const messageSentAt = input.existingMessage.sentAt ?? new Date()
+    const lastMessageAt = input.conversation.lastMessageAt
+    const sideEffectsPending =
+      lastMessageAt === null ||
+      (input.existingMessage.sentAt !== null && lastMessageAt < input.existingMessage.sentAt)
+
+    if (sideEffectsPending) {
+      await this.applyConversationSideEffects({
+        conversationId: input.conversation.id,
+        conversationContactName: input.conversation.contactName,
+        fromMe: input.fromMe,
+        isGroup: input.isGroup,
+        now: messageSentAt,
+        preview: input.preview,
+        pushName: input.pushName,
+      })
+      return
+    }
+
+    const safeUpdate: Prisma.WhatsAppConversationUpdateInput = {}
+    if (
+      !input.isGroup &&
+      input.pushName &&
+      input.pushName !== input.conversation.contactName
+    ) {
+      safeUpdate.contactName = input.pushName
+    }
+    if (input.preview && !input.conversation.lastMessagePreview) {
+      safeUpdate.lastMessagePreview = input.preview
+    }
+    if (Object.keys(safeUpdate).length === 0) return
+
+    try {
+      await this.repository.updateConversation(input.conversation.id, safeUpdate)
+    } catch (error) {
+      console.error(
+        "[ProcessEvoWebhookUseCase][healConversationSideEffectsIfNeeded] Safe heal failed",
+        error
+      )
     }
   }
 
