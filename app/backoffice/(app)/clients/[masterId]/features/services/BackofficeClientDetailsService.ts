@@ -175,6 +175,18 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
+  async banUser(profileId: string, reason?: string | null): Promise<void> {
+    const res = await fetch("/api/v1/backoffice/anatemas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId, reason }),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao banir usuário")
+    }
+  }
+
   async deleteClient(masterId: string): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}`, {
       method: "DELETE",

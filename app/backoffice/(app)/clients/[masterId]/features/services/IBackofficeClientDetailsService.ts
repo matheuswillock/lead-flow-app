@@ -60,6 +60,8 @@ export interface IBackofficeClientDetailsService {
     }
   ): Promise<void>
 
+  banUser(profileId: string, reason?: string | null): Promise<void>
+
   deleteClient(masterId: string): Promise<void>
 
   updateMember(
