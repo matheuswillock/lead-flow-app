@@ -7,10 +7,6 @@ on:
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened]
-    # Skip re-running quality checks when a release-branch push only carries
-    # the automated version bump commit (no source changes to re-validate).
-    paths-ignore:
-      - "package.json"
 
 concurrency:
   group: ci-main-${{ github.event_name }}-${{ github.ref }}

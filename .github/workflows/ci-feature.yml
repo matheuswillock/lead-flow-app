@@ -35,10 +35,7 @@ jobs:
         ) &&
         (
           github.event.head_commit == null ||
-          (
-            !contains(github.event.head_commit.message, '[skip ci]') &&
-            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
-          )
+          !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
     runs-on: ubuntu-latest
@@ -141,10 +138,7 @@ jobs:
         ) &&
         (
           github.event.head_commit == null ||
-          (
-            !contains(github.event.head_commit.message, '[skip ci]') &&
-            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
-          )
+          !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
     runs-on: ubuntu-latest
@@ -175,10 +169,7 @@ jobs:
         ) &&
         (
           github.event.head_commit == null ||
-          (
-            !contains(github.event.head_commit.message, '[skip ci]') &&
-            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
-          )
+          !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
     runs-on: ubuntu-latest
@@ -245,10 +236,7 @@ jobs:
         ) &&
         (
           github.event.head_commit == null ||
-          (
-            !contains(github.event.head_commit.message, '[skip ci]') &&
-            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
-          )
+          !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
     runs-on: ubuntu-latest
