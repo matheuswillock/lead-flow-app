@@ -1139,12 +1139,10 @@ export async function PUT(
         );
 
         if (Object.keys(delegationData).length > 0) {
-          await prisma.teamMember.update({
+          await prisma.teamMember.updateMany({
             where: {
-              teamId_profileId: {
-                teamId,
-                profileId: validatedData.id,
-              },
+              profileId: validatedData.id,
+              team: { masterId: managerId },
             },
             data: delegationData,
           });
