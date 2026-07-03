@@ -31,6 +31,7 @@ export interface TeamSummary {
   canManageAccountTeams: boolean;
   canTransferAccountLeads: boolean;
   canViewAllTeams: boolean;
+  accountTeamsCount?: number;
   hasTransferRoutes?: boolean;
   membershipCreatedAt: string;
   isPending?: boolean;
@@ -87,8 +88,20 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const serverActiveTeamIdRef = useRef<string | null>(null);
+  const activeTeamIdRef = useRef<string | null>(null);
+  const pendingActiveTeamSwitchRef = useRef<string | null>(null);
+  const teamsRef = useRef<TeamSummary[]>([]);
   const initializedRef = useRef(false);
+  const serverTeamsReadyRef = useRef(false);
   const bootstrapHydratedRef = useRef(false);
+
+  useEffect(() => {
+    activeTeamIdRef.current = activeTeamId;
+  }, [activeTeamId]);
+
+  useEffect(() => {
+    teamsRef.current = teams;
+  }, [teams]);
 
   useEffect(() => {
     if (bootstrapHydratedRef.current) return;
@@ -156,18 +169,25 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       }
 
       const payload = output.result as { teams: TeamSummary[]; activeTeamId: string | null };
+      serverTeamsReadyRef.current = true;
       setTeams(payload.teams || []);
       serverActiveTeamIdRef.current = payload.activeTeamId ?? null;
 
+      const resolvedActiveTeamId = payload.activeTeamId ?? activeTeamIdRef.current ?? null;
+
       writeTeamsBootstrapCache(supabaseId, {
         teams: payload.teams || [],
-        activeTeamId: payload.activeTeamId ?? null,
+        activeTeamId: resolvedActiveTeamId,
       });
 
-      if (payload.activeTeamId && payload.activeTeamId !== activeTeamId) {
-        setActiveTeamIdState(payload.activeTeamId);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(storageKey, payload.activeTeamId);
+      if (payload.activeTeamId && !pendingActiveTeamSwitchRef.current) {
+        const serverTeam = payload.teams.find((team) => team.id === payload.activeTeamId);
+        if (serverTeam && isTeamSelectable(serverTeam) && payload.activeTeamId !== activeTeamIdRef.current) {
+          activeTeamIdRef.current = payload.activeTeamId;
+          setActiveTeamIdState(payload.activeTeamId);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(storageKey, payload.activeTeamId);
+          }
         }
       }
     } catch (err) {
@@ -176,7 +196,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTeamId, storageKey, supabaseId]);
+  }, [storageKey, supabaseId]);
 
   const persistActiveTeam = useCallback(async (teamId: string) => {
     if (typeof window !== "undefined") {
@@ -201,6 +221,11 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
         throw new Error(output.errorMessages?.join(", ") || "Não foi possível alterar o time ativo.");
       }
       serverActiveTeamIdRef.current = teamId;
+
+      writeTeamsBootstrapCache(supabaseId, {
+        teams: teamsRef.current,
+        activeTeamId: teamId,
+      });
     } catch (err) {
       console.error("Error updating active team:", err);
       throw err;
@@ -218,11 +243,15 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       return;
     }
 
+    pendingActiveTeamSwitchRef.current = teamId;
+    activeTeamIdRef.current = teamId;
     setActiveTeamIdState(teamId);
     try {
       await persistActiveTeam(teamId);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao alterar o time ativo.");
+    } finally {
+      pendingActiveTeamSwitchRef.current = null;
     }
   }, [activeTeamId, persistActiveTeam, teams]);
 
@@ -233,23 +262,23 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
   useEffect(() => {
     if (initializedRef.current) return;
+    if (!serverTeamsReadyRef.current) return;
     if (teams.length === 0) return;
 
     let nextTeamId: string | null = null;
 
-    if (typeof window !== "undefined") {
+    if (serverActiveTeamIdRef.current) {
+      const serverTeam = teams.find((team) => team.id === serverActiveTeamIdRef.current);
+      if (serverTeam && isTeamSelectable(serverTeam)) {
+        nextTeamId = serverActiveTeamIdRef.current;
+      }
+    }
+
+    if (!nextTeamId && typeof window !== "undefined") {
       const stored = window.localStorage.getItem(storageKey);
       const storedTeam = stored ? teams.find((team) => team.id === stored) : null;
       if (stored && storedTeam && isTeamSelectable(storedTeam)) {
         nextTeamId = stored;
-      }
-    }
-
-    if (!nextTeamId && serverActiveTeamIdRef.current) {
-      const serverTeamId = serverActiveTeamIdRef.current;
-      const serverTeam = teams.find((team) => team.id === serverTeamId);
-      if (serverTeam && isTeamSelectable(serverTeam)) {
-        nextTeamId = serverTeamId;
       }
     }
 
@@ -259,10 +288,17 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
     if (nextTeamId) {
       initializedRef.current = true;
+      activeTeamIdRef.current = nextTeamId;
       setActiveTeamIdState(nextTeamId);
-      persistActiveTeam(nextTeamId).catch((err) => {
-        console.error("Error persisting initial team:", err);
-      });
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storageKey, nextTeamId);
+      }
+
+      if (nextTeamId !== serverActiveTeamIdRef.current) {
+        persistActiveTeam(nextTeamId).catch((err) => {
+          console.error("Error persisting initial team:", err);
+        });
+      }
     }
   }, [storageKey, teams, persistActiveTeam]);
 

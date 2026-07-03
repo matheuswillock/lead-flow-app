@@ -1,6 +1,7 @@
 import { ILeadRepository, type LeadCreateRepositoryInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
 import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
 const CRM_LEAD_LIST_SELECT = {
@@ -245,7 +246,7 @@ export class LeadRepository implements ILeadRepository {
           creator: { connect: { id: params.masterId } },
           updater: { connect: { id: params.masterId } },
           activities: {
-            create: {
+            create: buildStudioActivityData({
               type: ActivityType.note,
               body: "Lead criado automaticamente via WhatsApp",
               payload: {
@@ -256,8 +257,7 @@ export class LeadRepository implements ILeadRepository {
                 conversationId: params.conversationId,
                 importedAt: new Date().toISOString(),
               },
-              author: { connect: { id: params.masterId } },
-            },
+            }),
           },
         },
         select: { id: true },
@@ -498,8 +498,10 @@ export class LeadRepository implements ILeadRepository {
         updatedAt: new Date(),
         activities: {
           create: {
-            type: 'status_change',
-            body: reason || 'Lead transferido para novo gestor',
+            ...buildStudioActivityData({
+              type: ActivityType.status_change,
+              body: reason || "Lead transferido para novo gestor",
+            }),
             createdAt: new Date(),
           },
         },

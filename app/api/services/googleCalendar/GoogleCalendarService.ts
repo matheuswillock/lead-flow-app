@@ -6,6 +6,7 @@ import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const GOOGLE_LOG_PREFIX = "[GoogleAPI]";
+const GOOGLE_REQUEST_TIMEOUT_MS = 5_000;
 
 type GoogleTokenResult = {
   access_token: string;
@@ -90,6 +91,7 @@ async function refreshAccessToken(refreshToken: string): Promise<GoogleTokenResu
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }).toString(),
+    signal: AbortSignal.timeout(GOOGLE_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -272,6 +274,7 @@ export async function getCalendarBusyIntervals({
   const response = await googleCalendarFetch<any>(url, accessToken, {
     method: "POST",
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(GOOGLE_REQUEST_TIMEOUT_MS),
   });
 
   const busy = response?.calendars?.[calendarId]?.busy;

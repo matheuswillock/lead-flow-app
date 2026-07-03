@@ -5,6 +5,7 @@ import { healthPlanService } from "../../services/healthPlans/HealthPlanService"
 import { leadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { prisma } from "../../infra/data/prisma";
 import { LeadStatus, ActivityType } from "@prisma/client";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 
 /**
  * MetaLeadUseCase
@@ -225,7 +226,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
           assignee: { connect: { id: assignedTo } }
         }),
         activities: {
-          create: {
+          create: buildStudioActivityData({
             type: ActivityType.note,
             body: `Lead importado automaticamente do Meta Lead Ads\n\nFormulário ID: ${metaData.formId || 'N/A'}\nAnúncio ID: ${metaData.adId || 'N/A'}\nCidade: ${metaData.city || 'N/A'}\n\nDados brutos: ${JSON.stringify(metaData.rawData, null, 2)}`,
             payload: {
@@ -240,9 +241,8 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
               city: metaData.city ?? null,
               importedAt: new Date().toISOString(),
             },
-            author: { connect: { id: managerId } }
-          }
-        }
+          }),
+        },
       });
 
       console.info(`✅ Lead criado com sucesso: ${lead.id}`);

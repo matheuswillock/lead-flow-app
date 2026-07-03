@@ -1,16 +1,12 @@
 import type { ActivityType, LeadProposalReviewStatus, LeadRequiredDocumentStatus, LeadRequiredDocumentType, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { STUDIO_FEED_IDENTITY } from "@/lib/studio-feed-identity";
 
 export const REQUIRED_ASSOCIATE_DOC_TYPES: LeadRequiredDocumentType[] = [
   "rg",
   "address_proof",
   "social_contract",
 ];
-
-export const STUDIO_FEED_IDENTITY = {
-  displayAuthor: "Corretor Studio",
-  authorAvatarUrl: "/corretor-studio-icon.svg",
-} as const;
 
 export type AssociateProposalListQuery = {
   sponsorProfileId: string;

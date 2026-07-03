@@ -21,6 +21,8 @@ import {
 
 export const WHATSAPP_HISTORY_SYNC_DAYS = 30
 
+const CONFIG_SYNC_TTL_MS = 45_000
+
 function resolveWebhookBaseUrl(): string {
   const webhookPublic = process.env.EVO_WEBHOOK_PUBLIC_URL?.replace(/\/$/, "")
   if (webhookPublic) return webhookPublic
@@ -195,6 +197,14 @@ class WhatsAppService implements IWhatsAppService {
   async getConfig(teamId: string): Promise<ConfigOutput | null> {
     const config = await whatsAppRepository.findConfigByTeamId(teamId)
     if (!config) return null
+
+    // Evita chamada externa à Evolution no caminho quente: só sincroniza se o
+    // último sync tiver mais de CONFIG_SYNC_TTL_MS.
+    const lastSyncMs = config.lastSyncAt?.getTime() ?? 0
+    if (Date.now() - lastSyncMs < CONFIG_SYNC_TTL_MS) {
+      return toConfigOutput(config)
+    }
+
     const synced = await this.syncConfigWithEvolution(config)
     return toConfigOutput(synced)
   }

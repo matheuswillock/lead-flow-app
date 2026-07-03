@@ -5,6 +5,7 @@ import type { LeadFormSaveMode } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
 import { isDraftLead } from "@/lib/lead-status";
+import { resolveActivityAuthor as resolveActivityAuthorFromLib } from "@/lib/lead-activities/resolveActivityAuthor";
 import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
 import {
   useCallback,
@@ -628,43 +629,8 @@ export default function LeadDialog({
   const resolveActivityAuthor = useCallback((
     profileId: string | null | undefined,
     payload?: Record<string, unknown> | null
-  ) => {
-    const displayAuthor = typeof payload?.displayAuthor === "string" ? payload.displayAuthor : null;
-    if (!profileId && displayAuthor) {
-      return {
-        id: "corretor-studio",
-        fullName: displayAuthor,
-        email: "",
-        avatarUrl:
-          typeof payload?.authorAvatarUrl === "string"
-            ? payload.authorAvatarUrl
-            : "/corretor-studio-icon.svg",
-      };
-    }
-
-    if (!profileId) return null;
-
-    const member = teamMembers.find((teamMember) => teamMember.profileId === profileId);
-    if (member) {
-      return {
-        id: member.profileId,
-        fullName: member.name ?? null,
-        email: member.email || "",
-        avatarUrl: member.profileIconUrl ?? null,
-      };
-    }
-
-    if (user?.id === profileId) {
-      return {
-        id: user.id,
-        fullName: user.fullName ?? null,
-        email: user.email,
-        avatarUrl: user.profileIconUrl ?? null,
-      };
-    }
-
-    return null;
-  }, [teamMembers, user]);
+  ) => resolveActivityAuthorFromLib(profileId, payload, { teamMembers, user }),
+  [teamMembers, user]);
 
   const upsertRealtimeActivity = useCallback((activityRow: LeadActivityRealtimeRow) => {
     if (!currentLead?.id || activityRow.leadId !== currentLead.id) return;

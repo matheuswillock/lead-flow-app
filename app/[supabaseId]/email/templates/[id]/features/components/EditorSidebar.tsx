@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Braces, ChevronLeft, ChevronRight, Clock3, ImageIcon, Lightbulb, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Braces, ChevronLeft, ChevronRight, Clock3, ImageIcon, Lightbulb, PanelLeftClose, PanelLeftOpen, Video, AtSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,8 @@ import { EditorFloatingPanel } from "./EditorFloatingPanel";
 import type { SidebarSection } from "./EditorStudioTypes";
 import { EmailCreationTipsPanel } from "./EmailCreationTipsPanel";
 import { EmailTemplateAssetsPanel } from "./EmailTemplateAssetsPanel";
+import { EmailTemplateVideosPanel } from "./EmailTemplateVideosPanel";
+import { EmailTemplateXPostPanel } from "./EmailTemplateXPostPanel";
 import { TemplateHistoryPanel } from "./TemplateHistoryPanel";
 import { VariablesPanel } from "./VariablesPanel";
 
@@ -27,6 +29,8 @@ const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   history: "Histórico",
   tips: "Dicas",
   assets: "Imagens",
+  videos: "Vídeos",
+  "x-post": "Post do X",
 };
 
 interface EditorSidebarProps {
@@ -144,6 +148,32 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             type="button"
             variant="outline"
             className="h-auto justify-between px-3 py-3"
+            onClick={() => setSection("videos")}
+          >
+            <span className="flex items-center gap-2">
+              <Video data-icon="inline-start" />
+              Vídeos
+            </span>
+            <ChevronRight />
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto justify-between px-3 py-3"
+            onClick={() => setSection("x-post")}
+          >
+            <span className="flex items-center gap-2">
+              <AtSign data-icon="inline-start" />
+              Post do X
+            </span>
+            <ChevronRight />
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto justify-between px-3 py-3"
             onClick={() => setSection("tips")}
           >
             <span className="flex items-center gap-2">
@@ -203,6 +233,8 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
         ) : null}
         {section === "tips" ? <EmailCreationTipsPanel embedded /> : null}
         {section === "assets" ? <EmailTemplateAssetsPanel embedded /> : null}
+        {section === "videos" ? <EmailTemplateVideosPanel embedded /> : null}
+        {section === "x-post" ? <EmailTemplateXPostPanel embedded /> : null}
       </div>
     </EditorFloatingPanel>
   );

@@ -27,7 +27,44 @@ export async function POST(
     if (denied) return denied
 
     const { memberId, teamId } = await params
-    const output = await backofficeMemberUseCase.addToTeam(memberId, teamId)
+    const body = await request.json().catch(() => ({}))
+
+    const VALID_ROLES = ["manager", "backoffice", "operator"] as const
+    const VALID_FUNCTIONS = ["SDR", "CLOSER"] as const
+
+    const rawRole = body.role
+    const role =
+      typeof rawRole === "string" && (VALID_ROLES as readonly string[]).includes(rawRole)
+        ? (rawRole as (typeof VALID_ROLES)[number])
+        : undefined
+
+    const rawFunctions = body.functions
+    const functions =
+      Array.isArray(rawFunctions)
+        ? rawFunctions.filter((f): f is (typeof VALID_FUNCTIONS)[number] =>
+            (VALID_FUNCTIONS as readonly string[]).includes(f as string)
+          )
+        : undefined
+
+    const explicitAccess =
+      role !== undefined && functions !== undefined
+        ? {
+            role,
+            functions,
+            canCreateAccountUsers:
+              typeof body.canCreateAccountUsers === "boolean" ? body.canCreateAccountUsers : false,
+            canManageAccountTeams:
+              typeof body.canManageAccountTeams === "boolean" ? body.canManageAccountTeams : false,
+            canTransferAccountLeads:
+              typeof body.canTransferAccountLeads === "boolean"
+                ? body.canTransferAccountLeads
+                : false,
+            canViewAllTeams:
+              typeof body.canViewAllTeams === "boolean" ? body.canViewAllTeams : false,
+          }
+        : undefined
+
+    const output = await backofficeMemberUseCase.addToTeam(memberId, teamId, explicitAccess)
     if (output.isValid) {
       invalidateTeamMembersCache({ teamId })
     }

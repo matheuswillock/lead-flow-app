@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   IBackofficeMemberRepository,
   MemberAccountMembershipTemplate,
+  MemberAccountTeamMembershipItem,
   MemberForDeletionRecord,
   MemberForUpdateRecord,
   MemberProfileRoleContext,
@@ -196,6 +197,7 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     canCreateAccountUsers: boolean
     canManageAccountTeams: boolean
     canTransferAccountLeads: boolean
+    canViewAllTeams?: boolean
   }): Promise<{ id: string }> {
     const teamMember = await prisma.teamMember.create({
       data: {
@@ -206,10 +208,64 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
         canCreateAccountUsers: input.canCreateAccountUsers,
         canManageAccountTeams: input.canManageAccountTeams,
         canTransferAccountLeads: input.canTransferAccountLeads,
+        canViewAllTeams: input.canViewAllTeams ?? false,
       },
       select: { id: true },
     })
     return teamMember
+  }
+
+  async findAccountTeamMemberships(
+    profileId: string,
+    masterId: string
+  ): Promise<MemberAccountTeamMembershipItem[]> {
+    const teams = await prisma.team.findMany({
+      where: { masterId },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { members: true } },
+        members: {
+          where: { profileId },
+          select: {
+            role: true,
+            functions: true,
+            canCreateAccountUsers: true,
+            canManageAccountTeams: true,
+            canTransferAccountLeads: true,
+            canViewAllTeams: true,
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    })
+
+    return teams.map((team) => {
+      const membership = team.members[0]
+      const isMember = Boolean(membership)
+
+      if (!isMember) {
+        return {
+          teamId: team.id,
+          teamName: team.name,
+          membersCount: team._count.members,
+          isMember: false,
+        }
+      }
+
+      return {
+        teamId: team.id,
+        teamName: team.name,
+        membersCount: team._count.members,
+        isMember: true,
+        role: membership.role,
+        functions: membership.functions,
+        canCreateAccountUsers: membership.canCreateAccountUsers,
+        canManageAccountTeams: membership.canManageAccountTeams,
+        canTransferAccountLeads: membership.canTransferAccountLeads,
+        canViewAllTeams: membership.canViewAllTeams,
+      }
+    })
   }
 
   async updateTeamMemberAccess(

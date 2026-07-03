@@ -4,7 +4,14 @@ import { useEffect } from "react"
 import { Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTimezone } from "@/app/context/TimezoneContext"
@@ -18,6 +25,7 @@ export function BackofficeStudioBotCanalContainer() {
   const { tz } = useTimezone()
   const {
     channel,
+    qrCode,
     isLoadingChannel,
     isTestingPing,
     isReconnecting,
@@ -26,6 +34,7 @@ export function BackofficeStudioBotCanalContainer() {
     loadChannel,
     testPing,
     reconnectChannel,
+    clearQrCode,
     syncChannelProfile,
     updateChannel,
     isSavingProfile,
@@ -154,9 +163,13 @@ export function BackofficeStudioBotCanalContainer() {
                       name="n8nInboundUrl"
                       type="url"
                       defaultValue={channel?.n8nInboundUrl ?? ""}
-                      placeholder="https://n8n.exemplo.com/webhook/..."
+                      placeholder="http://n8n:5678/webhook/bethania-inbound"
                       disabled={!canManage || isSavingProfile}
                     />
+                    <FieldDescription>
+                      URL interna do N8N na VPS (rede Docker), não o domínio público. Salve antes de
+                      clicar em &quot;Reconectar Evolution&quot;.
+                    </FieldDescription>
                   </Field>
                 </FieldGroup>
                 {canManage ? (
@@ -172,6 +185,32 @@ export function BackofficeStudioBotCanalContainer() {
           </Card>
         </div>
       )}
+
+      <Dialog
+        open={Boolean(qrCode)}
+        onOpenChange={(open) => {
+          if (!open) clearQrCode()
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Escaneie o QR Code</DialogTitle>
+            <DialogDescription>
+              No WhatsApp da Bethânia: Aparelhos conectados → Conectar aparelho. Escaneie em até 60
+              segundos. Se falhar, clique em &quot;Reconectar Evolution&quot; novamente.
+            </DialogDescription>
+          </DialogHeader>
+          {qrCode ? (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <img
+                src={qrCode.imageUrl}
+                alt="QR Code WhatsApp da Bethânia"
+                className="size-56 rounded-lg border bg-background object-contain"
+              />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

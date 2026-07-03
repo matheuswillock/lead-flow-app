@@ -10116,6 +10116,45 @@
               }
             },
             {
+              "name": "GET Member Account Teams",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/account-teams?accountMasterId={{masterProfileId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "account-teams"
+                  ],
+                  "query": [
+                    {
+                      "key": "accountMasterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Lista todos os times da conta com membership e permissões do membro (sem paginação). Usado pelo modal de edição de membro no backoffice."
+              }
+            },
+            {
               "name": "POST Add Member To Team",
               "request": {
                 "method": "POST",
@@ -10123,8 +10162,16 @@
                   {
                     "key": "x-supabase-user-id",
                     "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
                   }
                 ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"operator\",\n  \"functions\": [],\n  \"canCreateAccountUsers\": false,\n  \"canManageAccountTeams\": false,\n  \"canTransferAccountLeads\": false,\n  \"canViewAllTeams\": false\n}"
+                },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/teams/:teamId",
                   "host": [
@@ -10150,7 +10197,7 @@
                     }
                   ]
                 },
-                "description": "Adiciona um membro existente da conta a um time do master. Retorna 409 se o usuário já pertence ao time."
+                "description": "Adiciona um membro existente da conta a um time do master. Body opcional define role, funções e delegações iniciais. Retorna 409 se o usuário já pertence ao time."
               }
             },
             {
@@ -10545,6 +10592,307 @@
                   ]
                 },
                 "description": "Auto-generated from app/api/v1/backoffice/health-plans/icon-upload/route.ts"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Contracts",
+          "item": [
+            {
+              "name": "GET Backoffice Contracts",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contracts?isActive=true",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contracts"
+                  ],
+                  "query": [
+                    {
+                      "key": "isActive",
+                      "value": "true"
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contracts/route.ts"
+              }
+            },
+            {
+              "name": "POST Create Backoffice Contract",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "title",
+                      "type": "text",
+                      "value": "Contrato de Corretagem Padrão"
+                    },
+                    {
+                      "key": "description",
+                      "type": "text",
+                      "value": ""
+                    },
+                    {
+                      "key": "clientId",
+                      "type": "text",
+                      "value": ""
+                    },
+                    {
+                      "key": "file",
+                      "type": "file",
+                      "src": ""
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contracts",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contracts"
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contracts/route.ts"
+              }
+            },
+            {
+              "name": "GET Backoffice Contract by ID",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contracts/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contracts",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contracts/[id]/route.ts"
+              }
+            },
+            {
+              "name": "PATCH Update Backoffice Contract",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Contrato de Corretagem Padr\\u00e3o v2\",\n  \"isActive\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contracts/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contracts",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contracts/[id]/route.ts"
+              }
+            },
+            {
+              "name": "DELETE Backoffice Contract",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contracts/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contracts",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contracts/[id]/route.ts"
+              }
+            },
+            {
+              "name": "POST Backoffice Contract New Version",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "file",
+                      "type": "file",
+                      "src": ""
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contracts/:id/versions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contracts",
+                    ":id",
+                    "versions"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contracts/[id]/versions/route.ts"
+              }
+            },
+            {
+              "name": "POST Generate Backoffice Contract Share Link",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contract-versions/:versionId/share",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contract-versions",
+                    ":versionId",
+                    "share"
+                  ],
+                  "variable": [
+                    {
+                      "key": "versionId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contract-versions/[versionId]/share/route.ts"
+              }
+            },
+            {
+              "name": "DELETE Revoke Backoffice Contract Share Link",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/contract-versions/:versionId/share",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "contract-versions",
+                    ":versionId",
+                    "share"
+                  ],
+                  "variable": [
+                    {
+                      "key": "versionId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/contract-versions/[versionId]/share/route.ts"
+              }
+            },
+            {
+              "name": "GET Public Contract Share",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-contracts/{{contractShareToken}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-contracts",
+                    "{{contractShareToken}}"
+                  ]
+                },
+                "description": "Metadados do link público (sem URL assinada do PDF)."
+              }
+            },
+            {
+              "name": "GET Public Contract Share Download",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-contracts/{{contractShareToken}}/download",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-contracts",
+                    "{{contractShareToken}}",
+                    "download"
+                  ]
+                },
+                "description": "Gera URL assinada de curta duração para download do PDF no clique."
               }
             }
           ]
@@ -11001,6 +11349,38 @@
                   ]
                 },
                 "description": "Remove imagem do bucket email-template-assets. fileId deve pertencer ao teamId do usuário."
+              },
+              "response": []
+            },
+            {
+              "name": "Gerar Embed de Post do X",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"https://x.com/usuario/status/1234567890123456789\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/templates/embeds/x-post",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "templates",
+                    "embeds",
+                    "x-post"
+                  ]
+                },
+                "description": "Converte URL de post do X/Twitter em HTML estático compatível com e-mail."
               },
               "response": []
             },
