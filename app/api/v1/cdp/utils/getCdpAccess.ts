@@ -29,6 +29,7 @@ export async function getCdpAccess(request: NextRequest): Promise<CdpAccessResul
   const featureOutput = await featureAccessUseCase.execute({
     profileId: teamAccess.access.profileId,
     managerId: teamAccess.access.managerId,
+    activeTeamId: teamAccess.access.teamId,
     teamContext: {
       isMaster: teamAccess.access.isMaster,
       role: teamAccess.access.teamMember.role,
