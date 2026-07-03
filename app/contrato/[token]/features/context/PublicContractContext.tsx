@@ -64,11 +64,21 @@ export function PublicContractProvider({
   const downloadContract = useCallback(async () => {
     if (isDownloading) return
 
+    const downloadWindow = window.open("about:blank", "_blank")
+    if (downloadWindow) {
+      downloadWindow.opener = null
+    }
+
     setIsDownloading(true)
     try {
       const download = await service.getDownloadUrl(token)
-      window.open(download.downloadUrl, "_blank", "noopener,noreferrer")
+      if (downloadWindow) {
+        downloadWindow.location.href = download.downloadUrl
+      } else {
+        window.open(download.downloadUrl, "_blank", "noopener,noreferrer")
+      }
     } catch (err) {
+      downloadWindow?.close()
       console.error("[PublicContractContext][downloadContract]", err)
       toast.error(err instanceof Error ? err.message : "Não foi possível baixar o contrato")
     } finally {
