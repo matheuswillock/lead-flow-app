@@ -1,3 +1,4 @@
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { LeadStatus, MeetingHeald, Prisma } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
@@ -48,6 +49,19 @@ export interface ILeadUseCase {
       startDate?: Date;
       endDate?: Date;
       onlyTransfer?: boolean;
+    }
+  ): Promise<Output>;
+  getAllLeadsByUserRoleWithCtx(
+    access: TeamAccess,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+      onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<Output>;
   getAllLeadsByUserRole(

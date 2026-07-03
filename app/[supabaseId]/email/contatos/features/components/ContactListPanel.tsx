@@ -137,7 +137,7 @@ export function ContactListPanel() {
 
   if (loadingLists && lists.length === 0) {
     return (
-      <div className="space-y-1.5 px-1">
+      <div className="flex flex-col gap-1.5 px-1">
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-11 w-full rounded-md" />
         ))}
@@ -154,7 +154,7 @@ export function ContactListPanel() {
   }
 
   return (
-    <div className="space-y-0.5">
+    <div className="flex flex-col gap-0.5">
       {lists.map((list) => (
         <ContactListItem key={list.id} list={list} />
       ))}

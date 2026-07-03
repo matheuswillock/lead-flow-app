@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptySimulationState } from "./EmptySimulationState";
 import { PlanResultCard } from "./PlanResultCard";
 import type { PmeSimulationOutput } from "../context/PmeSimulatorTypes";
@@ -24,9 +25,9 @@ export function SimulationResults({
   if (isLoading) {
     return (
       <div className="flex flex-col gap-3">
-        <div className="h-5 w-64 animate-pulse rounded bg-muted" />
-        <div className="h-24 animate-pulse rounded-xl bg-card" />
-        <div className="h-24 animate-pulse rounded-xl bg-card" />
+        <Skeleton className="h-5 w-64 rounded" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
       </div>
     );
   }

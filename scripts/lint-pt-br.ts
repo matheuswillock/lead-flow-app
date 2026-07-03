@@ -129,6 +129,23 @@ const PT_BR_CORRECTIONS: Record<string, string> = {
   confianca: "confiança",
   indice: "índice",
   comecar: "começar",
+  atualizacao: "atualização",
+  atualizacoes: "atualizações",
+  relatorio: "relatório",
+  relatorios: "relatórios",
+  capitulo: "capítulo",
+  capitulos: "capítulos",
+  documentacao: "documentação",
+  reuniao: "reunião",
+  reunioes: "reuniões",
+  periodo: "período",
+  periodos: "períodos",
+  experiencia: "experiência",
+  experiencias: "experiências",
+  operacao: "operação",
+  operacoes: "operações",
+  transferencia: "transferência",
+  transferencias: "transferências",
 };
 
 // Termos que coincidem com o dicionário acima mas são válidos no contexto do projeto

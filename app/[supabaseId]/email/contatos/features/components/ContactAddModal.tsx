@@ -67,8 +67,8 @@ export function ContactAddModal({ trigger }: ContactAddModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="contact-email">
               E-mail <span className="text-destructive">*</span>
             </Label>
@@ -84,7 +84,7 @@ export function ContactAddModal({ trigger }: ContactAddModalProps) {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="contact-name">Nome</Label>
             <Input
               id="contact-name"

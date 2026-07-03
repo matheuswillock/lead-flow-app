@@ -894,7 +894,7 @@ export default function AccountProfilePage() {
                       <div>
                         <h2 className="text-base font-medium">Google Calendar</h2>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Conecte sua conta Google para criar reunioes automaticamente.
+                          Conecte sua conta Google para criar reuniões automaticamente.
                         </p>
                       </div>
                       <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">

@@ -6,6 +6,7 @@ import { notificationService } from "@/app/api/services/notifications/Notificati
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import type { ITeamMembersRepository, TeamMembersListItem, TeamMembersTeam, TeamMembersProfileOption } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 
 type ListMembersFunction = Extract<UserFunction, "SDR" | "CLOSER">;
 
@@ -36,6 +37,133 @@ function getDisplayName(profile: { fullName: string | null; email: string | null
 
 export class TeamMembersUseCase {
   constructor(private readonly repository: ITeamMembersRepository) {}
+
+  async listMembersWithCtx(
+    access: TeamAccess,
+    teamId: string,
+    requestedFunction: ListMembersFunction | null
+  ): Promise<Output> {
+    try {
+      const profile = {
+        id: access.profileId,
+        email: access.profileEmail,
+        fullName: access.profileName,
+        isMaster: access.isMaster,
+        managerId: access.managerId,
+      };
+
+      const accessTeam = await this.repository.findTeam(teamId);
+      if (!accessTeam) return new Output(false, [], ["Time não encontrado"], null);
+
+      const canManageMembers = await this.repository.canManageTeamMembers(profile.id, accessTeam.masterId);
+      const membership =
+        access.teamId === teamId
+          ? {
+              id: "ctx",
+              role: access.teamMember.role,
+              canManageAccountTeams: access.canManageAccountTeams,
+            }
+          : await this.repository.findMembership(teamId, profile.id);
+
+      if (!membership && !canManageMembers) {
+        return new Output(false, [], ["Você não faz parte deste time"], null);
+      }
+
+      const cached = this.repository === defaultTeamMembersRepository
+        ? await getCachedTeamMembersData(teamId)
+        : await (async () => {
+            const team = await this.repository.findTeam(teamId);
+            if (!team) return null;
+            const [members, masterAccountTeamMembers, masterAccountProfiles] = await Promise.all([
+              this.repository.findMembers(teamId),
+              this.repository.findMasterAccountTeamMembers(team.masterId),
+              this.repository.findMasterAccountProfiles(team.masterId),
+            ]);
+            return { team, members, masterAccountTeamMembers, masterAccountProfiles };
+          })();
+
+      if (!cached) return new Output(false, [], ["Time não encontrado"], null);
+      const { team, members, masterAccountTeamMembers, masterAccountProfiles } = cached;
+
+      const formattedMembers = members.map((member) => ({
+        id: member.id,
+        profileId: member.profileId,
+        name: getDisplayName(member.profile),
+        email: member.profile.email,
+        role: member.role,
+        functions: member.functions,
+        googleCalendarConnected: member.profile.googleCalendarConnected,
+        profileIconUrl: member.profile.profileIconUrl,
+        isMaster: member.profileId === team.masterId,
+      }));
+
+      const isAssociateAccount = Boolean(team.sponsorMasterId);
+      const viewerOnAssociateAccount =
+        profile.id === team.masterId || profile.managerId === team.masterId;
+
+      const visibleMembers =
+        isAssociateAccount && viewerOnAssociateAccount && team.sponsorMasterId
+          ? formattedMembers.filter((member) => member.profileId !== team.sponsorMasterId)
+          : formattedMembers;
+
+      const filteredMembers = requestedFunction
+        ? visibleMembers.filter((member) => member.functions.includes(requestedFunction))
+        : visibleMembers;
+
+      let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
+      let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
+
+      if (!requestedFunction) {
+        const currentMemberIds = new Set(members.map((member) => member.profileId));
+        eligibleProfiles = masterAccountProfiles
+          .filter((accountProfile) => accountProfile.supabaseId)
+          .filter((accountProfile) => !currentMemberIds.has(accountProfile.id))
+          .map((accountProfile) => ({
+            id: accountProfile.id,
+            name: getDisplayName(accountProfile),
+            email: accountProfile.email,
+          }))
+          .sort((a, b) => {
+            const aKey = (a.name || a.email || "").toLowerCase();
+            const bKey = (b.name || b.email || "").toLowerCase();
+            return aKey.localeCompare(bKey, "pt-BR");
+          });
+
+        transferCandidates = masterAccountTeamMembers
+          .filter((member) => member.profile?.supabaseId)
+          .filter((member) => member.profileId !== team.masterId)
+          .map((member) => ({
+            id: member.profile.id,
+            name: getDisplayName(member.profile),
+            email: member.profile.email,
+          }))
+          .sort((a, b) => {
+            const aKey = (a.name || a.email || "").toLowerCase();
+            const bKey = (b.name || b.email || "").toLowerCase();
+            return aKey.localeCompare(bKey, "pt-BR");
+          });
+      }
+
+      const canManageTransferRoutes =
+        team.masterId === profile.id ||
+        (membership?.role === "manager" && membership.canManageAccountTeams === true);
+
+      const transferTargets = await this.repository.findTransferTargets(teamId);
+
+      return new Output(true, [], [], {
+        team: { id: team.id, name: team.name, masterId: team.masterId },
+        members: filteredMembers,
+        eligibleProfiles,
+        transferCandidates,
+        transferTargets,
+        canManageTransferRoutes,
+        canManageMembers,
+      });
+    } catch (error) {
+      console.error("[TeamMembersUseCase][listMembersWithCtx] Erro ao listar membros do time:", error);
+      return new Output(false, [], ["Erro interno ao listar membros do time"], null);
+    }
+  }
 
   async listMembers(
     supabaseId: string,

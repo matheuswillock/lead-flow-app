@@ -392,7 +392,13 @@ export function CarteiraDetailModal({
           {/* Card esquerdo: dados do cliente */}
           <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm lg:h-[95%] lg:max-h-[95%] lg:flex-[1_1_0%] lg:self-center">
         {/* Header */}
-        <DialogHeader className="shrink-0 border-b px-6 pb-4 pt-6">
+        <DialogHeader className="relative shrink-0 border-b px-6 pb-4 pt-6">
+          <DialogClose asChild>
+            <Button type="button" size="icon" variant="ghost" className="absolute right-3 top-3 size-8">
+              <X className="size-4" />
+              <span className="sr-only">Fechar</span>
+            </Button>
+          </DialogClose>
           {isLoading ? (
             <>
               <DialogTitle className="sr-only">Carregando...</DialogTitle>
@@ -419,7 +425,7 @@ export function CarteiraDetailModal({
         </DialogHeader>
 
         {/* Body */}
-        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+        <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
           {/* Contrato */}
           <section>
             <h3 className="mb-3 text-sm font-semibold">Contrato</h3>
@@ -525,7 +531,7 @@ export function CarteiraDetailModal({
                 ))}
               </div>
             ) : isEditing && form ? (
-              <div className="space-y-3">
+              <div className="flex flex-col gap-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2 flex flex-col gap-1.5">
                     <Label className="text-xs">Nome completo</Label>
@@ -600,7 +606,7 @@ export function CarteiraDetailModal({
             </div>
             <Separator className="mb-4" />
             {isLoading ? (
-              <div className="space-y-3">
+              <div className="flex flex-col gap-3">
                 {Array.from({ length: 2 }).map((_, i) => (
                   <Skeleton key={i} className="h-14 w-full rounded-md" />
                 ))}
@@ -609,7 +615,7 @@ export function CarteiraDetailModal({
               form.dependents.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum dependente. Clique em Adicionar.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="flex flex-col gap-3">
                   {form.dependents.map((dep) => (
                     <div key={dep._key} className="rounded-md border p-3">
                       <div className="grid grid-cols-2 gap-3">
@@ -674,7 +680,7 @@ export function CarteiraDetailModal({
             ) : !detail?.dependents?.length ? (
               <p className="text-sm text-muted-foreground">Nenhum dependente cadastrado.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="flex flex-col gap-3">
                 {detail.dependents.map((dep) => (
                   <div key={dep.id} className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border p-3">
                     <div className="col-span-2 flex items-center gap-2">
@@ -696,7 +702,7 @@ export function CarteiraDetailModal({
             <h3 className="mb-3 text-sm font-semibold">Documentos</h3>
             <Separator className="mb-4" />
             {isLoading ? (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 {Array.from({ length: 2 }).map((_, i) => (
                   <Skeleton key={i} className="h-14 w-full rounded-md" />
                 ))}
@@ -704,7 +710,7 @@ export function CarteiraDetailModal({
             ) : !detail?.attachments?.length ? (
               <p className="text-sm text-muted-foreground">Nenhum documento enviado.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 {detail.attachments.map((attachment) => (
                   <AttachmentRow key={attachment.id} attachment={attachment} />
                 ))}

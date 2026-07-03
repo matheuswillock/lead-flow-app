@@ -3,7 +3,9 @@
 import Link from "next/link"
 import { AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 import { useParams } from "next/navigation"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
@@ -35,10 +37,10 @@ export function CreditBalanceBar() {
     }
 
     return (
-      <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+      <Card className="border-semantic-warning-border bg-semantic-warning-surface">
         <CardContent className="flex items-center gap-3 py-3">
-          <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
-          <p className="text-sm text-amber-800 dark:text-amber-200">
+          <AlertCircle className="size-5 shrink-0 text-semantic-warning" />
+          <p className="text-sm text-semantic-warning">
             Sem créditos de email ativos.{" "}
             <Link
               href={`/${params.supabaseId}/subscription`}
@@ -67,16 +69,14 @@ export function CreditBalanceBar() {
             <span className="font-medium">
               {PLAN_LABELS[credits.plan ?? ""] ?? credits.plan} — Créditos de Email
             </span>
-            <span className={isLow ? "text-amber-600 font-medium" : "text-muted-foreground"}>
+            <span className={cn(isLow ? "text-semantic-warning font-medium" : "text-muted-foreground")}>
               {remaining.toLocaleString("pt-BR")} / {credits.monthlyCredits.toLocaleString("pt-BR")} restantes
             </span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className={`h-full rounded-full transition-all ${isLow ? "bg-amber-500" : "bg-primary"}`}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+          <Progress
+            value={pct}
+            className={cn("h-2 bg-muted", isLow && "[&>div]:bg-semantic-warning")}
+          />
         </div>
         {credits.currentPeriodEnd && (
           <p className="shrink-0 text-xs text-muted-foreground">

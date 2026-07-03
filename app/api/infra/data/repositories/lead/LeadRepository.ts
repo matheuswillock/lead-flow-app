@@ -4,6 +4,35 @@ import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
+// Statuses terminais não geram eventos de lead time no calendário.
+const CALENDAR_TERMINAL_STATUSES: LeadStatus[] = [
+  "contract_finalized",
+  "opportunityLost",
+  "disqualified",
+  "operator_denied",
+];
+
+// Margem para trás no statusEnteredAt: o vencimento de lead time (statusEnteredAt + regra)
+// pode cair dentro da janela mesmo quando o status começou antes dela.
+const CALENDAR_LEAD_TIME_LOOKBACK_DAYS = 45;
+
+function buildCalendarWindowFilter(windowStart: Date, windowEnd: Date): Prisma.LeadWhereInput {
+  const leadTimeLookbackStart = new Date(
+    windowStart.getTime() - CALENDAR_LEAD_TIME_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+  );
+
+  return {
+    OR: [
+      { meetingDate: { gte: windowStart, lte: windowEnd } },
+      { status: "future_sale", followUpAt: { gte: windowStart, lte: windowEnd } },
+      {
+        status: { notIn: CALENDAR_TERMINAL_STATUSES },
+        statusEnteredAt: { gte: leadTimeLookbackStart, lte: windowEnd },
+      },
+    ],
+  };
+}
+
 const CRM_LEAD_LIST_SELECT = {
   id: true,
   leadCode: true,
@@ -650,6 +679,8 @@ export class LeadRepository implements ILeadRepository {
       startDate?: Date;
       endDate?: Date;
       onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -659,6 +690,8 @@ export class LeadRepository implements ILeadRepository {
       startDate,
       endDate,
       onlyTransfer,
+      calendarWindowStart,
+      calendarWindowEnd,
     } = options || {};
 
     const where: any = {
@@ -679,6 +712,9 @@ export class LeadRepository implements ILeadRepository {
           gte: startDate,
           lte: endDate,
         },
+      }),
+      ...(calendarWindowStart && calendarWindowEnd && {
+        AND: [buildCalendarWindowFilter(calendarWindowStart, calendarWindowEnd)],
       }),
     };
 
@@ -776,6 +812,8 @@ export class LeadRepository implements ILeadRepository {
       startDate?: Date;
       endDate?: Date;
       onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -785,9 +823,15 @@ export class LeadRepository implements ILeadRepository {
       startDate,
       endDate,
       onlyTransfer,
+      calendarWindowStart,
+      calendarWindowEnd,
     } = options || {};
 
     const filters: Prisma.LeadWhereInput[] = [];
+
+    if (calendarWindowStart && calendarWindowEnd) {
+      filters.push(buildCalendarWindowFilter(calendarWindowStart, calendarWindowEnd));
+    }
 
     if (status) {
       filters.push({ status });

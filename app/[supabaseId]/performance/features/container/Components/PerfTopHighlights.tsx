@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { TopPerformerCard } from "./TopPerformerCard";
 import { usePerformanceContext } from "../../context/PerformanceContext";
 
@@ -16,10 +17,7 @@ export function PerfTopHighlights() {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {[...Array(2)].map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border bg-card h-30 animate-pulse"
-          />
+          <Skeleton key={i} className="h-30 rounded-xl" />
         ))}
       </div>
     );

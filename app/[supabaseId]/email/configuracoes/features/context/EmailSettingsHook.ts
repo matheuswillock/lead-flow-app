@@ -126,6 +126,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [disconnectingDomain, setDisconnectingDomain] = useState(false)
 
   const fetchingRef = useRef(false)
+  const lastSettingsKeyRef = useRef("")
 
   const applySettings = useCallback((result: EmailSettings) => {
     setSettings(result)
@@ -150,12 +151,14 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   }, [])
 
   const fetchSettings = useCallback(async () => {
-    if (fetchingRef.current) return
+    const key = "email-settings"
+    if (fetchingRef.current || lastSettingsKeyRef.current === key) return
     fetchingRef.current = true
     setLoading(true)
     try {
       const result = await service.get()
       applySettings(result)
+      lastSettingsKeyRef.current = key
     } catch (err) {
       console.error("[useEmailSettings] fetchSettings error", err)
       toast.error("Erro ao carregar configurações de email")

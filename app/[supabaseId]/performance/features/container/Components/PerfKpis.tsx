@@ -1,6 +1,7 @@
 "use client";
 
 import { Calendar, Handshake, Target, UserX } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "./KpiCard";
 import { usePerformanceContext } from "../../context/PerformanceContext";
 
@@ -9,12 +10,9 @@ export function PerfKpis({ density = "comfortable" }) {
 
   if (isLoading || !data) {
     return (
-      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border bg-card h-[180px] animate-pulse"
-          />
+          <Skeleton key={i} className="h-[180px] rounded-xl" />
         ))}
       </div>
     );

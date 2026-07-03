@@ -1,5 +1,5 @@
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
-import { IBoardService, type ResendScheduleInvitePayload } from "./IBoardServices";
+import { IBoardService, type FetchLeadsOptions, type ResendScheduleInvitePayload } from "./IBoardServices";
 import { Output } from "@/lib/output";
 
 const API_BASE_URL = '/api/v1';
@@ -27,12 +27,21 @@ export class BoardService implements IBoardService {
             );
         });
     }
-    async fetchLeads(supabaseId: string, role: string, teamId?: string | null): Promise<Output> {
+    async fetchLeads(
+        supabaseId: string,
+        role: string,
+        teamId?: string | null,
+        options?: FetchLeadsOptions
+    ): Promise<Output> {
         try {
             const searchParams = new URLSearchParams();
             searchParams.append('role', role);
             if (teamId) {
                 searchParams.append('teamId', teamId);
+            }
+            if (options?.calendarWindowStart && options?.calendarWindowEnd) {
+                searchParams.append('calendarWindowStart', options.calendarWindowStart.toISOString());
+                searchParams.append('calendarWindowEnd', options.calendarWindowEnd.toISOString());
             }
 
             const url = `${API_BASE_URL}/leads?${searchParams.toString()}`;

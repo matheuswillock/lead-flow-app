@@ -7,6 +7,7 @@ import { Output } from "@/lib/output";
 import { LeadStatus } from "@prisma/client";
 import { invalidateLeadCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -66,18 +67,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    console.info('[API /leads] Received GET request');
-    
-    // Extrair supabaseId dos headers
-    const supabaseId = request.headers.get('x-supabase-user-id');
-    console.info('[API /leads] Supabase ID from header:', supabaseId);
-    
-    if (!supabaseId) {
-      console.warn('[API /leads] No supabaseId in headers');
-      const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 401 });
+    console.info('[LeadsRoute][GET] Received GET request');
+
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
+    const { access } = teamAccess;
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
     const status = searchParams.get('status') as LeadStatus | null;
@@ -86,16 +83,12 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const onlyTransfer = searchParams.get('onlyTransfer') === 'true';
-    const teamId = request.headers.get('x-team-id') || searchParams.get('teamId');
+    const calendarWindowStart = searchParams.get('calendarWindowStart');
+    const calendarWindowEnd = searchParams.get('calendarWindowEnd');
 
     if (!role) {
-      console.warn('[API /leads] No role in query params');
+      console.warn('[LeadsRoute][GET] No role in query params');
       const output = new Output(false, [], ["Role do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
-    if (!teamId) {
-      const output = new Output(false, [], ["Team ID é obrigatório"], null);
       return NextResponse.json(output, { status: 400 });
     }
 
@@ -106,17 +99,19 @@ export async function GET(request: NextRequest) {
       ...(startDate && { startDate: new Date(startDate) }),
       ...(endDate && { endDate: new Date(endDate) }),
       ...(onlyTransfer && { onlyTransfer }),
-      role, // Adiciona o role nas opções
-      teamId,
+      ...(calendarWindowStart && calendarWindowEnd && {
+        calendarWindowStart: new Date(calendarWindowStart),
+        calendarWindowEnd: new Date(calendarWindowEnd),
+      }),
     };
 
-    const output = await leadUseCase.getAllLeadsByUserRole(supabaseId, options);
+    const output = await leadUseCase.getAllLeadsByUserRoleWithCtx(access, options);
 
     return NextResponse.json(output);
 
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
-    console.error("[API /leads] Erro ao buscar leads:", error);
+    console.error("[LeadsRoute][GET] Erro ao buscar leads:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

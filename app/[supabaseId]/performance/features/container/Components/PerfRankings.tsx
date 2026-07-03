@@ -3,6 +3,7 @@
 import { ArrowUp, Calendar, Check, Handshake, Medal, Trophy, UserPlus, UserX } from "lucide-react";
 import { useState } from "react";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PerfPersonModal, type PerfPersonModalPerson } from "./PerfPersonModal";
 import { RankRow } from "./RankRow";
 import { usePerformanceContext } from "../../context/PerformanceContext";
@@ -113,10 +114,7 @@ export function PerfRankings() {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {[...Array(2)].map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border bg-card h-75 animate-pulse"
-          />
+          <Skeleton key={i} className="h-75 rounded-xl" />
         ))}
       </div>
     );

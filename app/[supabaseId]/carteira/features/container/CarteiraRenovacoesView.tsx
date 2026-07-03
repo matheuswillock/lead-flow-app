@@ -98,7 +98,7 @@ function DueDateBadge({ date }: { date: string | null }) {
 
 const STATUS_DOT_BG: Record<RenewalStatus, string> = {
   to_renew:  'bg-primary',
-  contacted: 'bg-blue-500',
+  contacted: 'bg-semantic-info',
   proposal:  'bg-semantic-warning',
   renewed:   'bg-semantic-success',
   lost:      'bg-semantic-danger',
@@ -106,7 +106,7 @@ const STATUS_DOT_BG: Record<RenewalStatus, string> = {
 
 const STATUS_TEXT_COLOR: Record<RenewalStatus, string> = {
   to_renew:  'text-primary',
-  contacted: 'text-blue-500',
+  contacted: 'text-semantic-info',
   proposal:  'text-semantic-warning',
   renewed:   'text-semantic-success',
   lost:      'text-semantic-danger',

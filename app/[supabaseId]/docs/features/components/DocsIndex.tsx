@@ -40,7 +40,7 @@ const SIDEBAR_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   "crm-kanban": "CRM / Kanban",
   leads: "Gerenciar Leads",
-  reunioes: "Agendar Reunioes",
+  reunioes: "Agendar Reuniões",
   calendar: "Calendário",
   carteira: "Carteira",
   performance: "Performance",
@@ -92,7 +92,7 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
 
   return (
     <nav
-      aria-label="Navegacao da documentacao"
+      aria-label="Navegação da documentação"
       className={cn(
         "h-full bg-[color-mix(in_oklab,var(--primary)_4%,var(--surface-1))]",
         className,

@@ -152,7 +152,7 @@ export default function HomePage() {
                 href="#email-campaigns"
                 className="group mb-6 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs sm:text-sm font-medium transition-colors hover:border-primary/40 landing-pill-badge"
               >
-                <span className="inline-block h-1.5 w-1.5 rounded-full animate-pulse bg-primary" />
+                <span className="inline-block h-1.5 w-1.5 rounded-full animate-pulse motion-reduce:animate-none bg-primary" />
                 <span className="font-semibold text-primary">Em breve</span>
                 <span className="text-muted-foreground">Campanhas de E-mail no Corretor Studio</span>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -160,12 +160,12 @@ export default function HomePage() {
 
               {/* Headline */}
               <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[3.75rem] xl:text-7xl font-extrabold leading-[1.1] tracking-tight text-foreground">
-                <span className="block text-md sm:text-lg md:text-xl xl:text-2xl font-semibold text-muted-foreground mb-2">
+                <span className="block text-base sm:text-lg md:text-xl xl:text-2xl font-semibold text-muted-foreground mb-2">
                   Corretores comuns mandam cotações.
                 </span>
                 <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold text-foreground">
                   Os de{" "}
-                  <span className="inline leading-[0.95] landing-primary-gradient">
+                  <span className="inline leading-[0.95] text-primary">
                     ALTA PERFORMANCE
                   </span>
                 </span>
@@ -217,6 +217,7 @@ export default function HomePage() {
                     width={600}
                     height={400}
                     className="w-full h-auto"
+                    priority
                   />
                   <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-xl border border-border bg-card/90 px-2.5 py-1.5 text-xs font-semibold shadow-sm">
                     <CalendarCheck className="h-3.5 w-3.5 text-primary" />
@@ -239,7 +240,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Product image */}
-                <div className="rounded-3xl overflow-hidden border border-border shadow-lg">
+                <div className="rounded-2xl overflow-hidden border border-border shadow-lg">
                   <Image
                     src="/images/product-banner.svg"
                     alt="Corretor Studio — pipeline e gestão de leads"
