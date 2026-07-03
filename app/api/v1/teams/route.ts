@@ -246,6 +246,14 @@ export async function GET(request: NextRequest) {
       ...subscriptionByMasterId.keys(),
     ]);
 
+    const accountTeamsCountByMasterId = new Map<string, number>();
+    await Promise.all(
+      [...subscriptionByMasterId.keys()].map(async (masterId) => {
+        const count = await prisma.team.count({ where: { masterId } });
+        accountTeamsCountByMasterId.set(masterId, count);
+      })
+    );
+
     const activeTeams = memberships.map((membership) => {
       const accountMasterId = membership.team.masterId;
       const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
@@ -275,6 +283,7 @@ export async function GET(request: NextRequest) {
         canManageAccountTeams: membership.canManageAccountTeams,
         canTransferAccountLeads: membership.canTransferAccountLeads,
         canViewAllTeams: membership.canViewAllTeams,
+        accountTeamsCount: accountTeamsCountByMasterId.get(accountMasterId) ?? 1,
         hasTransferRoutes: teamsWithRoutes.has(membership.team.id),
         membershipCreatedAt: membership.createdAt,
         isPending: false,
@@ -311,6 +320,7 @@ export async function GET(request: NextRequest) {
           canManageAccountTeams: true,
           canTransferAccountLeads: false,
           canViewAllTeams: false,
+          accountTeamsCount: accountTeamsCountByMasterId.get(accountMasterId) ?? 1,
           hasTransferRoutes: false,
           membershipCreatedAt: team.createdAt,
           isPending: false,
@@ -351,6 +361,7 @@ export async function GET(request: NextRequest) {
           canManageAccountTeams: false,
           canTransferAccountLeads: false,
           canViewAllTeams: false,
+          accountTeamsCount: accountTeamsCountByMasterId.get(profile.id) ?? 1,
           hasTransferRoutes: false,
           membershipCreatedAt: action.createdAt,
           isPending: true,

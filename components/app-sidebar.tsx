@@ -90,7 +90,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const { user } = useUserContext();
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster, activeRole, activeFunctions } = useTeamContext();
   const { hasAccess, showsBetaLabel } = useFeatureAccess();
-  const isManager = activeRole === "manager";
+  const isManager = activeRole === "manager" || activeRole === "backoffice";
   const isCloser = activeFunctions.includes("CLOSER");
   const isSdr = activeFunctions.includes("SDR");
   const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
@@ -217,7 +217,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
       return false;
     }
-    if (item.requiresTransferRoutes && !activeTeam?.hasTransferRoutes) {
+    if (item.requiresTransferRoutes && !activeTeam?.hasTransferRoutes && !activeTeam?.canTransferAccountLeads) {
       return false;
     }
     if (item.featureSlug && !hasAccess(item.featureSlug)) {

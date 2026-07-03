@@ -10116,6 +10116,45 @@
               }
             },
             {
+              "name": "GET Member Account Teams",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/account-teams?accountMasterId={{masterProfileId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "account-teams"
+                  ],
+                  "query": [
+                    {
+                      "key": "accountMasterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Lista todos os times da conta com membership e permissões do membro (sem paginação). Usado pelo modal de edição de membro no backoffice."
+              }
+            },
+            {
               "name": "POST Add Member To Team",
               "request": {
                 "method": "POST",
@@ -10123,8 +10162,16 @@
                   {
                     "key": "x-supabase-user-id",
                     "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
                   }
                 ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role\": \"operator\",\n  \"functions\": [],\n  \"canCreateAccountUsers\": false,\n  \"canManageAccountTeams\": false,\n  \"canTransferAccountLeads\": false,\n  \"canViewAllTeams\": false\n}"
+                },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/teams/:teamId",
                   "host": [
@@ -10150,7 +10197,7 @@
                     }
                   ]
                 },
-                "description": "Adiciona um membro existente da conta a um time do master. Retorna 409 se o usuário já pertence ao time."
+                "description": "Adiciona um membro existente da conta a um time do master. Body opcional define role, funções e delegações iniciais. Retorna 409 se o usuário já pertence ao time."
               }
             },
             {
@@ -10824,7 +10871,28 @@
                     "{{contractShareToken}}"
                   ]
                 },
-                "description": "Auto-generated from app/api/v1/public-contracts/[token]/route.ts"
+                "description": "Metadados do link público (sem URL assinada do PDF)."
+              }
+            },
+            {
+              "name": "GET Public Contract Share Download",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-contracts/{{contractShareToken}}/download",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-contracts",
+                    "{{contractShareToken}}",
+                    "download"
+                  ]
+                },
+                "description": "Gera URL assinada de curta duração para download do PDF no clique."
               }
             }
           ]

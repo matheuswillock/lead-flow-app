@@ -211,20 +211,43 @@ export class BackofficeContractUseCase {
     }
   }
 
-  async resolvePublicShare(token: string): Promise<Output> {
+  private async findValidPublicShareVersion(token: string) {
     if (!token?.trim()) {
-      return new Output(false, [], ["Link inválido"], null)
+      return { error: "Link inválido" as const, version: null }
     }
 
     const tokenHash = hashContractShareToken(token)
     const version = await this.contractRepository.findVersionByShareTokenHash(tokenHash)
 
     if (!version) {
-      return new Output(false, [], ["Link inválido ou não encontrado"], null)
+      return { error: "Link inválido ou não encontrado" as const, version: null }
     }
 
     if (isContractShareExpired(version.shareExpiresAt)) {
-      return new Output(false, [], ["Link expirado"], null)
+      return { error: "Link expirado" as const, version: null }
+    }
+
+    return { error: null, version }
+  }
+
+  async resolvePublicShare(token: string): Promise<Output> {
+    const { error, version } = await this.findValidPublicShareVersion(token)
+    if (error || !version) {
+      return new Output(false, [], [error ?? "Link inválido"], null)
+    }
+
+    return new Output(true, [], [], {
+      contractTitle: version.contractTitle,
+      fileName: version.fileName,
+      versionNumber: version.versionNumber,
+      expiresAt: version.shareExpiresAt,
+    })
+  }
+
+  async resolvePublicShareDownload(token: string): Promise<Output> {
+    const { error, version } = await this.findValidPublicShareVersion(token)
+    if (error || !version) {
+      return new Output(false, [], [error ?? "Link inválido"], null)
     }
 
     const signedUrlResult = await this.storageService.getSignedDownloadUrl(
@@ -241,12 +264,12 @@ export class BackofficeContractUseCase {
       )
     }
 
+    const downloadExpiresAt = new Date(Date.now() + PUBLIC_SIGNED_URL_TTL_SECONDS * 1000)
+
     return new Output(true, [], [], {
-      contractTitle: version.contractTitle,
-      fileName: version.fileName,
-      versionNumber: version.versionNumber,
       downloadUrl: signedUrlResult.signedUrl,
-      expiresAt: version.shareExpiresAt,
+      downloadExpiresAt,
+      shareExpiresAt: version.shareExpiresAt,
     })
   }
 }
