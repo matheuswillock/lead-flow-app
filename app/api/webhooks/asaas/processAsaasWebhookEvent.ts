@@ -8,6 +8,7 @@ import { PaymentValidationService } from "@/app/api/services/PaymentValidation/P
 import { PaymentValidationUseCase } from "@/app/api/useCases/payments/PaymentValidationUseCase";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
+import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
 
 export type AsaasWebhookBody = {
   id?: string;
@@ -310,6 +311,8 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
             where: { id: manager.id },
             data: updateData,
           });
+
+          invalidateAccountAccessStatusCache({ accountMasterId: manager.id });
         } else {
           console.warn("[AsaasWebhookRoute][process] manager not found", {
             eventId,
@@ -320,6 +323,41 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         rethrowIfPrerenderInterrupted(error);
         console.error("[AsaasWebhookRoute][process] subscription sync error", { eventId, error });
       }
+    }
+  }
+
+  const subscriptionStatusChangeEvents = [
+    "SUBSCRIPTION_ACTIVATED",
+    "SUBSCRIPTION_INACTIVATED",
+    "SUBSCRIPTION_SUSPENDED",
+    "SUBSCRIPTION_CANCELED",
+    "SUBSCRIPTION_DELETED",
+  ];
+
+  if (subscriptionStatusChangeEvents.includes(body.event ?? "") && body.subscription?.customer) {
+    try {
+      const { prisma } = await import("@/app/api/infra/data/prisma");
+      const manager = await prisma.profile.findFirst({
+        where: {
+          asaasCustomerId: body.subscription.customer,
+          role: "manager",
+        },
+      });
+
+      if (manager) {
+        invalidateAccountAccessStatusCache({ accountMasterId: manager.id });
+      } else {
+        console.warn("[AsaasWebhookRoute][process] manager not found for status invalidation", {
+          eventId,
+          customerId: body.subscription.customer,
+        });
+      }
+    } catch (error) {
+      rethrowIfPrerenderInterrupted(error);
+      console.error("[AsaasWebhookRoute][process] subscription status invalidation error", {
+        eventId,
+        error,
+      });
     }
   }
 

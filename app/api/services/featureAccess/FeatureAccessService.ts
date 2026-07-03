@@ -1,17 +1,16 @@
 import type { IFeatureAccessService, ResolveFeatureAccessInput, FeatureAccessResult } from "./IFeatureAccessService"
 import { FEATURE_PRODUCT_SLUG_MAP } from "@/lib/features/feature-product-slug-map"
 import type {
+  ActiveFeatureRecord,
   IFeatureAccessRepository,
   UserRoleInfo,
 } from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
-import type { BackofficeFeature, BackofficeFeatureAccessRule } from "@prisma/client"
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
-import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
 
-type ActiveFeature = BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }
+type ActiveFeature = ActiveFeatureRecord
 
 function roleHasPublicAccess(level: string): boolean {
   switch (level) {
@@ -38,7 +37,7 @@ function principalsForUser(user: UserRoleInfo): Set<string> {
 }
 
 function evaluatePrincipalRules(
-  accessRules: BackofficeFeatureAccessRule[],
+  accessRules: ActiveFeature["accessRules"],
   defaultAccessLevel: string,
   principals: Set<string>
 ): boolean {
@@ -82,6 +81,21 @@ export class FeatureAccessService implements IFeatureAccessService {
   async resolveAllowedSlugs(data: ResolveFeatureAccessInput): Promise<FeatureAccessResult> {
     const ownerProfileId = data.managerId || data.profileId
 
+    // Quando o TeamContext vem do getTeamAccess, não refaz profile/teamMember.
+    const currentUserRoleFromContext: UserRoleInfo | null = data.teamContext
+      ? {
+          isMaster: data.teamContext.isMaster,
+          role: data.teamContext.role,
+          functions: data.teamContext.functions,
+          canManageAccountTeams: data.teamContext.canManageAccountTeams,
+          canCreateAccountUsers: data.teamContext.canCreateAccountUsers,
+          userTypeSlug: "common",
+          memberProActive: false,
+          memberProExpiresAt: null,
+          activeTeamId: data.activeTeamId ?? null,
+        }
+      : null
+
     const [
       features,
       ownerProfile,
@@ -90,14 +104,18 @@ export class FeatureAccessService implements IFeatureAccessService {
       ownerSubscriptions,
       currentUserRole,
       ownerUserType,
+      ownerBanned,
     ] = await Promise.all([
       this.repository.listActiveFeatures(),
       this.repository.findOwnerProfile(ownerProfileId),
       this.repository.findOwnerProfileSubscription(ownerProfileId),
       this.repository.listActiveUserSubscriptions(data.profileId),
       this.repository.listActiveUserSubscriptions(ownerProfileId),
-      this.repository.findCurrentUserRoleInfo(data.profileId),
+      currentUserRoleFromContext
+        ? Promise.resolve(currentUserRoleFromContext)
+        : this.repository.findCurrentUserRoleInfo(data.profileId),
       this.repository.findUserTypeAssignment(ownerProfileId),
+      isAccountMasterBanned(ownerProfileId),
     ])
 
     const userTypeSlug = ownerUserType?.slug ?? "common"
@@ -123,8 +141,18 @@ export class FeatureAccessService implements IFeatureAccessService {
       memberProExpiresAt,
     }
 
-    const accountSubscriptionActive = await isAccountSubscriptionActive(ownerProfileId)
-    if (!accountSubscriptionActive || (await isAccountMasterBanned(ownerProfileId))) {
+    const hasPermanentAccess =
+      ownerProfile?.hasPermanentSubscription === true ||
+      ownerProfileSubscription?.hasPermanentSubscription === true
+
+    const hasActiveMainSubscription =
+      ACTIVE_SUBSCRIPTION_STATUSES.has(ownerProfile?.subscriptionStatus ?? "") ||
+      ACTIVE_SUBSCRIPTION_STATUSES.has(ownerProfileSubscription?.subscriptionStatus ?? "")
+
+    // Mesmo critério de isAccountSubscriptionActive, sem repetir as queries:
+    // ownerProfile + ownerProfileSubscription já foram buscados acima.
+    const accountSubscriptionActive = hasPermanentAccess || hasActiveMainSubscription
+    if (!accountSubscriptionActive || ownerBanned) {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
 
@@ -134,14 +162,6 @@ export class FeatureAccessService implements IFeatureAccessService {
       managerId: data.managerId || null,
       isMaster: safeUserRole.isMaster,
     })
-
-    const hasPermanentAccess =
-      ownerProfile?.hasPermanentSubscription === true ||
-      ownerProfileSubscription?.hasPermanentSubscription === true
-
-    const hasActiveMainSubscription =
-      ACTIVE_SUBSCRIPTION_STATUSES.has(ownerProfile?.subscriptionStatus ?? "") ||
-      ACTIVE_SUBSCRIPTION_STATUSES.has(ownerProfileSubscription?.subscriptionStatus ?? "")
 
     const paidProductSlugs = new Set<string>()
     for (const item of userSubscriptions) {

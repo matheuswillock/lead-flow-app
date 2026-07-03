@@ -1,5 +1,6 @@
 import type { BackofficeBanScope, BackofficeBanStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation"
 import type {
   ActiveBanAuthRecord,
   BackofficeBannedUserListResult,
@@ -194,6 +195,8 @@ export class BackofficeBannedUsersRepository implements IBackofficeBannedUsersRe
       select: bannedUserSelect,
     })
 
+    invalidateAccountAccessStatusCache({ accountMasterId: input.profileId })
+
     return mapRecord(row)
   }
 
@@ -217,6 +220,8 @@ export class BackofficeBannedUsersRepository implements IBackofficeBannedUsersRe
       },
       select: bannedUserSelect,
     })
+
+    invalidateAccountAccessStatusCache({ accountMasterId: row.profileId })
 
     return mapRecord(row)
   }

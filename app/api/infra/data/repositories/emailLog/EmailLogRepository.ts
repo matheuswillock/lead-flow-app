@@ -4,6 +4,7 @@ import type {
   ApplyEmailLogWebhookInput,
   CreateTeamEmailLogInput,
   IEmailLogRepository,
+  MarkSentEntry,
 } from "./IEmailLogRepository"
 import type { EmailEventType } from "@prisma/client"
 
@@ -152,10 +153,27 @@ export class EmailLogRepository implements IEmailLogRepository {
         category: input.category,
         sourceType: input.sourceType ?? null,
         sourceId: input.sourceId ?? null,
-        status: "queued",
+        status: "queued" as const,
       })),
       skipDuplicates: true,
     })
+  }
+
+  async markManySent(entries: MarkSentEntry[], sentAt: Date): Promise<void> {
+    if (entries.length === 0) return
+    // Batch de updates em uma única round-trip (transação em lote do Prisma).
+    await prisma.$transaction(
+      entries.map((entry) =>
+        prisma.emailLog.update({
+          where: { id: entry.logId },
+          data: {
+            resendEmailId: entry.resendEmailId,
+            status: "sent",
+            sentAt,
+          },
+        })
+      )
+    )
   }
 
   async markSent(logId: string, resendEmailId: string, sentAt: Date): Promise<void> {

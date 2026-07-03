@@ -61,6 +61,10 @@ export function invalidatePortfolioCache(input: { teamId: string; leadId?: strin
   ]);
 }
 
+export function invalidateAccountAccessStatusCache(input: { accountMasterId: string }) {
+  revalidateDefinedTags([cacheTags.accountAccessStatus(input.accountMasterId)]);
+}
+
 export function invalidateFeatureAccessCache(input: {
   profileId?: string | null;
   managerId?: string | null;
@@ -118,5 +122,14 @@ export function invalidateTeamTasksCache(input: { teamId: string }) {
 
 export function invalidateTeamFilterPresetsCache(input: { teamId: string; profileId: string }) {
   revalidateDefinedTags([cacheTags.teamFilterPresets(input.teamId, input.profileId)]);
+}
+
+export function invalidateNotificationsCache(input: {
+  teamId: string;
+  recipientProfileIds: string[];
+}) {
+  revalidateDefinedTags(
+    input.recipientProfileIds.map((profileId) => cacheTags.notifications(profileId, input.teamId))
+  );
 }
 

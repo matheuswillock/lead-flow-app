@@ -1,19 +1,24 @@
 import { Output } from "@/lib/output"
 import { cacheLife, cacheTag } from "next/cache"
 import { cacheTags } from "@/lib/cache/cacheTags"
-import type { IFeatureAccessService } from "@/app/api/services/featureAccess/IFeatureAccessService"
+import type {
+  FeatureAccessTeamContext,
+  IFeatureAccessService,
+} from "@/app/api/services/featureAccess/IFeatureAccessService"
 import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService"
 
 export interface ResolveFeatureAccessUseCaseInput {
   profileId: string
   managerId: string
   activeTeamId?: string | null
+  teamContext?: FeatureAccessTeamContext | null
 }
 
 async function resolveCachedFeatureAccess(
   profileId: string,
   managerId: string,
-  activeTeamId: string | null
+  activeTeamId: string | null,
+  teamContext: FeatureAccessTeamContext | null
 ) {
   "use cache"
   cacheTag(cacheTags.featureAccess(profileId, activeTeamId))
@@ -22,7 +27,7 @@ async function resolveCachedFeatureAccess(
   cacheTag(cacheTags.backofficeFeatures())
   cacheLife({ revalidate: 60 })
 
-  return featureAccessService.resolveAllowedSlugs({ profileId, managerId, activeTeamId })
+  return featureAccessService.resolveAllowedSlugs({ profileId, managerId, activeTeamId, teamContext })
 }
 
 export class FeatureAccessUseCase {
@@ -35,7 +40,8 @@ export class FeatureAccessUseCase {
           ? await resolveCachedFeatureAccess(
               input.profileId,
               input.managerId,
-              input.activeTeamId ?? null
+              input.activeTeamId ?? null,
+              input.teamContext ?? null
             )
           : await this.service.resolveAllowedSlugs(input)
       return new Output(true, [], [], { slugs, betaSlugs, betaLabelSlugs, userRole })

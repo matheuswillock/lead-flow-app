@@ -534,12 +534,17 @@ export class LeadUseCase implements ILeadUseCase {
     return `${firstLetter}${fallbackDigits}${lastLetter}`;
   }
 
-  async getLeadById(supabaseId: string, id: string): Promise<Output> {
+  async getLeadById(supabaseId: string, id: string, resolvedProfileId?: string): Promise<Output> {
     try {
-      const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
-      
-      if (!profileInfo) {
-        return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+      // Quando o caller já resolveu o profileId (ex.: rota de details), evita
+      // repetir o profile.findUnique via ProfileUseCase.
+      let profileId = resolvedProfileId;
+      if (!profileId) {
+        const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
+        if (!profileInfo) {
+          return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+        }
+        profileId = profileInfo.id;
       }
 
       const lead = await getCachedLeadById(id);
@@ -548,7 +553,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
-      return new Output(true, [], [], this.transformToDTO(lead, profileInfo.id));
+      return new Output(true, [], [], this.transformToDTO(lead, profileId));
     } catch (error) {
       console.error("Erro ao buscar lead:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);

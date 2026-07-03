@@ -2,10 +2,29 @@ import type {
   BackofficeFeature,
   BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
-  BackofficeUserSubscription,
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
+
+export type ActiveFeatureRecord = Pick<
+  BackofficeFeature,
+  | "id"
+  | "slug"
+  | "name"
+  | "parentId"
+  | "inheritParentSettings"
+  | "betaEnabled"
+  | "accessMode"
+  | "defaultAccessLevel"
+  | "billedSeparately"
+  | "productSlug"
+> & {
+  accessRules: Array<Pick<BackofficeFeatureAccessRule, "principal" | "accessLevel">>
+}
+
+export interface ActiveUserSubscriptionRecord {
+  product: { featureSlug: string }
+}
 
 export interface OwnerUserTypeAssignment {
   slug: string
@@ -39,16 +58,14 @@ export interface EmailBetaAccessContext {
 }
 
 export interface IFeatureAccessRepository {
-  listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>>
+  listActiveFeatures(): Promise<ActiveFeatureRecord[]>
   findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null>
   findOwnerProfileSubscription(ownerProfileId: string): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
       product: { featureSlug: string } | null
     }) | null
   >
-  listActiveUserSubscriptions(profileId: string): Promise<
-    Array<BackofficeUserSubscription & { product: { featureSlug: string } }>
-  >
+  listActiveUserSubscriptions(profileId: string): Promise<ActiveUserSubscriptionRecord[]>
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>
   resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean>
