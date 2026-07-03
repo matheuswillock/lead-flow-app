@@ -37,7 +37,7 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
     <UserProvider
       supabaseId={supabaseId}
       initialUser={bootstrap?.user ?? null}
-      initialHasActiveSubscription={bootstrap?.hasActiveSubscription ?? false}
+      initialHasActiveSubscription={bootstrap?.hasActiveSubscription ?? null}
       initialUserRole={bootstrap?.userRole ?? null}
     >
       <TeamProvider

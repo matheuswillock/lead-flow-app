@@ -326,6 +326,41 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
     }
   }
 
+  const subscriptionStatusChangeEvents = [
+    "SUBSCRIPTION_ACTIVATED",
+    "SUBSCRIPTION_INACTIVATED",
+    "SUBSCRIPTION_SUSPENDED",
+    "SUBSCRIPTION_CANCELED",
+    "SUBSCRIPTION_DELETED",
+  ];
+
+  if (subscriptionStatusChangeEvents.includes(body.event ?? "") && body.subscription?.customer) {
+    try {
+      const { prisma } = await import("@/app/api/infra/data/prisma");
+      const manager = await prisma.profile.findFirst({
+        where: {
+          asaasCustomerId: body.subscription.customer,
+          role: "manager",
+        },
+      });
+
+      if (manager) {
+        invalidateAccountAccessStatusCache({ accountMasterId: manager.id });
+      } else {
+        console.warn("[AsaasWebhookRoute][process] manager not found for status invalidation", {
+          eventId,
+          customerId: body.subscription.customer,
+        });
+      }
+    } catch (error) {
+      rethrowIfPrerenderInterrupted(error);
+      console.error("[AsaasWebhookRoute][process] subscription status invalidation error", {
+        eventId,
+        error,
+      });
+    }
+  }
+
   if (isPaid && body?.payment?.subscription) {
     const subscriptionId = body.payment.subscription;
 

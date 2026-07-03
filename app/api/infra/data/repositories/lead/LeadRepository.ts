@@ -198,9 +198,6 @@ export class LeadRepository implements ILeadRepository {
           orderBy: {
             createdAt: 'desc',
           },
-          // Timeline inicial limitada — o restante é servido pela rota
-          // paginada de activities.
-          take: 50,
         },
         _count: {
           select: {
