@@ -28,9 +28,18 @@ jobs:
     name: Lint & Typecheck
     if: >-
       ${{
-        startsWith(github.ref, 'refs/heads/feature/') ||
-        startsWith(github.ref, 'refs/heads/features/') ||
-        startsWith(github.ref, 'refs/heads/feat/')
+        (
+          startsWith(github.ref, 'refs/heads/feature/') ||
+          startsWith(github.ref, 'refs/heads/features/') ||
+          startsWith(github.ref, 'refs/heads/feat/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          (
+            !contains(github.event.head_commit.message, '[skip ci]') &&
+            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
+          )
+        )
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -125,9 +134,18 @@ jobs:
     name: Quality Gate
     if: >-
       ${{
-        startsWith(github.ref, 'refs/heads/feature/') ||
-        startsWith(github.ref, 'refs/heads/features/') ||
-        startsWith(github.ref, 'refs/heads/feat/')
+        (
+          startsWith(github.ref, 'refs/heads/feature/') ||
+          startsWith(github.ref, 'refs/heads/features/') ||
+          startsWith(github.ref, 'refs/heads/feat/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          (
+            !contains(github.event.head_commit.message, '[skip ci]') &&
+            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
+          )
+        )
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -150,9 +168,18 @@ jobs:
     name: Build
     if: >-
       ${{
-        startsWith(github.ref, 'refs/heads/feature/') ||
-        startsWith(github.ref, 'refs/heads/features/') ||
-        startsWith(github.ref, 'refs/heads/feat/')
+        (
+          startsWith(github.ref, 'refs/heads/feature/') ||
+          startsWith(github.ref, 'refs/heads/features/') ||
+          startsWith(github.ref, 'refs/heads/feat/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          (
+            !contains(github.event.head_commit.message, '[skip ci]') &&
+            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
+          )
+        )
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -215,6 +242,13 @@ jobs:
           startsWith(github.ref, 'refs/heads/feature/') ||
           startsWith(github.ref, 'refs/heads/features/') ||
           startsWith(github.ref, 'refs/heads/feat/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          (
+            !contains(github.event.head_commit.message, '[skip ci]') &&
+            !contains(github.event.head_commit.message, 'Merge branch ''develop''')
+          )
         )
       }}
     runs-on: ubuntu-latest

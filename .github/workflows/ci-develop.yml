@@ -389,8 +389,11 @@ jobs:
           RELEASE_BRANCH="origin/release/develop-to-main"
           MAIN_BRANCH="origin/main"
 
-          git fetch origin main --depth=1
-          git fetch origin release/develop-to-main --depth=1 2>/dev/null || true
+          # Full fetch required: shallow refs break merge-base resolution used by
+          # `git diff origin/main...HEAD` and `git log A..B` below, which is what
+          # made this job fail intermittently as develop/main history grew apart.
+          git fetch origin main
+          git fetch origin release/develop-to-main 2>/dev/null || true
 
           DEVELOP_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
 
@@ -582,8 +585,11 @@ jobs:
             git add package.json
             git diff --cached --quiet || git commit -m "chore: bump version to v$VERSION"
           fi
-          git push origin release/develop-to-main --force-with-lease 2>/dev/null || \
-            git push origin release/develop-to-main --force
+          # No blind --force fallback: if the lease fails, someone pushed to this
+          # branch since we last read it (e.g. a manual hotfix on the release PR).
+          # Overwriting it silently is how commits used to disappear from release.
+          # Fail loudly instead so a human reconciles it.
+          git push origin release/develop-to-main --force-with-lease
 
       - name: Create or update PR
         id: release-pr
