@@ -565,7 +565,7 @@ export function UserFormDialog({
                       <div className="space-y-1">
                         <FormLabel className="m-0">Pode visualizar todos os times</FormLabel>
                         <FormDescription className="m-0">
-                          Permite ver métricas do Dashboard e Performance de todos os times da conta.
+                          Permite ver métricas do Dashboard e Performance de todos os times da conta. Válido somente para este time.
                         </FormDescription>
                       </div>
                       <FormControl>

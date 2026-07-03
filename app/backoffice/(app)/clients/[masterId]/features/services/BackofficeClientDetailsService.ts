@@ -175,6 +175,18 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
+  async banUser(profileId: string, reason?: string | null): Promise<void> {
+    const res = await fetch("/api/v1/backoffice/anatemas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId, reason }),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao banir usuário")
+    }
+  }
+
   async deleteClient(masterId: string): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}`, {
       method: "DELETE",
@@ -235,10 +247,25 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
-  async addMemberToTeam(memberId: string, teamId: string): Promise<void> {
+  async addMemberToTeam(
+    memberId: string,
+    teamId: string,
+    access?: {
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+      canCreateAccountUsers: boolean
+      canManageAccountTeams: boolean
+      canTransferAccountLeads: boolean
+      canViewAllTeams: boolean
+    }
+  ): Promise<void> {
     const res = await fetch(
       `/api/v1/backoffice/members/${memberId}/teams/${teamId}`,
-      { method: "POST" }
+      {
+        method: "POST",
+        headers: access ? { "Content-Type": "application/json" } : undefined,
+        body: access ? JSON.stringify(access) : undefined,
+      }
     )
     const json = await res.json()
     if (!json.isValid) {
@@ -273,6 +300,30 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       accountMasterId: string
       accountName: string
       role: string
+    }>
+  }
+
+  async getMemberAccountTeams(memberId: string, accountMasterId: string) {
+    const params = new URLSearchParams({ accountMasterId })
+    const res = await fetch(
+      `/api/v1/backoffice/members/${memberId}/account-teams?${params.toString()}`,
+      { cache: "no-store" }
+    )
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao listar times da conta")
+    }
+    return (json.result?.items ?? []) as Array<{
+      teamId: string
+      teamName: string
+      membersCount: number
+      isMember: boolean
+      role?: string
+      functions?: string[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
     }>
   }
 
