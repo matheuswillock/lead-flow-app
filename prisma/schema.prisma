@@ -651,6 +651,9 @@ model Profile {
   createdBackofficeClients    BackofficeClient[]        @relation("BackofficeClientCreator")
   createdBackofficePayments   BackofficePayment[]       @relation("BackofficePaymentCreator")
   createdBackofficeLeads      BackofficeLead[]          @relation("BackofficeLeadCreator")
+  createdBackofficeContracts  BackofficeContract[]      @relation("BackofficeContractCreator")
+  importedBackofficeContractVersions BackofficeContractVersion[] @relation("BackofficeContractVersionImporter")
+  sharedBackofficeContractVersions   BackofficeContractVersion[] @relation("BackofficeContractVersionShareGenerator")
   receivedNotifications       Notification[]            @relation("NotificationRecipient")
   sentNotifications           Notification[]            @relation("NotificationActor")
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[] @relation("MeetingFollowUpDigestRecipient")
@@ -841,8 +844,9 @@ model BackofficeClient {
   createdAt          DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt          DateTime @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
-  creator  Profile?            @relation("BackofficeClientCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  payments BackofficePayment[]
+  creator   Profile?            @relation("BackofficeClientCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  payments  BackofficePayment[]
+  contracts BackofficeContract[]
 
   @@index([email], map: "backoffice_clients_email_idx")
   @@index([cpfCnpj], map: "backoffice_clients_cpf_cnpj_idx")
@@ -873,6 +877,49 @@ model BackofficePayment {
   @@index([status], map: "backoffice_payments_status_idx")
   @@index([dueDate], map: "backoffice_payments_due_date_idx")
   @@map("backoffice_payments")
+}
+
+model BackofficeContract {
+  id                 String   @id @default(uuid()) @db.Uuid
+  title              String   @db.Text
+  description        String?  @db.Text
+  clientId           String?  @map("clientId") @db.Uuid
+  isActive           Boolean  @default(true) @map("isActive")
+  createdByProfileId String   @map("createdByProfileId") @db.Uuid
+  createdAt          DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updatedAt") @db.Timestamptz(6)
+
+  client   BackofficeClient?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  creator  Profile                     @relation("BackofficeContractCreator", fields: [createdByProfileId], references: [id], onDelete: Restrict)
+  versions BackofficeContractVersion[]
+
+  @@index([clientId], map: "backoffice_contracts_client_id_idx")
+  @@index([isActive], map: "backoffice_contracts_is_active_idx")
+  @@map("backoffice_contracts")
+}
+
+model BackofficeContractVersion {
+  id                        String    @id @default(uuid()) @db.Uuid
+  contractId                String    @map("contractId") @db.Uuid
+  versionNumber             Int       @map("versionNumber")
+  fileName                  String    @map("fileName") @db.Text
+  storagePath               String    @map("storagePath") @db.Text
+  fileSize                  Int       @map("fileSize")
+  fileType                  String    @default("application/pdf") @map("fileType") @db.Text
+  importedByProfileId       String    @map("importedByProfileId") @db.Uuid
+  importedAt                DateTime  @default(now()) @map("importedAt") @db.Timestamptz(6)
+  shareTokenHash            String?   @unique @map("shareTokenHash") @db.Text
+  shareExpiresAt            DateTime? @map("shareExpiresAt") @db.Timestamptz(6)
+  shareGeneratedAt          DateTime? @map("shareGeneratedAt") @db.Timestamptz(6)
+  shareGeneratedByProfileId String?   @map("shareGeneratedByProfileId") @db.Uuid
+
+  contract         BackofficeContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  importedBy       Profile            @relation("BackofficeContractVersionImporter", fields: [importedByProfileId], references: [id], onDelete: Restrict)
+  shareGeneratedBy Profile?           @relation("BackofficeContractVersionShareGenerator", fields: [shareGeneratedByProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([contractId, versionNumber], map: "backoffice_contract_versions_contract_version_unique")
+  @@index([shareTokenHash], map: "backoffice_contract_versions_share_token_hash_idx")
+  @@map("backoffice_contract_versions")
 }
 
 model BackofficeLead {
@@ -1225,6 +1272,7 @@ model Lead {
   @@index([followUpAt])
   @@index([statusEnteredAt])
   @@index([status])
+  @@index([teamId, status, createdAt(sort: Desc)])
   @@map("corretor_studio_leads")
 }
 
@@ -1247,6 +1295,7 @@ model LeadActivity {
   task      Task?
 
   @@index([leadId])
+  @@index([leadId, createdAt(sort: Desc)])
   @@index([createdBy])
   @@map("corretor_studio_lead_activities")
 }
@@ -1689,6 +1738,7 @@ model Notification {
 
   @@index([recipientProfileId, teamId, isRead])
   @@index([recipientProfileId, createdAt])
+  @@index([recipientProfileId, teamId, createdAt(sort: Desc)])
   @@index([teamId, createdAt])
   @@map("corretor_studio_notifications")
 }
@@ -2613,6 +2663,8 @@ model TeamWhatsAppConfig {
 
   @@index([normalizedPhone])
   @@index([primaryConfigId])
+  @@index([webhookSecret])
+  @@index([instanceName])
   @@map("team_whatsapp_configs")
 }
 
@@ -2649,8 +2701,10 @@ model WhatsAppConversation {
 
   @@unique([configId, externalChatId])
   @@index([teamId, lastMessageAt(sort: Desc)])
+  @@index([teamId, isArchived, lastMessageAt(sort: Desc)])
   @@index([teamId, normalizedPhone])
   @@index([leadId])
+  @@index([assignedProfileId])
   @@index([createdByProfileId])
   @@map("whatsapp_conversations")
 }
@@ -2696,6 +2750,7 @@ model WhatsAppMessage {
   @@unique([teamId, providerMessageId])
   @@unique([teamId, providerEventId])
   @@index([conversationId, createdAt(sort: Asc)])
+  @@index([sentByProfileId])
   @@map("whatsapp_messages")
 }
 

@@ -1,5 +1,9 @@
 import { Output } from "@/lib/output"
-import type { IWhatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+import type {
+  IWhatsAppRepository,
+  WhatsAppConversationSelect,
+  WhatsAppMessageSelect,
+} from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { buildPeriodKey, normalizeRemoteJid, resolveNormalizedPhone, isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
 import {
@@ -37,6 +41,17 @@ function shouldApplyMessageStatus(current: string, next: string): boolean {
   const currentRank = MESSAGE_STATUS_RANK[current] ?? 0
   const nextRank = MESSAGE_STATUS_RANK[next] ?? 0
   return nextRank >= currentRank
+}
+
+const CONTACTS_LOOKUP_CHUNK_SIZE = 500
+const CONTACTS_UPDATE_CONCURRENCY = 20
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
 }
 
 interface ProcessEvoWebhookInput {
@@ -234,12 +249,11 @@ class ProcessEvoWebhookUseCase {
         "[ProcessEvoWebhookUseCase][handleMessagesUpsert] Message already exists, healing pending side effects",
         providerMessageId
       )
-      await this.applyConversationSideEffects({
-        conversationId: conversation.id,
-        conversationContactName: conversation.contactName,
+      await this.healConversationSideEffectsIfNeeded({
+        conversation,
+        existingMessage: existing,
         fromMe,
         isGroup,
-        now,
         preview,
         pushName,
       })
@@ -301,6 +315,59 @@ class ProcessEvoWebhookUseCase {
           console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Auto-response failed", autoResponseError)
         }
       }
+    }
+  }
+
+  private async healConversationSideEffectsIfNeeded(input: {
+    conversation: Pick<
+      WhatsAppConversationSelect,
+      "id" | "lastMessageAt" | "lastMessagePreview" | "contactName"
+    >
+    existingMessage: Pick<WhatsAppMessageSelect, "sentAt">
+    fromMe: boolean
+    isGroup: boolean
+    preview: string | null
+    pushName: string | undefined
+  }): Promise<void> {
+    const messageSentAt = input.existingMessage.sentAt ?? new Date()
+    const lastMessageAt = input.conversation.lastMessageAt
+    const sideEffectsPending =
+      lastMessageAt === null ||
+      (input.existingMessage.sentAt !== null && lastMessageAt < input.existingMessage.sentAt)
+
+    if (sideEffectsPending) {
+      await this.applyConversationSideEffects({
+        conversationId: input.conversation.id,
+        conversationContactName: input.conversation.contactName,
+        fromMe: input.fromMe,
+        isGroup: input.isGroup,
+        now: messageSentAt,
+        preview: input.preview,
+        pushName: input.pushName,
+      })
+      return
+    }
+
+    const safeUpdate: Prisma.WhatsAppConversationUpdateInput = {}
+    if (
+      !input.isGroup &&
+      input.pushName &&
+      input.pushName !== input.conversation.contactName
+    ) {
+      safeUpdate.contactName = input.pushName
+    }
+    if (input.preview && !input.conversation.lastMessagePreview) {
+      safeUpdate.lastMessagePreview = input.preview
+    }
+    if (Object.keys(safeUpdate).length === 0) return
+
+    try {
+      await this.repository.updateConversation(input.conversation.id, safeUpdate)
+    } catch (error) {
+      console.error(
+        "[ProcessEvoWebhookUseCase][healConversationSideEffectsIfNeeded] Safe heal failed",
+        error
+      )
     }
   }
 
@@ -615,7 +682,7 @@ class ProcessEvoWebhookUseCase {
     const contacts = asRecordArray(data)
     if (contacts.length === 0) return
 
-    let updatedCount = 0
+    const displayNameByRemoteJid = new Map<string, string>()
     for (const contact of contacts) {
       const remoteJid = typeof contact["id"] === "string"
         ? contact["id"]
@@ -635,14 +702,48 @@ class ProcessEvoWebhookUseCase {
       const displayName = profileName ?? pushName
       if (!displayName) continue
 
-      const conversation = await this.repository.findConversationByExternalChatId(teamId, remoteJid)
-      if (!conversation) continue
+      displayNameByRemoteJid.set(remoteJid, displayName)
+    }
 
-      if (conversation.contactName !== displayName) {
-        await this.repository.updateConversation(conversation.id, {
-          contactName: displayName,
-        })
-        updatedCount++
+    if (displayNameByRemoteJid.size === 0) return
+
+    const remoteJids = Array.from(displayNameByRemoteJid.keys())
+    const conversationsByRemoteJid = new Map<string, WhatsAppConversationSelect>()
+    for (const chunk of chunkArray(remoteJids, CONTACTS_LOOKUP_CHUNK_SIZE)) {
+      const found = await this.repository.findConversationsByExternalChatIds(teamId, chunk)
+      for (const conversation of found) {
+        if (conversation.externalChatId) {
+          conversationsByRemoteJid.set(conversation.externalChatId, conversation)
+        }
+      }
+    }
+
+    const pendingUpdates: Array<{ conversationId: string; contactName: string }> = []
+    for (const [remoteJid, displayName] of displayNameByRemoteJid) {
+      const conversation = conversationsByRemoteJid.get(remoteJid)
+      if (conversation && conversation.contactName !== displayName) {
+        pendingUpdates.push({ conversationId: conversation.id, contactName: displayName })
+      }
+    }
+
+    let updatedCount = 0
+    for (const chunk of chunkArray(pendingUpdates, CONTACTS_UPDATE_CONCURRENCY)) {
+      const results = await Promise.allSettled(
+        chunk.map((update) =>
+          this.repository.updateConversation(update.conversationId, {
+            contactName: update.contactName,
+          })
+        )
+      )
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          updatedCount++
+        } else {
+          console.error(
+            "[ProcessEvoWebhookUseCase][handleContactsUpsert] Failed to update conversation contact name",
+            result.reason
+          )
+        }
       }
     }
 

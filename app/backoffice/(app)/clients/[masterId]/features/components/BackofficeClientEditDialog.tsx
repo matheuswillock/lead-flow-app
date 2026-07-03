@@ -1,8 +1,10 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { AlertTriangle, Trash2 } from "lucide-react"
+import { AlertTriangle, ShieldBan, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { BanUserDialog } from "@/app/backoffice/(app)/clients/all-users/features/components/BanUserDialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -65,6 +67,7 @@ interface Props {
   masterId: string
   details: BackofficeClientDetails
   service: IBackofficeClientDetailsService
+  canManage?: boolean
   onSuccess: () => void
   onDeleteRequest: () => void
 }
@@ -75,11 +78,14 @@ export function BackofficeClientEditDialog({
   masterId,
   details,
   service,
+  canManage = true,
   onSuccess,
   onDeleteRequest,
 }: Props) {
   const [form, setForm] = useState<FormState>(() => initForm(details))
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [banDialogOpen, setBanDialogOpen] = useState(false)
+  const [isBanning, setIsBanning] = useState(false)
   const inFlight = useRef(false)
 
   useEffect(() => {
@@ -134,6 +140,26 @@ export function BackofficeClientEditDialog({
       inFlight.current = false
     }
   }
+
+  async function handleBanUser(reason?: string | null) {
+    if (isBanning) return
+
+    setIsBanning(true)
+    try {
+      await service.banUser(masterId, reason)
+      toast.success("Conta banida com sucesso")
+      setBanDialogOpen(false)
+      onOpenChange(false)
+      onSuccess()
+    } catch (err) {
+      console.error("[BackofficeClientEditDialog][handleBanUser]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao banir usuário")
+    } finally {
+      setIsBanning(false)
+    }
+  }
+
+  const userLabel = details.fullName?.trim() || details.email
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -318,26 +344,59 @@ export function BackofficeClientEditDialog({
             <Separator />
 
             {/* Danger zone */}
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 space-y-3">
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 space-y-4">
               <div className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span className="text-sm font-semibold">Zona de Perigo</span>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Excluir esta conta é uma ação permanente e irreversível. Todos os times, dados e
-                acessos serão removidos.
-              </p>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full"
-                onClick={onDeleteRequest}
-                disabled={isSubmitting}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Excluir conta
-              </Button>
+
+              {canManage && !details.isBanned ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Banir esta conta bloqueia o acesso de todos os usuários vinculados à plataforma.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setBanDialogOpen(true)}
+                    disabled={isSubmitting || isBanning}
+                  >
+                    <ShieldBan data-icon="inline-start" />
+                    Banir
+                  </Button>
+                </div>
+              ) : null}
+
+              {details.isBanned ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Esta conta possui um banimento ativo.
+                  </p>
+                  <Button type="button" variant="outline" size="sm" className="w-full" asChild>
+                    <Link href="/backoffice/anatemas">Ver em Anatemas</Link>
+                  </Button>
+                </div>
+              ) : null}
+
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Excluir esta conta é uma ação permanente e irreversível. Todos os times, dados e
+                  acessos serão removidos.
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="w-full"
+                  onClick={onDeleteRequest}
+                  disabled={isSubmitting || isBanning}
+                >
+                  <Trash2 data-icon="inline-start" />
+                  Excluir conta
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -356,6 +415,15 @@ export function BackofficeClientEditDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <BanUserDialog
+        open={banDialogOpen}
+        isSubmitting={isBanning}
+        isMaster
+        userLabel={userLabel}
+        onOpenChange={setBanDialogOpen}
+        onConfirm={handleBanUser}
+      />
     </Dialog>
   )
 }

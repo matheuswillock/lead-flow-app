@@ -130,43 +130,49 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
     const perCloser: Record<string, string[]> = {};
     let source: "google" | "internal" = "internal";
 
-    for (const closerProfile of closerProfiles) {
-      const canUseGoogleCalendar =
-        !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
-      let busyIntervals: Array<{ start: string; end: string }> = [];
-      let usedGoogle = false;
+    // Consultas ao Google em paralelo (antes eram seriais por closer);
+    // falhas caem no fallback interno individualmente.
+    const busyByCloser = await Promise.all(
+      closerProfiles.map(async (closerProfile) => {
+        const canUseGoogleCalendar =
+          !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
 
-      if (canUseGoogleCalendar) {
-        try {
-          if (!closerProfile.googleConnection) {
-            throw new Error("Perfil marcado com Google conectado, mas sem conexao OAuth carregada");
+        if (canUseGoogleCalendar) {
+          try {
+            if (!closerProfile.googleConnection) {
+              throw new Error("Perfil marcado com Google conectado, mas sem conexao OAuth carregada");
+            }
+
+            const busyIntervals = await getCalendarBusyIntervals({
+              organizer: {
+                profileId: closerProfile.id,
+                supabaseId: closerProfile.supabaseId,
+                timezone: closerProfile.timezone ?? timezone,
+                connection: closerProfile.googleConnection,
+              },
+              timeMin,
+              timeMax,
+            });
+            return { closerProfile, busyIntervals, usedGoogle: true };
+          } catch (error) {
+            const reason = isExpectedGoogleFallbackError(error)
+              ? "google_connection_unavailable"
+              : "google_availability_unavailable";
+            console.info(
+              `Google Calendar indisponivel para disponibilidade (${reason}); usando fallback interno.`
+            );
           }
-
-          busyIntervals = await getCalendarBusyIntervals({
-            organizer: {
-              profileId: closerProfile.id,
-              supabaseId: closerProfile.supabaseId,
-              timezone: closerProfile.timezone ?? timezone,
-              connection: closerProfile.googleConnection,
-            },
-            timeMin,
-            timeMax,
-          });
-          usedGoogle = true;
-        } catch (error) {
-          const reason = isExpectedGoogleFallbackError(error)
-            ? "google_connection_unavailable"
-            : "google_availability_unavailable";
-          console.info(
-            `Google Calendar indisponivel para disponibilidade (${reason}); usando fallback interno.`
-          );
         }
-      }
 
-      if (!usedGoogle) {
-        busyIntervals = internalBusyByCloser[closerProfile.id] ?? [];
-      }
+        return {
+          closerProfile,
+          busyIntervals: internalBusyByCloser[closerProfile.id] ?? [],
+          usedGoogle: false,
+        };
+      })
+    );
 
+    for (const { closerProfile, busyIntervals, usedGoogle } of busyByCloser) {
       const closerAvailability = computeAvailability(busyIntervals);
       const preservedSlot = preservedSlotByCloser.get(closerProfile.id);
       if (preservedSlot && !closerAvailability.includes(preservedSlot)) {

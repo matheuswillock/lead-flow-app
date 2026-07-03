@@ -205,6 +205,10 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     };
   }
 
+  const resolvedCanViewAllTeams =
+    (teamMember.role === "manager" || teamMember.role === "backoffice") &&
+    teamMember.canViewAllTeams === true;
+
   return {
     access: {
       supabaseId,
@@ -221,9 +225,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       canTransferAccountLeads:
         (teamMember.role === "manager" || teamMember.role === "backoffice") &&
         teamMember.canTransferAccountLeads === true,
-      canViewAllTeams:
-        (teamMember.role === "manager" || teamMember.role === "backoffice") &&
-        teamMember.canViewAllTeams === true,
+      canViewAllTeams: resolvedCanViewAllTeams,
       userTimezone: resolveTimezone(profile.timezone),
       teamMember,
     },

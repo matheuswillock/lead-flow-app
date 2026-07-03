@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { InviteDispatchStatus, type Prisma } from "@prisma/client";
+import { InviteDispatchStatus, ActivityType, type Prisma } from "@prisma/client";
 import { Output } from "@/lib/output";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { resendCalendarInvite } from "@/app/api/services/googleCalendar/GoogleCalendarService";
@@ -107,7 +108,6 @@ const buildInviteDispatchBody = ({
 
 const registerInviteDispatchActivity = async ({
   leadId,
-  createdBy,
   provider,
   status,
   fallbackUsed,
@@ -117,7 +117,6 @@ const registerInviteDispatchActivity = async ({
   metadata,
 }: {
   leadId: string;
-  createdBy: string;
   provider: InviteDispatchProvider;
   status: InviteDispatchStatus;
   fallbackUsed: boolean;
@@ -130,20 +129,21 @@ const registerInviteDispatchActivity = async ({
     await prisma.leadActivity.create({
       data: {
         leadId,
-        type: "note",
-        body: buildInviteDispatchBody({ provider, status, fallbackUsed, error }),
-        payload: {
-          kind: "schedule",
-          action: "invite_resend_dispatch",
-          provider,
-          status,
-          fallbackUsed,
-          attemptedAt: attemptedAt.toISOString(),
-          recipients,
-          error,
-          metadata,
-        },
-        createdBy,
+        ...buildStudioActivityData({
+          type: ActivityType.note,
+          body: buildInviteDispatchBody({ provider, status, fallbackUsed, error }),
+          payload: {
+            kind: "schedule",
+            action: "invite_resend_dispatch",
+            provider,
+            status,
+            fallbackUsed,
+            attemptedAt: attemptedAt.toISOString(),
+            recipients,
+            error,
+            metadata,
+          },
+        }),
       },
     });
   } catch (activityError) {
@@ -273,7 +273,6 @@ export async function POST(
           });
           await registerInviteDispatchActivity({
             leadId,
-            createdBy: teamAccess.access.profileId,
             provider: "google",
             status: "failed",
             fallbackUsed: false,
@@ -315,7 +314,6 @@ export async function POST(
             };
             await registerInviteDispatchActivity({
               leadId,
-              createdBy: teamAccess.access.profileId,
               provider: "google",
               status: "sent_google",
               fallbackUsed: false,
@@ -342,7 +340,6 @@ export async function POST(
             );
             await registerInviteDispatchActivity({
               leadId,
-              createdBy: teamAccess.access.profileId,
               provider: "google",
               status: "failed",
               fallbackUsed: false,
@@ -379,7 +376,6 @@ export async function POST(
         });
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: teamAccess.access.profileId,
           provider: "google",
           status: "failed",
           fallbackUsed: false,
@@ -432,7 +428,6 @@ export async function POST(
 
           await registerInviteDispatchActivity({
             leadId,
-            createdBy: teamAccess.access.profileId,
             provider: "resend",
             status: "sent_resend",
             fallbackUsed: false,
@@ -469,7 +464,6 @@ export async function POST(
 
           await registerInviteDispatchActivity({
             leadId,
-            createdBy: teamAccess.access.profileId,
             provider: "resend",
             status: "failed",
             fallbackUsed: false,
@@ -529,7 +523,6 @@ export async function POST(
         successMessages.push("Convite reenviado para novos participantes");
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: teamAccess.access.profileId,
           provider: "resend",
           status: "sent_resend",
           fallbackUsed: false,
@@ -566,7 +559,6 @@ export async function POST(
         errorMessages.push(resendError);
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: teamAccess.access.profileId,
           provider: "resend",
           status: "failed",
           fallbackUsed: false,
@@ -616,7 +608,6 @@ export async function POST(
         successMessages.push("Convite reenviado para o participante");
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: teamAccess.access.profileId,
           provider: "resend",
           status: "sent_resend",
           fallbackUsed: false,
@@ -653,7 +644,6 @@ export async function POST(
         errorMessages.push(resendError);
         await registerInviteDispatchActivity({
           leadId,
-          createdBy: teamAccess.access.profileId,
           provider: "resend",
           status: "failed",
           fallbackUsed: false,

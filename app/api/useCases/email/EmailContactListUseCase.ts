@@ -18,6 +18,14 @@ export class EmailContactListUseCase {
     return email.trim().toLowerCase()
   }
 
+  private dedupeRowsByEmail<T extends { email: string }>(rows: T[]): T[] {
+    const byEmail = new Map<string, T>()
+    for (const row of rows) {
+      byEmail.set(row.email, row)
+    }
+    return Array.from(byEmail.values())
+  }
+
   private async upsertContactsBatch(
     listId: string,
     rows: Array<{
@@ -30,18 +38,20 @@ export class EmailContactListUseCase {
       return { imported: 0, updated: 0 }
     }
 
-    const emails = rows.map((row) => row.email)
+    const uniqueRows = this.dedupeRowsByEmail(rows)
+    const emails = uniqueRows.map((row) => row.email)
     const existingContacts = await prisma.emailContact.findMany({
       where: { listId, email: { in: emails } },
       select: { email: true },
     })
     const existingEmails = new Set(existingContacts.map((contact) => contact.email))
 
-    const newRows = rows.filter((row) => !existingEmails.has(row.email))
-    const updateRows = rows.filter((row) => existingEmails.has(row.email))
+    const newRows = uniqueRows.filter((row) => !existingEmails.has(row.email))
+    const updateRows = uniqueRows.filter((row) => existingEmails.has(row.email))
 
+    let imported = 0
     if (newRows.length > 0) {
-      await prisma.emailContact.createMany({
+      const result = await prisma.emailContact.createMany({
         data: newRows.map((row) => ({
           id: randomUUID(),
           listId,
@@ -51,6 +61,7 @@ export class EmailContactListUseCase {
         })),
         skipDuplicates: true,
       })
+      imported = result.count
     }
 
     if (updateRows.length > 0) {
@@ -67,7 +78,7 @@ export class EmailContactListUseCase {
       )
     }
 
-    return { imported: newRows.length, updated: updateRows.length }
+    return { imported, updated: updateRows.length }
   }
 
   private async ensureDefaultList(ctx: TeamContext): Promise<{ id: string; isSystemDefault: boolean }> {

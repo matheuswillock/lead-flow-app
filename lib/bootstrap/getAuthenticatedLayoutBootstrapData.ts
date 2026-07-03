@@ -25,7 +25,8 @@ export type LayoutFeatureAccessBootstrap = {
 
 export type AuthenticatedLayoutBootstrapData = {
   user: UserData;
-  hasActiveSubscription: boolean;
+  /** null quando o check de assinatura falhou — força recheck no cliente. */
+  hasActiveSubscription: boolean | null;
   userRole: string | null;
   teams: TeamSummary[] | null;
   activeTeamId: string | null;
@@ -157,7 +158,9 @@ export async function getAuthenticatedLayoutBootstrapData(
 
     return {
       user,
-      hasActiveSubscription: !!subscriptionCheck?.hasActiveSubscription,
+      hasActiveSubscription: subscriptionCheck
+        ? !!subscriptionCheck.hasActiveSubscription
+        : null,
       userRole: subscriptionCheck?.userRole ?? null,
       teams: teamsPayload?.teams ?? null,
       activeTeamId,

@@ -39,6 +39,19 @@ export interface MemberAccountMembershipTemplate {
   canViewAllTeams: boolean
 }
 
+export interface MemberAccountTeamMembershipItem {
+  teamId: string
+  teamName: string
+  membersCount: number
+  isMember: boolean
+  role?: string
+  functions?: string[]
+  canCreateAccountUsers?: boolean
+  canManageAccountTeams?: boolean
+  canTransferAccountLeads?: boolean
+  canViewAllTeams?: boolean
+}
+
 export interface IBackofficeMemberRepository {
   findAdminEmailByProfileId(profileId: string): Promise<string | null>
 
@@ -108,7 +121,13 @@ export interface IBackofficeMemberRepository {
     canCreateAccountUsers: boolean
     canManageAccountTeams: boolean
     canTransferAccountLeads: boolean
+    canViewAllTeams?: boolean
   }): Promise<{ id: string }>
+
+  findAccountTeamMemberships(
+    profileId: string,
+    masterId: string
+  ): Promise<MemberAccountTeamMembershipItem[]>
 
   findExternalTeamMemberships(
     profileId: string,

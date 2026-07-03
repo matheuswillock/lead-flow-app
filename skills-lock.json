@@ -97,6 +97,30 @@
       "skillPath": "skills/mcp-builder/SKILL.md",
       "computedHash": "6498a736a8dc5c645047c8a875b8ea7417e2ad97146f005200e50d20a9337ada"
     },
+    "nextjs-optimization": {
+      "source": "atman36/ai-vibe-prompts",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/framework-specific/nextjs-optimization/SKILL.md",
+      "computedHash": "64fdb471782c09a9469cb565bdecd48b184c180a3c57026c58213853250e4da1"
+    },
+    "nextjs-performance": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/developer-kit-typescript/skills/nextjs-performance/SKILL.md",
+      "computedHash": "e7aacb7a0f57077fd7494a5c3b633cbc6a351463142acb1101a7f85570e20ace"
+    },
+    "performance": {
+      "source": "addyosmani/web-quality-skills",
+      "sourceType": "github",
+      "skillPath": "skills/performance/SKILL.md",
+      "computedHash": "646931a3af896ae12a3cad3d762668cb6487fe3ab179daf8fdc974fb79acfe49"
+    },
+    "performance-optimization": {
+      "source": "akillness/oh-my-skills",
+      "sourceType": "github",
+      "skillPath": ".agent-skills/performance-optimization/SKILL.md",
+      "computedHash": "287a2a03662770ed09fdc1c8f53a2d6a4d9931b50edad794897929a41b5cbdf7"
+    },
     "project-context-doc": {
       "source": "local",
       "sourceType": "local",

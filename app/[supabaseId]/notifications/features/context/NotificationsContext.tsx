@@ -76,7 +76,8 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   const listWasLoadedRef = useRef(false);
   const loadNotificationsRef = useRef<() => Promise<void>>(async () => {});
   const notificationsRef = useRef<NotificationItem[]>([]);
-  const listInFlightRef = useRef(false);
+  const listInFlightKeyRef = useRef<string | null>(null);
+  const activeListKeyRef = useRef<string>("");
   const lastListKeyRef = useRef<string>("");
   const lastListAtRef = useRef(0);
   const unreadCountRef = useRef(0);
@@ -113,8 +114,11 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
       const isSameRequest = lastListKeyRef.current === requestKey;
       const isFresh = Date.now() - lastListAtRef.current < LIST_TTL_MS;
       if (!params?.force && isSameRequest && isFresh) return;
-      if (listInFlightRef.current) return;
-      listInFlightRef.current = true;
+      if (listInFlightKeyRef.current === requestKey) return;
+
+      const capturedKey = requestKey;
+      listInFlightKeyRef.current = capturedKey;
+      activeListKeyRef.current = capturedKey;
 
       try {
         setIsLoadingList(true);
@@ -126,19 +130,26 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
           offset: params?.offset ?? 0,
         });
 
+        if (activeListKeyRef.current !== capturedKey) return;
+
         const list = result.notifications ?? [];
         setNotifications(list);
         setTotal(result.total ?? 0);
         setUnreadCount(list.reduce((acc, item) => (item.isRead ? acc : acc + 1), 0));
         listWasLoadedRef.current = true;
-        lastListKeyRef.current = requestKey;
+        lastListKeyRef.current = capturedKey;
         lastListAtRef.current = Date.now();
       } catch (err) {
+        if (activeListKeyRef.current !== capturedKey) return;
         const message = err instanceof Error ? err.message : "Erro ao carregar notificações";
         setError(message);
       } finally {
-        setIsLoadingList(false);
-        listInFlightRef.current = false;
+        if (listInFlightKeyRef.current === capturedKey) {
+          listInFlightKeyRef.current = null;
+        }
+        if (activeListKeyRef.current === capturedKey) {
+          setIsLoadingList(false);
+        }
       }
     },
     [supabaseId, activeTeamId],
