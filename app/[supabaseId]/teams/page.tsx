@@ -1655,7 +1655,7 @@ export default function TeamsPage() {
             <DialogTitle>
               {confirmAction === "delete"
                 ? "Confirmar delecao do time"
-                : "Confirmar transferencia do time"}
+                : "Confirmar transferência do time"}
             </DialogTitle>
             <DialogDescription>
               {confirmAction === "delete"

@@ -5,11 +5,8 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
-import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
-import {
-  ACCOUNT_MASTER_BANNED_MESSAGE,
-  isAccountMasterBanned,
-} from "@/lib/account/isAccountMasterBanned";
+import { getAccountAccessStatus } from "@/lib/account/getAccountAccessStatus";
+import { ACCOUNT_MASTER_BANNED_MESSAGE } from "@/lib/account/isAccountMasterBanned";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -144,8 +141,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     }
 
     const accountMasterId = teamForSponsor.masterId;
-    const accountSubscriptionActive = await isAccountSubscriptionActive(accountMasterId);
-    if (!accountSubscriptionActive) {
+    const accountAccess = await getAccountAccessStatus(accountMasterId);
+    if (!accountAccess.subscriptionActive) {
       return {
         error: new Output(
           false,
@@ -157,7 +154,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       };
     }
 
-    if (await isAccountMasterBanned(accountMasterId)) {
+    if (accountAccess.banned) {
       return {
         error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
         status: 403,
@@ -187,9 +184,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   }
 
   const accountMasterId = teamMember.team.masterId;
-  const accountSubscriptionActive = await isAccountSubscriptionActive(accountMasterId);
+  const accountAccess = await getAccountAccessStatus(accountMasterId);
 
-  if (!accountSubscriptionActive) {
+  if (!accountAccess.subscriptionActive) {
     return {
       error: new Output(
         false,
@@ -201,12 +198,16 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     };
   }
 
-  if (await isAccountMasterBanned(accountMasterId)) {
+  if (accountAccess.banned) {
     return {
       error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
       status: 403,
     };
   }
+
+  const resolvedCanViewAllTeams =
+    (teamMember.role === "manager" || teamMember.role === "backoffice") &&
+    teamMember.canViewAllTeams === true;
 
   return {
     access: {
@@ -224,9 +225,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       canTransferAccountLeads:
         (teamMember.role === "manager" || teamMember.role === "backoffice") &&
         teamMember.canTransferAccountLeads === true,
-      canViewAllTeams:
-        (teamMember.role === "manager" || teamMember.role === "backoffice") &&
-        teamMember.canViewAllTeams === true,
+      canViewAllTeams: resolvedCanViewAllTeams,
       userTimezone: resolveTimezone(profile.timezone),
       teamMember,
     },

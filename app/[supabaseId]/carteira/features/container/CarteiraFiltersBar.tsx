@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
-import { Heart, Trash2, X } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { LeadsDateFilter } from '@/app/[supabaseId]/components/leads-filters/LeadsDateFilter';
 import { LeadsFiltersLayout } from '@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout';
 import { LeadsMultiFilter } from '@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter';
+import { FilterPresetsTriggerButton } from '@/app/[supabaseId]/components/leads-filters/FilterPresetsTriggerButton';
 import { useTeamContext } from '@/app/context/TeamContext';
 import { useTeamSdrs, useTeamClosers } from '@/hooks/useTeamMembersByFunction';
 import { useCarteiraContext } from '../context/CarteiraContext';
@@ -416,13 +417,7 @@ export function CarteiraFiltersBar() {
         }}
       >
         <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            className={`h-8 px-2 lg:px-3 ${isPresetInUse ? 'border-orange-500/70 text-orange-500' : ''}`}
-          >
-            <Heart className={`mr-2 h-4 w-4 ${isPresetInUse ? 'fill-orange-500 text-orange-500' : ''}`} />
-            Presets
-          </Button>
+          <FilterPresetsTriggerButton isActive={isPresetInUse} />
         </SheetTrigger>
         <SheetContent side="right" className="w-[420px] sm:w-[480px]">
           <SheetHeader>
@@ -448,7 +443,7 @@ export function CarteiraFiltersBar() {
             </Button>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 flex flex-col gap-3">
             {presetsLoading ? (
               <p className="text-sm text-muted-foreground">Carregando presets...</p>
             ) : presets.length === 0 ? (

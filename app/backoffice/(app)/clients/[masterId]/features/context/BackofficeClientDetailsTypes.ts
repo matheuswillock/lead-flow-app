@@ -61,6 +61,7 @@ export interface BackofficeClientDetails {
     slug: "common" | "member_pro"
     isExpired: boolean
   }
+  isBanned?: boolean
 }
 
 export interface BackofficeClientInvoice {

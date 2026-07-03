@@ -1,15 +1,26 @@
 "use client"
 
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { BarChart3, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
 import { CreditBalanceBar } from "../components/CreditBalanceBar"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
 import { CampaignEditDialog } from "../components/CampaignEditDialog"
-import { CampaignAnalyticsDialog } from "../components/analytics/CampaignAnalyticsDialog"
+
+// Dialog de analytics usa recharts (bundle pesado); carrega sob demanda,
+// somente quando o usuário abre as métricas de uma campanha.
+const CampaignAnalyticsDialog = dynamic(
+  () =>
+    import("../components/analytics/CampaignAnalyticsDialog").then(
+      (mod) => mod.CampaignAnalyticsDialog
+    ),
+  { ssr: false }
+)
 
 const STATUS_TABS = [
   { value: "", label: "Todas" },
@@ -60,21 +71,18 @@ export function CampanhasContainer() {
       <CreditBalanceBar />
       <CampaignDispatchProgressBanner />
 
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => handleStatusFilter(tab.value)}
-            className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              statusFilter === tab.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={statusFilter === "" ? "all" : statusFilter}
+        onValueChange={(value) => handleStatusFilter(value === "all" ? "" : value)}
+      >
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto">
+          {STATUS_TABS.map((tab) => (
+            <TabsTrigger key={tab.value || "all"} value={tab.value || "all"} className="shrink-0">
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <CampaignList onOpenAnalytics={openCampaignAnalytics} />
       <CampaignCreateWizard />

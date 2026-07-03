@@ -31,6 +31,13 @@ export async function proxy(request: NextRequest) {
       return NextResponse.next()
     }
 
+    // Rota pública embedável: não depende de sessão. Early-return antes do
+    // updateSession evita o round-trip de refresh do Supabase no caminho
+    // quente do formulário (os headers de embed vêm do next.config.ts).
+    if (pathname.startsWith("/lead-form")) {
+      return NextResponse.next()
+    }
+
     const { user, response } = await updateSession(request)
 
     if (pathname === "/subscribe") {

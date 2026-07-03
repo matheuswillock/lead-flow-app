@@ -60,14 +60,14 @@ export function EmailCampaignsSpotlight() {
 
         <div className="lg:grid lg:grid-cols-2 lg:gap-16 lg:items-start">
           <MotionDiv {...previewMotion} className="mb-12 lg:mb-0">
-            <div className="rounded-3xl border border-border bg-card p-6">
+            <div className="rounded-2xl border border-border bg-card p-6">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-primary/15 text-primary">
                     <Mail className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">Preview da experiencia de campanhas</p>
+                    <p className="text-sm font-semibold">Preview da experiência de campanhas</p>
                     <p className="text-xs text-muted-foreground">Lançamento previsto para breve</p>
                   </div>
                 </div>
@@ -80,7 +80,7 @@ export function EmailCampaignsSpotlight() {
                 {mockStats.map((stat) => (
                   <div
                     key={stat.label}
-                    className="rounded-xl border border-border p-4 bg-[color-mix(in_oklab,var(--background)_60%,transparent)]"
+                    className="rounded-xl border border-border p-4 bg-card"
                   >
                     <div className={`text-2xl font-extrabold ${stat.className}`}>{stat.value}</div>
                     <div className="text-xs text-muted-foreground mt-1">{stat.label}</div>

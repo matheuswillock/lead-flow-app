@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Heart, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "react-day-picker";
@@ -16,6 +16,7 @@ import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
+import { FilterPresetsTriggerButton } from "@/app/[supabaseId]/components/leads-filters/FilterPresetsTriggerButton";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
@@ -396,15 +397,7 @@ export function CrmFiltersBar() {
         }}
       >
         <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            className={`h-8 px-2 lg:px-3 ${isPresetInUse ? "border-orange-500/70 text-orange-500" : ""}`}
-          >
-            <Heart
-              className={`mr-2 h-4 w-4 ${isPresetInUse ? "fill-orange-500 text-orange-500" : ""}`}
-            />
-            Presets
-          </Button>
+          <FilterPresetsTriggerButton isActive={isPresetInUse} />
         </SheetTrigger>
         <SheetContent side="right" className="w-[420px] sm:w-[480px]">
           <SheetHeader>
@@ -430,7 +423,7 @@ export function CrmFiltersBar() {
             </Button>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 flex flex-col gap-3">
             {presetsLoading ? (
               <p className="text-sm text-muted-foreground">Carregando presets...</p>
             ) : presets.length === 0 ? (

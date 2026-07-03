@@ -8,7 +8,6 @@ import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
-import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const teamMembersRepository = new TeamMembersRepository();
@@ -26,10 +25,16 @@ async function getCachedLeadTeamMembers(teamId: string) {
   "use cache";
   cacheTag(cacheTags.teamMembers(teamId));
   cacheLife({ stale: 30, revalidate: 60 });
-  return Promise.all([
+  // Boolean de conexão Google derivado via filtro relacional em query separada
+  // para não trafegar o refreshToken (segredo).
+  const [members, team, connectedProfiles] = await Promise.all([
     prisma.teamMember.findMany({
       where: { teamId },
-      include: {
+      select: {
+        id: true,
+        profileId: true,
+        role: true,
+        functions: true,
         profile: {
           select: {
             id: true,
@@ -37,9 +42,6 @@ async function getCachedLeadTeamMembers(teamId: string) {
             email: true,
             profileIconUrl: true,
             supabaseId: true,
-            googleConnection: {
-              select: { refreshToken: true, revokedAt: true },
-            },
           },
         },
       },
@@ -49,7 +51,18 @@ async function getCachedLeadTeamMembers(teamId: string) {
       where: { id: teamId },
       select: { masterId: true, name: true },
     }),
+    prisma.profile.findMany({
+      where: {
+        teamMemberships: { some: { teamId } },
+        googleConnection: { is: { refreshToken: { not: null }, revokedAt: null } },
+      },
+      select: { id: true },
+    }),
   ]);
+
+  // "use cache" exige valores serializáveis — retornar array de ids, não Set.
+  const connectedProfileIds = connectedProfiles.map((p) => p.id);
+  return [members, team, connectedProfileIds] as const;
 }
 
 async function getCachedTransferTargets(teamId: string) {
@@ -146,7 +159,7 @@ export async function GET(
     // Busca paralela: lead, anexos, membros do time + rotas de transferência
     const [leadSettled, attachmentsSettled, membersAndTeamSettled, transferTargetsSettled] =
       await Promise.allSettled([
-        leadUseCase.getLeadById(supabaseId, leadId),
+        leadUseCase.getLeadById(supabaseId, leadId, profile.id),
         getCachedLeadAttachments(leadId),
         getCachedLeadTeamMembers(teamId),
         getCachedTransferTargets(teamId),
@@ -187,7 +200,8 @@ export async function GET(
     // Mapear membros do time (graceful degradation se falhar)
     let teamMembers: unknown[] = [];
     if (membersAndTeamSettled.status === "fulfilled") {
-      const [rawMembers, team] = membersAndTeamSettled.value;
+      const [rawMembers, team, connectedProfileIds] = membersAndTeamSettled.value;
+      const connectedIds = new Set(connectedProfileIds);
       teamMembers = rawMembers.map((member) => ({
         id: member.id,
         profileId: member.profileId,
@@ -195,9 +209,7 @@ export async function GET(
         email: member.profile.email,
         role: member.role,
         functions: member.functions,
-        googleCalendarConnected: isGoogleConnectionActive(
-          member.profile.googleConnection
-        ),
+        googleCalendarConnected: connectedIds.has(member.profile.id),
         profileIconUrl: member.profile.profileIconUrl,
         isMaster: team ? member.profileId === team.masterId : false,
       }));

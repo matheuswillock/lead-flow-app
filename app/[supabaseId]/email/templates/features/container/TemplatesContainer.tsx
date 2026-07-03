@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useTemplatesContext } from '../context/TemplatesContext'
 import { TemplateCard } from '../components/TemplateCard'
@@ -112,7 +113,7 @@ export function TemplatesContainer() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Templates</h1>
         <Button onClick={handleCreateTemplate} disabled={isCreatingTemplate}>
@@ -131,35 +132,27 @@ export function TemplatesContainer() {
         />
       </div>
 
-      <div className="flex gap-0 border-b">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              'relative flex items-center gap-1.5 px-4 pb-2.5 pt-1 text-sm font-medium transition-colors',
-              activeTab === tab.key
-                ? 'text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {tab.label}
-            {counts[tab.key] > 0 && (
-              <span
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-[10px] font-bold',
-                  activeTab === tab.key
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-muted text-muted-foreground'
-                )}
-              >
-                {counts[tab.key]}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TemplateTab)}>
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto">
+          {TABS.map((tab) => (
+            <TabsTrigger key={tab.key} value={tab.key} className="shrink-0 gap-1.5">
+              {tab.label}
+              {counts[tab.key] > 0 && (
+                <span
+                  className={cn(
+                    'rounded px-1.5 py-0.5 text-[10px] font-bold',
+                    activeTab === tab.key
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-muted text-muted-foreground'
+                  )}
+                >
+                  {counts[tab.key]}
+                </span>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {loading ? (
         <SkeletonCards />

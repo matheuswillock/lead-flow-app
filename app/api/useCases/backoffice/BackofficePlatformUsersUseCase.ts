@@ -22,6 +22,7 @@ import { incrementalBillingService } from "../../services/billing/IncrementalBil
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 import type { BillingOwnerProfile } from "../../services/billing/IIncrementalBillingService"
 import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncrementalBillingCoordinator"
+import { backofficeBannedUsersRepository } from "../../infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
 
 function buildMasterNotificationEmail(params: {
   masterName: string
@@ -420,6 +421,8 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         )
       )
 
+      const activeBan = await backofficeBannedUsersRepository.findActiveByProfileId(masterProfileId)
+
       return new Output(true, [], [], {
         id: master.id,
         fullName: master.fullName,
@@ -443,6 +446,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           status: master.subscriptionStatus,
         },
         userType: master.userType,
+        isBanned: Boolean(activeBan),
         allTeams: master.allTeams,
         teams: master.teams.map((team) => ({
           id: team.id,

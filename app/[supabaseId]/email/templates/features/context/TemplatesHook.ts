@@ -33,6 +33,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
   const [templateApprovalRequired, setTemplateApprovalRequired] = useState(false)
 
   const isFetchingRef = useRef(false)
+  const lastFetchKeyRef = useRef("")
 
   const fetchTemplates = useCallback(async () => {
     if (teamLoading) return
@@ -43,8 +44,9 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
       return
     }
 
-    if (isFetchingRef.current) {
-      console.info('[useTemplates] Fetch already in-flight, skipping')
+    const key = `${supabaseId}|${activeTeamId}`
+    if (isFetchingRef.current || lastFetchKeyRef.current === key) {
+      console.info('[useTemplates] Fetch already in-flight or cached, skipping')
       return
     }
 
@@ -60,6 +62,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
       ])
       setTemplates(data)
       setTemplateApprovalRequired(settings.templateApprovalRequired)
+      lastFetchKeyRef.current = key
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar templates'
       console.error('[useTemplates] Failed to fetch templates', err)

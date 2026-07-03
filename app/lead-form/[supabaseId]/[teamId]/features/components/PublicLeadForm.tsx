@@ -12,6 +12,7 @@ import {
   type PublicLeadFormData,
 } from "@/lib/validations/publicLeadFormSchema";
 import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
+import { LeadFormSkeleton } from "@/app/lead-form/components/LeadFormSkeleton";
 import { SchedulingSection } from "./SchedulingSection";
 import { PreScheduleSection } from "./PreScheduleSection";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -25,7 +26,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Spinner } from "@/components/ui/spinner";
 import { normalizeLeadPhoneDigits, unmask } from "@/lib/masks";
 import { parseCurrencyValue } from "@/lib/lead-form-utils";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -290,14 +290,7 @@ export function PublicLeadForm() {
   ]);
 
   if (bootstrapStatus === "loading") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <div className="flex flex-col items-center gap-4">
-          <Spinner className="size-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Carregando formulário...</p>
-        </div>
-      </div>
-    );
+    return <LeadFormSkeleton />;
   }
 
   if (bootstrapStatus === "error") {

@@ -7,7 +7,7 @@ import { useDashboardHook } from './DashboardHook';
 import { IDashboardMetricsService, MetricsFilters } from '../services/IDashboardMetricsService';
 import { dashboardMetricsService } from '../services/DashboardMetricsService';
 import { useTeamContext } from '@/app/context/TeamContext';
-import { isManagerLikeRole } from '@/lib/roles';
+import { computeCanUseAllTeamsScope } from '@/lib/teams/canUseAllTeamsScope';
 import type { DashboardTeamScope } from './DashboardTypes';
 
 interface IDashboardProviderProps {
@@ -31,15 +31,20 @@ export const DashboardProvider: React.FC<IDashboardProviderProps> = ({
   const [teamScope, setTeamScopeState] = useState<DashboardTeamScope>('active');
   const masterIdRef = useRef<string | null>(null);
 
-  const accountTeams = useMemo(() => {
-    if (!activeTeam?.masterId) return [];
-    return teams.filter((team) => team.masterId === activeTeam.masterId && !team.isPending);
+  const memberTeamsInAccount = useMemo(() => {
+    if (!activeTeam?.masterId) return 0;
+    return teams.filter((team) => team.masterId === activeTeam.masterId && !team.isPending).length;
   }, [teams, activeTeam?.masterId]);
 
-  const canUseAllTeamsScope = useMemo(() => {
-    const isDelegated = isManagerLikeRole(activeTeam?.role) && !!activeTeam?.canViewAllTeams;
-    return (isTeamMaster || isDelegated) && accountTeams.length > 1;
-  }, [isTeamMaster, activeTeam?.role, activeTeam?.canViewAllTeams, accountTeams.length]);
+  const canUseAllTeamsScope = useMemo(
+    () =>
+      computeCanUseAllTeamsScope({
+        isTeamMaster,
+        activeTeam,
+        memberTeamsInAccount,
+      }),
+    [isTeamMaster, activeTeam, memberTeamsInAccount]
+  );
 
   const teamScopeStorageKey = supabaseId ? `${TEAM_SCOPE_STORAGE_PREFIX}:${supabaseId}` : null;
 

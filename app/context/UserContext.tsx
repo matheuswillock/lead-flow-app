@@ -79,6 +79,11 @@ interface UserContextState {
 interface UserProviderProps {
   children: ReactNode;
   supabaseId: string;
+  /** Dados resolvidos no servidor (layout) — evita o fetch inicial no cliente. */
+  initialUser?: UserData | null;
+  /** null = check de assinatura indisponível no servidor; força recheck no cliente. */
+  initialHasActiveSubscription?: boolean | null;
+  initialUserRole?: string | null;
 }
 
 /**
@@ -92,15 +97,26 @@ const UserContext = createContext<UserContextState | undefined>(undefined);
  */
 export const UserProvider: React.FC<UserProviderProps> = ({ 
   children, 
-  supabaseId
+  supabaseId,
+  initialUser = null,
+  initialHasActiveSubscription = null,
+  initialUserRole = null,
 }) => {
-  const [user, setUser] = useState<UserData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const subscriptionKnown =
+    initialHasActiveSubscription !== null && initialHasActiveSubscription !== undefined;
+
+  const [user, setUser] = useState<UserData | null>(initialUser);
+  const [isLoading, setIsLoading] = useState(!initialUser || !subscriptionKnown);
   const [error, setError] = useState<string | null>(null);
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const lastLoadedSupabaseIdRef = useRef<string | null>(null);
-  const bootstrapHydratedRef = useRef(false);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(
+    initialHasActiveSubscription ?? false,
+  );
+  const [userRole, setUserRole] = useState<string | null>(initialUserRole);
+  // Com initialUser + assinatura resolvida o fetch inicial é dispensado.
+  const lastLoadedSupabaseIdRef = useRef<string | null>(
+    initialUser && subscriptionKnown ? supabaseId : null,
+  );
+  const bootstrapHydratedRef = useRef(!!initialUser && subscriptionKnown);
 
   useEffect(() => {
     if (bootstrapHydratedRef.current) return;

@@ -23,6 +23,9 @@ function getApiKey(): string {
   return key
 }
 
+const EVO_REQUEST_TIMEOUT_MS = 10_000
+const EVO_SEND_REQUEST_TIMEOUT_MS = 60_000
+
 async function fetchEvo<T>(
   url: string,
   options: RequestInit,
@@ -30,7 +33,10 @@ async function fetchEvo<T>(
 ): Promise<T> {
   let response: Response
   try {
-    response = await fetch(url, options)
+    response = await fetch(url, {
+      ...options,
+      signal: options.signal ?? AbortSignal.timeout(EVO_REQUEST_TIMEOUT_MS),
+    })
   } catch (error) {
     console.error(`[EvoApiService][${label}] Network error`, error)
     throw new Error(`[EvoApiService][${label}] Network request failed: ${String(error)}`)
@@ -55,36 +61,6 @@ async function fetchEvo<T>(
     console.error(`[EvoApiService][${label}] Failed to parse JSON response`, error)
     throw new Error(`[EvoApiService][${label}] Invalid JSON response`)
   }
-}
-
-const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
-const MAX_RETRIES = 2
-const BASE_DELAY_MS = 500
-
-async function fetchEvoWithRetry<T>(
-  url: string,
-  options: RequestInit,
-  label: string
-): Promise<T> {
-  let lastError: Error | undefined
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await fetchEvo<T>(url, options, label)
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error))
-      const statusMatch = lastError.message.match(/HTTP (\d+)/)
-      const status = statusMatch ? Number(statusMatch[1]) : 0
-      const isNetworkError = !statusMatch
-      const isRetryable = isNetworkError || RETRYABLE_STATUS.has(status)
-
-      if (!isRetryable || attempt === MAX_RETRIES) throw lastError
-
-      const delay = BASE_DELAY_MS * Math.pow(2, attempt)
-      console.info(`[EvoApiService][${label}] Retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`)
-      await new Promise((r) => setTimeout(r, delay))
-    }
-  }
-  throw lastError!
 }
 
 function buildHeaders(apiKey: string): HeadersInit {
@@ -622,12 +598,13 @@ export class EvoApiService implements IEvoApiService {
       body.linkPreview = params.linkPreview
     }
 
-    const data = await fetchEvoWithRetry<EvoSendTextResponse>(
+    const data = await fetchEvo<EvoSendTextResponse>(
       url,
       {
         method: "POST",
         headers: buildHeaders(apiKey),
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(EVO_SEND_REQUEST_TIMEOUT_MS),
       },
       "sendTextMessage"
     )
@@ -670,7 +647,7 @@ export class EvoApiService implements IEvoApiService {
       params.recipientJid
     )
 
-    const data = await fetchEvoWithRetry<EvoSendTextResponse>(
+    const data = await fetchEvo<EvoSendTextResponse>(
       url,
       {
         method: "POST",
@@ -683,6 +660,7 @@ export class EvoApiService implements IEvoApiService {
           media: params.base64,
           caption: params.caption,
         }),
+        signal: AbortSignal.timeout(EVO_SEND_REQUEST_TIMEOUT_MS),
       },
       "sendMediaMessage"
     )

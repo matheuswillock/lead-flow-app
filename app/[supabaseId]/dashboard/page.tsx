@@ -1,18 +1,31 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import { DashboardProvider } from "./features/context/DashboardContext";
 import { useDashboardContext } from "./features/context/DashboardContext";
 import { DashboardSkeleton } from "./features/container/components/DashboardSkeleton";
 import { SectionCardsWithContext } from "./features/container/section-cards-with-context";
-import { ChartAreaInteractive } from "./features/container/chart-area-interactive";
 import { UpcomingMeetings } from "./features/container/upcoming-meetings";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Carrega o gráfico (recharts, bundle pesado) fora do bundle inicial do dashboard.
+const ChartAreaInteractive = dynamic(
+  () =>
+    import("./features/container/chart-area-interactive").then(
+      (mod) => mod.ChartAreaInteractive
+    ),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[350px] w-full" />,
+  }
+);
 import { DashboardTeamScopeToggle } from "./features/components/DashboardTeamScopeToggle";
 import { SubscriptionGuard } from "@/components/subscription-guard";
 import { useUserContext } from "@/app/context/UserContext";
 
 function DashboardContent() {
-  const { isLoading, error, metrics } = useDashboardContext();
+  const { isLoading, error, metrics, canUseAllTeamsScope } = useDashboardContext();
   const { hasActiveSubscription, userRole } = useUserContext();
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -51,7 +64,9 @@ function DashboardContent() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
         <p className="text-sm text-muted-foreground">
-          Visualize as métricas do time selecionado ou de toda a conta.
+          {canUseAllTeamsScope
+            ? "Visualize as métricas do time selecionado ou de toda a conta."
+            : "Visualize as métricas do time selecionado."}
         </p>
         <DashboardTeamScopeToggle />
       </div>

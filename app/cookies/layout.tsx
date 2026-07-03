@@ -4,7 +4,7 @@ import { createPublicPageMetadata } from "@/lib/metadata/policies"
 export const metadata: Metadata = createPublicPageMetadata({
   title: "Politica de Cookies | Corretor Studio",
   description:
-    "Saiba como o Corretor Studio utiliza cookies para melhorar a experiencia, analise de uso e funcionamento da plataforma.",
+    "Saiba como o Corretor Studio utiliza cookies para melhorar a experiência, análise de uso e funcionamento da plataforma.",
   canonicalPath: "/cookies",
   keywords: ["politica de cookies", "cookies corretor studio", "preferencias de cookies"],
 })

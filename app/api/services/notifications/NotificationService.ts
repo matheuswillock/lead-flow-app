@@ -1,5 +1,8 @@
 import { NotificationType, type Prisma } from "@prisma/client";
+import { cacheLife, cacheTag } from "next/cache";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { cacheTags } from "@/lib/cache/cacheTags";
+import { invalidateNotificationsCache } from "@/lib/cache/invalidation";
 import type { NotificationLinkMetadata } from "@/lib/notifications/build-notification-url";
 import { dispatchWebPushToProfile } from "@/app/api/infra/webPush/dispatchWebPush";
 
@@ -154,7 +157,51 @@ type WebPushDispatchItem = {
   notificationId?: string;
 };
 
+async function listNotificationsCached(input: ListNotificationsInput) {
+  "use cache";
+  cacheTag(cacheTags.notifications(input.recipientProfileId, input.teamId));
+  cacheLife({ revalidate: 15 });
+
+  // Promise.all em vez de $transaction: leituras independentes não precisam
+  // segurar uma transação (e uma conexão extra) no pooler.
+  const [notifications, total] = await Promise.all([
+    prisma.notification.findMany({
+      where: {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+      },
+      include: {
+        actor: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: input.limit,
+      skip: input.offset,
+    }),
+    prisma.notification.count({
+      where: {
+        recipientProfileId: input.recipientProfileId,
+        teamId: input.teamId,
+      },
+    }),
+  ]);
+
+  return { notifications, total };
+}
+
 class NotificationService {
+  private invalidateRecipients(teamId: string, recipientProfileIds: string[]) {
+    const uniqueIds = Array.from(new Set(recipientProfileIds.filter(Boolean)));
+    if (uniqueIds.length === 0) return;
+    invalidateNotificationsCache({ teamId, recipientProfileIds: uniqueIds });
+  }
+
   private dispatchWebPushForItems(items: WebPushDispatchItem[]) {
     for (const item of items) {
       void dispatchWebPushToProfile({
@@ -218,6 +265,8 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.invalidateRecipients(input.teamId, uniqueRecipients);
+
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
         recipientProfileId,
@@ -261,6 +310,8 @@ class NotificationService {
       },
     });
 
+    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+
     this.dispatchWebPushForItems([
       {
         recipientProfileId: input.recipientProfileId,
@@ -286,6 +337,8 @@ class NotificationService {
         metadata: input.metadata,
       },
     });
+
+    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {
@@ -335,6 +388,8 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.invalidateRecipients(input.teamId, uniqueRecipients);
+
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
         recipientProfileId,
@@ -377,6 +432,8 @@ class NotificationService {
         },
       },
     });
+
+    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {
@@ -426,6 +483,8 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.invalidateRecipients(input.teamId, uniqueRecipients);
+
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
         recipientProfileId,
@@ -471,6 +530,8 @@ class NotificationService {
         },
       });
 
+      this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+
       this.dispatchWebPushForItems([
         {
           recipientProfileId: input.recipientProfileId,
@@ -515,6 +576,7 @@ class NotificationService {
 
       const created = inserted[0] ?? null;
       if (created) {
+        this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
         this.dispatchWebPushForItems([
           {
             recipientProfileId: input.recipientProfileId,
@@ -565,6 +627,8 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.invalidateRecipients(input.teamId, uniqueRecipients);
+
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
         recipientProfileId,
@@ -583,35 +647,7 @@ class NotificationService {
   }
 
   async listByRecipientAndTeam(input: ListNotificationsInput) {
-    const [notifications, total] = await prisma.$transaction([
-      prisma.notification.findMany({
-        where: {
-          recipientProfileId: input.recipientProfileId,
-          teamId: input.teamId,
-        },
-        include: {
-          actor: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              profileIconUrl: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        take: input.limit,
-        skip: input.offset,
-      }),
-      prisma.notification.count({
-        where: {
-          recipientProfileId: input.recipientProfileId,
-          teamId: input.teamId,
-        },
-      }),
-    ]);
-
-    return { notifications, total };
+    return listNotificationsCached(input);
   }
 
   async countUnreadByRecipientAndTeam(input: CountUnreadInput) {
@@ -636,6 +672,8 @@ class NotificationService {
         readAt: new Date(),
       },
     });
+
+    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
 
     return result.count;
   }
@@ -668,6 +706,8 @@ class NotificationService {
       })),
       skipDuplicates: false,
     });
+
+    this.invalidateRecipients(input.teamId, uniqueRecipients);
 
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
@@ -706,6 +746,8 @@ class NotificationService {
         },
       },
     });
+
+    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {
@@ -755,6 +797,8 @@ class NotificationService {
       skipDuplicates: false,
     });
 
+    this.invalidateRecipients(input.teamId, uniqueRecipients);
+
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
         recipientProfileId,
@@ -789,6 +833,8 @@ class NotificationService {
         metadata,
       },
     });
+
+    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {

@@ -930,6 +930,7 @@ export function BackofficeClientDetailsContainer() {
             masterId={masterId}
             details={details}
             service={service}
+            canManage={canManage}
             onSuccess={reload}
             onDeleteRequest={() => {
               setEditOpen(false)

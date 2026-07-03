@@ -843,7 +843,7 @@ export function ScheduleMeetingDialog({
 
             {/* Titulo da reuniao */}
             <div className="grid gap-2">
-              <Label htmlFor="meetingTitle">Titulo da reuniao</Label>
+              <Label htmlFor="meetingTitle">Título da reunião</Label>
               <Input
                 id="meetingTitle"
                 placeholder="Ex: Apresentação da proposta"

@@ -6,15 +6,18 @@ import { DashboardCardsSkeleton } from './components/DashboardSkeleton';
 import {
   Card,
   CardAction,
+  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   TrendingUp,
   Calendar,
   CalendarClock,
+  CircleAlert,
   UserX,
   Handshake,
   Target,
@@ -62,6 +65,57 @@ function InfoTooltip({ text }: { text: string }) {
         <p>{text}</p>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+interface PrimaryMetricCardProps {
+  icon: React.ReactNode;
+  label: string;
+  tooltip: string;
+  value: string;
+  valueClassName?: string;
+  caption: string;
+  isBlurred: boolean;
+}
+
+function PrimaryMetricCard({
+  icon,
+  label,
+  tooltip,
+  value,
+  valueClassName,
+  caption,
+  isBlurred,
+}: PrimaryMetricCardProps) {
+  return (
+    <Card className="@container/card shadow-none">
+      <CardContent className="flex flex-col gap-1 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            {icon}
+            <p className="text-xs text-muted-foreground">{label}</p>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="size-3.5 cursor-help shrink-0 text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-56 text-center text-xs">
+              {tooltip}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <p
+          className={cn(
+            "mt-1 text-2xl font-semibold tabular-nums leading-tight transition-all duration-200",
+            valueClassName,
+            isBlurred && "blur-sm select-none",
+          )}
+        >
+          {value}
+        </p>
+        <p className="mt-auto text-[10px] text-muted-foreground">{caption}</p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -192,6 +246,7 @@ export function SectionCardsWithContext() {
     setPeriod,
     setCustomDateRange,
     clearCustomDateRange,
+    refreshMetrics,
   } = useDashboardContext();
   const { tz } = useTimezone();
   const [customDateRangeDraft, setCustomDateRangeDraft] = React.useState<DateRange | undefined>(
@@ -219,8 +274,17 @@ export function SectionCardsWithContext() {
 
   if (error) {
     return (
-      <div className="p-4 text-center text-red-600">
-        <p>Erro ao carregar métricas: {error}</p>
+      <div className="px-4 lg:px-6">
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Erro ao carregar métricas</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-3">
+            <span>{error}</span>
+            <Button size="sm" variant="outline" onClick={() => void refreshMetrics()}>
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -347,125 +411,47 @@ export function SectionCardsWithContext() {
         </div>
       </div>
 
-      {/* SEÇÃO 1: MÉTRICAS PRINCIPAIS - Destaque Visual */}
-      <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
-        {/* Receita Total - DESTAQUE VERDE */}
-        <Card className="@container/card border-green-500/30 bg-gradient-to-br from-green-50 via-green-50/50 to-transparent shadow-md dark:from-green-900/20 dark:via-green-900/10">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                💰 Receita Total
-                <InfoTooltip text="Soma do ticket dos leads fechados no CRM no período selecionado." />
-              </CardTitle>
-              <div className="rounded-full bg-green-500/10 p-2">
-                <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-            <CardDescription
-              className={cn(
-                "text-4xl font-bold text-foreground transition-all duration-200",
-                isBlurred && "blur-sm select-none",
-              )}
-            >
-              R$ {metrics.receitaTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </CardDescription>
-          </CardHeader>
-          <CardFooter className="pt-0">
-            <CardAction className="text-xs font-medium text-green-600 dark:text-green-400">
-              Total vendido (ticket) nos {periodText}
-            </CardAction>
-          </CardFooter>
-        </Card>
-
-        {/* Valor da Venda - DESTAQUE AMARELO */}
-        <Card className="@container/card border-amber-500/30 bg-gradient-to-br from-amber-50 via-amber-50/50 to-transparent shadow-md dark:from-amber-900/20 dark:via-amber-900/10">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                📊 Intenção de Compra
-                <InfoTooltip text="Soma de ticket dos leads do CRM no período selecionado." />
-              </CardTitle>
-              <div className="rounded-full bg-amber-500/10 p-2">
-                <TrendingUp className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-            </div>
-            <CardDescription
-              className={cn(
-                "text-4xl font-bold text-foreground transition-all duration-200",
-                isBlurred && "blur-sm select-none",
-              )}
-            >
-              R$ {metrics.ticket.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </CardDescription>
-          </CardHeader>
-          <CardFooter className="pt-0">
-            <CardAction className="text-xs font-medium text-amber-600 dark:text-amber-400">
-              Valor total de vendas
-            </CardAction>
-          </CardFooter>
-        </Card>
-
-        {/* Taxa de Conversão - DESTAQUE */}
-        <Card className="@container/card border-blue-500/20 bg-gradient-to-br from-blue-500/5 via-blue-500/3 to-transparent shadow-md">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                🎯 Taxa de Conversão
-                <InfoTooltip text="Leads convertidos (Proposta + Boleto gerado + DPS + Contrato fechado) dividido pelo total de leads no período." />
-                </CardTitle>
-              <div className="rounded-full bg-blue-500/10 p-2">
-                <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-            <CardDescription
-              className={cn(
-                "text-4xl font-bold text-foreground transition-all duration-200",
-                isBlurred && "blur-sm select-none",
-              )}
-            >
-              {metrics.taxaConversao}%
-            </CardDescription>
-          </CardHeader>
-          <CardFooter className="pt-0">
-              <CardAction className="text-xs font-medium text-blue-600 dark:text-blue-400">
-              Vendas / total de leads
-              </CardAction>
-            </CardFooter>
-          </Card>
-
-        {/* Potencial de Receita - DESTAQUE */}
-        <Card className="@container/card border-purple-500/20 bg-gradient-to-br from-purple-500/5 via-purple-500/3 to-transparent shadow-md">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                💼 Potencial de Receita
-                <InfoTooltip text="Soma do valor atual de todos os leads no período selecionado." />
-              </CardTitle>
-              <div className="rounded-full bg-purple-500/10 p-2">
-                <Wallet className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              </div>
-            </div>
-            <CardDescription
-              className={cn(
-                "text-4xl font-bold text-foreground transition-all duration-200",
-                isBlurred && "blur-sm select-none",
-              )}
-            >
-              R$ {metrics.cadencia.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </CardDescription>
-          </CardHeader>
-          <CardFooter className="pt-0">
-            <CardAction className="text-xs font-medium text-purple-600 dark:text-purple-400">
-              Valor atual total em pipeline
-            </CardAction>
-          </CardFooter>
-        </Card>
+      {/* SEÇÃO 1: MÉTRICAS PRINCIPAIS */}
+      <div className="grid grid-cols-1 gap-4 @md/main:grid-cols-2 @4xl/main:grid-cols-4">
+        <PrimaryMetricCard
+          icon={<DollarSign className="size-4 text-muted-foreground" />}
+          label="Receita Total"
+          tooltip="Soma do ticket dos leads fechados no CRM no período selecionado."
+          value={`R$ ${metrics.receitaTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          valueClassName="text-semantic-success"
+          caption={`Total vendido (ticket) nos ${periodText}`}
+          isBlurred={isBlurred}
+        />
+        <PrimaryMetricCard
+          icon={<TrendingUp className="size-4 text-muted-foreground" />}
+          label="Intenção de Compra"
+          tooltip="Soma de ticket dos leads do CRM no período selecionado."
+          value={`R$ ${metrics.ticket.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          caption="Valor total de vendas"
+          isBlurred={isBlurred}
+        />
+        <PrimaryMetricCard
+          icon={<Target className="size-4 text-muted-foreground" />}
+          label="Taxa de Conversão"
+          tooltip="Leads convertidos (Proposta + Boleto gerado + DPS + Contrato fechado) dividido pelo total de leads no período."
+          value={`${metrics.taxaConversao}%`}
+          caption="Vendas / total de leads"
+          isBlurred={isBlurred}
+        />
+        <PrimaryMetricCard
+          icon={<Wallet className="size-4 text-muted-foreground" />}
+          label="Potencial de Receita"
+          tooltip="Soma do valor atual de todos os leads no período selecionado."
+          value={`R$ ${metrics.cadencia.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          caption="Valor atual total em pipeline"
+          isBlurred={isBlurred}
+        />
       </div>
 
       {/* SEÇÃO 2: FUNIL DE VENDAS */}
       <div>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">📊 Funil de Vendas</h3>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 @md/main:grid-cols-2 @xl/main:grid-cols-3">
           {/* Agendamentos */}
           <FunnelCard
             className="row-span-2"
@@ -501,7 +487,7 @@ export function SectionCardsWithContext() {
                 <Handshake className="h-4 w-4 text-orange-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Negociação
-                  <InfoTooltip text="Quantidade de leads em negociacao ou cotacao no periodo selecionado." />
+                  <InfoTooltip text="Quantidade de leads em negociação ou cotação no período selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -578,70 +564,12 @@ export function SectionCardsWithContext() {
         </div>
       </div>
 
-      {/* SEÇÃO 3: REUNIÕES REALIZADAS */}
-      {/* <div>
-        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
-          📅 Reuniões realizadas
-        </h3>
-        <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-          <Card className="@container/card h-full">
-            <CardHeader className="pb-2">
-              <div className="grid grid-cols-[1fr_auto] items-center gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Calendar className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                    Reuniões realizadas (Closer)
-                    <InfoTooltip text="Conta reuniões com 'Reunião realizada' marcada no período selecionado. Cada reunião conta tanto para o closer quanto para o SDR." />
-                  </CardTitle>
-                </div>
-                <div className="whitespace-nowrap text-xs text-muted-foreground">
-                  Total: {metrics.reunioesRealizadasCloser}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0 flex-1">
-              {renderMeetingsHeldRanking(metrics.reunioesRealizadasCloserRanking)}
-            </CardContent>
-            <CardFooter className="pt-0 mt-auto justify-start">
-              <CardAction className="text-xs text-muted-foreground">
-                Ranking de closers nos {periodText}
-              </CardAction>
-            </CardFooter>
-          </Card>
-
-          <Card className="@container/card h-full">
-            <CardHeader className="pb-2">
-              <div className="grid grid-cols-[1fr_auto] items-center gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Calendar className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                    Reuniões realizadas (SDR)
-                    <InfoTooltip text="Conta reuniões com 'Reunião realizada' marcada no período selecionado. Cada reunião conta tanto para o closer quanto para o SDR (responsável)." />
-                  </CardTitle>
-                </div>
-                <div className="whitespace-nowrap text-xs text-muted-foreground">
-                  Total: {metrics.reunioesRealizadasSdr}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0 flex-1">
-              {renderMeetingsHeldRanking(metrics.reunioesRealizadasSdrRanking)}
-            </CardContent>
-            <CardFooter className="pt-0 mt-auto justify-start">
-              <CardAction className="text-xs text-muted-foreground">
-                Ranking de SDRs nos {periodText}
-              </CardAction>
-            </CardFooter>
-          </Card>
-        </div>
-      </div> */}
-
       {/* SEÇÃO 3: INDICADORES DE PERFORMANCE */}
       <div>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
           📈 Indicadores de Performance
         </h3>
-        <div className="grid grid-cols-2 gap-4 @xl/main:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 @md/main:grid-cols-2">
           {/* No-Show - BG AMARELO */}
           <Card className="@container/card border-yellow-500/30 bg-gradient-to-br from-yellow-50 via-yellow-50/50 to-transparent dark:from-yellow-900/20 dark:via-yellow-900/10">
             <CardHeader className="pb-3">
