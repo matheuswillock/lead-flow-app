@@ -1070,20 +1070,86 @@ export async function PUT(
       validatedData.canTransferAccountLeads !== undefined ||
       validatedData.canViewAllTeams !== undefined
     ) {
-      await prisma.teamMember.updateMany({
-        where: {
-          profileId: validatedData.id,
-          team: { masterId: managerId },
-        },
-        data: {
-          ...(validatedData.role ? { role: validatedData.role as UserRole } : {}),
-          ...(validatedData.functions ? { functions: validatedData.functions } : {}),
-          canCreateAccountUsers: nextDelegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: nextDelegatedPermissions.canManageAccountTeams,
-          canTransferAccountLeads: nextDelegatedPermissions.canTransferAccountLeads,
-          canViewAllTeams: nextDelegatedPermissions.canViewAllTeams,
-        },
-      });
+      const hasDelegationFieldUpdate =
+        validatedData.canCreateAccountUsers !== undefined ||
+        validatedData.canManageAccountTeams !== undefined ||
+        validatedData.canTransferAccountLeads !== undefined ||
+        validatedData.canViewAllTeams !== undefined;
+
+      if (validatedData.role || validatedData.functions) {
+        await prisma.teamMember.updateMany({
+          where: {
+            profileId: validatedData.id,
+            team: { masterId: managerId },
+          },
+          data: {
+            ...(validatedData.role ? { role: validatedData.role as UserRole } : {}),
+            ...(validatedData.functions ? { functions: validatedData.functions } : {}),
+          },
+        });
+      }
+
+      if (isMaster && (validatedData.role !== undefined || hasDelegationFieldUpdate)) {
+        const effectiveRole = (validatedData.role ?? targetMember.role) as UserRole;
+        const delegationData: {
+          canCreateAccountUsers?: boolean;
+          canManageAccountTeams?: boolean;
+          canTransferAccountLeads?: boolean;
+          canViewAllTeams?: boolean;
+        } = {};
+
+        const assignDelegation = (
+          field: "canCreateAccountUsers" | "canManageAccountTeams" | "canTransferAccountLeads" | "canViewAllTeams",
+          requestedValue: boolean | undefined,
+          allowed: boolean,
+          currentValue: boolean
+        ) => {
+          if (requestedValue !== undefined) {
+            delegationData[field] = allowed && requestedValue === true;
+            return;
+          }
+          if (validatedData.role !== undefined) {
+            delegationData[field] = allowed ? currentValue : false;
+          }
+        };
+
+        assignDelegation(
+          "canCreateAccountUsers",
+          validatedData.canCreateAccountUsers,
+          effectiveRole === "manager",
+          targetMember.canCreateAccountUsers
+        );
+        assignDelegation(
+          "canManageAccountTeams",
+          validatedData.canManageAccountTeams,
+          effectiveRole === "manager",
+          targetMember.canManageAccountTeams
+        );
+        assignDelegation(
+          "canTransferAccountLeads",
+          validatedData.canTransferAccountLeads,
+          effectiveRole === "manager" || effectiveRole === "backoffice",
+          targetMember.canTransferAccountLeads
+        );
+        assignDelegation(
+          "canViewAllTeams",
+          validatedData.canViewAllTeams,
+          effectiveRole === "manager" || effectiveRole === "backoffice",
+          targetMember.canViewAllTeams
+        );
+
+        if (Object.keys(delegationData).length > 0) {
+          await prisma.teamMember.update({
+            where: {
+              teamId_profileId: {
+                teamId,
+                profileId: validatedData.id,
+              },
+            },
+            data: delegationData,
+          });
+        }
+      }
     }
 
     const updatedMember = await prisma.teamMember.findUnique({

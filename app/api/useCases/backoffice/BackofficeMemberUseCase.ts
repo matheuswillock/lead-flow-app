@@ -8,6 +8,15 @@ import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBil
 
 type MemberRole = "manager" | "backoffice" | "operator"
 
+interface TeamAccessInput {
+  role: MemberRole
+  functions: string[]
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
+  canTransferAccountLeads: boolean
+  canViewAllTeams: boolean
+}
+
 interface UpdateMemberInput {
   fullName?: string | null
   phone?: string | null
@@ -338,7 +347,11 @@ export class BackofficeMemberUseCase {
     }
   }
 
-  async addToTeam(memberId: string, teamId: string): Promise<Output> {
+  async addToTeam(
+    memberId: string,
+    teamId: string,
+    explicitAccess?: TeamAccessInput
+  ): Promise<Output> {
     try {
       const member = await this.repository.findMemberForUpdate(memberId)
       if (!member) {
@@ -365,8 +378,16 @@ export class BackofficeMemberUseCase {
       let canCreateAccountUsers = false
       let canManageAccountTeams = false
       let canTransferAccountLeads = false
+      let canViewAllTeams = false
 
-      if (profileContext.isMaster && team.masterId === memberId) {
+      if (explicitAccess) {
+        role = explicitAccess.role
+        functions = explicitAccess.functions
+        canCreateAccountUsers = explicitAccess.canCreateAccountUsers
+        canManageAccountTeams = explicitAccess.canManageAccountTeams
+        canTransferAccountLeads = explicitAccess.canTransferAccountLeads
+        canViewAllTeams = explicitAccess.canViewAllTeams
+      } else if (profileContext.isMaster && team.masterId === memberId) {
         role = "manager"
         functions = []
       } else {
@@ -377,6 +398,7 @@ export class BackofficeMemberUseCase {
           canCreateAccountUsers = template.canCreateAccountUsers
           canManageAccountTeams = template.canManageAccountTeams
           canTransferAccountLeads = template.canTransferAccountLeads
+          canViewAllTeams = template.canViewAllTeams
         } else if (profileContext.isMaster) {
           role = "operator"
           functions = profileContext.functions
@@ -395,6 +417,7 @@ export class BackofficeMemberUseCase {
         canManageAccountTeams: role === "manager" && canManageAccountTeams,
         canTransferAccountLeads:
           (role === "manager" || role === "backoffice") && canTransferAccountLeads,
+        canViewAllTeams: (role === "manager" || role === "backoffice") && canViewAllTeams,
       })
 
       console.info("[BackofficeMemberUseCase][addToTeam] Membro adicionado ao time:", teamId, memberId)
@@ -422,6 +445,19 @@ export class BackofficeMemberUseCase {
     } catch (error) {
       console.error("[BackofficeMemberUseCase][listExternalTeamMemberships]", error)
       return new Output(false, [], ["Erro ao listar times externos"], null)
+    }
+  }
+
+  async listAccountTeamMemberships(
+    memberId: string,
+    accountMasterId: string
+  ): Promise<Output> {
+    try {
+      const items = await this.repository.findAccountTeamMemberships(memberId, accountMasterId)
+      return new Output(true, [], [], { items })
+    } catch (error) {
+      console.error("[BackofficeMemberUseCase][listAccountTeamMemberships]", error)
+      return new Output(false, [], ["Erro ao listar times da conta"], null)
     }
   }
 }

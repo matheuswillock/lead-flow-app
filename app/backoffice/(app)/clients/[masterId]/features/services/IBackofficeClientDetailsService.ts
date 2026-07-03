@@ -85,7 +85,18 @@ export interface IBackofficeClientDetailsService {
 
   removeMemberFromTeam(memberId: string, teamId: string): Promise<void>
 
-  addMemberToTeam(memberId: string, teamId: string): Promise<void>
+  addMemberToTeam(
+    memberId: string,
+    teamId: string,
+    access?: {
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+      canCreateAccountUsers: boolean
+      canManageAccountTeams: boolean
+      canTransferAccountLeads: boolean
+      canViewAllTeams: boolean
+    }
+  ): Promise<void>
 
   getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }>
 
@@ -99,6 +110,24 @@ export interface IBackofficeClientDetailsService {
       accountMasterId: string
       accountName: string
       role: string
+    }>
+  >
+
+  getMemberAccountTeams(
+    memberId: string,
+    accountMasterId: string
+  ): Promise<
+    Array<{
+      teamId: string
+      teamName: string
+      membersCount: number
+      isMember: boolean
+      role?: string
+      functions?: string[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      canViewAllTeams?: boolean
     }>
   >
 

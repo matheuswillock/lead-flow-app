@@ -31,6 +31,7 @@ export interface TeamSummary {
   canManageAccountTeams: boolean;
   canTransferAccountLeads: boolean;
   canViewAllTeams: boolean;
+  accountTeamsCount?: number;
   hasTransferRoutes?: boolean;
   membershipCreatedAt: string;
   isPending?: boolean;
@@ -91,6 +92,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   const pendingActiveTeamSwitchRef = useRef<string | null>(null);
   const teamsRef = useRef<TeamSummary[]>([]);
   const initializedRef = useRef(false);
+  const serverTeamsReadyRef = useRef(false);
   const bootstrapHydratedRef = useRef(false);
 
   useEffect(() => {
@@ -167,24 +169,25 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       }
 
       const payload = output.result as { teams: TeamSummary[]; activeTeamId: string | null };
+      serverTeamsReadyRef.current = true;
       setTeams(payload.teams || []);
       serverActiveTeamIdRef.current = payload.activeTeamId ?? null;
 
-      const localActiveTeamId = activeTeamIdRef.current ?? payload.activeTeamId ?? null;
+      const resolvedActiveTeamId = payload.activeTeamId ?? activeTeamIdRef.current ?? null;
 
       writeTeamsBootstrapCache(supabaseId, {
         teams: payload.teams || [],
-        activeTeamId: localActiveTeamId,
+        activeTeamId: resolvedActiveTeamId,
       });
 
-      if (
-        payload.activeTeamId &&
-        payload.activeTeamId !== activeTeamIdRef.current &&
-        !pendingActiveTeamSwitchRef.current
-      ) {
-        setActiveTeamIdState(payload.activeTeamId);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(storageKey, payload.activeTeamId);
+      if (payload.activeTeamId && !pendingActiveTeamSwitchRef.current) {
+        const serverTeam = payload.teams.find((team) => team.id === payload.activeTeamId);
+        if (serverTeam && isTeamSelectable(serverTeam) && payload.activeTeamId !== activeTeamIdRef.current) {
+          activeTeamIdRef.current = payload.activeTeamId;
+          setActiveTeamIdState(payload.activeTeamId);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(storageKey, payload.activeTeamId);
+          }
         }
       }
     } catch (err) {
@@ -259,23 +262,23 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
   useEffect(() => {
     if (initializedRef.current) return;
+    if (!serverTeamsReadyRef.current) return;
     if (teams.length === 0) return;
 
     let nextTeamId: string | null = null;
 
-    if (typeof window !== "undefined") {
+    if (serverActiveTeamIdRef.current) {
+      const serverTeam = teams.find((team) => team.id === serverActiveTeamIdRef.current);
+      if (serverTeam && isTeamSelectable(serverTeam)) {
+        nextTeamId = serverActiveTeamIdRef.current;
+      }
+    }
+
+    if (!nextTeamId && typeof window !== "undefined") {
       const stored = window.localStorage.getItem(storageKey);
       const storedTeam = stored ? teams.find((team) => team.id === stored) : null;
       if (stored && storedTeam && isTeamSelectable(storedTeam)) {
         nextTeamId = stored;
-      }
-    }
-
-    if (!nextTeamId && serverActiveTeamIdRef.current) {
-      const serverTeamId = serverActiveTeamIdRef.current;
-      const serverTeam = teams.find((team) => team.id === serverTeamId);
-      if (serverTeam && isTeamSelectable(serverTeam)) {
-        nextTeamId = serverTeamId;
       }
     }
 
@@ -285,10 +288,17 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
     if (nextTeamId) {
       initializedRef.current = true;
+      activeTeamIdRef.current = nextTeamId;
       setActiveTeamIdState(nextTeamId);
-      persistActiveTeam(nextTeamId).catch((err) => {
-        console.error("Error persisting initial team:", err);
-      });
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storageKey, nextTeamId);
+      }
+
+      if (nextTeamId !== serverActiveTeamIdRef.current) {
+        persistActiveTeam(nextTeamId).catch((err) => {
+          console.error("Error persisting initial team:", err);
+        });
+      }
     }
   }, [storageKey, teams, persistActiveTeam]);
 

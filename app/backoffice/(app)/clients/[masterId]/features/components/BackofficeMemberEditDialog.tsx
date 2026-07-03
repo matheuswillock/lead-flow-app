@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Crown, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -15,70 +15,35 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Switch } from "@/components/ui/switch"
 import { maskPhone, unmask } from "@/lib/masks"
 import type {
   BackofficeClientDetails,
-  BackofficeClientTeam,
   BackofficeClientTeamMember,
 } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
-import { BackofficeMemberTeamsSection, type ExternalTeamMembershipRow } from "./BackofficeMemberTeamsSection"
+import {
+  BackofficeMemberTeamAccordions,
+  type ExternalTeamMembershipRow,
+} from "./BackofficeMemberTeamAccordions"
+import {
+  accessChanged,
+  buildAccessUpdatePayload,
+  buildTeamsDraft,
+  type TeamMembershipDraft,
+} from "../utils/memberTeamAccessUtils"
 
-type MemberRole = "manager" | "backoffice" | "operator"
-type MemberFunction = "SDR" | "CLOSER"
-
-const ROLE_OPTIONS: { value: MemberRole; label: string; description: string }[] = [
-  { value: "manager", label: "Manager", description: "Gerencia usuários e configurações do time." },
-  { value: "backoffice", label: "Backoffice", description: "Acesso de gestão equivalente ao Manager (sem privilégios de master)." },
-  { value: "operator", label: "Operator", description: "Acesso operacional aos leads e atividades do time." },
-]
-
-const FUNCTION_OPTIONS: { value: MemberFunction; label: string; description: string }[] = [
-  { value: "SDR", label: "SDR", description: "Pode visualizar, editar e agendar os leads." },
-  { value: "CLOSER", label: "Closer", description: "Mesmo acesso do SDR nos leads, mas só ele pode fechar contratos." },
-]
-
-interface FormState {
+interface ProfileFormState {
   fullName: string
   phone: string
   email: string
-  role: MemberRole
-  functions: MemberFunction[]
-  canCreateAccountUsers: boolean
-  canManageAccountTeams: boolean
-  canTransferAccountLeads: boolean
-  canViewAllTeams: boolean
 }
 
-function toRole(value: string): MemberRole {
-  if (value === "manager" || value === "backoffice" || value === "operator") return value
-  return "operator"
-}
-
-function toFunctions(values: string[]): MemberFunction[] {
-  return values.filter((v): v is MemberFunction => v === "SDR" || v === "CLOSER")
-}
-
-function initForm(member: BackofficeClientTeamMember): FormState {
+function initProfileForm(member: BackofficeClientTeamMember): ProfileFormState {
   return {
     fullName: member.fullName ?? "",
     phone: member.phone ?? "",
     email: member.email,
-    role: toRole(member.role),
-    functions: toFunctions(member.functions),
-    canCreateAccountUsers: member.canCreateAccountUsers,
-    canManageAccountTeams: member.canManageAccountTeams,
-    canTransferAccountLeads: member.canTransferAccountLeads,
-    canViewAllTeams: member.canViewAllTeams,
   }
-}
-
-function findTeamsOfMember(
-  teams: BackofficeClientTeam[],
-  memberId: string
-): BackofficeClientTeam[] {
-  return teams.filter((team) => team.members.some((m) => m.id === memberId))
 }
 
 interface BackofficeMemberEditDialogProps {
@@ -97,46 +62,58 @@ export function BackofficeMemberEditDialog({
   open,
   onOpenChange,
   member,
-  teamId,
   details,
   service,
   onSuccess,
   onDeleteRequest,
   canManage = true,
 }: BackofficeMemberEditDialogProps) {
-  const [form, setForm] = useState<FormState>(() =>
+  const [profileForm, setProfileForm] = useState<ProfileFormState>(() =>
     member
-      ? initForm(member)
-      : { fullName: "", phone: "", email: "", role: "operator", functions: [], canCreateAccountUsers: false, canManageAccountTeams: false, canTransferAccountLeads: false, canViewAllTeams: false }
+      ? initProfileForm(member)
+      : { fullName: "", phone: "", email: "" }
   )
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [removingTeamId, setRemovingTeamId] = useState<string | null>(null)
-  const [addingTeamId, setAddingTeamId] = useState<string | null>(null)
+  const [teamsDraft, setTeamsDraft] = useState<Record<string, TeamMembershipDraft>>({})
   const [externalTeams, setExternalTeams] = useState<ExternalTeamMembershipRow[]>([])
+  const [isLoadingTeams, setIsLoadingTeams] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const inFlight = useRef(false)
 
   useEffect(() => {
     if (open && member) {
-      setForm(initForm(member))
-      setAddingTeamId(null)
+      setProfileForm(initProfileForm(member))
     }
   }, [open, member])
 
   useEffect(() => {
     if (!open || !member || !details?.id) {
+      setTeamsDraft({})
       setExternalTeams([])
+      setIsLoadingTeams(false)
       return
     }
 
     let cancelled = false
+    setIsLoadingTeams(true)
 
-    void service
-      .getMemberExternalTeams(member.id, details.id)
-      .then((items) => {
-        if (!cancelled) setExternalTeams(items)
+    void Promise.all([
+      service.getMemberAccountTeams(member.id, details.id),
+      service.getMemberExternalTeams(member.id, details.id),
+    ])
+      .then(([accountTeams, external]) => {
+        if (cancelled) return
+        setTeamsDraft(buildTeamsDraft(accountTeams))
+        setExternalTeams(external)
       })
-      .catch(() => {
-        if (!cancelled) setExternalTeams([])
+      .catch((err) => {
+        if (cancelled) return
+        console.error("[BackofficeMemberEditDialog][loadTeams]", err)
+        toast.error("Falha ao carregar times da conta")
+        setTeamsDraft({})
+        setExternalTeams([])
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingTeams(false)
       })
 
     return () => {
@@ -144,75 +121,83 @@ export function BackofficeMemberEditDialog({
     }
   }, [open, member, details?.id, service])
 
+  const defaultExpandedTeamIds = useMemo(
+    () =>
+      Object.values(teamsDraft)
+        .filter((team) => team.isMember && !team.isPendingRemove)
+        .map((team) => team.teamId),
+    [teamsDraft]
+  )
+
   if (!member) return null
 
-  const memberTeams = details ? findTeamsOfMember(details.teams, member.id) : []
-  const memberTeamIds = new Set(memberTeams.map((team) => team.id))
-  const allTeams = details?.allTeams ?? []
-
-  const nameValid = form.fullName.trim().length >= 2
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
+  const nameValid = profileForm.fullName.trim().length >= 2
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileForm.email.trim())
   const isValid = nameValid && emailValid
+
+  function hasTeamDraftChanges() {
+    return Object.values(teamsDraft).some((team) => {
+      if (team.isPendingAdd || team.isPendingRemove) return true
+      if (team.isMember && team.originalAccess) {
+        return accessChanged(team.access, team.originalAccess)
+      }
+      return false
+    })
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     if (!member || !isValid || inFlight.current) return
 
+    const fullNameChanged = profileForm.fullName.trim() !== (member.fullName ?? "")
+    const phoneRaw = unmask(profileForm.phone)
+    const memberPhoneRaw = member.phone ?? ""
+    const phoneChanged = phoneRaw !== memberPhoneRaw
+    const emailChanged = profileForm.email.trim().toLowerCase() !== member.email.toLowerCase()
+    const teamChanges = hasTeamDraftChanges()
+
+    if (!fullNameChanged && !phoneChanged && !emailChanged && !teamChanges) {
+      toast.info("Nenhuma alteração para salvar")
+      onOpenChange(false)
+      return
+    }
+
     inFlight.current = true
     setIsSubmitting(true)
 
     try {
-      const fullNameChanged = form.fullName.trim() !== (member.fullName ?? "")
-      const phoneRaw = unmask(form.phone)
-      const memberPhoneRaw = member.phone ?? ""
-      const phoneChanged = phoneRaw !== memberPhoneRaw
-      const emailChanged = form.email.trim().toLowerCase() !== member.email.toLowerCase()
-      const roleChanged = form.role !== toRole(member.role)
-      const functionsChanged =
-        JSON.stringify([...form.functions].sort()) !==
-        JSON.stringify([...toFunctions(member.functions)].sort())
-      const canCreateChanged = form.canCreateAccountUsers !== member.canCreateAccountUsers
-      const canManageChanged = form.canManageAccountTeams !== member.canManageAccountTeams
-      const canTransferChanged = form.canTransferAccountLeads !== member.canTransferAccountLeads
-      const canViewAllTeamsChanged = form.canViewAllTeams !== member.canViewAllTeams
-
-      const hasTransferPermission = form.role === "manager" || form.role === "backoffice"
-      const effectiveCanTransfer = hasTransferPermission ? form.canTransferAccountLeads : false
-
-      if (!fullNameChanged && !phoneChanged && !emailChanged && !roleChanged && !functionsChanged && !canCreateChanged && !canManageChanged && !canTransferChanged && !canViewAllTeamsChanged) {
-        toast.info("Nenhuma alteração para salvar")
-        onOpenChange(false)
-        return
+      if (fullNameChanged || phoneChanged || emailChanged) {
+        await service.updateMember(member.id, {
+          ...(fullNameChanged ? { fullName: profileForm.fullName.trim() } : {}),
+          ...(phoneChanged ? { phone: phoneRaw.length > 0 ? phoneRaw : null } : {}),
+          ...(emailChanged ? { email: profileForm.email.trim().toLowerCase() } : {}),
+        })
       }
 
-      const effectiveCanCreate = form.role === "manager" ? form.canCreateAccountUsers : false
-      const effectiveCanManage = form.role === "manager" ? form.canManageAccountTeams : false
-      const effectiveCanViewAllTeams = (form.role === "manager" || form.role === "backoffice") ? form.canViewAllTeams : false
+      const pendingRemovals = Object.values(teamsDraft).filter((team) => team.isPendingRemove)
+      const pendingAdds = Object.values(teamsDraft).filter((team) => team.isPendingAdd)
+      const pendingUpdates = Object.values(teamsDraft).filter(
+        (team) =>
+          team.isMember &&
+          !team.isPendingAdd &&
+          !team.isPendingRemove &&
+          team.originalAccess &&
+          accessChanged(team.access, team.originalAccess)
+      )
 
-      const hasAccessChange =
-        roleChanged ||
-        functionsChanged ||
-        canCreateChanged ||
-        canManageChanged ||
-        canTransferChanged ||
-        canViewAllTeamsChanged
+      for (const team of pendingRemovals) {
+        await service.removeMemberFromTeam(member.id, team.teamId)
+      }
 
-      const effectiveTeamId = teamId ?? memberTeams[0]?.id ?? null
-      const accountMasterId = details?.id
+      for (const team of pendingAdds) {
+        const accessPayload = buildAccessUpdatePayload(team.teamId, team.access)
+        await service.addMemberToTeam(member.id, team.teamId, accessPayload)
+      }
 
-      await service.updateMember(member.id, {
-        ...(fullNameChanged ? { fullName: form.fullName.trim() } : {}),
-        ...(phoneChanged ? { phone: phoneRaw.length > 0 ? phoneRaw : null } : {}),
-        ...(emailChanged ? { email: form.email.trim().toLowerCase() } : {}),
-        ...(roleChanged ? { role: form.role } : {}),
-        ...(roleChanged || functionsChanged ? { functions: form.functions } : {}),
-        ...(roleChanged || canCreateChanged ? { canCreateAccountUsers: effectiveCanCreate } : {}),
-        ...(roleChanged || canManageChanged ? { canManageAccountTeams: effectiveCanManage } : {}),
-        ...(roleChanged || canTransferChanged ? { canTransferAccountLeads: effectiveCanTransfer } : {}),
-        ...(roleChanged || canViewAllTeamsChanged ? { canViewAllTeams: effectiveCanViewAllTeams } : {}),
-        ...(hasAccessChange && accountMasterId ? { accountMasterId } : {}),
-        ...(hasAccessChange && !accountMasterId && effectiveTeamId ? { teamId: effectiveTeamId } : {}),
-      })
+      for (const team of pendingUpdates) {
+        const accessPayload = buildAccessUpdatePayload(team.teamId, team.access)
+        await service.updateMember(member.id, accessPayload)
+      }
 
       toast.success("Membro atualizado com sucesso")
       onOpenChange(false)
@@ -222,34 +207,6 @@ export function BackofficeMemberEditDialog({
     } finally {
       setIsSubmitting(false)
       inFlight.current = false
-    }
-  }
-
-  async function handleRemoveFromTeam(teamId: string) {
-    if (!member || removingTeamId) return
-    setRemovingTeamId(teamId)
-    try {
-      await service.removeMemberFromTeam(member.id, teamId)
-      toast.success("Membro removido do time")
-      onSuccess()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao remover do time")
-    } finally {
-      setRemovingTeamId(null)
-    }
-  }
-
-  async function handleAddToTeam(teamId: string) {
-    if (!member || addingTeamId) return
-    setAddingTeamId(teamId)
-    try {
-      await service.addMemberToTeam(member.id, teamId)
-      toast.success("Membro adicionado ao time")
-      onSuccess()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao adicionar ao time")
-    } finally {
-      setAddingTeamId(null)
     }
   }
 
@@ -272,33 +229,33 @@ export function BackofficeMemberEditDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-          <div className="overflow-y-auto flex-1 space-y-5 pr-1">
-            <div className="space-y-2">
+          <div className="overflow-y-auto flex-1 flex flex-col gap-5 pr-1">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="member-fullName">Nome completo</Label>
               <Input
                 id="member-fullName"
-                value={form.fullName}
+                value={profileForm.fullName}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, fullName: event.target.value }))
+                  setProfileForm((prev) => ({ ...prev, fullName: event.target.value }))
                 }
                 placeholder="Nome do membro"
                 disabled={isSubmitting}
               />
-              {form.fullName.length > 0 && !nameValid && (
+              {profileForm.fullName.length > 0 && !nameValid && (
                 <p className="text-xs text-destructive">Mínimo de 2 caracteres</p>
               )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="member-phone">Telefone</Label>
                 <Input
                   id="member-phone"
                   type="tel"
                   placeholder="(11) 99999-9999"
-                  value={maskPhone(form.phone)}
+                  value={maskPhone(profileForm.phone)}
                   onChange={(event) =>
-                    setForm((prev) => ({
+                    setProfileForm((prev) => ({
                       ...prev,
                       phone: unmask(maskPhone(event.target.value)),
                     }))
@@ -307,184 +264,41 @@ export function BackofficeMemberEditDialog({
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="member-email">E-mail</Label>
                 <Input
                   id="member-email"
                   type="email"
-                  value={form.email}
+                  value={profileForm.email}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, email: event.target.value }))
+                    setProfileForm((prev) => ({ ...prev, email: event.target.value }))
                   }
                   disabled={isSubmitting}
                 />
-                {form.email.length > 0 && !emailValid && (
+                {profileForm.email.length > 0 && !emailValid && (
                   <p className="text-xs text-destructive">E-mail inválido</p>
                 )}
               </div>
             </div>
 
-            {!member.isMaster ? (
-              <>
-                <Separator />
-
-                <div className="flex flex-col gap-2">
-                  <Label>Nível de acesso</Label>
-                  <div className="flex flex-col gap-2">
-                    {ROLE_OPTIONS.map((item) => (
-                      <div
-                        key={item.value}
-                        className="flex items-center justify-between rounded-md border border-input px-3 py-2"
-                      >
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium">{item.label}</span>
-                          <span className="text-xs text-muted-foreground">{item.description}</span>
-                        </div>
-                        <Switch
-                          checked={form.role === item.value}
-                          onCheckedChange={() => setForm((prev) => ({ ...prev, role: item.value }))}
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label>Funções</Label>
-                  <div className="flex flex-col gap-2">
-                    {FUNCTION_OPTIONS.map((item) => (
-                      <div
-                        key={item.value}
-                        className="flex items-center justify-between rounded-md border border-input px-3 py-2"
-                      >
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium">{item.label}</span>
-                          <span className="text-xs text-muted-foreground">{item.description}</span>
-                        </div>
-                        <Switch
-                          checked={form.functions.includes(item.value)}
-                          onCheckedChange={() =>
-                            setForm((prev) => ({
-                              ...prev,
-                              functions: prev.functions.includes(item.value)
-                                ? prev.functions.filter((f) => f !== item.value)
-                                : [...prev.functions, item.value],
-                            }))
-                          }
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {form.role === "manager" ? (
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <p className="text-sm font-medium">Permissões delegadas</p>
-                      <p className="text-xs text-muted-foreground">
-                        Essas permissões adicionais só podem ser atribuídas pelo master da conta.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium">Pode cadastrar novos usuários</span>
-                        <span className="text-xs text-muted-foreground">
-                          Permite solicitar novos usuários da conta sujeitos à cobrança incremental.
-                        </span>
-                      </div>
-                      <Switch
-                        checked={form.canCreateAccountUsers}
-                        onCheckedChange={(checked) =>
-                          setForm((prev) => ({ ...prev, canCreateAccountUsers: checked }))
-                        }
-                        disabled={isSubmitting}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium">Pode gerenciar times</span>
-                        <span className="text-xs text-muted-foreground">
-                          Permite criar, editar e deletar times da conta, sem transferir ownership.
-                        </span>
-                      </div>
-                      <Switch
-                        checked={form.canManageAccountTeams}
-                        onCheckedChange={(checked) =>
-                          setForm((prev) => ({ ...prev, canManageAccountTeams: checked }))
-                        }
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
-                {(form.role === "manager" || form.role === "backoffice") ? (
-                  <div className="flex flex-col gap-3">
-                    {form.role === "backoffice" && (
-                      <div>
-                        <p className="text-sm font-medium">Permissões delegadas</p>
-                        <p className="text-xs text-muted-foreground">
-                          Essas permissões adicionais só podem ser atribuídas pelo master da conta.
-                        </p>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium">Pode transferir leads entre times</span>
-                        <span className="text-xs text-muted-foreground">
-                          Permite repassar leads para outro time da conta neste time. Válido somente para este time.
-                        </span>
-                      </div>
-                      <Switch
-                        checked={form.canTransferAccountLeads}
-                        onCheckedChange={(checked) =>
-                          setForm((prev) => ({ ...prev, canTransferAccountLeads: checked }))
-                        }
-                        disabled={isSubmitting}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium">Pode visualizar todos os times</span>
-                        <span className="text-xs text-muted-foreground">
-                          Permite ver métricas do Dashboard e Performance de todos os times da conta.
-                        </span>
-                      </div>
-                      <Switch
-                        checked={form.canViewAllTeams}
-                        onCheckedChange={(checked) =>
-                          setForm((prev) => ({ ...prev, canViewAllTeams: checked }))
-                        }
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </>
+            {details?.id ? (
+              <BackofficeMemberTeamAccordions
+                key={`${member.id}-${isLoadingTeams ? "loading" : "ready"}`}
+                teams={teamsDraft}
+                onTeamsChange={setTeamsDraft}
+                memberIsMaster={member.isMaster}
+                canManage={canManage}
+                isSubmitting={isSubmitting}
+                isLoading={isLoadingTeams}
+                externalTeams={externalTeams}
+                defaultExpandedTeamIds={defaultExpandedTeamIds}
+              />
             ) : null}
 
-            <BackofficeMemberTeamsSection
-              teams={allTeams}
-              memberTeamIds={memberTeamIds}
-              member={member}
-              externalTeams={externalTeams}
-              canManage={canManage}
-              isSubmitting={isSubmitting}
-              addingTeamId={addingTeamId}
-              removingTeamId={removingTeamId}
-              onAddToTeam={(teamId) => void handleAddToTeam(teamId)}
-              onRemoveFromTeam={(teamId) => void handleRemoveFromTeam(teamId)}
-            />
-
             {!member.isMaster ? (
               <>
                 <Separator />
-                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 space-y-3">
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 flex flex-col gap-3">
                   <p className="text-sm font-semibold text-destructive">Zona de perigo</p>
                   <p className="text-sm text-muted-foreground">
                     Excluir esta conta remove permanentemente o usuário e todos os seus
@@ -515,7 +329,7 @@ export function BackofficeMemberEditDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={!isValid || isSubmitting}>
+            <Button type="submit" disabled={!isValid || isSubmitting || isLoadingTeams}>
               {isSubmitting ? "Salvando..." : "Salvar alterações"}
             </Button>
           </DialogFooter>
