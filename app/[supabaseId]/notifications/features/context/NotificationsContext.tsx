@@ -40,6 +40,11 @@ type NotificationRealtimeRow = {
 
 const NotificationsContext = createContext<NotificationsContextState | undefined>(undefined);
 
+// TTL do cache local da lista — evita recargas repetidas em focus/visibility.
+const LIST_TTL_MS = 30_000;
+// Debounce dos re-syncs disparados pelo realtime (o payload já aplica o delta).
+const REALTIME_SYNC_DEBOUNCE_MS = 5_000;
+
 function normalizeRealtimeRow(row: Partial<NotificationRealtimeRow>): NotificationRealtimeRow {
   return {
     id: String(row.id ?? ""),
@@ -71,6 +76,13 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   const listWasLoadedRef = useRef(false);
   const loadNotificationsRef = useRef<() => Promise<void>>(async () => {});
   const notificationsRef = useRef<NotificationItem[]>([]);
+  const listInFlightKeyRef = useRef<string | null>(null);
+  const activeListKeyRef = useRef<string>("");
+  const lastListKeyRef = useRef<string>("");
+  const lastListAtRef = useRef(0);
+  const unreadCountRef = useRef(0);
+  const syncDebounceTimerRef = useRef<number | null>(null);
+  const focusCheckInFlightRef = useRef(false);
 
   const mapRealtimeRowToNotification = useCallback((row: NotificationRealtimeRow): NotificationItem => {
     return {
@@ -90,12 +102,23 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   }, []);
 
   const loadNotifications = useCallback(
-    async (params?: { limit?: number; offset?: number }) => {
+    async (params?: { limit?: number; offset?: number; force?: boolean }) => {
       if (!supabaseId || !activeTeamId) {
         setNotifications([]);
         setTotal(0);
         return;
       }
+
+      // Dedupe: chave estável + guard de in-flight + TTL de última carga.
+      const requestKey = `${supabaseId}:${activeTeamId}:${params?.limit ?? 100}:${params?.offset ?? 0}`;
+      const isSameRequest = lastListKeyRef.current === requestKey;
+      const isFresh = Date.now() - lastListAtRef.current < LIST_TTL_MS;
+      if (!params?.force && isSameRequest && isFresh) return;
+      if (listInFlightKeyRef.current === requestKey) return;
+
+      const capturedKey = requestKey;
+      listInFlightKeyRef.current = capturedKey;
+      activeListKeyRef.current = capturedKey;
 
       try {
         setIsLoadingList(true);
@@ -107,16 +130,26 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
           offset: params?.offset ?? 0,
         });
 
+        if (activeListKeyRef.current !== capturedKey) return;
+
         const list = result.notifications ?? [];
         setNotifications(list);
         setTotal(result.total ?? 0);
         setUnreadCount(list.reduce((acc, item) => (item.isRead ? acc : acc + 1), 0));
         listWasLoadedRef.current = true;
+        lastListKeyRef.current = capturedKey;
+        lastListAtRef.current = Date.now();
       } catch (err) {
+        if (activeListKeyRef.current !== capturedKey) return;
         const message = err instanceof Error ? err.message : "Erro ao carregar notificações";
         setError(message);
       } finally {
-        setIsLoadingList(false);
+        if (listInFlightKeyRef.current === capturedKey) {
+          listInFlightKeyRef.current = null;
+        }
+        if (activeListKeyRef.current === capturedKey) {
+          setIsLoadingList(false);
+        }
       }
     },
     [supabaseId, activeTeamId],
@@ -175,12 +208,17 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   );
 
   useEffect(() => {
-    loadNotificationsRef.current = () => loadNotifications({ limit: 100, offset: 0 });
+    // Syncs do realtime forçam a recarga (o dado mudou no servidor).
+    loadNotificationsRef.current = () => loadNotifications({ limit: 100, offset: 0, force: true });
   }, [loadNotifications]);
 
   useEffect(() => {
     notificationsRef.current = notifications;
   }, [notifications]);
+
+  useEffect(() => {
+    unreadCountRef.current = unreadCount;
+  }, [unreadCount]);
 
   useEffect(() => {
     setNotifications([]);
@@ -231,8 +269,17 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
       }, delayMs);
     };
 
-    const syncFromServer = async () => {
-      await loadNotificationsRef.current();
+    // Debounce trailing: o payload do realtime já aplica o delta localmente;
+    // o re-sync serve só para reconciliar (ex.: dados do actor) sem gerar uma
+    // requisição por evento.
+    const syncFromServer = () => {
+      if (syncDebounceTimerRef.current !== null) return;
+      syncDebounceTimerRef.current = window.setTimeout(() => {
+        syncDebounceTimerRef.current = null;
+        if (!cancelled) {
+          void loadNotificationsRef.current();
+        }
+      }, REALTIME_SYNC_DEBOUNCE_MS);
     };
 
     const setupRealtime = async () => {
@@ -293,7 +340,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
 
               setUnreadCount((prev) => prev + (row.isRead ? 0 : 1));
               setTotal((prev) => prev + 1);
-              void syncFromServer();
+              syncFromServer();
 
               const mapped = mapRealtimeRowToNotification(row);
               if (!row.isRead && typeof document !== "undefined" && document.visibilityState === "visible") {
@@ -332,7 +379,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
               } else if (oldRow.isRead === true && newRow.isRead === false) {
                 setUnreadCount((prev) => prev + 1);
               }
-              void syncFromServer();
+              syncFromServer();
 
               if (!listWasLoadedRef.current) {
                 return;
@@ -357,16 +404,16 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
           .subscribe((status) => {
             if (status === "SUBSCRIBED") {
               reconnectAttemptRef.current = 0;
-              void syncFromServer();
+              syncFromServer();
             }
             if (status === "CHANNEL_ERROR") {
               console.info("[NotificationsRealtime] CHANNEL_ERROR");
-              void syncFromServer();
+              syncFromServer();
               scheduleReconnect("CHANNEL_ERROR");
             }
             if (status === "TIMED_OUT") {
               console.info("[NotificationsRealtime] TIMED_OUT");
-              void syncFromServer();
+              syncFromServer();
               scheduleReconnect("TIMED_OUT");
             }
           });
@@ -382,28 +429,49 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
       cancelled = true;
       clearReconnectTimer();
       teardownChannel();
+      if (syncDebounceTimerRef.current !== null) {
+        window.clearTimeout(syncDebounceTimerRef.current);
+        syncDebounceTimerRef.current = null;
+      }
     };
   }, [supabaseId, activeTeamId, user?.id, mapRealtimeRowToNotification]);
 
   useEffect(() => {
     if (!supabaseId || !activeTeamId || !user?.id) return;
 
-    const syncOnFocus = () => {
-      void loadNotificationsRef.current();
-    };
+    // No focus/visibility consulta só o unread-count (query leve) e recarrega
+    // a lista apenas se o contador local divergir do servidor.
+    const checkUnreadAndMaybeReload = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (focusCheckInFlightRef.current) return;
+      focusCheckInFlightRef.current = true;
 
-    const syncOnVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void loadNotificationsRef.current();
+      try {
+        const serverUnread = await notificationsService.unreadCount({
+          supabaseId,
+          teamId: activeTeamId,
+        });
+
+        if (serverUnread !== unreadCountRef.current || !listWasLoadedRef.current) {
+          await loadNotificationsRef.current();
+        }
+      } catch (err) {
+        console.error("[NotificationsContext] Erro ao verificar unread-count:", err);
+      } finally {
+        focusCheckInFlightRef.current = false;
       }
     };
 
-    window.addEventListener("focus", syncOnFocus);
-    document.addEventListener("visibilitychange", syncOnVisibilityChange);
+    const syncOnFocusOrVisibility = () => {
+      void checkUnreadAndMaybeReload();
+    };
+
+    window.addEventListener("focus", syncOnFocusOrVisibility);
+    document.addEventListener("visibilitychange", syncOnFocusOrVisibility);
 
     return () => {
-      window.removeEventListener("focus", syncOnFocus);
-      document.removeEventListener("visibilitychange", syncOnVisibilityChange);
+      window.removeEventListener("focus", syncOnFocusOrVisibility);
+      document.removeEventListener("visibilitychange", syncOnFocusOrVisibility);
     };
   }, [supabaseId, activeTeamId, user?.id]);
 

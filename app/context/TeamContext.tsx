@@ -77,23 +77,33 @@ function getTeamBlockedMessage(team: TeamSummary) {
 interface TeamProviderProps {
   children: React.ReactNode;
   supabaseId: string;
+  /** Dados resolvidos no servidor (layout) — evita o fetch inicial no cliente. */
+  initialTeams?: TeamSummary[] | null;
+  initialActiveTeamId?: string | null;
 }
 
-export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
+export const TeamProvider = ({
+  children,
+  supabaseId,
+  initialTeams = null,
+  initialActiveTeamId = null,
+}: TeamProviderProps) => {
   const { user } = useUser();
   const storageKey = getStorageKey(supabaseId);
+  const hasInitialTeams = initialTeams !== null;
 
-  const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [activeTeamId, setActiveTeamIdState] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [teams, setTeams] = useState<TeamSummary[]>(initialTeams ?? []);
+  const [activeTeamId, setActiveTeamIdState] = useState<string | null>(initialActiveTeamId);
+  const [isLoading, setIsLoading] = useState(!hasInitialTeams);
   const [error, setError] = useState<string | null>(null);
-  const serverActiveTeamIdRef = useRef<string | null>(null);
+  const serverActiveTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const activeTeamIdRef = useRef<string | null>(null);
   const pendingActiveTeamSwitchRef = useRef<string | null>(null);
   const teamsRef = useRef<TeamSummary[]>([]);
   const initializedRef = useRef(false);
-  const serverTeamsReadyRef = useRef(false);
-  const bootstrapHydratedRef = useRef(false);
+  const serverTeamsReadyRef = useRef(hasInitialTeams);
+  const bootstrapHydratedRef = useRef(hasInitialTeams);
+  const initialFetchSkippedRef = useRef(false);
 
   useEffect(() => {
     activeTeamIdRef.current = activeTeamId;
@@ -257,8 +267,13 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
   useEffect(() => {
     if (!supabaseId) return;
+    // Com bootstrap server-side, a primeira execução não precisa refazer o fetch.
+    if (hasInitialTeams && !initialFetchSkippedRef.current) {
+      initialFetchSkippedRef.current = true;
+      return;
+    }
     void refreshTeams();
-  }, [supabaseId, refreshTeams]);
+  }, [supabaseId, refreshTeams, hasInitialTeams]);
 
   useEffect(() => {
     if (initializedRef.current) return;
