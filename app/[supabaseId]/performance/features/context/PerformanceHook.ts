@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useTeamContext } from '@/app/context/TeamContext';
-import { isManagerLikeRole } from '@/lib/roles';
+import { computeCanUseAllTeamsScope } from '@/lib/teams/canUseAllTeamsScope';
 import { performanceService } from '../services/PerformanceService';
 import {
   DEFAULT_PERFORMANCE_FILTERS,
@@ -25,15 +25,20 @@ export function usePerformanceHook() {
   const [filters, setFiltersState] = useState<PerformanceFiltersState>(DEFAULT_PERFORMANCE_FILTERS);
   const [teamScope, setTeamScope] = useState<PerformanceTeamScope>('active');
 
-  const accountTeams = useMemo(() => {
-    if (!activeTeam?.masterId) return [];
-    return teams.filter((team) => team.masterId === activeTeam.masterId && !team.isPending);
+  const memberTeamsInAccount = useMemo(() => {
+    if (!activeTeam?.masterId) return 0;
+    return teams.filter((team) => team.masterId === activeTeam.masterId && !team.isPending).length;
   }, [teams, activeTeam?.masterId]);
 
-  const canUseAllTeamsScope = useMemo(() => {
-    const isDelegated = isManagerLikeRole(activeTeam?.role) && !!activeTeam?.canViewAllTeams;
-    return (isTeamMaster || isDelegated) && accountTeams.length > 1;
-  }, [isTeamMaster, activeTeam?.role, activeTeam?.canViewAllTeams, accountTeams.length]);
+  const canUseAllTeamsScope = useMemo(
+    () =>
+      computeCanUseAllTeamsScope({
+        isTeamMaster,
+        activeTeam,
+        memberTeamsInAccount,
+      }),
+    [isTeamMaster, activeTeam, memberTeamsInAccount]
+  );
 
   useEffect(() => {
     if (!canUseAllTeamsScope && teamScope === 'all') {

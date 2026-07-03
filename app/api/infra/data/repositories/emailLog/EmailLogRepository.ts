@@ -155,6 +155,7 @@ export class EmailLogRepository implements IEmailLogRepository {
         sourceId: input.sourceId ?? null,
         status: "queued" as const,
       })),
+      skipDuplicates: true,
     })
   }
 

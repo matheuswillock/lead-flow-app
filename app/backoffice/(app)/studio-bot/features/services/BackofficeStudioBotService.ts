@@ -4,6 +4,7 @@ import type {
   BackofficeStudioBotChannelFormData,
   BackofficeStudioBotConversationsFilters,
   BackofficeStudioBotProfileFormData,
+  BackofficeStudioBotQrCode,
 } from "../context/BackofficeStudioBotTypes"
 import type { ApiOutput, IBackofficeStudioBotService } from "./IBackofficeStudioBotService"
 
@@ -55,7 +56,9 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
 
   async reconnectChannel() {
     const res = await fetch("/api/v1/backoffice/bot/channel/reconnect", { method: "POST" })
-    return res.json() as Promise<ApiOutput<{ channel: BackofficeStudioBotChannel; status: number }>>
+    return res.json() as Promise<
+      ApiOutput<{ channel: BackofficeStudioBotChannel; qrCode: BackofficeStudioBotQrCode | null }>
+    >
   }
 
   async syncChannelProfile() {

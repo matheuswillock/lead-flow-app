@@ -10,6 +10,7 @@ import type { TransferLeadBetweenTeamsResult } from "../../v1/leads/DTO/transfer
 export interface LeadCreationActivityContext {
   body?: string;
   payload?: Prisma.InputJsonValue | null;
+  authorAsStudio?: boolean;
 }
 
 export interface LeadCreateOptions {

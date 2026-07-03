@@ -1,5 +1,6 @@
 import { ActivityType, Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import type {
   CreateStudioWebhookRequestLogInput,
   CreateLeadFromStudioWebhookInput,
@@ -153,7 +154,7 @@ export class StudioWebhookIntegrationService implements IStudioWebhookIntegratio
         referenceHospital: input.referenceHospital || null,
         currentTreatment: input.currentTreatment || null,
         activities: {
-          create: {
+          create: buildStudioActivityData({
             type: ActivityType.note,
             body: "Lead criado via webhook genérico",
             payload: {
@@ -164,8 +165,7 @@ export class StudioWebhookIntegrationService implements IStudioWebhookIntegratio
               metadata: (input.metadata ?? null) as Prisma.InputJsonValue,
               submittedAt: new Date().toISOString(),
             },
-            author: { connect: { id: input.managerId } },
-          },
+          }),
         },
       },
       select: {

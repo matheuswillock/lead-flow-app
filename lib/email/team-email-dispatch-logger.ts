@@ -39,6 +39,14 @@ export class TeamEmailDispatchLogger implements ITeamEmailDispatchLogger {
     return ids
   }
 
+  async createQueuedTeamEmailLogs(
+    inputs: CreateTeamEmailLogInput[]
+  ): Promise<{ email: string; logId: string }[]> {
+    const withIds = inputs.map((input) => ({ id: randomUUID(), ...input }))
+    await emailLogRepository.createManyQueuedLogs(withIds)
+    return withIds.map((input) => ({ email: input.recipientEmail, logId: input.id }))
+  }
+
   async markTeamEmailLogSent(logId: string, resendEmailId: string): Promise<void> {
     await emailLogRepository.markSent(logId, resendEmailId, new Date())
   }
