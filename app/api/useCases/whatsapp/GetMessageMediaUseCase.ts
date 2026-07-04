@@ -5,7 +5,8 @@ import {
   WhatsAppAccessDeniedError,
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { evoApiService } from "@/app/api/services/whatsapp/evo/EvoApiService"
+import type { IWhatsAppProvider } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
+import { evolutionWhatsAppProvider } from "@/app/api/services/whatsapp/provider/EvolutionWhatsAppProvider"
 
 interface GetMessageMediaInput {
   teamId: string
@@ -39,6 +40,8 @@ function extractOutboundMedia(
 }
 
 class GetMessageMediaUseCase {
+  constructor(private readonly provider: IWhatsAppProvider = evolutionWhatsAppProvider) {}
+
   async execute(input: GetMessageMediaInput): Promise<Output> {
     try {
       const message = await whatsAppRepository.findMessageByIdForTeam(input.teamId, input.messageId)
@@ -90,7 +93,7 @@ class GetMessageMediaUseCase {
         return new Output(false, [], ["Mídia indisponível para esta mensagem"], null)
       }
 
-      const media = await evoApiService.getBase64FromMediaMessage({
+      const media = await this.provider.resolveMediaBase64({
         instanceName: effectiveConfig.instanceName,
         messageKey,
         hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
