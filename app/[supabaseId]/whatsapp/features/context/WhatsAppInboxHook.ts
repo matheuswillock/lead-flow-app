@@ -152,10 +152,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSearchRef = useRef<string>('')
   const messageRefetchTimerRef = useRef<number | null>(null)
-  // Timestamp do último INSERT de mensagem recebido via realtime para a
-  // conversa aberta — usado para suprimir o refetch de "heal" quando o merge
-  // incremental já aconteceu.
-  const lastRealtimeInsertAtRef = useRef(0)
+  // Timestamp da última mensagem recebida via INSERT realtime na conversa aberta.
+  // Usado para suprimir o refetch de "heal" só quando o UPDATE da conversa
+  // reflete exatamente essa mensagem (evita suprimir heal de INSERT perdido).
+  const lastRealtimeInsertMessageAtRef = useRef<string | null>(null)
 
   // Guards síncronos de double-submit: setados/checados ANTES de qualquer
   // await, diferente dos states React (isSending, isAssigning, etc.) cuja
@@ -583,7 +583,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setMessages([])
       setTotalMessages(0)
       setMessagePage(1)
-      lastRealtimeInsertAtRef.current = 0
+      lastRealtimeInsertMessageAtRef.current = null
       void loadMessages(id, 1)
 
       // Lazy-load team members on first conversation open for operator name display
@@ -843,8 +843,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       if (row.conversationId !== currentMessagesConvIdRef.current) return
 
       // O INSERT chegou pelo canal realtime: o refetch de "heal" agendado por
-      // handleConversationUpdated (para o caso de INSERT perdido) fica redundante.
-      lastRealtimeInsertAtRef.current = Date.now()
+      // handleConversationUpdated só fica redundante se o UPDATE refletir esta mesma mensagem.
+      lastRealtimeInsertMessageAtRef.current = row.sentAt ?? row.createdAt
       if (messageRefetchTimerRef.current !== null) {
         window.clearTimeout(messageRefetchTimerRef.current)
         messageRefetchTimerRef.current = null
@@ -996,11 +996,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           selectedLastMessageAtRef.current = row.lastMessageAt
 
           // O refetch abaixo é apenas "heal" para INSERT perdido pelo canal de
-          // mensagens. Se o INSERT chegou via realtime há pouco, o merge
-          // incremental já cobriu esta atualização — refetch seria redundante.
-          const recentRealtimeInsert =
-            Date.now() - lastRealtimeInsertAtRef.current < 3_000
-          if (recentRealtimeInsert) return
+          // mensagens. Suprimir só quando o UPDATE da conversa corresponde à
+          // mensagem já mergeada via INSERT — se lastMessageAt divergir, há
+          // mensagem nova não recebida pelo canal de mensagens.
+          const insertAlreadyCoversUpdate =
+            lastRealtimeInsertMessageAtRef.current !== null &&
+            row.lastMessageAt === lastRealtimeInsertMessageAtRef.current
+          if (insertAlreadyCoversUpdate) return
 
           if (messageRefetchTimerRef.current !== null) {
             window.clearTimeout(messageRefetchTimerRef.current)
