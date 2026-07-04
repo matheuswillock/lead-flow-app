@@ -1,20 +1,8 @@
 import type { WhatsAppMessageType } from "@prisma/client"
+import type { WhatsAppProviderMessageContent } from "../provider/IWhatsAppProvider"
 import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
 
-export interface ParsedEvoMessageContent {
-  messageType: WhatsAppMessageType
-  contentText: string | null
-  mediaUrl: string | null
-  mediaMimeType: string | null
-  mediaFileName: string | null
-  caption: string | null
-  linkPreview: {
-    title: string | null
-    description: string | null
-    imageUrl: string | null
-    url: string | null
-  } | null
-}
+export type ParsedEvoMessageContent = WhatsAppProviderMessageContent
 
 const EMPTY_CONTENT: ParsedEvoMessageContent = {
   messageType: "UNKNOWN",
@@ -155,7 +143,7 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
   return EMPTY_CONTENT
 }
 
-export function buildMessagePreview(parsed: ParsedEvoMessageContent): string | null {
+export function buildMessagePreview(parsed: WhatsAppProviderMessageContent): string | null {
   if (parsed.contentText) return sanitizeDbText(parsed.contentText.slice(0, 100))
   if (parsed.caption) return sanitizeDbText(parsed.caption.slice(0, 100))
   if (parsed.messageType === "IMAGE") return "[Imagem]"

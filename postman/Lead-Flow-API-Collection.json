@@ -14102,7 +14102,7 @@
                 "conversation-read"
               ]
             },
-            "description": "Marca a conversa como lida (zera unreadCount) para o usuário atual."
+            "description": "Marca a conversa como lida (zera unreadCount) e envia confirmação de leitura (read receipt) ao contato via Evolution API quando a instância está CONNECTED."
           },
           "response": []
         },

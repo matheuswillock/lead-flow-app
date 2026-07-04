@@ -91,6 +91,12 @@ export interface WhatsAppMessageSelect {
   createdAt: Date
 }
 
+export interface WhatsAppInboundReadReceiptCandidate {
+  id: string
+  providerMessageId: string | null
+  rawPayload: Prisma.JsonValue
+}
+
 export interface IWhatsAppRepository {
   // Config
   findConfigByTeamId(teamId: string): Promise<WhatsAppConfigSelect | null>
@@ -189,6 +195,13 @@ export interface IWhatsAppRepository {
     page?: number
     limit?: number
   }): Promise<{ messages: WhatsAppMessageSelect[]; total: number }>
+
+  listInboundPendingReadReceipt(
+    conversationId: string,
+    limit?: number
+  ): Promise<WhatsAppInboundReadReceiptCandidate[]>
+
+  bulkSetInboundBrokerReadAt(messageIds: string[], readAt: Date): Promise<number>
 
   // Usage
   createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }>

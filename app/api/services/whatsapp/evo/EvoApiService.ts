@@ -248,7 +248,8 @@ function parseEvoHistoryMessage(item: Record<string, unknown>): EvoHistoryMessag
     remoteJid,
     fromMe,
     messageTimestamp,
-    messagePayload: item.message ?? item,
+    messageBody: item.message ?? item,
+    rawRecord: item,
   }
 }
 
@@ -800,6 +801,35 @@ export class EvoApiService implements IEvoApiService {
         admin: typeof item.admin === "string" ? item.admin : null,
       }))
       .filter((item) => item.remoteJid.length > 0)
+  }
+
+  async markMessagesAsRead(params: {
+    instanceName: string
+    readMessages: Array<{ remoteJid: string; fromMe: boolean; id: string }>
+    hostBaseUrl?: string
+  }): Promise<void> {
+    if (params.readMessages.length === 0) return
+
+    const base = getBaseUrl(params.hostBaseUrl)
+    const apiKey = getApiKey()
+    const url = `${base}/chat/markMessageAsRead/${encodeURIComponent(params.instanceName)}`
+
+    console.info(
+      "[EvoApiService][markMessagesAsRead] Marking",
+      params.readMessages.length,
+      "message(s) as read for",
+      params.instanceName
+    )
+
+    await fetchEvo<unknown>(
+      url,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({ readMessages: params.readMessages }),
+      },
+      "markMessagesAsRead"
+    )
   }
 
   async disconnectInstance(instanceName: string, hostBaseUrl?: string): Promise<void> {

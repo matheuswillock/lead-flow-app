@@ -21,6 +21,7 @@ function buildEvoStub(overrides: Partial<IEvoApiService> = {}): IEvoApiService {
     getBase64FromMediaMessage: mock(notImplemented),
     findContacts: mock(notImplemented),
     findGroupParticipants: mock(notImplemented),
+    markMessagesAsRead: mock(notImplemented),
     disconnectInstance: mock(notImplemented),
     deleteInstance: mock(notImplemented),
     ...overrides,
@@ -120,5 +121,26 @@ describe("EvolutionWhatsAppProvider", () => {
     ).resolves.toEqual({ base64: "b64", mimeType: "image/jpeg" })
     await provider.disconnect("team_abc")
     expect(disconnectInstance).toHaveBeenCalledWith("team_abc", undefined)
+  })
+
+  it("markMessagesAsRead delega para Evo com readMessages", async () => {
+    const markMessagesAsRead = mock(async () => {})
+    const provider = new EvolutionWhatsAppProvider(buildEvoStub({ markMessagesAsRead }))
+
+    const readMessages = [
+      { remoteJid: "5511999999999@s.whatsapp.net", fromMe: false, id: "msg-1" },
+    ]
+
+    await provider.markMessagesAsRead({
+      instanceName: "team_abc",
+      readMessages,
+      hostBaseUrl: "https://evo.test",
+    })
+
+    expect(markMessagesAsRead).toHaveBeenCalledWith({
+      instanceName: "team_abc",
+      readMessages,
+      hostBaseUrl: "https://evo.test",
+    })
   })
 })
