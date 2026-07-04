@@ -1,7 +1,8 @@
 import type { IWhatsAppService, ConfigOutput, CreateWhatsAppConfigInput, CreateConversationInput, SendMessageInput, SendAutoResponseMessageInput, UsageSummaryOutput, SyncContactsOutput, SyncGroupParticipantsOutput, WhatsAppContactOutput } from "./IWhatsAppService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { whatsAppContactRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppContactRepository"
-import { evoApiService } from "./evo/EvoApiService"
+import type { IWhatsAppProvider, WhatsAppProviderSendResult } from "./provider/IWhatsAppProvider"
+import { evolutionWhatsAppProvider } from "./provider/EvolutionWhatsAppProvider"
 import { whatsAppAutoResponseRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppAutoResponseRepository"
 import {
   buildMessagePreview,
@@ -59,6 +60,8 @@ function toConfigOutput(config: WhatsAppConfigSelect): ConfigOutput {
 class WhatsAppService implements IWhatsAppService {
   private historySyncInFlightByTeam = new Set<string>()
 
+  constructor(private readonly provider: IWhatsAppProvider = evolutionWhatsAppProvider) {}
+
   async createConfig(input: CreateWhatsAppConfigInput): Promise<ConfigOutput> {
     const hasFeature = await teamHasWhatsAppFeature(input.teamId)
     if (!hasFeature) {
@@ -96,7 +99,7 @@ class WhatsAppService implements IWhatsAppService {
     })
 
     try {
-      const evoResult = await evoApiService.adoptOrCreateInstance({
+      const evoResult = await this.provider.connectInstance({
         instanceName,
         webhookUrl,
         hostBaseUrl: input.hostBaseUrl,
@@ -116,7 +119,7 @@ class WhatsAppService implements IWhatsAppService {
 
       if (!qrCodeImageUrl && evoResult.status !== "open") {
         try {
-          const qr = await evoApiService.getQrCode(instanceName, input.hostBaseUrl ?? undefined)
+          const qr = await this.provider.getQrCode(instanceName, input.hostBaseUrl ?? undefined)
           qrCodeText = qr.text
           qrCodeImageUrl = toQrCodeImageUrl(qr.base64)
         } catch (error) {
@@ -214,7 +217,7 @@ class WhatsAppService implements IWhatsAppService {
     config: WhatsAppConfigSelect
   ): Promise<WhatsAppConfigSelect> {
     try {
-      const { state } = await evoApiService.getConnectionState(
+      const { state } = await this.provider.getConnectionState(
         config.instanceName,
         config.hostBaseUrl ?? undefined
       )
@@ -224,7 +227,7 @@ class WhatsAppService implements IWhatsAppService {
         let phoneNumber = config.phoneNumber
         if (!phoneNumber) {
           try {
-            const instance = await evoApiService.fetchInstance(
+            const instance = await this.provider.getInstanceInfo(
               config.instanceName,
               config.hostBaseUrl ?? undefined
             )
@@ -304,7 +307,7 @@ class WhatsAppService implements IWhatsAppService {
 
     console.info("[WhatsAppService][reconnect] Fetching QR code for", existing.instanceName)
 
-    const qr = await evoApiService.getQrCode(existing.instanceName, existing.hostBaseUrl ?? undefined)
+    const qr = await this.provider.getQrCode(existing.instanceName, existing.hostBaseUrl ?? undefined)
 
     const updated = await whatsAppRepository.updateConfig(existing.id, {
       status: "QR_READY",
@@ -355,7 +358,7 @@ class WhatsAppService implements IWhatsAppService {
     let needsLogout = existing.status === "CONNECTED"
     if (!needsLogout) {
       try {
-        const { state } = await evoApiService.getConnectionState(
+        const { state } = await this.provider.getConnectionState(
           existing.instanceName,
           existing.hostBaseUrl ?? undefined
         )
@@ -367,7 +370,7 @@ class WhatsAppService implements IWhatsAppService {
 
     if (needsLogout) {
       console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
-      await evoApiService.disconnectInstance(
+      await this.provider.disconnect(
         existing.instanceName,
         existing.hostBaseUrl ?? undefined
       )
@@ -400,7 +403,7 @@ class WhatsAppService implements IWhatsAppService {
     label: string
   ): Promise<ConfigOutput> {
     try {
-      const qr = await evoApiService.getQrCode(instanceName, hostBaseUrl ?? undefined)
+      const qr = await this.provider.getQrCode(instanceName, hostBaseUrl ?? undefined)
       const updated = await whatsAppRepository.updateConfig(configId, {
         status: "QR_READY",
         qrCodeText: qr.text,
@@ -463,7 +466,7 @@ class WhatsAppService implements IWhatsAppService {
       caption = input.media.caption
       preview = input.media.caption ?? `[${messageType === "IMAGE" ? "Imagem" : messageType === "DOCUMENT" ? "Documento" : messageType === "AUDIO" ? "Áudio" : "Vídeo"}]`
 
-      evoResult = await evoApiService.sendMediaMessage({
+      evoResult = await this.provider.sendMedia({
         instanceName: effectiveConfig.instanceName,
         recipientJid,
         mediatype: input.media.mediatype,
@@ -479,7 +482,7 @@ class WhatsAppService implements IWhatsAppService {
         throw new Error("Mensagem não pode ser vazia")
       }
       preview = text.slice(0, 100)
-      evoResult = await evoApiService.sendTextMessage({
+      evoResult = await this.provider.sendText({
         instanceName: effectiveConfig.instanceName,
         recipientJid,
         text,
@@ -581,9 +584,9 @@ class WhatsAppService implements IWhatsAppService {
     const periodKey = buildPeriodKey(now)
     const preview = text.slice(0, 100)
 
-    let evoResult: Awaited<ReturnType<typeof evoApiService.sendTextMessage>>
+    let evoResult: WhatsAppProviderSendResult
     try {
-      evoResult = await evoApiService.sendTextMessage({
+      evoResult = await this.provider.sendText({
         instanceName: config.instanceName,
         recipientJid,
         text,
@@ -658,7 +661,7 @@ class WhatsAppService implements IWhatsAppService {
 
     let contactAvatarUrl: string | null = null
     try {
-      contactAvatarUrl = await evoApiService.fetchProfilePictureUrl({
+      contactAvatarUrl = await this.provider.fetchProfilePictureUrl({
         instanceName: effectiveConfig.instanceName,
         remoteJid: externalChatId,
         hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
@@ -729,7 +732,7 @@ class WhatsAppService implements IWhatsAppService {
     let messageCount = 0
 
     try {
-      const chats = await evoApiService.findChats(config.instanceName, config.hostBaseUrl ?? undefined)
+      const chats = await this.provider.fetchChats(config.instanceName, config.hostBaseUrl ?? undefined)
 
       for (const chat of chats) {
         const phoneRaw = normalizeRemoteJid(chat.remoteJid)
@@ -738,7 +741,7 @@ class WhatsAppService implements IWhatsAppService {
 
         let contactAvatarUrl = chat.profilePicUrl
         if (!contactAvatarUrl && !isGroup) {
-          contactAvatarUrl = await evoApiService.fetchProfilePictureUrl({
+          contactAvatarUrl = await this.provider.fetchProfilePictureUrl({
             instanceName: config.instanceName,
             remoteJid: chat.remoteJid,
             hostBaseUrl: config.hostBaseUrl ?? undefined,
@@ -762,7 +765,7 @@ class WhatsAppService implements IWhatsAppService {
 
         chatCount += 1
 
-        const messages = await evoApiService.findMessages({
+        const messages = await this.provider.fetchMessagesSince({
           instanceName: config.instanceName,
           remoteJid: chat.remoteJid,
           since,
@@ -882,7 +885,7 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("WhatsApp não está conectado")
     }
 
-    const contacts = await evoApiService.findContacts(
+    const contacts = await this.provider.fetchContacts(
       config.instanceName,
       config.hostBaseUrl ?? undefined
     )
@@ -983,13 +986,13 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("Conversa não é um grupo")
     }
 
-    const participants = await evoApiService.findGroupParticipants({
+    const participants = await this.provider.fetchGroupParticipants({
       instanceName: config.instanceName,
       groupJid,
       hostBaseUrl: config.hostBaseUrl ?? undefined,
     })
 
-    const phoneContacts = await evoApiService.findContacts(
+    const phoneContacts = await this.provider.fetchContacts(
       config.instanceName,
       config.hostBaseUrl ?? undefined
     )
