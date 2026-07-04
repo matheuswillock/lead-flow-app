@@ -1,5 +1,5 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 class WhatsAppInboxService implements IWhatsAppInboxService {
   private async parseJsonResponse(response: Response): Promise<unknown> {
@@ -44,7 +44,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   async fetchConversations(
     teamId: string,
     supabaseId: string,
-    params: { page?: number; limit?: number; search?: string; hasUnread?: boolean; assignedProfileId?: string; leadId?: string; isArchived?: boolean }
+    params: { page?: number; limit?: number; search?: string; hasUnread?: boolean; assignedProfileId?: string; leadId?: string; isArchived?: boolean; tagIds?: string[] }
   ): Promise<{ conversations: WhatsAppConversation[]; total: number }> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set('page', String(params.page))
@@ -54,6 +54,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     if (params.assignedProfileId) searchParams.set('assignedProfileId', params.assignedProfileId)
     if (params.leadId) searchParams.set('leadId', params.leadId)
     if (params.isArchived !== undefined) searchParams.set('isArchived', String(params.isArchived))
+    if (params.tagIds && params.tagIds.length > 0) searchParams.set('tagIds', params.tagIds.join(','))
 
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations?${searchParams.toString()}`,
@@ -494,6 +495,52 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       email: (lead.email ?? null) as string | null,
       leadCode: (lead.leadCode ?? '') as string,
     }))
+  }
+
+  async fetchTags(teamId: string, supabaseId: string): Promise<WhatsAppConversationTag[]> {
+    const response = await fetch(`/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/tags`, {
+      method: 'GET',
+      headers: {
+        'x-supabase-user-id': supabaseId,
+        'x-team-id': teamId,
+      },
+    })
+
+    const output: unknown = await this.parseJsonResponse(response)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar as tags'))
+    }
+
+    const result = (output as Record<string, unknown>).result as { tags?: WhatsAppConversationTag[] }
+    return result.tags ?? []
+  }
+
+  async setConversationTags(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    tagIds: string[]
+  ): Promise<WhatsAppConversationTag[]> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/tags`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
+        },
+        body: JSON.stringify({ tagIds }),
+      }
+    )
+
+    const output: unknown = await this.parseJsonResponse(response)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível atualizar as tags da conversa'))
+    }
+
+    const result = (output as Record<string, unknown>).result as { tags?: WhatsAppConversationTag[] }
+    return result.tags ?? []
   }
 }
 

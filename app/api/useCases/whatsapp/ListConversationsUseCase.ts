@@ -11,6 +11,7 @@ interface ListConversationsInput {
   hasUnread?: boolean
   isArchived?: boolean
   search?: string
+  tagIds?: string[]
   page?: number
   limit?: number
 }
@@ -33,6 +34,7 @@ class ListConversationsUseCase {
         hasUnread: input.hasUnread,
         isArchived: input.isArchived,
         search: input.search,
+        tagIds: input.tagIds,
         page: input.page,
         limit: input.limit,
         visibilityWhere,

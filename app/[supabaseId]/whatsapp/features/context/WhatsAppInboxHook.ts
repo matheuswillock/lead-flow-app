@@ -18,6 +18,7 @@ import type {
   TeamMember,
   WhatsAppConfig,
   WhatsAppConversation,
+  WhatsAppConversationTag,
   WhatsAppMessage,
   WhatsAppTeamContact,
 } from './WhatsAppInboxTypes'
@@ -65,6 +66,14 @@ function areMessageListsEquivalent(a: WhatsAppMessage[], b: WhatsAppMessage[]): 
   return true
 }
 
+function tagsSignature(tags: WhatsAppConversationTag[] | undefined): string {
+  if (!tags || tags.length === 0) return ''
+  return tags
+    .map((tag) => `${tag.id}:${tag.name}:${tag.color}`)
+    .sort()
+    .join('|')
+}
+
 function areConversationListsEquivalent(
   a: WhatsAppConversation[],
   b: WhatsAppConversation[]
@@ -83,7 +92,8 @@ function areConversationListsEquivalent(
       x.leadId !== y.leadId ||
       x.isArchived !== y.isArchived ||
       x.contactName !== y.contactName ||
-      x.contactAvatarUrl !== y.contactAvatarUrl
+      x.contactAvatarUrl !== y.contactAvatarUrl ||
+      tagsSignature(x.tags) !== tagsSignature(y.tags)
     ) {
       return false
     }
@@ -136,6 +146,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
   const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
+  const [filterTagIds, setFilterTagIdsState] = useState<string[]>([])
+  const [teamTags, setTeamTags] = useState<WhatsAppConversationTag[]>([])
+  const [isLoadingTags, setIsLoadingTags] = useState(false)
+  const [isUpdatingTags, setIsUpdatingTags] = useState(false)
 
   const currentConfigKeyRef = useRef<string | null>(null)
   const inFlightConfigKeyRef = useRef<string | null>(null)
@@ -258,6 +272,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [activeTeamId, supabaseId])
 
   const filterModeRef = useRef<ConversationFilterMode>('all')
+  const filterTagIdsRef = useRef<string[]>([])
   const conversationIdsRef = useRef<Set<string>>(new Set())
   const realtimeHealthyRef = useRef(true)
   const selectedConversationIdRef = useRef<string | null>(null)
@@ -383,7 +398,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       }
 
       const effectiveFilter = filter ?? filterModeRef.current
-      const key = `${supabaseId}:${activeTeamId}:${pageNum}:${search}:${effectiveFilter}`
+      const effectiveTagIds = filterTagIdsRef.current
+      const key = `${supabaseId}:${activeTeamId}:${pageNum}:${search}:${effectiveFilter}:${effectiveTagIds.join(',')}`
       currentConvsKeyRef.current = key
 
       if (inFlightConvsKeyRef.current === key) {
@@ -408,6 +424,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             hasUnread,
             assignedProfileId,
             isArchived,
+            tagIds: effectiveTagIds.length > 0 ? effectiveTagIds : undefined,
           })
           .finally(() => {
             conversationsInFlightByKey.delete(key)
@@ -648,6 +665,65 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       void loadConversations(1, pendingSearchRef.current, mode)
     },
     [loadConversations]
+  )
+
+  const loadTeamTags = useCallback(async () => {
+    if (!activeTeamId) {
+      setTeamTags([])
+      return
+    }
+
+    setIsLoadingTags(true)
+    try {
+      const tags = await whatsAppInboxService.fetchTags(activeTeamId, supabaseId)
+      setTeamTags(tags)
+    } catch (error) {
+      console.error('[useWhatsAppInbox] Erro ao carregar tags:', error)
+    } finally {
+      setIsLoadingTags(false)
+    }
+  }, [activeTeamId, supabaseId])
+
+  useEffect(() => {
+    void loadTeamTags()
+  }, [loadTeamTags])
+
+  const setFilterTagIds = useCallback(
+    (tagIds: string[]) => {
+      filterTagIdsRef.current = tagIds
+      setFilterTagIdsState(tagIds)
+      setPage(1)
+      void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
+    },
+    [loadConversations]
+  )
+
+  const setConversationTags = useCallback(
+    async (conversationId: string, tagIds: string[]) => {
+      if (!activeTeamId || isUpdatingTags) return
+
+      setIsUpdatingTags(true)
+      try {
+        const tags = await whatsAppInboxService.setConversationTags(
+          activeTeamId,
+          supabaseId,
+          conversationId,
+          tagIds
+        )
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === conversationId ? { ...conversation, tags } : conversation
+          )
+        )
+        toast.success('Tags atualizadas')
+      } catch (error) {
+        console.error('[useWhatsAppInbox] Erro ao atualizar tags:', error)
+        toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar as tags')
+      } finally {
+        setIsUpdatingTags(false)
+      }
+    },
+    [activeTeamId, supabaseId, isUpdatingTags]
   )
 
   // Shared send routine used by sendMessage (new optimistic message) and
@@ -1519,6 +1595,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isSending,
     searchQuery,
     filterMode,
+    filterTagIds,
+    teamTags,
+    isLoadingTags,
+    isUpdatingTags,
     page,
     hasMoreConversations,
     isAssigning,
@@ -1548,6 +1628,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     resendMessage,
     setSearchQuery,
     setFilterMode,
+    setFilterTagIds,
+    loadTeamTags,
+    setConversationTags,
     assignConversation,
     takeoverConversation,
     setHandoffMode,

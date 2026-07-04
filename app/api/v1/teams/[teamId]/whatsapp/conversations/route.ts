@@ -36,6 +36,10 @@ export async function GET(
   const isArchivedParam = url.searchParams.get("isArchived")
   const isArchived = isArchivedParam === "true" ? true : isArchivedParam === "false" ? false : undefined
   const search = url.searchParams.get("search") ?? undefined
+  const tagIdsParam = url.searchParams.get("tagIds")
+  const tagIds = tagIdsParam
+    ? tagIdsParam.split(",").map((id) => id.trim()).filter(Boolean)
+    : undefined
   const page = parseInt(url.searchParams.get("page") ?? "1", 10)
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 100)
 
@@ -47,6 +51,7 @@ export async function GET(
     hasUnread,
     isArchived,
     search,
+    tagIds,
     page,
     limit,
   })
