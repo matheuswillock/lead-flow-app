@@ -116,6 +116,7 @@ function areConversationListsEquivalent(
       x.leadId !== y.leadId ||
       x.isArchived !== y.isArchived ||
       x.contactName !== y.contactName ||
+      x.contactNameSource !== y.contactNameSource ||
       x.contactAvatarUrl !== y.contactAvatarUrl ||
       tagsSignature(x.tags) !== tagsSignature(y.tags)
     ) {
@@ -157,6 +158,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [isAssigning, setIsAssigning] = useState(false)
   const [isChangingHandoff, setIsChangingHandoff] = useState(false)
   const [isLinkingLead, setIsLinkingLead] = useState(false)
+  const [isUpdatingContactName, setIsUpdatingContactName] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingConversation, setIsCreatingConversation] = useState(false)
@@ -203,6 +205,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const isAssigningRef = useRef(false)
   const isChangingHandoffRef = useRef(false)
   const isLinkingLeadRef = useRef(false)
+  const isUpdatingContactNameRef = useRef(false)
   const isArchivingRef = useRef(false)
   const isDeletingRef = useRef(false)
 
@@ -1049,6 +1052,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       configId: string
       contactPhone?: string
       contactName?: string | null
+      contactNameSource?: WhatsAppConversation['contactNameSource']
       contactAvatarUrl?: string | null
       lastMessagePreview: string | null
       lastMessageAt: string | null
@@ -1075,6 +1079,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             externalChatId: null,
             contactPhone: row.contactPhone ?? '',
             contactName: row.contactName ?? null,
+            contactNameSource: row.contactNameSource ?? 'PUSH_NAME',
             contactAvatarUrl: row.contactAvatarUrl ?? null,
             normalizedPhone: '',
             assignedProfileId: row.assignedProfileId,
@@ -1099,6 +1104,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
               ? {
                   ...c,
                   contactName: row.contactName ?? c.contactName,
+                  contactNameSource: row.contactNameSource ?? c.contactNameSource,
                   contactAvatarUrl: row.contactAvatarUrl ?? c.contactAvatarUrl,
                   lastMessagePreview: row.lastMessagePreview,
                   lastMessageAt: row.lastMessageAt,
@@ -1151,6 +1157,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       configId: string
       contactPhone: string
       contactName: string | null
+      contactNameSource?: WhatsAppConversation['contactNameSource']
       contactAvatarUrl: string | null
       externalChatId: string | null
       normalizedPhone: string
@@ -1180,6 +1187,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         externalChatId: row.externalChatId,
         contactPhone: row.contactPhone,
         contactName: row.contactName,
+        contactNameSource: row.contactNameSource ?? 'PUSH_NAME',
         contactAvatarUrl: row.contactAvatarUrl,
         normalizedPhone: row.normalizedPhone,
         assignedProfileId: row.assignedProfileId,
@@ -1373,9 +1381,20 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       const execute = async () => {
         setIsLinkingLead(true)
         try {
-          await whatsAppInboxService.linkLead(activeTeamId, supabaseId, conversationId, leadId)
+          const updated = await whatsAppInboxService.linkLead(
+            activeTeamId,
+            supabaseId,
+            conversationId,
+            leadId
+          )
           setConversations((prev) =>
-            prev.map((c) => (c.id === conversationId ? { ...c, leadId } : c))
+            prev.map((c) =>
+              c.id === conversationId
+                ? updated
+                  ? { ...c, ...updated, leadId: updated.leadId ?? leadId }
+                  : { ...c, leadId }
+                : c
+            )
           )
           toast.success('Lead vinculado com sucesso')
         } catch (error) {
@@ -1392,6 +1411,37 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         setIsLinkingLead(false)
         isLinkingLeadRef.current = false
       })
+    },
+    [activeTeamId, supabaseId]
+  )
+
+  const updateContactName = useCallback(
+    async (conversationId: string, contactName: string) => {
+      if (!activeTeamId || isUpdatingContactNameRef.current) return
+      isUpdatingContactNameRef.current = true
+
+      try {
+        setIsUpdatingContactName(true)
+        const updated = await whatsAppInboxService.updateConversationContactName(
+          activeTeamId,
+          supabaseId,
+          conversationId,
+          contactName
+        )
+        setConversations((prev) =>
+          prev.map((c) => (c.id === conversationId ? { ...c, ...updated } : c))
+        )
+        toast.success('Nome do contato atualizado')
+      } catch (error) {
+        console.error('[useWhatsAppInbox] Erro ao atualizar nome do contato:', error)
+        toast.error(
+          error instanceof Error ? error.message : 'Não foi possível atualizar o nome do contato'
+        )
+        throw error
+      } finally {
+        setIsUpdatingContactName(false)
+        isUpdatingContactNameRef.current = false
+      }
     },
     [activeTeamId, supabaseId]
   )
@@ -1657,6 +1707,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isAssigning,
     isChangingHandoff,
     isLinkingLead,
+    isUpdatingContactName,
     isArchiving,
     isDeleting,
     teamMembers,
@@ -1689,6 +1740,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     setHandoffMode,
     loadTeamMembers,
     linkLead,
+    updateContactName,
     searchLeads,
     archiveConversation,
     unarchiveConversation,

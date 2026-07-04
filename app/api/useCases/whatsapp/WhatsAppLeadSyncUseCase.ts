@@ -1,6 +1,10 @@
 import { Output } from "@/lib/output"
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
+import {
+  resolveContactNameUpdate,
+  type ContactNameSource,
+} from "@/lib/whatsapp/contact-name"
 
 interface LinkOrCreateInput {
   teamId: string
@@ -60,6 +64,17 @@ class WhatsAppLeadSyncUseCase {
       }
 
       await whatsAppRepository.linkConversationToLead(input.conversationId, result.id)
+
+      const nameUpdate = resolveContactNameUpdate({
+        currentName: conversation.contactName,
+        currentSource: conversation.contactNameSource as ContactNameSource,
+        incomingName: displayName,
+        incomingSource: "LEAD",
+      })
+      if (nameUpdate) {
+        await whatsAppRepository.updateConversation(input.conversationId, nameUpdate)
+      }
+
       return new Output(true, [], [], result.id)
     } catch (error) {
       console.error("[WhatsAppLeadSyncUseCase][execute]", error)
