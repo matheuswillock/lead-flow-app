@@ -123,6 +123,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [isAssigning, setIsAssigning] = useState(false)
   const [isChangingHandoff, setIsChangingHandoff] = useState(false)
   const [isLinkingLead, setIsLinkingLead] = useState(false)
+  const [isCreatingLead, setIsCreatingLead] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingConversation, setIsCreatingConversation] = useState(false)
@@ -164,6 +165,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const isAssigningRef = useRef(false)
   const isChangingHandoffRef = useRef(false)
   const isLinkingLeadRef = useRef(false)
+  const isCreatingLeadRef = useRef(false)
   const isArchivingRef = useRef(false)
   const isDeletingRef = useRef(false)
 
@@ -1267,6 +1269,35 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [activeTeamId, supabaseId]
   )
 
+  const createLeadFromConversation = useCallback(
+    async (conversationId: string, input: { name: string; phone: string }) => {
+      if (!activeTeamId || isCreatingLeadRef.current) return
+      isCreatingLeadRef.current = true
+
+      try {
+        setIsCreatingLead(true)
+        const result = await whatsAppInboxService.createLeadFromConversation(
+          activeTeamId,
+          supabaseId,
+          conversationId,
+          input
+        )
+        setConversations((prev) =>
+          prev.map((c) => (c.id === conversationId ? { ...c, leadId: result.leadId } : c))
+        )
+        toast.success('Lead criado e vinculado com sucesso')
+      } catch (error) {
+        console.error('[useWhatsAppInbox] Erro ao criar lead:', error)
+        toast.error(error instanceof Error ? error.message : 'Não foi possível criar o lead')
+        throw error
+      } finally {
+        setIsCreatingLead(false)
+        isCreatingLeadRef.current = false
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
   const searchLeads = useCallback(
     async (query: string): Promise<LeadSearchResult[]> => {
       if (!activeTeamId || !activeTeam?.role || !query.trim()) return []
@@ -1524,6 +1555,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isAssigning,
     isChangingHandoff,
     isLinkingLead,
+    isCreatingLead,
     isArchiving,
     isDeleting,
     teamMembers,
@@ -1553,6 +1585,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     setHandoffMode,
     loadTeamMembers,
     linkLead,
+    createLeadFromConversation,
     searchLeads,
     archiveConversation,
     unarchiveConversation,

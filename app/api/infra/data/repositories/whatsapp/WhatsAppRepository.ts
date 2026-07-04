@@ -44,6 +44,7 @@ const CONVERSATION_SELECT = {
   externalChatId: true,
   contactPhone: true,
   contactName: true,
+  contactNameSource: true,
   contactAvatarUrl: true,
   normalizedPhone: true,
   assignedProfileId: true,
@@ -321,6 +322,25 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return prisma.whatsAppConversation.update({
       where: { id: conversationId },
       data: { leadId },
+      select: CONVERSATION_SELECT,
+    })
+  }
+
+  async linkConversationToLeadIfEmpty(
+    conversationId: string,
+    leadId: string
+  ): Promise<WhatsAppConversationSelect | null> {
+    const linkResult = await prisma.whatsAppConversation.updateMany({
+      where: { id: conversationId, leadId: null },
+      data: { leadId },
+    })
+
+    if (linkResult.count === 0) {
+      return null
+    }
+
+    return prisma.whatsAppConversation.findUnique({
+      where: { id: conversationId },
       select: CONVERSATION_SELECT,
     })
   }

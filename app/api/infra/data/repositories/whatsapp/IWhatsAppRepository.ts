@@ -36,6 +36,7 @@ export interface WhatsAppConversationSelect {
   externalChatId: string | null
   contactPhone: string
   contactName: string | null
+  contactNameSource: string
   contactAvatarUrl: string | null
   normalizedPhone: string
   assignedProfileId: string | null
@@ -142,6 +143,11 @@ export interface IWhatsAppRepository {
     conversationId: string,
     leadId: string
   ): Promise<WhatsAppConversationSelect>
+
+  linkConversationToLeadIfEmpty(
+    conversationId: string,
+    leadId: string
+  ): Promise<WhatsAppConversationSelect | null>
 
   // Messages
   createMessage(data: Prisma.WhatsAppMessageCreateInput): Promise<WhatsAppMessageSelect>

@@ -372,7 +372,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     }))
   }
 
-  async linkLead(teamId: string, supabaseId: string, conversationId: string, leadId: string): Promise<void> {
+  async linkLead(teamId: string, supabaseId: string, conversationId: string, leadId: string): Promise<WhatsAppConversation | null> {
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/link-lead`,
       {
@@ -390,6 +390,41 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível vincular o lead'))
     }
+
+    const result = (output as Record<string, unknown>).result
+    return result && typeof result === 'object' ? (result as WhatsAppConversation) : null
+  }
+
+  async createLeadFromConversation(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    input: { name: string; phone: string }
+  ): Promise<{ leadId: string }> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/create-lead`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
+        },
+        body: JSON.stringify(input),
+      }
+    )
+
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível criar o lead'))
+    }
+
+    const result = (output as Record<string, unknown>).result as { leadId?: string } | undefined
+    if (!result?.leadId) {
+      throw new Error('Resposta inválida ao criar lead')
+    }
+
+    return { leadId: result.leadId }
   }
 
   async archiveConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
@@ -435,6 +470,33 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       const output: unknown = await response.json().catch(() => null)
       throw new Error(this.extractErrorMessage(output, 'Não foi possível excluir a conversa'))
     }
+  }
+
+  async updateConversationContactName(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    contactName: string
+  ): Promise<WhatsAppConversation> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
+        },
+        body: JSON.stringify({ contactName }),
+      }
+    )
+
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível atualizar o nome do contato'))
+    }
+
+    return (output as Record<string, unknown>).result as WhatsAppConversation
   }
 
   async createConversation(
