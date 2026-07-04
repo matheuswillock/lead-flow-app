@@ -971,9 +971,19 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       if (row.conversationId !== currentMessagesConvIdRef.current) return
 
       // Registra o INSERT para suprimir o heal em handleConversationUpdated
-      // apenas quando o UPDATE refletir esta mesma mensagem. Não cancelar o timer
-      // de heal pendente: um INSERT posterior não substitui um INSERT anterior perdido.
-      lastRealtimeInsertMessageAtRef.current = row.sentAt ?? row.createdAt
+      // quando o UPDATE ainda não chegou. Se o UPDATE chegou antes e agendou
+      // heal, cancelar o timer quando esta mensagem cobre o lastMessageAt pendente.
+      const insertedAt = row.sentAt ?? row.createdAt
+      lastRealtimeInsertMessageAtRef.current = insertedAt
+
+      if (
+        messageRefetchTimerRef.current !== null &&
+        insertedAt !== null &&
+        insertedAt === selectedLastMessageAtRef.current
+      ) {
+        window.clearTimeout(messageRefetchTimerRef.current)
+        messageRefetchTimerRef.current = null
+      }
 
       setMessages((prev) => {
         if (prev.some((m) => m.id === row.id)) return prev
