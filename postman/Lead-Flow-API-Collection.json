@@ -13858,6 +13858,49 @@
           "response": []
         },
         {
+          "name": "Alterar handoff da conversa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"BOT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/handoff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}",
+                "handoff"
+              ]
+            },
+            "description": "Altera handoffMode da conversa (BOT reativa auto-respostas mantendo assignee; HUMAN bloqueia bot)."
+          },
+          "response": []
+        },
+        {
           "name": "Marcar conversa como lida",
           "request": {
             "method": "POST",
