@@ -45,6 +45,11 @@ function sortConversationsByLastMessage(items: WhatsAppConversation[]): WhatsApp
 // Preservam a identidade do array de estado quando um refetch devolve dados
 // equivalentes aos já renderizados: evita re-render em cascata dos bubbles e
 // re-download de mídia (<img> do proxy) quando nada mudou.
+function linkPreviewSignature(preview: WhatsAppMessage['linkPreview']): string {
+  if (!preview) return ''
+  return JSON.stringify(preview)
+}
+
 function areMessageListsEquivalent(a: WhatsAppMessage[], b: WhatsAppMessage[]): boolean {
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
@@ -52,12 +57,22 @@ function areMessageListsEquivalent(a: WhatsAppMessage[], b: WhatsAppMessage[]): 
     const y = b[i]!
     if (
       x.id !== y.id ||
+      x.direction !== y.direction ||
+      x.messageType !== y.messageType ||
       x.status !== y.status ||
       x.contentText !== y.contentText ||
       x.mediaUrl !== y.mediaUrl ||
+      x.caption !== y.caption ||
+      x.mediaFileName !== y.mediaFileName ||
+      linkPreviewSignature(x.linkPreview) !== linkPreviewSignature(y.linkPreview) ||
+      x.senderDisplayName !== y.senderDisplayName ||
+      x.sentByProfileId !== y.sentByProfileId ||
+      x.sentAt !== y.sentAt ||
+      x.createdAt !== y.createdAt ||
       x.deliveredAt !== y.deliveredAt ||
       x.readAt !== y.readAt ||
-      x.failedAt !== y.failedAt
+      x.failedAt !== y.failedAt ||
+      x.isAutoResponse !== y.isAutoResponse
     ) {
       return false
     }
@@ -845,13 +860,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     }) => {
       if (row.conversationId !== currentMessagesConvIdRef.current) return
 
-      // O INSERT chegou pelo canal realtime: o refetch de "heal" agendado por
-      // handleConversationUpdated só fica redundante se o UPDATE refletir esta mesma mensagem.
+      // Registra o INSERT para suprimir o heal em handleConversationUpdated
+      // apenas quando o UPDATE refletir esta mesma mensagem. Não cancelar o timer
+      // de heal pendente: um INSERT posterior não substitui um INSERT anterior perdido.
       lastRealtimeInsertMessageAtRef.current = row.sentAt ?? row.createdAt
-      if (messageRefetchTimerRef.current !== null) {
-        window.clearTimeout(messageRefetchTimerRef.current)
-        messageRefetchTimerRef.current = null
-      }
 
       setMessages((prev) => {
         if (prev.some((m) => m.id === row.id)) return prev
