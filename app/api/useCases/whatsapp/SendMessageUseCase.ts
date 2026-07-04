@@ -22,7 +22,7 @@ class SendMessageUseCase {
         return new Output(false, [], ["Limite mensal de mensagens atingido. Contate o administrador para aumentar o limite."], null)
       }
 
-      if (!isWithinSendRateLimit(input.teamId)) {
+      if (!(await isWithinSendRateLimit(input.teamId))) {
         return new Output(false, [], ["Limite de envio por minuto atingido. Aguarde um momento."], null)
       }
 
