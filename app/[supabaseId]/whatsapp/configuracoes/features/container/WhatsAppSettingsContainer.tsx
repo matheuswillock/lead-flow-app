@@ -1,6 +1,7 @@
 "use client"
 
 import { ConnectionCard } from '../components/ConnectionCard'
+import { TagManagerCard } from '../components/TagManagerCard'
 
 export function WhatsAppSettingsContainer() {
   return (
@@ -12,6 +13,7 @@ export function WhatsAppSettingsContainer() {
         </p>
       </div>
       <ConnectionCard />
+      <TagManagerCard />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
 import { computeWhatsAppRealtimeHealth } from '@/lib/whatsapp/realtime-health'
+import type { WhatsAppContactNameSource } from '@/app/[supabaseId]/whatsapp/features/context/WhatsAppInboxTypes'
 
 export type WhatsAppMessageRealtimeRow = {
   id: string
@@ -30,6 +31,7 @@ export type WhatsAppConversationRealtimeRow = {
   configId: string
   contactPhone: string
   contactName: string | null
+  contactNameSource?: WhatsAppContactNameSource
   contactAvatarUrl: string | null
   externalChatId: string | null
   normalizedPhone: string
@@ -93,6 +95,7 @@ function mapConversationRow(
     configId: row.configId ?? '',
     contactPhone: row.contactPhone ?? '',
     contactName: row.contactName ?? null,
+    contactNameSource: row.contactNameSource ?? 'PUSH_NAME',
     contactAvatarUrl: row.contactAvatarUrl ?? null,
     externalChatId: row.externalChatId ?? null,
     normalizedPhone: row.normalizedPhone ?? '',

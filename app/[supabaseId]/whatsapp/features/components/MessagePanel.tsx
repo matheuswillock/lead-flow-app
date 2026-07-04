@@ -1,15 +1,20 @@
 "use client"
 
-import { useEffect, useRef } from 'react'
-import { Loader2, Phone, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useParams } from 'next/navigation'
+import { Loader2, Phone, RefreshCw, UserSquare2, Wifi, WifiOff } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { useTeamContext } from '@/app/context/TeamContext'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { AssignmentControl } from './AssignmentControl'
 import { ConversationActionsMenu } from './ConversationActionsMenu'
+import { LeadDetailsSheet } from './LeadDetailsSheet'
+import { EditContactNameDialog } from './EditContactNameDialog'
+import { ConversationTagPicker } from './ConversationTagPicker'
 import { LinkLeadDialog } from './LinkLeadDialog'
 import { MessageBubble } from './MessageBubble'
 import { MessageBubbleSkeleton } from './MessageBubbleSkeleton'
@@ -33,6 +38,8 @@ function getInitials(name: string | null, phone: string): string {
 }
 
 export function MessagePanel() {
+  const params = useParams<{ supabaseId: string }>()
+  const { activeTeamId } = useTeamContext()
   const {
     selectedConversation,
     messages,
@@ -47,6 +54,7 @@ export function MessagePanel() {
     syncGroupParticipants,
   } = useWhatsAppInboxContext()
 
+  const [leadSheetOpen, setLeadSheetOpen] = useState(false)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const isConnected = config?.status === 'CONNECTED'
 
@@ -90,6 +98,7 @@ export function MessagePanel() {
         <div className="flex flex-1 flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-foreground">{displayName}</span>
+            {chatKind !== 'group' && <EditContactNameDialog conversation={selectedConversation} />}
             {chatKind === 'group' && (
               <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">Grupo</Badge>
             )}
@@ -115,8 +124,26 @@ export function MessagePanel() {
             </Button>
           )}
           {canManageAssignment && (
-            <LinkLeadDialog selectedConversation={selectedConversation} />
+            <>
+              {selectedConversation.leadId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => setLeadSheetOpen(true)}
+                >
+                  <UserSquare2 className="size-3.5" />
+                  Ver lead
+                </Button>
+              ) : null}
+              <LinkLeadDialog
+                selectedConversation={selectedConversation}
+                onOpenLeadCard={() => setLeadSheetOpen(true)}
+              />
+            </>
           )}
+          <ConversationTagPicker conversation={selectedConversation} />
           <AssignmentControl selectedConversation={selectedConversation} />
           {canManageAssignment && (
             <ConversationActionsMenu conversation={selectedConversation} />
@@ -198,6 +225,14 @@ export function MessagePanel() {
       <div className="p-4">
         <MessageComposer disabled={!isConnected} />
       </div>
+
+      <LeadDetailsSheet
+        open={leadSheetOpen}
+        onOpenChange={setLeadSheetOpen}
+        leadId={selectedConversation.leadId}
+        teamId={activeTeamId}
+        supabaseId={params.supabaseId}
+      />
     </div>
   )
 }
