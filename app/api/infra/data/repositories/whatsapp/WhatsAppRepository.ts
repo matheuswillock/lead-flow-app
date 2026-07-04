@@ -1,10 +1,15 @@
 import { Prisma, type WhatsAppMessageStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone"
+import {
+  mapTagAssignmentsToSummaries,
+  WHATSAPP_CONVERSATION_TAG_ASSIGNMENTS_SELECT,
+} from "./WhatsAppConversationTagRepository"
 import type {
   IWhatsAppRepository,
   WhatsAppConfigSelect,
   WhatsAppConversationSelect,
+  WhatsAppConversationWithTagsSelect,
   WhatsAppMessageSelect,
 } from "./IWhatsAppRepository"
 
@@ -57,6 +62,21 @@ const CONVERSATION_SELECT = {
   createdAt: true,
   updatedAt: true,
 } as const
+
+const CONVERSATION_LIST_SELECT = {
+  ...CONVERSATION_SELECT,
+  ...WHATSAPP_CONVERSATION_TAG_ASSIGNMENTS_SELECT,
+} as const
+
+function mapConversationWithTags(
+  conversation: WhatsAppConversationWithTagsSelect
+): WhatsAppConversationSelect & { tags: ReturnType<typeof mapTagAssignmentsToSummaries> } {
+  const { tagAssignments, ...base } = conversation
+  return {
+    ...base,
+    tags: mapTagAssignmentsToSummaries(tagAssignments),
+  }
+}
 
 const MESSAGE_SELECT = {
   id: true,
@@ -225,10 +245,11 @@ class WhatsAppRepository implements IWhatsAppRepository {
     hasUnread?: boolean
     isArchived?: boolean
     search?: string
+    tagIds?: string[]
     page?: number
     limit?: number
     visibilityWhere?: Prisma.WhatsAppConversationWhereInput
-  }): Promise<{ conversations: WhatsAppConversationSelect[]; total: number }> {
+  }): Promise<{ conversations: (WhatsAppConversationSelect & { tags: ReturnType<typeof mapTagAssignmentsToSummaries> })[]; total: number }> {
     const page = params.page ?? 1
     const limit = params.limit ?? 20
     const skip = (page - 1) * limit
@@ -241,6 +262,13 @@ class WhatsAppRepository implements IWhatsAppRepository {
         ? { assignedProfileId: params.assignedProfileId }
         : {}),
       ...(params.hasUnread === true ? { unreadCount: { gt: 0 } } : {}),
+      ...(params.tagIds && params.tagIds.length > 0
+        ? {
+            AND: params.tagIds.map((tagId) => ({
+              tagAssignments: { some: { tagId } },
+            })),
+          }
+        : {}),
       ...(params.search
         ? {
             OR: [
@@ -256,16 +284,18 @@ class WhatsAppRepository implements IWhatsAppRepository {
       ? { AND: [baseWhere, params.visibilityWhere] }
       : baseWhere
 
-    const [conversations, total] = await prisma.$transaction([
+    const [rawConversations, total] = await prisma.$transaction([
       prisma.whatsAppConversation.findMany({
         where,
-        select: CONVERSATION_SELECT,
+        select: CONVERSATION_LIST_SELECT,
         orderBy: [{ unreadCount: "desc" }, { lastMessageAt: "desc" }],
         skip,
         take: limit,
       }),
       prisma.whatsAppConversation.count({ where }),
     ])
+
+    const conversations = rawConversations.map(mapConversationWithTags)
 
     return { conversations, total }
   }

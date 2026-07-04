@@ -1971,6 +1971,22 @@ failed failed
     }
   
 
+  "whatsapp_conversation_tags" {
+    String id "🗝️"
+    String name 
+    String color 
+    Int sortOrder 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_conversation_tag_assignments" {
+    String id "🗝️"
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_cdp_profiles" {
     String id "🗝️"
     String normalizedName 
@@ -2390,6 +2406,9 @@ failed failed
     "whatsapp_auto_response_logs" |o--|| "WhatsAppAutoResponseRuleType" : "enum:ruleType"
     "whatsapp_auto_response_logs" }o--|| whatsapp_conversations : "conversation"
     "whatsapp_auto_response_logs" }o--|o whatsapp_auto_response_rules : "rule"
+    "whatsapp_conversation_tags" }o--|| corretor_studio_teams : "team"
+    "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversations : "conversation"
+    "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversation_tags : "tag"
     "corretor_studio_cdp_profiles" }o--|| corretor_studio_teams : "team"
     "corretor_studio_cdp_identities" |o--|| "CustomerIdentityType" : "enum:type"
     "corretor_studio_cdp_identities" }o--|| corretor_studio_cdp_profiles : "profile"

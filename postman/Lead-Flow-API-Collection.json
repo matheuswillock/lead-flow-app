@@ -13901,6 +13901,126 @@
           "response": []
         },
         {
+          "name": "Listar tags de conversa",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "tags"
+              ]
+            },
+            "description": "Lista tags de conversa do time."
+          },
+          "response": []
+        },
+        {
+          "name": "Criar tag de conversa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Urgente\",\n  \"color\": \"destructive\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "tags"
+              ]
+            },
+            "description": "Cria tag de conversa (manager/master)."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar tags da conversa",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tagIds\": [\"{{tagId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}",
+                "tags"
+              ]
+            },
+            "description": "Substitui o conjunto de tags da conversa."
+          },
+          "response": []
+        },
+        {
           "name": "Marcar conversa como lida",
           "request": {
             "method": "POST",
