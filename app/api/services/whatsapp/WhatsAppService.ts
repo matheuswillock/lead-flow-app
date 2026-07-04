@@ -537,7 +537,10 @@ class WhatsAppService implements IWhatsAppService {
       lastOutboundAt: now,
       lastMessageAt: now,
       lastMessagePreview: preview,
-      handoffMode: "HUMAN",
+      ...(conversation.handoffMode === "BOT" ? { handoffMode: "HUMAN" as const } : {}),
+      ...(conversation.assignedProfileId === null
+        ? { assignedProfile: { connect: { id: input.sentByProfileId } } }
+        : {}),
     })
 
     return { messageId: message.id }

@@ -29,10 +29,17 @@ export async function POST(
     )
   }
 
-  const output = await archiveConversationUseCase.execute({ conversationId, teamId, archived: false })
+  const output = await archiveConversationUseCase.execute({
+    conversationId,
+    teamId,
+    archived: false,
+    access: teamAccess.access,
+  })
 
   if (!output.isValid) {
-    const status = output.errorMessages.some((m) => m.includes("não encontrada")) ? 404 : 500
+    const isNotFound = output.errorMessages.some((m) => m.includes("não encontrada"))
+    const isAuthz = output.errorMessages.some((m) => m.includes("Acesso negado"))
+    const status = isAuthz ? 403 : isNotFound ? 404 : 500
     return NextResponse.json(output, { status })
   }
 

@@ -43,6 +43,13 @@ export interface IWhatsAppInboxService {
     conversationId: string,
     profileId: string
   ): Promise<void>
+  takeoverConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void>
+  setHandoffMode(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    mode: 'BOT' | 'HUMAN'
+  ): Promise<void>
   fetchTeamMembers(teamId: string, supabaseId: string): Promise<TeamMember[]>
   linkLead(teamId: string, supabaseId: string, conversationId: string, leadId: string): Promise<void>
   searchLeads(teamId: string, supabaseId: string, query: string, role: string): Promise<LeadSearchResult[]>

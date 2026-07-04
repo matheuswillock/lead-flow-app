@@ -293,6 +293,54 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     }
   }
 
+  async takeoverConversation(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string
+  ): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/takeover`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
+        },
+      }
+    )
+
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível assumir a conversa'))
+    }
+  }
+
+  async setHandoffMode(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    mode: 'BOT' | 'HUMAN'
+  ): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/handoff`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
+        },
+        body: JSON.stringify({ mode }),
+      }
+    )
+
+    const output: unknown = await response.json().catch(() => null)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível alterar o modo de atendimento'))
+    }
+  }
+
   async fetchTeamMembers(teamId: string, supabaseId: string): Promise<TeamMember[]> {
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/members`,
