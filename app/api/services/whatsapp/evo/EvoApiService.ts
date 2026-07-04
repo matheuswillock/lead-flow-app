@@ -9,6 +9,7 @@ import type {
 } from "./IEvoApiService"
 import { WHATSAPP_EVO_WEBHOOK_EVENTS } from "./IEvoApiService"
 import { normalizePhone, normalizeRemoteJid } from "../phoneUtils"
+import { deriveWebhookHeaderSecret, extractWebhookSecretFromUrl, WHATSAPP_WEBHOOK_HEADER_NAME } from "@/lib/whatsapp/webhook-header-auth"
 
 function getBaseUrl(hostBaseUrl?: string): string {
   if (hostBaseUrl) return hostBaseUrl.replace(/\/$/, "")
@@ -77,10 +78,13 @@ export function isInstanceNameAlreadyInUseError(error: unknown): boolean {
 }
 
 function buildWebhookPayload(webhookUrl: string) {
+  const webhookSecret = extractWebhookSecretFromUrl(webhookUrl)
+  const headerSecret = webhookSecret ? deriveWebhookHeaderSecret(webhookSecret) : null
   return {
     enabled: true,
     url: webhookUrl,
     events: [...WHATSAPP_EVO_WEBHOOK_EVENTS],
+    ...(headerSecret ? { headers: { [WHATSAPP_WEBHOOK_HEADER_NAME]: headerSecret } } : {}),
   }
 }
 

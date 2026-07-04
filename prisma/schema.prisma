@@ -2787,6 +2787,7 @@ model WhatsAppUsageEvent {
   @@unique([teamId, providerMessageId, eventType])
   @@index([teamId, periodKey])
   @@index([configId, periodKey])
+  @@index([teamId, eventType, createdAt(sort: Desc)])
   @@map("whatsapp_usage_events")
 }
 

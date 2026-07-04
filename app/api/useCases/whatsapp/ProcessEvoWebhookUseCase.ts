@@ -23,6 +23,8 @@ import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/Syn
 import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
 import { Prisma, type WhatsAppConnectionStatus, type WhatsAppMessageStatus } from "@prisma/client"
 import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
+import { extractProviderEventId } from "@/lib/whatsapp/extract-provider-event-id"
+import { isRetryableWebhookError, WebhookPayloadRejectedError } from "@/lib/whatsapp/webhook-processing-errors"
 import {
   resolveContactNameUpdate,
   type ContactNameSource,
@@ -115,9 +117,9 @@ class ProcessEvoWebhookUseCase {
       const data = extractEventData(event)
 
       console.info("[ProcessEvoWebhookUseCase][execute] Processing event", eventType)
-
+      this.assertKnownEventData(eventType, data)
       if (eventType === "MESSAGES_UPSERT" || eventType === "MESSAGES.UPSERT") {
-        await this.handleMessagesUpsert(input.teamId, input.configId, data)
+        await this.handleMessagesUpsert(input.teamId, input.configId, data, event)
       } else if (eventType === "MESSAGES_UPDATE" || eventType === "MESSAGES.UPDATE") {
         await this.handleMessagesUpdate(input.teamId, data)
       } else if (eventType === "CONNECTION_UPDATE" || eventType === "CONNECTION.UPDATE") {
@@ -141,30 +143,37 @@ class ProcessEvoWebhookUseCase {
     } catch (error) {
       console.error("[ProcessEvoWebhookUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao processar webhook Evolution"
-      return new Output(false, [], [message], null)
+      return new Output(false, [], [message], { processed: false, retryable: isRetryableWebhookError(error) })
     }
   }
 
-  private async handleMessagesUpsert(
-    teamId: string,
-    configId: string,
-    data: unknown
-  ): Promise<void> {
-    const items = Array.isArray(data)
-      ? normalizeMessagesUpsertItems(data)
-      : typeof data === "object" && data !== null
-        ? normalizeMessagesUpsertItems(data as Record<string, unknown>)
-        : []
+  private assertKnownEventData(eventType: string, data: unknown): void {
+    const messageEvents = new Set([
+      "MESSAGES_UPSERT", "MESSAGES.UPSERT", "MESSAGES_UPDATE", "MESSAGES.UPDATE",
+      "SEND_MESSAGE", "SEND.MESSAGE", "MESSAGES_DELETE", "MESSAGES.DELETE",
+    ])
+    if (!messageEvents.has(eventType)) return
+    if (data === null || data === undefined) throw new WebhookPayloadRejectedError(`Evento ${eventType} sem campo data`)
+    if (typeof data !== "object") throw new WebhookPayloadRejectedError(`Evento ${eventType} com data inválida`)
+  }
 
+  private async handleMessagesUpsert(teamId: string, configId: string, data: unknown, rawEvent: Record<string, unknown>): Promise<void> {
+    const isBatchedPayload = Array.isArray(data)
+    const items = isBatchedPayload ? normalizeMessagesUpsertItems(data)
+      : typeof data === "object" && data !== null ? normalizeMessagesUpsertItems(data as Record<string, unknown>) : []
+    const eventType = extractEventType(rawEvent)
     for (const item of items) {
-      await this.processMessagesUpsertItem(teamId, configId, item)
+      await this.processMessagesUpsertItem(teamId, configId, item, rawEvent, eventType, isBatchedPayload)
     }
   }
 
   private async processMessagesUpsertItem(
     teamId: string,
     configId: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    rawEvent: Record<string, unknown>,
+    eventType: string,
+    isBatchedPayload: boolean
   ): Promise<void> {
     const keyObj = (data["key"] as Record<string, unknown> | undefined) ?? {}
     const remoteJid = extractNestedString({ key: keyObj }, "key", "remoteJid") ?? ""
@@ -202,7 +211,9 @@ class ProcessEvoWebhookUseCase {
     const preview = buildMessagePreview(parsed)
     const safeContentText = sanitizeDbText(parsed.contentText)
     const safeCaption = sanitizeDbText(parsed.caption)
-
+    const providerEventId = extractProviderEventId(rawEvent, eventType, providerMessageId, {
+      skipEnvelopeId: isBatchedPayload,
+    })
     if (!isRedelivery) {
       let messageCreated = false
       try {
@@ -211,6 +222,7 @@ class ProcessEvoWebhookUseCase {
           team: { connect: { id: routed.teamId } },
           config: { connect: { id: routed.configId } },
           providerMessageId,
+          ...(providerEventId ? { providerEventId } : {}),
           direction,
           messageType: parsed.messageType,
           status: fromMe ? "SENT" : "RECEIVED",

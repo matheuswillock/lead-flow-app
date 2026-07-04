@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { processEvoWebhookUseCase } from "@/app/api/useCases/whatsapp/ProcessEvoWebhookUseCase"
 import { isValidEvoWebhookPayload } from "@/lib/whatsapp/webhook-signature"
+import {
+  deriveWebhookHeaderSecret,
+  isValidWebhookHeaderSecret,
+  isWebhookHeaderEnforcementEnabled,
+  readWebhookHeaderSecret,
+} from "@/lib/whatsapp/webhook-header-auth"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 export const maxDuration = 60
@@ -22,10 +28,24 @@ export async function POST(
   { params }: { params: Promise<{ teamToken: string }> }
 ) {
   const { teamToken } = await params
-
   const config = await whatsAppRepository.findConfigByWebhookSecret(teamToken)
   if (!config) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const expectedHeaderSecret = deriveWebhookHeaderSecret(config.webhookSecret)
+  const providedHeaderSecret = readWebhookHeaderSecret(request)
+  const headerValid = isValidWebhookHeaderSecret(providedHeaderSecret, expectedHeaderSecret)
+
+  if (providedHeaderSecret && !headerValid) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  if (!headerValid) {
+    if (isWebhookHeaderEnforcementEnabled()) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    console.warn("[WhatsAppEvoWebhookRoute][POST] Webhook header ausente (rollout legado via URL secret)")
   }
 
   let rawEvent: unknown
@@ -36,7 +56,6 @@ export async function POST(
   }
 
   if (!isValidEvoWebhookPayload(rawEvent)) {
-    console.error("[WhatsAppEvoWebhookRoute][POST] Invalid payload structure")
     return NextResponse.json({ error: "Invalid payload structure" }, { status: 400 })
   }
 
@@ -50,35 +69,21 @@ export async function POST(
     })
 
     if (!output.isValid) {
-      console.error("[WhatsAppEvoWebhookRoute][POST] processing failed", {
-        eventType,
-        providerMessageId,
-        errors: output.errorMessages,
-      })
+      const retryable = output.result?.retryable !== false
+      if (!retryable) {
+        return NextResponse.json({ processed: false, errors: output.errorMessages }, { status: 200 })
+      }
       Sentry.captureMessage("[WhatsAppEvoWebhookRoute] processing failed", {
         level: "error",
         tags: { route: "WhatsAppEvoWebhookRoute", phase: "process" },
-        extra: {
-          teamId: config.teamId,
-          eventType,
-          providerMessageId,
-          errors: output.errorMessages,
-        },
+        extra: { teamId: config.teamId, eventType, providerMessageId, errors: output.errorMessages },
       })
-      return NextResponse.json(
-        { error: "Processing failed", errors: output.errorMessages },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: "Processing failed", errors: output.errorMessages }, { status: 500 })
     }
 
     return NextResponse.json({ processed: true }, { status: 200 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
-    console.error("[WhatsAppEvoWebhookRoute][POST] unexpected error", {
-      eventType,
-      providerMessageId,
-      error,
-    })
     Sentry.captureException(error, {
       tags: { route: "WhatsAppEvoWebhookRoute", phase: "process" },
       extra: { teamId: config.teamId, eventType, providerMessageId },
