@@ -5,6 +5,7 @@ import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositori
 import {
   resolveVisibilityScope,
   WhatsAppAccessDeniedError,
+  buildOperatorConversationVisibilityWhere,
 } from "@/lib/whatsapp/conversation-access"
 
 export { WhatsAppAccessDeniedError } from "@/lib/whatsapp/conversation-access"
@@ -21,50 +22,16 @@ export async function buildConversationVisibilityWhere(
   const scope = resolveVisibilityScope(access)
   const { teamId, profileId } = access
 
-  if (scope === "master") {
+  // RBAC-alvo (WHATSAPP_SPEC.md, Estágio 1): master e manager veem todas as
+  // conversas do time; operator vê atribuídas a ele OU sem responsável, mais
+  // as cláusulas aditivas de lead. Qualquer mudança aqui MUST ser espelhada em
+  // public.whatsapp_user_can_view_conversation (RLS do realtime).
+  if (scope === "master" || scope === "manager") {
     return undefined
   }
 
-  if (scope === "manager") {
-    const operatorProfileIds = await whatsAppRepository.getOperatorProfileIdsForTeam(teamId)
-    const orFilters: Prisma.WhatsAppConversationWhereInput[] = [
-      { assignedProfileId: profileId },
-      { createdByProfileId: profileId },
-    ]
-
-    if (operatorProfileIds.length > 0) {
-      orFilters.push(
-        { assignedProfileId: { in: operatorProfileIds } },
-        { createdByProfileId: { in: operatorProfileIds } },
-        {
-          messages: {
-            some: { sentByProfileId: { in: operatorProfileIds } },
-          },
-        }
-      )
-    }
-
-    return { OR: orFilters }
-  }
-
   const operatorLeadPhones = await whatsAppRepository.getOperatorLeadPhones(teamId, profileId)
-  const orFilters: Prisma.WhatsAppConversationWhereInput[] = [
-    { assignedProfileId: profileId },
-    {
-      lead: {
-        OR: [{ assignedTo: profileId }, { closerId: profileId }],
-      },
-    },
-  ]
-
-  if (operatorLeadPhones.length > 0) {
-    orFilters.push({
-      leadId: null,
-      normalizedPhone: { in: operatorLeadPhones },
-    })
-  }
-
-  return { OR: orFilters }
+  return buildOperatorConversationVisibilityWhere(profileId, operatorLeadPhones)
 }
 
 export async function canAccessConversation(
