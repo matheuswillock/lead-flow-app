@@ -6,35 +6,40 @@ import {
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 
-interface ArchiveConversationInput {
-  conversationId: string
+interface SetConversationHandoffInput {
   teamId: string
-  archived: boolean
+  conversationId: string
+  mode: "BOT" | "HUMAN"
   access: TeamAccess
 }
 
-class ArchiveConversationUseCase {
-  async execute(input: ArchiveConversationInput): Promise<Output> {
+class SetConversationHandoffUseCase {
+  async execute(input: SetConversationHandoffInput): Promise<Output> {
     try {
       const conversation = await assertCanAccessConversation(input.access, input.conversationId)
       if (conversation.teamId !== input.teamId) {
         return new Output(false, [], ["Conversa não encontrada"], null)
       }
 
-      await whatsAppRepository.updateConversation(input.conversationId, {
-        isArchived: input.archived,
+      const updated = await whatsAppRepository.updateConversation(input.conversationId, {
+        handoffMode: input.mode,
       })
-      const label = input.archived ? "arquivada" : "desarquivada"
-      return new Output(true, [`Conversa ${label} com sucesso`], [], null)
+
+      const message =
+        input.mode === "BOT"
+          ? "Conversa devolvida ao bot com sucesso"
+          : "Conversa assumida para atendimento humano"
+
+      return new Output(true, [message], [], updated)
     } catch (error) {
       if (error instanceof WhatsAppAccessDeniedError) {
         return new Output(false, [], [error.message], null)
       }
-      console.error("[ArchiveConversationUseCase][execute]", error)
-      const message = error instanceof Error ? error.message : "Erro ao arquivar conversa"
+      console.error("[SetConversationHandoffUseCase][execute]", error)
+      const message = error instanceof Error ? error.message : "Erro ao alterar modo de handoff"
       return new Output(false, [], [message], null)
     }
   }
 }
 
-export const archiveConversationUseCase = new ArchiveConversationUseCase()
+export const setConversationHandoffUseCase = new SetConversationHandoffUseCase()

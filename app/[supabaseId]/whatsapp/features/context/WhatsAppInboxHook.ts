@@ -121,6 +121,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [searchQuery, setSearchQueryState] = useState('')
   const [page, setPage] = useState(1)
   const [isAssigning, setIsAssigning] = useState(false)
+  const [isChangingHandoff, setIsChangingHandoff] = useState(false)
   const [isLinkingLead, setIsLinkingLead] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -161,6 +162,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   // atualização é assíncrona e não bloqueia um segundo clique no mesmo tick.
   const isSendingRef = useRef(false)
   const isAssigningRef = useRef(false)
+  const isChangingHandoffRef = useRef(false)
   const isLinkingLeadRef = useRef(false)
   const isArchivingRef = useRef(false)
   const isDeletingRef = useRef(false)
@@ -934,6 +936,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       assignedProfileId: string | null
       leadId: string | null
       isArchived: boolean
+      handoffMode?: 'BOT' | 'HUMAN'
     }) => {
       if (!conversationIdsRef.current.has(row.id)) {
         // RLS do realtime já aplica RBAC-alvo; aceitar INSERT/UPDATE de conversas
@@ -955,7 +958,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             lastMessagePreview: row.lastMessagePreview,
             unreadCount: row.unreadCount,
             isArchived: row.isArchived,
-            handoffMode: 'BOT',
+            handoffMode: row.handoffMode ?? 'BOT',
             welcomeSentAt: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -979,6 +982,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
                   assignedProfileId: row.assignedProfileId,
                   leadId: row.leadId,
                   isArchived: row.isArchived,
+                  ...(row.handoffMode !== undefined ? { handoffMode: row.handoffMode } : {}),
                 }
               : c
           )
@@ -1153,6 +1157,83 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       })
     },
     [activeTeamId, supabaseId]
+  )
+
+  const updateConversationHandoffState = useCallback(
+    (conversationId: string, handoffMode: 'BOT' | 'HUMAN', assignedProfileId?: string | null) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? {
+                ...c,
+                handoffMode,
+                ...(assignedProfileId !== undefined ? { assignedProfileId } : {}),
+              }
+            : c
+        )
+      )
+    },
+    []
+  )
+
+  const takeoverConversation = useCallback(
+    (conversationId: string) => {
+      if (!activeTeamId || !currentProfileId || isChangingHandoffRef.current) return
+      isChangingHandoffRef.current = true
+
+      const execute = async () => {
+        setIsChangingHandoff(true)
+        try {
+          await whatsAppInboxService.takeoverConversation(activeTeamId, supabaseId, conversationId)
+          updateConversationHandoffState(conversationId, 'HUMAN', currentProfileId)
+          toast.success('Conversa assumida com sucesso')
+        } catch (error) {
+          console.error('[useWhatsAppInbox] Erro ao assumir conversa:', error)
+          toast.error(error instanceof Error ? error.message : 'Não foi possível assumir a conversa')
+        } finally {
+          setIsChangingHandoff(false)
+          isChangingHandoffRef.current = false
+        }
+      }
+
+      execute().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao assumir conversa:', error)
+        setIsChangingHandoff(false)
+        isChangingHandoffRef.current = false
+      })
+    },
+    [activeTeamId, supabaseId, currentProfileId, updateConversationHandoffState]
+  )
+
+  const setHandoffMode = useCallback(
+    (conversationId: string, mode: 'BOT' | 'HUMAN') => {
+      if (!activeTeamId || isChangingHandoffRef.current) return
+      isChangingHandoffRef.current = true
+
+      const execute = async () => {
+        setIsChangingHandoff(true)
+        try {
+          await whatsAppInboxService.setHandoffMode(activeTeamId, supabaseId, conversationId, mode)
+          updateConversationHandoffState(conversationId, mode)
+          toast.success(mode === 'BOT' ? 'Conversa devolvida ao bot' : 'Conversa assumida para atendimento humano')
+        } catch (error) {
+          console.error('[useWhatsAppInbox] Erro ao alterar handoff:', error)
+          toast.error(
+            error instanceof Error ? error.message : 'Não foi possível alterar o modo de atendimento'
+          )
+        } finally {
+          setIsChangingHandoff(false)
+          isChangingHandoffRef.current = false
+        }
+      }
+
+      execute().catch((error) => {
+        console.error('[useWhatsAppInbox] Erro inesperado ao alterar handoff:', error)
+        setIsChangingHandoff(false)
+        isChangingHandoffRef.current = false
+      })
+    },
+    [activeTeamId, supabaseId, updateConversationHandoffState]
   )
 
   const linkLead = useCallback(
@@ -1441,6 +1522,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     page,
     hasMoreConversations,
     isAssigning,
+    isChangingHandoff,
     isLinkingLead,
     isArchiving,
     isDeleting,
@@ -1467,6 +1549,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     setSearchQuery,
     setFilterMode,
     assignConversation,
+    takeoverConversation,
+    setHandoffMode,
     loadTeamMembers,
     linkLead,
     searchLeads,

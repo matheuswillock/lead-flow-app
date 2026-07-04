@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { Archive, ArchiveX, MoreVertical, Trash2 } from 'lucide-react'
+import { Archive, ArchiveX, Bot, MoreVertical, Trash2, UserCheck } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,11 +28,19 @@ interface ConversationActionsMenuProps {
 }
 
 export function ConversationActionsMenu({ conversation }: ConversationActionsMenuProps) {
-  const { archiveConversation, unarchiveConversation, deleteConversation, isArchiving, isDeleting } =
-    useWhatsAppInboxContext()
+  const {
+    archiveConversation,
+    unarchiveConversation,
+    deleteConversation,
+    takeoverConversation,
+    setHandoffMode,
+    isArchiving,
+    isDeleting,
+    isChangingHandoff,
+  } = useWhatsAppInboxContext()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
-  const isBusy = isArchiving || isDeleting
+  const isBusy = isArchiving || isDeleting || isChangingHandoff
 
   return (
     <>
@@ -43,6 +51,24 @@ export function ConversationActionsMenu({ conversation }: ConversationActionsMen
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {conversation.handoffMode === 'BOT' ? (
+            <DropdownMenuItem
+              onClick={() => takeoverConversation(conversation.id)}
+              disabled={isBusy}
+            >
+              <UserCheck data-icon="inline-start" />
+              Assumir conversa
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => setHandoffMode(conversation.id, 'BOT')}
+              disabled={isBusy}
+            >
+              <Bot data-icon="inline-start" />
+              Devolver ao bot
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
           {conversation.isArchived ? (
             <DropdownMenuItem
               onClick={() => unarchiveConversation(conversation.id)}

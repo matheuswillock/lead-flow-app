@@ -29,10 +29,18 @@ export async function DELETE(
     )
   }
 
-  const output = await deleteConversationUseCase.execute({ conversationId, teamId })
+  const output = await deleteConversationUseCase.execute({
+    conversationId,
+    teamId,
+    access: teamAccess.access,
+  })
 
   if (!output.isValid) {
-    const status = output.errorMessages.some((m) => m.includes("não encontrada")) ? 404 : 500
+    const isNotFound = output.errorMessages.some((m) => m.includes("não encontrada"))
+    const isAuthz = output.errorMessages.some(
+      (m) => m.includes("Acesso negado") || m.includes("não encontrada")
+    )
+    const status = isAuthz && !isNotFound ? 403 : isNotFound ? 404 : 500
     return NextResponse.json(output, { status })
   }
 

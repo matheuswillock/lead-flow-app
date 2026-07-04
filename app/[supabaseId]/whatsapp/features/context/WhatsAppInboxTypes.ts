@@ -111,6 +111,7 @@ export interface InboxState {
   page: number
   hasMoreConversations: boolean
   isAssigning: boolean
+  isChangingHandoff: boolean
   isLinkingLead: boolean
   isArchiving: boolean
   isDeleting: boolean
@@ -148,6 +149,8 @@ export interface InboxActions {
   setSearchQuery: (q: string) => void
   setFilterMode: (mode: ConversationFilterMode) => void
   assignConversation: (conversationId: string, profileId: string) => void
+  takeoverConversation: (conversationId: string) => void
+  setHandoffMode: (conversationId: string, mode: 'BOT' | 'HUMAN') => void
   loadTeamMembers: () => void
   linkLead: (conversationId: string, leadId: string) => void
   searchLeads: (query: string) => Promise<LeadSearchResult[]>

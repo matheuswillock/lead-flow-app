@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
-import { archiveConversationUseCase } from "@/app/api/useCases/whatsapp/ArchiveConversationUseCase"
-import { isManagerLikeRole } from "@/lib/roles"
+import { setConversationHandoffUseCase } from "@/app/api/useCases/whatsapp/SetConversationHandoffUseCase"
+
+const handoffSchema = z.object({
+  mode: z.enum(["BOT", "HUMAN"]),
+})
 
 export async function POST(
   request: NextRequest,
@@ -21,25 +25,37 @@ export async function POST(
     )
   }
 
-  const { isMaster, teamMember } = teamAccess.access
-  if (!isMaster && !isManagerLikeRole(teamMember.role)) {
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
     return NextResponse.json(
-      new Output(false, [], ["Apenas gerentes ou masters podem arquivar conversas"], null),
-      { status: 403 }
+      new Output(false, [], ["Corpo da requisição inválido"], null),
+      { status: 400 }
     )
   }
 
-  const output = await archiveConversationUseCase.execute({
-    conversationId,
+  const parsed = handoffSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json(
+      new Output(false, [], parsed.error.issues.map((i) => i.message), null),
+      { status: 400 }
+    )
+  }
+
+  const output = await setConversationHandoffUseCase.execute({
     teamId,
-    archived: true,
+    conversationId,
+    mode: parsed.data.mode,
     access: teamAccess.access,
   })
 
   if (!output.isValid) {
-    const isNotFound = output.errorMessages.some((m) => m.includes("não encontrada"))
-    const isAuthz = output.errorMessages.some((m) => m.includes("Acesso negado"))
-    const status = isAuthz ? 403 : isNotFound ? 404 : 500
+    const status = output.errorMessages.some((m) => m.includes("Acesso negado"))
+      ? 403
+      : output.errorMessages.some((m) => m.includes("não encontrada"))
+        ? 404
+        : 400
     return NextResponse.json(output, { status })
   }
 
