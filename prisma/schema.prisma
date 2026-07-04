@@ -1621,6 +1621,7 @@ model Team {
   whatsappMessages      WhatsAppMessage[]
   whatsappUsageEvents   WhatsAppUsageEvent[]
   whatsappContacts      TeamWhatsAppContact[]
+  whatsappConversationTags WhatsAppConversationTag[]
 
   // CDP relations
   customerProfiles      CustomerProfile[]
@@ -2706,6 +2707,7 @@ model WhatsAppConversation {
   createdByProfile Profile?          @relation("WhatsAppConversationCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
   messages        WhatsAppMessage[]
   autoResponseLogs WhatsAppAutoResponseLog[]
+  tagAssignments  WhatsAppConversationTagAssignment[]
 
   @@unique([configId, externalChatId])
   @@index([teamId, lastMessageAt(sort: Desc)])
@@ -2826,6 +2828,37 @@ model WhatsAppAutoResponseLog {
   @@unique([conversationId, ruleType, inboundMessageId], map: "whatsapp_auto_response_logs_conv_rule_inbound_key")
   @@index([conversationId, ruleType, createdAt])
   @@map("whatsapp_auto_response_logs")
+}
+
+model WhatsAppConversationTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @db.Uuid
+  name      String   @db.Text
+  color     String   @db.Text
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team        Team                               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignments WhatsAppConversationTagAssignment[]
+
+  @@unique([teamId, name])
+  @@index([teamId, sortOrder])
+  @@map("whatsapp_conversation_tags")
+}
+
+model WhatsAppConversationTagAssignment {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @db.Uuid
+  tagId          String   @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  conversation WhatsAppConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag          WhatsAppConversationTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, tagId])
+  @@index([tagId])
+  @@map("whatsapp_conversation_tag_assignments")
 }
 
 // ==============================

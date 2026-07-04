@@ -11,6 +11,7 @@ import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { AssignmentControl } from './AssignmentControl'
 import { ConversationActionsMenu } from './ConversationActionsMenu'
 import { EditContactNameDialog } from './EditContactNameDialog'
+import { ConversationTagPicker } from './ConversationTagPicker'
 import { LinkLeadDialog } from './LinkLeadDialog'
 import { MessageBubble } from './MessageBubble'
 import { MessageBubbleSkeleton } from './MessageBubbleSkeleton'
@@ -119,6 +120,7 @@ export function MessagePanel() {
           {canManageAssignment && (
             <LinkLeadDialog selectedConversation={selectedConversation} />
           )}
+          <ConversationTagPicker conversation={selectedConversation} />
           <AssignmentControl selectedConversation={selectedConversation} />
           {canManageAssignment && (
             <ConversationActionsMenu conversation={selectedConversation} />

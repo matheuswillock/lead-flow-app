@@ -1,12 +1,19 @@
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 export interface IWhatsAppInboxService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
   fetchConversations(
     teamId: string,
     supabaseId: string,
-    params: { page?: number; limit?: number; search?: string; hasUnread?: boolean; assignedProfileId?: string; leadId?: string; isArchived?: boolean }
+    params: { page?: number; limit?: number; search?: string; hasUnread?: boolean; assignedProfileId?: string; leadId?: string; isArchived?: boolean; tagIds?: string[] }
   ): Promise<{ conversations: WhatsAppConversation[]; total: number }>
+  fetchTags(teamId: string, supabaseId: string): Promise<WhatsAppConversationTag[]>
+  setConversationTags(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    tagIds: string[]
+  ): Promise<WhatsAppConversationTag[]>
   fetchMessages(
     teamId: string,
     supabaseId: string,

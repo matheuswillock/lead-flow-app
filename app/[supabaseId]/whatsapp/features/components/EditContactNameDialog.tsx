@@ -33,13 +33,18 @@ export function EditContactNameDialog({ conversation }: EditContactNameDialogPro
     externalChatId: conversation.externalChatId,
   })
 
+  const persistedName = conversation.contactName?.trim() ?? ""
+
   useEffect(() => {
     if (!open) return
-    setName(conversation.contactName?.trim() || defaultName)
-  }, [open, conversation.contactName, defaultName])
+    setName(persistedName)
+  }, [open, persistedName])
 
   const trimmedName = name.trim()
-  const canSubmit = trimmedName.length > 0 && !isUpdatingContactName
+  const canSubmit =
+    trimmedName.length > 0 &&
+    trimmedName !== persistedName &&
+    !isUpdatingContactName
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -76,7 +81,7 @@ export function EditContactNameDialog({ conversation }: EditContactNameDialogPro
                 id="contact-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Nome do contato"
+                placeholder={defaultName}
                 disabled={isUpdatingContactName}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && canSubmit) {

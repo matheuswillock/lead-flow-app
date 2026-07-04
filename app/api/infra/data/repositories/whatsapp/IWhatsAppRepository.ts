@@ -28,6 +28,13 @@ export interface WhatsAppConfigSelect {
   updatedAt: Date
 }
 
+export interface WhatsAppConversationTagSummary {
+  id: string
+  name: string
+  color: string
+  sortOrder: number
+}
+
 export interface WhatsAppConversationSelect {
   id: string
   teamId: string
@@ -49,6 +56,10 @@ export interface WhatsAppConversationSelect {
   welcomeSentAt: Date | null
   createdAt: Date
   updatedAt: Date
+}
+
+export type WhatsAppConversationWithTagsSelect = WhatsAppConversationSelect & {
+  tagAssignments: Array<{ tag: WhatsAppConversationTagSummary }>
 }
 
 export interface WhatsAppMessageSelect {
@@ -114,10 +125,11 @@ export interface IWhatsAppRepository {
     hasUnread?: boolean
     isArchived?: boolean
     search?: string
+    tagIds?: string[]
     page?: number
     limit?: number
     visibilityWhere?: Prisma.WhatsAppConversationWhereInput
-  }): Promise<{ conversations: WhatsAppConversationSelect[]; total: number }>
+  }): Promise<{ conversations: (WhatsAppConversationSelect & { tags: WhatsAppConversationTagSummary[] })[]; total: number }>
 
   getUnreadTotals(params: {
     teamId: string

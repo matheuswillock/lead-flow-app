@@ -18,6 +18,7 @@ import {
   assertPhoneNumberCanConnect,
   toStoredNormalizedPhone,
 } from "./WhatsAppPhonePolicy"
+import { resolveContactNameUpdate, type ContactNameSource } from "@/lib/whatsapp/contact-name"
 
 export const WHATSAPP_HISTORY_SYNC_DAYS = 30
 
@@ -832,14 +833,23 @@ class WhatsAppService implements IWhatsAppService {
         }
 
         if (lastMessageAt) {
+          const incomingName = isGroup ? chat.subject?.trim() : chat.pushName?.trim()
+          const nameUpdate = incomingName
+            ? resolveContactNameUpdate({
+                currentName: conversation.contactName,
+                currentSource: conversation.contactNameSource as ContactNameSource,
+                incomingName,
+                incomingSource: "PUSH_NAME",
+              })
+            : null
+
           await whatsAppRepository.updateConversation(conversation.id, {
             lastMessageAt,
             lastMessagePreview,
             ...(lastOutboundAt ? { lastOutboundAt } : {}),
             ...(lastInboundAt ? { lastInboundAt } : {}),
             ...(unreadIncrement > 0 ? { unreadCount: { increment: unreadIncrement } } : {}),
-            ...(isGroup && chat.subject ? { contactName: chat.subject } : {}),
-            ...(!isGroup && chat.pushName ? { contactName: chat.pushName } : {}),
+            ...(nameUpdate ?? {}),
           })
         }
       }
@@ -914,15 +924,19 @@ class WhatsAppService implements IWhatsAppService {
 
       if (!match) return false
 
-      const nextName = match.pushName?.trim() || conversation.contactName
-      const patch: { contactName?: string } = {}
-      if (nextName && nextName !== conversation.contactName) {
-        patch.contactName = nextName
-      }
+      const incomingName = match.pushName?.trim()
+      const nameUpdate = incomingName
+        ? resolveContactNameUpdate({
+            currentName: conversation.contactName,
+            currentSource: conversation.contactNameSource as ContactNameSource,
+            incomingName,
+            incomingSource: "PHONE_BOOK",
+          })
+        : null
 
-      if (Object.keys(patch).length === 0) return false
+      if (!nameUpdate) return false
 
-      await whatsAppRepository.updateConversation(conversation.id, patch)
+      await whatsAppRepository.updateConversation(conversation.id, nameUpdate)
       return true
     }
 
