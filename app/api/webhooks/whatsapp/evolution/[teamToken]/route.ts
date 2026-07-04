@@ -34,11 +34,18 @@ export async function POST(
   }
 
   const expectedHeaderSecret = deriveWebhookHeaderSecret(config.webhookSecret)
-  if (!isValidWebhookHeaderSecret(readWebhookHeaderSecret(request), expectedHeaderSecret)) {
+  const providedHeaderSecret = readWebhookHeaderSecret(request)
+  const headerValid = isValidWebhookHeaderSecret(providedHeaderSecret, expectedHeaderSecret)
+
+  if (providedHeaderSecret && !headerValid) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  if (!headerValid) {
     if (isWebhookHeaderEnforcementEnabled()) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    console.warn("[WhatsAppEvoWebhookRoute][POST] Webhook header missing (enforcement disabled)")
+    console.warn("[WhatsAppEvoWebhookRoute][POST] Webhook header ausente (rollout legado via URL secret)")
   }
 
   let rawEvent: unknown

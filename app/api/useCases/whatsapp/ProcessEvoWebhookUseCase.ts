@@ -154,14 +154,22 @@ class ProcessEvoWebhookUseCase {
   }
 
   private async handleMessagesUpsert(teamId: string, configId: string, data: unknown, rawEvent: Record<string, unknown>): Promise<void> {
-    const items = Array.isArray(data) ? normalizeMessagesUpsertItems(data)
+    const isBatchedPayload = Array.isArray(data)
+    const items = isBatchedPayload ? normalizeMessagesUpsertItems(data)
       : typeof data === "object" && data !== null ? normalizeMessagesUpsertItems(data as Record<string, unknown>) : []
     const eventType = extractEventType(rawEvent)
-    for (const item of items) await this.processMessagesUpsertItem(teamId, configId, item, rawEvent, eventType)
+    for (const item of items) {
+      await this.processMessagesUpsertItem(teamId, configId, item, rawEvent, eventType, isBatchedPayload)
+    }
   }
 
   private async processMessagesUpsertItem(
-    teamId: string, configId: string, data: Record<string, unknown>, rawEvent: Record<string, unknown>, eventType: string
+    teamId: string,
+    configId: string,
+    data: Record<string, unknown>,
+    rawEvent: Record<string, unknown>,
+    eventType: string,
+    isBatchedPayload: boolean
   ): Promise<void> {
     const keyObj = (data["key"] as Record<string, unknown> | undefined) ?? {}
     const remoteJid = extractNestedString({ key: keyObj }, "key", "remoteJid") ?? ""
@@ -199,7 +207,9 @@ class ProcessEvoWebhookUseCase {
     const preview = buildMessagePreview(parsed)
     const safeContentText = sanitizeDbText(parsed.contentText)
     const safeCaption = sanitizeDbText(parsed.caption)
-    const providerEventId = extractProviderEventId(rawEvent, eventType, providerMessageId)
+    const providerEventId = extractProviderEventId(rawEvent, eventType, providerMessageId, {
+      skipEnvelopeId: isBatchedPayload,
+    })
     if (!isRedelivery) {
       let messageCreated = false
       try {

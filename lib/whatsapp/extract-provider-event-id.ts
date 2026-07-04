@@ -1,13 +1,21 @@
+export type ExtractProviderEventIdOptions = {
+  /** Quando data é array, o id do envelope é compartilhado — usar id por mensagem. */
+  skipEnvelopeId?: boolean
+}
+
 export function extractProviderEventId(
   rawEvent: unknown,
   eventType: string,
-  providerMessageId: string
+  providerMessageId: string,
+  options?: ExtractProviderEventIdOptions
 ): string | undefined {
   if (typeof rawEvent !== "object" || rawEvent === null) return undefined
   const record = rawEvent as Record<string, unknown>
-  for (const key of ["id", "eventId", "hash"] as const) {
-    const value = record[key]
-    if (typeof value === "string" && value.trim()) return value.trim()
+  if (!options?.skipEnvelopeId) {
+    for (const key of ["id", "eventId", "hash"] as const) {
+      const value = record[key]
+      if (typeof value === "string" && value.trim()) return value.trim()
+    }
   }
   const normalizedEventType = eventType.trim().toUpperCase()
   const normalizedMessageId = providerMessageId.trim()

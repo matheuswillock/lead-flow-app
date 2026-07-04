@@ -11,7 +11,7 @@ export function deriveWebhookHeaderSecret(webhookSecret: string): string {
 }
 
 export function isWebhookHeaderEnforcementEnabled(): boolean {
-  return process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE !== "false"
+  return process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE === "true"
 }
 
 export function readWebhookHeaderSecret(request: { headers: Headers }): string | null {
