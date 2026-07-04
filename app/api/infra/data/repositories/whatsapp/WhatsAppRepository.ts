@@ -44,7 +44,6 @@ const CONVERSATION_SELECT = {
   externalChatId: true,
   contactPhone: true,
   contactName: true,
-  contactNameSource: true,
   contactAvatarUrl: true,
   normalizedPhone: true,
   assignedProfileId: true,

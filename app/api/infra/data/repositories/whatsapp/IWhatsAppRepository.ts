@@ -36,7 +36,6 @@ export interface WhatsAppConversationSelect {
   externalChatId: string | null
   contactPhone: string
   contactName: string | null
-  contactNameSource: string
   contactAvatarUrl: string | null
   normalizedPhone: string
   assignedProfileId: string | null

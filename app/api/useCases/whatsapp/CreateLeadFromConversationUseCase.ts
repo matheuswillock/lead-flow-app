@@ -4,13 +4,13 @@ import {
   assertCanAccessConversation,
   WhatsAppAccessDeniedError,
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
+import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseFactory"
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
-import {
-  resolveContactNameUpdate,
-  type ContactNameSource,
-} from "@/lib/whatsapp/contact-name"
+
+const leadRepository = new LeadRepository()
+
 interface CreateLeadFromConversationInput {
   conversationId: string
   name: string
@@ -69,19 +69,24 @@ class CreateLeadFromConversationUseCase {
       )
 
       if (!linkedConversation) {
+        try {
+          await leadRepository.delete(createdLead.id)
+        } catch (rollbackError) {
+          console.error(
+            "[CreateLeadFromConversationUseCase][execute] Falha ao remover lead órfão após corrida de vínculo:",
+            rollbackError
+          )
+        }
         return new Output(false, [], ["Esta conversa já possui um lead vinculado"], null)
       }
 
-      const nameUpdate = resolveContactNameUpdate({
-        currentName: conversation.contactName,
-        currentSource: conversation.contactNameSource as ContactNameSource,
-        incomingName: input.name.trim(),
-        incomingSource: "LEAD",
-      })
-
-      const finalConversation = nameUpdate
-        ? await whatsAppRepository.updateConversation(input.conversationId, nameUpdate)
-        : linkedConversation
+      const trimmedName = input.name.trim()
+      const finalConversation =
+        trimmedName && trimmedName !== conversation.contactName?.trim()
+          ? await whatsAppRepository.updateConversation(input.conversationId, {
+              contactName: trimmedName,
+            })
+          : linkedConversation
 
       return new Output(
         true,

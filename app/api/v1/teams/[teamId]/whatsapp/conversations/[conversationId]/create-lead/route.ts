@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
+import { invalidateLeadCache } from "@/lib/cache/invalidation"
 import { createLeadFromConversationUseCase } from "@/app/api/useCases/whatsapp/CreateLeadFromConversationUseCase"
 
 const createLeadSchema = z.object({
@@ -64,5 +65,10 @@ export async function POST(
     return NextResponse.json(output, { status })
   }
 
-  return NextResponse.json(output)
+  const result = output.result as { leadId?: string } | null
+  if (result?.leadId) {
+    invalidateLeadCache({ leadId: result.leadId, teamId })
+  }
+
+  return NextResponse.json(output, { status: 201 })
 }
