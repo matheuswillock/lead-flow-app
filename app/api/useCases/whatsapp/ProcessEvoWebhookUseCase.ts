@@ -1,3 +1,7 @@
+// Par inbound do EvolutionWhatsAppProvider (app/api/services/whatsapp/provider/):
+// o parse de payload de webhook é vendor-specific por natureza e permanece
+// fora do contrato IWhatsAppProvider. Um segundo provedor terá seu próprio
+// use case de webhook.
 import { Output } from "@/lib/output"
 import type {
   IWhatsAppRepository,
