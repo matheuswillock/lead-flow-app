@@ -356,6 +356,25 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
   }
 
+  async linkConversationToLeadIfEmpty(
+    conversationId: string,
+    leadId: string
+  ): Promise<WhatsAppConversationSelect | null> {
+    const linkResult = await prisma.whatsAppConversation.updateMany({
+      where: { id: conversationId, leadId: null },
+      data: { leadId },
+    })
+
+    if (linkResult.count === 0) {
+      return null
+    }
+
+    return prisma.whatsAppConversation.findUnique({
+      where: { id: conversationId },
+      select: CONVERSATION_SELECT,
+    })
+  }
+
   async createMessage(data: Prisma.WhatsAppMessageCreateInput): Promise<WhatsAppMessageSelect> {
     return prisma.whatsAppMessage.create({
       data,

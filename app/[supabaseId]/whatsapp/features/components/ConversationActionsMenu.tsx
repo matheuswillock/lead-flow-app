@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { Archive, ArchiveX, Bot, MoreVertical, Trash2, UserCheck } from 'lucide-react'
+import { Archive, ArchiveX, Bot, MoreVertical, Trash2, UserCheck, UserPlus } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import type { WhatsAppConversation } from '../context/WhatsAppInboxTypes'
+import { CreateLeadFromConversationDialog } from './CreateLeadFromConversationDialog'
 
 interface ConversationActionsMenuProps {
   conversation: WhatsAppConversation
@@ -37,10 +38,13 @@ export function ConversationActionsMenu({ conversation }: ConversationActionsMen
     isArchiving,
     isDeleting,
     isChangingHandoff,
+    isCreatingLead,
   } = useWhatsAppInboxContext()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [createLeadDialogOpen, setCreateLeadDialogOpen] = useState(false)
 
-  const isBusy = isArchiving || isDeleting || isChangingHandoff
+  const isBusy = isArchiving || isDeleting || isChangingHandoff || isCreatingLead
+  const hasLinkedLead = conversation.leadId !== null
 
   return (
     <>
@@ -69,6 +73,15 @@ export function ConversationActionsMenu({ conversation }: ConversationActionsMen
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
+          {!hasLinkedLead && (
+            <DropdownMenuItem
+              onClick={() => setCreateLeadDialogOpen(true)}
+              disabled={isBusy}
+            >
+              <UserPlus data-icon="inline-start" />
+              Criar lead
+            </DropdownMenuItem>
+          )}
           {conversation.isArchived ? (
             <DropdownMenuItem
               onClick={() => unarchiveConversation(conversation.id)}
@@ -97,6 +110,12 @@ export function ConversationActionsMenu({ conversation }: ConversationActionsMen
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <CreateLeadFromConversationDialog
+        conversation={conversation}
+        open={createLeadDialogOpen}
+        onOpenChange={setCreateLeadDialogOpen}
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

@@ -128,6 +128,7 @@ export interface InboxState {
   isAssigning: boolean
   isChangingHandoff: boolean
   isLinkingLead: boolean
+  isCreatingLead: boolean
   isUpdatingContactName: boolean
   isArchiving: boolean
   isDeleting: boolean
@@ -172,6 +173,10 @@ export interface InboxActions {
   setHandoffMode: (conversationId: string, mode: 'BOT' | 'HUMAN') => void
   loadTeamMembers: () => void
   linkLead: (conversationId: string, leadId: string) => void
+  createLeadFromConversation: (
+    conversationId: string,
+    input: { name: string; phone: string }
+  ) => Promise<void>
   updateContactName: (conversationId: string, contactName: string) => Promise<void>
   searchLeads: (query: string) => Promise<LeadSearchResult[]>
   archiveConversation: (conversationId: string) => void

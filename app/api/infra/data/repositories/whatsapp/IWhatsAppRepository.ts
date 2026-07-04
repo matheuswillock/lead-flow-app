@@ -156,6 +156,11 @@ export interface IWhatsAppRepository {
     leadId: string
   ): Promise<WhatsAppConversationSelect>
 
+  linkConversationToLeadIfEmpty(
+    conversationId: string,
+    leadId: string
+  ): Promise<WhatsAppConversationSelect | null>
+
   // Messages
   createMessage(data: Prisma.WhatsAppMessageCreateInput): Promise<WhatsAppMessageSelect>
 

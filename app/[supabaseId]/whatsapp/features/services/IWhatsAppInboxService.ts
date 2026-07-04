@@ -59,6 +59,12 @@ export interface IWhatsAppInboxService {
   ): Promise<void>
   fetchTeamMembers(teamId: string, supabaseId: string): Promise<TeamMember[]>
   linkLead(teamId: string, supabaseId: string, conversationId: string, leadId: string): Promise<WhatsAppConversation | null>
+  createLeadFromConversation(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    input: { name: string; phone: string }
+  ): Promise<{ leadId: string }>
   searchLeads(teamId: string, supabaseId: string, query: string, role: string): Promise<LeadSearchResult[]>
   archiveConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void>
   unarchiveConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void>
