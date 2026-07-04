@@ -42,6 +42,55 @@ function sortConversationsByLastMessage(items: WhatsAppConversation[]): WhatsApp
   })
 }
 
+// Preservam a identidade do array de estado quando um refetch devolve dados
+// equivalentes aos já renderizados: evita re-render em cascata dos bubbles e
+// re-download de mídia (<img> do proxy) quando nada mudou.
+function areMessageListsEquivalent(a: WhatsAppMessage[], b: WhatsAppMessage[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!
+    const y = b[i]!
+    if (
+      x.id !== y.id ||
+      x.status !== y.status ||
+      x.contentText !== y.contentText ||
+      x.mediaUrl !== y.mediaUrl ||
+      x.deliveredAt !== y.deliveredAt ||
+      x.readAt !== y.readAt ||
+      x.failedAt !== y.failedAt
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function areConversationListsEquivalent(
+  a: WhatsAppConversation[],
+  b: WhatsAppConversation[]
+): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!
+    const y = b[i]!
+    if (
+      x.id !== y.id ||
+      x.updatedAt !== y.updatedAt ||
+      x.unreadCount !== y.unreadCount ||
+      x.lastMessageAt !== y.lastMessageAt ||
+      x.lastMessagePreview !== y.lastMessagePreview ||
+      x.assignedProfileId !== y.assignedProfileId ||
+      x.leadId !== y.leadId ||
+      x.isArchived !== y.isArchived ||
+      x.contactName !== y.contactName ||
+      x.contactAvatarUrl !== y.contactAvatarUrl
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 const configInFlightByKey = new Map<string, Promise<WhatsAppConfig | null>>()
 const conversationsInFlightByKey = new Map<
   string,
@@ -102,6 +151,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSearchRef = useRef<string>('')
   const messageRefetchTimerRef = useRef<number | null>(null)
+  // Timestamp da última mensagem recebida via INSERT realtime na conversa aberta.
+  // Usado para suprimir o refetch de "heal" só quando o UPDATE da conversa
+  // reflete exatamente essa mensagem (evita suprimir heal de INSERT perdido).
+  const lastRealtimeInsertMessageAtRef = useRef<string | null>(null)
 
   // Guards síncronos de double-submit: setados/checados ANTES de qualquer
   // await, diferente dos states React (isSending, isAssigning, etc.) cuja
@@ -119,6 +172,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       }
       if (messageRefetchTimerRef.current !== null) {
         window.clearTimeout(messageRefetchTimerRef.current)
+      }
+      if (unreadRefreshTrailingTimerRef.current !== null) {
+        window.clearTimeout(unreadRefreshTrailingTimerRef.current)
       }
     }
   }, [])
@@ -227,6 +283,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [])
 
   // Fresh unread totals for filter tab badges (independent of current filter page)
+  // Throttle + in-flight guard: eventos realtime de conversa chegam em rajada
+  // (ex.: sync de contatos atualiza dezenas de conversas) e cada chamada custa
+  // 2 fetches de lista. Chamadas dentro da janela viram um único trailing
+  // refresh que captura o estado mais recente.
+  const UNREAD_REFRESH_MIN_INTERVAL_MS = 4_000
+  const unreadRefreshInFlightRef = useRef(false)
+  const unreadRefreshLastAtRef = useRef(0)
+  const unreadRefreshTrailingTimerRef = useRef<number | null>(null)
+  const refreshUnreadCountsRef = useRef<() => void>(() => {})
+
   const refreshUnreadCounts = useCallback(async () => {
     if (!activeTeamId) {
       setUnreadTotal(0)
@@ -234,6 +300,22 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setMineUnreadTotal(0)
       return
     }
+
+    const now = Date.now()
+    const elapsed = now - unreadRefreshLastAtRef.current
+    if (unreadRefreshInFlightRef.current || elapsed < UNREAD_REFRESH_MIN_INTERVAL_MS) {
+      if (unreadRefreshTrailingTimerRef.current === null) {
+        const delay = Math.max(UNREAD_REFRESH_MIN_INTERVAL_MS - elapsed, 250)
+        unreadRefreshTrailingTimerRef.current = window.setTimeout(() => {
+          unreadRefreshTrailingTimerRef.current = null
+          refreshUnreadCountsRef.current()
+        }, delay)
+      }
+      return
+    }
+
+    unreadRefreshInFlightRef.current = true
+    unreadRefreshLastAtRef.current = now
 
     try {
       const profileId = user?.id
@@ -265,8 +347,14 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setMineUnreadTotal(mineResult?.total ?? 0)
     } catch {
       // keep previous values on transient errors
+    } finally {
+      unreadRefreshInFlightRef.current = false
     }
   }, [activeTeamId, supabaseId, user?.id])
+
+  useEffect(() => {
+    refreshUnreadCountsRef.current = () => void refreshUnreadCounts()
+  }, [refreshUnreadCounts])
 
   useEffect(() => {
     if (!activeTeamId || !config) return
@@ -330,11 +418,14 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       try {
         const result = await promise
         if (currentConvsKeyRef.current !== key) return
-        setConversations((prev) =>
-          pageNum > 1
-            ? dedupeConversationsById([...prev, ...result.conversations])
+        setConversations((prev) => {
+          if (pageNum > 1) {
+            return dedupeConversationsById([...prev, ...result.conversations])
+          }
+          return areConversationListsEquivalent(prev, result.conversations)
+            ? prev
             : result.conversations
-        )
+        })
         setTotalConversations(result.total)
         if (pageNum > 1) {
           setPage(pageNum)
@@ -402,10 +493,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             const realtimeOnly = prev.filter(
               (m) => m.conversationId === conversationId && !fetchedIds.has(m.id)
             )
-            if (realtimeOnly.length === 0) return fetched
-            return [...fetched, ...realtimeOnly].sort(
-              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-            )
+            const next =
+              realtimeOnly.length === 0
+                ? fetched
+                : [...fetched, ...realtimeOnly].sort(
+                    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                  )
+            return areMessageListsEquivalent(prev, next) ? prev : next
           })
         } else {
           // Older messages go at the top; API returns newest-first so reverse before prepending
@@ -487,6 +581,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setMessages([])
       setTotalMessages(0)
       setMessagePage(1)
+      lastRealtimeInsertMessageAtRef.current = null
       void loadMessages(id, 1)
 
       // Lazy-load team members on first conversation open for operator name display
@@ -500,15 +595,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         void whatsAppInboxService
           .markConversationRead(activeTeamId, supabaseId, id)
           .then(() => {
+            // O listener de WHATSAPP_UNREAD_CHANGED_EVENT deste hook já chama
+            // refreshUnreadCounts; chamar direto aqui duplicava o fetch.
             dispatchWhatsAppUnreadChanged()
-            void refreshUnreadCounts()
           })
           .catch((err: unknown) => {
             console.error('[useWhatsAppInbox] Erro ao marcar como lida:', err)
           })
       }
     },
-    [loadMessages, activeTeamId, supabaseId, teamMembers.length, refreshUnreadCounts]
+    [loadMessages, activeTeamId, supabaseId, teamMembers.length]
   )
 
   const loadOlderMessages = useCallback(() => {
@@ -743,6 +839,15 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       createdAt: string
     }) => {
       if (row.conversationId !== currentMessagesConvIdRef.current) return
+
+      // O INSERT chegou pelo canal realtime: o refetch de "heal" agendado por
+      // handleConversationUpdated só fica redundante se o UPDATE refletir esta mesma mensagem.
+      lastRealtimeInsertMessageAtRef.current = row.sentAt ?? row.createdAt
+      if (messageRefetchTimerRef.current !== null) {
+        window.clearTimeout(messageRefetchTimerRef.current)
+        messageRefetchTimerRef.current = null
+      }
+
       setMessages((prev) => {
         if (prev.some((m) => m.id === row.id)) return prev
         const msg: WhatsAppMessage = {
@@ -777,15 +882,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         void whatsAppInboxService
           .markConversationRead(activeTeamId, supabaseId, row.conversationId)
           .then(() => {
+            // O listener de WHATSAPP_UNREAD_CHANGED_EVENT já chama
+            // refreshUnreadCounts; chamar direto aqui duplicava o fetch.
             dispatchWhatsAppUnreadChanged()
-            void refreshUnreadCounts()
           })
           .catch((err: unknown) => {
             console.error('[useWhatsAppInbox] Erro ao marcar como lida automaticamente:', err)
           })
       }
     },
-    [activeTeamId, supabaseId, refreshUnreadCounts]
+    [activeTeamId, supabaseId]
   )
 
   const handleMessageUpdated = useCallback(
@@ -884,6 +990,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         const previousAt = selectedLastMessageAtRef.current
         if (previousAt !== row.lastMessageAt) {
           selectedLastMessageAtRef.current = row.lastMessageAt
+
+          // O refetch abaixo é apenas "heal" para INSERT perdido pelo canal de
+          // mensagens. Suprimir só quando o UPDATE da conversa corresponde à
+          // mensagem já mergeada via INSERT — se lastMessageAt divergir, há
+          // mensagem nova não recebida pelo canal de mensagens.
+          const insertAlreadyCoversUpdate =
+            lastRealtimeInsertMessageAtRef.current !== null &&
+            row.lastMessageAt === lastRealtimeInsertMessageAtRef.current
+          if (insertAlreadyCoversUpdate) return
+
           if (messageRefetchTimerRef.current !== null) {
             window.clearTimeout(messageRefetchTimerRef.current)
           }
