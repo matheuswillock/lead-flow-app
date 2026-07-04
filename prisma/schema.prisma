@@ -2586,6 +2586,13 @@ enum WhatsAppHandoffMode {
   HUMAN
 }
 
+enum WhatsAppContactNameSource {
+  MANUAL
+  LEAD
+  PHONE_BOOK
+  PUSH_NAME
+}
+
 enum WhatsAppAutoResponseRuleType {
   WELCOME
   OFF_HOURS
@@ -2677,6 +2684,7 @@ model WhatsAppConversation {
   externalChatId     String?   @db.Text
   contactPhone       String    @db.Text
   contactName        String?   @db.Text
+  contactNameSource  WhatsAppContactNameSource @default(PUSH_NAME)
   contactAvatarUrl   String?   @db.Text
   normalizedPhone    String    @db.Text
   assignedProfileId  String?   @db.Uuid

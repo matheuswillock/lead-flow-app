@@ -25,6 +25,8 @@ export interface WhatsAppTeamContact {
 
 export type WhatsAppContactLookup = Record<string, string>
 
+export type WhatsAppContactNameSource = 'MANUAL' | 'LEAD' | 'PHONE_BOOK' | 'PUSH_NAME'
+
 export interface WhatsAppConversationTag {
   id: string
   name: string
@@ -40,6 +42,7 @@ export interface WhatsAppConversation {
   externalChatId: string | null
   contactPhone: string
   contactName: string | null
+  contactNameSource: WhatsAppContactNameSource
   contactAvatarUrl: string | null
   normalizedPhone: string
   assignedProfileId: string | null
@@ -126,6 +129,7 @@ export interface InboxState {
   isChangingHandoff: boolean
   isLinkingLead: boolean
   isCreatingLead: boolean
+  isUpdatingContactName: boolean
   isArchiving: boolean
   isDeleting: boolean
   teamMembers: TeamMember[]
@@ -173,6 +177,7 @@ export interface InboxActions {
     conversationId: string,
     input: { name: string; phone: string }
   ) => Promise<void>
+  updateContactName: (conversationId: string, contactName: string) => Promise<void>
   searchLeads: (query: string) => Promise<LeadSearchResult[]>
   archiveConversation: (conversationId: string) => void
   unarchiveConversation: (conversationId: string) => void

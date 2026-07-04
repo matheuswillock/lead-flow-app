@@ -14231,6 +14231,54 @@
           "response": []
         },
         {
+          "name": "Atualizar nome do contato",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactName\": \"Maria Silva\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}"
+              ]
+            },
+            "description": "Atualiza manualmente o nome exibido do contato na conversa (contactNameSource=MANUAL)."
+          },
+          "response": []
+        },
+        {
           "name": "Excluir conversa",
           "request": {
             "method": "DELETE",

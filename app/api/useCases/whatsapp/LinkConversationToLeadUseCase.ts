@@ -6,6 +6,10 @@ import {
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
+import {
+  resolveContactNameUpdate,
+  type ContactNameSource,
+} from "@/lib/whatsapp/contact-name"
 
 interface LinkConversationToLeadInput {
   conversationId: string
@@ -27,7 +31,19 @@ class LinkConversationToLeadUseCase {
         input.conversationId,
         input.leadId
       )
-      return new Output(true, ["Conversa vinculada ao lead com sucesso"], [], updatedConversation)
+
+      const nameUpdate = resolveContactNameUpdate({
+        currentName: conversation.contactName,
+        currentSource: conversation.contactNameSource as ContactNameSource,
+        incomingName: lead.name,
+        incomingSource: "LEAD",
+      })
+
+      const finalConversation = nameUpdate
+        ? await whatsAppRepository.updateConversation(input.conversationId, nameUpdate)
+        : updatedConversation
+
+      return new Output(true, ["Conversa vinculada ao lead com sucesso"], [], finalConversation)
     } catch (error) {
       if (error instanceof WhatsAppAccessDeniedError) {
         return new Output(false, [], [error.message], null)
