@@ -18,6 +18,7 @@ import type {
   TeamMember,
   WhatsAppConfig,
   WhatsAppConversation,
+  WhatsAppConversationTag,
   WhatsAppMessage,
   WhatsAppTeamContact,
 } from './WhatsAppInboxTypes'
@@ -45,6 +46,11 @@ function sortConversationsByLastMessage(items: WhatsAppConversation[]): WhatsApp
 // Preservam a identidade do array de estado quando um refetch devolve dados
 // equivalentes aos já renderizados: evita re-render em cascata dos bubbles e
 // re-download de mídia (<img> do proxy) quando nada mudou.
+function linkPreviewSignature(preview: WhatsAppMessage['linkPreview']): string {
+  if (!preview) return ''
+  return JSON.stringify(preview)
+}
+
 function areMessageListsEquivalent(a: WhatsAppMessage[], b: WhatsAppMessage[]): boolean {
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
@@ -52,17 +58,44 @@ function areMessageListsEquivalent(a: WhatsAppMessage[], b: WhatsAppMessage[]): 
     const y = b[i]!
     if (
       x.id !== y.id ||
+      x.direction !== y.direction ||
+      x.messageType !== y.messageType ||
       x.status !== y.status ||
       x.contentText !== y.contentText ||
       x.mediaUrl !== y.mediaUrl ||
+      x.caption !== y.caption ||
+      x.mediaFileName !== y.mediaFileName ||
+      linkPreviewSignature(x.linkPreview) !== linkPreviewSignature(y.linkPreview) ||
+      x.senderDisplayName !== y.senderDisplayName ||
+      x.sentByProfileId !== y.sentByProfileId ||
+      x.sentAt !== y.sentAt ||
+      x.createdAt !== y.createdAt ||
       x.deliveredAt !== y.deliveredAt ||
       x.readAt !== y.readAt ||
-      x.failedAt !== y.failedAt
+      x.failedAt !== y.failedAt ||
+      x.isAutoResponse !== y.isAutoResponse
     ) {
       return false
     }
   }
   return true
+}
+
+function tagsSignature(tags: WhatsAppConversationTag[] | undefined): string {
+  if (!tags || tags.length === 0) return ''
+  return tags
+    .map((tag) => `${tag.id}:${tag.name}:${tag.color}`)
+    .sort()
+    .join('|')
+}
+
+function conversationMatchesTagFilter(
+  conversation: Pick<WhatsAppConversation, 'tags'>,
+  requiredTagIds: readonly string[]
+): boolean {
+  if (requiredTagIds.length === 0) return true
+  const conversationTagIds = new Set(conversation.tags?.map((tag) => tag.id) ?? [])
+  return requiredTagIds.every((tagId) => conversationTagIds.has(tagId))
 }
 
 function areConversationListsEquivalent(
@@ -83,7 +116,9 @@ function areConversationListsEquivalent(
       x.leadId !== y.leadId ||
       x.isArchived !== y.isArchived ||
       x.contactName !== y.contactName ||
-      x.contactAvatarUrl !== y.contactAvatarUrl
+      x.contactNameSource !== y.contactNameSource ||
+      x.contactAvatarUrl !== y.contactAvatarUrl ||
+      tagsSignature(x.tags) !== tagsSignature(y.tags)
     ) {
       return false
     }
@@ -123,6 +158,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [isAssigning, setIsAssigning] = useState(false)
   const [isChangingHandoff, setIsChangingHandoff] = useState(false)
   const [isLinkingLead, setIsLinkingLead] = useState(false)
+  const [isCreatingLead, setIsCreatingLead] = useState(false)
+  const [isUpdatingContactName, setIsUpdatingContactName] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingConversation, setIsCreatingConversation] = useState(false)
@@ -136,6 +173,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
   const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
+  const [filterTagIds, setFilterTagIdsState] = useState<string[]>([])
+  const [teamTags, setTeamTags] = useState<WhatsAppConversationTag[]>([])
+  const [isLoadingTags, setIsLoadingTags] = useState(false)
+  const [isUpdatingTags, setIsUpdatingTags] = useState(false)
 
   const currentConfigKeyRef = useRef<string | null>(null)
   const inFlightConfigKeyRef = useRef<string | null>(null)
@@ -156,6 +197,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   // Usado para suprimir o refetch de "heal" só quando o UPDATE da conversa
   // reflete exatamente essa mensagem (evita suprimir heal de INSERT perdido).
   const lastRealtimeInsertMessageAtRef = useRef<string | null>(null)
+  const tagFilterRefetchTimerRef = useRef<number | null>(null)
 
   // Guards síncronos de double-submit: setados/checados ANTES de qualquer
   // await, diferente dos states React (isSending, isAssigning, etc.) cuja
@@ -164,6 +206,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const isAssigningRef = useRef(false)
   const isChangingHandoffRef = useRef(false)
   const isLinkingLeadRef = useRef(false)
+  const isCreatingLeadRef = useRef(false)
+  const isUpdatingContactNameRef = useRef(false)
   const isArchivingRef = useRef(false)
   const isDeletingRef = useRef(false)
 
@@ -177,6 +221,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       }
       if (unreadRefreshTrailingTimerRef.current !== null) {
         window.clearTimeout(unreadRefreshTrailingTimerRef.current)
+      }
+      if (tagFilterRefetchTimerRef.current !== null) {
+        window.clearTimeout(tagFilterRefetchTimerRef.current)
       }
     }
   }, [])
@@ -258,6 +305,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [activeTeamId, supabaseId])
 
   const filterModeRef = useRef<ConversationFilterMode>('all')
+  const filterTagIdsRef = useRef<string[]>([])
   const conversationIdsRef = useRef<Set<string>>(new Set())
   const realtimeHealthyRef = useRef(true)
   const selectedConversationIdRef = useRef<string | null>(null)
@@ -383,7 +431,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       }
 
       const effectiveFilter = filter ?? filterModeRef.current
-      const key = `${supabaseId}:${activeTeamId}:${pageNum}:${search}:${effectiveFilter}`
+      const effectiveTagIds = filterTagIdsRef.current
+      const key = `${supabaseId}:${activeTeamId}:${pageNum}:${search}:${effectiveFilter}:${effectiveTagIds.join(',')}`
       currentConvsKeyRef.current = key
 
       if (inFlightConvsKeyRef.current === key) {
@@ -408,6 +457,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             hasUnread,
             assignedProfileId,
             isArchived,
+            tagIds: effectiveTagIds.length > 0 ? effectiveTagIds : undefined,
           })
           .finally(() => {
             conversationsInFlightByKey.delete(key)
@@ -573,6 +623,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [activeTeamId, supabaseId, config?.historySyncStatus, loadConversations])
 
   useEffect(() => {
+    filterTagIdsRef.current = []
+    setFilterTagIdsState([])
+  }, [activeTeamId])
+
+  useEffect(() => {
     void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
     setPage(1)
   }, [loadConversations, activeTeamId])
@@ -648,6 +703,79 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       void loadConversations(1, pendingSearchRef.current, mode)
     },
     [loadConversations]
+  )
+
+  const scheduleConversationsRefetchForTagFilter = useCallback(() => {
+    if (filterTagIdsRef.current.length === 0) return
+    if (tagFilterRefetchTimerRef.current !== null) {
+      window.clearTimeout(tagFilterRefetchTimerRef.current)
+    }
+    tagFilterRefetchTimerRef.current = window.setTimeout(() => {
+      tagFilterRefetchTimerRef.current = null
+      void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
+    }, 400)
+  }, [loadConversations])
+
+  const loadTeamTags = useCallback(async () => {
+    if (!activeTeamId) {
+      setTeamTags([])
+      return
+    }
+
+    setIsLoadingTags(true)
+    try {
+      const tags = await whatsAppInboxService.fetchTags(activeTeamId, supabaseId)
+      setTeamTags(tags)
+    } catch (error) {
+      console.error('[useWhatsAppInbox] Erro ao carregar tags:', error)
+    } finally {
+      setIsLoadingTags(false)
+    }
+  }, [activeTeamId, supabaseId])
+
+  useEffect(() => {
+    void loadTeamTags()
+  }, [loadTeamTags])
+
+  const setFilterTagIds = useCallback(
+    (tagIds: string[]) => {
+      filterTagIdsRef.current = tagIds
+      setFilterTagIdsState(tagIds)
+      setPage(1)
+      void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
+    },
+    [loadConversations]
+  )
+
+  const setConversationTags = useCallback(
+    async (conversationId: string, tagIds: string[]) => {
+      if (!activeTeamId || isUpdatingTags) return
+
+      setIsUpdatingTags(true)
+      try {
+        const tags = await whatsAppInboxService.setConversationTags(
+          activeTeamId,
+          supabaseId,
+          conversationId,
+          tagIds
+        )
+        setConversations((prev) => {
+          const next = prev.map((conversation) =>
+            conversation.id === conversationId ? { ...conversation, tags } : conversation
+          )
+          const requiredTagIds = filterTagIdsRef.current
+          if (requiredTagIds.length === 0) return next
+          return next.filter((conversation) => conversationMatchesTagFilter(conversation, requiredTagIds))
+        })
+        toast.success('Tags atualizadas')
+      } catch (error) {
+        console.error('[useWhatsAppInbox] Erro ao atualizar tags:', error)
+        toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar as tags')
+      } finally {
+        setIsUpdatingTags(false)
+      }
+    },
+    [activeTeamId, supabaseId, isUpdatingTags]
   )
 
   // Shared send routine used by sendMessage (new optimistic message) and
@@ -842,10 +970,17 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     }) => {
       if (row.conversationId !== currentMessagesConvIdRef.current) return
 
-      // O INSERT chegou pelo canal realtime: o refetch de "heal" agendado por
-      // handleConversationUpdated só fica redundante se o UPDATE refletir esta mesma mensagem.
-      lastRealtimeInsertMessageAtRef.current = row.sentAt ?? row.createdAt
-      if (messageRefetchTimerRef.current !== null) {
+      // Registra o INSERT para suprimir o heal em handleConversationUpdated
+      // quando o UPDATE ainda não chegou. Se o UPDATE chegou antes e agendou
+      // heal, cancelar o timer quando esta mensagem cobre o lastMessageAt pendente.
+      const insertedAt = row.sentAt ?? row.createdAt
+      lastRealtimeInsertMessageAtRef.current = insertedAt
+
+      if (
+        messageRefetchTimerRef.current !== null &&
+        insertedAt !== null &&
+        insertedAt === selectedLastMessageAtRef.current
+      ) {
         window.clearTimeout(messageRefetchTimerRef.current)
         messageRefetchTimerRef.current = null
       }
@@ -929,6 +1064,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       configId: string
       contactPhone?: string
       contactName?: string | null
+      contactNameSource?: WhatsAppConversation['contactNameSource']
       contactAvatarUrl?: string | null
       lastMessagePreview: string | null
       lastMessageAt: string | null
@@ -939,6 +1075,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       handoffMode?: 'BOT' | 'HUMAN'
     }) => {
       if (!conversationIdsRef.current.has(row.id)) {
+        if (filterTagIdsRef.current.length > 0) {
+          scheduleConversationsRefetchForTagFilter()
+          return
+        }
         // RLS do realtime já aplica RBAC-alvo; aceitar INSERT/UPDATE de conversas
         // ainda não paginadas localmente (ex.: inbound novo para manager/operator).
         setConversations((prev) => {
@@ -951,6 +1091,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             externalChatId: null,
             contactPhone: row.contactPhone ?? '',
             contactName: row.contactName ?? null,
+            contactNameSource: row.contactNameSource ?? 'PUSH_NAME',
             contactAvatarUrl: row.contactAvatarUrl ?? null,
             normalizedPhone: '',
             assignedProfileId: row.assignedProfileId,
@@ -975,6 +1116,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
               ? {
                   ...c,
                   contactName: row.contactName ?? c.contactName,
+                  contactNameSource: row.contactNameSource ?? c.contactNameSource,
                   contactAvatarUrl: row.contactAvatarUrl ?? c.contactAvatarUrl,
                   lastMessagePreview: row.lastMessagePreview,
                   lastMessageAt: row.lastMessageAt,
@@ -1017,7 +1159,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         }
       }
     },
-    [refreshUnreadCounts, loadMessages, activeTeamId]
+    [refreshUnreadCounts, loadMessages, activeTeamId, scheduleConversationsRefetchForTagFilter]
   )
 
   const handleConversationInserted = useCallback(
@@ -1027,6 +1169,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       configId: string
       contactPhone: string
       contactName: string | null
+      contactNameSource?: WhatsAppConversation['contactNameSource']
       contactAvatarUrl: string | null
       externalChatId: string | null
       normalizedPhone: string
@@ -1043,6 +1186,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     }) => {
       if (row.teamId !== activeTeamId) return
 
+      if (filterTagIdsRef.current.length > 0) {
+        scheduleConversationsRefetchForTagFilter()
+        return
+      }
+
       const conversation: WhatsAppConversation = {
         id: row.id,
         teamId: row.teamId,
@@ -1051,6 +1199,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         externalChatId: row.externalChatId,
         contactPhone: row.contactPhone,
         contactName: row.contactName,
+        contactNameSource: row.contactNameSource ?? 'PUSH_NAME',
         contactAvatarUrl: row.contactAvatarUrl,
         normalizedPhone: row.normalizedPhone,
         assignedProfileId: row.assignedProfileId,
@@ -1070,7 +1219,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       })
       setTotalConversations((prev) => prev + 1)
     },
-    [activeTeamId]
+    [activeTeamId, scheduleConversationsRefetchForTagFilter]
   )
 
   useWhatsAppRealtime({
@@ -1244,9 +1393,20 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       const execute = async () => {
         setIsLinkingLead(true)
         try {
-          await whatsAppInboxService.linkLead(activeTeamId, supabaseId, conversationId, leadId)
+          const updated = await whatsAppInboxService.linkLead(
+            activeTeamId,
+            supabaseId,
+            conversationId,
+            leadId
+          )
           setConversations((prev) =>
-            prev.map((c) => (c.id === conversationId ? { ...c, leadId } : c))
+            prev.map((c) =>
+              c.id === conversationId
+                ? updated
+                  ? { ...c, ...updated, leadId: updated.leadId ?? leadId }
+                  : { ...c, leadId }
+                : c
+            )
           )
           toast.success('Lead vinculado com sucesso')
         } catch (error) {
@@ -1263,6 +1423,66 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         setIsLinkingLead(false)
         isLinkingLeadRef.current = false
       })
+    },
+    [activeTeamId, supabaseId]
+  )
+
+  const createLeadFromConversation = useCallback(
+    async (conversationId: string, input: { name: string; phone: string }) => {
+      if (!activeTeamId || isCreatingLeadRef.current) return
+      isCreatingLeadRef.current = true
+
+      try {
+        setIsCreatingLead(true)
+        const result = await whatsAppInboxService.createLeadFromConversation(
+          activeTeamId,
+          supabaseId,
+          conversationId,
+          input
+        )
+        setConversations((prev) =>
+          prev.map((c) => (c.id === conversationId ? { ...c, leadId: result.leadId } : c))
+        )
+        toast.success('Lead criado e vinculado com sucesso')
+      } catch (error) {
+        console.error('[useWhatsAppInbox] Erro ao criar lead:', error)
+        toast.error(error instanceof Error ? error.message : 'Não foi possível criar o lead')
+        throw error
+      } finally {
+        setIsCreatingLead(false)
+        isCreatingLeadRef.current = false
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
+  const updateContactName = useCallback(
+    async (conversationId: string, contactName: string) => {
+      if (!activeTeamId || isUpdatingContactNameRef.current) return
+      isUpdatingContactNameRef.current = true
+
+      try {
+        setIsUpdatingContactName(true)
+        const updated = await whatsAppInboxService.updateConversationContactName(
+          activeTeamId,
+          supabaseId,
+          conversationId,
+          contactName
+        )
+        setConversations((prev) =>
+          prev.map((c) => (c.id === conversationId ? { ...c, ...updated } : c))
+        )
+        toast.success('Nome do contato atualizado')
+      } catch (error) {
+        console.error('[useWhatsAppInbox] Erro ao atualizar nome do contato:', error)
+        toast.error(
+          error instanceof Error ? error.message : 'Não foi possível atualizar o nome do contato'
+        )
+        throw error
+      } finally {
+        setIsUpdatingContactName(false)
+        isUpdatingContactNameRef.current = false
+      }
     },
     [activeTeamId, supabaseId]
   )
@@ -1519,11 +1739,17 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isSending,
     searchQuery,
     filterMode,
+    filterTagIds,
+    teamTags,
+    isLoadingTags,
+    isUpdatingTags,
     page,
     hasMoreConversations,
     isAssigning,
     isChangingHandoff,
     isLinkingLead,
+    isCreatingLead,
+    isUpdatingContactName,
     isArchiving,
     isDeleting,
     teamMembers,
@@ -1548,11 +1774,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     resendMessage,
     setSearchQuery,
     setFilterMode,
+    setFilterTagIds,
+    loadTeamTags,
+    setConversationTags,
     assignConversation,
     takeoverConversation,
     setHandoffMode,
     loadTeamMembers,
     linkLead,
+    createLeadFromConversation,
+    updateContactName,
     searchLeads,
     archiveConversation,
     unarchiveConversation,

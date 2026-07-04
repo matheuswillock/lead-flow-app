@@ -23,6 +23,12 @@ import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/Syn
 import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
 import { Prisma, type WhatsAppConnectionStatus, type WhatsAppMessageStatus } from "@prisma/client"
 import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
+import { extractProviderEventId } from "@/lib/whatsapp/extract-provider-event-id"
+import { isRetryableWebhookError, WebhookPayloadRejectedError } from "@/lib/whatsapp/webhook-processing-errors"
+import {
+  resolveContactNameUpdate,
+  type ContactNameSource,
+} from "@/lib/whatsapp/contact-name"
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
@@ -111,9 +117,9 @@ class ProcessEvoWebhookUseCase {
       const data = extractEventData(event)
 
       console.info("[ProcessEvoWebhookUseCase][execute] Processing event", eventType)
-
+      this.assertKnownEventData(eventType, data)
       if (eventType === "MESSAGES_UPSERT" || eventType === "MESSAGES.UPSERT") {
-        await this.handleMessagesUpsert(input.teamId, input.configId, data)
+        await this.handleMessagesUpsert(input.teamId, input.configId, data, event)
       } else if (eventType === "MESSAGES_UPDATE" || eventType === "MESSAGES.UPDATE") {
         await this.handleMessagesUpdate(input.teamId, data)
       } else if (eventType === "CONNECTION_UPDATE" || eventType === "CONNECTION.UPDATE") {
@@ -137,30 +143,37 @@ class ProcessEvoWebhookUseCase {
     } catch (error) {
       console.error("[ProcessEvoWebhookUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao processar webhook Evolution"
-      return new Output(false, [], [message], null)
+      return new Output(false, [], [message], { processed: false, retryable: isRetryableWebhookError(error) })
     }
   }
 
-  private async handleMessagesUpsert(
-    teamId: string,
-    configId: string,
-    data: unknown
-  ): Promise<void> {
-    const items = Array.isArray(data)
-      ? normalizeMessagesUpsertItems(data)
-      : typeof data === "object" && data !== null
-        ? normalizeMessagesUpsertItems(data as Record<string, unknown>)
-        : []
+  private assertKnownEventData(eventType: string, data: unknown): void {
+    const messageEvents = new Set([
+      "MESSAGES_UPSERT", "MESSAGES.UPSERT", "MESSAGES_UPDATE", "MESSAGES.UPDATE",
+      "SEND_MESSAGE", "SEND.MESSAGE", "MESSAGES_DELETE", "MESSAGES.DELETE",
+    ])
+    if (!messageEvents.has(eventType)) return
+    if (data === null || data === undefined) throw new WebhookPayloadRejectedError(`Evento ${eventType} sem campo data`)
+    if (typeof data !== "object") throw new WebhookPayloadRejectedError(`Evento ${eventType} com data inválida`)
+  }
 
+  private async handleMessagesUpsert(teamId: string, configId: string, data: unknown, rawEvent: Record<string, unknown>): Promise<void> {
+    const isBatchedPayload = Array.isArray(data)
+    const items = isBatchedPayload ? normalizeMessagesUpsertItems(data)
+      : typeof data === "object" && data !== null ? normalizeMessagesUpsertItems(data as Record<string, unknown>) : []
+    const eventType = extractEventType(rawEvent)
     for (const item of items) {
-      await this.processMessagesUpsertItem(teamId, configId, item)
+      await this.processMessagesUpsertItem(teamId, configId, item, rawEvent, eventType, isBatchedPayload)
     }
   }
 
   private async processMessagesUpsertItem(
     teamId: string,
     configId: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    rawEvent: Record<string, unknown>,
+    eventType: string,
+    isBatchedPayload: boolean
   ): Promise<void> {
     const keyObj = (data["key"] as Record<string, unknown> | undefined) ?? {}
     const remoteJid = extractNestedString({ key: keyObj }, "key", "remoteJid") ?? ""
@@ -198,7 +211,9 @@ class ProcessEvoWebhookUseCase {
     const preview = buildMessagePreview(parsed)
     const safeContentText = sanitizeDbText(parsed.contentText)
     const safeCaption = sanitizeDbText(parsed.caption)
-
+    const providerEventId = extractProviderEventId(rawEvent, eventType, providerMessageId, {
+      skipEnvelopeId: isBatchedPayload,
+    })
     if (!isRedelivery) {
       let messageCreated = false
       try {
@@ -207,6 +222,7 @@ class ProcessEvoWebhookUseCase {
           team: { connect: { id: routed.teamId } },
           config: { connect: { id: routed.configId } },
           providerMessageId,
+          ...(providerEventId ? { providerEventId } : {}),
           direction,
           messageType: parsed.messageType,
           status: fromMe ? "SENT" : "RECEIVED",
@@ -237,6 +253,7 @@ class ProcessEvoWebhookUseCase {
         await this.applyConversationSideEffects({
           conversationId: conversation.id,
           conversationContactName: conversation.contactName,
+          conversationContactNameSource: conversation.contactNameSource as ContactNameSource,
           fromMe,
           isGroup,
           now,
@@ -321,7 +338,7 @@ class ProcessEvoWebhookUseCase {
   private async healConversationSideEffectsIfNeeded(input: {
     conversation: Pick<
       WhatsAppConversationSelect,
-      "id" | "lastMessageAt" | "lastMessagePreview" | "contactName"
+      "id" | "lastMessageAt" | "lastMessagePreview" | "contactName" | "contactNameSource"
     >
     existingMessage: Pick<WhatsAppMessageSelect, "sentAt">
     fromMe: boolean
@@ -339,6 +356,7 @@ class ProcessEvoWebhookUseCase {
       await this.applyConversationSideEffects({
         conversationId: input.conversation.id,
         conversationContactName: input.conversation.contactName,
+        conversationContactNameSource: input.conversation.contactNameSource as ContactNameSource,
         fromMe: input.fromMe,
         isGroup: input.isGroup,
         now: messageSentAt,
@@ -349,12 +367,14 @@ class ProcessEvoWebhookUseCase {
     }
 
     const safeUpdate: Prisma.WhatsAppConversationUpdateInput = {}
-    if (
-      !input.isGroup &&
-      input.pushName &&
-      input.pushName !== input.conversation.contactName
-    ) {
-      safeUpdate.contactName = input.pushName
+    const contactNameUpdate = this.resolvePushNameUpdate({
+      conversationContactName: input.conversation.contactName,
+      conversationContactNameSource: input.conversation.contactNameSource as ContactNameSource,
+      pushName: input.pushName,
+      isGroup: input.isGroup,
+    })
+    if (contactNameUpdate) {
+      Object.assign(safeUpdate, contactNameUpdate)
     }
     if (input.preview && !input.conversation.lastMessagePreview) {
       safeUpdate.lastMessagePreview = input.preview
@@ -371,21 +391,42 @@ class ProcessEvoWebhookUseCase {
     }
   }
 
+  private resolvePushNameUpdate(input: {
+    conversationContactName: string | null
+    conversationContactNameSource: ContactNameSource
+    pushName: string | undefined
+    isGroup: boolean
+  }): { contactName: string; contactNameSource: ContactNameSource } | null {
+    if (input.isGroup || !input.pushName) return null
+    return resolveContactNameUpdate({
+      currentName: input.conversationContactName,
+      currentSource: input.conversationContactNameSource,
+      incomingName: input.pushName,
+      incomingSource: "PUSH_NAME",
+    })
+  }
+
   private async applyConversationSideEffects(input: {
     conversationId: string
     conversationContactName: string | null
+    conversationContactNameSource: ContactNameSource
     fromMe: boolean
     isGroup: boolean
     now: Date
     preview: string | null
     pushName: string | undefined
   }): Promise<void> {
+    const contactNameUpdate = this.resolvePushNameUpdate({
+      conversationContactName: input.conversationContactName,
+      conversationContactNameSource: input.conversationContactNameSource,
+      pushName: input.pushName,
+      isGroup: input.isGroup,
+    })
+
     const fullUpdate: Prisma.WhatsAppConversationUpdateInput = {
       lastMessageAt: input.now,
       lastMessagePreview: input.preview,
-      ...(!input.isGroup && input.pushName && input.pushName !== input.conversationContactName
-        ? { contactName: input.pushName }
-        : {}),
+      ...(contactNameUpdate ?? {}),
       ...(input.fromMe
         ? { lastOutboundAt: input.now }
         : { lastInboundAt: input.now, unreadCount: { increment: 1 } }),
@@ -678,11 +719,41 @@ class ProcessEvoWebhookUseCase {
     })
   }
 
+  private resolveContactNamesFromWebhook(
+    currentName: string | null,
+    currentSource: ContactNameSource,
+    payload: { profileName?: string; pushName?: string }
+  ): { contactName: string; contactNameSource: ContactNameSource } | null {
+    let name = currentName
+    let source = currentSource
+    let lastUpdate: { contactName: string; contactNameSource: ContactNameSource } | null = null
+
+    const phoneBookUpdate = resolveContactNameUpdate({
+      currentName: name,
+      currentSource: source,
+      incomingName: payload.profileName,
+      incomingSource: "PHONE_BOOK",
+    })
+    if (phoneBookUpdate) {
+      name = phoneBookUpdate.contactName
+      source = phoneBookUpdate.contactNameSource
+      lastUpdate = phoneBookUpdate
+    }
+
+    const pushUpdate = resolveContactNameUpdate({
+      currentName: name,
+      currentSource: source,
+      incomingName: payload.pushName,
+      incomingSource: "PUSH_NAME",
+    })
+    return pushUpdate ?? lastUpdate
+  }
+
   private async handleContactsUpsert(teamId: string, data: unknown): Promise<void> {
     const contacts = asRecordArray(data)
     if (contacts.length === 0) return
 
-    const displayNameByRemoteJid = new Map<string, string>()
+    const namesByRemoteJid = new Map<string, { profileName?: string; pushName?: string }>()
     for (const contact of contacts) {
       const remoteJid = typeof contact["id"] === "string"
         ? contact["id"]
@@ -699,15 +770,17 @@ class ProcessEvoWebhookUseCase {
         ? stripHtmlTags(sanitizeDbText(contact["name"])) ?? undefined
         : undefined
 
-      const displayName = profileName ?? pushName
-      if (!displayName) continue
+      if (!profileName && !pushName) continue
 
-      displayNameByRemoteJid.set(remoteJid, displayName)
+      const existing = namesByRemoteJid.get(remoteJid) ?? {}
+      if (profileName) existing.profileName = profileName
+      if (pushName) existing.pushName = pushName
+      namesByRemoteJid.set(remoteJid, existing)
     }
 
-    if (displayNameByRemoteJid.size === 0) return
+    if (namesByRemoteJid.size === 0) return
 
-    const remoteJids = Array.from(displayNameByRemoteJid.keys())
+    const remoteJids = Array.from(namesByRemoteJid.keys())
     const conversationsByRemoteJid = new Map<string, WhatsAppConversationSelect>()
     for (const chunk of chunkArray(remoteJids, CONTACTS_LOOKUP_CHUNK_SIZE)) {
       const found = await this.repository.findConversationsByExternalChatIds(teamId, chunk)
@@ -718,11 +791,26 @@ class ProcessEvoWebhookUseCase {
       }
     }
 
-    const pendingUpdates: Array<{ conversationId: string; contactName: string }> = []
-    for (const [remoteJid, displayName] of displayNameByRemoteJid) {
+    const pendingUpdates: Array<{
+      conversationId: string
+      contactName: string
+      contactNameSource: ContactNameSource
+    }> = []
+    for (const [remoteJid, payload] of namesByRemoteJid) {
       const conversation = conversationsByRemoteJid.get(remoteJid)
-      if (conversation && conversation.contactName !== displayName) {
-        pendingUpdates.push({ conversationId: conversation.id, contactName: displayName })
+      if (!conversation) continue
+
+      const resolved = this.resolveContactNamesFromWebhook(
+        conversation.contactName,
+        conversation.contactNameSource as ContactNameSource,
+        payload
+      )
+      if (resolved) {
+        pendingUpdates.push({
+          conversationId: conversation.id,
+          contactName: resolved.contactName,
+          contactNameSource: resolved.contactNameSource,
+        })
       }
     }
 
@@ -732,6 +820,7 @@ class ProcessEvoWebhookUseCase {
         chunk.map((update) =>
           this.repository.updateConversation(update.conversationId, {
             contactName: update.contactName,
+            contactNameSource: update.contactNameSource,
           })
         )
       )

@@ -7,6 +7,7 @@ import { MessagingConversationItem } from "@/components/messaging/MessagingConve
 import { useWhatsAppInboxContext } from "../context/WhatsAppInboxContext"
 import { useUserContext } from "@/app/context/UserContext"
 import { mapWhatsAppConversationToMessaging } from "../utils/mapWhatsAppToMessaging"
+import { ConversationTagBadges } from "./ConversationTagBadges"
 import type { WhatsAppConversation } from "../context/WhatsAppInboxTypes"
 
 interface ConversationItemProps {
@@ -37,6 +38,7 @@ export function ConversationItem({ conversation }: ConversationItemProps) {
       onSelect={selectConversation}
       trailing={
         <>
+          <ConversationTagBadges tags={conversation.tags} className="max-w-24" />
           {conversation.leadId ? (
             <Link2 className="size-3 text-primary" aria-label="Lead vinculado" />
           ) : null}

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
+import { computeWhatsAppRealtimeHealth } from '@/lib/whatsapp/realtime-health'
+import type { WhatsAppContactNameSource } from '@/app/[supabaseId]/whatsapp/features/context/WhatsAppInboxTypes'
 
 export type WhatsAppMessageRealtimeRow = {
   id: string
@@ -29,6 +31,7 @@ export type WhatsAppConversationRealtimeRow = {
   configId: string
   contactPhone: string
   contactName: string | null
+  contactNameSource?: WhatsAppContactNameSource
   contactAvatarUrl: string | null
   externalChatId: string | null
   normalizedPhone: string
@@ -92,6 +95,7 @@ function mapConversationRow(
     configId: row.configId ?? '',
     contactPhone: row.contactPhone ?? '',
     contactName: row.contactName ?? null,
+    contactNameSource: row.contactNameSource ?? 'PUSH_NAME',
     contactAvatarUrl: row.contactAvatarUrl ?? null,
     externalChatId: row.externalChatId ?? null,
     normalizedPhone: row.normalizedPhone ?? '',
@@ -170,16 +174,12 @@ export function useWhatsAppRealtime({
   }, [selectedConversationId])
 
   const publishHealth = useCallback(() => {
-    const convsOk = convsStatusRef.current === 'SUBSCRIBED'
-    const msgsStatus = msgsStatusRef.current
-    const hasSelected = hasSelectedConversationRef.current
-    const msgsOk =
-      !hasSelected ||
-      msgsStatus === 'SUBSCRIBED' ||
-      (msgsInitializingRef.current && msgsStatus === null)
-
-    const healthy = convsOk && msgsOk
-
+    const healthy = computeWhatsAppRealtimeHealth({
+      convsStatus: convsStatusRef.current,
+      msgsStatus: msgsStatusRef.current,
+      hasSelectedConversation: hasSelectedConversationRef.current,
+      msgsInitializing: msgsInitializingRef.current,
+    })
     if (prevHealthRef.current !== healthy) {
       console.info('[WhatsAppRealtime] Health:', healthy ? 'OK' : 'DEGRADED')
       prevHealthRef.current = healthy
