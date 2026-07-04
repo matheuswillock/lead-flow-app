@@ -936,6 +936,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       assignedProfileId: string | null
       leadId: string | null
       isArchived: boolean
+      handoffMode?: 'BOT' | 'HUMAN'
     }) => {
       if (!conversationIdsRef.current.has(row.id)) {
         if (!isTeamMaster) return
@@ -956,7 +957,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             lastMessagePreview: row.lastMessagePreview,
             unreadCount: row.unreadCount,
             isArchived: row.isArchived,
-            handoffMode: 'BOT',
+            handoffMode: row.handoffMode ?? 'BOT',
             welcomeSentAt: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -980,6 +981,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
                   assignedProfileId: row.assignedProfileId,
                   leadId: row.leadId,
                   isArchived: row.isArchived,
+                  ...(row.handoffMode !== undefined ? { handoffMode: row.handoffMode } : {}),
                 }
               : c
           )

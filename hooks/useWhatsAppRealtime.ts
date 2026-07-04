@@ -38,6 +38,7 @@ export type WhatsAppConversationRealtimeRow = {
   assignedProfileId: string | null
   leadId: string | null
   isArchived: boolean
+  handoffMode: 'BOT' | 'HUMAN'
   createdAt: string
   updatedAt: string
 }
@@ -100,6 +101,7 @@ function mapConversationRow(
     assignedProfileId: row.assignedProfileId ?? null,
     leadId: row.leadId ?? null,
     isArchived: row.isArchived ?? false,
+    handoffMode: row.handoffMode === 'HUMAN' ? 'HUMAN' : 'BOT',
     createdAt: row.createdAt ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? new Date().toISOString(),
   }
@@ -159,6 +161,7 @@ export function useWhatsAppRealtime({
 
   const convsStatusRef = useRef<RealtimeChannelStatus | null>(null)
   const msgsStatusRef = useRef<RealtimeChannelStatus | null>(null)
+  const msgsInitializingRef = useRef(false)
   const hasSelectedConversationRef = useRef<boolean>(selectedConversationId !== null)
   const prevHealthRef = useRef<boolean | null>(null)
 
@@ -168,11 +171,12 @@ export function useWhatsAppRealtime({
 
   const publishHealth = useCallback(() => {
     const convsOk = convsStatusRef.current === 'SUBSCRIBED'
-    // Canal de mensagens em (re)inscrição (status null) não degrada a saúde:
-    // trocar de conversa recria só esse canal e a transição dura milissegundos.
     const msgsStatus = msgsStatusRef.current
+    const hasSelected = hasSelectedConversationRef.current
     const msgsOk =
-      !hasSelectedConversationRef.current || msgsStatus === null || msgsStatus === 'SUBSCRIBED'
+      !hasSelected ||
+      msgsStatus === 'SUBSCRIBED' ||
+      (msgsInitializingRef.current && msgsStatus === null)
 
     const healthy = convsOk && msgsOk
 
@@ -303,13 +307,23 @@ export function useWhatsAppRealtime({
 
   useEffect(() => {
     if (!enabled || !teamId || !selectedConversationId) {
+      msgsInitializingRef.current = false
       msgsStatusRef.current = null
       if (enabled && teamId) publishHealth()
       return
     }
 
     const supabase = createSupabaseBrowser()
-    if (!supabase) return
+    if (!supabase) {
+      msgsInitializingRef.current = false
+      msgsStatusRef.current = 'CHANNEL_ERROR'
+      publishHealth()
+      return
+    }
+
+    msgsInitializingRef.current = true
+    msgsStatusRef.current = null
+    publishHealth()
 
     let cancelled = false
     let generation = 0
@@ -327,6 +341,12 @@ export function useWhatsAppRealtime({
       msgsStatusRef.current = null
     }
 
+    const markMsgsChannelFailed = () => {
+      msgsInitializingRef.current = false
+      msgsStatusRef.current = 'CHANNEL_ERROR'
+      publishHealth()
+    }
+
     const scheduleReconnect = (reason: string) => {
       if (cancelled || msgsReconnectTimerRef.current !== null) return
       msgsReconnectAttemptRef.current += 1
@@ -342,11 +362,14 @@ export function useWhatsAppRealtime({
       try {
         clearReconnectTimer()
         teardown()
+        msgsInitializingRef.current = true
+        publishHealth()
         const gen = ++generation
 
         const accessToken = await acquireRealtimeAccessToken(supabase)
         if (cancelled || gen !== generation) return
         if (!accessToken) {
+          markMsgsChannelFailed()
           scheduleReconnect('MISSING_TOKEN')
           return
         }
@@ -387,7 +410,16 @@ export function useWhatsAppRealtime({
           .subscribe((status) => {
             if (cancelled || gen !== generation) return
             msgsStatusRef.current = status
-            if (status === 'SUBSCRIBED') msgsReconnectAttemptRef.current = 0
+            if (status === 'SUBSCRIBED') {
+              msgsInitializingRef.current = false
+              msgsReconnectAttemptRef.current = 0
+            } else if (
+              status === 'CHANNEL_ERROR' ||
+              status === 'TIMED_OUT' ||
+              status === 'CLOSED'
+            ) {
+              msgsInitializingRef.current = false
+            }
             publishHealth()
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
               scheduleReconnect(status)
@@ -395,6 +427,7 @@ export function useWhatsAppRealtime({
           })
       } catch (error) {
         console.error('[WhatsAppRealtime] Falha ao inicializar canal de mensagens:', error)
+        markMsgsChannelFailed()
         scheduleReconnect('SETUP_ERROR')
       }
     }
@@ -406,6 +439,7 @@ export function useWhatsAppRealtime({
       generation++
       clearReconnectTimer()
       teardown()
+      msgsInitializingRef.current = false
       publishHealth()
     }
   }, [enabled, teamId, selectedConversationId, publishHealth])
