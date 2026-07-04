@@ -20,9 +20,35 @@ export function resolveVisibilityScope(access: TeamAccess): WhatsAppVisibilitySc
   return "operator"
 }
 
+import type { Prisma } from "@prisma/client"
+
 /**
- * Sync-history imports conversations with createdByProfileId = null.
- * Those remain visible only to the account master until an operator engages.
+ * RBAC-alvo: conversas sem responsável (assignedProfileId = null) são visíveis
+ * a todos os operators do time, inclusive as importadas por sync-history.
  */
 export const WHATSAPP_SYNC_HISTORY_VISIBILITY_NOTE =
-  "Conversas importadas por sync-history ficam visíveis ao master até envolvimento de operator."
+  "Conversas importadas por sync-history sem responsável ficam visíveis a operators do time."
+
+export function buildOperatorConversationVisibilityWhere(
+  profileId: string,
+  operatorLeadPhones: string[]
+): Prisma.WhatsAppConversationWhereInput {
+  const orFilters: Prisma.WhatsAppConversationWhereInput[] = [
+    { assignedProfileId: profileId },
+    { assignedProfileId: null },
+    {
+      lead: {
+        OR: [{ assignedTo: profileId }, { closerId: profileId }],
+      },
+    },
+  ]
+
+  if (operatorLeadPhones.length > 0) {
+    orFilters.push({
+      leadId: null,
+      normalizedPhone: { in: operatorLeadPhones },
+    })
+  }
+
+  return { OR: orFilters }
+}
