@@ -830,7 +830,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       isArchived: boolean
     }) => {
       if (!conversationIdsRef.current.has(row.id)) {
-        if (!isTeamMaster) return
+        // RLS do realtime já aplica RBAC-alvo; aceitar INSERT/UPDATE de conversas
+        // ainda não paginadas localmente (ex.: inbound novo para manager/operator).
         setConversations((prev) => {
           if (prev.some((c) => c.id === row.id)) return prev
           const newConv: WhatsAppConversation = {
@@ -896,7 +897,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         }
       }
     },
-    [refreshUnreadCounts, isTeamMaster, loadMessages, activeTeamId]
+    [refreshUnreadCounts, loadMessages, activeTeamId]
   )
 
   const handleConversationInserted = useCallback(
@@ -920,7 +921,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       createdAt: string
       updatedAt: string
     }) => {
-      if (!isTeamMaster) return
+      if (row.teamId !== activeTeamId) return
 
       const conversation: WhatsAppConversation = {
         id: row.id,
@@ -949,7 +950,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       })
       setTotalConversations((prev) => prev + 1)
     },
-    [isTeamMaster]
+    [activeTeamId]
   )
 
   useWhatsAppRealtime({
