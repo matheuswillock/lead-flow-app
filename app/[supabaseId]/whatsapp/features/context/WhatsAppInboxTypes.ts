@@ -25,6 +25,13 @@ export interface WhatsAppTeamContact {
 
 export type WhatsAppContactLookup = Record<string, string>
 
+export interface WhatsAppConversationTag {
+  id: string
+  name: string
+  color: string
+  sortOrder: number
+}
+
 export interface WhatsAppConversation {
   id: string
   teamId: string
@@ -42,6 +49,7 @@ export interface WhatsAppConversation {
   isArchived: boolean
   handoffMode: 'BOT' | 'HUMAN'
   welcomeSentAt: string | null
+  tags?: WhatsAppConversationTag[]
   createdAt: string
   updatedAt: string
 }
@@ -108,6 +116,10 @@ export interface InboxState {
   isSending: boolean
   searchQuery: string
   filterMode: ConversationFilterMode
+  filterTagIds: string[]
+  teamTags: WhatsAppConversationTag[]
+  isLoadingTags: boolean
+  isUpdatingTags: boolean
   page: number
   hasMoreConversations: boolean
   isAssigning: boolean
@@ -149,6 +161,9 @@ export interface InboxActions {
   resendMessage: (messageId: string) => void
   setSearchQuery: (q: string) => void
   setFilterMode: (mode: ConversationFilterMode) => void
+  setFilterTagIds: (tagIds: string[]) => void
+  loadTeamTags: () => void
+  setConversationTags: (conversationId: string, tagIds: string[]) => void
   assignConversation: (conversationId: string, profileId: string) => void
   takeoverConversation: (conversationId: string) => void
   setHandoffMode: (conversationId: string, mode: 'BOT' | 'HUMAN') => void

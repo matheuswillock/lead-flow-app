@@ -8,6 +8,7 @@ import { useWhatsAppInboxContext } from "../context/WhatsAppInboxContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { mapWhatsAppConversationToMessaging } from "../utils/mapWhatsAppToMessaging"
 import { ConversationItem } from "./ConversationItem"
+import { ConversationTagFilter } from "./ConversationTagFilter"
 import { NewConversationDialog } from "./NewConversationDialog"
 import type { ConversationFilterMode } from "../context/WhatsAppInboxTypes"
 
@@ -79,6 +80,7 @@ export function ConversationList() {
               className="pl-8"
             />
           </div>
+          <ConversationTagFilter />
           <div className="flex gap-1">
             {FILTER_TABS.map((tab) => (
               <button
