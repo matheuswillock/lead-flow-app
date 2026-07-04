@@ -642,6 +642,15 @@ HUMAN HUMAN
     
 
 
+        WhatsAppContactNameSource {
+            MANUAL MANUAL
+LEAD LEAD
+PHONE_BOOK PHONE_BOOK
+PUSH_NAME PUSH_NAME
+        }
+    
+
+
         WhatsAppAutoResponseRuleType {
             WELCOME WELCOME
 OFF_HOURS OFF_HOURS
@@ -1887,6 +1896,7 @@ failed failed
     String externalChatId "❓"
     String contactPhone 
     String contactName "❓"
+    WhatsAppContactNameSource contactNameSource 
     String contactAvatarUrl "❓"
     String normalizedPhone 
     DateTime lastMessageAt "❓"
@@ -2364,6 +2374,7 @@ failed failed
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "createdBy"
     "team_whatsapp_configs" }o--|| corretor_studio_profiles : "updatedBy"
     "team_whatsapp_configs" |o--|o team_whatsapp_configs : "primaryConfig"
+    "whatsapp_conversations" |o--|| "WhatsAppContactNameSource" : "enum:contactNameSource"
     "whatsapp_conversations" |o--|| "WhatsAppHandoffMode" : "enum:handoffMode"
     "whatsapp_conversations" }o--|| corretor_studio_teams : "team"
     "whatsapp_conversations" }o--|| team_whatsapp_configs : "config"

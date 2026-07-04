@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { AssignmentControl } from './AssignmentControl'
 import { ConversationActionsMenu } from './ConversationActionsMenu'
+import { EditContactNameDialog } from './EditContactNameDialog'
 import { LinkLeadDialog } from './LinkLeadDialog'
 import { MessageBubble } from './MessageBubble'
 import { MessageBubbleSkeleton } from './MessageBubbleSkeleton'
@@ -90,6 +91,7 @@ export function MessagePanel() {
         <div className="flex flex-1 flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-foreground">{displayName}</span>
+            {chatKind !== 'group' && <EditContactNameDialog conversation={selectedConversation} />}
             {chatKind === 'group' && (
               <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">Grupo</Badge>
             )}

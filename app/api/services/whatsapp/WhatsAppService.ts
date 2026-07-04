@@ -677,7 +677,9 @@ class WhatsAppService implements IWhatsAppService {
 
     await whatsAppRepository.updateConversation(conversation.id, {
       ...(contactAvatarUrl ? { contactAvatarUrl } : {}),
-      ...(input.contactName ? { contactName: input.contactName } : {}),
+      ...(input.contactName
+        ? { contactName: input.contactName, contactNameSource: "MANUAL" as const }
+        : {}),
       assignedProfile: { connect: { id: input.profileId } },
       createdByProfile: { connect: { id: input.profileId } },
     })
