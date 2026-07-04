@@ -553,7 +553,6 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
                   )
             return areMessageListsEquivalent(prev, next) ? prev : next
           })
-          setMessagePage(1)
         } else {
           // Older messages go at the top; API returns newest-first so reverse before prepending
           setMessages((prev) => {
