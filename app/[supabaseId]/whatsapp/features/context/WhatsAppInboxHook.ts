@@ -74,6 +74,15 @@ function tagsSignature(tags: WhatsAppConversationTag[] | undefined): string {
     .join('|')
 }
 
+function conversationMatchesTagFilter(
+  conversation: Pick<WhatsAppConversation, 'tags'>,
+  requiredTagIds: readonly string[]
+): boolean {
+  if (requiredTagIds.length === 0) return true
+  const conversationTagIds = new Set(conversation.tags?.map((tag) => tag.id) ?? [])
+  return requiredTagIds.every((tagId) => conversationTagIds.has(tagId))
+}
+
 function areConversationListsEquivalent(
   a: WhatsAppConversation[],
   b: WhatsAppConversation[]
@@ -170,6 +179,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   // Usado para suprimir o refetch de "heal" só quando o UPDATE da conversa
   // reflete exatamente essa mensagem (evita suprimir heal de INSERT perdido).
   const lastRealtimeInsertMessageAtRef = useRef<string | null>(null)
+  const tagFilterRefetchTimerRef = useRef<number | null>(null)
 
   // Guards síncronos de double-submit: setados/checados ANTES de qualquer
   // await, diferente dos states React (isSending, isAssigning, etc.) cuja
@@ -191,6 +201,9 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       }
       if (unreadRefreshTrailingTimerRef.current !== null) {
         window.clearTimeout(unreadRefreshTrailingTimerRef.current)
+      }
+      if (tagFilterRefetchTimerRef.current !== null) {
+        window.clearTimeout(tagFilterRefetchTimerRef.current)
       }
     }
   }, [])
@@ -590,6 +603,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [activeTeamId, supabaseId, config?.historySyncStatus, loadConversations])
 
   useEffect(() => {
+    filterTagIdsRef.current = []
+    setFilterTagIdsState([])
+  }, [activeTeamId])
+
+  useEffect(() => {
     void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
     setPage(1)
   }, [loadConversations, activeTeamId])
@@ -667,6 +685,17 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [loadConversations]
   )
 
+  const scheduleConversationsRefetchForTagFilter = useCallback(() => {
+    if (filterTagIdsRef.current.length === 0) return
+    if (tagFilterRefetchTimerRef.current !== null) {
+      window.clearTimeout(tagFilterRefetchTimerRef.current)
+    }
+    tagFilterRefetchTimerRef.current = window.setTimeout(() => {
+      tagFilterRefetchTimerRef.current = null
+      void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
+    }, 400)
+  }, [loadConversations])
+
   const loadTeamTags = useCallback(async () => {
     if (!activeTeamId) {
       setTeamTags([])
@@ -710,11 +739,14 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           conversationId,
           tagIds
         )
-        setConversations((prev) =>
-          prev.map((conversation) =>
+        setConversations((prev) => {
+          const next = prev.map((conversation) =>
             conversation.id === conversationId ? { ...conversation, tags } : conversation
           )
-        )
+          const requiredTagIds = filterTagIdsRef.current
+          if (requiredTagIds.length === 0) return next
+          return next.filter((conversation) => conversationMatchesTagFilter(conversation, requiredTagIds))
+        })
         toast.success('Tags atualizadas')
       } catch (error) {
         console.error('[useWhatsAppInbox] Erro ao atualizar tags:', error)
@@ -1015,6 +1047,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       handoffMode?: 'BOT' | 'HUMAN'
     }) => {
       if (!conversationIdsRef.current.has(row.id)) {
+        if (filterTagIdsRef.current.length > 0) {
+          scheduleConversationsRefetchForTagFilter()
+          return
+        }
         // RLS do realtime já aplica RBAC-alvo; aceitar INSERT/UPDATE de conversas
         // ainda não paginadas localmente (ex.: inbound novo para manager/operator).
         setConversations((prev) => {
@@ -1093,7 +1129,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         }
       }
     },
-    [refreshUnreadCounts, loadMessages, activeTeamId]
+    [refreshUnreadCounts, loadMessages, activeTeamId, scheduleConversationsRefetchForTagFilter]
   )
 
   const handleConversationInserted = useCallback(
@@ -1118,6 +1154,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       updatedAt: string
     }) => {
       if (row.teamId !== activeTeamId) return
+
+      if (filterTagIdsRef.current.length > 0) {
+        scheduleConversationsRefetchForTagFilter()
+        return
+      }
 
       const conversation: WhatsAppConversation = {
         id: row.id,
@@ -1146,7 +1187,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       })
       setTotalConversations((prev) => prev + 1)
     },
-    [activeTeamId]
+    [activeTeamId, scheduleConversationsRefetchForTagFilter]
   )
 
   useWhatsAppRealtime({
