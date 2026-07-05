@@ -8,6 +8,11 @@ import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepos
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseFactory"
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
+import { isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
+import {
+  resolveContactNameUpdate,
+  type ContactNameSource,
+} from "@/lib/whatsapp/contact-name"
 
 const leadRepository = new LeadRepository()
 
@@ -25,6 +30,15 @@ class CreateLeadFromConversationUseCase {
 
       if (conversation.leadId) {
         return new Output(false, [], ["Esta conversa já possui um lead vinculado"], null)
+      }
+
+      if (isGroupChat(conversation.externalChatId)) {
+        return new Output(
+          false,
+          [],
+          ["Não é possível criar lead a partir de uma conversa de grupo"],
+          null
+        )
       }
 
       const phone = (input.phone?.trim() || conversation.normalizedPhone || conversation.contactPhone).replace(
@@ -80,13 +94,18 @@ class CreateLeadFromConversationUseCase {
         return new Output(false, [], ["Esta conversa já possui um lead vinculado"], null)
       }
 
-      const trimmedName = input.name.trim()
-      const finalConversation =
-        trimmedName && trimmedName !== conversation.contactName?.trim()
-          ? await whatsAppRepository.updateConversation(input.conversationId, {
-              contactName: trimmedName,
-            })
-          : linkedConversation
+      // Mesma regra de precedência do LinkConversationToLeadUseCase: o nome
+      // entra com fonte LEAD, senão o próximo pushName inbound sobrescreveria.
+      const nameUpdate = resolveContactNameUpdate({
+        currentName: conversation.contactName,
+        currentSource: conversation.contactNameSource as ContactNameSource,
+        incomingName: input.name.trim(),
+        incomingSource: "LEAD",
+      })
+
+      const finalConversation = nameUpdate
+        ? await whatsAppRepository.updateConversation(input.conversationId, nameUpdate)
+        : linkedConversation
 
       return new Output(
         true,

@@ -218,6 +218,8 @@ Agravantes no mesmo caminho: (a) o effect único do realtime dependia de `select
 - Separação limpa Bethânia (instância `bethania`, domínio backoffice) × inbox de leads (config por team) — sem contaminação de domínios, como exigido pela spec `studio-bot-n8n.md`.
 - RLS de realtime espelhando a visibilidade da API (mesmo que duplicada, a intenção de paridade existe e está comentada na migration).
 - Sanitização de texto de entrada (`sanitize-db-text`), progressão monotônica de status de mensagem, quota mensal com usage events bilhetáveis.
+- **Read receipts outbound (ticks do corretor):** status de mensagens enviadas via webhook `MESSAGES_UPDATE` + UI em `MessagingMessageBubble`.
+- **Read receipts inbound (contato vê ✓✓ azul):** `MarkConversationReadUseCase` + `POST conversation-read` enviam `markMessageAsRead` à Evolution quando a instância está `CONNECTED` (gatilhos já existentes no inbox: abrir conversa e inbound com chat aberto). Campo `readAt` em mensagens INBOUND registra receipt enviado; em OUTBOUND continua significando leitura pelo contato.
 
 ---
 

@@ -1,5 +1,7 @@
-import type { IEvoApiService } from "../evo/IEvoApiService"
+import type { IEvoApiService, EvoHistoryMessage } from "../evo/IEvoApiService"
 import { evoApiService } from "../evo/EvoApiService"
+import { parseEvoMessageContent } from "../evo/parseEvoMessageContent"
+import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
 import type {
   IWhatsAppProvider,
   WhatsAppProviderChatSummary,
@@ -70,7 +72,31 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     since: Date
     hostBaseUrl?: string
   }): Promise<WhatsAppProviderHistoryMessage[]> {
-    return this.evo.findMessages(params)
+    const messages = await this.evo.findMessages(params)
+    return messages.map((item) => this.normalizeHistoryMessage(item))
+  }
+
+  private normalizeHistoryMessage(item: EvoHistoryMessage): WhatsAppProviderHistoryMessage {
+    const rawRecord =
+      typeof item.rawRecord === "object" && item.rawRecord !== null
+        ? (item.rawRecord as Record<string, unknown>)
+        : null
+
+    const pushName = rawRecord?.pushName
+    const senderDisplayName =
+      typeof pushName === "string"
+        ? (stripHtmlTags(sanitizeDbText(pushName)) ?? null)
+        : null
+
+    return {
+      providerMessageId: item.providerMessageId,
+      remoteJid: item.remoteJid,
+      fromMe: item.fromMe,
+      messageTimestamp: item.messageTimestamp,
+      content: parseEvoMessageContent(item.messageBody),
+      senderDisplayName,
+      rawPayload: item.rawRecord,
+    }
   }
 
   async fetchProfilePictureUrl(params: {
@@ -126,6 +152,14 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     hostBaseUrl?: string
   }): Promise<WhatsAppProviderGroupParticipant[]> {
     return this.evo.findGroupParticipants(params)
+  }
+
+  async markMessagesAsRead(params: {
+    instanceName: string
+    readMessages: Array<{ remoteJid: string; fromMe: boolean; id: string }>
+    hostBaseUrl?: string
+  }): Promise<void> {
+    return this.evo.markMessagesAsRead(params)
   }
 
   async disconnect(instanceName: string, hostBaseUrl?: string): Promise<void> {

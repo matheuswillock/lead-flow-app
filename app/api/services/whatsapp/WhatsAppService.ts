@@ -6,7 +6,6 @@ import { evolutionWhatsAppProvider } from "./provider/EvolutionWhatsAppProvider"
 import { whatsAppAutoResponseRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppAutoResponseRepository"
 import {
   buildMessagePreview,
-  parseEvoMessageContent,
 } from "./evo/parseEvoMessageContent"
 import { generateWebhookSecret, buildPeriodKey, normalizePhone, normalizeRemoteJid, extractOpaqueId, toWhatsAppJid, resolveNormalizedPhone, isGroupChat } from "./phoneUtils"
 import { resolveConfigStatusFromEvo, toQrCodeImageUrl } from "./qrCodeUtils"
@@ -785,16 +784,11 @@ class WhatsAppService implements IWhatsAppService {
           )
           if (existing) continue
 
-          const parsed = parseEvoMessageContent(item.messagePayload)
-          const preview = buildMessagePreview(parsed)
+          const preview = buildMessagePreview(item.content)
           const direction = item.fromMe ? "OUTBOUND" : "INBOUND"
 
           const inboundGroupSender =
-            !item.fromMe && isGroup
-              ? (typeof (item.messagePayload as Record<string, unknown>)?.pushName === "string"
-                  ? ((item.messagePayload as Record<string, unknown>).pushName as string)
-                  : null)
-              : null
+            !item.fromMe && isGroup ? item.senderDisplayName : null
 
           await whatsAppRepository.createMessage({
             conversation: { connect: { id: conversation.id } },
@@ -802,19 +796,19 @@ class WhatsAppService implements IWhatsAppService {
             config: { connect: { id: config.id } },
             providerMessageId: item.providerMessageId,
             direction,
-            messageType: parsed.messageType,
+            messageType: item.content.messageType,
             status: item.fromMe ? "SENT" : "RECEIVED",
-            contentText: parsed.contentText,
-            mediaUrl: parsed.mediaUrl,
-            mediaMimeType: parsed.mediaMimeType,
-            mediaFileName: parsed.mediaFileName,
-            linkPreview: parsed.linkPreview ?? undefined,
-            caption: parsed.caption,
+            contentText: item.content.contentText,
+            mediaUrl: item.content.mediaUrl,
+            mediaMimeType: item.content.mediaMimeType,
+            mediaFileName: item.content.mediaFileName,
+            linkPreview: item.content.linkPreview ?? undefined,
+            caption: item.content.caption,
             senderDisplayName: inboundGroupSender,
             senderPhone: item.fromMe ? undefined : normalizedPhone,
             recipientPhone: item.fromMe ? normalizedPhone : undefined,
             sentAt: item.messageTimestamp,
-            rawPayload: item.messagePayload as Prisma.InputJsonValue,
+            rawPayload: item.rawPayload as Prisma.InputJsonValue,
           })
 
           messageCount += 1

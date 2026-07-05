@@ -447,6 +447,43 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return { messages, total }
   }
 
+  async listInboundPendingReadReceipt(
+    conversationId: string,
+    limit = 100
+  ): Promise<
+    Array<{ id: string; providerMessageId: string | null; rawPayload: Prisma.JsonValue }>
+  > {
+    return prisma.whatsAppMessage.findMany({
+      where: {
+        conversationId,
+        direction: "INBOUND",
+        readAt: null,
+      },
+      select: {
+        id: true,
+        providerMessageId: true,
+        rawPayload: true,
+      },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    })
+  }
+
+  async bulkSetInboundBrokerReadAt(messageIds: string[], readAt: Date): Promise<number> {
+    if (messageIds.length === 0) return 0
+
+    const result = await prisma.whatsAppMessage.updateMany({
+      where: {
+        id: { in: messageIds },
+        direction: "INBOUND",
+        readAt: null,
+      },
+      data: { readAt },
+    })
+
+    return result.count
+  }
+
   async createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }> {
     return prisma.whatsAppUsageEvent.create({
       data,
