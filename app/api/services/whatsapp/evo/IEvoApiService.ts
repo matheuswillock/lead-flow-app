@@ -29,7 +29,8 @@ export interface EvoHistoryMessage {
   remoteJid: string
   fromMe: boolean
   messageTimestamp: Date
-  messagePayload: unknown
+  messageBody: unknown
+  rawRecord: unknown
 }
 
 export interface EvoSendTextResult {
@@ -124,6 +125,12 @@ export interface IEvoApiService {
     groupJid: string
     hostBaseUrl?: string
   }): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null; admin: string | null }>>
+
+  markMessagesAsRead(params: {
+    instanceName: string
+    readMessages: Array<{ remoteJid: string; fromMe: boolean; id: string }>
+    hostBaseUrl?: string
+  }): Promise<void>
 
   disconnectInstance(instanceName: string, hostBaseUrl?: string): Promise<void>
 

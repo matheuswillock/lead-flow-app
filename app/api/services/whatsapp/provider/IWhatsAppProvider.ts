@@ -4,6 +4,8 @@
 // Um segundo provedor (ex.: Meta Cloud API) implementa esta interface sem
 // tocar no domínio.
 
+import type { WhatsAppMessageType } from "@prisma/client"
+
 export type WhatsAppProviderConnectionState = "open" | "close" | "connecting"
 
 export interface WhatsAppProviderQrCode {
@@ -38,12 +40,29 @@ export interface WhatsAppProviderChatSummary {
   updatedAt: Date | null
 }
 
+export interface WhatsAppProviderMessageContent {
+  messageType: WhatsAppMessageType
+  contentText: string | null
+  mediaUrl: string | null
+  mediaMimeType: string | null
+  mediaFileName: string | null
+  caption: string | null
+  linkPreview: {
+    title: string | null
+    description: string | null
+    imageUrl: string | null
+    url: string | null
+  } | null
+}
+
 export interface WhatsAppProviderHistoryMessage {
   providerMessageId: string
   remoteJid: string
   fromMe: boolean
   messageTimestamp: Date
-  messagePayload: unknown
+  content: WhatsAppProviderMessageContent
+  senderDisplayName: string | null
+  rawPayload: unknown
 }
 
 export interface WhatsAppProviderSendResult {
@@ -65,6 +84,12 @@ export interface WhatsAppProviderGroupParticipant extends WhatsAppProviderContac
 export interface WhatsAppProviderMediaContent {
   base64: string
   mimeType: string
+}
+
+export interface WhatsAppProviderReadMessage {
+  remoteJid: string
+  fromMe: boolean
+  id: string
 }
 
 export type WhatsAppProviderMediaType = "image" | "document" | "audio" | "video"
@@ -136,6 +161,12 @@ export interface IWhatsAppProvider {
     groupJid: string
     hostBaseUrl?: string
   }): Promise<WhatsAppProviderGroupParticipant[]>
+
+  markMessagesAsRead(params: {
+    instanceName: string
+    readMessages: WhatsAppProviderReadMessage[]
+    hostBaseUrl?: string
+  }): Promise<void>
 
   disconnect(instanceName: string, hostBaseUrl?: string): Promise<void>
 }
