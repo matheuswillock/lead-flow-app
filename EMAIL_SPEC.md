@@ -104,6 +104,19 @@ Schema muda o default para `"html"`; templates legados com `mailyJson` permanece
 
 A rota do cron (288 linhas de negócio) passa a chamar o mesmo caminho do disparo manual (`EmailCampaignUseCase.send` parametrizado para contexto de sistema), eliminando as divergências já encontradas (CDP, logs de falhados, restauração de status). Rota fica fina: auth do `CRON_SECRET` + seleção de campanhas + loop.
 
+### D8 — Beta = isenção total de créditos e cobrança (decisão do owner, 2026-07-06)
+
+**Regra:** se a funcionalidade está com a tag **Beta habilitada** (`betaEnabled` na feature `email-campaigns`/`email` do backoffice, resolvida por `resolveEmailBetaAccess` com herança via `inheritParentSettings`), o disparo **não gera nenhuma cobrança e não valida créditos** — em **todos** os caminhos (disparo manual, cron de agendadas e qualquer fluxo futuro que consuma envio).
+
+Consequências normativas:
+
+1. **Sem validação:** o gate de saldo (D3) é completamente pulado quando beta — nada de `hasEnoughCredits`, nada de guard de saldo.
+2. **Sem débito nem contabilização de créditos:** `reserveCredits`/`releaseCredits` não são chamados; nenhuma escrita em `EmailCreditUsage` (nem `creditsUsed`, nem `overageCount`, nem `overageCharged`). O consumo permanece observável via `email_logs`/analytics — que já registram cada envio por Time — sem passar pelo contador de billing.
+3. **Sem cobrança:** nenhuma fatura/overage pode ser derivado de envios feitos sob beta, inclusive retroativamente quando a cobrança real Asaas existir.
+4. **Ordem do gate em todo caminho de disparo:** `resolveEmailBetaAccess` primeiro; se beta ⇒ segue sem tocar no subsistema de créditos; senão ⇒ D3 (saldo + reserva atômica).
+5. **UI:** Time beta não vê barra de saldo nem CTA de assinatura (comportamento atual do `CreditBalanceBar` é mantido); `EmailCreditUseCase.subscribe` continua recusando assinatura de usuário beta (comportamento atual).
+6. Ao **desligar** o beta da feature, os Times voltam imediatamente para a regra padrão (sem assinatura ativa = disparo bloqueado) — comunicar antes de desligar.
+
 ---
 
 ## Estágios de implementação
@@ -173,8 +186,10 @@ Leia EMAIL_AUDIT.md (seção 3.1) e a decisão D1/M1 registrada em EMAIL_SPEC.md
 4. EmailCampaignUseCase e cron (já unificados no Estágio 1): reservar
    totalRecipients antes do dispatchBatch, liberar a sobra depois; sem saldo =>
    Output inválido "Créditos insuficientes para N destinatários. Saldo: X" sem chamar
-   o Resend. O bypass beta (resolveEmailBetaAccess) continua válido mas passa a
-   registrar consumo via reserveCredits com guard desativado (contabiliza sem bloquear).
+   o Resend. Beta = isenção TOTAL (D8): quando resolveEmailBetaAccess for true,
+   pular o subsistema de créditos inteiro — sem hasEnoughCredits, sem
+   reserveCredits/releaseCredits, nenhuma escrita em EmailCreditUsage. O gate beta
+   é avaliado ANTES de qualquer lógica de saldo, em todos os caminhos de disparo.
 5. EmailCreditUseCase.subscribe/status/cancel: escopo teamId (ctx.teamId); reset-credits
    cron: ajuste o include (team em vez de profile) mantendo o TZ do master; adicione
    try/catch por assinatura no loop.
@@ -186,7 +201,7 @@ Atualize Postman. Rode a validação completa.
 
 **Não tocar:** cobrança Asaas (non-goal); webhook; import de contatos; templates.
 
-**Aceite:** duas requisições de disparo simultâneas do mesmo Time com saldo para apenas uma → exatamente uma passa; Time sem assinatura não dispara; Time B do mesmo master não consome saldo do Time A; migration replay ok em `db:migrate:reset:local`; testes de concorrência verdes.
+**Aceite:** duas requisições de disparo simultâneas do mesmo Time com saldo para apenas uma → exatamente uma passa; Time sem assinatura não dispara (**exceto beta — D8**); Time com beta habilitado dispara sem nenhuma escrita em `EmailCreditUsage`; Time B do mesmo master não consome saldo do Time A; migration replay ok em `db:migrate:reset:local`; testes de concorrência verdes (incluindo o caso beta: disparo concorrente beta + não-beta não interfere no saldo).
 **Validação manual:** criar dois Times para o mesmo master local, assinar em um só, verificar disparo bloqueado no outro; `Promise.all` de dois sends com saldo unitário.
 
 **Mockup — Campanhas (antes/depois):**
@@ -452,3 +467,4 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
 
 - 2026-07-05 — Auditoria concluída; spec proposta. D1=A/M1 e D2=O1 recomendadas, pendentes de confirmação do owner. Cobrança Asaas declarada non-goal desta rodada (gap reportado no audit 3.4).
 - 2026-07-06 — Investigação MCP executada (Supabase produção + Vercel + export de logs 24h). Confirmados em produção: kill silencioso de campanhas agendadas pelo gate de créditos do cron (sem bypass beta), billing com `creditsUsed = 0` acumulado, 3 campanhas `sent` com 0 envios, 2 dispatches presos em `sending`, 545 logs `queued` órfãos, 124 dispatch IDs órfãos/24h, 429 também no caminho de envio. Estágio 1 promovido a hotfix prioritário e prompt atualizado com o fix do gate de créditos + log obrigatório de kill.
+- 2026-07-06 — **Decisão do owner (D8):** funcionalidade com tag **Beta habilitada** = isenção total — não gera nenhuma cobrança e não valida créditos, em todos os caminhos de disparo. Substituída a proposta anterior do Estágio 2 de "contabilizar sem bloquear" para beta: agora beta não escreve nada em `EmailCreditUsage`. Prompt do Estágio 2 e critérios de aceite atualizados.
