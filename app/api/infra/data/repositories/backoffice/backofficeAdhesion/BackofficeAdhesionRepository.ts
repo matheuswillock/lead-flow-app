@@ -443,7 +443,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
   }
 
   async getOptions(): Promise<BackofficeAdhesionOptions> {
-    const [leads, users, sponsorOptions] = await Promise.all([
+    const [leads, users] = await Promise.all([
       prisma.backofficeLead.findMany({
         where: {
           status: { in: [...eligibleLeadStatuses] },
@@ -457,14 +457,9 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         select: backofficeAdhesionUserSelect,
         orderBy: { profile: { fullName: "asc" } },
       }),
-      prisma.profile.findMany({
-        where: { canSponsorAccounts: true },
-        select: { id: true, fullName: true, email: true },
-        orderBy: { fullName: "asc" },
-      }),
     ])
 
-    return { leads, users, sponsorOptions }
+    return { leads, users, sponsorOptions: [] }
   }
 
   async cancelAdhesionAndRestoreLead(

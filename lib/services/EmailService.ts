@@ -1,4 +1,5 @@
 import { assertResend } from "@/lib/email";
+import { getResendOwnerEmail } from "@/lib/email/resend-owner-email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
 import { DEFAULT_TZ, formatIntimezone, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
@@ -632,7 +633,8 @@ export class EmailService {
       // MODO TESTE: Enviar todos os e-mails para o owner em vez do destinatário real
       // Use EMAIL_TEST_MODE=true para ativar modo de teste (útil para testes em produção)
       const isTestMode = process.env.EMAIL_TEST_MODE === 'true';
-      const resendOwnerEmail = process.env.RESEND_OWNER_EMAIL || 'matheuswillock@gmail.com';
+      const resendOwnerEmail = getResendOwnerEmail();
+      const effectiveTestMode = isTestMode && Boolean(resendOwnerEmail);
       
       const emailData: {
         from: string
@@ -646,8 +648,8 @@ export class EmailService {
         tags?: Array<{ name: string; value: string }>
       } = {
         from: options.from || "Corretor Studio <no-reply@corretorstudio.com>",
-        to: isTestMode ? [resendOwnerEmail] : options.to,
-        subject: isTestMode 
+        to: effectiveTestMode ? [resendOwnerEmail!] : options.to,
+        subject: effectiveTestMode 
           ? `[TESTE - Para: ${options.to.join(', ')}] ${options.subject}`
           : options.subject,
         headers: {

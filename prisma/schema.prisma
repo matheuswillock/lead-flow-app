@@ -597,7 +597,6 @@ model Profile {
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
-  canSponsorAccounts       Boolean             @default(false) // Indica se pode patrocinar contas Associado/Convidado
   multiskillEnabled        Boolean             @default(false) // Master habilitado a receber transferências MultiSkill
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
@@ -710,10 +709,14 @@ model Profile {
   proposalReviewsReviewed LeadProposalReview[]  @relation("LeadProposalReviewReviewer")
   requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
 
+  authorizedSponsorRecord       BackofficeAuthorizedSponsor?  @relation("AuthorizedSponsorProfile")
+  authorizedSponsorsGranted     BackofficeAuthorizedSponsor[] @relation("AuthorizedSponsorGrantedBy")
+  authorizedSponsorsRevoked     BackofficeAuthorizedSponsor[] @relation("AuthorizedSponsorRevokedBy")
+  sponsoredAdhesions            BackofficeAdhesion[]          @relation("BackofficeAdhesionSponsorMaster")
+
   @@index([role])
   @@index([managerId])
   @@index([sponsorMasterId])
-  @@index([canSponsorAccounts])
   @@index([cpfCnpj])
   @@index([googleConnectionId])
   @@map("corretor_studio_profiles")
@@ -808,6 +811,26 @@ model BackofficeBannedUser {
   @@index([status, bannedAt], map: "backoffice_banned_users_status_banned_at_idx")
   @@index([scope, status], map: "backoffice_banned_users_scope_status_idx")
   @@map("backoffice_banned_users")
+}
+
+model BackofficeAuthorizedSponsor {
+  id                 String    @id @default(uuid()) @db.Uuid
+  profileId          String    @unique @map("profileId") @db.Uuid
+  isActive           Boolean   @default(true) @map("isActive")
+  grantedByProfileId String?   @map("grantedByProfileId") @db.Uuid
+  grantedAt          DateTime  @default(now()) @map("grantedAt") @db.Timestamptz(6)
+  revokedByProfileId String?   @map("revokedByProfileId") @db.Uuid
+  revokedAt          DateTime? @map("revokedAt") @db.Timestamptz(6)
+  notes              String?   @db.Text
+  createdAt          DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile   Profile  @relation("AuthorizedSponsorProfile", fields: [profileId], references: [id], onDelete: Restrict)
+  grantedBy Profile? @relation("AuthorizedSponsorGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: SetNull)
+  revokedBy Profile? @relation("AuthorizedSponsorRevokedBy", fields: [revokedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([isActive], map: "backoffice_authorized_sponsors_is_active_idx")
+  @@map("backoffice_authorized_sponsors")
 }
 
 model GoogleOAuthConnection {
@@ -1031,6 +1054,7 @@ model BackofficeAdhesion {
   sdrBackofficeUser       BackofficeUser?     @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
   closerBackofficeUser    BackofficeUser?     @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
   createdByBackofficeUser BackofficeUser?     @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  sponsorMaster           Profile?            @relation("BackofficeAdhesionSponsorMaster", fields: [sponsorMasterId], references: [id], onDelete: SetNull)
 
   profileSubscription ProfileSubscription?
 

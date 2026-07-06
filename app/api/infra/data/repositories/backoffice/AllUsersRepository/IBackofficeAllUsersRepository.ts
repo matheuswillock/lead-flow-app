@@ -203,7 +203,5 @@ export interface IBackofficeAllUsersRepository {
 
   setHasPermanentSubscription(profileId: string, value: boolean): Promise<void>
 
-  findSponsorMasterOptions(): Promise<BackofficeSponsorMasterOption[]>
-
   hasOpenProposalReviewsForAssociate(profileId: string): Promise<boolean>
 }

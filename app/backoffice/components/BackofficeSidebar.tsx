@@ -167,6 +167,14 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         <SidebarMenuSubItem>
                           <SidebarMenuSubButton
                             asChild
+                            isActive={pathname.startsWith("/backoffice/clients/authorized-sponsors")}
+                          >
+                            <Link href="/backoffice/clients/authorized-sponsors">Patrocinadores</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
                             isActive={pathname.startsWith("/backoffice/clients/adhesions")}
                           >
                             <Link href="/backoffice/clients/adhesions">Nova adesão</Link>

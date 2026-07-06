@@ -17,7 +17,6 @@ import type {
   BackofficeAllUsersScheduleRecord,
   BackofficeAllUsersScheduleTransferRef,
   BackofficeAllUsersUserTypeRef,
-  BackofficeSponsorMasterOption,
   BackofficeUpsertUserTypeAssignmentInput,
   IBackofficeAllUsersRepository,
 } from "./IBackofficeAllUsersRepository"
@@ -734,15 +733,6 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
       where: { id: profileId },
       data: { hasPermanentSubscription: value },
     })
-  }
-
-  async findSponsorMasterOptions(): Promise<BackofficeSponsorMasterOption[]> {
-    const masters = await prisma.profile.findMany({
-      where: { canSponsorAccounts: true },
-      select: { id: true, fullName: true, email: true },
-      orderBy: [{ fullName: "asc" }, { email: "asc" }],
-    })
-    return masters
   }
 
   async hasOpenProposalReviewsForAssociate(profileId: string): Promise<boolean> {

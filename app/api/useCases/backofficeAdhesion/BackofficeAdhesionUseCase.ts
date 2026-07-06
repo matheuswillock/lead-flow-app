@@ -12,6 +12,10 @@ import type {
   IBackofficeAdhesionService,
 } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
 import type { IBackofficeAdhesionUseCase } from "./IBackofficeAdhesionUseCase"
+import {
+  backofficeSponsorAuthorizationService,
+} from "@/app/api/services/backofficeSponsorAuthorization/BackofficeSponsorAuthorizationService"
+import type { IBackofficeSponsorAuthorizationService } from "@/app/api/services/backofficeSponsorAuthorization/IBackofficeSponsorAuthorizationService"
 
 export const BACKOFFICE_ADHESION_STATUS_VALUES = [
   "pending",
@@ -48,6 +52,8 @@ const EXPECTED_CREATE_ERROR_MESSAGES = new Set([
   "Data de expiração do acesso Member PRO inválida",
   "O acesso Member PRO deve ter validade de no mínimo 1 dia",
   "O acesso Member PRO deve ter validade de no máximo 1 ano",
+  "Patrocinador não autorizado",
+  "Patrocinador inválido",
 ])
 
 const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
@@ -87,7 +93,8 @@ function isExpectedCreateError(error: unknown): boolean {
 
 export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   constructor(
-    private readonly service: IBackofficeAdhesionService = new BackofficeAdhesionService()
+    private readonly service: IBackofficeAdhesionService = new BackofficeAdhesionService(),
+    private readonly sponsorAuthorization: IBackofficeSponsorAuthorizationService = backofficeSponsorAuthorizationService
   ) {}
 
   async list(input: {
@@ -127,6 +134,16 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       if (input.userType === "associate" || input.userType === "guest") {
         if (!input.sponsorMasterId) {
           return new Output(false, [], ["Selecione o patrocinador da conta"], null)
+        }
+
+        const sponsorAuth = await this.sponsorAuthorization.assertAuthorizedSponsor(input.sponsorMasterId)
+        if (!sponsorAuth.isAuthorized) {
+          return new Output(
+            false,
+            [],
+            [sponsorAuth.errorMessage ?? "Patrocinador não autorizado"],
+            null
+          )
         }
       }
 

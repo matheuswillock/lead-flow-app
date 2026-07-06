@@ -6,6 +6,10 @@ import {
   ProfileAsaasCustomerSyncUseCase,
 } from "@/app/api/useCases/profileAsaasCustomer/ProfileAsaasCustomerSyncUseCase"
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
+import {
+  backofficeSponsorAuthorizationService,
+} from "@/app/api/services/backofficeSponsorAuthorization/BackofficeSponsorAuthorizationService"
+import type { IBackofficeSponsorAuthorizationService } from "@/app/api/services/backofficeSponsorAuthorization/IBackofficeSponsorAuthorizationService"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const MIN_ACCESS_DAYS = 1
@@ -21,12 +25,13 @@ export interface BackofficeProfileUserTypeInput {
 export class BackofficeProfileUserTypeUseCase {
   constructor(
     private readonly repository: IBackofficeAllUsersRepository,
-    private readonly asaasSync: ProfileAsaasCustomerSyncUseCase = profileAsaasCustomerSyncUseCase
+    private readonly asaasSync: ProfileAsaasCustomerSyncUseCase = profileAsaasCustomerSyncUseCase,
+    private readonly sponsorAuthorization: IBackofficeSponsorAuthorizationService = backofficeSponsorAuthorizationService
   ) {}
 
   async listSponsorOptions(): Promise<Output> {
     try {
-      const options = await this.repository.findSponsorMasterOptions()
+      const options = await this.sponsorAuthorization.listAuthorizedSponsors()
       return new Output(true, ["Patrocinadores listados"], [], { options })
     } catch (error) {
       console.error("[BackofficeProfileUserTypeUseCase][listSponsorOptions]", error)
@@ -55,9 +60,9 @@ export class BackofficeProfileUserTypeUseCase {
           return new Output(false, [], ["A conta não pode ser patrocinada por ela mesma"], null)
         }
 
-        const sponsorIsMaster = await this.repository.findIsMaster(input.sponsorMasterId)
-        if (!sponsorIsMaster) {
-          return new Output(false, [], ["Patrocinador inválido"], null)
+        const sponsorAuth = await this.sponsorAuthorization.assertAuthorizedSponsor(input.sponsorMasterId)
+        if (!sponsorAuth.isAuthorized) {
+          return new Output(false, [], [sponsorAuth.errorMessage ?? "Patrocinador não autorizado"], null)
         }
 
         const asaasOutput = await this.asaasSync.ensureProfileAsaasCustomer(profileId)
@@ -92,9 +97,9 @@ export class BackofficeProfileUserTypeUseCase {
           return new Output(false, [], ["A conta não pode ser patrocinada por ela mesma"], null)
         }
 
-        const sponsorIsMaster = await this.repository.findIsMaster(input.sponsorMasterId)
-        if (!sponsorIsMaster) {
-          return new Output(false, [], ["Patrocinador inválido"], null)
+        const sponsorAuth = await this.sponsorAuthorization.assertAuthorizedSponsor(input.sponsorMasterId)
+        if (!sponsorAuth.isAuthorized) {
+          return new Output(false, [], [sponsorAuth.errorMessage ?? "Patrocinador não autorizado"], null)
         }
 
         const userType = await this.repository.upsertUserTypeAssignment(profileId, {
