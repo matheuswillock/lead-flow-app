@@ -125,8 +125,13 @@ Leia EMAIL_AUDIT.md (seções 3.3, 5) e agents.md. No módulo de e-mail do lead-
    send parametrizado com contexto de sistema), deixando a rota apenas com: auth via
    CRON_SECRET, seleção de campanhas elegíveis e loop com try/catch por campanha.
    O caminho unificado DEVE: repassar cdpSegmentSlug ao buildCampaignDispatchInput
-   (fix do bug que mata campanhas CDP agendadas); pré-criar EmailLog queued para todos
-   os destinatários e marcar failed os não enviados (paridade com o manual).
+   (fix do bug que mata campanhas CDP agendadas); aplicar o MESMO gate de créditos do
+   fluxo manual — hasEnoughCredits OU resolveEmailBetaAccess — em vez de só
+   hasEnoughCredits (fix do kill silencioso confirmado em produção: audit 6.1 —
+   toda campanha agendada morre com "Sem assinatura de créditos ativa" enquanto o
+   disparo manual do mesmo Time funciona); logar console.error com campaignId e motivo
+   sempre que uma campanha for marcada failed pelo cron; pré-criar EmailLog queued para
+   todos os destinatários e marcar failed os não enviados (paridade com o manual).
 3. Corrija os estados terminais: campanha só vira "sent" se result.sent > 0 — caso
    contrário "failed" com errorMessage; campanha fora da janela de horário ou em data
    bloqueada PERMANECE "scheduled" (log informativo), não vira "failed"; adicione
@@ -140,7 +145,7 @@ Atualize os testes para o comportamento novo. Rode a sequência de validação c
 
 **Não tocar:** schema Prisma; EmailCreditService (escopo/assinatura — Estágio 2); webhook Resend; frontend.
 
-**Aceite:** campanha CDP agendada dispara; `sent` nunca ocorre com `totalSent === 0`; campanha fora de janela dispara na janela seguinte; execução dupla simulada do cron não duplica envio nem trabalho pesado; testes verdes cobrindo cada caso.
+**Aceite:** campanha CDP agendada dispara; campanha agendada de Time beta (sem assinatura) dispara — paridade com o manual; `sent` nunca ocorre com `totalSent === 0`; campanha fora de janela dispara na janela seguinte; nenhuma campanha vira `failed` sem linha de log com o motivo; execução dupla simulada do cron não duplica envio nem trabalho pesado; testes verdes cobrindo cada caso.
 **Validação manual:** agendar campanha CDP e campanha com lista para daqui a 5 min em ambiente local; rodar o cron duas vezes em paralelo (`curl` concorrente); conferir `email_campaigns`/`email_logs`.
 
 ### Estágio 2 — Créditos por Time (migration + saldo real + lock atômico) ⚠️ depende de D1
@@ -428,7 +433,7 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
 
 ## Success criteria (módulo)
 
-1. Zero e-mails órfãos novos após Estágio 3 (query da seção 6 do audit tende a 0 em janela de 7 dias).
+1. Zero e-mails órfãos novos após Estágio 3 (métrica do audit 6.6 — hoje 124 IDs distintos/24h — tende a 0 em janela de 7 dias).
 2. Zero 429 do Resend no enrichment em produção.
 3. Nenhuma campanha `sent` com `totalSent = 0`; nenhuma `sending` > 30 min.
 4. Saldo por Time nunca negativo; corrida de disparo comprovadamente serializada por teste.
@@ -441,8 +446,9 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
 1. **D1 — estratégia de migração de dados (M1/M2/M3)** — recomendação M1; aguarda owner.
 2. **D2 — nível de acesso do operator (O1/O2/O3)** — recomendação O1; aguarda owner.
 3. Cobrança real (assinatura + overage no Asaas): quando entrar, define se overage volta a ser permitido com teto ou permanece bloqueio rígido.
-4. Resultado das queries MCP (seção 6 do audit): se existirem campanhas `scheduled` vencidas no banco, priorizar hotfix do Estágio 1 antes de qualquer outro estágio.
+4. ~~Resultado das queries MCP~~ **Resolvida (2026-07-06)**: investigação MCP executada (audit seção 6). Não há campanhas `scheduled` vencidas hoje, mas confirmou-se que o cron **mata silenciosamente** toda campanha agendada que vence (0 assinaturas ativas + bypass beta ausente no cron). O Estágio 1 é hotfix prioritário — a correção do gate de créditos do cron foi incorporada ao prompt do estágio.
 
 ## Decisions log
 
 - 2026-07-05 — Auditoria concluída; spec proposta. D1=A/M1 e D2=O1 recomendadas, pendentes de confirmação do owner. Cobrança Asaas declarada non-goal desta rodada (gap reportado no audit 3.4).
+- 2026-07-06 — Investigação MCP executada (Supabase produção + Vercel + export de logs 24h). Confirmados em produção: kill silencioso de campanhas agendadas pelo gate de créditos do cron (sem bypass beta), billing com `creditsUsed = 0` acumulado, 3 campanhas `sent` com 0 envios, 2 dispatches presos em `sending`, 545 logs `queued` órfãos, 124 dispatch IDs órfãos/24h, 429 também no caminho de envio. Estágio 1 promovido a hotfix prioritário e prompt atualizado com o fix do gate de créditos + log obrigatório de kill.

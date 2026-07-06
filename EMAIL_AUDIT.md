@@ -1,17 +1,20 @@
 # EMAIL_AUDIT.md — Auditoria do Módulo de E-mail (Corretor Studio)
 
-**Data:** 2026-07-05
+**Data:** 2026-07-05 · **Atualizado:** 2026-07-06 (investigação MCP executada)
 **Escopo:** Email Campaigns, Email Template Editor, crons (`dispatch-scheduled`, `reset-credits`), webhook Resend, créditos/billing, listas de contato, supressão e conformidade.
-**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos.
+**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos + investigação MCP (Supabase produção, Vercel runtime logs, export de logs 04–05/07).
 **Rodada somente-leitura:** nenhum código de produção foi alterado.
 
 ---
 
-## ⚠️ Investigação MCP bloqueada nesta sessão
+## 🔴 Investigação MCP executada — achado crítico confirmado (2026-07-06)
 
-Os servidores MCP **Supabase**, **Vercel** e **Asaas** exigem autorização OAuth e não estão autenticados nesta sessão não-interativa. A investigação obrigatória (campanhas `scheduled` vencidas, taxa de e-mails órfãos, cadência real do cron) **não pôde ser executada**. As queries prontas estão na seção 6 — basta autorizar os conectores nas configurações de conectores do claude.ai (ou via `/mcp` em sessão interativa) e reexecutar.
+A investigação obrigatória via MCP (Supabase + Vercel) foi executada em 2026-07-06, complementada pelo export `corretor-studio-log-export-2026-07-05T09-31-49.json` (22.522 linhas, janela de 24h: 04/07 09:30 UTC → 05/07 09:29 UTC). Números completos na seção 6. O que muda em relação à primeira versão deste relatório:
 
-Consequência direta: **a evidência de produção nº 3 ("cron sempre reporta 0 campanhas") permanece inconclusiva** — as três hipóteses (ausência real de campanhas, campanhas presas em `sending`, campanhas marcadas `failed` por bloqueio de janela) estão descritas em 3.3 e só o banco desempata.
+1. **Evidência nº 3 ("cron sempre reporta 0 campanhas") — resolvida, e é pior do que parecia.** A cadência do cron está correta (288 execuções em 24h = exatamente a cada 5 min, todas HTTP 200, p50 67ms, máx 1,7s — sem timeout, sem cold start mascarando falha) e **não há campanhas `scheduled` vencidas no banco hoje** (a única `scheduled` é futura, 09/07). Mas o banco mostra o que aconteceu com a última que venceu: a campanha `teste de e-mail` (agendada 04/07 21:00 UTC) foi **encontrada e morta pelo próprio cron** com `errorMessage: "Sem assinatura de créditos ativa"` — enquanto o disparo manual do mesmo Time funciona via bypass beta (`resolveEmailBetaAccess`), **que não existe no caminho do cron** (assimetria descrita em 3.1/3.3). Como produção tem **0 assinaturas de crédito ativas**, hoje **toda campanha agendada morre no primeiro run elegível**, e o cron loga apenas "0 campanhas disparadas" — o kill é silencioso (nenhuma linha de erro nas 1.164 linhas de log do cron na janela).
+2. **O billing nunca contabilizou nada em produção:** 2 assinaturas (ambas canceladas), `creditsUsed` acumulado = **0**, overage acumulado = **R$ 0,00**. `deductCredits` nunca registrou um único crédito — o achado "billing fictício" (5.1) deixa de ser risco teórico e vira fato medido.
+3. **Estados terminais quebrados confirmados em produção:** 3 campanhas `sent` com `totalSent = 0`; 2 dispatches presos em `sending` desde 01/07; a campanha `Convite 02/07` acumulou **6 dispatches `failed` consecutivos (378 destinatários, 0 enviados)** em 2 dias de retentativas manuais do usuário; **545 EmailLogs de campanha presos em `queued`** sem `resendEmailId` (98,5% dos logs de campanha).
+4. **Órfãos e 429 quantificados:** 298 linhas de órfão / **124 dispatch IDs distintos em 24h**; 8 ocorrências de `rate_limit_exceeded` — 6 no enrichment do webhook e **2 no caminho de envio** (cron `meeting-follow-up`), confirmando que o problema de rate limit não é só do enrichment.
 
 ---
 
@@ -31,10 +34,10 @@ Consequência direta: **a evidência de produção nº 3 ("cron sempre reporta 0
 **Os 5 achados estruturais mais importantes da rodada:**
 
 1. **Conflito de schema créditos↔Time**: `EmailCreditSubscription.profileId` é `@unique` (1:1 por Manager) enquanto todo o resto do módulo é escopado por `teamId`. Não existe nenhum caminho no código que verifique saldo por Time — todos os Times de um master compartilham o mesmo pool implicitamente (`prisma/schema.prisma:1896-1913`).
-2. **Não há checagem de saldo nenhuma antes do disparo**: `hasEnoughCredits()` só verifica se a assinatura está ativa — o comentário no código é explícito: *"Permite envio mesmo sem créditos (vai para overage)"*. Overage é ilimitado e **nunca é cobrado** (TODO explícito no cron de reset). O módulo de billing hoje é, na prática, um contador (`app/api/services/EmailCredit/EmailCreditService.ts:70-74`, `app/api/v1/email/cron/reset-credits/route.ts:71-76`).
+2. **Não há checagem de saldo nenhuma antes do disparo**: `hasEnoughCredits()` só verifica se a assinatura está ativa — o comentário no código é explícito: *"Permite envio mesmo sem créditos (vai para overage)"*. Overage é ilimitado e **nunca é cobrado** (TODO explícito no cron de reset). O módulo de billing hoje é, na prática, um contador (`app/api/services/EmailCredit/EmailCreditService.ts:70-74`, `app/api/v1/email/cron/reset-credits/route.ts:71-76`) — e nem como contador funciona: em produção `creditsUsed` acumulado é **0** (seção 6.4).
 3. **Nenhum link de descadastro em nenhum e-mail de campanha** e nenhuma página pública de opt-out. As flags de supressão são aplicadas no envio, mas o destinatário não tem como se descadastrar — só via bounce/complaint. Risco de conformidade (LGPD/CAN-SPAM) e de reputação de domínio.
 4. **Causa raiz dos e-mails órfãos confirmada no código**: o caminho de campanha anexa `team_id` corretamente, mas três outros caminhos de envio **não anexam** — `EmailService.send` sem `tracking`, o envio de teste de template (tags só `templateId`/`purpose`) e o `BackofficeLeadScheduleInviteService` (payload sem `tags`). O 429 é sintoma: o enrichment busca o e-mail de volta na API do Resend, síncrono por evento de webhook, sem backoff.
-5. **Campanha vira `sent` mesmo quando 0 e-mails saem**: tanto o cron quanto o disparo manual marcam `status: "sent"` incondicionalmente após o dispatch, mesmo com `result.sent === 0` (o dispatch fica `failed`, a campanha não). E não existe recuperação de campanhas presas em `sending` (timeout do Vercel no meio do lote = campanha travada para sempre).
+5. **Campanha vira `sent` mesmo quando 0 e-mails saem**: tanto o cron quanto o disparo manual marcam `status: "sent"` incondicionalmente após o dispatch, mesmo com `result.sent === 0` (o dispatch fica `failed`, a campanha não). E não existe recuperação de campanhas presas em `sending` (timeout do Vercel no meio do lote = campanha travada para sempre). **Confirmado em produção**: 3 campanhas `sent` com `totalSent = 0`, 2 dispatches presos em `sending` há 4+ dias e 545 logs presos em `queued` (seções 6.1–6.3).
 
 ---
 
@@ -102,7 +105,8 @@ Um Time pode estourar 10x o plano num único disparo; tudo vira `overageCount`/`
 
 **Agravantes:**
 
-- Bypass beta: `resolveEmailBetaAccess` permite disparo **sem assinatura nenhuma** (`EmailCampaignUseCase.ts:457-460`) e, quando `hasCredits === false` com beta, o `deductCredits` nem roda (`:584`) — envio sem contabilização.
+- Bypass beta: `resolveEmailBetaAccess` permite disparo **sem assinatura nenhuma** (`EmailCampaignUseCase.ts:457-460`) e, quando `hasCredits === false` com beta, o `deductCredits` nem roda (`:584`) — envio sem contabilização. **Confirmado em produção**: todos os disparos que saíram até hoje saíram por esse bypass — `creditsUsed` acumulado no banco é 0 (seção 6.4).
+- **O bypass beta não existe no cron** (`dispatch-scheduled/route.ts:108-115` checa só `hasEnoughCredits`) — campanha agendada de um Time beta morre com "Sem assinatura de créditos ativa" enquanto o disparo manual do mesmo Time funciona. **Confirmado em produção** (seção 6.1): foi exatamente isso que matou a última campanha agendada que venceu (04/07 21:00).
 - `EmailCreditUseCase.subscribe` cria a assinatura **direto no banco, sem cobrança Asaas** — `PLAN_PRICES` existe (R$25–375/mês) mas nenhuma integração de pagamento (`EmailCreditUseCase.ts:10-100`). A "assinatura" de créditos é gratuita na prática.
 - Cron de dispatch **não passa** `cdpSegmentSlug` ao `buildCampaignDispatchInput` (`dispatch-scheduled/route.ts:117-129`) — campanha agendada com segmento CDP resolve `contactListId: null` → `listActiveRecipients(teamId, null!)` → 0 destinatários → campanha marcada `failed` ("Nenhum contato ativo na lista"). **Bug funcional: campanhas CDP agendadas nunca disparam** (o fluxo manual passa o slug corretamente em `EmailCampaignUseCase.ts:465`). Este é um candidato forte a explicar parte da evidência de produção nº 3.
 
@@ -138,7 +142,7 @@ Um Time pode estourar 10x o plano num único disparo; tudo vira `overageCount`/`
 8. Rate limit: `batch.send` sequencial sem pausa entre chunks nem tratamento de 429 no batch (o `catch` marca o chunk inteiro como failed e segue).
 9. Mapeamento resposta↔destinatário **por índice** (`items.forEach((item, idx) => chunk[idx])`) — assume que o Resend devolve na mesma ordem; frágil, sem validação.
 
-**Evidência de produção nº 3 ("0 campanhas disparadas" em toda a janela)** — inconclusiva sem banco. Hipóteses ordenadas por plausibilidade dado o código: (a) campanhas CDP agendadas falhando no primeiro run e saindo do funil (`failed`); (b) campanhas mortas por janela UTC/data bloqueada; (c) campanhas presas em `sending` de execução anterior; (d) simplesmente não havia campanhas elegíveis. Queries na seção 6.
+**Evidência de produção nº 3 ("0 campanhas disparadas" em toda a janela) — RESOLVIDA (seção 6):** a causa real é a **assimetria do bypass beta** (item novo em 3.1): a única campanha agendada que venceu na janela foi encontrada pelo cron e morta com "Sem assinatura de créditos ativa"; como produção tem 0 assinaturas ativas e todos os disparos manuais saem via beta, **nenhuma campanha agendada consegue sobreviver ao cron hoje**. As demais hipóteses (bug CDP, janela UTC, `sending` travado) continuam sendo bugs reais e latentes, mas não foram o gatilho desta ocorrência — não há campanha CDP em produção ainda, e os 2 registros presos em `sending` são dispatches, não campanhas. O kill é **silencioso**: o cron loga apenas "0 campanhas disparadas nesta execução" (única mensagem distinta em 1.164 linhas/288 execuções na janela) — marcar campanha como `failed` sem nenhuma linha de log é um gap de observabilidade próprio.
 
 ### 3.4 Cron reset-credits — `parcial` 🟡
 
@@ -221,13 +225,17 @@ O caminho de **campanha anexa tags corretamente** (`EmailCampaignDispatchService
 
 Todo evento de webhook desses e-mails cai em `createOrphanTeamEmailLogFromResendEmail`, que loga exatamente a mensagem observada (`ResendEmailEnrichmentService.ts:56-61`). **Correção na origem** = auditar cada caller de `EmailService.send`/`resend.emails.send` e tornar as tags de rastreio obrigatórias (ou explícita e intencionalmente ausentes para e-mails backoffice, que têm fallback próprio no webhook).
 
+**Escala medida (export 24h, seção 6.6):** 298 linhas de órfão / **124 dispatch IDs distintos**, concentradas às 11h e 17h UTC (8h/14h BRT) — o mesmo horário dos disparos de backoffice e do cron `meeting-follow-up`, consistente com a tabela acima. Na mesma janela o webhook processou **220 eventos para dispatches de backoffice e 0 eventos para `EmailLog` de produto** — ou seja, hoje praticamente todo o tráfego do webhook é backoffice, e a taxa de órfãos sobre o tráfego não-backoffice é próxima de 100%.
+
 ### 4.2 429 `rate_limit_exceeded` no enrichment
 
 `createOrphanTeamEmailLogFromResendEmail` → `fetchEmailMetadata` → `resend.emails.get(id)` **síncrono, dentro do handler do webhook, um por evento, sem fila nem backoff** (`ResendEmailEnrichmentService.ts:24-45`, chamado de `ResendWebhookUseCase.ts:87-94`). Rajada de `delivered/opened` simultâneos → >10 req/s → 429. Nota: como 4.1 mostra, essa busca é **inútil para os órfãos atuais** — o e-mail no Resend também não tem a tag, então a chamada falha em recuperar `team_id` de qualquer forma (paga o rate limit e ainda devolve `null`). Corrigir a origem (tags no envio) elimina a causa; para o legado, fila com backoff exponencial (nunca síncrono no handler).
 
-### 4.3 Cron "0 campanhas disparadas"
+**Escala medida (export 24h + Vercel MCP):** 8 ocorrências de `rate_limit_exceeded` na janela, em rajadas (ex.: 5 hits entre 17:01:40–17:01:46 de 04/07). **6 no enrichment do webhook e 2 no caminho de ENVIO** do cron `meeting-follow-up` (`Erro ao enviar email: rate_limit_exceeded`) — ou seja, envios transacionais reais já estão sendo perdidos por rate limit, não só o enrichment. Qualquer correção precisa tratar o limite de 10 req/s do Resend como orçamento **global** da aplicação (envio de campanha em lote + transacionais + enrichment), não como problema local do webhook.
 
-Inconclusivo sem banco (seção 6). Candidatos identificados no código, em ordem: bug CDP do cron (3.1/3.3-7), campanhas mortas por janela UTC/bloqueio (3.3-5/6), campanhas presas em `sending` (3.3-2).
+### 4.3 Cron "0 campanhas disparadas" — resolvido
+
+Causa confirmada com banco + logs (detalhado em 3.3 e 6.1): a mensagem é literalmente verdadeira — não havia campanhas elegíveis na maior parte da janela — **porque o próprio cron mata silenciosamente toda campanha agendada que vence** ("Sem assinatura de créditos ativa"; produção tem 0 assinaturas ativas e o bypass beta só existe no fluxo manual). Cadência, duração e taxa de erro do cron estão saudáveis (288/288 execuções em 24h, todas 200, p50 67ms, máx 1,7s). Bug CDP e janela UTC permanecem latentes (nenhuma campanha CDP em produção ainda).
 
 ---
 
@@ -261,34 +269,67 @@ Inconclusivo sem banco (seção 6). Candidatos identificados no código, em orde
 
 ---
 
-## 6. Queries pendentes (executar quando o MCP for autorizado)
+## 6. Investigação MCP — resultados (executada 2026-07-06)
 
-```sql
--- (d) Campanhas scheduled vencidas que o cron não processou — ACHADO CRÍTICO se > 0
-SELECT id, "teamId", name, status, "scheduledAt", "cdpSegmentSlug", "errorMessage", "updatedAt"
-FROM corretor_studio_email_campaigns
-WHERE status = 'scheduled' AND "scheduledAt" <= now()
-ORDER BY "scheduledAt";
+**Fontes:** Supabase MCP (projeto `corretor-studio`, produção, sa-east-1), Vercel MCP (runtime logs, projeto `prj_4Hlw...`) e export `corretor-studio-log-export-2026-07-05T09-31-49.json` (22.522 linhas, 24h: 04/07 09:30 UTC → 05/07 09:29 UTC).
 
--- Campanhas presas em sending (hipótese 3.3-2)
-SELECT id, "teamId", name, "updatedAt"
-FROM corretor_studio_email_campaigns
-WHERE status = 'sending' AND "updatedAt" < now() - interval '30 minutes';
+### 6.1 (d) Campanhas `scheduled` vencidas — **0 hoje, com kill confirmado**
 
--- Campanhas CDP mortas pelo bug do cron (hipótese 3.1)
-SELECT id, name, "cdpSegmentSlug", "errorMessage", "updatedAt"
-FROM corretor_studio_email_campaigns
-WHERE status = 'failed' AND "cdpSegmentSlug" IS NOT NULL;
+`SELECT ... WHERE status = 'scheduled' AND "scheduledAt" <= now()` → **0 linhas**. A única campanha `scheduled` ("Live Agora") está agendada para 09/07 — futura. Porém o histórico completo (8 campanhas em produção) mostra o destino da última agendada que venceu:
 
--- Escala dos órfãos: logs criados pelo caminho de backfill vs. total
-SELECT count(*) FILTER (WHERE "campaignId" IS NULL AND category = 'other') AS possiveis_orfaos,
-       count(*) AS total,
-       round(100.0 * count(*) FILTER (WHERE "campaignId" IS NULL AND category = 'other') / count(*), 2) AS pct
-FROM corretor_studio_email_logs
-WHERE "createdAt" >= now() - interval '7 days';
-```
+| Campanha | Agendada para | Status | errorMessage | Recip./Enviados |
+|---|---|---|---|---|
+| `teste de e-mail` (763ffa02) | 04/07 21:00 UTC | **failed** | **"Sem assinatura de créditos ativa"** | 2 / 0 |
+| `Live Agora` (36f1e240) | 09/07 11:55 UTC | scheduled | — | 0 / 0 |
+| `Convite 02/07` (b98e72cb) | — (manual) | draft | "Erro interno durante o disparo" | 378 / 0 |
+| `Campanha nova` (7f513f2f) | — (manual) | **failed** | "Erro interno durante o disparo" | 4 / **4** |
+| `teste de e-mail` (eb2229ce) | — (manual) | **failed** | "Erro interno durante o disparo" | 4 / **4** |
+| `teste 2`, `Ola mundo`, `19.06.26` | — (manual) | **sent** | — | 2/0, 2/0, 0/0 |
 
-Vercel MCP: histórico de execuções de `/api/v1/email/cron/dispatch-scheduled` (cadência real, timeouts, cold starts) e frequência dos 429 em `/api/webhooks/resend`.
+Leituras diretas: (i) o kill por créditos no cron **aconteceu** — e o mesmo Time disparou manualmente com sucesso via bypass beta; (ii) duas campanhas estão `failed` com `errorMessage` de erro interno **apesar de terem enviado 4 e-mails** (erro pós-envio no fluxo manual sobrescreve o resultado real); (iii) três campanhas `sent` com `totalSent = 0` — confirmação do achado 3.3-1.
+
+### 6.2 Dispatches — retentativas em série e `sending` eterno
+
+| Padrão | Evidência |
+|---|---|
+| **6 dispatches `failed` consecutivos** | `Convite 02/07`: dispatchNumber 1–6 entre 01/07 19:45 e 02/07 12:14, todos 378 destinatários / 0 enviados — usuário retentou 6× em 2 dias sem nenhuma mensagem útil |
+| **`sending` sem recuperação** | dispatch nº 2 de `Campanha nova` e de `teste de e-mail` presos em `sending` desde 01/07 (4+ dias) — confirma 3.3-2 no nível de dispatch |
+| **`completed` com 0 enviados** | dispatches de `teste 2`, `Ola mundo`, `19.06.26` estão `completed` com `totalSent = 0` |
+
+### 6.3 `email_logs` — 98,5% dos logs de campanha presos em `queued`
+
+| categoria/status | total | sem `resendEmailId` |
+|---|---|---|
+| campaign / **queued** | **545** | 545 |
+| campaign / sent+delivered+opened+clicked | 8 | 0 |
+| meeting_invite / sent+delivered | 2 | 0 |
+
+Os 545 `queued` são os logs pré-criados pelo fluxo manual (`createQueuedTeamEmailLogs`) de dispatches que falharam — o `markTeamEmailLogFailed` só roda se o `dispatchBatch` retorna; exceção no meio deixa tudo `queued` para sempre. Nenhum log órfão foi criado pelo backfill do webhook (o enrichment falha sem `team_id`, como previsto em 4.2) — os 124 órfãos simplesmente **não existem** em `email_logs`.
+
+### 6.4 Créditos — o billing nunca contabilizou nada
+
+| Métrica | Valor em produção |
+|---|---|
+| Assinaturas de crédito | 2 (ambas `canceled`, **0 ativas**) |
+| `creditsUsed` acumulado (todas as usages) | **0** |
+| `overageCharged` acumulado | **R$ 0,00** |
+| Contatos | 1.114 (0 unsubscribed, 0 bounced, 0 complained) |
+| `email_events` | 13 |
+
+Todo envio que já saiu, saiu por bypass beta sem contabilização. O cron `reset-credits` não aparece na janela do export (roda dia 1 do mês — cadência não observável nesta amostra).
+
+### 6.5 Cron `dispatch-scheduled` (Vercel) — cadência saudável, kill silencioso
+
+- **288 execuções distintas em 24h** = exatamente `*/5 * * * *` conforme `vercel.json`. ✅
+- 100% HTTP 200; duração p50 **67ms**, máx **1,7s** — sem timeouts nem cold starts mascarando falhas. ✅
+- **Única mensagem distinta em 1.164 linhas:** `[EmailCronDispatch] 0 campanhas disparadas nesta execução` — inclusive na execução que marcou a campanha 763ffa02 como `failed`. Matar campanha sem logar nada é gap de observabilidade (3.3).
+
+### 6.6 Webhook Resend + órfãos + 429 (24h)
+
+- 306 requests no webhook, todos 200.
+- **298 linhas de órfão / 124 dispatch IDs distintos** (`E-mail órfão sem team_id nas tags`), concentrados às 11h e 17h UTC — janelas dos envios de backoffice/`meeting-follow-up` (bate com a tabela de caminhos sem tags em 4.1).
+- Eventos processados: **220 para dispatches de backoffice, 0 para `EmailLog` de produto**, 86 "Registro não encontrado".
+- **8× `rate_limit_exceeded`**: 6 no enrichment do webhook (rajadas de até 5 hits em 6s) e **2 no caminho de envio** do cron `meeting-follow-up` — envio transacional real sendo perdido por 429, não só enrichment.
 
 ---
 
