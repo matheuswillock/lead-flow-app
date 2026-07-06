@@ -31,10 +31,15 @@ import {
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
 import { formatIntimezone, formatLocalDateValue } from "@/lib/dates"
+import { FIELD_CATALOG, apiKeyToFieldKey, mapLeadInfoPayloadForUpdate, type LeadTransitionFieldApiKey } from "@/lib/leadStatusTransitionFields";
 import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
 } from "@/lib/services/leadStatusTransitionClient";
+import type {
+  LeadInfoInitialValues,
+  LeadInfoPayload,
+} from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -103,6 +108,15 @@ type PendingCloserGateDrop = {
   currentCloserId: string | null;
 };
 
+type PendingLeadInfoGateDrop = {
+  leadId: string;
+  from: ColumnKey;
+  to: ColumnKey;
+  trigger?: LeadStatusTransitionTrigger;
+  missingFields: LeadTransitionFieldApiKey[];
+  currentLeadInfo: LeadInfoInitialValues;
+};
+
 interface IBoardContextState {
   isLoading: boolean;
   query: string;
@@ -164,6 +178,9 @@ interface IBoardContextState {
   pendingCloserGateDrop: PendingCloserGateDrop | null;
   clearPendingCloserGateDrop: () => void;
   applyPendingCloserGateTransition: (payload: CloserRequirementPayload) => Promise<boolean>;
+  pendingLeadInfoGateDrop: PendingLeadInfoGateDrop | null;
+  clearPendingLeadInfoGateDrop: () => void;
+  applyPendingLeadInfoGateTransition: (payload: LeadInfoPayload) => Promise<boolean>;
   pendingFinalizeDrop: PendingFinalizeDrop | null;
   clearPendingFinalizeDrop: () => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
@@ -200,6 +217,21 @@ function formatDateKey(iso: string, tz: string) {
   } catch {
     return "";
   }
+}
+
+function formatMissingLeadFields(missingFields: LeadTransitionFieldApiKey[]) {
+  const labels = missingFields
+    .map((field) => {
+      try {
+        return FIELD_CATALOG[apiKeyToFieldKey(field)].label;
+      } catch {
+        return null;
+      }
+    })
+    .filter((label): label is string => !!label);
+
+  if (!labels.length) return null;
+  return labels.join(", ");
 }
 
 export const BoardContext = createContext<IBoardContextState | undefined>(undefined);
@@ -266,6 +298,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     useState<PendingSalesInfoGateDrop | null>(null);
   const [pendingCloserGateDrop, setPendingCloserGateDrop] =
     useState<PendingCloserGateDrop | null>(null);
+  const [pendingLeadInfoGateDrop, setPendingLeadInfoGateDrop] =
+    useState<PendingLeadInfoGateDrop | null>(null);
   const [transitionGates, setTransitionGates] = useState<ProductLeadStatusTransitionGate[]>([]);
 
   // Sync external CRM filters into board filter state whenever they change.
@@ -889,6 +923,68 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
             return output;
           }
 
+          if (transition.blockerType === "lead_info_required") {
+            const sourceLead =
+              fallbackContext
+                ? dataRef.current[fallbackContext.from]?.find((lead) => lead.id === leadId) ?? null
+                : null;
+            const missingFields = Array.isArray(transition.missingLeadFields)
+              ? transition.missingLeadFields
+              : [];
+            const currentLeadInfo: LeadInfoInitialValues = {
+              age:
+                typeof transition.currentLeadInfo?.age === "string"
+                  ? transition.currentLeadInfo.age
+                  : sourceLead?.age ?? null,
+              currentHealthPlan:
+                typeof transition.currentLeadInfo?.currentHealthPlan === "string"
+                  ? transition.currentLeadInfo.currentHealthPlan
+                  : sourceLead?.currentHealthPlan ?? null,
+              referenceHospital:
+                typeof transition.currentLeadInfo?.referenceHospital === "string"
+                  ? transition.currentLeadInfo.referenceHospital
+                  : sourceLead?.referenceHospital ?? null,
+              ongoingTreatment:
+                typeof transition.currentLeadInfo?.ongoingTreatment === "string"
+                  ? transition.currentLeadInfo.ongoingTreatment
+                  : sourceLead?.currentTreatment ?? null,
+              email:
+                typeof transition.currentLeadInfo?.email === "string"
+                  ? transition.currentLeadInfo.email
+                  : sourceLead?.email ?? null,
+              phone:
+                typeof transition.currentLeadInfo?.phone === "string"
+                  ? transition.currentLeadInfo.phone
+                  : sourceLead?.phone ?? null,
+              cnpj:
+                typeof transition.currentLeadInfo?.cnpj === "string"
+                  ? transition.currentLeadInfo.cnpj
+                  : sourceLead?.cnpj ?? null,
+            };
+
+            if (fallbackContext) {
+              setPendingLeadInfoGateDrop({
+                leadId,
+                from: fallbackContext.from,
+                to: fallbackContext.to,
+                trigger: trigger ? { ...trigger } : undefined,
+                missingFields,
+                currentLeadInfo,
+              });
+            } else {
+              setPendingLeadInfoGateDrop(null);
+            }
+
+            const missingFieldsText = formatMissingLeadFields(missingFields);
+            toast.warning(
+              missingFieldsText
+                ? `${transitionMessage} Faltam: ${missingFieldsText}.`
+                : transitionMessage,
+              { id: loadingToast, duration: 6000 }
+            );
+            return output;
+          }
+
           if (
             transition.blockerType === "confirmation" ||
             transition.blockerType === "future_sale_trigger" ||
@@ -1117,6 +1213,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setPendingCloserGateDrop(null);
   }, []);
 
+  const clearPendingLeadInfoGateDrop = useCallback(() => {
+    setPendingLeadInfoGateDrop(null);
+  }, []);
+
   const clearPendingFinalizeDrop = useCallback(() => {
     setPendingFinalizeDrop(null);
   }, []);
@@ -1266,6 +1366,65 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       }
     },
     [activeTeamId, moveLeadBetweenColumns, patchLead, pendingCloserGateDrop, supabaseId, updateLeadStatusInAPI]
+  );
+
+  const applyPendingLeadInfoGateTransition = useCallback(
+    async (payload: LeadInfoPayload): Promise<boolean> => {
+      if (!pendingLeadInfoGateDrop) return false;
+
+      try {
+        const response = await fetch(`/api/v1/leads/${pendingLeadInfoGateDrop.leadId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify(mapLeadInfoPayloadForUpdate(payload)),
+        });
+
+        const leadInfoResult = await response.json().catch(() => null);
+        if (!response.ok || !leadInfoResult?.isValid) {
+          throw new Error(
+            leadInfoResult?.errorMessages?.[0] || "Erro ao salvar informações do lead."
+          );
+        }
+
+        const leadInfoPatch =
+          leadInfoResult.result && typeof leadInfoResult.result === "object"
+            ? (leadInfoResult.result as Partial<Lead>)
+            : {};
+        patchLead(pendingLeadInfoGateDrop.leadId, leadInfoPatch);
+
+        const statusResult = await updateLeadStatusInAPI(
+          pendingLeadInfoGateDrop.leadId,
+          pendingLeadInfoGateDrop.to,
+          pendingLeadInfoGateDrop.trigger,
+          { from: pendingLeadInfoGateDrop.from, to: pendingLeadInfoGateDrop.to }
+        );
+        if (!statusResult?.isValid) return false;
+
+        const statusPatch =
+          statusResult.result && typeof statusResult.result === "object"
+            ? (statusResult.result as Partial<Lead>)
+            : {};
+
+        moveLeadBetweenColumns(
+          pendingLeadInfoGateDrop.leadId,
+          pendingLeadInfoGateDrop.from,
+          pendingLeadInfoGateDrop.to,
+          statusPatch
+        );
+        setPendingLeadInfoGateDrop(null);
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao salvar informações do lead."
+        );
+        return false;
+      }
+    },
+    [activeTeamId, moveLeadBetweenColumns, patchLead, pendingLeadInfoGateDrop, supabaseId, updateLeadStatusInAPI]
   );
 
   const applyPendingStatusTriggerTransition = useCallback(
@@ -1470,6 +1629,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingCloserGateDrop,
       clearPendingCloserGateDrop,
       applyPendingCloserGateTransition,
+      pendingLeadInfoGateDrop,
+      clearPendingLeadInfoGateDrop,
+      applyPendingLeadInfoGateTransition,
       pendingFinalizeDrop,
       clearPendingFinalizeDrop,
       finalizeContract,
@@ -1520,6 +1682,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingCloserGateDrop,
       clearPendingCloserGateDrop,
       applyPendingCloserGateTransition,
+      pendingLeadInfoGateDrop,
+      clearPendingLeadInfoGateDrop,
+      applyPendingLeadInfoGateTransition,
       pendingFinalizeDrop,
       clearPendingFinalizeDrop,
       finalizeContract,
