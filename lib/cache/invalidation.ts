@@ -124,12 +124,9 @@ export function invalidateTeamFilterPresetsCache(input: { teamId: string; profil
   revalidateDefinedTags([cacheTags.teamFilterPresets(input.teamId, input.profileId)]);
 }
 
-export function invalidateNotificationsCache(input: {
-  teamId: string;
-  recipientProfileIds: string[];
-}) {
+export function invalidateNotificationsCache(input: { recipientProfileIds: string[] }) {
   revalidateDefinedTags(
-    input.recipientProfileIds.map((profileId) => cacheTags.notifications(profileId, input.teamId))
+    input.recipientProfileIds.map((profileId) => cacheTags.notifications(profileId))
   );
 }
 

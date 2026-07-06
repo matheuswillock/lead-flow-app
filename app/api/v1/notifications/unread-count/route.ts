@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
 
     const output = await notificationUseCase.countUnread({
       recipientProfileId: teamAccess.access.profileId,
-      teamId: teamAccess.access.teamId,
     });
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });

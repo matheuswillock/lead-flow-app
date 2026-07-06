@@ -110,7 +110,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
       }
 
       // Dedupe: chave estável + guard de in-flight + TTL de última carga.
-      const requestKey = `${supabaseId}:${activeTeamId}:${params?.limit ?? 100}:${params?.offset ?? 0}`;
+      const requestKey = `${supabaseId}:${params?.limit ?? 100}:${params?.offset ?? 0}`;
       const isSameRequest = lastListKeyRef.current === requestKey;
       const isFresh = Date.now() - lastListAtRef.current < LIST_TTL_MS;
       if (!params?.force && isSameRequest && isFresh) return;
@@ -123,19 +123,25 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
       try {
         setIsLoadingList(true);
         setError(null);
-        const result = await notificationsService.list({
-          supabaseId,
-          teamId: activeTeamId,
-          limit: params?.limit ?? 100,
-          offset: params?.offset ?? 0,
-        });
+        const [result, serverUnread] = await Promise.all([
+          notificationsService.list({
+            supabaseId,
+            teamId: activeTeamId,
+            limit: params?.limit ?? 100,
+            offset: params?.offset ?? 0,
+          }),
+          notificationsService.unreadCount({
+            supabaseId,
+            teamId: activeTeamId,
+          }),
+        ]);
 
         if (activeListKeyRef.current !== capturedKey) return;
 
         const list = result.notifications ?? [];
         setNotifications(list);
         setTotal(result.total ?? 0);
-        setUnreadCount(list.reduce((acc, item) => (item.isRead ? acc : acc + 1), 0));
+        setUnreadCount(serverUnread);
         listWasLoadedRef.current = true;
         lastListKeyRef.current = capturedKey;
         lastListAtRef.current = Date.now();
@@ -221,13 +227,18 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   }, [unreadCount]);
 
   useEffect(() => {
+    listWasLoadedRef.current = false;
+    lastListKeyRef.current = "";
     setNotifications([]);
     setUnreadCount(0);
     setTotal(0);
     setError(null);
-    listWasLoadedRef.current = false;
+  }, [supabaseId]);
+
+  useEffect(() => {
+    if (!supabaseId || !activeTeamId || listWasLoadedRef.current) return;
     void loadNotifications({ limit: 100, offset: 0 });
-  }, [activeTeamId, loadNotifications]);
+  }, [supabaseId, activeTeamId, loadNotifications]);
 
   useEffect(() => {
     if (!supabaseId || !activeTeamId || !user?.id) return;
@@ -322,7 +333,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
 
         if (cancelled) return;
 
-        const channelSuffix = `${user.id}-${activeTeamId}-${Date.now()}`;
+        const channelSuffix = `${user.id}-${Date.now()}`;
         channel = supabase
           .channel(`notifications-${channelSuffix}`)
           .on(
@@ -334,7 +345,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
             },
             (payload) => {
               const row = normalizeRealtimeRow(payload.new as Partial<NotificationRealtimeRow>);
-              if (!row || !row.id || row.teamId !== activeTeamId || row.recipientProfileId !== user.id) {
+              if (!row || !row.id || row.recipientProfileId !== user.id) {
                 return;
               }
 
@@ -370,7 +381,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
               const oldRow = normalizeRealtimeRow(payload.old as Partial<NotificationRealtimeRow>);
               const newRow = normalizeRealtimeRow(payload.new as Partial<NotificationRealtimeRow>);
 
-              if (!newRow || !newRow.id || newRow.teamId !== activeTeamId || newRow.recipientProfileId !== user.id) {
+              if (!newRow || !newRow.id || newRow.recipientProfileId !== user.id) {
                 return;
               }
 
@@ -434,7 +445,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
         syncDebounceTimerRef.current = null;
       }
     };
-  }, [supabaseId, activeTeamId, user?.id, mapRealtimeRowToNotification]);
+  }, [supabaseId, user?.id, mapRealtimeRowToNotification]);
 
   useEffect(() => {
     if (!supabaseId || !activeTeamId || !user?.id) return;

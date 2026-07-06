@@ -21,7 +21,6 @@ export async function GET(request: NextRequest) {
 
     const output = await notificationUseCase.listNotifications({
       recipientProfileId: teamAccess.access.profileId,
-      teamId: teamAccess.access.teamId,
       limit,
       offset,
     });
@@ -46,7 +45,6 @@ export async function PATCH(request: NextRequest) {
 
     const output = await notificationUseCase.markAllAsRead({
       recipientProfileId: teamAccess.access.profileId,
-      teamId: teamAccess.access.teamId,
     });
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
