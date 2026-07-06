@@ -27,6 +27,16 @@ WHERE ecs."teamId" IS NULL;
 DELETE FROM "public"."corretor_studio_email_credit_subscriptions"
 WHERE "teamId" IS NULL;
 
+-- Políticas RLS dependem de profileId — remover antes de dropar a coluna
+DROP POLICY IF EXISTS "email_credit_subscriptions_select" ON "public"."corretor_studio_email_credit_subscriptions";
+DROP POLICY IF EXISTS "email_credit_subscriptions_insert" ON "public"."corretor_studio_email_credit_subscriptions";
+DROP POLICY IF EXISTS "email_credit_subscriptions_update" ON "public"."corretor_studio_email_credit_subscriptions";
+DROP POLICY IF EXISTS "email_credit_subscriptions_delete" ON "public"."corretor_studio_email_credit_subscriptions";
+DROP POLICY IF EXISTS "email_credit_usages_select" ON "public"."corretor_studio_email_credit_usages";
+DROP POLICY IF EXISTS "email_credit_usages_insert" ON "public"."corretor_studio_email_credit_usages";
+DROP POLICY IF EXISTS "email_credit_usages_update" ON "public"."corretor_studio_email_credit_usages";
+DROP POLICY IF EXISTS "email_credit_usages_delete" ON "public"."corretor_studio_email_credit_usages";
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -65,3 +75,112 @@ BEGIN
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- Recria RLS escopado por teamId (membro do time)
+CREATE POLICY "email_credit_subscriptions_select"
+  ON "public"."corretor_studio_email_credit_subscriptions"
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_team_members" AS tm
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE tm."teamId" = "corretor_studio_email_credit_subscriptions"."teamId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
+
+CREATE POLICY "email_credit_subscriptions_insert"
+  ON "public"."corretor_studio_email_credit_subscriptions"
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_team_members" AS tm
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE tm."teamId" = "corretor_studio_email_credit_subscriptions"."teamId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
+
+CREATE POLICY "email_credit_subscriptions_update"
+  ON "public"."corretor_studio_email_credit_subscriptions"
+  FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_team_members" AS tm
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE tm."teamId" = "corretor_studio_email_credit_subscriptions"."teamId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
+
+CREATE POLICY "email_credit_subscriptions_delete"
+  ON "public"."corretor_studio_email_credit_subscriptions"
+  FOR DELETE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_team_members" AS tm
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE tm."teamId" = "corretor_studio_email_credit_subscriptions"."teamId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
+
+CREATE POLICY "email_credit_usages_select"
+  ON "public"."corretor_studio_email_credit_usages"
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_email_credit_subscriptions" AS cs
+      JOIN "public"."corretor_studio_team_members" AS tm ON tm."teamId" = cs."teamId"
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE cs."id" = "corretor_studio_email_credit_usages"."subscriptionId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
+
+CREATE POLICY "email_credit_usages_insert"
+  ON "public"."corretor_studio_email_credit_usages"
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_email_credit_subscriptions" AS cs
+      JOIN "public"."corretor_studio_team_members" AS tm ON tm."teamId" = cs."teamId"
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE cs."id" = "corretor_studio_email_credit_usages"."subscriptionId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
+
+CREATE POLICY "email_credit_usages_update"
+  ON "public"."corretor_studio_email_credit_usages"
+  FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_email_credit_subscriptions" AS cs
+      JOIN "public"."corretor_studio_team_members" AS tm ON tm."teamId" = cs."teamId"
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE cs."id" = "corretor_studio_email_credit_usages"."subscriptionId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
+
+CREATE POLICY "email_credit_usages_delete"
+  ON "public"."corretor_studio_email_credit_usages"
+  FOR DELETE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_email_credit_subscriptions" AS cs
+      JOIN "public"."corretor_studio_team_members" AS tm ON tm."teamId" = cs."teamId"
+      JOIN "public"."corretor_studio_profiles" AS p ON p."id" = tm."profileId"
+      WHERE cs."id" = "corretor_studio_email_credit_usages"."subscriptionId"
+        AND (p."supabaseId" = auth.uid() OR p."id" = auth.uid())
+    )
+  );
