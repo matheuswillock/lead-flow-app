@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Attachment, CreateEmailOptions } from "resend"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
+import { getResendOwnerEmail } from "@/lib/email/resend-owner-email"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type {
@@ -211,7 +212,8 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
   try {
     const resend = assertResend()
     const isTestMode = process.env.EMAIL_TEST_MODE === "true"
-    const resendOwnerEmail = process.env.RESEND_OWNER_EMAIL || "matheuswillock@gmail.com"
+    const resendOwnerEmail = getResendOwnerEmail()
+    const effectiveTestMode = isTestMode && Boolean(resendOwnerEmail)
     const { logResendDispatchesForRecipients } = await import("@/lib/email/log-profile-email-dispatches")
     const recipients = options.to.filter(Boolean)
 
@@ -226,15 +228,15 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
     }
 
     for (const [index, recipient] of recipients.entries()) {
-      const deliveryRecipients = isTestMode ? [resendOwnerEmail] : [recipient]
-      const html = isTestMode
+      const deliveryRecipients = effectiveTestMode ? [resendOwnerEmail!] : [recipient]
+      const html = effectiveTestMode
         ? injectHtmlAfterBodyOpen(options.html, buildTestBannerSnippet([recipient]))
         : options.html
 
       const payload: CreateEmailOptions = {
         from: "Corretor Studio <no-reply@corretorstudio.com>",
         to: deliveryRecipients,
-        subject: isTestMode
+        subject: effectiveTestMode
           ? `[TESTE - Para: ${recipient}] ${options.subject}`
           : options.subject,
         html,
