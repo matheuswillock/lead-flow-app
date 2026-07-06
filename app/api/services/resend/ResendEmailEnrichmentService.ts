@@ -20,27 +20,45 @@ export interface IResendEmailEnrichmentService {
   ): Promise<string | null>
 }
 
+export type ResendEmailMetadataResult =
+  | { ok: true; metadata: ResendEmailMetadata }
+  | { ok: false; rateLimited: boolean }
+
 export class ResendEmailEnrichmentService implements IResendEmailEnrichmentService {
   async fetchEmailMetadata(resendEmailId: string): Promise<ResendEmailMetadata | null> {
+    const result = await this.fetchEmailMetadataDetailed(resendEmailId)
+    return result.ok ? result.metadata : null
+  }
+
+  async fetchEmailMetadataDetailed(resendEmailId: string): Promise<ResendEmailMetadataResult> {
     try {
       const resend = assertResend()
       const { data, error } = await resend.emails.get(resendEmailId)
 
       if (error || !data) {
+        const message = error?.message ?? "unknown"
+        const rateLimited =
+          message.toLowerCase().includes("rate_limit") || message.includes("429")
         console.error("[ResendEmailEnrichmentService] Falha ao buscar e-mail:", error)
-        return null
+        return { ok: false, rateLimited }
       }
 
       return {
-        id: data.id,
-        to: data.to,
-        from: data.from ?? null,
-        subject: data.subject ?? null,
-        tags: data.tags ?? null,
+        ok: true,
+        metadata: {
+          id: data.id,
+          to: data.to,
+          from: data.from ?? null,
+          subject: data.subject ?? null,
+          tags: data.tags ?? null,
+        },
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const rateLimited =
+        message.toLowerCase().includes("rate_limit") || message.includes("429")
       console.error("[ResendEmailEnrichmentService] Erro inesperado:", error)
-      return null
+      return { ok: false, rateLimited }
     }
   }
 
@@ -49,8 +67,15 @@ export class ResendEmailEnrichmentService implements IResendEmailEnrichmentServi
     occurredAt: Date,
     tagsHint?: ResendTrackingTagsInput
   ): Promise<string | null> {
-    const metadata = await this.fetchEmailMetadata(resendEmailId)
-    if (!metadata) return null
+    const fetchResult = await this.fetchEmailMetadataDetailed(resendEmailId)
+    if (!fetchResult.ok) {
+      if (fetchResult.rateLimited) {
+        throw new Error("rate_limit_exceeded")
+      }
+      return null
+    }
+
+    const metadata = fetchResult.metadata
 
     const parsedTags = parseResendTrackingTags(mergeResendTrackingTags(tagsHint, metadata.tags))
     if (!parsedTags.teamId) {

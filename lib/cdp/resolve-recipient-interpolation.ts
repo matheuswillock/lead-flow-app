@@ -18,6 +18,7 @@ export type ResolvedRecipientInterpolation = {
 }
 
 export type RecipientForInterpolation = {
+  contactId?: string | null
   email: string
   name?: string | null
   customFields?: Record<string, unknown> | null

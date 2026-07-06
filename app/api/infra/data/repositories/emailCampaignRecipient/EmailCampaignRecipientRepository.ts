@@ -5,6 +5,7 @@ import type {
 } from "./IEmailCampaignRecipientRepository"
 
 const recipientSelect = {
+  id: true,
   email: true,
   name: true,
   customFields: true,
@@ -23,6 +24,7 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
       where: {
         isUnsubscribed: false,
         isBounced: false,
+        isComplained: false,
         list: {
           teamId,
           isArchived: false,
@@ -33,6 +35,7 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     })
 
     return recipients.map((recipient) => ({
+      contactId: recipient.id,
       email: recipient.email,
       name: recipient.name,
       customFields: recipient.customFields as Record<string, unknown> | null,
@@ -45,12 +48,14 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
         listId: contactListId,
         isUnsubscribed: false,
         isBounced: false,
+        isComplained: false,
       },
       orderBy: { updatedAt: "desc" },
       select: recipientSelect,
     })
 
     return recipients.map((recipient) => ({
+      contactId: recipient.id,
       email: recipient.email,
       name: recipient.name,
       customFields: recipient.customFields as Record<string, unknown> | null,

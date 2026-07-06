@@ -1,14 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
-import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase"
+import { EmailContactImportUseCase } from "@/app/api/useCases/email/EmailContactImportUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 function makeUseCase() {
-  return new EmailContactListUseCase()
+  return new EmailContactImportUseCase()
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -57,8 +57,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const useCase = makeUseCase()
-    const output = await useCase.uploadCsv(id, csvContent, teamAccess.access)
-    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+    const output = await useCase.enqueueCsvImport(id, csvContent, teamAccess.access)
+    return NextResponse.json(output, { status: output.isValid ? 202 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[EmailContactListUploadRoute][POST]", error)

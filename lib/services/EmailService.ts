@@ -39,16 +39,26 @@ export interface EmailOptions {
   attachments?: Attachment[];
   /** Prevents duplicate delivery on retry (Resend idempotency, 24h window). */
   idempotencyKey?: string;
-  /** When set, creates BackofficeEmailDispatch rows and sends one Resend request per recipient. */
-  dispatch?: EmailDispatchMeta;
-  /** When set, creates EmailLog rows for team historico and Resend tags for webhook backfill. */
-  tracking?: EmailTrackingMeta;
 }
+
+/** Product e-mails: exige tracking com team_id para histórico e webhooks. */
+export type TrackedEmailOptions = EmailOptions & {
+  tracking: EmailTrackingMeta;
+};
+
+/** Backoffice: cria BackofficeEmailDispatch por destinatário. */
+export type DispatchEmailOptions = EmailOptions & {
+  dispatch: EmailDispatchMeta;
+};
+
+/** Envios intencionalmente sem time (auth, billing global, suporte interno). */
+export type UntrackedEmailOptions = EmailOptions;
 
 export interface LeadProposalPendingUrgentEmailData {
   to: string[];
   cc?: string[];
   attachments?: Attachment[];
+  teamId: string;
   leadCode: string;
   leadName: string;
   leadEmail?: string | null;
@@ -61,6 +71,7 @@ export interface LeadProposalPendingUrgentEmailData {
 
 export interface AssociateProposalCriticismEmailData {
   to: string[];
+  teamId: string;
   leadCode: string;
   leadName: string;
   title: string;
@@ -69,6 +80,7 @@ export interface AssociateProposalCriticismEmailData {
 
 export interface AssociateRequiredDocumentsPendingEmailData {
   to: string[];
+  teamId: string;
   leadCode: string;
   leadName: string;
   actorName: string;
@@ -76,6 +88,7 @@ export interface AssociateRequiredDocumentsPendingEmailData {
 
 export interface LeadTransferActivatedEmailData {
   to: string[];
+  teamId: string;
   leadCode: string;
   leadName: string;
   leadPhone?: string | null;
@@ -100,6 +113,7 @@ export interface LeadNotificationData {
   leadPhone?: string;
   managerName: string;
   managerEmail: string;
+  teamId: string;
 }
 
 export interface SubscriptionConfirmationData {
@@ -183,6 +197,7 @@ export interface AccountDeletionFarewellEmailData {
 
 export interface CloserScheduleNotificationEmailData {
   to: string;
+  teamId: string;
   closerName: string;
   leadName: string;
   leadCode?: string | null;
@@ -198,6 +213,7 @@ export interface CloserScheduleNotificationEmailData {
 
 export interface MeetingFollowUpDigestEmailData {
   profileId?: string;
+  teamId?: string;
   to: string;
   recipientName: string;
   leadCount: number;
@@ -486,25 +502,31 @@ export class EmailService {
     `;
   }
 
-  // Método genérico para enviar emails
-  async sendEmail(options: EmailOptions) {
-    if (options.dispatch) {
+  /** Envio de produto com tracking obrigatório ou dispatch backoffice. */
+  async sendEmail(options: TrackedEmailOptions | DispatchEmailOptions) {
+    if ("dispatch" in options && options.dispatch) {
       return this.sendEmailWithDispatchTracking(options);
     }
 
-    if (options.tracking && options.to.filter(Boolean).length > 1) {
-      return this.sendEmailWithTeamTrackingPerRecipient(options);
+    const tracked = options as TrackedEmailOptions;
+    if (tracked.to.filter(Boolean).length > 1) {
+      return this.sendEmailWithTeamTrackingPerRecipient(tracked);
     }
 
+    return this.sendEmailDirect(tracked);
+  }
+
+  /**
+   * Envios intencionalmente sem team_id (auth, billing global, suporte interno).
+   * Não cria EmailLog nem tags de rastreio.
+   */
+  async sendEmailUntracked(options: UntrackedEmailOptions) {
     return this.sendEmailDirect(options);
   }
 
-  private async sendEmailWithTeamTrackingPerRecipient(options: EmailOptions) {
+  private async sendEmailWithTeamTrackingPerRecipient(options: TrackedEmailOptions) {
     const recipients = options.to.filter(Boolean);
     const tracking = options.tracking;
-    if (!tracking) {
-      return this.sendEmailDirect(options);
-    }
 
     // Caminho quente: cria todos os logs "queued" em um único createMany e
     // marca os enviados em lote no final, em vez de 2 queries por destinatário.
@@ -582,7 +604,7 @@ export class EmailService {
   }
 
   private async sendEmailDirect(
-    options: Omit<EmailOptions, "dispatch">,
+    options: UntrackedEmailOptions & { tracking?: EmailTrackingMeta },
     precreated?: { teamLogId: string; deferSentMark?: boolean }
   ) {
     const tracking = options.tracking;
@@ -711,11 +733,8 @@ export class EmailService {
     }
   }
 
-  private async sendEmailWithDispatchTracking(options: EmailOptions) {
+  private async sendEmailWithDispatchTracking(options: DispatchEmailOptions) {
     const dispatch = options.dispatch;
-    if (!dispatch) {
-      return this.sendEmailDirect(options);
-    }
 
     const profileRecipients = await backofficeEmailDispatchService.resolveProfileRecipients(
       dispatch.profileId
@@ -891,19 +910,23 @@ export class EmailService {
       </html>
     `;
 
-    return this.sendEmail({
+    if (data.profileId) {
+      return this.sendEmail({
+        to: [data.userEmail],
+        subject: "Bem-vindo ao Corretor Studio - Sua conta foi criada!",
+        html,
+        dispatch: {
+          profileId: data.profileId,
+          category: "welcome",
+          sourceType: "welcome",
+        },
+      });
+    }
+
+    return this.sendEmailUntracked({
       to: [data.userEmail],
       subject: "Bem-vindo ao Corretor Studio - Sua conta foi criada!",
       html,
-      ...(data.profileId
-        ? {
-            dispatch: {
-              profileId: data.profileId,
-              category: "welcome",
-              sourceType: "welcome",
-            },
-          }
-        : {}),
     });
   }
 
@@ -1018,7 +1041,7 @@ export class EmailService {
       </html>
     `;
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [data.userEmail],
       subject: 'Corretor Studio — Assinatura confirmada',
       html,
@@ -1102,7 +1125,7 @@ export class EmailService {
       </html>
     `
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [data.userEmail],
       subject: "Corretor Studio — Adesão concluída com sucesso",
       html,
@@ -1145,6 +1168,11 @@ export class EmailService {
       to: [data.managerEmail],
       subject: `Novo Lead: ${data.leadName}`,
       html,
+      tracking: {
+        teamId: data.teamId,
+        category: "transactional",
+        sourceType: "lead_notification",
+      },
     });
   }
 
@@ -1193,6 +1221,12 @@ export class EmailService {
       subject: proposalPendingTitle,
       html,
       attachments: data.attachments,
+      tracking: {
+        teamId: data.teamId,
+        category: "transactional",
+        sourceType: "lead_proposal_pending",
+        sourceId: data.leadCode,
+      },
     });
   }
 
@@ -1217,7 +1251,17 @@ export class EmailService {
       </div>
     `;
 
-    return this.sendEmail({ to: data.to, subject, html });
+    return this.sendEmail({
+      to: data.to,
+      subject,
+      html,
+      tracking: {
+        teamId: data.teamId,
+        category: "transactional",
+        sourceType: "associate_proposal_criticism",
+        sourceId: data.leadCode,
+      },
+    });
   }
 
   async sendAssociateRequiredDocumentsPendingEmail(data: AssociateRequiredDocumentsPendingEmailData) {
@@ -1238,7 +1282,17 @@ export class EmailService {
       </div>
     `;
 
-    return this.sendEmail({ to: data.to, subject, html });
+    return this.sendEmail({
+      to: data.to,
+      subject,
+      html,
+      tracking: {
+        teamId: data.teamId,
+        category: "transactional",
+        sourceType: "associate_required_documents",
+        sourceId: data.leadCode,
+      },
+    });
   }
 
   // Email de convite para novo operador
@@ -1402,7 +1456,7 @@ export class EmailService {
       });
     }
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [data.operatorEmail],
       subject: `Convite: Você foi adicionado ao Corretor Studio por ${data.managerName}`,
       html,
@@ -1505,7 +1559,7 @@ export class EmailService {
       </html>
     `;
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [data.masterEmail],
       subject: `Pagamento pendente para adicionar ${data.requestedUserName} à conta`,
       html,
@@ -1616,7 +1670,7 @@ export class EmailService {
       });
     }
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [userEmail],
       subject: "Redefinição de Senha - Corretor Studio",
       html,
@@ -1705,7 +1759,7 @@ export class EmailService {
       </html>
     `;
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [data.operatorEmail],
       subject: "Acesso Removido - Corretor Studio",
       html,
@@ -1779,29 +1833,31 @@ export class EmailService {
     let lastResult: Awaited<ReturnType<EmailService["sendEmail"]>> | undefined;
 
     for (const [index, recipient] of recipients.entries()) {
-      const result = await this.sendEmail({
-        to: [recipient],
+      const baseOptions = {
+        to: [recipient] as string[],
         subject: title,
         html,
         attachments: [
           {
             filename: "invite.ics",
             content: Buffer.from(this.buildMeetingInviteIcs({ ...data, to: [recipient] }), "utf8"),
-            contentType: "text/calendar; charset=utf-8; method=REQUEST",
+            contentType: "text/calendar; charset=utf-8; method=REQUEST" as const,
           },
         ],
         idempotencyKey: data.eventUid ? `meeting-invite/${data.eventUid}/${index}` : undefined,
-        ...(data.teamId
-          ? {
-              tracking: {
-                teamId: data.teamId,
-                category: "meeting_invite" as const,
-                sourceType: data.sourceType,
-                sourceId: data.sourceId,
-              },
-            }
-          : {}),
-      });
+      };
+
+      const result = data.teamId
+        ? await this.sendEmail({
+            ...baseOptions,
+            tracking: {
+              teamId: data.teamId,
+              category: "meeting_invite" as const,
+              sourceType: data.sourceType,
+              sourceId: data.sourceId,
+            },
+          })
+        : await this.sendEmailUntracked(baseOptions);
 
       const resendEmailId =
         result.success && result.data && typeof result.data === "object"
@@ -1922,6 +1978,12 @@ export class EmailService {
       subject,
       html,
       attachments: data.attachments,
+      tracking: {
+        teamId: data.teamId,
+        category: "schedule_notification",
+        sourceType: "closer_schedule_notification",
+        sourceId: data.leadCode ?? undefined,
+      },
     });
   }
 
@@ -2007,7 +2069,7 @@ export class EmailService {
       </html>
     `;
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [data.userEmail],
       subject: "Conta encerrada — Corretor Studio",
       html,
@@ -2041,7 +2103,7 @@ export class EmailService {
       ],
     });
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: [data.masterEmail],
       subject: `${data.addonLabel} pendente de pagamento — Corretor Studio`,
       html,
@@ -2118,7 +2180,7 @@ export class EmailService {
       recipientsList.push(data.requesterEmail);
     }
 
-    return this.sendEmail({
+    return this.sendEmailUntracked({
       to: recipientsList,
       subject: `${data.addonLabel} ativado com sucesso — Corretor Studio`,
       html,
@@ -2138,7 +2200,7 @@ export class EmailService {
       expiresAtValue: expiresAt,
     })
 
-    await this.sendEmail({
+    await this.sendEmailUntracked({
       to: [data.userEmail],
       subject: "Finalize sua adesão no Corretor Studio",
       html,
@@ -2205,6 +2267,12 @@ export class EmailService {
       to: data.to,
       subject: `Novo lead para transferência: ${leadName}`,
       html,
+      tracking: {
+        teamId: data.teamId,
+        category: "transactional",
+        sourceType: "lead_transfer_activated",
+        sourceId: data.leadCode,
+      },
     });
   }
 
@@ -2275,7 +2343,20 @@ export class EmailService {
       });
     }
 
-    return this.sendEmail({
+    if (data.teamId) {
+      return this.sendEmail({
+        to: [data.to],
+        subject,
+        html,
+        tracking: {
+          teamId: data.teamId,
+          category: "meeting_invite",
+          sourceType: "meeting_follow_up_digest",
+        },
+      });
+    }
+
+    return this.sendEmailUntracked({
       to: [data.to],
       subject,
       html,

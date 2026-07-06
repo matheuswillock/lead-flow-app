@@ -28,7 +28,6 @@ import {
   type EmailContactImportMapping,
 } from "./autoMapEmailContactColumns";
 import { ContatosService } from "../../services/ContatosService";
-import type { EmailContactImportResult } from "../../services/IContatosService";
 
 type ContactImportStep = "upload" | "mapping" | "summary";
 
@@ -67,11 +66,6 @@ export function ContactImportDialog({
   const [mapping, setMapping] = useState<EmailContactImportMapping>({});
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [result, setResult] = useState<EmailContactImportResult | null>(null);
-  const [importProgress, setImportProgress] = useState<{
-    processed: number;
-    total: number;
-  } | null>(null);
 
   const resetState = () => {
     setStep("upload");
@@ -81,8 +75,6 @@ export function ContactImportDialog({
     setMapping({});
     setIsParsing(false);
     setIsSubmitting(false);
-    setResult(null);
-    setImportProgress(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -154,23 +146,16 @@ export function ContactImportDialog({
     }
 
     setIsSubmitting(true);
-    setImportProgress({ processed: 0, total: mappedRows.length });
     try {
-      const importResult = await service.importMappedInBatches(listId, mappedRows, {
-        onProgress: (processed, total) => setImportProgress({ processed, total }),
-      });
-      setResult(importResult);
-      setImportProgress(null);
-      toast.success(
-        `Importação concluída: ${importResult.imported} adicionados, ${importResult.updated} atualizados.`
-      );
+      await service.importMapped(listId, mappedRows);
+      toast.success("Processando importação em segundo plano");
       if (onImportComplete) {
         await onImportComplete();
       }
+      handleOpenChange(false);
     } catch (error) {
       console.error("[ContactImportDialog] handleImport error", error);
       toast.error(error instanceof Error ? error.message : "Erro ao importar contatos");
-      setImportProgress(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -226,9 +211,6 @@ export function ContactImportDialog({
               fileName={fileName}
               preview={importPreview}
               mapping={mapping}
-              isSubmitting={isSubmitting}
-              importProgress={importProgress}
-              result={result}
             />
           )}
         </div>
@@ -256,7 +238,7 @@ export function ContactImportDialog({
               </div>
             </>
           )}
-          {step === "summary" && !result && (
+          {step === "summary" && (
             <>
               <Button variant="ghost" onClick={() => setStep("mapping")} disabled={isSubmitting}>
                 <ArrowLeft className="mr-2 size-4" />
@@ -266,16 +248,13 @@ export function ContactImportDialog({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
-                    Importando...
+                    Enviando...
                   </>
                 ) : (
-                  "Importar contatos"
+                  "Iniciar importação"
                 )}
               </Button>
             </>
-          )}
-          {step === "summary" && result && (
-            <Button onClick={() => handleOpenChange(false)}>Fechar</Button>
           )}
         </DialogFooter>
       </DialogContent>

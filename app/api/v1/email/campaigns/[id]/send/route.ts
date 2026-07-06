@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseCase"
-import { isManagerLikeRole } from "@/lib/roles"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function makeUseCase() {
@@ -17,16 +16,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(teamAccess.error, { status: teamAccess.status })
     }
 
-    if (!isManagerLikeRole(teamAccess.access.teamMember.role)) {
-      return NextResponse.json(
-        new Output(false, [], ["Apenas managers podem disparar campanhas"], null),
-        { status: 403 }
-      )
-    }
-
     const useCase = makeUseCase()
     const output = await useCase.send(id, teamAccess.access)
-    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+    const status = !output.isValid
+      ? output.errorMessages.some((message) => message.includes("permissão"))
+        ? 403
+        : 400
+      : 200
+    return NextResponse.json(output, { status })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[EmailCampaignSendRoute][POST]", error)

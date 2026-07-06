@@ -1,26 +1,8 @@
 "use client";
 
 import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContactImportFields";
-import {
-  getImportHttpErrorMessage,
-  parseImportOutputResponse,
-  runImportInBatches,
-} from "@/lib/import/importBatchClient";
 import type { ContactList, Contact } from "../context/ContatosTypes";
-import type { EmailContactImportResult } from "./IContatosService";
-
-function mergeImportResults(
-  current: EmailContactImportResult,
-  batch: EmailContactImportResult
-): EmailContactImportResult {
-  return {
-    imported: current.imported + batch.imported,
-    updated: current.updated + batch.updated,
-    skipped: current.skipped + batch.skipped,
-    total: batch.total,
-    issues: [...current.issues, ...batch.issues],
-  };
-}
+import type { EmailContactImportEnqueueResult } from "./IContatosService";
 
 export interface IContatosService {
   getLists(): Promise<ContactList[]>
@@ -42,14 +24,10 @@ export interface IContatosService {
     listId: string,
     file: File
   ): Promise<{ imported: number; updated: number; total: number }>
-  importMapped(listId: string, rows: EmailContactImportRow[]): Promise<EmailContactImportResult>
-  importMappedInBatches(
+  importMapped(
     listId: string,
-    rows: EmailContactImportRow[],
-    options?: {
-      onProgress?: (processed: number, total: number) => void
-    }
-  ): Promise<EmailContactImportResult>
+    rows: EmailContactImportRow[]
+  ): Promise<EmailContactImportEnqueueResult>
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
 }
@@ -114,7 +92,7 @@ export class ContatosService implements IContatosService {
   async importMapped(
     listId: string,
     rows: EmailContactImportRow[]
-  ): Promise<EmailContactImportResult> {
+  ): Promise<EmailContactImportEnqueueResult> {
     console.info("[ContatosService] importMapped", { listId, rowCount: rows.length });
     const response = await fetch(`${this.baseUrl}/${listId}/import/mapped`, {
       method: "POST",
@@ -122,39 +100,14 @@ export class ContatosService implements IContatosService {
       body: JSON.stringify({ rows }),
     });
 
-    const data = await parseImportOutputResponse<EmailContactImportResult>(
-      response,
-      "contatos"
-    );
+    const data = await response.json();
     if (!response.ok || !data.isValid) {
       throw new Error(
-        data.errorMessages?.join(", ") || getImportHttpErrorMessage(response.status, "contatos")
+        data.errorMessages?.join(", ") || "Erro ao enfileirar importação de contatos"
       );
     }
 
-    return data.result as EmailContactImportResult;
-  }
-
-  async importMappedInBatches(
-    listId: string,
-    rows: EmailContactImportRow[],
-    options?: {
-      onProgress?: (processed: number, total: number) => void
-    }
-  ): Promise<EmailContactImportResult> {
-    return runImportInBatches({
-      rows,
-      onProgress: options?.onProgress,
-      emptyResult: {
-        imported: 0,
-        updated: 0,
-        skipped: 0,
-        total: 0,
-        issues: [],
-      },
-      importBatch: (batch) => this.importMapped(listId, batch),
-      mergeResults: mergeImportResults,
-    });
+    return data.result as EmailContactImportEnqueueResult;
   }
 
   async getContacts(

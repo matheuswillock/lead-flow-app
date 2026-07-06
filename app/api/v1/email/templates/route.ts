@@ -3,7 +3,6 @@ import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
-import { isManagerLikeRole } from "@/lib/roles"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const functionDefinitionSchema = z.object({
@@ -73,13 +72,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status })
     }
 
-    if (!isManagerLikeRole(teamAccess.access.teamMember.role)) {
-      return NextResponse.json(
-        new Output(false, [], ["Apenas managers podem criar templates de email"], null),
-        { status: 403 }
-      )
-    }
-
     const body = await request.json().catch(() => null)
     const validation = createSchema.safeParse(body)
     if (!validation.success) {
@@ -89,7 +81,12 @@ export async function POST(request: NextRequest) {
 
     const useCase = makeUseCase()
     const output = await useCase.create(validation.data, teamAccess.access)
-    return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
+    const status = !output.isValid
+      ? output.errorMessages.some((message) => message.includes("permissão"))
+        ? 403
+        : 400
+      : 201
+    return NextResponse.json(output, { status })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[EmailTemplatesRoute][POST]", error)

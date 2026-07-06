@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
-import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase";
+import { EmailContactImportUseCase } from "@/app/api/useCases/email/EmailContactImportUseCase";
 import { isManagerLikeRole } from "@/lib/roles";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { MappedEmailContactImportRequestSchema } from "./DTO/mappedEmailContactImportRequest";
 
 function makeUseCase() {
-  return new EmailContactListUseCase();
+  return new EmailContactImportUseCase();
 }
 
 export async function POST(
@@ -36,8 +36,8 @@ export async function POST(
     }
 
     const useCase = makeUseCase();
-    const output = await useCase.importMapped(id, parsed.data.rows, teamAccess.access);
-    return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+    const output = await useCase.enqueueMappedImport(id, parsed.data.rows, teamAccess.access);
+    return NextResponse.json(output, { status: output.isValid ? 202 : 400 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[EmailContactListImportMappedRoute][POST]", error);

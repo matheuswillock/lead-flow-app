@@ -1,6 +1,7 @@
 import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
 
 export type CampaignRecipient = {
+  contactId?: string | null
   email: string
   name: string | null
   customFields: Record<string, unknown> | null

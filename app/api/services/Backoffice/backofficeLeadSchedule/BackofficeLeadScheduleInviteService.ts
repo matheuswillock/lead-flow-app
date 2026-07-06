@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Attachment, CreateEmailOptions } from "resend"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
+import { buildBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
 import { getResendOwnerEmail } from "@/lib/email/resend-owner-email"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
@@ -20,6 +21,7 @@ interface BackofficeScheduleEmailOptions {
   idempotencyKey?: string
   sourceType?: string
   sourceId?: string
+  category?: "schedule_invite"
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -241,6 +243,11 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
           : options.subject,
         html,
         attachments: options.attachments,
+        tags: buildBackofficeResendTags({
+          category: options.category ?? "schedule_invite",
+          sourceType: options.sourceType,
+          sourceId: options.sourceId,
+        }),
         headers: {
           Importance: "high",
           Priority: "urgent",

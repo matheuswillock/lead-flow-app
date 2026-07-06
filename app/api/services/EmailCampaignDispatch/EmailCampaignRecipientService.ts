@@ -83,12 +83,7 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     const baseRecipients = params.cdpSegmentSlug
       ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
       : await this.listActiveRecipients(params.teamId, params.contactListId!)
-    const recipients = baseRecipients.map((recipient) => ({
-      email: recipient.email,
-      name: recipient.name,
-      customFields: recipient.customFields,
-    }))
-    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, recipients)
+    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, baseRecipients)
     const globalDefaults = await this.getGlobalDefaults(params.teamId)
     const parsedVariables = this.parseTemplateVariables(params.template.variables)
     const timezone = resolveTimezone(params.masterTimezone)
@@ -101,6 +96,7 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
 
     return {
       recipients: enrichedRecipients.map((recipient) => ({
+        contactId: recipient.contactId ?? null,
         email: recipient.email,
         name: recipient.name ?? null,
         customFields: recipient.customFields ?? null,
