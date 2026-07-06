@@ -47,6 +47,7 @@ import { NavUser } from "./nav-user"
 import { useUserContext } from "@/app/context/UserContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { SupportRequestDialog } from "@/components/support-request-dialog"
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
@@ -64,6 +65,7 @@ type SidebarItem = {
   sdrCloserOrManager?: boolean
   requiresIntegrationsAccess?: boolean
   requiresTransferRoutes?: boolean
+  requiresAssociadosQueue?: boolean
   featureSlug?: string
   status?: "beta" | "comingSoon"
   unreadCount?: number
@@ -91,6 +93,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const { user } = useUserContext();
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster, activeRole, activeFunctions } = useTeamContext();
   const { hasAccess, showsBetaLabel } = useFeatureAccess();
+  const { access: operationalAccess } = useOperationalAccess();
   const isManager = activeRole === "manager" || activeRole === "backoffice";
   const isCloser = activeFunctions.includes("CLOSER");
   const isSdr = activeFunctions.includes("SDR");
@@ -154,15 +157,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       title: "Associados",
       url: `/${supabaseId}/associados`,
       icon: Handshake,
-      featureSlug: FEATURE_SLUGS.CRM_BACKOFFICE_ASSOCIADOS,
-    },
-    {
-      title: "MultiSkill",
-      url: `/${supabaseId}/multiskill-transfers`,
-      icon: ArrowRightLeft,
-      managerOnly: true,
-      featureSlug: FEATURE_SLUGS.CRM_MULTISKILL_TRANSFERS,
-      status: "beta",
+      requiresAssociadosQueue: true,
     },
   ];
 
@@ -228,6 +223,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       return false;
     }
     if (item.requiresTransferRoutes && !activeTeam?.hasTransferRoutes && !activeTeam?.canTransferAccountLeads) {
+      return false;
+    }
+    if (item.requiresAssociadosQueue && !operationalAccess.associadosQueue) {
       return false;
     }
     if (item.featureSlug && !hasAccess(item.featureSlug)) {
@@ -301,17 +299,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     return getSidebarStatusBadge(item.status)
   }
 
-  const canAccessAssociadosBackoffice =
-    activeRole === "backoffice" ||
-    activeRole === "manager" ||
-    isTeamMaster ||
-    Boolean(activeTeam?.canManageAccountTeams) ||
-    teams.some((team) => team.isAssociateAccount);
-
   const visibleNavigationItems = navigationItems.filter(canShowItem)
-  const visibleBackofficeItems = backofficeItems.filter(
-    (item) => canShowItem(item) && canAccessAssociadosBackoffice
-  )
+  const visibleBackofficeItems = backofficeItems.filter(canShowItem)
   const visibleEmailItems = emailItems.filter(canShowItem)
   const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)

@@ -25,9 +25,8 @@ import { Info, Loader2 } from "lucide-react";
 import { formatLocalTimeValue } from "@/lib/dates";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
-import type { MultiskillTransferTargetRow } from "@/app/[supabaseId]/multiskill-transfers/features/context/MultiskillTransfersTypes";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
+import type { MultiskillTransferTarget } from "@/lib/multiskill/types";
 
 interface TeamMemberOption {
   id: string;
@@ -57,12 +56,12 @@ export function TransferBetweenTeamsDialog({
   const supabaseId = params.supabaseId as string | undefined;
   const { teams, activeTeamId } = useTeamContext();
   const { tz } = useTimezone();
-  const { hasAccess } = useFeatureAccess();
-  const hasMultiskillAccess = hasAccess(FEATURE_SLUGS.CRM_MULTISKILL_TRANSFERS);
+  const { access: operationalAccess } = useOperationalAccess();
+  const hasMultiskillAccess = operationalAccess.multiskillTransferOrigin;
 
   const [transferMode, setTransferMode] = useState<"internal" | "multiskill">("internal");
   const [multiskillSearch, setMultiskillSearch] = useState("");
-  const [multiskillTargets, setMultiskillTargets] = useState<MultiskillTransferTargetRow[]>([]);
+  const [multiskillTargets, setMultiskillTargets] = useState<MultiskillTransferTarget[]>([]);
   const [multiskillTargetsLoading, setMultiskillTargetsLoading] = useState(false);
   const [selectedMasterId, setSelectedMasterId] = useState("");
   const [multiskillCloserId, setMultiskillCloserId] = useState("");

@@ -10262,6 +10262,105 @@
           ]
         },
         {
+          "name": "Backoffice Operational Access",
+          "item": [
+            {
+              "name": "GET Operational Access Grants",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/operational-access",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "operational-access"]
+                },
+                "description": "Lista grants de acessos operacionais (Associados + MultiSkill). Exige master backoffice."
+              }
+            },
+            {
+              "name": "POST Grant Associados Queue",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"capability\": \"ASSOCIADOS_QUEUE\",\n  \"profileId\": \"{{sponsorProfileId}}\",\n  \"notes\": \"Concedido via Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/operational-access",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "operational-access"]
+                },
+                "description": "Concede acesso à fila Associados para um master."
+              }
+            },
+            {
+              "name": "POST Grant MultiSkill Origin",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"capability\": \"MULTISKILL_TRANSFER_ORIGIN\",\n  \"masterId\": \"{{masterProfileId}}\",\n  \"notes\": \"Conta MultiSkill via Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/operational-access",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "operational-access"]
+                },
+                "description": "Autoriza conta para origem MultiSkill (cria time MultiSkill se necessário)."
+              }
+            },
+            {
+              "name": "DELETE Revoke Operational Access Grant",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/operational-access/:grantId",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "operational-access", ":grantId"],
+                  "variable": [
+                    {
+                      "key": "grantId",
+                      "value": "{{operationalAccessGrantId}}"
+                    }
+                  ]
+                },
+                "description": "Revoga grant de acesso operacional."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Anatemas",
           "item": [
             {

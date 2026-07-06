@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { UserProvider } from "@/app/context/UserContext"
 import { TeamProvider } from "@/app/context/TeamContext"
 import { FeatureAccessProvider } from "@/app/context/FeatureAccessContext"
+import { OperationalAccessProvider } from "@/app/context/OperationalAccessContext"
 import { LayoutContent } from "./components/LayoutContent"
 import { NotificationsProvider } from "./notifications/features/context/NotificationsContext"
 import { InAppNotificationProvider } from "./notifications/features/context/InAppNotificationContext"
@@ -46,15 +47,17 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
         initialActiveTeamId={bootstrap?.activeTeamId ?? null}
       >
         <FeatureAccessProvider initialAccess={bootstrap?.featureAccess ?? null}>
-          <NotificationsProvider supabaseId={supabaseId}>
-            <InAppNotificationProvider>
-              <NotificationFaviconBadge />
-              <WebPushConsentPrompt supabaseId={supabaseId} />
-              <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
-                {children}
-              </LayoutContent>
-            </InAppNotificationProvider>
-          </NotificationsProvider>
+          <OperationalAccessProvider initialAccess={bootstrap?.operationalAccess ?? null}>
+            <NotificationsProvider supabaseId={supabaseId}>
+              <InAppNotificationProvider>
+                <NotificationFaviconBadge />
+                <WebPushConsentPrompt supabaseId={supabaseId} />
+                <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
+                  {children}
+                </LayoutContent>
+              </InAppNotificationProvider>
+            </NotificationsProvider>
+          </OperationalAccessProvider>
         </FeatureAccessProvider>
       </TeamProvider>
     </UserProvider>
