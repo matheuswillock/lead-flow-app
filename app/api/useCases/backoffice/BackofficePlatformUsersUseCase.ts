@@ -446,6 +446,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           status: master.subscriptionStatus,
         },
         userType: master.userType,
+        multiskillEnabled: master.multiskillEnabled,
         isBanned: Boolean(activeBan),
         allTeams: master.allTeams,
         teams: master.teams.map((team) => ({
@@ -833,6 +834,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      multiskillEnabled?: boolean
     }
   ): Promise<Output> {
     try {

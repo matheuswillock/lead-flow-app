@@ -34,6 +34,7 @@ export interface MasterPlatformUserRecord {
   profileIconUrl: string | null
   createdAt: Date
   hasPermanentSubscription: boolean
+  multiskillEnabled: boolean
   subscriptionPlan: SubscriptionPlan | null
   operatorCount: number
   googleCalendarConnected: boolean
@@ -64,6 +65,7 @@ export interface MasterPlatformUserDetailsRecord {
   profileIconUrl: string | null
   createdAt: Date
   hasPermanentSubscription: boolean
+  multiskillEnabled: boolean
   subscriptionPlan: SubscriptionPlan | null
   subscriptionStatus: SubscriptionStatus | null
   subscriptionId: string | null
@@ -163,6 +165,7 @@ export interface IBackofficePlatformUsersRepository {
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      multiskillEnabled?: boolean
     }
   ): Promise<{ id: string } | null>
 

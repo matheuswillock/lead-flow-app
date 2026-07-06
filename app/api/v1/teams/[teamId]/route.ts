@@ -10,10 +10,19 @@ import {
 } from "@/app/api/v1/utils/teamAccess";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
-const updateTeamSchema = z.object({
-  name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
-  transferTargetTeamIds: z.array(z.string().uuid("Time de transferência inválido")).optional(),
-});
+const updateTeamSchema = z
+  .object({
+    name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres").optional(),
+    isDefault: z.boolean().optional(),
+    transferTargetTeamIds: z.array(z.string().uuid("Time de transferência inválido")).optional(),
+  })
+  .refine(
+    (data) =>
+      data.name !== undefined ||
+      data.isDefault !== undefined ||
+      data.transferTargetTeamIds !== undefined,
+    { message: "Informe ao menos um campo para atualizar" }
+  );
 
 const deleteTeamSchema = z.object({
   password: z.string().min(1, "Senha é obrigatória"),
@@ -82,10 +91,52 @@ export async function PATCH(
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      const existingTeam = await tx.team.findFirst({
+        where: {
+          id: teamId,
+          masterId: teamAccess.access.managerId,
+        },
+        select: { id: true, name: true, isDefault: true },
+      });
+
+      if (!existingTeam) {
+        throw new Error("TEAM_NOT_FOUND");
+      }
+
+      if (payload.isDefault === false) {
+        const otherDefaultTeam = await tx.team.findFirst({
+          where: {
+            masterId: teamAccess.access.managerId,
+            isDefault: true,
+            NOT: { id: teamId },
+          },
+          select: { id: true },
+        });
+
+        if (!otherDefaultTeam) {
+          throw new Error("CANNOT_UNSET_ONLY_DEFAULT");
+        }
+      }
+
+      const teamUpdateData: { name?: string; isDefault?: boolean } = {};
+      if (payload.name !== undefined) {
+        teamUpdateData.name = payload.name.trim();
+      }
+
+      if (payload.isDefault === true) {
+        await tx.team.updateMany({
+          where: { masterId: teamAccess.access.managerId },
+          data: { isDefault: false },
+        });
+        teamUpdateData.isDefault = true;
+      } else if (payload.isDefault === false) {
+        teamUpdateData.isDefault = false;
+      }
+
       const team = await tx.team.update({
         where: { id: teamId },
-        data: { name: payload.name.trim() },
-        select: { id: true, name: true },
+        data: teamUpdateData,
+        select: { id: true, name: true, isDefault: true },
       });
 
       if (payload.transferTargetTeamIds) {
@@ -125,6 +176,22 @@ export async function PATCH(
     );
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
+    if (error instanceof Error) {
+      if (error.message === "TEAM_NOT_FOUND") {
+        return NextResponse.json(new Output(false, [], ["Time não encontrado"], null), { status: 404 });
+      }
+      if (error.message === "CANNOT_UNSET_ONLY_DEFAULT") {
+        return NextResponse.json(
+          new Output(
+            false,
+            [],
+            ["Selecione outro time como padrão antes de remover"],
+            null
+          ),
+          { status: 400 }
+        );
+      }
+    }
     console.error("Erro ao atualizar time:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao atualizar time"], null),

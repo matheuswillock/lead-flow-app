@@ -15,7 +15,9 @@ interface ManagerTeamsContainerProps {
   activeTeamId: string | null;
   switchingTeamId: string | null;
   cancelingPendingTeamId: string | null;
+  settingDefaultTeamId: string | null;
   onSetActiveTeam: (teamId: string) => void;
+  onSetDefaultTeam: (teamId: string) => void;
   onManageTeam: (teamId: string, teamName: string) => void;
   onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
   onEditPendingPayment: (team: ManagerTeamTableRow) => void;
@@ -32,7 +34,9 @@ export function ManagerTeamsContainer({
   activeTeamId,
   switchingTeamId,
   cancelingPendingTeamId,
+  settingDefaultTeamId,
   onSetActiveTeam,
+  onSetDefaultTeam,
   onManageTeam,
   onViewPendingCheckout,
   onEditPendingPayment,
@@ -63,12 +67,18 @@ export function ManagerTeamsContainer({
     return status === "PENDING" || status === "FAILED";
   }).length;
 
+  const ownAccountTeams = tableData.filter((team) => !team.isAssociateAccount && !team.isPending);
+  const ownAccountTeamCount = ownAccountTeams.length;
+
   const columns = createColumns({
     tz,
     activeTeamId,
     switchingTeamId,
     cancelingPendingTeamId,
+    settingDefaultTeamId,
+    ownAccountTeamCount,
     onSetActiveTeam,
+    onSetDefaultTeam,
     onManageTeam,
     onViewPendingCheckout,
     onEditPendingPayment,

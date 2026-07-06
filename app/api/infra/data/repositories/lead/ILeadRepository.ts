@@ -109,7 +109,8 @@ export interface ILeadRepository {
     targetTeamId: string,
     closerId: string,
     sdrId: string | null,
-    sanitizations?: TransferToTeamSanitization[]
+    sanitizations?: TransferToTeamSanitization[],
+    options?: { targetManagerId?: string }
   ): Promise<Lead>;
   getLeadsByStatus(managerId: string, status: LeadStatus): Promise<Lead[]>;
   reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number>;

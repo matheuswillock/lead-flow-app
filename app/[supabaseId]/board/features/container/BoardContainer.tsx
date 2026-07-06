@@ -37,6 +37,10 @@ import {
   CloserRequirementDialog,
   type CloserRequirementPayload,
 } from "@/app/[supabaseId]/components/CloserRequirementDialog";
+import {
+  LeadInfoRequirementDialog,
+  type LeadInfoPayload,
+} from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
 
 interface BoardContainerProps {
   title?: string;
@@ -73,6 +77,9 @@ export function BoardContainer({
     pendingCloserGateDrop,
     clearPendingCloserGateDrop,
     applyPendingCloserGateTransition,
+    pendingLeadInfoGateDrop,
+    clearPendingLeadInfoGateDrop,
+    applyPendingLeadInfoGateTransition,
     pendingFinalizeDrop,
     clearPendingFinalizeDrop,
     data,
@@ -82,8 +89,10 @@ export function BoardContainer({
   const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
   const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
   const [showCloserRequirementDialog, setShowCloserRequirementDialog] = useState(false);
+  const [showLeadInfoDialog, setShowLeadInfoDialog] = useState(false);
   const [closerRequirementSaving, setCloserRequirementSaving] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
+  const [leadInfoSaving, setLeadInfoSaving] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [resendInviteLead, setResendInviteLead] = useState<Lead | null>(null);
@@ -200,6 +209,20 @@ export function BoardContainer({
     setSelectedLead(pendingCloserLead);
     setShowCloserRequirementDialog(true);
   }, [pendingCloserGateDrop, pendingCloserLead]);
+
+  const pendingLeadInfoLead = useMemo(() => {
+    if (!pendingLeadInfoGateDrop) return null;
+    return (
+      data[pendingLeadInfoGateDrop.from]?.find((item) => item.id === pendingLeadInfoGateDrop.leadId) ??
+      null
+    );
+  }, [data, pendingLeadInfoGateDrop]);
+
+  useEffect(() => {
+    if (!pendingLeadInfoGateDrop || !pendingLeadInfoLead) return;
+    setSelectedLead(pendingLeadInfoLead);
+    setShowLeadInfoDialog(true);
+  }, [pendingLeadInfoGateDrop, pendingLeadInfoLead]);
 
   const handleNoShow = useCallback(
     async (lead: Lead) => {
@@ -376,6 +399,17 @@ export function BoardContainer({
 
     setShowCloserRequirementDialog(false);
     clearPendingCloserGateDrop();
+    setSelectedLead(null);
+  };
+
+  const handleLeadInfoSave = async (payload: LeadInfoPayload) => {
+    setLeadInfoSaving(true);
+    const updated = await applyPendingLeadInfoGateTransition(payload);
+    setLeadInfoSaving(false);
+    if (!updated) return;
+
+    setShowLeadInfoDialog(false);
+    clearPendingLeadInfoGateDrop();
     setSelectedLead(null);
   };
 
@@ -585,6 +619,24 @@ export function BoardContainer({
           leadName={selectedLead.name}
           isSaving={closerRequirementSaving}
           initialCloserId={pendingCloserGateDrop.currentCloserId}
+        />
+      )}
+
+      {pendingLeadInfoGateDrop && selectedLead && (
+        <LeadInfoRequirementDialog
+          open={showLeadInfoDialog}
+          onOpenChange={(open) => {
+            setShowLeadInfoDialog(open);
+            if (!open) {
+              clearPendingLeadInfoGateDrop();
+              setSelectedLead(null);
+            }
+          }}
+          onSave={handleLeadInfoSave}
+          leadName={selectedLead.name}
+          isSaving={leadInfoSaving}
+          initialValues={pendingLeadInfoGateDrop.currentLeadInfo}
+          missingFields={pendingLeadInfoGateDrop.missingFields}
         />
       )}
 

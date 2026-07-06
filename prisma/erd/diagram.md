@@ -802,6 +802,7 @@ failed failed
     Boolean isMaster 
     Boolean hasPermanentSubscription 
     Boolean canSponsorAccounts 
+    Boolean multiskillEnabled 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
@@ -1005,6 +1006,7 @@ failed failed
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
     String sponsorMasterId "❓"
+    Boolean multiskillEnabled 
     Json additional_users_data 
     Json additional_teams_data 
     DateTime createdAt 

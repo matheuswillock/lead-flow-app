@@ -1,16 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
+import { endOfDay, parseISO, startOfDay } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
+import { LeadsSingleFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsSingleFilter";
 import type { AssociateProposalRow, AssociadosFiltersState } from "../context/AssociadosTypes";
 
 type AssociadosFiltersBarProps = {
@@ -20,7 +16,13 @@ type AssociadosFiltersBarProps = {
   onRefresh: () => void;
 };
 
-const ALL_VALUE = "__all__";
+function toDateRange(from?: string, to?: string): DateRange | undefined {
+  if (!from && !to) return undefined;
+  return {
+    from: from ? startOfDay(parseISO(from)) : undefined,
+    to: to ? endOfDay(parseISO(to)) : undefined,
+  };
+}
 
 export function AssociadosFiltersBar({
   filters,
@@ -55,6 +57,8 @@ export function AssociadosFiltersBar({
     return [...map.entries()].map(([id, name]) => ({ id, name }));
   }, [items, filters.teamId]);
 
+  const enteredAtRange = toDateRange(filters.from, filters.to);
+
   function clearFilters() {
     onChange({
       search: "",
@@ -63,118 +67,86 @@ export function AssociadosFiltersBar({
       closerId: "",
       from: "",
       to: "",
+      page: 1,
     });
   }
 
   return (
-    <FieldGroup className="gap-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Field>
-          <FieldLabel htmlFor="associados-search">Busca</FieldLabel>
-          <Input
-            id="associados-search"
-            placeholder="Nome, telefone ou código"
-            value={filters.search}
-            onChange={(e) => onChange({ search: e.target.value })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel>Conta</FieldLabel>
-          <Select
-            value={filters.associateAccountId || ALL_VALUE}
-            onValueChange={(value) =>
-              onChange({
-                associateAccountId: value === ALL_VALUE ? "" : value,
-                teamId: "",
-                closerId: "",
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>Todas</SelectItem>
-              {accountOptions.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  {option.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field>
-          <FieldLabel>Time</FieldLabel>
-          <Select
-            value={filters.teamId || ALL_VALUE}
-            onValueChange={(value) =>
-              onChange({
-                teamId: value === ALL_VALUE ? "" : value,
-                closerId: "",
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>Todos</SelectItem>
-              {teamOptions.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  {option.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field>
-          <FieldLabel>Closer</FieldLabel>
-          <Select
-            value={filters.closerId || ALL_VALUE}
-            onValueChange={(value) =>
-              onChange({ closerId: value === ALL_VALUE ? "" : value })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>Todos</SelectItem>
-              {closerOptions.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  {option.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="associados-from">De</FieldLabel>
-          <Input
-            id="associados-from"
-            type="date"
-            value={filters.from}
-            onChange={(e) => onChange({ from: e.target.value })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="associados-to">Até</FieldLabel>
-          <Input
-            id="associados-to"
-            type="date"
-            value={filters.to}
-            onChange={(e) => onChange({ to: e.target.value })}
-          />
-        </Field>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={clearFilters}>
-          Limpar filtros
-        </Button>
-        <Button variant="secondary" onClick={onRefresh}>
-          Atualizar
-        </Button>
-      </div>
-    </FieldGroup>
+    <div className="flex flex-wrap items-center gap-2">
+      <Input
+        id="associados-search"
+        placeholder="Filtrar por nome..."
+        value={filters.search}
+        onChange={(e) => onChange({ search: e.target.value })}
+        className="h-8 w-[180px] lg:w-[260px]"
+      />
+
+      <LeadsSingleFilter
+        title="contas"
+        options={accountOptions.map((option) => ({
+          label: option.name,
+          value: option.id,
+        }))}
+        value={filters.associateAccountId}
+        onChange={(associateAccountId) =>
+          onChange({
+            associateAccountId,
+            teamId: "",
+            closerId: "",
+            page: 1,
+          })
+        }
+      />
+
+      <LeadsSingleFilter
+        title="times"
+        options={teamOptions.map((option) => ({
+          label: option.name,
+          value: option.id,
+        }))}
+        value={filters.teamId}
+        onChange={(teamId) =>
+          onChange({
+            teamId,
+            closerId: "",
+            page: 1,
+          })
+        }
+      />
+
+      <LeadsSingleFilter
+        title="closers"
+        options={closerOptions.map((option) => ({
+          label: option.name,
+          value: option.id,
+        }))}
+        value={filters.closerId}
+        onChange={(closerId) =>
+          onChange({
+            closerId,
+            page: 1,
+          })
+        }
+      />
+
+      <LeadsDateFilter
+        title="Data de Entrada"
+        value={enteredAtRange}
+        onChange={(range) =>
+          onChange({
+            from: range?.from ? range.from.toISOString().slice(0, 10) : "",
+            to: range?.to ? range.to.toISOString().slice(0, 10) : "",
+            page: 1,
+          })
+        }
+      />
+
+      <Button variant="outline" size="sm" onClick={clearFilters} className="h-8">
+        Limpar filtros
+      </Button>
+      <Button variant="outline" size="sm" onClick={onRefresh} className="h-8">
+        Atualizar
+      </Button>
+    </div>
   );
 }
