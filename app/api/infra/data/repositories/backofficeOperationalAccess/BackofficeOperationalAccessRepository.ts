@@ -285,6 +285,26 @@ export class BackofficeOperationalAccessRepository implements IBackofficeOperati
       select: { id: true },
     });
   }
+
+  async provisionMultiskillOriginGrant(input: {
+    masterId: string;
+    teamName: string;
+    grantedByProfileId: string;
+    notes?: string | null;
+  }): Promise<OperationalAccessGrantRow> {
+    return prisma.$transaction(async () => {
+      const existing = await this.findMultiskillTeamByMasterId(input.masterId, input.teamName);
+      const teamId = existing
+        ? existing.id
+        : (await this.createMultiskillTeam(input.masterId, input.teamName)).id;
+
+      return this.grantMultiskillOrigin({
+        teamId,
+        grantedByProfileId: input.grantedByProfileId,
+        notes: input.notes,
+      });
+    });
+  }
 }
 
 export const backofficeOperationalAccessRepository = new BackofficeOperationalAccessRepository();

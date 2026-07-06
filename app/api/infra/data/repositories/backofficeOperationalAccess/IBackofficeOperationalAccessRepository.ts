@@ -2,7 +2,7 @@ import type { BackofficeOperationalCapability } from "@prisma/client";
 
 export interface OperationalAccessProfileRow {
   id: string;
-  fullName: string;
+  fullName: string | null;
   email: string;
   isMaster: boolean;
 }
@@ -16,7 +16,7 @@ export interface OperationalAccessTeamRow {
 
 export interface OperationalAccessActorRow {
   id: string;
-  fullName: string;
+  fullName: string | null;
   email: string;
 }
 
@@ -62,4 +62,10 @@ export interface IBackofficeOperationalAccessRepository {
   }): Promise<OperationalAccessGrantRow>;
   revoke(grantId: string, revokedByProfileId: string): Promise<OperationalAccessGrantRow | null>;
   findActiveMultiskillGrantByTeamId(teamId: string): Promise<{ id: string } | null>;
+  provisionMultiskillOriginGrant(input: {
+    masterId: string;
+    teamName: string;
+    grantedByProfileId: string;
+    notes?: string | null;
+  }): Promise<OperationalAccessGrantRow>;
 }

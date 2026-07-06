@@ -8,7 +8,7 @@ import { SubscriptionRepository } from "@/app/api/infra/data/repositories/subscr
 import { SubscriptionCheckService } from "@/app/api/services/SubscriptionCheck/SubscriptionCheckService";
 import { CheckSubscriptionUseCase } from "@/app/api/useCases/subscriptions/CheckSubscriptionUseCase";
 import { featureAccessUseCase } from "@/app/api/useCases/featureAccess/FeatureAccessUseCase";
-import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
+import { meOperationalAccessUseCase } from "@/app/api/useCases/meOperationalAccess/MeOperationalAccessUseCase";
 import type { OperationalAccessInitialData } from "@/app/context/OperationalAccessContext";
 import { GET as getTeamsRouteHandler } from "@/app/api/v1/teams/route";
 import type { UserData } from "@/app/context/UserContext";
@@ -157,7 +157,18 @@ export async function getAuthenticatedLayoutBootstrapData(
     const [subscriptionCheck, featureAccess, operationalAccessResult] = await Promise.all([
       fetchSubscriptionCheck(user),
       fetchFeatureAccess(user, activeTeamId, managerId),
-      backofficeOperationalAccessService.resolveOperationalAccess(user.id, activeTeamId),
+      meOperationalAccessUseCase.resolve(user.id, activeTeamId).then((output) =>
+        output.isValid && output.result
+          ? {
+              ...(output.result as {
+                associadosQueue: boolean;
+                multiskillTransferOrigin: boolean;
+              }),
+              profileId: user.id,
+              teamId: activeTeamId,
+            }
+          : null
+      ),
     ]);
 
     return {
@@ -169,11 +180,7 @@ export async function getAuthenticatedLayoutBootstrapData(
       teams: teamsPayload?.teams ?? null,
       activeTeamId,
       featureAccess,
-      operationalAccess: {
-        ...operationalAccessResult,
-        profileId: user.id,
-        teamId: activeTeamId,
-      },
+      operationalAccess: operationalAccessResult,
     };
   } catch (error) {
     console.error("[LayoutBootstrap] Erro no bootstrap server-side:", error);

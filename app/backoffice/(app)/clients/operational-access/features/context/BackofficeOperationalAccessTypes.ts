@@ -1,12 +1,12 @@
 export interface OperationalAccessActor {
   id: string
-  fullName: string
+  fullName: string | null
   email: string
 }
 
 export interface OperationalAccessProfile {
   id: string
-  fullName: string
+  fullName: string | null
   email: string
   isMaster: boolean
 }

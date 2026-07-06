@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
-import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
+import { meOperationalAccessUseCase } from "@/app/api/useCases/meOperationalAccess/MeOperationalAccessUseCase";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 export async function GET(request: NextRequest) {
@@ -13,12 +13,8 @@ export async function GET(request: NextRequest) {
     }
 
     const access = teamResult.access;
-    const result = await backofficeOperationalAccessService.resolveOperationalAccess(
-      access.profileId,
-      access.teamId
-    );
-
-    return NextResponse.json(new Output(true, [], [], result), { status: 200 });
+    const output = await meOperationalAccessUseCase.resolve(access.profileId, access.teamId);
+    return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[MeOperationalAccessRoute][GET]", error);

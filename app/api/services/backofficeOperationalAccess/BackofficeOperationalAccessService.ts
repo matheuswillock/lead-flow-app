@@ -4,7 +4,6 @@ import {
   type BackofficeOperationalAccessRepository,
 } from "@/app/api/infra/data/repositories/backofficeOperationalAccess/BackofficeOperationalAccessRepository";
 import { MULTISKILL_TEAM_NAME } from "@/lib/multiskill/constants";
-import { prisma } from "@/app/api/infra/data/prisma";
 import type {
   IBackofficeOperationalAccessService,
   OperationalAccessListResult,
@@ -119,13 +118,11 @@ export class BackofficeOperationalAccessService implements IBackofficeOperationa
       return { error: "Selecione um master válido" };
     }
 
-    const result = await prisma.$transaction(async () => {
-      const { teamId } = await this.ensureMultiskillOriginTeam(input.masterId);
-      return this.repository.grantMultiskillOrigin({
-        teamId,
-        grantedByProfileId: input.grantedByProfileId,
-        notes: input.notes,
-      });
+    const result = await this.repository.provisionMultiskillOriginGrant({
+      masterId: input.masterId,
+      teamName: MULTISKILL_TEAM_NAME,
+      grantedByProfileId: input.grantedByProfileId,
+      notes: input.notes,
     });
 
     return result;

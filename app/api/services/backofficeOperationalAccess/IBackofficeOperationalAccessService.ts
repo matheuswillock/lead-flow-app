@@ -1,4 +1,3 @@
-import type { BackofficeOperationalCapability } from "@prisma/client";
 import type { OperationalAccessGrantRow, OperationalAccessProfileRow } from "@/app/api/infra/data/repositories/backofficeOperationalAccess/IBackofficeOperationalAccessRepository";
 
 export interface OperationalAccessListResult {
