@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Usar EmailService para respeitar EMAIL_TEST_MODE
-    const result = await emailService.sendEmail({
+    const result = await emailService.sendEmailUntracked({
       from: body.from || "Corretor Studio <no-reply@corretorstudio.com>",
       to: body.to,
       subject: body.subject,

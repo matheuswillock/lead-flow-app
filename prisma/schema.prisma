@@ -443,6 +443,7 @@ enum NotificationType {
   LEAD_TRANSFER_SCHEDULE_FAILED
   MEETING_FOLLOW_UP_DIGEST
   BETHANIA_AUTH_CODE
+  EMAIL_IMPORT_COMPLETED
 
   @@map("notification_type")
 }
@@ -596,7 +597,7 @@ model Profile {
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
-  canSponsorAccounts       Boolean             @default(false) // Indica se pode patrocinar contas Associado/Convidado
+  multiskillEnabled        Boolean             @default(false) // Master habilitado a receber transferências MultiSkill
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
   sponsorMasterId          String?             @db.Uuid
@@ -670,12 +671,12 @@ model Profile {
   backofficeEmailDispatches   BackofficeEmailDispatch[] @relation("ProfileBackofficeEmailDispatches")
 
   // Email campaigns relations
-  emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
   emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
   emailTemplatesApproved   EmailTemplate[]          @relation("EmailTemplateApprover")
   emailTemplatesRejected   EmailTemplate[]          @relation("EmailTemplateRejecter")
   emailTemplateHistory     EmailTemplateHistory[]   @relation("EmailTemplateHistoryActor")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
+  emailImportJobsRequested EmailImportJob[]         @relation("EmailImportJobRequester")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
   emailCampaignDispatchesTriggered EmailCampaignDispatch[] @relation("EmailCampaignDispatchTriggerer")
 
@@ -708,10 +709,14 @@ model Profile {
   proposalReviewsReviewed LeadProposalReview[]  @relation("LeadProposalReviewReviewer")
   requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
 
+  authorizedSponsorRecord       BackofficeAuthorizedSponsor?  @relation("AuthorizedSponsorProfile")
+  authorizedSponsorsGranted     BackofficeAuthorizedSponsor[] @relation("AuthorizedSponsorGrantedBy")
+  authorizedSponsorsRevoked     BackofficeAuthorizedSponsor[] @relation("AuthorizedSponsorRevokedBy")
+  sponsoredAdhesions            BackofficeAdhesion[]          @relation("BackofficeAdhesionSponsorMaster")
+
   @@index([role])
   @@index([managerId])
   @@index([sponsorMasterId])
-  @@index([canSponsorAccounts])
   @@index([cpfCnpj])
   @@index([googleConnectionId])
   @@map("corretor_studio_profiles")
@@ -806,6 +811,26 @@ model BackofficeBannedUser {
   @@index([status, bannedAt], map: "backoffice_banned_users_status_banned_at_idx")
   @@index([scope, status], map: "backoffice_banned_users_scope_status_idx")
   @@map("backoffice_banned_users")
+}
+
+model BackofficeAuthorizedSponsor {
+  id                 String    @id @default(uuid()) @db.Uuid
+  profileId          String    @unique @map("profileId") @db.Uuid
+  isActive           Boolean   @default(true) @map("isActive")
+  grantedByProfileId String?   @map("grantedByProfileId") @db.Uuid
+  grantedAt          DateTime  @default(now()) @map("grantedAt") @db.Timestamptz(6)
+  revokedByProfileId String?   @map("revokedByProfileId") @db.Uuid
+  revokedAt          DateTime? @map("revokedAt") @db.Timestamptz(6)
+  notes              String?   @db.Text
+  createdAt          DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile   Profile  @relation("AuthorizedSponsorProfile", fields: [profileId], references: [id], onDelete: Restrict)
+  grantedBy Profile? @relation("AuthorizedSponsorGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: SetNull)
+  revokedBy Profile? @relation("AuthorizedSponsorRevokedBy", fields: [revokedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([isActive], map: "backoffice_authorized_sponsors_is_active_idx")
+  @@map("backoffice_authorized_sponsors")
 }
 
 model GoogleOAuthConnection {
@@ -1018,6 +1043,7 @@ model BackofficeAdhesion {
   requestedUserTypeSlug             String?   @map("requestedUserTypeSlug") @db.Text
   requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
   sponsorMasterId                   String?   @map("sponsorMasterId") @db.Uuid
+  multiskillEnabled                 Boolean   @default(false) @map("multiskillEnabled")
   additionalUsersData       Json                           @default("[]") @map("additional_users_data")
   additionalTeamsData       Json                           @default("[]") @map("additional_teams_data")
   createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
@@ -1028,6 +1054,7 @@ model BackofficeAdhesion {
   sdrBackofficeUser       BackofficeUser?     @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
   closerBackofficeUser    BackofficeUser?     @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
   createdByBackofficeUser BackofficeUser?     @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  sponsorMaster           Profile?            @relation("BackofficeAdhesionSponsorMaster", fields: [sponsorMasterId], references: [id], onDelete: SetNull)
 
   profileSubscription ProfileSubscription?
 
@@ -1606,6 +1633,7 @@ model Team {
   // Email campaigns relations
   emailTemplates    EmailTemplate[]    @relation("TeamEmailTemplates")
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
+  emailImportJobs   EmailImportJob[]   @relation("TeamEmailImportJobs")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
   emailCampaignDispatches EmailCampaignDispatch[] @relation("TeamEmailCampaignDispatches")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
@@ -1614,6 +1642,7 @@ model Team {
   emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
   emailVariables    EmailTeamVariable[] @relation("TeamEmailVariables")
   emailTemplateHistory EmailTemplateHistory[]
+  emailCreditSubscription EmailCreditSubscription? @relation("TeamEmailCreditSubscription")
 
   // WhatsApp relations
   whatsappConfig        TeamWhatsAppConfig?
@@ -1895,7 +1924,7 @@ model LeadTransfer {
 
 model EmailCreditSubscription {
   id                 String                        @id @default(uuid()) @db.Uuid
-  profileId          String                        @unique @db.Uuid
+  teamId             String                        @unique @db.Uuid
   plan               EmailCreditPlan
   monthlyCredits     Int
   status             EmailCreditSubscriptionStatus @default(active)
@@ -1905,8 +1934,8 @@ model EmailCreditSubscription {
   createdAt          DateTime                      @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime                      @updatedAt @db.Timestamptz(6)
 
-  profile Profile            @relation("EmailCreditSubscriptionOwner", fields: [profileId], references: [id], onDelete: Cascade)
-  usages  EmailCreditUsage[]
+  team   Team               @relation("TeamEmailCreditSubscription", fields: [teamId], references: [id], onDelete: Cascade)
+  usages EmailCreditUsage[]
 
   @@index([currentPeriodEnd])
   @@map("corretor_studio_email_credit_subscriptions")
@@ -1938,7 +1967,7 @@ model EmailTemplate {
   previewText String?  @db.Text
   mailyJson   Json?
   html        String?  @db.Text
-  editorMode  String   @default("blocks") @db.Text
+  editorMode  String   @default("html") @db.Text
   variables   Json?
   versionGroupId String   @db.Uuid
   versionNumber  Int      @default(1)
@@ -2012,10 +2041,40 @@ model EmailContactList {
   contacts  EmailContact[]
   campaigns EmailCampaign[]
   campaignDispatches EmailCampaignDispatch[]
+  importJobs EmailImportJob[]
 
   @@index([teamId, isArchived])
   @@index([createdBy])
   @@map("corretor_studio_email_contact_lists")
+}
+
+model EmailImportJob {
+  id              String   @id @default(uuid()) @db.Uuid
+  importId        String   @unique @db.Text
+  teamId          String   @db.Uuid
+  listId          String   @db.Uuid
+  requestedBy     String   @db.Uuid
+  sourceFormat    String   @db.Text
+  storagePath     String   @db.Text
+  status          String   @default("pending") @db.Text
+  totalRows       Int      @default(0)
+  processedRows   Int      @default(0)
+  importedCount   Int      @default(0)
+  updatedCount    Int      @default(0)
+  skippedCount    Int      @default(0)
+  failedBatches   Json?
+  batchSize       Int      @default(500)
+  attemptsByBatch Json?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  team      Team             @relation("TeamEmailImportJobs", fields: [teamId], references: [id], onDelete: Cascade)
+  list      EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  requester Profile          @relation("EmailImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+
+  @@index([teamId, status])
+  @@index([status, createdAt])
+  @@map("corretor_studio_email_import_jobs")
 }
 
 model EmailContact {
@@ -2159,8 +2218,35 @@ model EmailEvent {
 
   log EmailLog @relation(fields: [logId], references: [id], onDelete: Cascade)
 
+  @@unique([logId, type, occurredAt])
   @@index([logId, occurredAt(sort: Desc)])
   @@map("corretor_studio_email_events")
+}
+
+enum EmailOrphanEventStatus {
+  pending
+  processed
+  failed
+  skipped
+
+  @@map("email_orphan_event_status")
+}
+
+model EmailOrphanEvent {
+  id            String                 @id @default(uuid()) @db.Uuid
+  resendEmailId String                 @unique @db.Text
+  resendEventType String               @db.Text
+  occurredAt    DateTime               @db.Timestamptz(6)
+  tagsHint      Json?
+  status        EmailOrphanEventStatus @default(pending)
+  attempts      Int                    @default(0)
+  lastError     String?                @db.Text
+  processedAt   DateTime?              @db.Timestamptz(6)
+  createdAt     DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime               @updatedAt @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@map("email_orphan_events")
 }
 
 // -----------------------------

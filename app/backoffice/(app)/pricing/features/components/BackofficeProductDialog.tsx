@@ -95,10 +95,14 @@ export function BackofficeProductDialog() {
       <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>
-            {dialogMode === "create" ? "Novo produto" : "Editar produto"}
+            {dialogMode === "create" && "Novo produto"}
+            {dialogMode === "duplicate" && "Duplicar produto"}
+            {dialogMode === "edit" && "Editar produto"}
           </DialogTitle>
           <DialogDescription>
-            Configure o produto usado na precificação das adesões.
+            {dialogMode === "duplicate"
+              ? "Revise os dados copiados e ajuste o que for necessário antes de criar a nova precificação."
+              : "Configure o produto usado na precificação das adesões."}
           </DialogDescription>
         </DialogHeader>
 

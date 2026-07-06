@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
         userType: parseUserType(data.userType),
         accessExpiresAt: optionalString(data, "accessExpiresAt"),
         sponsorMasterId: optionalString(data, "sponsorMasterId"),
+        multiskillEnabled: typeof data.multiskillEnabled === "boolean" ? data.multiskillEnabled : false,
         additionalUsers: parseAdditionalUsers(data),
         additionalTeams: parseAdditionalTeams(data),
       },

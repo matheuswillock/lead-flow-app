@@ -1,4 +1,5 @@
 export type CampaignRecipientRecord = {
+  contactId: string
   email: string
   name: string | null
   customFields: Record<string, unknown> | null

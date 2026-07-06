@@ -24,6 +24,10 @@ import { useTimezone } from "@/app/context/TimezoneContext";
 import { Info, Loader2 } from "lucide-react";
 import { formatLocalTimeValue } from "@/lib/dates";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
+import type { MultiskillTransferTargetRow } from "@/app/[supabaseId]/multiskill-transfers/features/context/MultiskillTransfersTypes";
 
 interface TeamMemberOption {
   id: string;
@@ -53,6 +57,17 @@ export function TransferBetweenTeamsDialog({
   const supabaseId = params.supabaseId as string | undefined;
   const { teams, activeTeamId } = useTeamContext();
   const { tz } = useTimezone();
+  const { hasAccess } = useFeatureAccess();
+  const hasMultiskillAccess = hasAccess(FEATURE_SLUGS.CRM_MULTISKILL_TRANSFERS);
+
+  const [transferMode, setTransferMode] = useState<"internal" | "multiskill">("internal");
+  const [multiskillSearch, setMultiskillSearch] = useState("");
+  const [multiskillTargets, setMultiskillTargets] = useState<MultiskillTransferTargetRow[]>([]);
+  const [multiskillTargetsLoading, setMultiskillTargetsLoading] = useState(false);
+  const [selectedMasterId, setSelectedMasterId] = useState("");
+  const [multiskillCloserId, setMultiskillCloserId] = useState("");
+  const [multiskillSdrId, setMultiskillSdrId] = useState("");
+  const [multiskillSubmitting, setMultiskillSubmitting] = useState(false);
 
   const [targetTeamId, setTargetTeamId] = useState("");
   const [closerId, setCloserId] = useState("");
@@ -104,6 +119,12 @@ export function TransferBetweenTeamsDialog({
     setMeetingLink("");
     setAvailableTimes([]);
     setAvailabilityLoading(false);
+    setTransferMode("internal");
+    setMultiskillSearch("");
+    setMultiskillTargets([]);
+    setSelectedMasterId("");
+    setMultiskillCloserId("");
+    setMultiskillSdrId("");
   }, [open, lead]);
 
   useEffect(() => {
@@ -233,6 +254,106 @@ export function TransferBetweenTeamsDialog({
     };
   }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, targetTeamId, lead.id]);
 
+  const selectedMultiskillTarget = useMemo(
+    () => multiskillTargets.find((target) => target.masterId === selectedMasterId) ?? null,
+    [multiskillTargets, selectedMasterId]
+  );
+
+  const multiskillDefaultClosers = useMemo(() => {
+    if (!selectedMultiskillTarget) return [];
+    return selectedMultiskillTarget.closers.filter(
+      (closer) => closer.teamId === selectedMultiskillTarget.defaultTeamId
+    );
+  }, [selectedMultiskillTarget]);
+
+  useEffect(() => {
+    if (!open || !hasMultiskillAccess || transferMode !== "multiskill" || !supabaseId) {
+      return;
+    }
+
+    let active = true;
+    const timeoutId = setTimeout(() => {
+      setMultiskillTargetsLoading(true);
+      const params = new URLSearchParams();
+      if (multiskillSearch.trim()) params.set("q", multiskillSearch.trim());
+      params.set("page", "1");
+      params.set("pageSize", "20");
+
+      fetch(`/api/v1/multiskill/transfer-targets?${params.toString()}`, {
+        headers: { "x-supabase-user-id": supabaseId },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!active) return;
+          const items = Array.isArray(data?.result?.items) ? data.result.items : [];
+          setMultiskillTargets(items);
+        })
+        .catch(() => {
+          if (!active) return;
+          setMultiskillTargets([]);
+        })
+        .finally(() => {
+          if (active) setMultiskillTargetsLoading(false);
+        });
+    }, multiskillSearch ? 300 : 0);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [open, hasMultiskillAccess, transferMode, supabaseId, multiskillSearch]);
+
+  useEffect(() => {
+    setMultiskillCloserId("");
+    setMultiskillSdrId("");
+  }, [selectedMasterId]);
+
+  const canSubmitMultiskill =
+    !!selectedMasterId && !!multiskillCloserId && !multiskillSubmitting;
+
+  const handleMultiskillSubmit = async () => {
+    if (!canSubmitMultiskill || !supabaseId) return;
+
+    setMultiskillSubmitting(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/transfer-multiskill`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId ?? "",
+        },
+        body: JSON.stringify({
+          targetMasterId: selectedMasterId,
+          closerId: multiskillCloserId,
+          sdrId: multiskillSdrId && multiskillSdrId !== "_none" ? multiskillSdrId : null,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        const message =
+          Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+            ? result.errorMessages[0]
+            : "Erro ao transferir lead via MultiSkill";
+        throw new Error(message);
+      }
+
+      const updatedLead = result.result as Lead | null;
+      if (!updatedLead) {
+        throw new Error("Resposta inválida ao transferir lead");
+      }
+
+      toast.success("Lead transferido via MultiSkill com sucesso");
+      onSuccess(updatedLead);
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao transferir lead");
+    } finally {
+      setMultiskillSubmitting(false);
+    }
+  };
+
   const canSubmit =
     !!targetTeamId &&
     !!closerId &&
@@ -317,12 +438,161 @@ export function TransferBetweenTeamsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-130">
         <DialogHeader>
-          <DialogTitle>Transferir Lead Entre Times</DialogTitle>
+          <DialogTitle>Transferir Lead</DialogTitle>
           <DialogDescription>
-            Selecione o time destino e atribua um closer. O agendamento é opcional — desative o toggle para transferir sem reunião.
+            {hasMultiskillAccess
+              ? "Transfira entre times da sua conta ou envie para uma conta MultiSkill habilitada."
+              : "Selecione o time destino e atribua um closer. O agendamento é opcional — desative o toggle para transferir sem reunião."}
           </DialogDescription>
         </DialogHeader>
 
+        {hasMultiskillAccess ? (
+          <Tabs
+            value={transferMode}
+            onValueChange={(value) => setTransferMode(value === "multiskill" ? "multiskill" : "internal")}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="internal">Entre times</TabsTrigger>
+              <TabsTrigger value="multiskill">MultiSkill</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="internal" className="mt-4 flex min-h-0 flex-1 flex-col">
+              {renderInternalTransferForm()}
+            </TabsContent>
+
+            <TabsContent value="multiskill" className="mt-4 flex min-h-0 flex-1 flex-col">
+              {renderMultiskillTransferForm()}
+            </TabsContent>
+          </Tabs>
+        ) : (
+          renderInternalTransferForm()
+        )}
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting || multiskillSubmitting}
+          >
+            Cancelar
+          </Button>
+          {hasMultiskillAccess && transferMode === "multiskill" ? (
+            <Button onClick={handleMultiskillSubmit} disabled={!canSubmitMultiskill}>
+              {multiskillSubmitting ? "Transferindo..." : "Transferir MultiSkill"}
+            </Button>
+          ) : (
+            <Button onClick={handleSubmit} disabled={!canSubmit}>
+              {submitting ? "Transferindo..." : "Transferir"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  function renderMultiskillTransferForm() {
+    return (
+      <div className="overflow-y-auto flex-1 flex flex-col gap-5 py-2 pr-1">
+        <div className="flex flex-col gap-3">
+          <Label htmlFor="multiskillSearch">Buscar conta destino</Label>
+          <Input
+            id="multiskillSearch"
+            value={multiskillSearch}
+            onChange={(event) => setMultiskillSearch(event.target.value)}
+            placeholder="Master, e-mail, time ou closer..."
+          />
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <Label htmlFor="multiskillMaster">Conta destino</Label>
+          <Select
+            value={selectedMasterId}
+            onValueChange={setSelectedMasterId}
+            disabled={multiskillTargetsLoading}
+          >
+            <SelectTrigger id="multiskillMaster">
+              <SelectValue
+                placeholder={multiskillTargetsLoading ? "Carregando..." : "Selecione a conta"}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {multiskillTargets.length === 0 ? (
+                <SelectItem value="_none" disabled>
+                  Nenhuma conta encontrada
+                </SelectItem>
+              ) : (
+                multiskillTargets.map((target) => (
+                  <SelectItem key={target.masterId} value={target.masterId}>
+                    {target.masterName ?? target.masterEmail} — {target.defaultTeamName}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {selectedMultiskillTarget ? (
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+            <p>
+              Time padrão:{" "}
+              <span className="font-medium">{selectedMultiskillTarget.defaultTeamName}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              O lead será atribuído automaticamente a este time na conta destino.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-3">
+          <Label htmlFor="multiskillCloser">
+            Closer <span className="text-destructive">*</span>
+          </Label>
+          <Select
+            value={multiskillCloserId}
+            onValueChange={setMultiskillCloserId}
+            disabled={!selectedMasterId || multiskillTargetsLoading}
+          >
+            <SelectTrigger id="multiskillCloser">
+              <SelectValue placeholder="Selecione o closer" />
+            </SelectTrigger>
+            <SelectContent>
+              {multiskillDefaultClosers.length === 0 ? (
+                <SelectItem value="_none" disabled>
+                  Nenhum closer no time padrão
+                </SelectItem>
+              ) : (
+                multiskillDefaultClosers.map((closer) => (
+                  <SelectItem key={closer.profileId} value={closer.profileId}>
+                    {closer.fullName ?? closer.email}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <Label htmlFor="multiskillSdr">SDR responsável</Label>
+          <Select
+            value={multiskillSdrId}
+            onValueChange={setMultiskillSdrId}
+            disabled={!selectedMasterId}
+          >
+            <SelectTrigger id="multiskillSdr">
+              <SelectValue placeholder="Sem SDR" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">Sem SDR</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    );
+  }
+
+  function renderInternalTransferForm() {
+    return (
         <div className="overflow-y-auto flex-1 flex flex-col gap-5 py-2 pr-1">
           <div className="flex flex-col gap-3">
             <Label htmlFor="targetTeam">Time destino</Label>
@@ -466,16 +736,6 @@ export function TransferBetweenTeamsDialog({
             </div>
           )}
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
-            {submitting ? "Transferindo..." : "Transferir"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+    );
+  }
 }

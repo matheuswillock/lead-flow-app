@@ -1470,6 +1470,94 @@
               "response": []
             },
             {
+              "name": "13b. Listar Destinos MultiSkill",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/multiskill/transfer-targets?q=&page=1&pageSize=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "multiskill",
+                    "transfer-targets"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": ""
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Lista masters habilitados para transferência MultiSkill (conta Bruno). Busca por master, time padrão ou closer."
+              },
+              "response": []
+            },
+            {
+              "name": "13c. Transferir Lead MultiSkill",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"targetMasterId\": \"{{targetMasterId}}\",\n  \"closerId\": \"{{closerId}}\",\n  \"sdrId\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/transfer-multiskill",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads",
+                    "{{leadId}}",
+                    "transfer-multiskill"
+                  ]
+                },
+                "description": "Transfere lead cross-account para master com tag MultiSkill. Lead deve estar em Nova Oportunidade e pertencer à conta MultiSkill."
+              },
+              "response": []
+            },
+            {
               "name": "14. Listar Transferências de Leads",
               "request": {
                 "method": "GET",
@@ -9873,6 +9961,79 @@
           ]
         },
         {
+          "name": "Backoffice Authorized Sponsors",
+          "item": [
+            {
+              "name": "GET Authorized Sponsors",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "authorized-sponsors"]
+                },
+                "description": "Lista patrocinadores autorizados (ativos e revogados) com contagem de contas patrocinadas. Exige master backoffice."
+              }
+            },
+            {
+              "name": "POST Grant Authorized Sponsor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"profileId\": \"{{sponsorProfileId}}\",\n  \"notes\": \"Autorizado via Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "authorized-sponsors"]
+                },
+                "description": "Concede autorização de patrocinador a um master. Exige master backoffice."
+              }
+            },
+            {
+              "name": "DELETE Revoke Authorized Sponsor",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors/:profileId",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "authorized-sponsors", ":profileId"],
+                  "variable": [
+                    {
+                      "key": "profileId",
+                      "value": "{{sponsorProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Revoga autorização de patrocinador (soft revoke). Exige master backoffice."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Anatemas",
           "item": [
             {
@@ -12604,6 +12765,66 @@
           ]
         },
         {
+          "name": "Público",
+          "item": [
+            {
+              "name": "Info de Descadastro (token)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/public/unsubscribe/{{unsubscribeToken}}/info",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "public",
+                    "unsubscribe",
+                    "{{unsubscribeToken}}",
+                    "info"
+                  ]
+                },
+                "description": "Rota pública — sem autenticação. Retorna nome do time e e-mail mascarado para a página de opt-out."
+              },
+              "response": []
+            },
+            {
+              "name": "Confirmar Descadastro",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"{{unsubscribeToken}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/public/unsubscribe",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "public",
+                    "unsubscribe"
+                  ]
+                },
+                "description": "Rota pública — sem autenticação. Marca contato como descadastrado do time."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
           "name": "Cron (interno)",
           "item": [
             {
@@ -12647,6 +12868,28 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}"
+              },
+              "response": []
+            },
+            {
+              "name": "Processar Importações de Contatos",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/process-import-jobs",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "process-import-jobs"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Processa fila EmailImportJob em lotes."
               },
               "response": []
             },

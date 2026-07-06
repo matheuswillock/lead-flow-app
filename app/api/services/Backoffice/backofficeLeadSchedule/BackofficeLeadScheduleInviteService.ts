@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto"
 import type { Attachment, CreateEmailOptions } from "resend"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
+import { buildBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
+import { getResendOwnerEmail } from "@/lib/email/resend-owner-email"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type {
@@ -19,6 +21,7 @@ interface BackofficeScheduleEmailOptions {
   idempotencyKey?: string
   sourceType?: string
   sourceId?: string
+  category?: "schedule_invite"
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -211,7 +214,8 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
   try {
     const resend = assertResend()
     const isTestMode = process.env.EMAIL_TEST_MODE === "true"
-    const resendOwnerEmail = process.env.RESEND_OWNER_EMAIL || "matheuswillock@gmail.com"
+    const resendOwnerEmail = getResendOwnerEmail()
+    const effectiveTestMode = isTestMode && Boolean(resendOwnerEmail)
     const { logResendDispatchesForRecipients } = await import("@/lib/email/log-profile-email-dispatches")
     const recipients = options.to.filter(Boolean)
 
@@ -226,19 +230,24 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
     }
 
     for (const [index, recipient] of recipients.entries()) {
-      const deliveryRecipients = isTestMode ? [resendOwnerEmail] : [recipient]
-      const html = isTestMode
+      const deliveryRecipients = effectiveTestMode ? [resendOwnerEmail!] : [recipient]
+      const html = effectiveTestMode
         ? injectHtmlAfterBodyOpen(options.html, buildTestBannerSnippet([recipient]))
         : options.html
 
       const payload: CreateEmailOptions = {
         from: "Corretor Studio <no-reply@corretorstudio.com>",
         to: deliveryRecipients,
-        subject: isTestMode
+        subject: effectiveTestMode
           ? `[TESTE - Para: ${recipient}] ${options.subject}`
           : options.subject,
         html,
         attachments: options.attachments,
+        tags: buildBackofficeResendTags({
+          category: options.category ?? "schedule_invite",
+          sourceType: options.sourceType,
+          sourceId: options.sourceId,
+        }),
         headers: {
           Importance: "high",
           Priority: "urgent",

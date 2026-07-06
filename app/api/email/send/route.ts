@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
           const output = new Output(false, [], ["to, subject e (html ou text) são obrigatórios"], null);
           return NextResponse.json(output, { status: 400 });
         }
-        result = await emailService.sendEmail(data);
+        result = await emailService.sendEmailUntracked(data);
         break;
 
       case 'subscription-confirmation':

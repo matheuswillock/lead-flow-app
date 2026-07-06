@@ -140,6 +140,11 @@ export class PerformanceUseCase implements IPerformanceUseCase {
             contentType: 'application/zip',
           },
         ],
+        tracking: {
+          teamId: input.filters.teamId,
+          category: "transactional",
+          sourceType: "performance_export",
+        },
       });
 
       if (!sendResult.success) {

@@ -579,7 +579,8 @@ export class LeadRepository implements ILeadRepository {
     targetTeamId: string,
     closerId: string,
     sdrId: string | null,
-    sanitizations: TransferToTeamSanitization[] = []
+    sanitizations: TransferToTeamSanitization[] = [],
+    options?: { targetManagerId?: string }
   ): Promise<Lead> {
     return await prisma.$transaction(async (tx) => {
       for (const sanitization of sanitizations) {
@@ -600,6 +601,7 @@ export class LeadRepository implements ILeadRepository {
           teamId: targetTeamId,
           closerId,
           assignedTo: sdrId ?? null,
+          ...(options?.targetManagerId ? { managerId: options.targetManagerId } : {}),
           updatedAt: new Date(),
           activities: {
             create: {

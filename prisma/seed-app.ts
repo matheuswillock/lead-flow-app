@@ -2,12 +2,14 @@
  * Seed de aplicação — usuários de teste da plataforma principal (managers/operators).
  * Execução: bun run db:seed:app
  */
-import { ensureUser, type SeedUser } from "./seed-helpers"
+import { ensureUser, resolveSeedPassword, type SeedUser } from "./seed-helpers"
+
+const seedPassword = resolveSeedPassword()
 
 const users: SeedUser[] = [
-  { email: "bruno@onsidemarketing.com.br", password: "Onside@2025" },
-  { email: "nathielewillock@gmail.com", password: "Teste@2025" },
-  { email: "matheuswillock@gmail.com", password: "Nath@1308" },
+  { email: "bruno@onsidemarketing.com.br", password: seedPassword },
+  { email: "nathielewillock@gmail.com", password: seedPassword },
+  { email: "matheuswillock@gmail.com", password: seedPassword },
 ]
 
 async function main() {

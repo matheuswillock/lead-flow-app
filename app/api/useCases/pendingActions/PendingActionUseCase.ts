@@ -638,7 +638,7 @@ export class PendingActionUseCase {
     const appUrl = getAppUrl({ removeTrailingSlash: true });
     const emailService = getEmailService();
 
-    await emailService.sendEmail({
+    await emailService.sendEmailUntracked({
       to: [email],
       subject: "Corretor Studio - Você foi adicionado a um novo time",
       html: buildAddedToTeamEmail({ userName, loginUrl: `${appUrl}/sign-in` }),

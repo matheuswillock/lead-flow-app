@@ -441,6 +441,7 @@ MEETING_REMINDER MEETING_REMINDER
 LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
 MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
 BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
+EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
         }
     
 
@@ -564,6 +565,15 @@ complained complained
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
+        }
+    
+
+
+        email_orphan_event_status {
+            pending pending
+processed processed
+failed failed
+skipped skipped
         }
     
 
@@ -801,7 +811,7 @@ failed failed
     UserFunction functions 
     Boolean isMaster 
     Boolean hasPermanentSubscription 
-    Boolean canSponsorAccounts 
+    Boolean multiskillEnabled 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
@@ -861,6 +871,17 @@ failed failed
     DateTime bannedAt 
     DateTime liftedAt "❓"
     String liftReason "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_authorized_sponsors" {
+    String id "🗝️"
+    Boolean isActive 
+    DateTime grantedAt 
+    DateTime revokedAt "❓"
+    String notes "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1004,7 +1025,7 @@ failed failed
     String createdSupabaseId "❓"
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
-    String sponsorMasterId "❓"
+    Boolean multiskillEnabled 
     Json additional_users_data 
     Json additional_teams_data 
     DateTime createdAt 
@@ -1542,6 +1563,25 @@ failed failed
     }
   
 
+  "corretor_studio_email_import_jobs" {
+    String id "🗝️"
+    String importId 
+    String sourceFormat 
+    String storagePath 
+    String status 
+    Int totalRows 
+    Int processedRows 
+    Int importedCount 
+    Int updatedCount 
+    Int skippedCount 
+    Json failedBatches "❓"
+    Int batchSize 
+    Json attemptsByBatch "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_contacts" {
     String id "🗝️"
     String email 
@@ -1626,6 +1666,21 @@ failed failed
     DateTime occurredAt 
     Json metadata "❓"
     DateTime createdAt 
+    }
+  
+
+  "email_orphan_events" {
+    String id "🗝️"
+    String resendEmailId 
+    String resendEventType 
+    DateTime occurredAt 
+    Json tagsHint "❓"
+    EmailOrphanEventStatus status 
+    Int attempts 
+    String lastError "❓"
+    DateTime processedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -2180,6 +2235,9 @@ failed failed
     "backoffice_banned_users" }o--|| corretor_studio_profiles : "profile"
     "backoffice_banned_users" }o--|| corretor_studio_profiles : "bannedByProfile"
     "backoffice_banned_users" }o--|o corretor_studio_profiles : "liftedByProfile"
+    "backoffice_authorized_sponsors" |o--|| corretor_studio_profiles : "profile"
+    "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
+    "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -2203,6 +2261,7 @@ failed failed
     "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
+    "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
@@ -2307,7 +2366,7 @@ failed failed
     "corretor_studio_lead_transfers" }o--|o corretor_studio_profiles : "receivedByProfile"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
-    "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
@@ -2319,6 +2378,9 @@ failed failed
     "corretor_studio_email_template_history" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_import_jobs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_import_jobs" }o--|| corretor_studio_email_contact_lists : "list"
+    "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
@@ -2338,6 +2400,7 @@ failed failed
     "corretor_studio_email_logs" }o--|o corretor_studio_email_campaign_dispatches : "dispatch"
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
+    "email_orphan_events" |o--|| "EmailOrphanEventStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"

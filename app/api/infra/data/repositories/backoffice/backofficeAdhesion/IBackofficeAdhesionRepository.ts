@@ -61,6 +61,7 @@ export interface CreateBackofficeAdhesionInput {
   requestedUserTypeSlug?: "common" | "member_pro" | "associate" | "guest" | null
   requestedMemberProAccessExpiresAt?: Date | null
   sponsorMasterId?: string | null
+  multiskillEnabled?: boolean
   additionalUsersData?: unknown[]
   additionalTeamsData?: unknown[]
 }
@@ -141,6 +142,7 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   city?: string | null
   state?: string | null
   hasPermanentSubscription?: boolean
+  multiskillEnabled?: boolean
   sponsorMasterId?: string | null
 }
 

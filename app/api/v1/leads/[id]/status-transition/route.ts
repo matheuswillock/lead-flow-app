@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { handleLeadStatusTransition } from "../status/route";
+import { handleLeadStatusTransition } from "../status/handleLeadStatusTransition";
 
 export async function POST(
   request: NextRequest,

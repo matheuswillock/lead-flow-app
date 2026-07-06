@@ -1,6 +1,6 @@
 # Spec: Usuário Associado e fluxo Backoffice/Associados
 
-Introduz o tier de produto **Associado** — conta separada com master e times próprios, patrocinada por um master sponsor (inicialmente Bruno, `bruno@onseidemarketing.com.br`) — e a fila operacional **CRM > Backoffice > Associados** para registro de vendas na operadora, crítica de propostas, documentos obrigatórios e notificações multi-canal.
+Introduz o tier de produto **Associado** — conta separada com master e times próprios, patrocinada por um master sponsor (inicialmente Bruno, `bruno@onsidemarketing.com.br`) — e a fila operacional **CRM > Backoffice > Associados** para registro de vendas na operadora, crítica de propostas, documentos obrigatórios e notificações multi-canal.
 
 ## Background
 
@@ -596,7 +596,7 @@ flowchart TD
 - [ ] **Multi-patrocinador:** UI de seleção de patrocinador no admin ou apenas Bruno na v1?
 - [ ] **Expiração do tier Associado:** segue modelo Member PRO (`accessExpiresAt`) ou sem prazo?
 - [ ] **Profile de sistema:** criar `Profile` técnico "Corretor Studio" para `createdBy` ou manter `null` + payload?
-- [ ] **Bruno seed:** migration de dados referencia e-mail `bruno@onseidemarketing.com.br` — confirmar profileId em cada ambiente?
+- [ ] **Bruno seed:** migration de dados referencia e-mail `bruno@onsidemarketing.com.br` — confirmar profileId em cada ambiente?
 
 ## Decisions Log
 

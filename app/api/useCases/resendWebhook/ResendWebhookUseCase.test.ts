@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { ResendWebhookUseCase } from "./ResendWebhookUseCase"
 import type { ResendWebhookService } from "@/app/api/services/resend/ResendWebhookService"
-import type { ResendEmailEnrichmentService } from "@/app/api/services/resend/ResendEmailEnrichmentService"
 import { ResendDomainWebhookUseCase } from "./ResendDomainWebhookUseCase"
 import { Output } from "@/lib/output"
 
@@ -15,8 +14,7 @@ describe("ResendWebhookUseCase", () => {
       const useCase = new ResendWebhookUseCase(
         {
           mapEventType: () => null,
-        } as unknown as ResendWebhookService,
-        {} as ResendEmailEnrichmentService
+        } as unknown as ResendWebhookService
       )
 
       const result = await useCase.handle({

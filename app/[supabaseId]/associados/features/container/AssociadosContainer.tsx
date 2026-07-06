@@ -1,6 +1,6 @@
 "use client";
 
-import { Handshake } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Handshake } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,12 +40,12 @@ function ProposalMobileCard({
   onOpen: () => void;
 }) {
   return (
-    <Card>
+    <Card className="border-border/60 bg-card/95">
       <CardContent className="flex flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="font-medium">{row.leadName}</p>
-            <p className="text-muted-foreground text-xs">{row.leadCode}</p>
+            <p className="text-xs text-muted-foreground">{row.leadCode}</p>
           </div>
           <Badge
             variant="outline"
@@ -54,7 +54,7 @@ function ProposalMobileCard({
             Associado
           </Badge>
         </div>
-        <div className="text-muted-foreground grid grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
           <p>Conta: {row.associateAccountName}</p>
           <p>Time: {row.teamName}</p>
           <p>Plano: {row.soldPlan ?? "—"}</p>
@@ -82,32 +82,33 @@ export function AssociadosContainer() {
 
   const selectedRow = data?.items.find((item) => item.leadId === selectedLeadId) ?? null;
   const items = data?.items ?? [];
+  const totalItems = data?.pagination.totalItems ?? 0;
+  const totalPages = Math.max(data?.pagination.totalPages ?? 1, 1);
+  const currentPage = data?.pagination.page ?? filters.page;
+  const pageSize = data?.pagination.pageSize ?? filters.pageSize;
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <Handshake />
+          <Handshake className="h-5 w-5" />
           <h1 className="text-2xl font-semibold tracking-tight">Associados</h1>
         </div>
-        <p className="text-muted-foreground text-sm">
-          Propostas aguardando registro de venda na operadora
+        <p className="text-sm text-muted-foreground">
+          {totalItems} proposta(s) aguardando registro de venda na operadora
         </p>
       </div>
 
-      <Card>
-        <CardHeader className="gap-4">
+      <Card className="border-border/60 bg-card/95 shadow-sm">
+        <CardHeader className="gap-4 pb-0">
           <AssociadosFiltersBar
             filters={filters}
             items={items}
             onChange={setFilters}
             onRefresh={() => void load()}
           />
-          <p className="text-muted-foreground text-sm">
-            {data?.pagination.totalItems ?? 0} proposta(s) pendente(s)
-          </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           {error ? (
             <Alert variant="destructive">
               <AlertDescription className="flex items-center justify-between gap-4">
@@ -121,19 +122,19 @@ export function AssociadosContainer() {
 
           {isLoading ? (
             <div className="flex flex-col gap-2">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <Skeleton key={index} className="h-10 w-full" />
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
               ))}
             </div>
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground py-10 text-center">
-              {filters.search || filters.associateAccountId || filters.teamId
-                ? "Nenhum resultado"
-                : "Nenhuma proposta aguardando registro"}
+            <p className="py-16 text-center text-muted-foreground">
+              {filters.search || filters.associateAccountId || filters.teamId || filters.closerId
+                ? "Nenhum resultado encontrado."
+                : "Nenhuma proposta aguardando registro."}
             </p>
           ) : (
             <>
-              <div className="hidden md:block">
+              <div className="hidden overflow-hidden rounded-xl border border-border/60 md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -143,7 +144,7 @@ export function AssociadosContainer() {
                       <TableHead>Plano</TableHead>
                       <TableHead>Valor</TableHead>
                       <TableHead>Closer</TableHead>
-                      <TableHead>Enviado</TableHead>
+                      <TableHead>Enviado em</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -165,7 +166,7 @@ export function AssociadosContainer() {
                         <TableCell>
                           <div className="flex flex-col">
                             <span>{row.leadName}</span>
-                            <span className="text-muted-foreground text-xs">{row.leadCode}</span>
+                            <span className="text-xs text-muted-foreground">{row.leadCode}</span>
                           </div>
                         </TableCell>
                         <TableCell>{row.soldPlan ?? "—"}</TableCell>
@@ -182,6 +183,7 @@ export function AssociadosContainer() {
                   </TableBody>
                 </Table>
               </div>
+
               <div className="flex flex-col gap-3 md:hidden">
                 {items.map((row) => (
                   <ProposalMobileCard
@@ -190,6 +192,72 @@ export function AssociadosContainer() {
                     onOpen={() => openLead(row.leadId)}
                   />
                 ))}
+              </div>
+
+              <div className="flex items-center justify-end px-2 pt-4">
+                <div className="flex items-center gap-6 lg:gap-8">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">Linhas por página</p>
+                    <select
+                      aria-label="Linhas por página"
+                      title="Linhas por página"
+                      value={pageSize}
+                      onChange={(event) =>
+                        setFilters({ pageSize: Number(event.target.value), page: 1 })
+                      }
+                      className="h-8 w-[70px] rounded-md border border-input bg-background px-2"
+                    >
+                      {[10, 20, 30, 40, 50].map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex w-[120px] items-center justify-center text-sm font-medium">
+                    Página {currentPage} de {totalPages}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setFilters({ page: 1 })}
+                      disabled={currentPage <= 1}
+                    >
+                      <span className="sr-only">Ir para primeira página</span>
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setFilters({ page: currentPage - 1 })}
+                      disabled={currentPage <= 1}
+                    >
+                      <span className="sr-only">Página anterior</span>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setFilters({ page: currentPage + 1 })}
+                      disabled={currentPage >= totalPages}
+                    >
+                      <span className="sr-only">Próxima página</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setFilters({ page: totalPages })}
+                      disabled={currentPage >= totalPages}
+                    >
+                      <span className="sr-only">Ir para última página</span>
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               </div>
             </>
           )}

@@ -15,6 +15,7 @@ export interface SaveWithDraftButtonProps {
   isLoading?: boolean;
   isSaveDisabled?: boolean;
   isDraftDisabled?: boolean;
+  showDraftOption?: boolean;
   saveLabel?: string;
   draftLabel?: string;
   loadingLabel?: string;
@@ -27,6 +28,7 @@ export function SaveWithDraftButton({
   isLoading = false,
   isSaveDisabled = false,
   isDraftDisabled = false,
+  showDraftOption = true,
   saveLabel = "Salvar",
   draftLabel = "Salvar como rascunho",
   loadingLabel = "Salvando...",
@@ -36,6 +38,20 @@ export function SaveWithDraftButton({
 }: SaveWithDraftButtonProps) {
   const saveDisabled = isSaveDisabled || isLoading;
   const draftDisabled = isDraftDisabled || isLoading;
+
+  if (!showDraftOption) {
+    return (
+      <Button
+        type="button"
+        className={className}
+        disabled={saveDisabled}
+        onClick={onSaveFull}
+      >
+        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {isLoading ? loadingLabel : saveLabel}
+      </Button>
+    );
+  }
 
   return (
     <div className={cn("inline-flex rounded-md", className)}>

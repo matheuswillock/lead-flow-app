@@ -89,14 +89,12 @@ type LeadTransferScheduleFailedNotificationInput = {
 
 type ListNotificationsInput = {
   recipientProfileId: string;
-  teamId: string;
   limit: number;
   offset: number;
 };
 
-type CountUnreadInput = {
+type RecipientNotificationsInput = {
   recipientProfileId: string;
-  teamId: string;
 };
 
 type TaskAssignmentNotificationInput = {
@@ -159,7 +157,7 @@ type WebPushDispatchItem = {
 
 async function listNotificationsCached(input: ListNotificationsInput) {
   "use cache";
-  cacheTag(cacheTags.notifications(input.recipientProfileId, input.teamId));
+  cacheTag(cacheTags.notifications(input.recipientProfileId));
   cacheLife({ revalidate: 15 });
 
   // Promise.all em vez de $transaction: leituras independentes não precisam
@@ -168,7 +166,6 @@ async function listNotificationsCached(input: ListNotificationsInput) {
     prisma.notification.findMany({
       where: {
         recipientProfileId: input.recipientProfileId,
-        teamId: input.teamId,
       },
       include: {
         actor: {
@@ -187,7 +184,6 @@ async function listNotificationsCached(input: ListNotificationsInput) {
     prisma.notification.count({
       where: {
         recipientProfileId: input.recipientProfileId,
-        teamId: input.teamId,
       },
     }),
   ]);
@@ -196,10 +192,10 @@ async function listNotificationsCached(input: ListNotificationsInput) {
 }
 
 class NotificationService {
-  private invalidateRecipients(teamId: string, recipientProfileIds: string[]) {
+  private invalidateRecipients(recipientProfileIds: string[]) {
     const uniqueIds = Array.from(new Set(recipientProfileIds.filter(Boolean)));
     if (uniqueIds.length === 0) return;
-    invalidateNotificationsCache({ teamId, recipientProfileIds: uniqueIds });
+    invalidateNotificationsCache({ recipientProfileIds: uniqueIds });
   }
 
   private dispatchWebPushForItems(items: WebPushDispatchItem[]) {
@@ -265,7 +261,7 @@ class NotificationService {
       skipDuplicates: false,
     });
 
-    this.invalidateRecipients(input.teamId, uniqueRecipients);
+    this.invalidateRecipients(uniqueRecipients);
 
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
@@ -310,7 +306,7 @@ class NotificationService {
       },
     });
 
-    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+    this.invalidateRecipients([input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {
@@ -338,7 +334,7 @@ class NotificationService {
       },
     });
 
-    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+    this.invalidateRecipients([input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {
@@ -388,7 +384,7 @@ class NotificationService {
       skipDuplicates: false,
     });
 
-    this.invalidateRecipients(input.teamId, uniqueRecipients);
+    this.invalidateRecipients(uniqueRecipients);
 
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
@@ -433,7 +429,7 @@ class NotificationService {
       },
     });
 
-    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+    this.invalidateRecipients([input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {
@@ -483,7 +479,7 @@ class NotificationService {
       skipDuplicates: false,
     });
 
-    this.invalidateRecipients(input.teamId, uniqueRecipients);
+    this.invalidateRecipients(uniqueRecipients);
 
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
@@ -530,7 +526,7 @@ class NotificationService {
         },
       });
 
-      this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+      this.invalidateRecipients([input.recipientProfileId]);
 
       this.dispatchWebPushForItems([
         {
@@ -576,7 +572,7 @@ class NotificationService {
 
       const created = inserted[0] ?? null;
       if (created) {
-        this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+        this.invalidateRecipients([input.recipientProfileId]);
         this.dispatchWebPushForItems([
           {
             recipientProfileId: input.recipientProfileId,
@@ -627,7 +623,7 @@ class NotificationService {
       skipDuplicates: false,
     });
 
-    this.invalidateRecipients(input.teamId, uniqueRecipients);
+    this.invalidateRecipients(uniqueRecipients);
 
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
@@ -646,25 +642,23 @@ class NotificationService {
     return { createdCount: result.count };
   }
 
-  async listByRecipientAndTeam(input: ListNotificationsInput) {
+  async listByRecipient(input: ListNotificationsInput) {
     return listNotificationsCached(input);
   }
 
-  async countUnreadByRecipientAndTeam(input: CountUnreadInput) {
+  async countUnreadByRecipient(input: RecipientNotificationsInput) {
     return prisma.notification.count({
       where: {
         recipientProfileId: input.recipientProfileId,
-        teamId: input.teamId,
         isRead: false,
       },
     });
   }
 
-  async markAllAsReadByRecipientAndTeam(input: CountUnreadInput) {
+  async markAllAsReadByRecipient(input: RecipientNotificationsInput) {
     const result = await prisma.notification.updateMany({
       where: {
         recipientProfileId: input.recipientProfileId,
-        teamId: input.teamId,
         isRead: false,
       },
       data: {
@@ -673,9 +667,24 @@ class NotificationService {
       },
     });
 
-    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+    this.invalidateRecipients([input.recipientProfileId]);
 
     return result.count;
+  }
+
+  /** @deprecated use listByRecipient */
+  async listByRecipientAndTeam(input: ListNotificationsInput) {
+    return this.listByRecipient(input);
+  }
+
+  /** @deprecated use countUnreadByRecipient */
+  async countUnreadByRecipientAndTeam(input: RecipientNotificationsInput) {
+    return this.countUnreadByRecipient(input);
+  }
+
+  /** @deprecated use markAllAsReadByRecipient */
+  async markAllAsReadByRecipientAndTeam(input: RecipientNotificationsInput) {
+    return this.markAllAsReadByRecipient(input);
   }
 
   async createLeadTransferActivatedNotification(input: LeadTransferActivatedNotificationInput) {
@@ -707,7 +716,7 @@ class NotificationService {
       skipDuplicates: false,
     });
 
-    this.invalidateRecipients(input.teamId, uniqueRecipients);
+    this.invalidateRecipients(uniqueRecipients);
 
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
@@ -747,7 +756,7 @@ class NotificationService {
       },
     });
 
-    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+    this.invalidateRecipients([input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {
@@ -797,7 +806,7 @@ class NotificationService {
       skipDuplicates: false,
     });
 
-    this.invalidateRecipients(input.teamId, uniqueRecipients);
+    this.invalidateRecipients(uniqueRecipients);
 
     this.dispatchWebPushForItems(
       uniqueRecipients.map((recipientProfileId) => ({
@@ -834,7 +843,7 @@ class NotificationService {
       },
     });
 
-    this.invalidateRecipients(input.teamId, [input.recipientProfileId]);
+    this.invalidateRecipients([input.recipientProfileId]);
 
     this.dispatchWebPushForItems([
       {

@@ -142,7 +142,8 @@
       "app/backoffice/(app)/studio-bot/canal",
       "app/backoffice/(app)/studio-bot/vinculacoes",
       "app/backoffice/(app)/studio-bot/verificacoes",
-      "app/prime"
+      "app/prime",
+      "app/email-unsubscribe/[token]"
     ],
     "nonTypeScriptFileAllowlist": [
       "eslint.config.mjs",
@@ -224,7 +225,8 @@
       "app/api/v1/teams/[teamId]/transfer/route.ts",
       "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
       "app/api/webhooks/meta/route.ts",
-      "app/api/v1/email/cron/dispatch-scheduled/route.ts"
+      "app/api/v1/email/cron/dispatch-scheduled/route.ts",
+      "app/api/services/resend/EmailOrphanEventService.ts"
     ],
     "nonRepositoryDatabaseAccessAllowlist": [
       "app/api/services/AsaasOperator/AsaasOperatorService.ts",
@@ -259,7 +261,10 @@
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/email/EmailTemplateUseCase.ts",
       "app/api/useCases/email/EmailTeamSettingsUseCase.ts",
-      "app/api/useCases/email/EmailTeamVariablesUseCase.ts"
+      "app/api/useCases/email/EmailTeamVariablesUseCase.ts",
+      "app/api/useCases/email/EmailContactImportUseCase.ts",
+      "app/api/useCases/email/EmailUnsubscribeUseCase.ts",
+      "app/api/services/resend/EmailOrphanEventService.ts"
     ]
   }
 }

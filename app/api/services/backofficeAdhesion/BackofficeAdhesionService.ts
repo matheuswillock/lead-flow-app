@@ -29,6 +29,10 @@ import type { IBackofficeUserSubscriptionRepository } from "@/app/api/infra/data
 import { BackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/BackofficeUserSubscriptionRepository"
 import type { IBackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/IBackofficeAllUsersRepository"
 import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
+import type { IBackofficeSponsorAuthorizationRepository } from "@/app/api/infra/data/repositories/backofficeSponsorAuthorization/IBackofficeSponsorAuthorizationRepository"
+import { BackofficeSponsorAuthorizationRepository } from "@/app/api/infra/data/repositories/backofficeSponsorAuthorization/BackofficeSponsorAuthorizationRepository"
+import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
+import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
@@ -263,8 +267,18 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     private readonly repo: IBackofficeAdhesionRepository = new BackofficeAdhesionRepository(),
     private readonly productRepo: IBackofficeProductRepository = new BackofficeProductRepository(),
     private readonly userSubscriptionRepo: IBackofficeUserSubscriptionRepository = new BackofficeUserSubscriptionRepository(),
-    private readonly allUsersRepo: IBackofficeAllUsersRepository = new BackofficeAllUsersRepository()
+    private readonly allUsersRepo: IBackofficeAllUsersRepository = new BackofficeAllUsersRepository(),
+    private readonly sponsorAuthorizationRepo: IBackofficeSponsorAuthorizationRepository = new BackofficeSponsorAuthorizationRepository(),
+    private readonly backofficeUserRepo: IBackofficeUserRepository = new BackofficeUserRepository()
   ) {}
+
+  private async resolveAssignedByProfileId(
+    createdByBackofficeUserId: string | null | undefined
+  ): Promise<string | null> {
+    if (!createdByBackofficeUserId) return null
+    const creator = await this.backofficeUserRepo.findById(createdByBackofficeUserId)
+    return creator?.profileId ?? null
+  }
 
   async list(input: {
     page: number
@@ -291,7 +305,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   }
 
   async getOptions(): Promise<BackofficeAdhesionOptionsDTO> {
-    const options = await this.repo.getOptions()
+    const [options, sponsorProfiles] = await Promise.all([
+      this.repo.getOptions(),
+      this.sponsorAuthorizationRepo.listActiveAuthorizedProfiles(),
+    ])
     const users = options.users.map((user) => ({
       id: user.id,
       name: user.profile.fullName ?? user.email,
@@ -321,7 +338,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerOptions: users
         .filter((user) => user.isCloser)
         .map((user) => ({ id: user.id, name: user.name, email: user.email })),
-      sponsorOptions: options.sponsorOptions.map((s) => ({
+      sponsorOptions: sponsorProfiles.map((s) => ({
         id: s.id,
         name: s.fullName ?? s.email ?? s.id,
         email: s.email ?? "",
@@ -401,6 +418,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           ? new Date(normalized.accessExpiresAt)
           : null,
       sponsorMasterId: normalized.sponsorMasterId ?? null,
+      multiskillEnabled: normalized.multiskillEnabled ?? false,
       additionalUsersData: normalized.additionalUsers ?? [],
       additionalTeamsData: normalized.additionalTeams ?? [],
     })
@@ -1016,6 +1034,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       userType: input.userType ?? "common",
       accessExpiresAt: input.accessExpiresAt ?? null,
       sponsorMasterId: normalizeText(input.sponsorMasterId) ?? null,
+      multiskillEnabled: input.multiskillEnabled === true,
       additionalUsers: input.additionalUsers ?? [],
       additionalTeams: input.additionalTeams ?? [],
     }
@@ -1296,6 +1315,25 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       const subscriptionEndDate = addMonthsInTz(subscriptionStartDate, cycleMonths, DEFAULT_TZ)
 
       const isGuest = adhesion.requestedUserTypeSlug === "guest"
+      let resolvedSponsorMasterId = adhesion.sponsorMasterId ?? null
+
+      if (resolvedSponsorMasterId) {
+        const sponsorProfile = await this.sponsorAuthorizationRepo.findProfileById(resolvedSponsorMasterId)
+        const authorization = sponsorProfile
+          ? await this.sponsorAuthorizationRepo.findActiveAuthorization(resolvedSponsorMasterId)
+          : null
+        const isAuthorized = Boolean(
+          sponsorProfile?.isMaster && authorization?.isActive
+        )
+        if (!isAuthorized) {
+          console.error(
+            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion] patrocinador revogado ou inválido; conta será criada sem vínculo",
+            { adhesionId: adhesion.id, sponsorMasterId: resolvedSponsorMasterId }
+          )
+          resolvedSponsorMasterId = null
+        }
+      }
+
       const createdProfile = await this.repo.createPaidManagerProfile({
         supabaseId,
         fullName: adhesion.fullName,
@@ -1316,7 +1354,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         city: adhesion.city,
         state: adhesion.state,
         hasPermanentSubscription: isGuest,
-        sponsorMasterId: adhesion.sponsorMasterId ?? null,
+        multiskillEnabled: adhesion.multiskillEnabled ?? false,
+        sponsorMasterId: resolvedSponsorMasterId,
       })
 
       await this.repo.activateCreatedProfileSubscription(createdProfile.profileId, {
@@ -1330,23 +1369,27 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         createdSupabaseId: createdProfile.supabaseId,
       })
 
+      const assignedByProfileId = await this.resolveAssignedByProfileId(
+        adhesion.createdByBackofficeUserId
+      )
+
       if (adhesion.requestedUserTypeSlug === "member_pro" && adhesion.requestedMemberProAccessExpiresAt) {
         await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
           userType: "member_pro",
           accessExpiresAt: adhesion.requestedMemberProAccessExpiresAt,
-          assignedByProfileId: null,
+          assignedByProfileId,
         })
       } else if (adhesion.requestedUserTypeSlug === "guest") {
         await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
           userType: "guest",
           accessExpiresAt: null,
-          assignedByProfileId: null,
+          assignedByProfileId,
         })
       } else if (adhesion.requestedUserTypeSlug === "associate") {
         await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
           userType: "associate",
           accessExpiresAt: null,
-          assignedByProfileId: null,
+          assignedByProfileId,
         })
       }
 

@@ -154,6 +154,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       icon: Handshake,
       featureSlug: FEATURE_SLUGS.CRM_BACKOFFICE_ASSOCIADOS,
     },
+    {
+      title: "MultiSkill",
+      url: `/${supabaseId}/multiskill-transfers`,
+      icon: ArrowRightLeft,
+      managerOnly: true,
+      featureSlug: FEATURE_SLUGS.CRM_MULTISKILL_TRANSFERS,
+      status: "beta",
+    },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -293,8 +301,10 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
 
   const canAccessAssociadosBackoffice =
     activeRole === "backoffice" ||
+    activeRole === "manager" ||
+    isTeamMaster ||
     Boolean(activeTeam?.canManageAccountTeams) ||
-    (isTeamMaster && teams.some((team) => team.isAssociateAccount));
+    teams.some((team) => team.isAssociateAccount);
 
   const visibleNavigationItems = navigationItems.filter(canShowItem)
   const visibleBackofficeItems = backofficeItems.filter(

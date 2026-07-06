@@ -3,7 +3,6 @@ import Link from "next/link"
 import Image from "next/image"
 import { ArrowRight, CalendarCheck, UserPlus } from "lucide-react"
 import { LandingHeader } from "@/components/landing/landingHeader"
-import { LogoBar } from "@/components/landing/LogoBar"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { EmailCampaignsSpotlight } from "@/components/landing/EmailCampaignsSpotlight"
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection"
@@ -261,8 +260,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      <LogoBar />
 
       {/* Server-rendered text for SEO indexability — visual rendered by FeaturesSection */}
       <section aria-hidden="true" className="sr-only">

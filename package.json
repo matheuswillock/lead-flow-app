@@ -1,14 +1,14 @@
 {
   "name": "lead-flow-app",
-  "version": "0.143.0",
+  "version": "0.144.0",
   "private": true,
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "dev": "bunx tsx scripts/dev-local.ts",
-    "dev:local": "bunx tsx scripts/dev-local.ts",
-    "dev:clean": "bun scripts/clean-next-dev.ts && bunx tsx scripts/dev-local.ts",
+    "dev": "tsx scripts/dev-local.ts",
+    "dev:local": "tsx scripts/dev-local.ts",
+    "dev:clean": "bun scripts/clean-next-dev.ts && tsx scripts/dev-local.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "evo:up": "docker compose -f docker-compose.evolution.yml --env-file .env.evolution up -d",
@@ -52,7 +52,7 @@
     "prisma:seed": "bunx prisma db seed",
     "db:seed:app": "bunx tsx prisma/seed-app.ts",
     "db:seed:backoffice": "bunx tsx prisma/seed-backoffice.ts",
-    "db:seed:backoffice-products": "bunx tsx prisma/seed-backoffice-products.ts",
+    "db:seed:backoffice-products": "tsx prisma/seed-backoffice-products.ts",
     "db:seed:leads": "bunx tsx prisma/seed-leads.ts",
     "db:migrate:from-prisma": "bunx tsx scripts/db-migrate-from-prisma.ts",
     "db:migrate:new": "bunx tsx scripts/db-migrate-new.ts",
@@ -61,7 +61,7 @@
     "db:migrate:push:dry-run": "supabase db push --linked --dry-run",
     "db:migrate:status": "supabase migration list",
     "db:migrate:reset:local": "supabase db reset --local --no-seed",
-    "db:clone:remote": "bunx tsx scripts/clone-remote-to-local.ts",
+    "db:clone:remote": "tsx scripts/clone-remote-to-local.ts",
     "db:sync:backoffice-catalog": "bunx tsx scripts/db-sync-backoffice-catalog.ts",
     "db:diff": "supabase db diff --schema public",
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",
@@ -165,6 +165,7 @@
     "autoprefixer": "^10.5.0",
     "concurrently": "^9.2.1",
     "dotenv-cli": "^11.0.0",
+    "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
     "npm-run-all": "^4.1.5",
     "postcss": "^8.5.9",
@@ -175,6 +176,7 @@
     "sharp": "^0.35.3",
     "supabase": "^2.109.0",
     "tailwindcss": "^4.2.2",
+    "tsx": "^4.23.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.2",
     "wait-on": "^9.0.10"

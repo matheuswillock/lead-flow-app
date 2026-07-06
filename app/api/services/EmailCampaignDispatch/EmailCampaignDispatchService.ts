@@ -1,3 +1,8 @@
+import {
+  appendCampaignUnsubscribeFooter,
+  buildCampaignUnsubscribeUrl,
+  buildListUnsubscribeHeaders,
+} from "@/lib/email/campaign-unsubscribe-footer"
 import { buildResendBatchIdempotencyKey, resend } from "@/lib/email"
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
@@ -21,7 +26,12 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
   async dispatchBatch(params: {
     from: string
     replyTo?: string | null
-    recipients: Array<{ email: string; name?: string | null; customFields?: Record<string, unknown> | null }>
+    recipients: Array<{
+      contactId?: string | null
+      email: string
+      name?: string | null
+      customFields?: Record<string, unknown> | null
+    }>
     subject: string
     html: string
     campaignId: string
@@ -40,29 +50,44 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex]
       try {
-        const batchPayload = chunk.map((recipient) => ({
-          from: params.from,
-          ...(params.replyTo ? { replyTo: params.replyTo } : {}),
-          to: recipient.email,
-          subject: interpolateEmailTemplate(
-            params.subject,
-            recipient,
-            params.globalDefaults,
-            params.templateVariables
-          ),
-          html: interpolateEmailTemplate(
+        const batchPayload = chunk.map((recipient) => {
+          const renderedHtml = interpolateEmailTemplate(
             params.html,
             recipient,
             params.globalDefaults,
             params.templateVariables
-          ),
-          tags: buildResendTrackingTags({
-            teamId: params.teamId,
-            category: "campaign",
-            sourceType: "campaign",
-            sourceId: params.campaignId,
-          }),
-        }))
+          )
+          const renderedSubject = interpolateEmailTemplate(
+            params.subject,
+            recipient,
+            params.globalDefaults,
+            params.templateVariables
+          )
+
+          let htmlWithFooter = renderedHtml
+          let headers: Record<string, string> | undefined
+
+          if (recipient.contactId) {
+            const unsubscribeUrl = buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId)
+            htmlWithFooter = appendCampaignUnsubscribeFooter(renderedHtml, unsubscribeUrl)
+            headers = buildListUnsubscribeHeaders(unsubscribeUrl)
+          }
+
+          return {
+            from: params.from,
+            ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+            to: recipient.email,
+            subject: renderedSubject,
+            html: htmlWithFooter,
+            ...(headers ? { headers } : {}),
+            tags: buildResendTrackingTags({
+              teamId: params.teamId,
+              category: "campaign",
+              sourceType: "campaign",
+              sourceId: params.campaignId,
+            }),
+          }
+        })
 
         const batchResult = await resend.batch.send(batchPayload, {
           idempotencyKey: buildResendBatchIdempotencyKey(

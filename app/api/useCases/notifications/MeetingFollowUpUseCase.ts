@@ -125,6 +125,7 @@ export class MeetingFollowUpUseCase {
         if (profile?.email) {
           await emailService.sendMeetingFollowUpDigestEmail({
             profileId: group.recipientProfileId,
+            teamId: group.teamId,
             to: profile.email,
             recipientName,
             leadCount: group.leadCount,

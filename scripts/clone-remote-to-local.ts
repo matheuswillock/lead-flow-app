@@ -264,7 +264,28 @@ function preparePublicRestore() {
   const sqlFile = resolve(DUMP_DIR, "prepare-public-restore.sql");
   writeFileSync(
     sqlFile,
-    `DELETE FROM "public"."profile_user_types";
+    `TRUNCATE TABLE
+  "public"."backoffice_feature_grant_teams",
+  "public"."backoffice_feature_grants",
+  "public"."backoffice_feature_access_rules",
+  "public"."backoffice_product_payment_rules",
+  "public"."backoffice_features",
+  "public"."backoffice_products"
+RESTART IDENTITY CASCADE;
+DELETE FROM "public"."profile_user_types";
+`
+  );
+  run("psql", [LOCAL_DB_URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", sqlFile]);
+}
+
+function prepareStorageRestore() {
+  const sqlFile = resolve(DUMP_DIR, "prepare-storage-restore.sql");
+  writeFileSync(
+    sqlFile,
+    `TRUNCATE TABLE
+  "storage"."objects",
+  "storage"."buckets"
+RESTART IDENTITY CASCADE;
 `
   );
   run("psql", [LOCAL_DB_URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", sqlFile]);
@@ -274,6 +295,9 @@ function restoreLocal() {
   for (const schema of SCHEMAS) {
     const inPath = resolve(DUMP_DIR, schema.file);
     step(`Restore "${schema.name}" → local`);
+    if (schema.name === "storage") {
+      prepareStorageRestore();
+    }
     if (schema.name === "public") {
       preparePublicRestore();
     }

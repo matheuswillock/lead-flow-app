@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import {
   Table,
   TableBody,
@@ -163,7 +164,9 @@ export function BackofficeClientDetailsContainer() {
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isTogglingLifetime, setIsTogglingLifetime] = useState(false)
+  const [isTogglingMultiskill, setIsTogglingMultiskill] = useState(false)
   const lifetimeInFlight = useRef(false)
+  const multiskillInFlight = useRef(false)
   const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
@@ -254,6 +257,27 @@ export function BackofficeClientDetailsContainer() {
     }
   }
 
+  async function handleToggleMultiskill() {
+    if (!details || multiskillInFlight.current) return
+    multiskillInFlight.current = true
+    setIsTogglingMultiskill(true)
+    const nextValue = !details.multiskillEnabled
+    try {
+      await service.updateClient(masterId, { multiskillEnabled: nextValue })
+      toast.success(
+        nextValue
+          ? "Conta habilitada para receber transferências MultiSkill"
+          : "Transferências MultiSkill desabilitadas para esta conta"
+      )
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar MultiSkill")
+    } finally {
+      setIsTogglingMultiskill(false)
+      multiskillInFlight.current = false
+    }
+  }
+
   async function handleSendMemberAccessEmail(
     member: BackofficeClientTeamMember,
     mode: "invite" | "reset_password"
@@ -337,6 +361,9 @@ export function BackofficeClientDetailsContainer() {
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
                   {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
+                  {details.multiskillEnabled ? (
+                    <Badge variant="secondary">MultiSkill</Badge>
+                  ) : null}
                   {details.subscription.hasAccess ? (
                     <Badge
                       variant="outline"
@@ -365,15 +392,28 @@ export function BackofficeClientDetailsContainer() {
               </div>
             </div>
             {canManage && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditOpen(true)}
-                className="shrink-0"
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Editar
-              </Button>
+              <div className="flex flex-col items-end gap-3">
+                <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+                  <div className="text-right">
+                    <p className="text-sm font-medium">MultiSkill</p>
+                    <p className="text-xs text-muted-foreground">Receber transferências</p>
+                  </div>
+                  <Switch
+                    checked={details.multiskillEnabled}
+                    disabled={isTogglingMultiskill}
+                    onCheckedChange={() => void handleToggleMultiskill()}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditOpen(true)}
+                  className="shrink-0"
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar
+                </Button>
+              </div>
             )}
           </div>
 

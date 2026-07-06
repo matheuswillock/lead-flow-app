@@ -1091,6 +1091,7 @@ export function LeadForm({
                     isLoading={isLoading || isUpdating}
                     isSaveDisabled={isSaveDisabled}
                     isDraftDisabled={isDraftDisabled}
+                    showDraftOption={!isEditMode}
                     onSaveFull={handleSaveFull}
                     onSaveDraft={handleSaveDraft}
                 />

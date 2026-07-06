@@ -1,4 +1,6 @@
 import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
+import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository";
+import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository";
 import { Output } from "@/lib/output";
 import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache/cacheTags";
@@ -13,8 +15,6 @@ export const HEALTH_PLAN_ERROR_MESSAGES = {
   INTERNAL_LIST_ERROR: "Erro ao listar planos de saúde",
   INTERNAL_CREATE_ERROR: "Erro ao criar plano de saúde",
 } as const;
-
-const HEALTH_PLAN_ADMIN_EMAIL = "matheuswillock@gmail.com";
 
 export interface HealthPlanOptionDto {
   id: string;
@@ -52,6 +52,10 @@ export async function listCachedHealthPlanOptions(): Promise<HealthPlanOptionDto
 }
 
 export class HealthPlanUseCase implements IHealthPlanUseCase {
+  constructor(
+    private readonly backofficeUserRepo: IBackofficeUserRepository = new BackofficeUserRepository()
+  ) {}
+
   async listHealthPlans(supabaseId: string): Promise<Output> {
     try {
       if (!supabaseId) {
@@ -87,8 +91,8 @@ export class HealthPlanUseCase implements IHealthPlanUseCase {
         return new Output(false, [], [HEALTH_PLAN_ERROR_MESSAGES.PROFILE_NOT_FOUND], null);
       }
 
-      const profileEmail = profile.email?.trim().toLowerCase() ?? "";
-      if (profileEmail !== HEALTH_PLAN_ADMIN_EMAIL) {
+      const backofficeUser = await this.backofficeUserRepo.findByProfileId(profile.id)
+      if (!backofficeUser?.isActive || !backofficeUser.fullAccess) {
         return new Output(false, [], [HEALTH_PLAN_ERROR_MESSAGES.FORBIDDEN_CREATE], null);
       }
 
