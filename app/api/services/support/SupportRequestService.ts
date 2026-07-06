@@ -65,7 +65,7 @@ export class SupportRequestService implements ISupportRequestService {
       ].join("\n");
 
       const emailService = getEmailService();
-      const result = await emailService.sendEmail({
+      const result = await emailService.sendEmailUntracked({
         to: [supportEmail],
         subject: `[SUPORTE][${supportId}] ${safeSubject}`,
         html,

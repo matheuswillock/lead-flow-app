@@ -2432,6 +2432,7 @@ export class LeadUseCase implements ILeadUseCase {
             to: emailRecipients.to,
             cc: emailRecipients.cc,
             attachments: leadAttachments,
+            teamId,
             leadCode: input.lead.leadCode,
             leadName: input.lead.name,
             leadEmail: input.lead.email,
@@ -2598,6 +2599,7 @@ export class LeadUseCase implements ILeadUseCase {
           ? getEmailService()
               .sendLeadTransferActivatedEmail({
                 to: uniqueEmails,
+                teamId,
                 leadCode: lead.leadCode,
                 leadName: lead.name,
                 leadPhone: lead.phone,

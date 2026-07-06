@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   AlertDialog,
@@ -41,6 +43,7 @@ import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 function CampaignActionsMenu({
   campaign,
   canSendCampaign,
+  sendBlockReason,
   deletingId,
   openEdit,
   handleSend,
@@ -49,6 +52,7 @@ function CampaignActionsMenu({
 }: {
   campaign: Campaign
   canSendCampaign: boolean
+  sendBlockReason?: string
   deletingId: string | null
   openEdit: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
@@ -61,6 +65,10 @@ function CampaignActionsMenu({
     campaign.status === "draft" ||
     campaign.status === "scheduled" ||
     campaign.status === "sent"
+  const canSend = canSendCampaign && canSendByStatus
+  const sendDisabledReason =
+    sendBlockReason ??
+    (!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined)
   const canEdit = campaign.status === "draft" || campaign.status === "scheduled"
   const canDelete = campaign.status === "draft"
 
@@ -88,8 +96,8 @@ function CampaignActionsMenu({
 
           <DropdownMenuItem
             onClick={() => setSendConfirmOpen(true)}
-            disabled={!canSendCampaign || !canSendByStatus}
-            title={!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined}
+            disabled={!canSend}
+            title={!canSend ? sendDisabledReason : undefined}
           >
             <Send className="mr-2 h-4 w-4" />
             Disparar
@@ -163,6 +171,17 @@ export function CampaignList({
   const canSendCampaign =
     !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 
+  function getSendBlockReason(campaign: Campaign): string | undefined {
+    if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
+    if (!credits?.hasSubscription) {
+      return "Ative um plano em Assinaturas para disparar campanhas"
+    }
+    if (credits.creditsAvailable < campaign.totalRecipients) {
+      return `Créditos insuficientes para ${campaign.totalRecipients.toLocaleString("pt-BR")} destinatários. Saldo: ${credits.creditsAvailable.toLocaleString("pt-BR")}`
+    }
+    return undefined
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-md border">
@@ -211,7 +230,19 @@ export function CampaignList({
                     <div className="text-xs">{campaign.contactList?.name ?? '—'}</div>
                   </TableCell>
                   <TableCell className="align-middle">
-                    <CampaignStatusBadge status={isSending ? "sending" : campaign.status} />
+                    <div className="flex flex-col gap-1">
+                      <CampaignStatusBadge status={isSending ? "sending" : campaign.status} />
+                      {campaign.status === "failed" && campaign.errorMessage ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="destructive" className="max-w-[220px] truncate font-normal">
+                              {campaign.errorMessage}
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-sm">{campaign.errorMessage}</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="align-middle text-sm">
                     {campaign.totalRecipients.toLocaleString("pt-BR")}
@@ -238,6 +269,7 @@ export function CampaignList({
                         <CampaignActionsMenu
                           campaign={campaign}
                           canSendCampaign={canSendCampaign}
+                          sendBlockReason={getSendBlockReason(campaign)}
                           deletingId={deletingId}
                           openEdit={openEdit}
                           handleSend={handleSend}

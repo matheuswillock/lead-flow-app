@@ -6,6 +6,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/email/cron/process-import-jobs",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/email/cron/reset-credits",
       "schedule": "0 3 1 * *"
     },

@@ -2,7 +2,7 @@ import type { BackofficeEmailDispatchCategory } from "@prisma/client"
 import { backofficeEmailDispatchService } from "@/app/api/services/backofficeEmailDispatch/BackofficeEmailDispatchService"
 import { createEmailService, type EmailOptions } from "@/lib/services/EmailService"
 
-type SendTrackedProfileEmailInput = Omit<EmailOptions, "to" | "dispatch"> & {
+type SendTrackedProfileEmailInput = Omit<EmailOptions, "to"> & {
   profileId: string
   category: BackofficeEmailDispatchCategory
   sourceType?: string

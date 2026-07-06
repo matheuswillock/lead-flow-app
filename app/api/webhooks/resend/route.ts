@@ -44,6 +44,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[ResendWebhookRoute][POST]", error)
-    return NextResponse.json({ received: true }, { status: 200 })
+    return NextResponse.json({ error: "Erro interno ao processar webhook" }, { status: 500 })
   }
 }

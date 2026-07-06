@@ -688,6 +688,7 @@ export class LeadScheduleService implements ILeadScheduleService {
         const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
         await emailService.sendCloserScheduleNotificationEmail({
           to: closerEmail,
+          teamId,
           closerName: closerProfile.fullName || closerProfile.email,
           leadName,
           meetingTitle: resolvedMeetingTitle,

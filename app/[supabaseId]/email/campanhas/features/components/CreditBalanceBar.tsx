@@ -67,7 +67,7 @@ export function CreditBalanceBar() {
         <div className="flex-1 flex flex-col gap-1">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">
-              {PLAN_LABELS[credits.plan ?? ""] ?? credits.plan} — Créditos de Email
+              {PLAN_LABELS[credits.plan ?? ""] ?? credits.plan} — Créditos do time
             </span>
             <span className={cn(isLow ? "text-semantic-warning font-medium" : "text-muted-foreground")}>
               {remaining.toLocaleString("pt-BR")} / {credits.monthlyCredits.toLocaleString("pt-BR")} restantes

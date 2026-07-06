@@ -441,6 +441,7 @@ MEETING_REMINDER MEETING_REMINDER
 LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
 MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
 BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
+EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
         }
     
 
@@ -564,6 +565,15 @@ complained complained
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
+        }
+    
+
+
+        email_orphan_event_status {
+            pending pending
+processed processed
+failed failed
+skipped skipped
         }
     
 
@@ -1544,6 +1554,25 @@ failed failed
     }
   
 
+  "corretor_studio_email_import_jobs" {
+    String id "🗝️"
+    String importId 
+    String sourceFormat 
+    String storagePath 
+    String status 
+    Int totalRows 
+    Int processedRows 
+    Int importedCount 
+    Int updatedCount 
+    Int skippedCount 
+    Json failedBatches "❓"
+    Int batchSize 
+    Json attemptsByBatch "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_contacts" {
     String id "🗝️"
     String email 
@@ -1628,6 +1657,21 @@ failed failed
     DateTime occurredAt 
     Json metadata "❓"
     DateTime createdAt 
+    }
+  
+
+  "email_orphan_events" {
+    String id "🗝️"
+    String resendEmailId 
+    String resendEventType 
+    DateTime occurredAt 
+    Json tagsHint "❓"
+    EmailOrphanEventStatus status 
+    Int attempts 
+    String lastError "❓"
+    DateTime processedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -2309,7 +2353,7 @@ failed failed
     "corretor_studio_lead_transfers" }o--|o corretor_studio_profiles : "receivedByProfile"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
-    "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
@@ -2321,6 +2365,9 @@ failed failed
     "corretor_studio_email_template_history" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_import_jobs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_import_jobs" }o--|| corretor_studio_email_contact_lists : "list"
+    "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
@@ -2340,6 +2387,7 @@ failed failed
     "corretor_studio_email_logs" }o--|o corretor_studio_email_campaign_dispatches : "dispatch"
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
+    "email_orphan_events" |o--|| "EmailOrphanEventStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"

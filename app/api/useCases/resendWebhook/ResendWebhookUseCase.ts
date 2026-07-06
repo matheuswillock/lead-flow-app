@@ -2,10 +2,8 @@ import type { BackofficeEmailDispatchEventType } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { backofficeEmailDispatchUseCase } from "@/app/api/useCases/backofficeEmailDispatch/BackofficeEmailDispatchUseCase"
-import {
-  resendEmailEnrichmentService,
-  type ResendEmailEnrichmentService,
-} from "@/app/api/services/resend/ResendEmailEnrichmentService"
+import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
+import { isBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
 import {
   resendWebhookService,
   type ResendWebhookService,
@@ -38,8 +36,7 @@ export type HandleResendWebhookInput = {
 
 export class ResendWebhookUseCase {
   constructor(
-    private readonly webhookService: ResendWebhookService = resendWebhookService,
-    private readonly enrichmentService: ResendEmailEnrichmentService = resendEmailEnrichmentService
+    private readonly webhookService: ResendWebhookService = resendWebhookService
   ) {}
 
   async handle(input: HandleResendWebhookInput): Promise<Output> {
@@ -85,11 +82,15 @@ export class ResendWebhookUseCase {
       }
 
       if (!log && ORPHAN_BACKFILL_EVENTS.has(event.type)) {
-        await this.enrichmentService.createOrphanTeamEmailLogFromResendEmail(
-          resendEmailId,
-          occurredAt,
-          event.data.tags
-        )
+        const tagsHint = event.data.tags
+        if (!isBackofficeResendTags(tagsHint ?? null)) {
+          await emailOrphanEventService.queueOrphanEvent({
+            resendEmailId,
+            resendEventType: event.type,
+            occurredAt,
+            tagsHint,
+          })
+        }
         log = await emailLogRepository.findByResendEmailId(resendEmailId)
       }
 

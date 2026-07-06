@@ -140,7 +140,7 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
           }).format(summary.totalPrice);
 
           await emailService
-            .sendEmail({
+            .sendEmailUntracked({
               to: [assignment.email],
               subject: "Member PRO encerrado — assinatura atualizada",
               html: `

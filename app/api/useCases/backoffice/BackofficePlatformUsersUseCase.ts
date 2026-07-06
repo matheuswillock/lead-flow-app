@@ -1050,7 +1050,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           delegatedPermissions
         )
 
-        await emailService.sendEmail({
+        await emailService.sendEmailUntracked({
           to: [email],
           subject: "Corretor Studio - Você foi adicionado a um novo time",
           html: buildAddedToTeamEmail({ userName: existingDisplayName, loginUrl: `${appUrl}/sign-in` }),
@@ -1058,7 +1058,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao usuário existente:", err)
         })
 
-        await emailService.sendEmail({
+        await emailService.sendEmailUntracked({
           to: [master.email],
           subject: "Corretor Studio - Novo usuário adicionado",
           html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: existingDisplayName, userEmail: email, roleLabel }),
@@ -1159,7 +1159,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         inviteUrl: inviteLink,
       })
 
-      await emailService.sendEmail({
+      await emailService.sendEmailUntracked({
         to: [master.email],
         subject: "Corretor Studio - Novo usuário adicionado",
         html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: trimmedName, userEmail: email, roleLabel }),
@@ -1209,7 +1209,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       const appUrl = getAppUrl({ removeTrailingSlash: true })
       const masterName = master.fullName ?? master.email
 
-      await emailService.sendEmail({
+      await emailService.sendEmailUntracked({
         to: [master.email],
         subject: "Corretor Studio - Você foi adicionado a um novo time",
         html: buildAddedToTeamEmail({ userName: masterName, loginUrl: `${appUrl}/sign-in` }),

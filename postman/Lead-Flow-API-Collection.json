@@ -12692,6 +12692,66 @@
           ]
         },
         {
+          "name": "Público",
+          "item": [
+            {
+              "name": "Info de Descadastro (token)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/public/unsubscribe/{{unsubscribeToken}}/info",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "public",
+                    "unsubscribe",
+                    "{{unsubscribeToken}}",
+                    "info"
+                  ]
+                },
+                "description": "Rota pública — sem autenticação. Retorna nome do time e e-mail mascarado para a página de opt-out."
+              },
+              "response": []
+            },
+            {
+              "name": "Confirmar Descadastro",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"{{unsubscribeToken}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/public/unsubscribe",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "public",
+                    "unsubscribe"
+                  ]
+                },
+                "description": "Rota pública — sem autenticação. Marca contato como descadastrado do time."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
           "name": "Cron (interno)",
           "item": [
             {
@@ -12735,6 +12795,28 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}"
+              },
+              "response": []
+            },
+            {
+              "name": "Processar Importações de Contatos",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/process-import-jobs",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "process-import-jobs"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Processa fila EmailImportJob em lotes."
               },
               "response": []
             },

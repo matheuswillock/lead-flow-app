@@ -4,9 +4,11 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isManagerLikeRole } from "@/lib/roles"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { canCreateEmailTemplate } from "@/lib/email/email-rbac"
 import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
 import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
+import { buildResendTrackingTags, mergeResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import {
   type EmailTemplateFunctionDefinition,
@@ -256,9 +258,18 @@ export class EmailTemplateUseCase {
         select: { templateCreateRoles: true, templateApprovalRequired: true },
       }).catch(() => null)
 
-      const createRoles = teamSettings?.templateCreateRoles ?? ["manager", "backoffice"]
-      if (!createRoles.includes(ctx.teamMember.role)) {
+      if (!canCreateEmailTemplate(ctx, teamSettings)) {
         return new Output(false, [], ["Seu perfil não tem permissão para criar templates"], null)
+      }
+
+      const editorMode = data.editorMode ?? "html"
+      if (editorMode === "html" && data.mailyJson !== undefined && data.mailyJson !== null) {
+        return new Output(
+          false,
+          [],
+          ["Templates em modo HTML não aceitam conteúdo de blocos (mailyJson)"],
+          null
+        )
       }
 
       const requiresApproval = teamSettings?.templateApprovalRequired ?? false
@@ -276,9 +287,12 @@ export class EmailTemplateUseCase {
           name: data.name.trim(),
           subject: data.subject.trim(),
           previewText: data.previewText?.trim() ?? null,
-          mailyJson: (data.mailyJson as object) ?? null,
+          mailyJson:
+            editorMode === "html"
+              ? Prisma.JsonNull
+              : ((data.mailyJson as object) ?? Prisma.JsonNull),
           html: data.html ?? null,
-          editorMode: data.editorMode ?? "html",
+          editorMode,
           variables: (data.variables as object) ?? undefined,
           approvalStatus: approvalSeed.approvalStatus,
           approvedBy: approvalSeed.approvedBy,
@@ -336,11 +350,28 @@ export class EmailTemplateUseCase {
         return new Output(false, [], ["Template não encontrado"], null)
       }
 
+      const resolvedEditorMode = data.editorMode ?? existing.editorMode ?? "html"
+      if (
+        resolvedEditorMode === "html" &&
+        data.mailyJson !== undefined &&
+        data.mailyJson !== null
+      ) {
+        return new Output(
+          false,
+          [],
+          ["Templates em modo HTML não aceitam conteúdo de blocos (mailyJson)"],
+          null
+        )
+      }
+
       const updateData = {
         ...(data.name !== undefined && { name: data.name.trim() }),
         ...(data.subject !== undefined && { subject: data.subject.trim() }),
         ...(data.previewText !== undefined && { previewText: data.previewText?.trim() ?? null }),
-        ...(data.mailyJson !== undefined && { mailyJson: data.mailyJson as object }),
+        ...(data.mailyJson !== undefined &&
+          resolvedEditorMode !== "html" && { mailyJson: data.mailyJson as object }),
+        ...(data.mailyJson !== undefined &&
+          resolvedEditorMode === "html" && { mailyJson: Prisma.JsonNull }),
         ...(data.html !== undefined && { html: data.html }),
         ...(data.editorMode !== undefined && { editorMode: data.editorMode }),
         ...(data.variables !== undefined && { variables: (data.variables as object) ?? Prisma.JsonNull }),
@@ -567,10 +598,18 @@ export class EmailTemplateUseCase {
           to: recipientEmail,
           subject: renderedSubject,
           html: renderedHtml,
-          tags: [
-            { name: "templateId", value: id },
-            { name: "purpose", value: "template-test" },
-          ],
+          tags: mergeResendTrackingTags(
+            buildResendTrackingTags({
+              teamId: ctx.teamId,
+              category: "transactional",
+              sourceType: "template-test",
+              sourceId: id,
+            }),
+            [
+              { name: "templateId", value: id },
+              { name: "purpose", value: "template-test" },
+            ]
+          ),
         },
         {
           idempotencyKey: buildResendIdempotencyKey("template-test", `${id}/${requestId}`),

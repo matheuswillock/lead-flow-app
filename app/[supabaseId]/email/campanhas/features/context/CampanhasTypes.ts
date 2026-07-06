@@ -16,6 +16,7 @@ export type Campaign = {
   template: { id: string; name: string } | null
   contactList: { id: string; name: string } | null
   cdpSegmentSlug?: string | null
+  errorMessage?: string | null
 }
 
 export type CreditStatus = {

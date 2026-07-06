@@ -7,10 +7,16 @@ import type {
 
 const BRASIL_API_CNPJ_URL = "https://brasilapi.com.br/api/cnpj/v1";
 const LOOKUP_TIMEOUT_MS = 5000;
+const LOOKUP_MAX_ATTEMPTS = 3;
+const LOOKUP_RETRY_DELAY_MS = 400;
 
 type BrasilApiCnpjResponse = {
   razao_social?: string;
 };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export class CnpjLookupService implements ICnpjLookupService {
   async lookupRazaoSocial(cnpj: string): Promise<string | null> {
@@ -19,41 +25,69 @@ export class CnpjLookupService implements ICnpjLookupService {
       return null;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
+    for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
 
-    try {
-      console.info("[CnpjLookupService][lookupRazaoSocial] Consultando CNPJ", digits);
-      const response = await fetch(`${BRASIL_API_CNPJ_URL}/${digits}`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        console.error(
-          "[CnpjLookupService][lookupRazaoSocial] Falha na consulta",
-          response.status,
+      try {
+        console.info(
+          `[CnpjLookupService][lookupRazaoSocial] Consultando CNPJ (tentativa ${attempt}/${LOOKUP_MAX_ATTEMPTS})`,
           digits
         );
-        return null;
-      }
+        const response = await fetch(`${BRASIL_API_CNPJ_URL}/${digits}`, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
 
-      const payload = (await response.json()) as BrasilApiCnpjResponse;
-      const razaoSocial = payload.razao_social?.trim() ?? "";
-      if (!razaoSocial) {
-        console.error("[CnpjLookupService][lookupRazaoSocial] Resposta sem razao_social", digits);
-        return null;
-      }
+        if (!response.ok) {
+          // 404 significa CNPJ inexistente na Receita: nao adianta tentar de novo.
+          if (response.status === 404) {
+            console.error(
+              "[CnpjLookupService][lookupRazaoSocial] CNPJ nao encontrado",
+              response.status,
+              digits
+            );
+            return null;
+          }
 
-      console.info("[CnpjLookupService][lookupRazaoSocial] Razão social encontrada", digits);
-      return razaoSocial;
-    } catch (error) {
-      console.error("[CnpjLookupService][lookupRazaoSocial] Erro na consulta", error);
-      return null;
-    } finally {
-      clearTimeout(timeoutId);
+          console.error(
+            "[CnpjLookupService][lookupRazaoSocial] Falha na consulta",
+            response.status,
+            digits
+          );
+          if (attempt < LOOKUP_MAX_ATTEMPTS) {
+            await sleep(LOOKUP_RETRY_DELAY_MS * attempt);
+            continue;
+          }
+          return null;
+        }
+
+        const payload = (await response.json()) as BrasilApiCnpjResponse;
+        const razaoSocial = payload.razao_social?.trim() ?? "";
+        if (!razaoSocial) {
+          console.error("[CnpjLookupService][lookupRazaoSocial] Resposta sem razao_social", digits);
+          return null;
+        }
+
+        console.info("[CnpjLookupService][lookupRazaoSocial] Razão social encontrada", digits);
+        return razaoSocial;
+      } catch (error) {
+        console.error(
+          `[CnpjLookupService][lookupRazaoSocial] Erro na consulta (tentativa ${attempt}/${LOOKUP_MAX_ATTEMPTS})`,
+          error
+        );
+        if (attempt < LOOKUP_MAX_ATTEMPTS) {
+          await sleep(LOOKUP_RETRY_DELAY_MS * attempt);
+          continue;
+        }
+        return null;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
+
+    return null;
   }
 }
 

@@ -266,6 +266,11 @@ export class CrossAccountMembersUseCase implements ICrossAccountMembersUseCase {
           userName: args.targetName,
           loginUrl: `${appUrl}/sign-in`,
         }),
+        tracking: {
+          teamId: args.team.id,
+          category: "transactional",
+          sourceType: "team_member_added",
+        },
       })
       .catch((err: unknown) => {
         console.error("[CrossAccountMembersUseCase] Erro ao enviar e-mail ao membro:", err);

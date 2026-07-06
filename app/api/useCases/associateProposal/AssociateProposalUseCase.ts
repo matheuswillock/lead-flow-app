@@ -100,6 +100,7 @@ export class AssociateProposalUseCase {
       getEmailService()
         .sendLeadProposalPendingUrgentEmail({
           to: recipients.recipientEmails,
+          teamId: input.teamId,
           leadCode: input.leadCode,
           leadName: input.leadName,
           leadEmail: null,
@@ -178,6 +179,7 @@ export class AssociateProposalUseCase {
       getEmailService()
         .sendAssociateRequiredDocumentsPendingEmail({
           to: Array.from(new Set(recipientEmails)),
+          teamId: input.teamId,
           leadCode: input.leadCode,
           leadName: input.leadName,
           actorName: input.actorName,
@@ -238,10 +240,11 @@ export class AssociateProposalUseCase {
         result.assigneeId ?? result.lead.team?.masterId ?? null;
       if (criticismRecipientId) {
         const recipient = await associateProposalRepository.findProfileEmail(criticismRecipientId);
-        if (recipient?.email) {
+        if (recipient?.email && result.lead.teamId) {
           getEmailService()
             .sendAssociateProposalCriticismEmail({
               to: [recipient.email],
+              teamId: result.lead.teamId,
               leadCode: result.lead.leadCode,
               leadName: result.lead.name,
               title: input.title,

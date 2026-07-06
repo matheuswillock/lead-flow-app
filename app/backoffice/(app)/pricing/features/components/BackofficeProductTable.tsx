@@ -1,4 +1,4 @@
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Copy, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -40,7 +40,7 @@ interface Props {
 }
 
 export function BackofficeProductTable({ products }: Props) {
-  const { canManage, openEditDialog, openDeleteDialog } = useBackofficePricing()
+  const { canManage, openEditDialog, openDuplicateDialog, openDeleteDialog } = useBackofficePricing()
 
   if (products.length === 0) {
     return (
@@ -145,6 +145,10 @@ export function BackofficeProductTable({ products }: Props) {
                           <DropdownMenuItem onClick={() => openEditDialog(product)}>
                             <Pencil data-icon="inline-start" />
                             Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openDuplicateDialog(product)}>
+                            <Copy data-icon="inline-start" />
+                            Duplicar
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
