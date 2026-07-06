@@ -14,6 +14,18 @@ export const supabaseAnon = anonKey ? createClient(url, anonKey) : null
 
 export type SeedUser = { email: string; password: string; fullName?: string }
 
+export function resolveSeedPassword(): string {
+  const fromEnv = process.env.SEED_USER_PASSWORD?.trim()
+  if (fromEnv) return fromEnv
+
+  const generated = `${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}Aa1!`
+  console.info(
+    "[seed] SEED_USER_PASSWORD ausente; usando senha temporária gerada (copie agora):",
+    generated
+  )
+  return generated
+}
+
 export async function listUserByEmail(email: string) {
   let page = 1
   const perPage = 1000

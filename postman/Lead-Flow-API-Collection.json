@@ -9961,6 +9961,79 @@
           ]
         },
         {
+          "name": "Backoffice Authorized Sponsors",
+          "item": [
+            {
+              "name": "GET Authorized Sponsors",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "authorized-sponsors"]
+                },
+                "description": "Lista patrocinadores autorizados (ativos e revogados) com contagem de contas patrocinadas. Exige master backoffice."
+              }
+            },
+            {
+              "name": "POST Grant Authorized Sponsor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"profileId\": \"{{sponsorProfileId}}\",\n  \"notes\": \"Autorizado via Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "authorized-sponsors"]
+                },
+                "description": "Concede autorização de patrocinador a um master. Exige master backoffice."
+              }
+            },
+            {
+              "name": "DELETE Revoke Authorized Sponsor",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors/:profileId",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "authorized-sponsors", ":profileId"],
+                  "variable": [
+                    {
+                      "key": "profileId",
+                      "value": "{{sponsorProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Revoga autorização de patrocinador (soft revoke). Exige master backoffice."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Anatemas",
           "item": [
             {

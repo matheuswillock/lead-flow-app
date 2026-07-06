@@ -6,7 +6,7 @@
  *   bun run db:seed:app
  *   bun run db:seed:backoffice
  */
-import { ensureUser, type SeedUser } from "./seed-helpers"
+import { ensureUser, resolveSeedPassword, type SeedUser } from "./seed-helpers"
 import { PrismaClient, UserRole } from "@prisma/client"
 import { listUserByEmail } from "./seed-helpers"
 
@@ -14,10 +14,12 @@ const prisma = new PrismaClient()
 
 // ── App users ────────────────────────────────────────────────────────────────
 
+const seedPassword = resolveSeedPassword()
+
 const APP_USERS: SeedUser[] = [
-  { email: "bruno@onsidemarketing.com.br", password: "Onside@2025" },
-  { email: "nathielewillock@gmail.com", password: "Teste@2025" },
-  { email: "matheuswillock@gmail.com", password: "Nath@1308" },
+  { email: "bruno@onsidemarketing.com.br", password: seedPassword },
+  { email: "nathielewillock@gmail.com", password: seedPassword },
+  { email: "matheuswillock@gmail.com", password: seedPassword },
 ]
 
 // ── Backoffice users ──────────────────────────────────────────────────────────
@@ -25,7 +27,7 @@ const APP_USERS: SeedUser[] = [
 const BACKOFFICE_USERS = [
   {
     email: "matheuswillock@corretorstudio.com",
-    password: "Backoffice@2025",
+    password: seedPassword,
     fullAccess: true,
   },
 ]

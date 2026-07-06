@@ -801,7 +801,6 @@ failed failed
     UserFunction functions 
     Boolean isMaster 
     Boolean hasPermanentSubscription 
-    Boolean canSponsorAccounts 
     Boolean multiskillEnabled 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
@@ -862,6 +861,17 @@ failed failed
     DateTime bannedAt 
     DateTime liftedAt "❓"
     String liftReason "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_authorized_sponsors" {
+    String id "🗝️"
+    Boolean isActive 
+    DateTime grantedAt 
+    DateTime revokedAt "❓"
+    String notes "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1005,7 +1015,6 @@ failed failed
     String createdSupabaseId "❓"
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
-    String sponsorMasterId "❓"
     Boolean multiskillEnabled 
     Json additional_users_data 
     Json additional_teams_data 
@@ -2182,6 +2191,9 @@ failed failed
     "backoffice_banned_users" }o--|| corretor_studio_profiles : "profile"
     "backoffice_banned_users" }o--|| corretor_studio_profiles : "bannedByProfile"
     "backoffice_banned_users" }o--|o corretor_studio_profiles : "liftedByProfile"
+    "backoffice_authorized_sponsors" |o--|| corretor_studio_profiles : "profile"
+    "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
+    "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -2205,6 +2217,7 @@ failed failed
     "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
+    "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
