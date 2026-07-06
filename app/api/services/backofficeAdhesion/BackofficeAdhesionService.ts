@@ -401,6 +401,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           ? new Date(normalized.accessExpiresAt)
           : null,
       sponsorMasterId: normalized.sponsorMasterId ?? null,
+      multiskillEnabled: normalized.multiskillEnabled ?? false,
       additionalUsersData: normalized.additionalUsers ?? [],
       additionalTeamsData: normalized.additionalTeams ?? [],
     })
@@ -1016,6 +1017,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       userType: input.userType ?? "common",
       accessExpiresAt: input.accessExpiresAt ?? null,
       sponsorMasterId: normalizeText(input.sponsorMasterId) ?? null,
+      multiskillEnabled: input.multiskillEnabled === true,
       additionalUsers: input.additionalUsers ?? [],
       additionalTeams: input.additionalTeams ?? [],
     }
@@ -1316,6 +1318,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         city: adhesion.city,
         state: adhesion.state,
         hasPermanentSubscription: isGuest,
+        multiskillEnabled: adhesion.multiskillEnabled ?? false,
         sponsorMasterId: adhesion.sponsorMasterId ?? null,
       })
 

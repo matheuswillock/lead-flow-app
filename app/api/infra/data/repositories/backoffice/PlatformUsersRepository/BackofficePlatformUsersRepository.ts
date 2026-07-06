@@ -154,6 +154,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           profileIconUrl: true,
           createdAt: true,
           hasPermanentSubscription: true,
+          multiskillEnabled: true,
           subscriptionPlan: true,
           operatorCount: true,
           googleConnection: {
@@ -228,6 +229,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
+      multiskillEnabled: master.multiskillEnabled,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
@@ -278,6 +280,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         profileIconUrl: true,
         createdAt: true,
         hasPermanentSubscription: true,
+        multiskillEnabled: true,
         subscriptionPlan: true,
         subscriptionStatus: true,
         subscriptionId: true,
@@ -443,6 +446,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
+      multiskillEnabled: master.multiskillEnabled,
       subscriptionPlan: master.subscriptionPlan,
       subscriptionStatus: master.subscriptionStatus,
       subscriptionId: master.subscriptionId,
@@ -563,6 +567,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      multiskillEnabled?: boolean
     }
   ): Promise<{ id: string } | null> {
     try {
@@ -579,6 +584,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       if (data.state !== undefined) updateData.state = data.state
       if (data.functions !== undefined) updateData.functions = data.functions
       if (data.hasPermanentSubscription !== undefined) updateData.hasPermanentSubscription = data.hasPermanentSubscription
+      if (data.multiskillEnabled !== undefined) updateData.multiskillEnabled = data.multiskillEnabled
 
       if (Object.keys(updateData).length === 0) return null
 
@@ -854,8 +860,15 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
   async createTeamForMaster(masterProfileId: string, name: string): Promise<{ id: string; name: string }> {
     return prisma.$transaction(async (tx) => {
+      const existingTeamsCount = await tx.team.count({
+        where: { masterId: masterProfileId },
+      })
       const team = await tx.team.create({
-        data: { name, masterId: masterProfileId, isDefault: false },
+        data: {
+          name,
+          masterId: masterProfileId,
+          isDefault: existingTeamsCount === 0,
+        },
         select: { id: true, name: true },
       })
 

@@ -79,6 +79,9 @@ export async function PATCH(
       hasPermanentSubscription: typeof body.hasPermanentSubscription === "boolean"
         ? body.hasPermanentSubscription
         : undefined,
+      multiskillEnabled: typeof body.multiskillEnabled === "boolean"
+        ? body.multiskillEnabled
+        : undefined,
     }
 
     const useCase = new BackofficePlatformUsersUseCase(new BackofficePlatformUsersRepository())

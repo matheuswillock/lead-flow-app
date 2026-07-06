@@ -133,6 +133,7 @@ function defaultValues(): BackofficeAdhesionFormValues {
     userType: "common",
     memberProAccessDays: "",
     sponsorMasterId: null,
+    multiskillEnabled: false,
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -161,6 +162,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     userType: "common",
     memberProAccessDays: "",
     sponsorMasterId: null,
+    multiskillEnabled: adhesion.multiskillEnabled ?? false,
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -607,6 +609,23 @@ export function BackofficeAdhesionDialog({
                 <p className="text-xs text-muted-foreground">
                   Disponíveis: Nova oportunidade, Agendado, No-show e Nova adesão.
                 </p>
+              </div>
+            ) : null}
+
+            {mode === "create" && !isGuest ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div>
+                  <Label htmlFor="adhesion-multiskill">MultiSkill (receber transferências)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita o time padrão desta conta a receber leads transferidos pelo MultiSkill.
+                  </p>
+                </div>
+                <Switch
+                  id="adhesion-multiskill"
+                  checked={values.multiskillEnabled}
+                  disabled={isSubmitting}
+                  onCheckedChange={(checked) => updateValue("multiskillEnabled", checked)}
+                />
               </div>
             ) : null}
 

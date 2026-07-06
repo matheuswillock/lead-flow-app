@@ -52,11 +52,14 @@ async function createTeamForAccount(args: {
   tx?: Prisma.TransactionClient;
 }) {
   const db = args.tx ?? prisma;
+  const existingTeamsCount = await db.team.count({
+    where: { masterId: args.masterId },
+  });
   const team = await db.team.create({
     data: {
       name: args.teamName,
       masterId: args.masterId,
-      isDefault: false,
+      isDefault: existingTeamsCount === 0,
     },
   });
 

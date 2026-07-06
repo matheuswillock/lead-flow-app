@@ -32,6 +32,7 @@ export interface BackofficeAdhesionCreateInput {
   userType?: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt?: string | null
   sponsorMasterId?: string | null
+  multiskillEnabled?: boolean
   additionalUsers?: BackofficeAdhesionAdditionalUser[]
   additionalTeams?: BackofficeAdhesionAdditionalTeam[]
 }

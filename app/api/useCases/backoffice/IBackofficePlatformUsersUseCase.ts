@@ -49,6 +49,7 @@ export interface IBackofficePlatformUsersUseCase {
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      multiskillEnabled?: boolean
     }
   ): Promise<Output>
 

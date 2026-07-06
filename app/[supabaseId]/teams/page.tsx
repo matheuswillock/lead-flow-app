@@ -147,6 +147,7 @@ export default function TeamsPage() {
   const { user } = useUser();
   const { teams, activeTeamId, activeRole, activeTeam, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const [switchingTeamId, setSwitchingTeamId] = useState<string | null>(null);
+  const [settingDefaultTeamId, setSettingDefaultTeamId] = useState<string | null>(null);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [createTeamBillingType, setCreateTeamBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
@@ -295,6 +296,32 @@ export default function TeamsPage() {
       toast.error("Não foi possível atualizar o time ativo.");
     } finally {
       setSwitchingTeamId(null);
+    }
+  };
+
+  const handleSetDefaultTeam = async (teamId: string) => {
+    setSettingDefaultTeamId(teamId);
+    try {
+      const response = await fetch(`/api/v1/teams/${teamId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": teamId,
+        },
+        body: JSON.stringify({ isDefault: true }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível definir o time padrão.");
+      }
+      toast.success("Time padrão atualizado.");
+      await refreshTeams();
+    } catch (error: any) {
+      console.error("Erro ao definir time padrão:", error);
+      toast.error(error?.message || "Erro ao definir time padrão.");
+    } finally {
+      setSettingDefaultTeamId(null);
     }
   };
 
@@ -907,8 +934,12 @@ export default function TeamsPage() {
         activeTeamId={activeTeamId}
         switchingTeamId={switchingTeamId}
         cancelingPendingTeamId={cancelingPendingTeamId}
+        settingDefaultTeamId={settingDefaultTeamId}
         onSetActiveTeam={(teamId) => {
           void handleSetActiveTeam(teamId);
+        }}
+        onSetDefaultTeam={(teamId) => {
+          void handleSetDefaultTeam(teamId);
         }}
         onManageTeam={handleOpenManageTeam}
         onViewPendingCheckout={handleViewPendingCheckout}

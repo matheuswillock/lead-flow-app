@@ -10,6 +10,7 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
   "/dashboard": FEATURE_SLUGS.CRM_DASHBOARD,
   "/crm": FEATURE_SLUGS.CRM,
   "/lead-transfers": FEATURE_SLUGS.CRM_LEAD_TRANSFERS,
+  "/multiskill-transfers": FEATURE_SLUGS.CRM_MULTISKILL_TRANSFERS,
   "/associados": FEATURE_SLUGS.CRM_BACKOFFICE_ASSOCIADOS,
   "/calendar": FEATURE_SLUGS.CRM_CALENDAR,
   "/performance": FEATURE_SLUGS.CRM_PERFORMANCE,
