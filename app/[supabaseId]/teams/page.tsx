@@ -25,6 +25,7 @@ import { useUser } from "@/app/context/UserContext";
 import { useBillingSlots } from "@/app/hooks/useBillingSlots";
 import { cn } from "@/lib/utils";
 import { ManagerTeamsContainer } from "./features/container/ManagerTeamsContainer";
+import { TeamLeadCustomFieldsSection } from "./features/components/TeamLeadCustomFieldsSection";
 import { PendingPaymentEditDialog } from "./features/container/PendingPaymentEditDialog";
 import { ExternalMemberInviteForm } from "./features/components/ExternalMemberInviteForm";
 import type { ManagerTeamTableRow } from "./features/types";
@@ -1665,6 +1666,15 @@ export default function TeamsPage() {
                       {rulesSaving ? "Salvando regras..." : "Salvar regras"}
                     </Button>
                   </div>
+
+                  {manageTeamId ? (
+                    <TeamLeadCustomFieldsSection
+                      teamId={manageTeamId}
+                      supabaseId={supabaseId}
+                      activeRole={activeRole}
+                      isMaster={user?.isMaster}
+                    />
+                  ) : null}
                 </TabsContent>
               </Tabs>
             )}

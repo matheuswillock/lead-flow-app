@@ -226,7 +226,12 @@
       "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
       "app/api/webhooks/meta/route.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
-      "app/api/services/resend/EmailOrphanEventService.ts"
+      "app/api/services/resend/EmailOrphanEventService.ts",
+      "app/api/services/teamAutomation/executors/CreateNotificationExecutor.ts",
+      "app/api/services/teamAutomation/executors/SendEmailExecutor.ts",
+      "app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts",
+      "app/api/services/teamAutomation/TeamAutomationDispatcherService.ts",
+      "app/api/useCases/leads/LeadUseCase.ts"
     ],
     "nonRepositoryDatabaseAccessAllowlist": [
       "app/api/services/AsaasOperator/AsaasOperatorService.ts",
@@ -264,7 +269,13 @@
       "app/api/useCases/email/EmailTeamVariablesUseCase.ts",
       "app/api/useCases/email/EmailContactImportUseCase.ts",
       "app/api/useCases/email/EmailUnsubscribeUseCase.ts",
-      "app/api/services/resend/EmailOrphanEventService.ts"
+      "app/api/services/resend/EmailOrphanEventService.ts",
+      "app/api/services/teamAutomation/TeamAutomationDispatcherService.ts",
+      "app/api/services/teamAutomation/TeamAutomationRuleService.ts",
+      "app/api/services/teamAutomation/executors/AssignOperatorExecutor.ts",
+      "app/api/services/teamAutomation/executors/CreateNotificationExecutor.ts",
+      "app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts",
+      "app/api/useCases/teamAutomations/EvaluateIdleLeadsUseCase.ts"
     ]
   }
 }

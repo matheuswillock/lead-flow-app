@@ -27,6 +27,7 @@ import {
   MessageCircle,
   Bot,
   Database,
+  Zap,
 } from "lucide-react"
 
 import {
@@ -130,6 +131,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
+    { title: "Automações", url: `/${supabaseId}/automations`, icon: Zap, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_AUTOMATIONS },
     { title: "CDP", url: `/${supabaseId}/cdp`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.CDP },
   ];
 

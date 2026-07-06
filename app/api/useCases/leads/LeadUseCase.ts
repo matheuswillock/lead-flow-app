@@ -52,6 +52,14 @@ import {
 import { resolveLeadRazaoSocial } from "@/app/api/services/cnpjLookup/CnpjLookupService";
 import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
 import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
+import { leadCustomFieldService } from "@/app/api/services/leadCustomField/LeadCustomFieldService";
+import {
+  mapLeadCustomFieldDefinitionToDTO,
+} from "@/app/api/infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
+import { leadCustomFieldRepository } from "@/app/api/infra/data/repositories/leadCustomField/LeadCustomFieldRepository";
+import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
+import { leadDuplicateCheckService } from "@/app/api/services/leadDuplicateCheck/LeadDuplicateCheckService";
+import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -334,6 +342,38 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      if (data.phone || data.email) {
+        const duplicateCandidates = await leadDuplicateCheckService.findCandidates(
+          {
+            profileId: profileInfo.id,
+            teamMember: {
+              role: profileInfo.role,
+              functions: [],
+            },
+          },
+          {
+            teamId,
+            phone: data.phone,
+            email: data.email,
+          }
+        );
+
+        if (duplicateCandidates.length > 0 && data.confirmDuplicate !== true) {
+          return new Output(
+            false,
+            [],
+            ["Possível lead duplicado neste time"],
+            {
+              requiresDuplicateConfirmation: true,
+              duplicateCandidates: duplicateCandidates.map((candidate) => ({
+                ...candidate,
+                createdAt: candidate.createdAt.toISOString(),
+              })),
+            }
+          );
+        }
+      }
+
       const saveAsDraft = data.saveAsDraft === true;
       const isTransferLead = data.isTransfer === true;
       if (isTransferLead && !saveAsDraft) {
@@ -375,6 +415,13 @@ export class LeadUseCase implements ILeadUseCase {
           : data.status || LeadStatus.new_opportunity;
 
       const leadCode = await this.generateLeadCode(data.name);
+
+      if (data.customFields !== undefined) {
+        const customFieldsValidation = await this.validateLeadCustomFieldsInput(teamId, data.customFields);
+        if (customFieldsValidation) {
+          return customFieldsValidation;
+        }
+      }
 
       let assignedTo = skipAutoAssign ? undefined : data.assignedTo;
       if (!skipAutoAssign && profileInfo.role === "operator" && !assignedTo) {
@@ -470,6 +517,23 @@ export class LeadUseCase implements ILeadUseCase {
         );
       }
 
+      if (lead.status !== null) {
+        teamAutomationDispatcherService
+          .dispatch({
+            type: "lead_created",
+            teamId,
+            leadId: lead.id,
+          })
+          .catch(console.error);
+      }
+
+      if (data.customFields !== undefined) {
+        await leadCustomFieldRepository.upsertValuesForLead(
+          lead.id,
+          await this.buildCustomFieldUpsertEntries(teamId, data.customFields)
+        );
+      }
+
       return new Output(
         true,
         [
@@ -479,7 +543,7 @@ export class LeadUseCase implements ILeadUseCase {
             : []),
         ],
         [],
-        this.transformToDTO(lead)
+        await this.attachCustomFieldsToDto(lead.id, this.transformToDTO(lead))
       );
     } catch (error) {
       console.error("Erro ao criar lead:", error);
@@ -554,7 +618,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
-      return new Output(true, [], [], this.transformToDTO(lead, profileId));
+      return new Output(true, [], [], await this.attachCustomFieldsToDto(id, this.transformToDTO(lead, profileId)));
     } catch (error) {
       console.error("Erro ao buscar lead:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
@@ -838,6 +902,16 @@ export class LeadUseCase implements ILeadUseCase {
 
       if (!isExistingDraft && saveAsDraft) {
         return new Output(false, [], ["Não é possível converter um lead ativo em rascunho."], null);
+      }
+
+      if (data.customFields !== undefined && leadForDraft.teamId) {
+        const customFieldsValidation = await this.validateLeadCustomFieldsInput(
+          leadForDraft.teamId,
+          data.customFields
+        );
+        if (customFieldsValidation) {
+          return customFieldsValidation;
+        }
       }
 
       const effectiveIsTransferForSave =
@@ -1134,6 +1208,13 @@ export class LeadUseCase implements ILeadUseCase {
         );
       }
 
+      if (data.customFields !== undefined && leadForDraft.teamId) {
+        await leadCustomFieldRepository.upsertValuesForLead(
+          id,
+          await this.buildCustomFieldUpsertEntries(leadForDraft.teamId, data.customFields)
+        );
+      }
+
       return new Output(
         true,
         [
@@ -1143,7 +1224,7 @@ export class LeadUseCase implements ILeadUseCase {
             : []),
         ],
         [],
-        this.transformToDTO(lead)
+        await this.attachCustomFieldsToDto(id, this.transformToDTO(lead))
       );
     } catch (error) {
       console.error("Erro ao atualizar lead:", error);
@@ -1607,6 +1688,20 @@ export class LeadUseCase implements ILeadUseCase {
             actorProfileId: profileInfo.id,
             actorName: actorLabel,
           }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
+        }
+
+        if (existingLead.status !== status) {
+          teamAutomationDispatcherService
+            .dispatch({
+              type: status === LeadStatus.no_show ? "meeting_no_show" : "status_changed",
+              teamId: existingLead.teamId,
+              leadId: id,
+              data: {
+                newStatus: status,
+                statusEnteredAt: lead.statusEnteredAt?.toISOString(),
+              },
+            })
+            .catch(console.error);
         }
       }
 
@@ -2150,6 +2245,44 @@ export class LeadUseCase implements ILeadUseCase {
     }
 
     return { ok: true, sanitizations: [...sanitizationByLeadId.values()] };
+  }
+
+  private async validateLeadCustomFieldsInput(
+    teamId: string,
+    customFields: Record<string, unknown>
+  ): Promise<Output | null> {
+    const definitions = await leadCustomFieldRepository.listActiveByTeamId(teamId);
+    const validation = validateLeadCustomFieldsPayload(
+      definitions.map(mapLeadCustomFieldDefinitionToDTO),
+      customFields,
+      true
+    );
+    if (!validation.success) {
+      return new Output(false, [], validation.errors, null);
+    }
+    return null;
+  }
+
+  private async buildCustomFieldUpsertEntries(
+    teamId: string,
+    customFields: Record<string, unknown>
+  ) {
+    const definitions = await leadCustomFieldRepository.listActiveByTeamId(teamId);
+    const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+    return Object.entries(customFields)
+      .filter(([key]) => definitionByKey.has(key))
+      .map(([key, value]) => ({
+        definitionId: definitionByKey.get(key)!.id,
+        value: value as never,
+      }));
+  }
+
+  private async attachCustomFieldsToDto(leadId: string, dto: LeadResponseDTO): Promise<LeadResponseDTO> {
+    const customFields = await leadCustomFieldService.getLeadCustomFieldValues(leadId);
+    if (customFields.length === 0) {
+      return dto;
+    }
+    return { ...dto, customFields };
   }
 
   private transformToDTO(lead: any, viewerProfileId?: string | null): LeadResponseDTO {

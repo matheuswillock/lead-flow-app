@@ -6,6 +6,7 @@ import {
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
+import { whatsAppLeadActivityService } from "@/app/api/services/whatsapp/WhatsAppLeadActivityService"
 import {
   resolveContactNameUpdate,
   type ContactNameSource,
@@ -42,6 +43,18 @@ class LinkConversationToLeadUseCase {
       const finalConversation = nameUpdate
         ? await whatsAppRepository.updateConversation(input.conversationId, nameUpdate)
         : updatedConversation
+
+      try {
+        await whatsAppLeadActivityService.recordConversationMilestone({
+          teamId: conversation.teamId,
+          leadId: input.leadId,
+          conversationId: input.conversationId,
+          milestone: "conversation_started",
+          preview: finalConversation.lastMessagePreview,
+        })
+      } catch (activityError) {
+        console.error("[LinkConversationToLeadUseCase][execute] Falha ao registrar atividade", activityError)
+      }
 
       return new Output(true, ["Conversa vinculada ao lead com sucesso"], [], finalConversation)
     } catch (error) {

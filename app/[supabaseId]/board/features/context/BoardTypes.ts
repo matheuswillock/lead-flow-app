@@ -50,6 +50,13 @@ export type Lead = {
   isLeadTimeBreached?: boolean;
   attachmentCount?: number;
   proposalReviewStatus?: LeadProposalReviewStatus | null;
+  customFields?: Array<{
+    key: string;
+    label: string;
+    type: string;
+    value: unknown;
+    isRequired: boolean;
+  }>;
   manager?: {
     id: string;
     fullName: string | null;

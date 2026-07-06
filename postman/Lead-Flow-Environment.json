@@ -122,6 +122,20 @@
       "description": "ID do time ativo para endpoints de integrações e webhook studio"
     },
     {
+      "key": "automationRuleId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma regra de automação (TeamAutomationRule)"
+    },
+    {
+      "key": "cronSecret",
+      "value": "",
+      "type": "secret",
+      "enabled": true,
+      "description": "Bearer token para rotas de cron (CRON_SECRET)"
+    },
+    {
       "key": "whatsappConfigId",
       "value": "",
       "type": "default",

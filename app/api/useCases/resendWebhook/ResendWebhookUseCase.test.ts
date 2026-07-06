@@ -1,37 +1,103 @@
-import { describe, expect, it } from "bun:test"
-import { ResendWebhookUseCase } from "./ResendWebhookUseCase"
+import { describe, expect, it, mock } from "bun:test"
 import type { ResendWebhookService } from "@/app/api/services/resend/ResendWebhookService"
-import { ResendDomainWebhookUseCase } from "./ResendDomainWebhookUseCase"
-import { Output } from "@/lib/output"
+
+const findByResendEmailIdMock = mock(async () => null)
+const queueOrphanEventMock = mock(async () => {})
+const processEmailLogWebhookMock = mock(async () => {})
+const applyResendWebhookEventMock = mock(async () => new (await import("@/lib/output")).Output(true, [], [], { handled: false }))
+
+mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
+  emailLogRepository: {
+    findByResendEmailId: findByResendEmailIdMock,
+  },
+}))
+
+mock.module("@/app/api/services/resend/EmailOrphanEventService", () => ({
+  emailOrphanEventService: {
+    queueOrphanEvent: queueOrphanEventMock,
+  },
+}))
+
+mock.module("@/app/api/useCases/backofficeEmailDispatch/BackofficeEmailDispatchUseCase", () => ({
+  backofficeEmailDispatchUseCase: {
+    applyResendWebhookEvent: applyResendWebhookEventMock,
+  },
+}))
+
+mock.module("@/app/api/services/cdp/CustomerDataPlatformService", () => ({
+  customerDataPlatformService: {
+    handleEmailWebhookEvent: mock(async () => {}),
+  },
+}))
+
+mock.module("@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase", () => ({
+  resendDomainWebhookUseCase: {
+    handle: mock(async () => new (await import("@/lib/output")).Output(true, [], [], { handled: true })),
+  },
+}))
+
+const { ResendWebhookUseCase } = await import("@/app/api/useCases/resendWebhook/ResendWebhookUseCase")
+
+function createWebhookService(): ResendWebhookService {
+  return {
+    mapEventType: (type: string) => {
+      if (type === "email.delivered") return "delivered"
+      if (type === "email.bounced") return "bounced"
+      return null
+    },
+    processEmailLogWebhook: processEmailLogWebhookMock,
+  }
+}
 
 describe("ResendWebhookUseCase", () => {
-  it("delega eventos domain.* para ResendDomainWebhookUseCase", async () => {
-    const originalHandle = ResendDomainWebhookUseCase.prototype.handle
-    ResendDomainWebhookUseCase.prototype.handle = async () =>
-      new Output(true, [], [], { handled: true, target: "team_domain" })
+  it("ignora evento sem email_id", async () => {
+    const useCase = new ResendWebhookUseCase(createWebhookService())
+    const output = await useCase.handle({
+      event: { type: "email.delivered", data: {} },
+    })
 
-    try {
-      const useCase = new ResendWebhookUseCase(
-        {
-          mapEventType: () => null,
-        } as unknown as ResendWebhookService
-      )
+    expect(output.isValid).toBe(true)
+    expect((output.result as { handled: boolean }).handled).toBe(false)
+  })
 
-      const result = await useCase.handle({
-        event: {
-          type: "domain.updated",
-          data: {
-            id: "dom_123",
-            created_at: new Date().toISOString(),
-            status: "verified",
-          },
+  it("enfileira órfão quando log não existe em evento de backfill", async () => {
+    queueOrphanEventMock.mockClear()
+    const useCase = new ResendWebhookUseCase(createWebhookService())
+    await useCase.handle({
+      event: {
+        type: "email.delivered",
+        data: {
+          email_id: "re_orphan",
+          created_at: new Date().toISOString(),
+          tags: { team_id: "team-1" },
         },
-      })
+      },
+      svixId: "svix-1",
+    })
 
-      expect(result.isValid).toBe(true)
-      expect(result.result).toMatchObject({ handled: true, target: "team_domain" })
-    } finally {
-      ResendDomainWebhookUseCase.prototype.handle = originalHandle
-    }
+    expect(queueOrphanEventMock).toHaveBeenCalled()
+  })
+
+  it("processa log existente sem enfileirar órfão", async () => {
+    queueOrphanEventMock.mockClear()
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-1",
+      teamId: "team-1",
+      recipientEmail: "a@test.com",
+      recipientName: null,
+      campaignId: null,
+    })
+
+    const useCase = new ResendWebhookUseCase(createWebhookService())
+    const output = await useCase.handle({
+      event: {
+        type: "email.delivered",
+        data: { email_id: "re_known", created_at: new Date().toISOString() },
+      },
+    })
+
+    expect(queueOrphanEventMock).not.toHaveBeenCalled()
+    expect(processEmailLogWebhookMock).toHaveBeenCalled()
+    expect((output.result as { handled: boolean }).handled).toBe(true)
   })
 })

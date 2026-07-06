@@ -159,6 +159,7 @@ const FEATURES: Array<{
   { slug: "crm-time-manage-teams",name: "Gerenciar Times",    accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 80, parentSlug: "crm", productSlug: "extra-team" },
   { slug: "crm-time-manage-users",name: "Gerenciar Usuários", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 90, parentSlug: "crm", productSlug: "extra-user" },
   { slug: "crm-wallet",           name: "Carteira",           accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 95, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-automations",      name: "Automações",         accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 96, parentSlug: "crm", productSlug: "crm" },
 
   // ── Email guarda-chuva ────────────────────────────────────────────────────
   { slug: "email",               name: "Email",     accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true,  inheritParentSettings: false, sortOrder: 100, productSlug: "email" },
@@ -318,6 +319,14 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "CLOSER", accessLevel: "FULL" },
   ]),
   "crm-wallet": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+    { principal: "OPERATOR", accessLevel: "NONE" },
+    { principal: "SDR", accessLevel: "NONE" },
+    { principal: "CLOSER", accessLevel: "NONE" },
+  ]),
+  "crm-automations": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },

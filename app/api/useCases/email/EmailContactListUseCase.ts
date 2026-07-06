@@ -166,6 +166,53 @@ export class EmailContactListUseCase {
         }
       }
 
+      const listIds = lists.map((list) => list.id)
+      const activeImportJobs =
+        listIds.length > 0
+          ? await prisma.emailImportJob.findMany({
+              where: {
+                teamId: ctx.teamId,
+                listId: { in: listIds },
+                status: { in: ["pending", "processing"] },
+              },
+              select: {
+                listId: true,
+                importId: true,
+                processedRows: true,
+                totalRows: true,
+                batchSize: true,
+              },
+              orderBy: { createdAt: "desc" },
+            })
+          : []
+
+      const activeImportByListId = new Map<
+        string,
+        {
+          importId: string
+          processedRows: number
+          totalRows: number
+          currentBatch: number
+          totalBatches: number
+        }
+      >()
+
+      for (const job of activeImportJobs) {
+        if (activeImportByListId.has(job.listId)) continue
+        const totalBatches = Math.max(1, Math.ceil(job.totalRows / job.batchSize))
+        const currentBatch = Math.min(
+          totalBatches,
+          Math.floor(job.processedRows / job.batchSize) + 1
+        )
+        activeImportByListId.set(job.listId, {
+          importId: job.importId,
+          processedRows: job.processedRows,
+          totalRows: job.totalRows,
+          currentBatch,
+          totalBatches,
+        })
+      }
+
       const normalizedLists = lists
         .map((list) => {
           const isDefault = list.id === defaultList.id || list.isSystemDefault
@@ -178,6 +225,7 @@ export class EmailContactListUseCase {
               ? activeDefaultContacts
               : (activeCountsByListId.get(list.id) ?? 0),
             isSystemDefault: isDefault,
+            activeImport: activeImportByListId.get(list.id) ?? null,
           }
         })
         .sort((a, b) => Number(b.isSystemDefault) - Number(a.isSystemDefault))

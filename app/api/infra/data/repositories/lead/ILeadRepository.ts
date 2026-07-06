@@ -124,4 +124,72 @@ export interface ILeadRepository {
     emails: string[],
     cnpjs: string[]
   ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }>>;
+  findDuplicateDirectMatches(
+    teamId: string,
+    input: { phone?: string; email?: string; excludeLeadId?: string; limit?: number }
+  ): Promise<LeadDuplicateCandidateRecord[]>;
+  findDuplicateScanCandidates(
+    teamId: string,
+    input: { hasPhone: boolean; hasEmail: boolean; excludeLeadId?: string; limit?: number }
+  ): Promise<LeadDuplicateCandidateRecord[]>;
+  getMergeRelationSnapshot(
+    targetLeadId: string,
+    sourceLeadId: string
+  ): Promise<LeadMergeRelationSnapshot>;
+  mergeLeadsInTransaction(input: LeadMergeTransactionInput): Promise<void>;
 }
+
+export type LeadDuplicateCandidateRecord = {
+  id: string;
+  leadCode: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  status: LeadStatus | null;
+  createdAt: Date;
+};
+
+export type LeadMergeRecord = Pick<
+  Lead,
+  | "id"
+  | "leadCode"
+  | "teamId"
+  | "isTransfer"
+  | "email"
+  | "phone"
+  | "cnpj"
+  | "razaoSocial"
+  | "age"
+  | "currentHealthPlan"
+  | "currentValue"
+  | "referenceHospital"
+  | "currentTreatment"
+  | "notes"
+  | "soldPlan"
+  | "ticket"
+  | "contractDueDate"
+  | "referrerName"
+  | "referrerPhone"
+  | "meetingTitle"
+  | "meetingNotes"
+  | "meetingLink"
+  | "meetingType"
+>;
+
+export type LeadMergeRelationSnapshot = {
+  targetPortfolio: boolean;
+  sourcePortfolio: boolean;
+  targetProposalReview: boolean;
+  sourceProposalReview: boolean;
+  targetSchedule: boolean;
+  sourceSchedule: boolean;
+};
+
+export type LeadMergeTransactionInput = {
+  targetLead: LeadMergeRecord;
+  sourceLead: LeadMergeRecord;
+  fillPatch: Prisma.LeadUpdateInput;
+  mergedByProfileId: string;
+  migratePortfolio: boolean;
+  migrateProposalReview: boolean;
+};

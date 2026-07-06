@@ -166,6 +166,22 @@ enum BackofficeWebhookTokenExpiryMode {
   @@map("backoffice_webhook_token_expiry_mode")
 }
 
+enum FilterPresetScope {
+  crm
+  performance
+  board
+  carteira
+
+  @@map("filter_preset_scope")
+}
+
+enum FilterPresetVisibility {
+  private
+  team
+
+  @@map("filter_preset_visibility")
+}
+
 enum TeamStatusRuleType {
   disabled_status
   lead_time
@@ -444,8 +460,36 @@ enum NotificationType {
   MEETING_FOLLOW_UP_DIGEST
   BETHANIA_AUTH_CODE
   EMAIL_IMPORT_COMPLETED
+  AUTOMATION_RULE
 
   @@map("notification_type")
+}
+
+enum TeamAutomationTriggerType {
+  lead_created
+  status_changed
+  lead_idle_in_status
+  meeting_scheduled
+  meeting_no_show
+
+  @@map("team_automation_trigger_type")
+}
+
+enum TeamAutomationActionType {
+  send_whatsapp_message
+  send_email
+  create_notification
+  assign_operator
+
+  @@map("team_automation_action_type")
+}
+
+enum TeamAutomationRunStatus {
+  success
+  failed
+  skipped
+
+  @@map("team_automation_run_status")
 }
 
 enum WebPushConsentStatus {
@@ -663,6 +707,8 @@ model Profile {
   updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
   createdTeamFilterPresets    TeamFilterPreset[]        @relation("TeamFilterPresetCreator")
   createdTeamStatusRules      TeamStatusRule[]          @relation("TeamStatusRuleCreator")
+  createdTeamAutomationRules  TeamAutomationRule[]      @relation("TeamAutomationRuleCreator")
+  createdLeadCustomFieldDefinitions LeadCustomFieldDefinition[] @relation("LeadCustomFieldDefinitionCreator")
   updatedLeadStatusTransitionFieldRules BackofficeLeadStatusTransitionFieldRule[] @relation("BackofficeLeadStatusTransitionFieldRuleUpdater")
   updatedLeadStatusTransitionGates BackofficeLeadStatusTransitionGate[] @relation("BackofficeLeadStatusTransitionGateUpdater")
   finalizedContracts          LeadFinalized[]           @relation("LeadFinalizedCloser")
@@ -712,6 +758,9 @@ model Profile {
   authorizedSponsorRecord       BackofficeAuthorizedSponsor?  @relation("AuthorizedSponsorProfile")
   authorizedSponsorsGranted     BackofficeAuthorizedSponsor[] @relation("AuthorizedSponsorGrantedBy")
   authorizedSponsorsRevoked     BackofficeAuthorizedSponsor[] @relation("AuthorizedSponsorRevokedBy")
+  operationalAccessGrants       BackofficeOperationalAccessGrant[] @relation("OperationalAccessProfile")
+  operationalAccessGrantsGranted BackofficeOperationalAccessGrant[] @relation("OperationalAccessGrantedBy")
+  operationalAccessGrantsRevoked BackofficeOperationalAccessGrant[] @relation("OperationalAccessRevokedBy")
   sponsoredAdhesions            BackofficeAdhesion[]          @relation("BackofficeAdhesionSponsorMaster")
 
   @@index([role])
@@ -831,6 +880,34 @@ model BackofficeAuthorizedSponsor {
 
   @@index([isActive], map: "backoffice_authorized_sponsors_is_active_idx")
   @@map("backoffice_authorized_sponsors")
+}
+
+enum BackofficeOperationalCapability {
+  ASSOCIADOS_QUEUE
+  MULTISKILL_TRANSFER_ORIGIN
+}
+
+model BackofficeOperationalAccessGrant {
+  id                 String                          @id @default(uuid()) @db.Uuid
+  capability         BackofficeOperationalCapability
+  profileId          String?                         @db.Uuid
+  teamId             String?                         @db.Uuid
+  isActive           Boolean                         @default(true)
+  notes              String?                         @db.Text
+  grantedByProfileId String?                         @db.Uuid
+  grantedAt          DateTime                        @default(now()) @db.Timestamptz(6)
+  revokedByProfileId String?                         @db.Uuid
+  revokedAt          DateTime?                       @db.Timestamptz(6)
+  createdAt          DateTime                        @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                        @updatedAt @db.Timestamptz(6)
+
+  profile   Profile? @relation("OperationalAccessProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  grantedBy Profile? @relation("OperationalAccessGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: SetNull)
+  revokedBy Profile? @relation("OperationalAccessRevokedBy", fields: [revokedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([capability, isActive], map: "backoffice_operational_access_grants_capability_active_idx")
+  @@map("backoffice_operational_access_grants")
 }
 
 model GoogleOAuthConnection {
@@ -1282,6 +1359,7 @@ model Lead {
   attachments   LeadAttachment[]
   proposalReview LeadProposalReview?
   requiredDocuments LeadRequiredDocument[]
+  customFieldValues LeadCustomFieldValue[]
 
   // WhatsApp relations
   whatsappConversations WhatsAppConversation[]
@@ -1624,6 +1702,9 @@ model Team {
   studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
   filterPresets            TeamFilterPreset[]
   statusRules              TeamStatusRule[]
+  automationRules          TeamAutomationRule[]
+  automationRunLogs        TeamAutomationRunLog[]
+  leadCustomFieldDefinitions LeadCustomFieldDefinition[]
   transferRoutesFrom       TeamTransferRoute[]          @relation("TeamTransferRouteFrom")
   transferRoutesTo         TeamTransferRoute[]          @relation("TeamTransferRouteTo")
   outboundLeadTransfers    LeadTransfer[]               @relation("LeadTransferFromTeam")
@@ -1661,6 +1742,7 @@ model Team {
   backofficeBotSessions   BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
+  operationalAccessGrants   BackofficeOperationalAccessGrant[]
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
 
   @@index([masterId])
@@ -1668,21 +1750,24 @@ model Team {
 }
 
 model TeamFilterPreset {
-  id          String    @id @default(uuid()) @db.Uuid
-  teamId      String    @db.Uuid
-  createdBy   String    @db.Uuid
-  name        String    @db.Text
-  description String?   @db.Text
+  id          String                 @id @default(uuid()) @db.Uuid
+  teamId      String                 @db.Uuid
+  createdBy   String                 @db.Uuid
+  name        String                 @db.Text
+  description String?                @db.Text
   queryJson   Json
-  lastUsedAt  DateTime? @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  scope       FilterPresetScope      @default(crm)
+  visibility  FilterPresetVisibility @default(private)
+  lastUsedAt  DateTime?              @db.Timestamptz(6)
+  createdAt   DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime               @updatedAt @db.Timestamptz(6)
 
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   creator Profile @relation("TeamFilterPresetCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([teamId, createdBy])
   @@index([teamId, lastUsedAt(sort: Desc)])
+  @@index([teamId, scope, visibility])
   @@map("corretor_studio_team_filter_presets")
 }
 
@@ -1707,6 +1792,96 @@ model TeamStatusRule {
   @@index([teamId, isEnabled])
   @@index([teamId, type, targetStatus, isEnabled])
   @@map("corretor_studio_team_status_rules")
+}
+
+enum LeadCustomFieldType {
+  text
+  number
+  date
+  select
+  multi_select
+  boolean
+}
+
+model LeadCustomFieldDefinition {
+  id           String              @id @default(uuid()) @db.Uuid
+  teamId       String              @db.Uuid
+  createdBy    String              @db.Uuid
+  key          String              @db.Text
+  label        String              @db.Text
+  type         LeadCustomFieldType
+  options      Json?
+  isRequired   Boolean             @default(false)
+  displayOrder Int                 @default(0)
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
+
+  team    Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator Profile                @relation("LeadCustomFieldDefinitionCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  values  LeadCustomFieldValue[]
+
+  @@unique([teamId, key])
+  @@index([teamId, isActive, displayOrder])
+  @@map("corretor_studio_lead_custom_field_definitions")
+}
+
+model LeadCustomFieldValue {
+  id           String   @id @default(uuid()) @db.Uuid
+  leadId       String   @db.Uuid
+  definitionId String   @db.Uuid
+  value        Json
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  lead       Lead                      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  definition LeadCustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+
+  @@unique([leadId, definitionId])
+  @@index([definitionId])
+  @@map("corretor_studio_lead_custom_field_values")
+}
+
+model TeamAutomationRule {
+  id            String                    @id @default(uuid()) @db.Uuid
+  teamId        String                    @db.Uuid
+  createdBy     String                    @db.Uuid
+  name          String                    @db.Text
+  description   String?                   @db.Text
+  triggerType   TeamAutomationTriggerType
+  triggerConfig Json
+  actionType    TeamAutomationActionType
+  actionConfig  Json
+  isEnabled     Boolean                   @default(true)
+  createdAt     DateTime                  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime                  @updatedAt @db.Timestamptz(6)
+
+  team    Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator Profile                @relation("TeamAutomationRuleCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  runLogs TeamAutomationRunLog[]
+
+  @@index([teamId, isEnabled])
+  @@index([teamId, triggerType, isEnabled])
+  @@map("corretor_studio_team_automation_rules")
+}
+
+model TeamAutomationRunLog {
+  id           String                  @id @default(uuid()) @db.Uuid
+  ruleId       String                  @db.Uuid
+  teamId       String                  @db.Uuid
+  leadId       String?                 @db.Uuid
+  dedupeKey    String                  @db.Text
+  status       TeamAutomationRunStatus
+  errorMessage String?                 @db.Text
+  payload      Json?
+  executedAt   DateTime                @default(now()) @db.Timestamptz(6)
+
+  rule TeamAutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  team Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, leadId, dedupeKey])
+  @@index([teamId, executedAt(sort: Desc)])
+  @@map("corretor_studio_team_automation_run_logs")
 }
 
 model TeamStudioWebhookConfig {
@@ -2156,6 +2331,7 @@ model EmailCampaignDispatch {
   totalBounced          Int                         @default(0)
   totalComplained       Int                         @default(0)
   status                EmailCampaignDispatchStatus @default(sending)
+  errorMessage          String?                     @map("errorMessage") @db.Text
   createdAt             DateTime                    @default(now()) @db.Timestamptz(6)
   updatedAt             DateTime                    @updatedAt @db.Timestamptz(6)
 
@@ -2740,6 +2916,7 @@ model TeamWhatsAppConfig {
   historySyncError       String?                  @db.Text
   usageLimitMonthly      Int                      @default(2000)
   billingEnabled     Boolean                  @default(true)
+  webhookConsecutiveFailures Int                @default(0)
   createdByProfileId String                   @db.Uuid
   updatedByProfileId String                   @db.Uuid
   createdAt          DateTime                 @default(now()) @db.Timestamptz(6)

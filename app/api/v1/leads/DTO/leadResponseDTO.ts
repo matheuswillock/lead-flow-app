@@ -1,4 +1,4 @@
-import type { LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadCustomFieldType, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export interface LeadResponseDTO {
   id: string;
@@ -50,6 +50,7 @@ export interface LeadResponseDTO {
   isLeadTimeBreached?: boolean;
   attachmentCount?: number;
   proposalReviewStatus?: LeadProposalReviewStatus | null;
+  customFields?: LeadCustomFieldValueResponseDTO[];
   manager?: {
     id: string;
     fullName: string | null;
@@ -68,6 +69,14 @@ export interface LeadResponseDTO {
     avatarUrl?: string | null;
   } | null;
   activities?: LeadActivityResponseDTO[];
+}
+
+export interface LeadCustomFieldValueResponseDTO {
+  key: string;
+  label: string;
+  type: LeadCustomFieldType;
+  value: unknown;
+  isRequired: boolean;
 }
 
 export interface LeadActivityResponseDTO {
@@ -100,10 +109,22 @@ export interface LeadListResponseDTO {
   totalPages: number;
 }
 
+export interface LeadDuplicateCandidateDTO {
+  id: string;
+  leadCode: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  status: LeadStatus | null;
+  createdAt: string;
+}
+
 export interface CreateLeadResponseDTO {
   success: boolean;
   lead: LeadResponseDTO | null;
   message: string;
+  requiresDuplicateConfirmation?: boolean;
+  duplicateCandidates?: LeadDuplicateCandidateDTO[];
 }
 
 export interface UpdateLeadResponseDTO {

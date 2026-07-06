@@ -1,3 +1,11 @@
+export type ContactListActiveImport = {
+  importId: string
+  processedRows: number
+  totalRows: number
+  currentBatch: number
+  totalBatches: number
+}
+
 export type ContactList = {
   id: string
   name: string
@@ -12,6 +20,7 @@ export type ContactList = {
     fullName: string | null
     email: string | null
   } | null
+  activeImport?: ContactListActiveImport | null
 }
 
 export type Contact = {

@@ -3,7 +3,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { LeadForm } from "@/components/forms/leadForm";
 import type { LeadFormSaveMode } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
-import { leadFormData } from "@/lib/validations/validationForms";
+import { useLeadCustomFieldDefinitions } from "@/hooks/useLeadCustomFieldDefinitions";
+import { buildLeadCustomFieldsSchema } from "@/lib/leadCustomFields/schema";
+import type { LeadFormWithCustomFields } from "@/hooks/useForms";
 import { isDraftLead } from "@/lib/lead-status";
 import { resolveActivityAuthor as resolveActivityAuthorFromLib } from "@/lib/lead-activities/resolveActivityAuthor";
 import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
@@ -15,7 +17,6 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent,
-  type ReactNode,
   type SyntheticEvent,
 } from "react";
 import { useLeads } from "@/hooks/useLeads";
@@ -24,7 +25,7 @@ import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ArrowRightLeft, Calendar, CheckCircle, ClipboardList, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
+import { ArrowRightLeft, CheckCircle, ClipboardList, Copy, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
@@ -47,7 +48,6 @@ import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -82,7 +82,6 @@ import {
   type MissingLeadField,
 } from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
 import {
-  formatIntimezone,
   parseLocalToUtc,
 } from "@/lib/dates";
 import {
@@ -93,6 +92,10 @@ import { mapLeadInfoPayloadForUpdate } from "@/lib/leadStatusTransitionFields";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
+import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timeline/LeadActivityTimeline";
+import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDuplicateWarningDialog";
+import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
+import type { LeadDuplicateCandidateDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 
 interface LeadDialogProps {
   open: boolean;
@@ -163,8 +166,6 @@ type LeadOriginBadge = {
   variant: "default" | "secondary" | "outline";
 };
 
-const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
-
 const normalizeLeadPhoneDigits = (phone: string): string => {
   if (!phone) return "";
   const numbers = phone.replace(/\D/g, "");
@@ -188,7 +189,6 @@ export default function LeadDialog({
   const [localLead, setLocalLead] = useState<Lead | null>(lead);
   const currentLead = localLead ?? lead;
   const currentLeadId = currentLead?.id ?? "";
-  const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
@@ -198,7 +198,7 @@ export default function LeadDialog({
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
   const [resendDialogOpen, setResendDialogOpen] = useState(false);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
-  const [_pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
+  const [_pendingSubmitData, setPendingSubmitData] = useState<LeadFormWithCustomFields | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [scheduleShareDialogOpen, setScheduleShareDialogOpen] = useState(false);
   const [scheduleShareUrl, setScheduleShareUrl] = useState("");
@@ -228,6 +228,14 @@ export default function LeadDialog({
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showTransferBetweenTeamsDialog, setShowTransferBetweenTeamsDialog] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateCandidates, setDuplicateCandidates] = useState<LeadDuplicateCandidateDTO[]>([]);
+  const [pendingDuplicateCreate, setPendingDuplicateCreate] = useState<{
+    data: CreateLeadRequest;
+    saveAsDraft: boolean;
+  } | null>(null);
+  const [duplicateConfirming, setDuplicateConfirming] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [isTransferToggling, setIsTransferToggling] = useState(false);
 
   useEffect(() => {
@@ -256,9 +264,17 @@ export default function LeadDialog({
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeTeam, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const { activeDefinitions: leadCustomFieldDefinitions } = useLeadCustomFieldDefinitions({
+    teamId: activeTeamId,
+    supabaseId,
+  });
+  const form = useLeadForm(leadCustomFieldDefinitions);
   const { hasAccess } = useFeatureAccess();
   const canTransferBetweenTeams =
     isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
+  const canMergeLead =
+    Boolean(currentLead) &&
+    (isTeamMaster || isManagerLikeRole(activeRole ?? user?.role ?? ""));
   const {
     details: leadDetails,
     loading: leadDetailsLoading,
@@ -749,29 +765,6 @@ export default function LeadDialog({
     }
   }, [mentionOpen, mentionIndex, mentionMatches.length]);
 
-  const renderActivityBodyWithMentions = (body: string) => {
-    if (!mentionRegex) return body;
-    const regex = new RegExp(mentionRegex.source, mentionRegex.flags);
-    const parts: ReactNode[] = [];
-    let lastIndex = 0;
-    for (const match of body.matchAll(regex)) {
-      const index = match.index ?? 0;
-      if (index > lastIndex) {
-        parts.push(body.slice(lastIndex, index));
-      }
-      parts.push(
-        <span key={`${index}-${match[0]}`} className="text-primary font-medium">
-          {match[0]}
-        </span>
-      );
-      lastIndex = index + match[0].length;
-    }
-    if (lastIndex < body.length) {
-      parts.push(body.slice(lastIndex));
-    }
-    return parts.length > 0 ? parts : body;
-  };
-
   const handleCopyLeadCode = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
@@ -909,21 +902,6 @@ export default function LeadDialog({
     }
   };
 
-  const formatActivityDate = (value: string) => {
-    try {
-      return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", scheduleTimezone)
-    } catch {
-      return value;
-    }
-  };
-
-  const getInitials = (name: string) => {
-    const words = name.trim().split(" ").filter(Boolean);
-    if (words.length === 0) return "LF";
-    if (words.length === 1) return words[0].charAt(0).toUpperCase();
-    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
-  };
-
   const activityTypeOptions = [
     { value: "note", label: "Comentário", icon: <MessageSquare className="h-4 w-4 text-primary" /> },
     { value: "call", label: "Ligação", icon: <Phone className="h-4 w-4 text-primary" /> },
@@ -931,54 +909,6 @@ export default function LeadDialog({
     { value: "email", label: "Email", icon: <Mail className="h-4 w-4 text-primary" /> },
     { value: "task", label: "Tarefa", icon: <ClipboardList className="h-4 w-4 text-primary" /> },
   ];
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case "call":
-        return <Phone className="h-4 w-4 text-primary" />;
-      case "whatsapp":
-        return <MessageCircle className="h-4 w-4 text-primary" />;
-      case "email":
-        return <Mail className="h-4 w-4 text-primary" />;
-      case "status_change":
-        return <CheckCircle className="h-4 w-4 text-primary" />;
-      case "task":
-        return <ClipboardList className="h-4 w-4 text-primary" />;
-      case "note":
-      default:
-        return <MessageSquare className="h-4 w-4 text-primary" />;
-    }
-  };
-
-  const getActivityLabel = (type: string) => {
-    switch (type) {
-      case "call":
-        return "Ligação";
-      case "whatsapp":
-        return "WhatsApp";
-      case "email":
-        return "Email";
-      case "status_change":
-        return "Status";
-      case "task":
-        return "Tarefa";
-      case "note":
-      default:
-        return "Comentário";
-    }
-  };
-
-  const isScheduleActivity = (activity: LeadActivityResponseDTO) => {
-    if (activity?.payload && typeof activity.payload === "object") {
-      const payload = activity.payload as { kind?: string };
-      if (payload.kind === "schedule") return true;
-    }
-    return (
-      activity.body?.startsWith("Agendamento") ||
-      activity.body?.startsWith("Reagendamento") ||
-      false
-    );
-  };
 
   const mergedActivities = useMemo(() => {
     const serverActivities = currentActivitiesLead?.activities || [];
@@ -1322,7 +1252,54 @@ export default function LeadDialog({
     }
   };
 
-  const transformToCreateRequest = (data: leadFormData, saveAsDraft: boolean): CreateLeadRequest => {
+  const handleConfirmDuplicateCreate = async () => {
+    if (!pendingDuplicateCreate || duplicateConfirming) return;
+
+    setDuplicateConfirming(true);
+    const loadingToast = toast.loading(
+      pendingDuplicateCreate.saveAsDraft
+        ? `Salvando rascunho "${pendingDuplicateCreate.data.name}"...`
+        : `Criando lead "${pendingDuplicateCreate.data.name}"...`
+    );
+
+    try {
+      const result = await createLead({
+        ...pendingDuplicateCreate.data,
+        confirmDuplicate: true,
+      });
+
+      if (result.success) {
+        toast.success(
+          pendingDuplicateCreate.saveAsDraft
+            ? `Rascunho "${pendingDuplicateCreate.data.name}" salvo com sucesso!`
+            : `Lead "${pendingDuplicateCreate.data.name}" criado com sucesso!`,
+          { id: loadingToast, duration: 4000 }
+        );
+        if (result.lead) {
+          form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
+          setLocalLead(result.lead as Lead);
+        }
+        await refreshLeads();
+        setDuplicateDialogOpen(false);
+        setPendingDuplicateCreate(null);
+        setDuplicateCandidates([]);
+      } else {
+        toast.error(result.message || "Erro ao criar lead", {
+          id: loadingToast,
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao criar lead", {
+        id: loadingToast,
+        duration: 5000,
+      });
+    } finally {
+      setDuplicateConfirming(false);
+    }
+  };
+
+  const transformToCreateRequest = (data: LeadFormWithCustomFields, saveAsDraft: boolean): CreateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
     return {
@@ -1352,10 +1329,14 @@ export default function LeadDialog({
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
       referrerPhone: data.referrerPhone || undefined,
+      customFields:
+        data.customFields && Object.keys(data.customFields).length > 0
+          ? data.customFields
+          : undefined,
     };
   };
 
-  const transformToUpdateRequest = (data: leadFormData, saveAsDraft: boolean): UpdateLeadRequest => {
+  const transformToUpdateRequest = (data: LeadFormWithCustomFields, saveAsDraft: boolean): UpdateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
     return {
@@ -1390,6 +1371,10 @@ export default function LeadDialog({
       referrerName: data.referrerName || undefined,
       referrerPhone: data.referrerPhone || undefined,
       saveAsDraft,
+      customFields:
+        data.customFields && Object.keys(data.customFields).length > 0
+          ? data.customFields
+          : undefined,
     };
   };
 
@@ -1511,8 +1496,17 @@ export default function LeadDialog({
     }
   };
 
-  const onSubmit = async (data: leadFormData, mode: LeadFormSaveMode = "full") => {
+  const onSubmit = async (data: LeadFormWithCustomFields, mode: LeadFormSaveMode = "full") => {
     const saveAsDraft = mode === "draft";
+    if (leadCustomFieldDefinitions.length > 0 && data.customFields) {
+      const customValidation = buildLeadCustomFieldsSchema(leadCustomFieldDefinitions).safeParse({
+        customFields: data.customFields,
+      });
+      if (!customValidation.success) {
+        toast.error(customValidation.error.issues[0]?.message || "Revise os campos personalizados");
+        return;
+      }
+    }
     setIsSubmitting(true);
 
     try {
@@ -1604,6 +1598,14 @@ export default function LeadDialog({
         try {
           const createData = transformToCreateRequest(data, saveAsDraft);
           const result = await createLead(createData);
+
+          if (result.requiresDuplicateConfirmation && result.duplicateCandidates?.length) {
+            setPendingDuplicateCreate({ data: createData, saveAsDraft });
+            setDuplicateCandidates(result.duplicateCandidates);
+            setDuplicateDialogOpen(true);
+            toast.dismiss(loadingToast);
+            return;
+          }
 
           if (result.success) {
             toast.success(
@@ -2332,6 +2334,9 @@ export default function LeadDialog({
         referrerLeadId: currentLead.referrerLeadId || "",
         referrerName: currentLead.referrerName || "",
         referrerPhone: currentLead.referrerPhone || "",
+        customFields: Object.fromEntries(
+          (currentLead.customFields ?? []).map((field) => [field.key, field.value])
+        ),
       });
     } else if (!currentLead && open) {
       form.reset({
@@ -2362,6 +2367,7 @@ export default function LeadDialog({
         referrerLeadId: "",
         referrerName: "",
         referrerPhone: "",
+        customFields: {},
       });
     }
   }, [currentLead, open, form]);
@@ -2540,6 +2546,24 @@ export default function LeadDialog({
                         </Tooltip>
                       </TooltipProvider>
                     )}
+                    {canMergeLead && currentLead && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setMergeDialogOpen(true)}
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Mesclar
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Mesclar com outro lead</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -2613,6 +2637,7 @@ export default function LeadDialog({
                       form={form}
                       onSubmit={onSubmit}
                       isLoading={isSubmitting}
+                      customFieldDefinitions={leadCustomFieldDefinitions}
                     healthPlanOptions={healthPlans}
                     healthPlanOptionsLoading={healthPlansLoading}
                     onCancel={() => setOpen(false)}
@@ -2712,167 +2737,19 @@ export default function LeadDialog({
                     <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
                   </div>
                 ) : (
-                  <div className="activity-scrollbar h-full min-h-0 overflow-y-auto pr-2">
-                    <div className="space-y-3">
-                      {mergedActivities.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground w-full">
-                          Nenhuma atividade registrada.
-                        </div>
-                      ) : (
-                        mergedActivities.map((activity) => {
-                          const taskPayload =
-                            activity.type === "task" && activity.payload && typeof activity.payload === "object"
-                              ? (activity.payload as {
-                                  kind?: string;
-                                  title?: string;
-                                  status?: string;
-                                  isUrgent?: boolean;
-                                  assigneeMentions?: Array<{ profileId?: string; label?: string }>;
-                                })
-                              : null;
-                          const taskTitle = taskPayload?.title?.trim() || "Sem título";
-                          const isTaskStatusUpdate = taskPayload?.kind === "task_status_update";
-                          const taskMentions = (taskPayload?.assigneeMentions ?? [])
-                            .map((entry) => entry?.label?.trim())
-                            .map((value) => (value && !value.startsWith("@") ? `@${value}` : value))
-                            .filter((value): value is string => Boolean(value));
-                          const taskAssignedText =
-                            taskMentions.length > 0
-                              ? `Nova task atribuída para ${taskMentions.join(", ")}`
-                              : "Nova task atribuída";
-                          const taskStatusText = taskPayload?.status === "DONE" ? "Task concluída" : "Status da task atualizado";
-                          const taskHeaderText = isTaskStatusUpdate ? taskStatusText : taskAssignedText;
-                          const authorName =
-                            activity.author?.fullName ||
-                            activity.author?.email ||
-                            "Sistema";
-                          const initials = getInitials(authorName);
-                          const fallbackEmail = activity.author?.email || "guest";
-                          const avatarSrc = activity.author?.avatarUrl || `https://avatar.vercel.sh/${fallbackEmail}.png`;
-                          const activityIcon = isScheduleActivity(activity)
-                            ? <Calendar className="h-4 w-4 text-primary" />
-                            : getActivityIcon(activity.type);
-                          const reactions = getReactionsForActivity(activity.id);
-                          return (
-                            <div
-                              key={activity.id}
-                              ref={(node) => {
-                                if (node) {
-                                  activityItemRefs.current.set(activity.id, node);
-                                } else {
-                                  activityItemRefs.current.delete(activity.id);
-                                }
-                              }}
-                              className={cn(
-                                "rounded-lg border border-border/60 bg-background/60 p-3 w-77 max-w-full mr-auto transition-colors",
-                                highlightedActivityId === activity.id
-                                  ? "ring-2 ring-primary/50 bg-primary/5"
-                                  : ""
-                              )}
-                            >
-                              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center-safe">
-                                <Avatar className="h-6 w-6 rounded-lg border border-border/60">
-                                  <AvatarImage src={avatarSrc} />
-                                  <AvatarFallback className="rounded-lg text-[10px]">
-                                    {initials || "LF"}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex items-start justify-between gap-2">
-                                  <span className="text-sm font-medium text-foreground">
-                                    {authorName}
-                                  </span>
-                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                                    <span>{formatActivityDate(activity.createdAt)}</span>
-                                    <span className="inline-flex items-center">
-                                      {activityIcon}
-                                      <span className="sr-only">{getActivityLabel(activity.type)}</span>
-                                    </span>
-                                  </div>
-                                </div>
-                              {activity.type === "task" ? (
-                                <div className="col-span-2 flex flex-col gap-1">
-                                  <p className="text-xs font-medium text-primary">{taskHeaderText}</p>
-                                  <p className="text-sm font-semibold text-foreground">{taskTitle}</p>
-                                  {taskPayload?.isUrgent ? (
-                                    <Badge variant="destructive" className="w-fit">
-                                      Urgente
-                                    </Badge>
-                                  ) : null}
-                                  {activity.body && (
-                                    <p className="text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
-                                      {renderActivityBodyWithMentions(activity.body)}
-                                    </p>
-                                  )}
-                                </div>
-                              ) : activity.body ? (
-                                <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
-                                  {renderActivityBodyWithMentions(activity.body)}
-                                </p>
-                              ) : null}
-                                {(reactions.length > 0 || canReactToActivity) && (
-                                  <div className="col-span-2 flex flex-wrap items-center gap-2">
-                                    {reactions.map((reaction) => (
-                                      <button
-                                        key={`${activity.id}-${reaction.unified}`}
-                                        type="button"
-                                        className={cn(
-                                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition",
-                                          reaction.reactedByMe
-                                            ? "border-primary/40 bg-primary/15 text-primary"
-                                            : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground"
-                                        )}
-                                        onClick={() =>
-                                          handleToggleReaction(activity.id, reaction.emoji, reaction.unified)
-                                        }
-                                        disabled={!canReactToActivity}
-                                      >
-                                        <span>{reaction.emoji}</span>
-                                        <span>{reaction.count}</span>
-                                      </button>
-                                    ))}
-                                    {canReactToActivity && (
-                                      <Popover
-                                        open={reactionPickerOpenId === activity.id}
-                                        onOpenChange={(open) =>
-                                          setReactionPickerOpenId(open ? activity.id : null)
-                                        }
-                                      >
-                                        <PopoverTrigger asChild>
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 px-2 text-[11px]"
-                                          >
-                                            <Smile className="mr-1 h-3.5 w-3.5" />
-                                            Reagir
-                                          </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0" align="start" side="top">
-                                          <EmojiPicker
-                                            onEmojiClick={(emojiData: EmojiPickerData) => {
-                                              if (!emojiData?.emoji || !emojiData?.unified) return;
-                                              handleToggleReaction(activity.id, emojiData.emoji, emojiData.unified);
-                                              setReactionPickerOpenId(null);
-                                            }}
-                                            reactionsDefaultOpen
-                                            reactions={DEFAULT_REACTION_UNIFIEDS}
-                                            emojiStyle={EmojiStyle.NATIVE}
-                                            theme={Theme.DARK}
-                                            lazyLoadEmojis
-                                          />
-                                        </PopoverContent>
-                                      </Popover>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
+                  <LeadActivityTimeline
+                    activities={mergedActivities}
+                    supabaseId={supabaseId ?? ""}
+                    scheduleTimezone={scheduleTimezone}
+                    highlightedActivityId={highlightedActivityId}
+                    activityItemRefs={activityItemRefs}
+                    canReactToActivity={canReactToActivity}
+                    reactionPickerOpenId={reactionPickerOpenId}
+                    onReactionPickerOpenChange={setReactionPickerOpenId}
+                    onToggleReaction={handleToggleReaction}
+                    getReactionsForActivity={getReactionsForActivity}
+                    mentionRegex={mentionRegex}
+                  />
                 )}
               </div>
 
@@ -3343,6 +3220,34 @@ export default function LeadDialog({
           }}
         />
       )}
+
+      {currentLead && activeTeamId && supabaseId && (
+        <LeadMergeDialog
+          open={mergeDialogOpen}
+          onOpenChange={setMergeDialogOpen}
+          targetLead={currentLead}
+          supabaseId={supabaseId}
+          teamId={activeTeamId}
+          onMerged={async () => {
+            await refreshLeads();
+            setOpen(false);
+          }}
+        />
+      )}
+
+      <LeadDuplicateWarningDialog
+        open={duplicateDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setDuplicateDialogOpen(nextOpen);
+          if (!nextOpen) {
+            setPendingDuplicateCreate(null);
+            setDuplicateCandidates([]);
+          }
+        }}
+        candidates={duplicateCandidates}
+        isConfirming={duplicateConfirming}
+        onConfirm={() => void handleConfirmDuplicateCreate()}
+      />
 
       <Dialog open={scheduleShareDialogOpen} onOpenChange={setScheduleShareDialogOpen}>
         <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-xl">

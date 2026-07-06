@@ -16,6 +16,7 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
   "/performance": FEATURE_SLUGS.CRM_PERFORMANCE,
   "/pme-simulador": FEATURE_SLUGS.CRM_SIMULATOR,
   "/carteira": FEATURE_SLUGS.CRM_WALLET,
+  "/automations": FEATURE_SLUGS.CRM_AUTOMATIONS,
   "/teams": FEATURE_SLUGS.CRM_TIME_MANAGE_TEAMS,
   "/manager-users": FEATURE_SLUGS.CRM_TIME_MANAGE_USERS,
   "/integrations": FEATURE_SLUGS.CONFIGURATION,

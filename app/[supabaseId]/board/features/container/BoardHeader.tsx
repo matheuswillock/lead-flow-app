@@ -15,9 +15,18 @@ import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
+import { LeadsFilterPresetsSheet } from "@/app/[supabaseId]/components/leads-filters/LeadsFilterPresetsSheet";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useUser } from "@/app/context/UserContext";
+import { isManagerLikeRole } from "@/lib/roles";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import {
+  areBoardFiltersEqual,
+  boardPresetDescriptionLabel,
+  normalizeBoardPresetFilters,
+  type BoardFiltersState,
+} from "../utils/boardPresetFilters";
 
 const LEAD_CARD_OPTIONS: { key: LeadCardField; label: string }[] = [
   { key: "name", label: "Nome" },
@@ -66,6 +75,8 @@ export default function BoardHeader({
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const { user } = useUser();
+  const isManager = isManagerLikeRole(activeRole ?? undefined);
   const canAddLead =
     !activeFunctions.includes("CLOSER") ||
     isTeamMaster ||
@@ -75,6 +86,67 @@ export default function BoardHeader({
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [presets, setPresets] = useState<BoardFiltersState[]>([]);
+
+  const lastPresetStorageKey = useMemo(() => {
+    if (!supabaseId || !activeTeamId) return null;
+    return `board:last-used-preset:${supabaseId}:${activeTeamId}`;
+  }, [supabaseId, activeTeamId]);
+
+  const memberNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of [...sdrMembers, ...closerMembers]) {
+      map.set(member.id, member.name || member.email);
+    }
+    return map;
+  }, [closerMembers, sdrMembers]);
+
+  const currentBoardFilters = useMemo<BoardFiltersState>(
+    () => ({
+      query,
+      assignedUsers,
+      statusFilter,
+      closerFilter,
+      onlyMeetingsHeld,
+      onlyTransfer,
+      periodStart,
+      periodEnd,
+    }),
+    [
+      assignedUsers,
+      closerFilter,
+      onlyMeetingsHeld,
+      onlyTransfer,
+      periodEnd,
+      periodStart,
+      query,
+      statusFilter,
+    ]
+  );
+
+  const isPresetInUse = useMemo(
+    () =>
+      presets.some((preset) => areBoardFiltersEqual(preset, currentBoardFilters)),
+    [currentBoardFilters, presets]
+  );
+
+  const applyBoardFilters = (filters: BoardFiltersState) => {
+    setQuery(filters.query);
+    setAssignedUsers(filters.assignedUsers);
+    setStatusFilter(filters.statusFilter);
+    setCloserFilter(filters.closerFilter);
+    setOnlyMeetingsHeld(filters.onlyMeetingsHeld);
+    setOnlyTransfer(filters.onlyTransfer);
+    setPeriodStart(filters.periodStart);
+    setPeriodEnd(filters.periodEnd);
+    if (!filters.periodStart) {
+      setDateRange(undefined);
+      return;
+    }
+    const from = new Date(filters.periodStart);
+    const to = filters.periodEnd ? new Date(filters.periodEnd) : undefined;
+    setDateRange({ from, to });
+  };
 
   const totalLeads = Object.values(data).flat().length;
 
@@ -258,6 +330,22 @@ export default function BoardHeader({
             title="Data de Criação"
             value={dateRange}
             onChange={handleDateChange}
+          />
+          <LeadsFilterPresetsSheet
+            scope="board"
+            supabaseId={supabaseId}
+            profileId={user?.id}
+            teamId={activeTeamId}
+            isManager={isManager}
+            currentFilters={currentBoardFilters}
+            isPresetActive={isPresetInUse}
+            lastPresetStorageKey={lastPresetStorageKey}
+            normalizePresetFilters={normalizeBoardPresetFilters}
+            areFiltersEqual={areBoardFiltersEqual}
+            presetDescriptionLabel={boardPresetDescriptionLabel}
+            onApplyFilters={applyBoardFilters}
+            getCreatorName={(id) => memberNameById.get(id)}
+            onPresetsChange={(items) => setPresets(items.map((p) => p.queryJson))}
           />
           {isFiltered && (
             <Button variant="ghost" className="h-8 px-2 lg:px-3" onClick={clearFilters}>

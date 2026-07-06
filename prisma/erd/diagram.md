@@ -152,6 +152,22 @@ indeterminate indeterminate
     
 
 
+        filter_preset_scope {
+            crm crm
+performance performance
+board board
+carteira carteira
+        }
+    
+
+
+        filter_preset_visibility {
+            private private
+team team
+        }
+    
+
+
         TeamStatusRuleType {
             disabled_status disabled_status
 lead_time lead_time
@@ -442,6 +458,34 @@ LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
 MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
 BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
 EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
+AUTOMATION_RULE AUTOMATION_RULE
+        }
+    
+
+
+        team_automation_trigger_type {
+            lead_created lead_created
+status_changed status_changed
+lead_idle_in_status lead_idle_in_status
+meeting_scheduled meeting_scheduled
+meeting_no_show meeting_no_show
+        }
+    
+
+
+        team_automation_action_type {
+            send_whatsapp_message send_whatsapp_message
+send_email send_email
+create_notification create_notification
+assign_operator assign_operator
+        }
+    
+
+
+        team_automation_run_status {
+            success success
+failed failed
+skipped skipped
         }
     
 
@@ -565,6 +609,24 @@ complained complained
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
+        }
+    
+
+
+        BackofficeOperationalCapability {
+            ASSOCIADOS_QUEUE ASSOCIADOS_QUEUE
+MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
+        }
+    
+
+
+        LeadCustomFieldType {
+            text text
+number number
+date date
+select select
+multi_select multi_select
+boolean boolean
         }
     
 
@@ -882,6 +944,18 @@ failed failed
     DateTime grantedAt 
     DateTime revokedAt "❓"
     String notes "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_operational_access_grants" {
+    String id "🗝️"
+    BackofficeOperationalCapability capability 
+    Boolean isActive 
+    String notes "❓"
+    DateTime grantedAt 
+    DateTime revokedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1356,6 +1430,8 @@ failed failed
     String name 
     String description "❓"
     Json queryJson 
+    FilterPresetScope scope 
+    FilterPresetVisibility visibility 
     DateTime lastUsedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -1374,6 +1450,53 @@ failed failed
     Boolean isEnabled 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_lead_custom_field_definitions" {
+    String id "🗝️"
+    String key 
+    String label 
+    LeadCustomFieldType type 
+    Json options "❓"
+    Boolean isRequired 
+    Int displayOrder 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_lead_custom_field_values" {
+    String id "🗝️"
+    Json value 
+    DateTime updatedAt 
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_team_automation_rules" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    TeamAutomationTriggerType triggerType 
+    Json triggerConfig 
+    TeamAutomationActionType actionType 
+    Json actionConfig 
+    Boolean isEnabled 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_automation_run_logs" {
+    String id "🗝️"
+    String leadId "❓"
+    String dedupeKey 
+    TeamAutomationRunStatus status 
+    String errorMessage "❓"
+    Json payload "❓"
+    DateTime executedAt 
     }
   
 
@@ -1634,6 +1757,7 @@ failed failed
     Int totalBounced 
     Int totalComplained 
     EmailCampaignDispatchStatus status 
+    String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1941,6 +2065,7 @@ failed failed
     String historySyncError "❓"
     Int usageLimitMonthly 
     Boolean billingEnabled 
+    Int webhookConsecutiveFailures 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2238,6 +2363,11 @@ failed failed
     "backoffice_authorized_sponsors" |o--|| corretor_studio_profiles : "profile"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
+    "backoffice_operational_access_grants" |o--|| "BackofficeOperationalCapability" : "enum:capability"
+    "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "profile"
+    "backoffice_operational_access_grants" }o--|o corretor_studio_teams : "team"
+    "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "grantedBy"
+    "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -2327,6 +2457,8 @@ failed failed
     "corretor_studio_pending_operators" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_pending_operators" }o--|o corretor_studio_teams : "team"
     "corretor_studio_teams" }o--|| corretor_studio_profiles : "master"
+    "corretor_studio_team_filter_presets" |o--|| "FilterPresetScope" : "enum:scope"
+    "corretor_studio_team_filter_presets" |o--|| "FilterPresetVisibility" : "enum:visibility"
     "corretor_studio_team_filter_presets" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_filter_presets" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_team_status_rules" |o--|| "TeamStatusRuleType" : "enum:type"
@@ -2335,6 +2467,18 @@ failed failed
     "corretor_studio_team_status_rules" |o--|o "TeamLeadTimeUnit" : "enum:leadTimeUnit"
     "corretor_studio_team_status_rules" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_status_rules" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_lead_custom_field_definitions" |o--|| "LeadCustomFieldType" : "enum:type"
+    "corretor_studio_lead_custom_field_definitions" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_lead_custom_field_definitions" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_lead_custom_field_values" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_custom_field_values" }o--|| corretor_studio_lead_custom_field_definitions : "definition"
+    "corretor_studio_team_automation_rules" |o--|| "TeamAutomationTriggerType" : "enum:triggerType"
+    "corretor_studio_team_automation_rules" |o--|| "TeamAutomationActionType" : "enum:actionType"
+    "corretor_studio_team_automation_rules" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_automation_rules" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_automation_run_logs" |o--|| "TeamAutomationRunStatus" : "enum:status"
+    "corretor_studio_team_automation_run_logs" }o--|| corretor_studio_team_automation_rules : "rule"
+    "corretor_studio_team_automation_run_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" |o--|| "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
     "corretor_studio_team_studio_webhook_configs" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" }o--|| corretor_studio_profiles : "updatedBy"

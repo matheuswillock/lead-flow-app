@@ -821,7 +821,42 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"João Silva\",\n  \"email\": \"joao.silva@email.com\",\n  \"phone\": \"(11) 99999-9999\",\n  \"cnpj\": \"12.345.678/0001-90\",\n  \"age\": 45,\n  \"hasHealthPlan\": true,\n  \"currentValue\": 2500.00,\n  \"referenceHospital\": \"Hospital São Paulo\",\n  \"currentTreatment\": \"Cardiologia\",\n  \"meetingDate\": \"2025-09-20T14:00:00.000Z\",\n  \"notes\": \"Cliente interessado em plano familiar\",\n  \"status\": \"new_opportunity\"\n}"
+                  "raw": "{\n  \"name\": \"João Silva\",\n  \"email\": \"joao.silva@email.com\",\n  \"phone\": \"(11) 99999-9999\",\n  \"cnpj\": \"12.345.678/0001-90\",\n  \"age\": 45,\n  \"hasHealthPlan\": true,\n  \"currentValue\": 2500.00,\n  \"referenceHospital\": \"Hospital São Paulo\",\n  \"currentTreatment\": \"Cardiologia\",\n  \"meetingDate\": \"2025-09-20T14:00:00.000Z\",\n  \"notes\": \"Cliente interessado em plano familiar\",\n  \"status\": \"new_opportunity\",\n  \"confirmDuplicate\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "1b. Criar Lead (confirmar duplicado)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"João Silva Duplicado\",\n  \"email\": \"joao.silva@email.com\",\n  \"phone\": \"(11) 99999-9999\",\n  \"status\": \"new_opportunity\",\n  \"confirmDuplicate\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/leads",
@@ -1143,6 +1178,43 @@
                     "leads",
                     "{{leadId}}",
                     "assign"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "6b. Mesclar Leads",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sourceLeadId\": \"{{sourceLeadId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/merge",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads",
+                    "{{leadId}}",
+                    "merge"
                   ]
                 }
               }
@@ -6759,6 +6831,162 @@
                       "mode": "raw",
                       "raw": "{\"disabledStatuses\":[],\"leadTimeRules\":[],\"combinedRules\":[]}"
                     }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/automations",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "automations"]
+                    },
+                    "description": "Lista regras de automação do time"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/teams/{{teamId}}/automations",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "automations"]
+                    },
+                    "description": "Cria regra de automação",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"name\":\"Notificar novo lead\",\"triggerType\":\"lead_created\",\"triggerConfig\":{},\"actionType\":\"create_notification\",\"actionConfig\":{\"messageTemplate\":\"Novo lead: {{lead.name}}\"}}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PATCH /api/v1/teams/{{teamId}}/automations/{{automationRuleId}}",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}"]
+                    },
+                    "description": "Atualiza regra de automação",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"name\":\"Notificar novo lead (atualizado)\"}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "DELETE /api/v1/teams/{{teamId}}/automations/{{automationRuleId}}",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}"]
+                    },
+                    "description": "Remove regra de automação"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/teams/{{teamId}}/automations/{{automationRuleId}}/toggle",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}/toggle",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}", "toggle"]
+                    },
+                    "description": "Habilita ou desabilita regra de automação",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"isEnabled\":true}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/automations/{{automationRuleId}}/runs",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}/runs?page=1&pageSize=20",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}", "runs"],
+                      "query": [
+                        { "key": "page", "value": "1" },
+                        { "key": "pageSize", "value": "20" }
+                      ]
+                    },
+                    "description": "Lista execuções de uma regra de automação"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/automations/cron/evaluate-idle",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{cronSecret}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/automations/cron/evaluate-idle",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "automations", "cron", "evaluate-idle"]
+                    },
+                    "description": "Cron: avalia leads ociosos para automações"
                   },
                   "response": []
                 },

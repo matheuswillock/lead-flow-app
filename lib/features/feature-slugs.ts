@@ -11,6 +11,7 @@ export const FEATURE_SLUGS = {
   CRM_TIME_MANAGE_TEAMS: "crm-time-manage-teams",
   CRM_TIME_MANAGE_USERS: "crm-time-manage-users",
   CRM_WALLET: "crm-wallet",
+  CRM_AUTOMATIONS: "crm-automations",
   EMAIL: "email",
   EMAIL_TEMPLATES: "email-templates",
   EMAIL_CONTACTS: "email-contacts",

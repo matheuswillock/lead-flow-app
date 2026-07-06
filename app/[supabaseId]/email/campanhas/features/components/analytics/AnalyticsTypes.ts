@@ -37,6 +37,7 @@ export type DispatchAnalyticsItem = {
   totalBounced: number
   totalComplained: number
   status: DispatchAnalyticsStatus
+  errorMessage?: string | null
   rates: AnalyticsData["rates"]
 }
 
