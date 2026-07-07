@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import {
   publicLeadFormSchema,
   type PublicLeadFormData,
 } from "@/lib/validations/publicLeadFormSchema";
+import { buildLeadCustomFieldsSchema } from "@/lib/leadCustomFields/schema";
 import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import { LeadFormSkeleton } from "@/app/lead-form/components/LeadFormSkeleton";
 import { SchedulingSection } from "./SchedulingSection";
@@ -30,6 +31,7 @@ import { normalizeLeadPhoneDigits, unmask } from "@/lib/masks";
 import { parseCurrencyValue } from "@/lib/lead-form-utils";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import { LeadAdditionalNotesField } from "@/components/forms/fields/LeadAdditionalNotesField";
+import { LeadCustomFieldsSection } from "@/components/forms/fields/LeadCustomFieldsSection";
 import { LeadAgeField } from "@/components/forms/fields/LeadAgeField";
 import { LeadCnpjField } from "@/components/forms/fields/LeadCnpjField";
 import { LeadRazaoSocialField } from "@/components/forms/fields/LeadRazaoSocialField";
@@ -40,6 +42,7 @@ import { LeadNameField } from "@/components/forms/fields/LeadNameField";
 import { LeadOngoingTreatmentField } from "@/components/forms/fields/LeadOngoingTreatmentField";
 import { LeadPhoneField } from "@/components/forms/fields/LeadPhoneField";
 import { LeadReferenceHospitalField } from "@/components/forms/fields/LeadReferenceHospitalField";
+import type { LeadFormWithCustomFields } from "@/hooks/useForms";
 import {
   getPendingRequiredFieldsFeedback,
   LEAD_REQUIRED_FIELD_ORDER,
@@ -62,232 +65,35 @@ const parseExtraGuests = (value: string | undefined): string[] => {
 
 const fieldSelectTriggerClassName = "";
 
+type PublicLeadFormWithCustomFields = PublicLeadFormData & {
+  customFields?: Record<string, unknown>;
+};
+
+const emptyFormValues: PublicLeadFormWithCustomFields = {
+  name: "",
+  phone: "",
+  email: "",
+  cnpj: "",
+  razaoSocial: "",
+  age: "",
+  currentHealthPlan: "",
+  currentValue: "",
+  referenceHospital: "",
+  ongoingTreatment: "",
+  additionalNotes: "",
+  responsible: "",
+  extraGuests: "",
+  customFields: {},
+};
+
 export function PublicLeadForm() {
   const {
-    teamName,
     bootstrapStatus,
     bootstrapError,
-    healthPlans,
-    healthPlansLoading,
-    closers,
-    sdrs,
-    guestCandidates,
-    hasTransferTargets,
-    isSubmitting,
     isSubmitted,
-    submitLead,
     retryBootstrap,
     resetForm,
   } = usePublicLeadFormContext();
-
-  const [submitting, setSubmitting] = useState(false);
-  const [isTransfer, setIsTransfer] = useState(false);
-  const lastInvalidHashRef = useRef<string>("");
-  const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
-    threshold: 0.2,
-  });
-
-  const [closerId, setCloserId] = useState("");
-  const [meetingDate, setMeetingDate] = useState<Date | undefined>();
-  const [meetingTitle, setMeetingTitle] = useState("");
-  const [meetingNotes, setMeetingNotes] = useState("");
-
-  const form = useForm<PublicLeadFormData>({
-    resolver: zodResolver(publicLeadFormSchema),
-    mode: "onChange",
-    defaultValues: {
-      name: "",
-      phone: "",
-      email: "",
-      cnpj: "",
-      razaoSocial: "",
-      age: "",
-      currentHealthPlan: "",
-      currentValue: "",
-      referenceHospital: "",
-      ongoingTreatment: "",
-      additionalNotes: "",
-      responsible: "",
-      extraGuests: "",
-    },
-  });
-
-  const watchedValues = form.watch();
-  const watchedName = form.watch("name");
-  const watchedResponsible = form.watch("responsible");
-  const watchedExtraGuests = form.watch("extraGuests") || "";
-  const extraGuestsError =
-    typeof form.formState.errors.extraGuests?.message === "string"
-      ? form.formState.errors.extraGuests.message
-      : null;
-
-  useEffect(() => {
-    if (!watchedResponsible && sdrs.length === 1) {
-      form.setValue("responsible", sdrs[0].id, { shouldValidate: true });
-    }
-  }, [watchedResponsible, sdrs, form]);
-
-  const handleExtraGuestsChange = useCallback(
-    (value: string) => {
-      form.setValue("extraGuests", value, { shouldDirty: true, shouldValidate: true });
-    },
-    [form]
-  );
-
-  const submitFormData = useCallback(
-    async (data: PublicLeadFormData, saveAsDraft: boolean) => {
-      if (submitting || isSubmitting) return;
-      if (!saveAsDraft && isTransfer && !meetingDate) {
-        toast.error("Selecione uma data para o pré-agendamento da transferência.");
-        return;
-      }
-      setSubmitting(true);
-
-      try {
-        const hasMeeting = !saveAsDraft && !!(closerId && meetingDate && meetingTitle.trim());
-        const hasPreSchedule = !saveAsDraft && isTransfer && !!meetingDate;
-        const guests = parseExtraGuests(data.extraGuests);
-
-        const result = await submitLead({
-          name: data.name,
-          email: data.email ?? "",
-          phone: normalizeLeadPhoneDigits(data.phone || ""),
-          cnpj: data.cnpj ? unmask(data.cnpj) : undefined,
-          age: data.age ?? "",
-          currentHealthPlan: data.currentHealthPlan ?? "",
-          currentValue: data.currentValue ? parseCurrencyValue(data.currentValue) ?? undefined : undefined,
-          referenceHospital: data.referenceHospital ?? "",
-          currentTreatment: data.ongoingTreatment ?? "",
-          notes: data.additionalNotes || undefined,
-          assignedTo: data.responsible,
-          closerId: hasMeeting ? closerId : undefined,
-          meetingDate: hasPreSchedule
-            ? meetingDate.toISOString()
-            : hasMeeting
-              ? meetingDate.toISOString()
-              : undefined,
-          meetingTitle: hasPreSchedule
-            ? `Estudo Plano de Saúde: ${data.name}`
-            : hasMeeting
-              ? meetingTitle.trim()
-              : undefined,
-          meetingNotes: hasMeeting && meetingNotes ? meetingNotes : undefined,
-          extraGuests: hasMeeting && guests.length > 0 ? guests : undefined,
-          isTransfer: isTransfer || undefined,
-          saveAsDraft,
-        });
-
-        if (result.isValid) {
-          const message =
-            result.successMessages[0] ||
-            (saveAsDraft ? "Rascunho salvo com sucesso!" : "Lead cadastrado com sucesso!");
-          toast.success(message);
-          if (result.successMessages.some((item) => item.includes("não foi possível consultar a razão social"))) {
-            toast.warning("Lead salvo, mas não foi possível consultar a razão social.");
-          }
-          form.reset({
-            name: "",
-            phone: "",
-            email: "",
-            cnpj: "",
-            razaoSocial: "",
-            age: "",
-            currentHealthPlan: "",
-            currentValue: "",
-            referenceHospital: "",
-            ongoingTreatment: "",
-            additionalNotes: "",
-            responsible: "",
-            extraGuests: "",
-          });
-          setCloserId("");
-          setMeetingDate(undefined);
-          setMeetingTitle("");
-          setMeetingNotes("");
-          setIsTransfer(false);
-        } else {
-          const errorMsg = result.errorMessages[0] || "Erro ao cadastrar lead";
-          toast.error(errorMsg);
-        }
-      } catch (error) {
-        console.error("[PublicLeadFormContainer] Erro ao submeter:", error);
-        toast.error("Erro ao cadastrar lead. Tente novamente.");
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [submitting, isSubmitting, closerId, meetingDate, meetingTitle, meetingNotes, isTransfer, submitLead, form]
-  );
-
-  const handleInvalidSubmit = useCallback(async () => {
-    if (submitting || isSubmitting) return;
-
-    await form.trigger();
-    const feedback = getPendingRequiredFieldsFeedback(
-      publicLeadFormSchema,
-      form.getValues(),
-      LEAD_REQUIRED_FIELD_ORDER
-    );
-
-    if (!feedback.hasPendingFields) return;
-    if (feedback.hash === lastInvalidHashRef.current) return;
-
-    lastInvalidHashRef.current = feedback.hash;
-    toast.error(feedback.message);
-
-    if (feedback.firstPendingField) {
-      try {
-        form.setFocus(feedback.firstPendingField);
-      } catch {
-        // Some custom controls (e.g. Select) may not expose focus refs.
-      }
-    }
-  }, [form, isSubmitting, submitting]);
-
-  const runSubmit = useCallback(
-    (saveAsDraft: boolean) => {
-      void form.handleSubmit(
-        (data) => submitFormData(data, saveAsDraft),
-        () => {
-          void handleInvalidSubmit();
-        }
-      )();
-    },
-    [form, handleInvalidSubmit, submitFormData]
-  );
-
-  const isLoading = submitting || isSubmitting;
-  const isSchemaValid = publicLeadFormSchema.safeParse(watchedValues).success;
-  const hasManualBlockingErrors = Object.values(form.formState.errors).some((error) => {
-    return (error as { type?: string } | undefined)?.type === "manual";
-  });
-  const isTransferWithoutMeetingDate = isTransfer && !meetingDate;
-  const isDraftDisabled =
-    isLoading || sdrs.length === 0 || !isSchemaValid || hasManualBlockingErrors;
-  const isSaveDisabled = isDraftDisabled || isTransferWithoutMeetingDate;
-
-  useEffect(() => {
-    if (isSchemaValid) {
-      lastInvalidHashRef.current = "";
-    }
-  }, [isSchemaValid]);
-
-  useEffect(() => {
-    if (!hasReachedFormEnd) return;
-    if (!form.formState.isDirty) return;
-    if (isSubmitted) return;
-    if (isSchemaValid) return;
-    if (isLoading) return;
-
-    void handleInvalidSubmit();
-  }, [
-    form.formState.isDirty,
-    handleInvalidSubmit,
-    hasReachedFormEnd,
-    isSchemaValid,
-    isLoading,
-    isSubmitted,
-  ]);
 
   if (bootstrapStatus === "loading") {
     return <LeadFormSkeleton />;
@@ -338,6 +144,234 @@ export function PublicLeadForm() {
       </div>
     );
   }
+
+  return <PublicLeadFormReady />;
+}
+
+function PublicLeadFormReady() {
+  const {
+    teamName,
+    healthPlans,
+    healthPlansLoading,
+    closers,
+    sdrs,
+    guestCandidates,
+    hasTransferTargets,
+    customFieldDefinitions,
+    isSubmitting,
+    isSubmitted,
+    submitLead,
+  } = usePublicLeadFormContext();
+
+  const [submitting, setSubmitting] = useState(false);
+  const [isTransfer, setIsTransfer] = useState(false);
+  const lastInvalidHashRef = useRef<string>("");
+  const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
+    threshold: 0.2,
+  });
+
+  const [closerId, setCloserId] = useState("");
+  const [meetingDate, setMeetingDate] = useState<Date | undefined>();
+  const [meetingTitle, setMeetingTitle] = useState("");
+  const [meetingNotes, setMeetingNotes] = useState("");
+
+  const formSchema = useMemo(() => {
+    if (customFieldDefinitions.length === 0) {
+      return publicLeadFormSchema;
+    }
+    return publicLeadFormSchema.merge(buildLeadCustomFieldsSchema(customFieldDefinitions));
+  }, [customFieldDefinitions]);
+
+  const resolver = useMemo(() => zodResolver(formSchema), [formSchema]);
+
+  const form = useForm<PublicLeadFormWithCustomFields>({
+    resolver,
+    mode: "onChange",
+    defaultValues: emptyFormValues,
+  });
+
+  useEffect(() => {
+    if (customFieldDefinitions.length === 0) return;
+
+    const merged: Record<string, unknown> = {};
+    for (const definition of customFieldDefinitions) {
+      if (definition.type === "boolean") {
+        merged[definition.key] = false;
+      } else if (definition.type === "multi_select") {
+        merged[definition.key] = [];
+      } else {
+        merged[definition.key] = "";
+      }
+    }
+    form.setValue("customFields", merged, { shouldDirty: false, shouldValidate: false });
+  }, [customFieldDefinitions, form]);
+
+  const watchedValues = form.watch();
+  const watchedName = form.watch("name");
+  const watchedResponsible = form.watch("responsible");
+  const watchedExtraGuests = form.watch("extraGuests") || "";
+  const extraGuestsError =
+    typeof form.formState.errors.extraGuests?.message === "string"
+      ? form.formState.errors.extraGuests.message
+      : null;
+
+  useEffect(() => {
+    if (!watchedResponsible && sdrs.length === 1) {
+      form.setValue("responsible", sdrs[0].id, { shouldValidate: true });
+    }
+  }, [watchedResponsible, sdrs, form]);
+
+  const handleExtraGuestsChange = useCallback(
+    (value: string) => {
+      form.setValue("extraGuests", value, { shouldDirty: true, shouldValidate: true });
+    },
+    [form]
+  );
+
+  const submitFormData = useCallback(
+    async (data: PublicLeadFormWithCustomFields, saveAsDraft: boolean) => {
+      if (submitting || isSubmitting) return;
+      if (!saveAsDraft && isTransfer && !meetingDate) {
+        toast.error("Selecione uma data para o pré-agendamento da transferência.");
+        return;
+      }
+      setSubmitting(true);
+
+      try {
+        const hasMeeting = !saveAsDraft && !!(closerId && meetingDate && meetingTitle.trim());
+        const hasPreSchedule = !saveAsDraft && isTransfer && !!meetingDate;
+        const guests = parseExtraGuests(data.extraGuests);
+
+        const result = await submitLead({
+          name: data.name,
+          email: data.email ?? "",
+          phone: normalizeLeadPhoneDigits(data.phone || ""),
+          cnpj: data.cnpj ? unmask(data.cnpj) : undefined,
+          age: data.age ?? "",
+          currentHealthPlan: data.currentHealthPlan ?? "",
+          currentValue: data.currentValue ? parseCurrencyValue(data.currentValue) ?? undefined : undefined,
+          referenceHospital: data.referenceHospital ?? "",
+          currentTreatment: data.ongoingTreatment ?? "",
+          notes: data.additionalNotes || undefined,
+          assignedTo: data.responsible,
+          closerId: hasMeeting ? closerId : undefined,
+          meetingDate: hasPreSchedule
+            ? meetingDate.toISOString()
+            : hasMeeting
+              ? meetingDate.toISOString()
+              : undefined,
+          meetingTitle: hasPreSchedule
+            ? `Estudo Plano de Saúde: ${data.name}`
+            : hasMeeting
+              ? meetingTitle.trim()
+              : undefined,
+          meetingNotes: hasMeeting && meetingNotes ? meetingNotes : undefined,
+          extraGuests: hasMeeting && guests.length > 0 ? guests : undefined,
+          isTransfer: isTransfer || undefined,
+          saveAsDraft,
+          customFields:
+            data.customFields && Object.keys(data.customFields).length > 0
+              ? data.customFields
+              : undefined,
+        });
+
+        if (result.isValid) {
+          const message =
+            result.successMessages[0] ||
+            (saveAsDraft ? "Rascunho salvo com sucesso!" : "Lead cadastrado com sucesso!");
+          toast.success(message);
+          if (result.successMessages.some((item) => item.includes("não foi possível consultar a razão social"))) {
+            toast.warning("Lead salvo, mas não foi possível consultar a razão social.");
+          }
+          form.reset(emptyFormValues);
+          setCloserId("");
+          setMeetingDate(undefined);
+          setMeetingTitle("");
+          setMeetingNotes("");
+          setIsTransfer(false);
+        } else {
+          const errorMsg = result.errorMessages[0] || "Erro ao cadastrar lead";
+          toast.error(errorMsg);
+        }
+      } catch (error) {
+        console.error("[PublicLeadFormContainer] Erro ao submeter:", error);
+        toast.error("Erro ao cadastrar lead. Tente novamente.");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [submitting, isSubmitting, closerId, meetingDate, meetingTitle, meetingNotes, isTransfer, submitLead, form]
+  );
+
+  const handleInvalidSubmit = useCallback(async () => {
+    if (submitting || isSubmitting) return;
+
+    await form.trigger();
+    const feedback = getPendingRequiredFieldsFeedback(
+      formSchema,
+      form.getValues(),
+      LEAD_REQUIRED_FIELD_ORDER
+    );
+
+    if (!feedback.hasPendingFields) return;
+    if (feedback.hash === lastInvalidHashRef.current) return;
+
+    lastInvalidHashRef.current = feedback.hash;
+    toast.error(feedback.message);
+
+    if (feedback.firstPendingField) {
+      try {
+        form.setFocus(feedback.firstPendingField);
+      } catch {
+        // Some custom controls (e.g. Select) may not expose focus refs.
+      }
+    }
+  }, [form, formSchema, isSubmitting, submitting]);
+
+  const runSubmit = useCallback(
+    (saveAsDraft: boolean) => {
+      void form.handleSubmit(
+        (data) => submitFormData(data, saveAsDraft),
+        () => {
+          void handleInvalidSubmit();
+        }
+      )();
+    },
+    [form, handleInvalidSubmit, submitFormData]
+  );
+
+  const isLoading = submitting || isSubmitting;
+  const isSchemaValid = formSchema.safeParse(watchedValues).success;
+  const hasManualBlockingErrors = Object.values(form.formState.errors).some((error) => {
+    return (error as { type?: string } | undefined)?.type === "manual";
+  });
+  const isTransferWithoutMeetingDate = isTransfer && !meetingDate;
+  const isDraftDisabled =
+    isLoading || sdrs.length === 0 || !isSchemaValid || hasManualBlockingErrors;
+  const isSaveDisabled = isDraftDisabled || isTransferWithoutMeetingDate;
+
+  useEffect(() => {
+    if (isSchemaValid) {
+      lastInvalidHashRef.current = "";
+    }
+  }, [isSchemaValid]);
+
+  useEffect(() => {
+    if (!hasReachedFormEnd) return;
+    if (!form.formState.isDirty) return;
+    if (isSubmitted) return;
+    if (isSchemaValid) return;
+    if (isLoading) return;
+
+    void handleInvalidSubmit();
+  }, [
+    form.formState.isDirty,
+    handleInvalidSubmit,
+    hasReachedFormEnd,
+    isSchemaValid,
+    isLoading,
+    isSubmitted,
+  ]);
 
   return (
     <div className="flex min-h-screen items-start justify-center bg-background p-4 pt-8">
@@ -432,6 +466,17 @@ export function PublicLeadForm() {
 
                 <LeadOngoingTreatmentField control={form.control} disabled={isLoading} />
                 <LeadAdditionalNotesField control={form.control} disabled={isLoading} />
+
+                {customFieldDefinitions.length > 0 ? (
+                  <div className="flex flex-col gap-4">
+                    <Separator />
+                    <h3 className="text-sm font-semibold text-foreground">Campos personalizados</h3>
+                    <LeadCustomFieldsSection
+                      form={form as import("react-hook-form").UseFormReturn<LeadFormWithCustomFields>}
+                      definitions={customFieldDefinitions}
+                    />
+                  </div>
+                ) : null}
               </div>
 
               {isTransfer && (
@@ -568,4 +613,3 @@ export function PublicLeadForm() {
     </div>
   );
 }
-

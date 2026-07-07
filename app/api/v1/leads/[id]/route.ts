@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { LeadRepository } from "../../../infra/data/repositories/lead/LeadRepository";
 import { LeadUseCase } from "../../../useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "../../../useCases/profiles/ProfileUseCase";
@@ -250,6 +250,14 @@ export async function PUT(
     const output = await leadUseCase.updateLead(supabaseId, id, validatedData);
     if (output.isValid) {
       invalidateLeadCache({ leadId: id, teamId });
+
+      const updated = output.result as { cnpj?: string | null; razaoSocial?: string | null } | null;
+      if (validatedData.cnpj !== undefined && updated?.cnpj && !updated?.razaoSocial) {
+        after(async () => {
+          await leadUseCase.enrichLeadRazaoSocial(id, updated.cnpj as string);
+          invalidateLeadCache({ leadId: id, teamId });
+        });
+      }
     }
     const status = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status });

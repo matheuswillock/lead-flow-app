@@ -10,6 +10,10 @@ import {
   readWebhookHeaderSecret,
 } from "@/lib/whatsapp/webhook-header-auth"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import {
+  recordWhatsAppWebhookProcessingFailure,
+  recordWhatsAppWebhookProcessingSuccess,
+} from "@/lib/whatsapp/whatsapp-webhook-failure-alert"
 
 export const maxDuration = 60
 
@@ -73,6 +77,12 @@ export async function POST(
       if (!retryable) {
         return NextResponse.json({ processed: false, errors: output.errorMessages }, { status: 200 })
       }
+      await recordWhatsAppWebhookProcessingFailure({
+        configId: config.id,
+        teamId: config.teamId,
+        eventType,
+        errors: output.errorMessages,
+      })
       Sentry.captureMessage("[WhatsAppEvoWebhookRoute] processing failed", {
         level: "error",
         tags: { route: "WhatsAppEvoWebhookRoute", phase: "process" },
@@ -81,9 +91,19 @@ export async function POST(
       return NextResponse.json({ error: "Processing failed", errors: output.errorMessages }, { status: 500 })
     }
 
+    await recordWhatsAppWebhookProcessingSuccess(config.id)
+
     return NextResponse.json({ processed: true }, { status: 200 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
+    await recordWhatsAppWebhookProcessingFailure({
+      configId: config.id,
+      teamId: config.teamId,
+      eventType,
+      cause: error instanceof Error ? error.message : "unknown",
+    }).catch((recordError) => {
+      console.error("[WhatsAppEvoWebhookRoute][POST] Falha ao registrar streak de webhook", recordError)
+    })
     Sentry.captureException(error, {
       tags: { route: "WhatsAppEvoWebhookRoute", phase: "process" },
       extra: { teamId: config.teamId, eventType, providerMessageId },

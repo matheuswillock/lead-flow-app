@@ -114,6 +114,15 @@ export interface IWhatsAppRepository {
    */
   claimHistorySyncSlot(configId: string): Promise<boolean>
 
+  incrementWebhookConsecutiveFailures(configId: string): Promise<{
+    webhookConsecutiveFailures: number
+    instanceName: string
+    phoneNumber: string | null
+    status: string
+  }>
+
+  resetWebhookConsecutiveFailures(configId: string): Promise<void>
+
   // Conversations
   findOrCreateConversation(params: {
     teamId: string

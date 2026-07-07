@@ -106,10 +106,13 @@ export const useLeads = () => {
       // Transform API response to DTO format expected by frontend
       const result: CreateLeadResponseDTO = {
         success: apiResult.isValid,
-        lead: apiResult.result,
+        lead: apiResult.isValid ? apiResult.result : null,
         message: apiResult.isValid 
           ? apiResult.successMessages?.join(', ') || 'Lead criado com sucesso'
-          : apiResult.errorMessages?.join(', ') || 'Erro ao criar lead'
+          : apiResult.errorMessages?.join(', ') || 'Erro ao criar lead',
+        requiresDuplicateConfirmation:
+          apiResult.result?.requiresDuplicateConfirmation === true,
+        duplicateCandidates: apiResult.result?.duplicateCandidates,
       };
       
       console.info('[useLeads] Transformed result:', result);

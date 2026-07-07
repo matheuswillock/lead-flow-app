@@ -37,6 +37,10 @@ import {
     toCurrencyStorageValue,
 } from "@/lib/lead-form-utils";
 import { LeadAdditionalNotesField } from "./fields/LeadAdditionalNotesField";
+import { LeadCustomFieldsSection } from "./fields/LeadCustomFieldsSection";
+import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
+import type { LeadFormWithCustomFields } from "@/hooks/useForms";
+import { Separator } from "@/components/ui/separator";
 import { LeadAgeField } from "./fields/LeadAgeField";
 import { LeadCnpjField } from "./fields/LeadCnpjField";
 import { LeadRazaoSocialField } from "./fields/LeadRazaoSocialField";
@@ -61,8 +65,8 @@ const formatCurrencyNumber = (value: number): string =>
 export type LeadFormSaveMode = "full" | "draft";
 
 export interface ILeadFormProps {
-    form: UseFormReturn<leadFormData>;
-    onSubmit: (data: leadFormData, mode: LeadFormSaveMode) => void | Promise<void>;
+    form: UseFormReturn<LeadFormWithCustomFields>;
+    onSubmit: (data: LeadFormWithCustomFields, mode: LeadFormSaveMode) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
     supabaseId?: string;
@@ -114,6 +118,7 @@ export interface ILeadFormProps {
     isFullSaveDisabled?: boolean;
     fullSaveDisabledReason?: string;
     isCloserSelectDisabled?: boolean;
+    customFieldDefinitions?: LeadCustomFieldDefinitionDTO[];
 }
 
 export function LeadForm({
@@ -158,6 +163,7 @@ export function LeadForm({
     closersLoading,
     closersError,
     isCloserSelectDisabled = false,
+    customFieldDefinitions = [],
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -508,6 +514,17 @@ export function LeadForm({
             <LeadReferenceHospitalField control={form.control} disabled={isLoading || isUpdating} />
             <LeadOngoingTreatmentField control={form.control} disabled={isLoading || isUpdating} />
             <LeadAdditionalNotesField control={form.control} disabled={isLoading || isUpdating} />
+
+            {customFieldDefinitions.length > 0 ? (
+                <div className="sm:col-span-2 flex flex-col gap-4">
+                    <Separator />
+                    <h3 className="text-sm font-semibold text-foreground">Campos personalizados</h3>
+                    <LeadCustomFieldsSection
+                        form={form as import("react-hook-form").UseFormReturn<LeadFormWithCustomFields>}
+                        definitions={customFieldDefinitions}
+                    />
+                </div>
+            ) : null}
 
             <div className="sm:col-span-2 pt-4 border-t">
                 <div className="flex flex-col gap-1">

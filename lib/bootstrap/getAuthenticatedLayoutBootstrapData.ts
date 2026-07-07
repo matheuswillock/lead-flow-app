@@ -8,6 +8,8 @@ import { SubscriptionRepository } from "@/app/api/infra/data/repositories/subscr
 import { SubscriptionCheckService } from "@/app/api/services/SubscriptionCheck/SubscriptionCheckService";
 import { CheckSubscriptionUseCase } from "@/app/api/useCases/subscriptions/CheckSubscriptionUseCase";
 import { featureAccessUseCase } from "@/app/api/useCases/featureAccess/FeatureAccessUseCase";
+import { meOperationalAccessUseCase } from "@/app/api/useCases/meOperationalAccess/MeOperationalAccessUseCase";
+import type { OperationalAccessInitialData } from "@/app/context/OperationalAccessContext";
 import { GET as getTeamsRouteHandler } from "@/app/api/v1/teams/route";
 import type { UserData } from "@/app/context/UserContext";
 import type { TeamSummary } from "@/app/context/TeamContext";
@@ -31,6 +33,7 @@ export type AuthenticatedLayoutBootstrapData = {
   teams: TeamSummary[] | null;
   activeTeamId: string | null;
   featureAccess: LayoutFeatureAccessBootstrap | null;
+  operationalAccess: OperationalAccessInitialData | null;
 };
 
 type SubscriptionCheckResult = {
@@ -151,9 +154,21 @@ export async function getAuthenticatedLayoutBootstrapData(
     const activeTeam = teamsPayload?.teams.find((team) => team.id === activeTeamId) ?? null;
     const managerId = activeTeam?.masterId ?? user.managerId ?? user.id;
 
-    const [subscriptionCheck, featureAccess] = await Promise.all([
+    const [subscriptionCheck, featureAccess, operationalAccessResult] = await Promise.all([
       fetchSubscriptionCheck(user),
       fetchFeatureAccess(user, activeTeamId, managerId),
+      meOperationalAccessUseCase.resolve(user.id, activeTeamId).then((output) =>
+        output.isValid && output.result
+          ? {
+              ...(output.result as {
+                associadosQueue: boolean;
+                multiskillTransferOrigin: boolean;
+              }),
+              profileId: user.id,
+              teamId: activeTeamId,
+            }
+          : null
+      ),
     ]);
 
     return {
@@ -165,6 +180,7 @@ export async function getAuthenticatedLayoutBootstrapData(
       teams: teamsPayload?.teams ?? null,
       activeTeamId,
       featureAccess,
+      operationalAccess: operationalAccessResult,
     };
   } catch (error) {
     console.error("[LayoutBootstrap] Erro no bootstrap server-side:", error);

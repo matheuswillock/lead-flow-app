@@ -21,6 +21,9 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
   const [guestCandidates, setGuestCandidates] = useState<GuestCandidateOption[]>([]);
   const [timezone, setTimezone] = useState(DEFAULT_TZ);
   const [hasTransferTargets, setHasTransferTargets] = useState(false);
+  const [customFieldDefinitions, setCustomFieldDefinitions] = useState<
+    import("@/lib/leadCustomFields/types").LeadCustomFieldDefinitionDTO[]
+  >([]);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("loading");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
@@ -70,6 +73,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         setGuestCandidates(bootstrapData.guestCandidates);
         setTimezone(bootstrapData.timezone);
         setHasTransferTargets(bootstrapData.hasTransferTargets);
+        setCustomFieldDefinitions(bootstrapData.customFieldDefinitions);
         setBootstrapStatus("ready");
       } catch (error) {
         if (bootstrapInFlightKeyRef.current !== requestKey) {
@@ -83,6 +87,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         setGuestCandidates([]);
         setTimezone(DEFAULT_TZ);
         setHasTransferTargets(false);
+        setCustomFieldDefinitions([]);
         setBootstrapStatus("error");
         setBootstrapError(
           error instanceof Error ? error.message : "Erro ao carregar dados iniciais do formulário."
@@ -232,6 +237,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
     guestCandidates,
     timezone,
     hasTransferTargets,
+    customFieldDefinitions,
     availableTimes,
     availabilityLoading,
     preScheduleOccupiedSlots,

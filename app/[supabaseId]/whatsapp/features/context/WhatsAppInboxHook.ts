@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { useUserContext } from '@/app/context/UserContext'
@@ -140,6 +141,9 @@ const teamMembersInFlightByKey = new Map<string, Promise<TeamMember[]>>()
 export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions {
   const { activeTeamId, activeTeam, isTeamMaster } = useTeamContext()
   const { user } = useUserContext()
+  const searchParams = useSearchParams()
+  const deepLinkConversationId = searchParams.get('conversationId')
+  const appliedDeepLinkConversationIdRef = useRef<string | null>(null)
 
   const [config, setConfig] = useState<WhatsAppConfig | null>(null)
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([])
@@ -663,6 +667,18 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     },
     [loadMessages, activeTeamId, supabaseId, teamMembers.length]
   )
+
+  useEffect(() => {
+    if (!deepLinkConversationId) {
+      appliedDeepLinkConversationIdRef.current = null
+      return
+    }
+    if (appliedDeepLinkConversationIdRef.current === deepLinkConversationId) return
+    if (!conversations.some((conversation) => conversation.id === deepLinkConversationId)) return
+
+    appliedDeepLinkConversationIdRef.current = deepLinkConversationId
+    selectConversation(deepLinkConversationId)
+  }, [deepLinkConversationId, conversations, selectConversation])
 
   const loadOlderMessages = useCallback(() => {
     if (!selectedConversationId || isLoadingOlderMessages) return

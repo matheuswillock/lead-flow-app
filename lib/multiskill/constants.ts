@@ -1,1 +1,1 @@
-export const MULTISKILL_MASTER_EMAIL = "bruno@onsidemarketing.com.br";
+export const MULTISKILL_TEAM_NAME = "MultiSkill";

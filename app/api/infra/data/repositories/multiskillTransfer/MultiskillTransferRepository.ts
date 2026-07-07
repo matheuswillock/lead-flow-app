@@ -40,7 +40,7 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
   }
 
   async listTransferTargets(input: {
-    multiskillMasterId: string;
+    originMasterId: string;
     query?: string;
     page: number;
     pageSize: number;
@@ -86,7 +86,7 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
     const where: Prisma.ProfileWhereInput = {
       isMaster: true,
       multiskillEnabled: true,
-      id: { not: input.multiskillMasterId },
+      id: { not: input.originMasterId },
       ...(searchFilter ?? {}),
     };
 

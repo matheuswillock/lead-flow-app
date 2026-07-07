@@ -25,6 +25,10 @@ import {
 import { syncWhatsAppHistoryUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsAppHistoryUseCase"
 import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsappMessageToCdpUseCase"
 import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
+import {
+  shouldRecordConversationReopened,
+  whatsAppLeadActivityService,
+} from "@/app/api/services/whatsapp/WhatsAppLeadActivityService"
 import { Prisma, type WhatsAppConnectionStatus, type WhatsAppMessageStatus } from "@prisma/client"
 import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
 import { extractProviderEventId } from "@/lib/whatsapp/extract-provider-event-id"
@@ -254,6 +258,14 @@ class ProcessEvoWebhookUseCase {
       }
 
       if (messageCreated) {
+        await this.maybeRecordConversationReopened({
+          teamId: routed.teamId,
+          conversation,
+          fromMe,
+          now,
+          preview,
+        })
+
         await this.applyConversationSideEffects({
           conversationId: conversation.id,
           conversationContactName: conversation.contactName,
@@ -336,6 +348,33 @@ class ProcessEvoWebhookUseCase {
           console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Auto-response failed", autoResponseError)
         }
       }
+    }
+  }
+
+  private async maybeRecordConversationReopened(input: {
+    teamId: string
+    conversation: Pick<WhatsAppConversationSelect, "id" | "leadId" | "lastMessageAt">
+    fromMe: boolean
+    now: Date
+    preview: string | null
+  }): Promise<void> {
+    if (input.fromMe || !input.conversation.leadId) return
+    if (!shouldRecordConversationReopened(input.conversation.lastMessageAt, input.now)) return
+
+    try {
+      await whatsAppLeadActivityService.recordConversationMilestone({
+        teamId: input.teamId,
+        leadId: input.conversation.leadId,
+        conversationId: input.conversation.id,
+        milestone: "conversation_reopened",
+        preview: input.preview,
+        reopenedAt: input.now,
+      })
+    } catch (activityError) {
+      console.error(
+        "[ProcessEvoWebhookUseCase][maybeRecordConversationReopened] Falha ao registrar atividade",
+        activityError
+      )
     }
   }
 

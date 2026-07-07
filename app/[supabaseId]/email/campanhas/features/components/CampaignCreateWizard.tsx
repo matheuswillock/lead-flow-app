@@ -23,9 +23,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { CircleHelp } from "lucide-react"
+import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatIntimezone, formatLocalInputValue, parseLocalToUtc } from "@/lib/dates"
+import { formatIntimezone } from "@/lib/dates"
 import type { ContactList } from "../context/CampanhasTypes"
 
 function formatContactListLabel(list: ContactList): string {
@@ -59,7 +60,6 @@ export function CampaignCreateWizard() {
     handleCreateCampaign,
   } = useCampanhasContext()
 
-  const minDateTime = formatLocalInputValue(new Date(), tz)
   const selectedList = contactLists.find((list) => list.id === wizardContactListId)
   const selectedSegment = cdpSegments.find((segment) => segment.slug === wizardCdpSegmentSlug)
   const recipientCount =
@@ -233,19 +233,18 @@ export function CampaignCreateWizard() {
               .
             </p>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="wizard-schedule">Agendamento</Label>
-              <Input
-                id="wizard-schedule"
-                type="datetime-local"
-                min={minDateTime}
-                value={wizardScheduledAt}
-                onChange={(e) => setWizardScheduledAt(e.target.value)}
+              <DateTimePicker
+                date={wizardScheduledAt}
+                onDateChange={setWizardScheduledAt}
+                label="Agendamento"
                 disabled={wizardCreating}
+                disablePastDates
+                tz={tz}
               />
               <p className="text-xs text-muted-foreground">
                 {wizardScheduledAt
                   ? `Será disparada em ${formatIntimezone(
-                      parseLocalToUtc(wizardScheduledAt, tz),
+                      wizardScheduledAt,
                       "dd/MM/yyyy HH:mm",
                       tz
                     )}`

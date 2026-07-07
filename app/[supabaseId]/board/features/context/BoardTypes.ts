@@ -1,4 +1,4 @@
-import type { LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadCustomFieldType, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export type Lead = {
   id: string;
@@ -50,6 +50,13 @@ export type Lead = {
   isLeadTimeBreached?: boolean;
   attachmentCount?: number;
   proposalReviewStatus?: LeadProposalReviewStatus | null;
+  customFields?: Array<{
+    key: string;
+    label: string;
+    type: LeadCustomFieldType;
+    value: unknown;
+    isRequired: boolean;
+  }>;
   manager?: {
     id: string;
     fullName: string | null;

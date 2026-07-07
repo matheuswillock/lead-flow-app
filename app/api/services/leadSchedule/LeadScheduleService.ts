@@ -5,6 +5,7 @@ import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSc
 import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 import { emailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
 import { Output } from "@/lib/output";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
@@ -840,6 +841,18 @@ export class LeadScheduleService implements ILeadScheduleService {
       attemptedAt: inviteDispatchLastAttemptAt.toISOString(),
       error: inviteDispatchLastError,
     };
+
+    teamAutomationDispatcherService
+      .dispatch({
+        type: "meeting_scheduled",
+        teamId,
+        leadId,
+        data: {
+          scheduleId: persisted.schedule.id,
+          meetingDate: meetingDate.toISOString(),
+        },
+      })
+      .catch(console.error);
 
     return new Output(
       true,

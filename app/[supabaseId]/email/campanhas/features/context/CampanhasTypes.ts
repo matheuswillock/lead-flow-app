@@ -70,7 +70,7 @@ export type CampanhasState = {
   wizardContactListId: string
   wizardRecipientSource: "contact_list" | "cdp_segment"
   wizardCdpSegmentSlug: string
-  wizardScheduledAt: string
+  wizardScheduledAt: Date | undefined
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
@@ -80,6 +80,6 @@ export type CampanhasState = {
   editName: string
   editTemplateId: string
   editContactListId: string
-  editScheduledAt: string
+  editScheduledAt: Date | undefined
   editSaving: boolean
 }

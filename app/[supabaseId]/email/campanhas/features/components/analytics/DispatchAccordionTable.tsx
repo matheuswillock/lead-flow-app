@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { CampaignAnalyticsService } from "../../services/CampaignAnalyticsService"
 import { DispatchEmailPreviewDialog } from "./DispatchEmailPreviewDialog"
 import { DispatchStatusBadge } from "./DispatchStatusBadge"
@@ -138,6 +139,13 @@ export function DispatchAccordionTable({
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="flex flex-col gap-4 pb-2">
+                      {dispatch.status === "failed" && dispatch.errorMessage ? (
+                        <Alert variant="destructive">
+                          <AlertTriangle data-icon="inline-start" />
+                          <AlertTitle>Falha no disparo</AlertTitle>
+                          <AlertDescription>{dispatch.errorMessage}</AlertDescription>
+                        </Alert>
+                      ) : null}
                       <div className="grid gap-2 text-sm sm:grid-cols-2">
                         <p>
                           <span className="text-muted-foreground">Template: </span>

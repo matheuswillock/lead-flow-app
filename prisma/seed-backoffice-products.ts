@@ -119,8 +119,6 @@ const PRODUCTS = [
 // Features sem parentSlug são guarda-chuvas. Features com parentSlug herdam acesso do pai por padrão.
 const FEATURES_WITHOUT_PARENT_INHERITANCE = new Set([
   "crm-lead-transfers",
-  "crm-multiskill-transfers",
-  "crm-backoffice-associados",
   "email-settings",
   "whatsapp-auto-responses",
 ])
@@ -150,8 +148,6 @@ const FEATURES: Array<{
   { slug: "crm", name: "CRM", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 10, productSlug: "crm" },
   { slug: "crm-dashboard",        name: "Dashboard",          accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 20, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-lead-transfers",   name: "Transferências",     accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 35, parentSlug: "crm", productSlug: "crm" },
-  { slug: "crm-multiskill-transfers", name: "MultiSkill", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 37, parentSlug: "crm", productSlug: "crm" },
-  { slug: "crm-backoffice-associados", name: "Associados",   accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 36, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-calendar",         name: "Calendário",         accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 40, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-performance",      name: "Performance",        accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 50, parentSlug: "crm", productSlug: "crm" },
   { slug: "crm-simulator",        name: "Simulador de Planos",accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 60, parentSlug: "crm", productSlug: "crm" },
@@ -159,6 +155,7 @@ const FEATURES: Array<{
   { slug: "crm-time-manage-teams",name: "Gerenciar Times",    accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 80, parentSlug: "crm", productSlug: "extra-team" },
   { slug: "crm-time-manage-users",name: "Gerenciar Usuários", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 90, parentSlug: "crm", productSlug: "extra-user" },
   { slug: "crm-wallet",           name: "Carteira",           accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 95, parentSlug: "crm", productSlug: "crm" },
+  { slug: "crm-automations",      name: "Automações",         accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 96, parentSlug: "crm", productSlug: "crm" },
 
   // ── Email guarda-chuva ────────────────────────────────────────────────────
   { slug: "email",               name: "Email",     accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true,  inheritParentSettings: false, sortOrder: 100, productSlug: "email" },
@@ -284,15 +281,6 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
   ]),
-  "crm-multiskill-transfers": completeRuleSet([
-    { principal: "MASTER", accessLevel: "FULL" },
-  ]),
-  "crm-backoffice-associados": completeRuleSet([
-    { principal: "MASTER", accessLevel: "FULL" },
-    { principal: "MANAGER", accessLevel: "FULL" },
-    { principal: "BACKOFFICE", accessLevel: "FULL" },
-    { principal: "CAN_MANAGE_TEAMS", accessLevel: "FULL" },
-  ]),
   "crm-calendar": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
@@ -318,6 +306,14 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "CLOSER", accessLevel: "FULL" },
   ]),
   "crm-wallet": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+    { principal: "OPERATOR", accessLevel: "NONE" },
+    { principal: "SDR", accessLevel: "NONE" },
+    { principal: "CLOSER", accessLevel: "NONE" },
+  ]),
+  "crm-automations": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },

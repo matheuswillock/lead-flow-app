@@ -68,6 +68,9 @@ class PublicLeadFormService implements IPublicLeadFormService {
       guestCandidates: result.result?.guestCandidates ?? [],
       timezone: result.result?.timezone ?? DEFAULT_TZ,
       hasTransferTargets: result.result?.hasTransferTargets ?? false,
+      customFieldDefinitions: Array.isArray(result.result?.customFieldDefinitions)
+        ? result.result.customFieldDefinitions
+        : [],
     };
   }
 

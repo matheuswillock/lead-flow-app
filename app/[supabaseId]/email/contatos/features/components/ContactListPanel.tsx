@@ -75,6 +75,11 @@ function ContactListItem({ list }: { list: ContactList }) {
         </div>
 
         <div className="ml-2 flex shrink-0 items-center gap-1.5">
+          {list.activeImport ? (
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+              Importando (lote {list.activeImport.currentBatch}/{list.activeImport.totalBatches})
+            </Badge>
+          ) : null}
           <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
             {list.totalContacts.toLocaleString("pt-BR")}
           </Badge>

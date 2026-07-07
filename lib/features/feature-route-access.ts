@@ -10,12 +10,11 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
   "/dashboard": FEATURE_SLUGS.CRM_DASHBOARD,
   "/crm": FEATURE_SLUGS.CRM,
   "/lead-transfers": FEATURE_SLUGS.CRM_LEAD_TRANSFERS,
-  "/multiskill-transfers": FEATURE_SLUGS.CRM_MULTISKILL_TRANSFERS,
-  "/associados": FEATURE_SLUGS.CRM_BACKOFFICE_ASSOCIADOS,
   "/calendar": FEATURE_SLUGS.CRM_CALENDAR,
   "/performance": FEATURE_SLUGS.CRM_PERFORMANCE,
   "/pme-simulador": FEATURE_SLUGS.CRM_SIMULATOR,
   "/carteira": FEATURE_SLUGS.CRM_WALLET,
+  "/automations": FEATURE_SLUGS.CRM_AUTOMATIONS,
   "/teams": FEATURE_SLUGS.CRM_TIME_MANAGE_TEAMS,
   "/manager-users": FEATURE_SLUGS.CRM_TIME_MANAGE_USERS,
   "/integrations": FEATURE_SLUGS.CONFIGURATION,
@@ -38,10 +37,21 @@ const routeMatchers: RouteMatcher[] = [...TENANT_ROUTE_PREFIXES]
     slug: PREFIX_TO_FEATURE_SLUG[prefix],
   }))
 
-export function getFeatureSlugForAppPath(pathname: string): string | null {
+function resolveTenantRoutePath(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean)
   if (segments.length < 2) return null
-  const route = "/" + segments.slice(1).join("/")
+  return `/${segments.slice(1).join("/")}`
+}
+
+export function isAssociadosAppPath(pathname: string): boolean {
+  const route = resolveTenantRoutePath(pathname)
+  if (!route) return false
+  return route === "/associados" || route.startsWith("/associados/")
+}
+
+export function getFeatureSlugForAppPath(pathname: string): string | null {
+  const route = resolveTenantRoutePath(pathname)
+  if (!route) return null
   const matcher = routeMatchers.find((item) => route.startsWith(item.prefix))
   return matcher?.slug ?? null
 }

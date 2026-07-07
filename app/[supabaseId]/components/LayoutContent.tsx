@@ -3,6 +3,7 @@
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { GlobalLoading } from "@/components/global-loading";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -10,7 +11,7 @@ import { SiteHeader } from "@/components/site-header";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { Users2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { getFeatureSlugForAppPath } from "@/lib/features/feature-route-access"
+import { getFeatureSlugForAppPath, isAssociadosAppPath } from "@/lib/features/feature-route-access"
 import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext";
 
 interface LayoutContentProps {
@@ -28,6 +29,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
   const { user, isLoading, error } = useUserContext();
   const { teams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const { isLoading: featureLoading, hasAccess } = useFeatureAccess();
+  const { access: operationalAccess, isLoading: operationalAccessLoading } = useOperationalAccess();
 
   const hasBootstrapData = Boolean(user) && teams.length > 0;
   const isBootstrapping = isLoading || teamsLoading;
@@ -75,11 +77,13 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
 
   const shouldShowNoTeamsMessage = teams.length === 0;
   const requiredFeatureSlug = getFeatureSlugForAppPath(pathname);
+  const isAssociadosRoute = isAssociadosAppPath(pathname);
   const shouldBlockByFeature =
     !shouldShowNoTeamsMessage &&
     !featureLoading &&
-    !!requiredFeatureSlug &&
-    !hasAccess(requiredFeatureSlug);
+    !operationalAccessLoading &&
+    ((!!requiredFeatureSlug && !hasAccess(requiredFeatureSlug)) ||
+      (isAssociadosRoute && !operationalAccess.associadosQueue));
   const canShowWhatsNewModal = !shouldShowNoTeamsMessage && !shouldBlockByFeature;
 
   // Dados carregados, renderiza o layout completo

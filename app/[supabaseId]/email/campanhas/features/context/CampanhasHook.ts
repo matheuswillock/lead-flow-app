@@ -4,8 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { CampanhasService } from "../services/CampanhasService"
 import type { Campaign, CreditStatus, Template, ContactList, CdpSegmentOption } from "./CampanhasTypes"
-import { parseLocalToUtc, formatLocalInputValue } from "@/lib/dates"
-import { useTimezone } from "@/app/context/TimezoneContext"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
@@ -28,14 +26,14 @@ export type CampanhasActions = {
   setWizardContactListId: (v: string) => void
   setWizardRecipientSource: (v: "contact_list" | "cdp_segment") => void
   setWizardCdpSegmentSlug: (v: string) => void
-  setWizardScheduledAt: (v: string) => void
+  setWizardScheduledAt: (v: Date | undefined) => void
   handleCreateCampaign: () => Promise<void>
   openEdit: (campaign: Campaign) => void
   closeEdit: () => void
   setEditName: (v: string) => void
   setEditTemplateId: (v: string) => void
   setEditContactListId: (v: string) => void
-  setEditScheduledAt: (v: string) => void
+  setEditScheduledAt: (v: Date | undefined) => void
   handleUpdateCampaign: () => Promise<void>
 }
 
@@ -58,7 +56,7 @@ export type CampanhasHookReturn = {
   wizardContactListId: string
   wizardRecipientSource: "contact_list" | "cdp_segment"
   wizardCdpSegmentSlug: string
-  wizardScheduledAt: string
+  wizardScheduledAt: Date | undefined
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
@@ -67,12 +65,11 @@ export type CampanhasHookReturn = {
   editName: string
   editTemplateId: string
   editContactListId: string
-  editScheduledAt: string
+  editScheduledAt: Date | undefined
   editSaving: boolean
 } & CampanhasActions
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
-  const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
   const { activeTeamId, isLoading: teamLoading } = useTeamContext()
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
@@ -96,7 +93,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardContactListId, setWizardContactListId] = useState("")
   const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "cdp_segment">("contact_list")
   const [wizardCdpSegmentSlug, setWizardCdpSegmentSlug] = useState("")
-  const [wizardScheduledAt, setWizardScheduledAt] = useState("")
+  const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
   const [wizardCreating, setWizardCreating] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
@@ -107,7 +104,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [editName, setEditName] = useState("")
   const [editTemplateId, setEditTemplateId] = useState("")
   const [editContactListId, setEditContactListId] = useState("")
-  const [editScheduledAt, setEditScheduledAt] = useState("")
+  const [editScheduledAt, setEditScheduledAt] = useState<Date | undefined>(undefined)
   const [editSaving, setEditSaving] = useState(false)
 
   const fetchingRef = useRef(false)
@@ -246,7 +243,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardContactListId("")
     setWizardRecipientSource("contact_list")
     setWizardCdpSegmentSlug("")
-    setWizardScheduledAt("")
+    setWizardScheduledAt(undefined)
     setWizardOpen(true)
     try {
       const [tmpl, lists] = await Promise.all([
@@ -290,9 +287,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         templateId: wizardTemplateId,
         ...(hasContactList ? { contactListId: wizardContactListId } : {}),
         ...(hasCdpSegment ? { cdpSegmentSlug: wizardCdpSegmentSlug } : {}),
-        scheduledAt: wizardScheduledAt
-          ? parseLocalToUtc(wizardScheduledAt, tz).toISOString()
-          : undefined,
+        scheduledAt: wizardScheduledAt?.toISOString(),
       })
       toast.success("Campanha criada com sucesso")
       setWizardOpen(false)
@@ -311,7 +306,6 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardContactListId,
     wizardCdpSegmentSlug,
     wizardScheduledAt,
-    tz,
     fetchCampaigns,
     statusFilter,
     supabaseId,
@@ -322,7 +316,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setEditName(campaign.name)
     setEditTemplateId(campaign.template?.id ?? "")
     setEditContactListId(campaign.contactList?.id ?? "")
-    setEditScheduledAt(campaign.scheduledAt ? formatLocalInputValue(new Date(campaign.scheduledAt), tz) : "")
+    setEditScheduledAt(campaign.scheduledAt ? new Date(campaign.scheduledAt) : undefined)
     try {
       const [tmpl, lists] = await Promise.all([
         service.getTemplates(supabaseId, activeTeamId),
@@ -333,7 +327,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } catch (err) {
       console.error("[useCampanhas] openEdit fetch error", err)
     }
-  }, [activeTeamId, supabaseId, tz])
+  }, [activeTeamId, supabaseId])
 
   const closeEdit = useCallback(() => {
     if (editSaving) return
@@ -356,9 +350,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         name: editName.trim(),
         templateId: editTemplateId || undefined,
         contactListId: editContactListId || undefined,
-        scheduledAt: editScheduledAt
-          ? parseLocalToUtc(editScheduledAt, tz).toISOString()
-          : null,
+        scheduledAt: editScheduledAt?.toISOString() ?? null,
       })
       setCampaigns((prev) =>
         prev.map((c) =>
@@ -383,7 +375,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setEditSaving(false)
     }
-  }, [activeTeamId, editingCampaign, editName, editTemplateId, editContactListId, editScheduledAt, supabaseId, tz])
+  }, [activeTeamId, editingCampaign, editName, editTemplateId, editContactListId, editScheduledAt, supabaseId])
 
   return {
     campaigns,

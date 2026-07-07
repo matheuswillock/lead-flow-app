@@ -1,6 +1,6 @@
 "use client"
 
-import { BarChart3, RefreshCw } from "lucide-react"
+import { BarChart3, RefreshCw, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { DeliverabilityChart } from "./DeliverabilityChart"
 import { DispatchAccordionTable } from "./DispatchAccordionTable"
@@ -20,6 +21,7 @@ type CampaignAnalyticsDialogProps = {
   onOpenChange: (open: boolean) => void
   campaignId?: string
   campaignName?: string
+  campaignErrorMessage?: string | null
 }
 
 export function CampaignAnalyticsDialog({
@@ -27,6 +29,7 @@ export function CampaignAnalyticsDialog({
   onOpenChange,
   campaignId,
   campaignName,
+  campaignErrorMessage,
 }: CampaignAnalyticsDialogProps) {
   const { data, initialLoading, refreshing, period, handlePeriodChange, handleRefresh } =
     useCampaignAnalytics(campaignId, open)
@@ -45,6 +48,13 @@ export function CampaignAnalyticsDialog({
           </div>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
+          {campaignErrorMessage ? (
+            <Alert variant="destructive">
+              <AlertTriangle data-icon="inline-start" />
+              <AlertTitle>Campanha com falha</AlertTitle>
+              <AlertDescription>{campaignErrorMessage}</AlertDescription>
+            </Alert>
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-col gap-1">
               <PeriodSelector period={period} onPeriodChange={handlePeriodChange} />
