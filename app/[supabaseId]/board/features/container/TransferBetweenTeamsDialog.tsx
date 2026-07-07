@@ -174,9 +174,16 @@ export function TransferBetweenTeamsDialog({
         "x-team-id": activeTeamId ?? "",
       },
     })
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        const data = await res.json();
         if (!active) return;
+        if (!res.ok || !data?.isValid) {
+          const message =
+            Array.isArray(data?.errorMessages) && data.errorMessages.length > 0
+              ? data.errorMessages[0]
+              : "Erro ao carregar membros do time destino";
+          throw new Error(message);
+        }
         const members: TeamMemberOption[] = (data?.result?.members ?? []).map((m: {
           id: string;
           profileId?: string;
@@ -195,9 +202,12 @@ export function TransferBetweenTeamsDialog({
         }));
         setTeamMembers(members);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
-        toast.error("Erro ao carregar membros do time destino");
+        setTeamMembers([]);
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao carregar membros do time destino"
+        );
       })
       .finally(() => {
         if (active) setMembersLoading(false);

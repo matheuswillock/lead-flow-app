@@ -171,6 +171,20 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     }));
   }
 
+  async hasTransferRoute(sourceTeamId: string, targetTeamId: string): Promise<boolean> {
+    const route = await prisma.teamTransferRoute.findUnique({
+      where: {
+        sourceTeamId_targetTeamId: {
+          sourceTeamId,
+          targetTeamId,
+        },
+      },
+      select: { id: true },
+    });
+
+    return route !== null;
+  }
+
   async findExistingMember(teamId: string, profileId: string): Promise<{ id: string } | null> {
     return prisma.teamMember.findUnique({
       where: { teamId_profileId: { teamId, profileId } },

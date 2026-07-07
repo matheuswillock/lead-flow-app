@@ -26,7 +26,7 @@ function resolveStatus(output: Output) {
   if (messages.includes("Perfil não encontrado") || messages.includes("Time não encontrado")) {
     return 404;
   }
-  if (messages.includes("não faz parte") || messages.includes("Apenas o master")) {
+  if (messages.includes("não faz parte") || messages.includes("Apenas o master") || messages.includes("Acesso negado")) {
     return 403;
   }
   if (messages.includes("já pertence")) {
@@ -49,11 +49,8 @@ export async function GET(
     }
 
     const { teamId } = await params;
-    if (!teamId || teamId !== teamAccess.access.teamId) {
-      return NextResponse.json(
-        new Output(false, [], ["Acesso negado para este time"], null),
-        { status: 403 }
-      );
+    if (!teamId) {
+      return NextResponse.json(new Output(false, [], ["Team ID é obrigatório"], null), { status: 400 });
     }
 
     const requestedFunctionParam = new URL(request.url).searchParams.get("function");
@@ -67,6 +64,29 @@ export async function GET(
         );
       }
       requestedFunction = parsedFunction.data;
+    }
+
+    const originTeamId = teamAccess.access.teamId;
+
+    if (teamId !== originTeamId) {
+      const transferOutput = await teamMembersUseCase.listTransferTargetMembersWithCtx(
+        teamAccess.access,
+        originTeamId,
+        teamId,
+        requestedFunction
+      );
+      if (transferOutput.isValid) {
+        return NextResponse.json(transferOutput, { status: 200 });
+      }
+
+      const managedOutput = await teamMembersUseCase.listMembersWithCtx(
+        teamAccess.access,
+        teamId,
+        requestedFunction
+      );
+      return NextResponse.json(managedOutput, {
+        status: managedOutput.isValid ? 200 : resolveStatus(managedOutput),
+      });
     }
 
     const output = await teamMembersUseCase.listMembersWithCtx(

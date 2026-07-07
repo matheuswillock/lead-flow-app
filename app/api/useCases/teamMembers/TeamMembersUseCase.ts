@@ -35,6 +35,23 @@ function getDisplayName(profile: { fullName: string | null; email: string | null
   return profile.fullName || profile.email || "Usuário";
 }
 
+function formatTeamMembersList(
+  members: TeamMembersListItem[],
+  team: TeamMembersTeam
+) {
+  return members.map((member) => ({
+    id: member.id,
+    profileId: member.profileId,
+    name: getDisplayName(member.profile),
+    email: member.profile.email,
+    role: member.role,
+    functions: member.functions,
+    googleCalendarConnected: member.profile.googleCalendarConnected,
+    profileIconUrl: member.profile.profileIconUrl,
+    isMaster: member.profileId === team.masterId,
+  }));
+}
+
 export class TeamMembersUseCase {
   constructor(private readonly repository: ITeamMembersRepository) {}
 
@@ -85,17 +102,7 @@ export class TeamMembersUseCase {
       if (!cached) return new Output(false, [], ["Time não encontrado"], null);
       const { team, members, masterAccountTeamMembers, masterAccountProfiles } = cached;
 
-      const formattedMembers = members.map((member) => ({
-        id: member.id,
-        profileId: member.profileId,
-        name: getDisplayName(member.profile),
-        email: member.profile.email,
-        role: member.role,
-        functions: member.functions,
-        googleCalendarConnected: member.profile.googleCalendarConnected,
-        profileIconUrl: member.profile.profileIconUrl,
-        isMaster: member.profileId === team.masterId,
-      }));
+      const formattedMembers = formatTeamMembersList(members, team);
 
       const isAssociateAccount = Boolean(team.sponsorMasterId);
       const viewerOnAssociateAccount =
@@ -162,6 +169,54 @@ export class TeamMembersUseCase {
     } catch (error) {
       console.error("[TeamMembersUseCase][listMembersWithCtx] Erro ao listar membros do time:", error);
       return new Output(false, [], ["Erro interno ao listar membros do time"], null);
+    }
+  }
+
+  async listTransferTargetMembersWithCtx(
+    access: TeamAccess,
+    sourceTeamId: string,
+    targetTeamId: string,
+    requestedFunction: ListMembersFunction | null
+  ): Promise<Output> {
+    try {
+      if (!access.isMaster && !access.canTransferAccountLeads) {
+        return new Output(false, [], ["Acesso negado para listar membros do time destino"], null);
+      }
+
+      const [sourceTeam, targetTeam, hasRoute] = await Promise.all([
+        this.repository.findTeam(sourceTeamId),
+        this.repository.findTeam(targetTeamId),
+        this.repository.hasTransferRoute(sourceTeamId, targetTeamId),
+      ]);
+
+      if (!sourceTeam || !targetTeam) {
+        return new Output(false, [], ["Time não encontrado"], null);
+      }
+
+      if (sourceTeam.masterId !== targetTeam.masterId) {
+        return new Output(false, [], ["Time destino inválido para transferência"], null);
+      }
+
+      if (!hasRoute) {
+        return new Output(false, [], ["Time destino não habilitado para transferência"], null);
+      }
+
+      const members = await this.repository.findMembers(targetTeamId);
+      const formattedMembers = formatTeamMembersList(members, targetTeam);
+      const filteredMembers = requestedFunction
+        ? formattedMembers.filter((member) => member.functions.includes(requestedFunction))
+        : formattedMembers;
+
+      return new Output(true, [], [], {
+        team: { id: targetTeam.id, name: targetTeam.name, masterId: targetTeam.masterId },
+        members: filteredMembers,
+      });
+    } catch (error) {
+      console.error(
+        "[TeamMembersUseCase][listTransferTargetMembersWithCtx] Erro ao listar membros do time destino:",
+        error
+      );
+      return new Output(false, [], ["Erro interno ao listar membros do time destino"], null);
     }
   }
 
