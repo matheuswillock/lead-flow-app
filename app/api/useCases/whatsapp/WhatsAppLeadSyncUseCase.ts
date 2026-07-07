@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output"
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
+import { whatsAppLeadActivityService } from "@/app/api/services/whatsapp/WhatsAppLeadActivityService"
 import {
   resolveContactNameUpdate,
   type ContactNameSource,
@@ -73,6 +74,18 @@ class WhatsAppLeadSyncUseCase {
       })
       if (nameUpdate) {
         await whatsAppRepository.updateConversation(input.conversationId, nameUpdate)
+      }
+
+      try {
+        await whatsAppLeadActivityService.recordConversationMilestone({
+          teamId: input.teamId,
+          leadId: result.id,
+          conversationId: input.conversationId,
+          milestone: "conversation_started",
+          preview: conversation.lastMessagePreview,
+        })
+      } catch (activityError) {
+        console.error("[WhatsAppLeadSyncUseCase][execute] Falha ao registrar atividade", activityError)
       }
 
       return new Output(true, [], [], result.id)

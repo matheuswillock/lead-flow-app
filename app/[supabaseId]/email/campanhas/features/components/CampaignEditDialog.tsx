@@ -17,9 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatLocalInputValue } from "@/lib/dates"
 import type { ContactList } from "../context/CampanhasTypes"
 
 function formatContactListLabel(list: ContactList): string {
@@ -45,8 +45,6 @@ export function CampaignEditDialog() {
     setEditScheduledAt,
     handleUpdateCampaign,
   } = useCampanhasContext()
-
-  const minDateTime = formatLocalInputValue(new Date(), tz)
 
   return (
     <Dialog open={!!editingCampaign} onOpenChange={(open) => { if (!open) closeEdit() }}>
@@ -100,24 +98,23 @@ export function CampaignEditDialog() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-scheduled">Agendar envio (opcional)</Label>
-            <Input
-              id="edit-scheduled"
-              type="datetime-local"
-              value={editScheduledAt}
-              min={minDateTime}
-              onChange={(e) => setEditScheduledAt(e.target.value)}
+            <DateTimePicker
+              date={editScheduledAt}
+              onDateChange={setEditScheduledAt}
+              label="Agendar envio (opcional)"
               disabled={editSaving}
+              disablePastDates
+              tz={tz}
             />
-            {editScheduledAt && (
+            {editScheduledAt ? (
               <button
                 type="button"
-                onClick={() => setEditScheduledAt("")}
+                onClick={() => setEditScheduledAt(undefined)}
                 className="text-xs text-muted-foreground underline underline-offset-2"
               >
                 Remover agendamento
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 

@@ -57,6 +57,7 @@ export const UpdateLeadRequestSchema = z.object({
   referrerName: z.string().optional(),
   referrerPhone: z.string().optional(),
   saveAsDraft: z.boolean().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;

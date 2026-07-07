@@ -120,8 +120,12 @@ export function invalidateTeamTasksCache(input: { teamId: string }) {
   revalidateDefinedTags([cacheTags.teamTasks(input.teamId)]);
 }
 
-export function invalidateTeamFilterPresetsCache(input: { teamId: string; profileId: string }) {
-  revalidateDefinedTags([cacheTags.teamFilterPresets(input.teamId, input.profileId)]);
+export function invalidateTeamFilterPresetsCache(input: {
+  teamId: string;
+  profileId: string;
+  scope: string;
+}) {
+  revalidateDefinedTags([cacheTags.teamFilterPresets(input.teamId, input.profileId, input.scope)]);
 }
 
 export function invalidateNotificationsCache(input: { recipientProfileIds: string[] }) {

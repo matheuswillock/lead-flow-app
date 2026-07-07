@@ -1,10 +1,8 @@
 import type { NextRequest } from "next/server";
 import { Output } from "@/lib/output";
-import { getTeamAccess, hasDelegatedTeamManagementAccess } from "@/app/api/v1/utils/teamAccess";
-import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService";
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
+import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
 import { associateProposalRepository } from "@/app/api/infra/data/repositories/associateProposal/AssociateProposalRepository";
-import { isManagerLikeRole } from "@/lib/roles";
 import type {
   AssociateBackofficeAccess,
   AssociateBackofficeAccessResult,
@@ -18,15 +16,13 @@ export class AssociateBackofficeAccessUseCase {
     }
 
     const access = teamResult.access;
-    const { slugs } = await featureAccessService.resolveAllowedSlugs({
-      profileId: access.profileId,
-      managerId: access.managerId,
-      activeTeamId: access.teamId,
-    });
 
-    if (!slugs.includes(FEATURE_SLUGS.CRM_BACKOFFICE_ASSOCIADOS)) {
+    try {
+      await backofficeOperationalAccessService.assertAssociadosQueueAccess(access.profileId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Acesso restrito à fila Associados";
       return {
-        error: new Output(false, [], ["Acesso restrito à fila Associados"], null),
+        error: new Output(false, [], [message], null),
         status: 403,
       };
     }
@@ -39,25 +35,10 @@ export class AssociateBackofficeAccessUseCase {
       };
     }
 
-    const sponsoredCount = await associateProposalRepository.countSponsoredAccounts(access.profileId);
-    const isSponsorMaster = sponsoredCount > 0;
-    const isBackoffice = access.teamMember.role === "backoffice";
-    const isDelegatedManager =
-      isManagerLikeRole(access.teamMember.role) && hasDelegatedTeamManagementAccess(access);
-
-    if (!isSponsorMaster && !isBackoffice && !isDelegatedManager) {
-      return {
-        error: new Output(false, [], ["Sem permissão para a fila Associados"], null),
-        status: 403,
-      };
-    }
-
-    const sponsorProfileId = isSponsorMaster ? access.profileId : access.managerId;
-
     return {
       access: {
         ...access,
-        sponsorProfileId,
+        sponsorProfileId: access.profileId,
       } satisfies AssociateBackofficeAccess,
     };
   }

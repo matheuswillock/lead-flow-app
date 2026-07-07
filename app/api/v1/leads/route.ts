@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { LeadUseCase } from "../../useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "../../useCases/profiles/ProfileUseCase";
@@ -39,7 +39,15 @@ export async function POST(request: NextRequest) {
 
     const output = await leadUseCase.createLead(supabaseId, validatedData, teamId);
     if (output.isValid && output.result && typeof output.result === "object" && "id" in output.result) {
-      invalidateLeadCache({ leadId: (output.result as { id: string }).id, teamId });
+      const created = output.result as { id: string; cnpj?: string | null; razaoSocial?: string | null };
+      invalidateLeadCache({ leadId: created.id, teamId });
+
+      if (created.cnpj && !created.razaoSocial) {
+        after(async () => {
+          await leadUseCase.enrichLeadRazaoSocial(created.id, created.cnpj as string);
+          invalidateLeadCache({ leadId: created.id, teamId });
+        });
+      }
     }
     const status = output.isValid ? 201 : 400;
     return NextResponse.json(output, { status });

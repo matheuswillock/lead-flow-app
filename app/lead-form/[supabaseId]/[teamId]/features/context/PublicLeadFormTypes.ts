@@ -4,6 +4,7 @@ import type {
   SdrOption,
   GuestCandidateOption,
 } from "../services/IPublicLeadFormService";
+import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
 
 export type BootstrapStatus = "loading" | "ready" | "error";
 
@@ -21,6 +22,7 @@ export interface PublicLeadFormState {
   guestCandidates: GuestCandidateOption[];
   timezone: string;
   hasTransferTargets: boolean;
+  customFieldDefinitions: LeadCustomFieldDefinitionDTO[];
   availableTimes: string[];
   availabilityLoading: boolean;
   preScheduleOccupiedSlots: number[];
@@ -51,6 +53,7 @@ export interface PublicLeadFormActions {
     extraGuests?: string[];
     isTransfer?: boolean;
     saveAsDraft?: boolean;
+    customFields?: Record<string, unknown>;
   }) => Promise<{
     isValid: boolean;
     successMessages: string[];

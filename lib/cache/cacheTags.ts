@@ -24,7 +24,8 @@ export const cacheTags = {
   teamCalendar: (teamId: string) => `team-calendar:${teamId}`,
   teamTasks: (teamId: string) => `team-tasks:${teamId}`,
   publicFormBootstrap: (teamId: string) => `public-form-bootstrap:${teamId}`,
-  teamFilterPresets: (teamId: string, profileId: string) => `team-filter-presets:${teamId}:${profileId}`,
+  teamFilterPresets: (teamId: string, profileId: string, scope: string) =>
+    `team-filter-presets:${teamId}:${profileId}:${scope}`,
   notifications: (recipientProfileId: string) => `notifications:${recipientProfileId}`,
 } as const;
 

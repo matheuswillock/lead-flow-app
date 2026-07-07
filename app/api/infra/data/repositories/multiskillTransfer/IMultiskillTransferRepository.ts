@@ -9,7 +9,7 @@ export interface IMultiskillTransferRepository {
   findMasterIdByEmail(email: string): Promise<string | null>;
   findDefaultTeamForMaster(masterId: string): Promise<{ id: string; name: string } | null>;
   listTransferTargets(input: {
-    multiskillMasterId: string;
+    originMasterId: string;
     query?: string;
     page: number;
     pageSize: number;

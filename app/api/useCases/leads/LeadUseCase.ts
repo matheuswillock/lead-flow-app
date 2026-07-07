@@ -49,9 +49,17 @@ import {
   buildCurrentLeadInfo,
   resolveMissingLeadFields,
 } from "@/lib/leadStatusTransitionFields";
-import { resolveLeadRazaoSocial } from "@/app/api/services/cnpjLookup/CnpjLookupService";
+import { cnpjLookupService } from "@/app/api/services/cnpjLookup/CnpjLookupService";
 import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
 import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
+import { leadCustomFieldService } from "@/app/api/services/leadCustomField/LeadCustomFieldService";
+import {
+  mapLeadCustomFieldDefinitionToDTO,
+} from "@/app/api/infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
+import { leadCustomFieldRepository } from "@/app/api/infra/data/repositories/leadCustomField/LeadCustomFieldRepository";
+import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
+import { leadDuplicateCheckService } from "@/app/api/services/leadDuplicateCheck/LeadDuplicateCheckService";
+import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -334,6 +342,38 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      if (data.phone || data.email) {
+        const duplicateCandidates = await leadDuplicateCheckService.findCandidates(
+          {
+            profileId: profileInfo.id,
+            teamMember: {
+              role: profileInfo.role,
+              functions: [],
+            },
+          },
+          {
+            teamId,
+            phone: data.phone,
+            email: data.email,
+          }
+        );
+
+        if (duplicateCandidates.length > 0 && data.confirmDuplicate !== true) {
+          return new Output(
+            false,
+            [],
+            ["Possível lead duplicado neste time"],
+            {
+              requiresDuplicateConfirmation: true,
+              duplicateCandidates: duplicateCandidates.map((candidate) => ({
+                ...candidate,
+                createdAt: candidate.createdAt.toISOString(),
+              })),
+            }
+          );
+        }
+      }
+
       const saveAsDraft = data.saveAsDraft === true;
       const isTransferLead = data.isTransfer === true;
       if (isTransferLead && !saveAsDraft) {
@@ -376,14 +416,17 @@ export class LeadUseCase implements ILeadUseCase {
 
       const leadCode = await this.generateLeadCode(data.name);
 
+      if (data.customFields !== undefined) {
+        const customFieldsValidation = await this.validateLeadCustomFieldsInput(teamId, data.customFields);
+        if (customFieldsValidation) {
+          return customFieldsValidation;
+        }
+      }
+
       let assignedTo = skipAutoAssign ? undefined : data.assignedTo;
       if (!skipAutoAssign && profileInfo.role === "operator" && !assignedTo) {
         assignedTo = profileInfo.id;
       }
-
-      const razaoSocialResult = await resolveLeadRazaoSocial({
-        cnpj: data.cnpj || null,
-      });
 
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
@@ -393,7 +436,8 @@ export class LeadUseCase implements ILeadUseCase {
         email: data.email || null,
         phone: data.phone || null,
         cnpj: data.cnpj || null,
-        razaoSocial: razaoSocialResult.razaoSocial,
+        // Razão social é resolvida em background após a criação (ver enrichLeadRazaoSocial).
+        razaoSocial: null,
         age: data.age || null,
         currentHealthPlan: normalizedPlans.currentHealthPlan,
         currentValue: data.currentValue || null,
@@ -470,16 +514,28 @@ export class LeadUseCase implements ILeadUseCase {
         );
       }
 
+      if (lead.status !== null) {
+        teamAutomationDispatcherService
+          .dispatch({
+            type: "lead_created",
+            teamId,
+            leadId: lead.id,
+          })
+          .catch(console.error);
+      }
+
+      if (data.customFields !== undefined) {
+        await leadCustomFieldRepository.upsertValuesForLead(
+          lead.id,
+          await this.buildCustomFieldUpsertEntries(teamId, data.customFields)
+        );
+      }
+
       return new Output(
         true,
-        [
-          "Lead criado com sucesso",
-          ...(razaoSocialResult.lookupAttempted && !razaoSocialResult.lookupSucceeded
-            ? ["Lead salvo, mas não foi possível consultar a razão social."]
-            : []),
-        ],
+        ["Lead criado com sucesso"],
         [],
-        this.transformToDTO(lead)
+        await this.attachCustomFieldsToDto(lead.id, this.transformToDTO(lead))
       );
     } catch (error) {
       console.error("Erro ao criar lead:", error);
@@ -554,7 +610,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
-      return new Output(true, [], [], this.transformToDTO(lead, profileId));
+      return new Output(true, [], [], await this.attachCustomFieldsToDto(id, this.transformToDTO(lead, profileId)));
     } catch (error) {
       console.error("Erro ao buscar lead:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
@@ -840,6 +896,16 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Não é possível converter um lead ativo em rascunho."], null);
       }
 
+      if (data.customFields !== undefined && leadForDraft.teamId) {
+        const customFieldsValidation = await this.validateLeadCustomFieldsInput(
+          leadForDraft.teamId,
+          data.customFields
+        );
+        if (customFieldsValidation) {
+          return customFieldsValidation;
+        }
+      }
+
       const effectiveIsTransferForSave =
         data.isTransfer !== undefined ? data.isTransfer === true : leadForDraft.isTransfer === true;
       const resolvedMeetingDate =
@@ -876,7 +942,6 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const updateData: LeadUpdateRepositoryInput = {};
-      let razaoSocialLookupWarning = false;
       const shouldValidateHealthPlans = data.currentHealthPlan !== undefined || data.soldPlan !== undefined;
       const normalizedPlans = shouldValidateHealthPlans
         ? await this.validateAndNormalizeLeadPlans({
@@ -892,15 +957,22 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.email !== undefined) updateData.email = data.email || null;
       if (data.phone !== undefined) updateData.phone = data.phone || null;
       if (data.cnpj !== undefined) {
-        const razaoSocialResult = await resolveLeadRazaoSocial({
-          cnpj: data.cnpj || null,
-          previousCnpj: leadForDraft.cnpj,
-          previousRazaoSocial: leadForDraft.razaoSocial,
-        });
-        updateData.cnpj = data.cnpj || null;
-        updateData.razaoSocial = razaoSocialResult.razaoSocial;
-        if (razaoSocialResult.lookupAttempted && !razaoSocialResult.lookupSucceeded && data.cnpj) {
-          razaoSocialLookupWarning = true;
+        const nextCnpj = data.cnpj?.trim() || null;
+        const previousCnpj = leadForDraft.cnpj?.trim() || null;
+        const previousRazaoSocial = leadForDraft.razaoSocial?.trim() || null;
+
+        updateData.cnpj = nextCnpj;
+        if (!nextCnpj) {
+          // CNPJ removido: não pode existir razão social sem CNPJ.
+          updateData.razaoSocial = null;
+        } else if (nextCnpj === previousCnpj && previousRazaoSocial) {
+          // CNPJ inalterado e já tínhamos razão social: reaproveita, sem custo de rede.
+          updateData.razaoSocial = previousRazaoSocial;
+        } else {
+          // CNPJ novo/alterado (ou ainda sem razão social resolvida): limpa até o
+          // enriquecimento em background terminar — nunca mostrar razão social
+          // que pertence ao CNPJ antigo.
+          updateData.razaoSocial = null;
         }
       }
       if (data.age !== undefined) updateData.age = data.age;
@@ -1134,16 +1206,18 @@ export class LeadUseCase implements ILeadUseCase {
         );
       }
 
+      if (data.customFields !== undefined && leadForDraft.teamId) {
+        await leadCustomFieldRepository.upsertValuesForLead(
+          id,
+          await this.buildCustomFieldUpsertEntries(leadForDraft.teamId, data.customFields)
+        );
+      }
+
       return new Output(
         true,
-        [
-          "Lead atualizado com sucesso",
-          ...(razaoSocialLookupWarning
-            ? ["Lead salvo, mas não foi possível consultar a razão social."]
-            : []),
-        ],
+        ["Lead atualizado com sucesso"],
         [],
-        this.transformToDTO(lead)
+        await this.attachCustomFieldsToDto(id, this.transformToDTO(lead))
       );
     } catch (error) {
       console.error("Erro ao atualizar lead:", error);
@@ -1607,6 +1681,20 @@ export class LeadUseCase implements ILeadUseCase {
             actorProfileId: profileInfo.id,
             actorName: actorLabel,
           }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
+        }
+
+        if (existingLead.status !== status && existingLead.teamId) {
+          teamAutomationDispatcherService
+            .dispatch({
+              type: status === LeadStatus.no_show ? "meeting_no_show" : "status_changed",
+              teamId: existingLead.teamId,
+              leadId: id,
+              data: {
+                newStatus: status,
+                statusEnteredAt: lead.statusEnteredAt?.toISOString(),
+              },
+            })
+            .catch(console.error);
         }
       }
 
@@ -2152,6 +2240,44 @@ export class LeadUseCase implements ILeadUseCase {
     return { ok: true, sanitizations: [...sanitizationByLeadId.values()] };
   }
 
+  private async validateLeadCustomFieldsInput(
+    teamId: string,
+    customFields: Record<string, unknown>
+  ): Promise<Output | null> {
+    const definitions = await leadCustomFieldRepository.listActiveByTeamId(teamId);
+    const validation = validateLeadCustomFieldsPayload(
+      definitions.map(mapLeadCustomFieldDefinitionToDTO),
+      customFields,
+      true
+    );
+    if (!validation.success) {
+      return new Output(false, [], validation.errors, null);
+    }
+    return null;
+  }
+
+  private async buildCustomFieldUpsertEntries(
+    teamId: string,
+    customFields: Record<string, unknown>
+  ) {
+    const definitions = await leadCustomFieldRepository.listActiveByTeamId(teamId);
+    const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+    return Object.entries(customFields)
+      .filter(([key]) => definitionByKey.has(key))
+      .map(([key, value]) => ({
+        definitionId: definitionByKey.get(key)!.id,
+        value: value as never,
+      }));
+  }
+
+  private async attachCustomFieldsToDto(leadId: string, dto: LeadResponseDTO): Promise<LeadResponseDTO> {
+    const customFields = await leadCustomFieldService.getLeadCustomFieldValues(leadId);
+    if (customFields.length === 0) {
+      return dto;
+    }
+    return { ...dto, customFields };
+  }
+
   private transformToDTO(lead: any, viewerProfileId?: string | null): LeadResponseDTO {
     return {
       id: lead.id,
@@ -2519,6 +2645,27 @@ export class LeadUseCase implements ILeadUseCase {
         publicShareExpiresAt: null,
       },
     });
+  }
+
+  async enrichLeadRazaoSocial(leadId: string, cnpj: string): Promise<void> {
+    try {
+      const razaoSocial = await cnpjLookupService.lookupRazaoSocial(cnpj);
+      if (!razaoSocial) {
+        console.warn(
+          "[LeadUseCase][enrichLeadRazaoSocial] Razão social não resolvida em background",
+          { leadId }
+        );
+        return;
+      }
+
+      await this.leadRepository.update(leadId, { razaoSocial });
+      console.info(
+        "[LeadUseCase][enrichLeadRazaoSocial] Razão social atualizada em background",
+        { leadId }
+      );
+    } catch (error) {
+      console.error("[LeadUseCase][enrichLeadRazaoSocial] Background error:", error);
+    }
   }
 
   private async resolveTransferScheduleShareUrl(lead: any, teamId: string): Promise<string | null> {

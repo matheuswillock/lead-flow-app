@@ -86,6 +86,7 @@ export const PublicLeadFormRequestSchema = z
     landingUrl: z.string().nullish().transform((val) => val || undefined),
     referrer: z.string().nullish().transform((val) => val || undefined),
     saveAsDraft: z.boolean().optional(),
+    customFields: z.record(z.string(), z.unknown()).optional(),
   })
   .refine(
     (data) => {

@@ -1,5 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma"
-import { parseResendTrackingTags, type ResendTrackingTagsInput } from "@/lib/email/build-resend-tracking-tags"
+import { type ResendTrackingTagsInput } from "@/lib/email/build-resend-tracking-tags"
 import { isBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
 import {
   resendEmailEnrichmentService,
@@ -33,11 +33,6 @@ export class EmailOrphanEventService {
     tagsHint?: ResendTrackingTagsInput
   }): Promise<void> {
     if (isBackofficeResendTags(input.tagsHint ?? null)) {
-      return
-    }
-
-    const parsed = parseResendTrackingTags(input.tagsHint)
-    if (!parsed.teamId) {
       return
     }
 
@@ -119,17 +114,23 @@ export class EmailOrphanEventService {
         await sleep(backoffMs)
       } else {
         const nextAttempts = event.attempts + 1
+        const exhausted = nextAttempts >= MAX_ATTEMPTS
+        const terminalStatus = exhausted ? "skipped" : "pending"
+        if (exhausted) {
+          console.info(
+            `[EmailOrphanEventService] Órfão ${event.resendEmailId} ignorado após ${MAX_ATTEMPTS} tentativas: ${lastError ?? "sem team_id"}`
+          )
+        }
         await prisma.emailOrphanEvent.update({
           where: { id: event.id },
           data: {
-            status: nextAttempts >= MAX_ATTEMPTS ? "failed" : "pending",
+            status: terminalStatus,
             attempts: { increment: 1 },
             lastError,
+            ...(exhausted ? { processedAt: new Date() } : {}),
           },
         })
-        if (nextAttempts >= MAX_ATTEMPTS) {
-          failed += 1
-        } else {
+        if (exhausted) {
           skipped += 1
         }
       }

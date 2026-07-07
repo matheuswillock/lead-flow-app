@@ -4,13 +4,12 @@ import {
   multiskillTransferRepository,
   type MultiskillTransferRepository,
 } from "@/app/api/infra/data/repositories/multiskillTransfer/MultiskillTransferRepository";
-import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService";
+import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
 import type { IMultiskillTransferService } from "@/app/api/services/multiskillTransfer/IMultiskillTransferService";
 import { multiskillTransferService } from "@/app/api/services/multiskillTransfer/MultiskillTransferService";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import type { TransferMultiskillLeadRequest } from "@/app/api/v1/leads/DTO/requestToTransferMultiskillLead";
 import { Output } from "@/lib/output";
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import type { IMultiskillTransferUseCase } from "./IMultiskillTransferUseCase";
 
 export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
@@ -19,34 +18,9 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
     private readonly repository: MultiskillTransferRepository = multiskillTransferRepository
   ) {}
 
-  private async assertMultiskillCaller(ctx: TeamAccess): Promise<{ multiskillMasterId: string }> {
-    const multiskillMasterId = await this.service.resolveMultiskillMasterId();
-    if (!multiskillMasterId) {
-      throw new Error("Conta MultiSkill não configurada");
-    }
-
-    if (ctx.managerId !== multiskillMasterId) {
-      throw new Error("Acesso negado: operação exclusiva da conta MultiSkill");
-    }
-
-    const access = await featureAccessService.resolveAllowedSlugs({
-      profileId: ctx.profileId,
-      managerId: ctx.managerId,
-      activeTeamId: ctx.teamId,
-      teamContext: {
-        isMaster: ctx.isMaster,
-        role: ctx.teamMember.role,
-        functions: ctx.teamMember.functions,
-        canManageAccountTeams: ctx.canManageAccountTeams,
-        canCreateAccountUsers: ctx.canCreateAccountUsers,
-      },
-    });
-
-    if (!access.slugs.includes(FEATURE_SLUGS.CRM_MULTISKILL_TRANSFERS)) {
-      throw new Error("Acesso negado: feature MultiSkill não habilitada");
-    }
-
-    return { multiskillMasterId };
+  private async assertMultiskillCaller(ctx: TeamAccess): Promise<{ originMasterId: string }> {
+    await backofficeOperationalAccessService.assertMultiskillOriginTeam(ctx.teamId);
+    return { originMasterId: ctx.managerId };
   }
 
   async listTransferTargets(
@@ -54,9 +28,9 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
     input: { query?: string; page: number; pageSize: number }
   ): Promise<Output> {
     try {
-      const { multiskillMasterId } = await this.assertMultiskillCaller(ctx);
+      const { originMasterId } = await this.assertMultiskillCaller(ctx);
       const result = await this.service.listTransferTargets({
-        multiskillMasterId,
+        originMasterId,
         query: input.query,
         page: input.page,
         pageSize: input.pageSize,
@@ -75,7 +49,7 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
     data: TransferMultiskillLeadRequest
   ): Promise<Output> {
     try {
-      const { multiskillMasterId } = await this.assertMultiskillCaller(ctx);
+      const { originMasterId } = await this.assertMultiskillCaller(ctx);
 
       if (!ctx.isMaster) {
         const membership = await this.repository.findTransferDelegationMembership(
@@ -111,13 +85,13 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
         );
       }
 
-      if (lead.managerId !== multiskillMasterId) {
-        return new Output(false, [], ["Lead não pertence à conta MultiSkill"], null);
+      if (lead.managerId !== originMasterId) {
+        return new Output(false, [], ["Lead não pertence à conta de origem MultiSkill"], null);
       }
 
       const targetMaster = await this.repository.findMasterMultiskillProfile(data.targetMasterId);
 
-      if (!targetMaster || targetMaster.id === multiskillMasterId) {
+      if (!targetMaster || targetMaster.id === originMasterId) {
         return new Output(false, [], ["Master destino inválido ou indisponível para MultiSkill"], null);
       }
 
@@ -186,7 +160,7 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
         toTeamId: defaultTeam.id,
         transferredByProfileId: ctx.profileId,
         receivedByProfileId: data.closerId,
-        fromManagerId: multiskillMasterId,
+        fromManagerId: originMasterId,
         toManagerId: targetMaster.id,
         transferTagUsed: lead.isTransfer === true,
         preScheduledAt: lead.meetingDate ?? null,

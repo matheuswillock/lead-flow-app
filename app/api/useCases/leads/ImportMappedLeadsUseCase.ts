@@ -16,6 +16,7 @@ import {
 import type { MappedImportRow } from "@/app/api/v1/leads/import/mapped/DTO/mappedImportRequest";
 import type { ILeadUseCase } from "./ILeadUseCase";
 import { LeadUseCase } from "./LeadUseCase";
+import { leadDuplicateCheckService } from "@/app/api/services/leadDuplicateCheck/LeadDuplicateCheckService";
 
 export interface ImportMappedLeadsContext {
   supabaseId: string;
@@ -25,7 +26,7 @@ export interface ImportMappedLeadsContext {
 export interface ImportRowIssue {
   line: number | null;
   name: string;
-  kind: "not_imported" | "default_status";
+  kind: "not_imported" | "default_status" | "duplicate_detected";
   reason: string;
 }
 
@@ -137,6 +138,18 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
         sanitized += 1;
       }
 
+      const duplicateCandidates = await leadDuplicateCheckService.findCandidates(
+        {
+          profileId: "",
+          teamMember: { role: "manager", functions: [] },
+        },
+        {
+          teamId: ctx.teamId,
+          phone,
+          email: email || undefined,
+        }
+      );
+
       const output = await this.leadUseCase.createLeadFromImport(
         ctx.supabaseId,
         {
@@ -161,6 +174,7 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
           ticket: ticket ?? undefined,
           contractDueDate,
           soldPlan: row.soldPlan?.trim() || undefined,
+          confirmDuplicate: true,
         },
         ctx.teamId
       );
@@ -176,6 +190,16 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
       }
 
       created += 1;
+      if (duplicateCandidates.length > 0) {
+        issues.push({
+          line,
+          name,
+          kind: "duplicate_detected",
+          reason: `Possível duplicado detectado (${duplicateCandidates
+            .map((candidate) => candidate.leadCode)
+            .join(", ")}) — lead importado mesmo assim`,
+        });
+      }
       const rawStatus = row.status?.trim() ?? "";
       const statusFellBackToDefault = status === "new_opportunity" && rawStatus !== "new_opportunity";
       if (statusFellBackToDefault) {

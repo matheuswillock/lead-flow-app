@@ -13,6 +13,9 @@ import type { IPublicLeadFormUseCase, PublicLeadFormOriginContext } from "./IPub
 import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { getPreScheduleSlotsPayload } from "../../services/preSchedule/PreScheduleSlotService";
+import { leadCustomFieldService } from "../../services/leadCustomField/LeadCustomFieldService";
+import { mapLeadCustomFieldDefinitionToDTO } from "../../infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
+import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
 
 const SLOT_MINUTES = 30;
 
@@ -251,6 +254,27 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       }
 
       const saveAsDraft = data.saveAsDraft === true;
+      const publicCustomFieldDefinitions = await leadCustomFieldService.listActivePublicDefinitionsByTeamId(
+        access.teamId
+      );
+      const publicCustomFieldDtos = publicCustomFieldDefinitions.map(mapLeadCustomFieldDefinitionToDTO);
+      if (publicCustomFieldDtos.length > 0 || data.customFields) {
+        const customFieldsValidation = validateLeadCustomFieldsPayload(
+          publicCustomFieldDtos,
+          data.customFields ?? {},
+          !saveAsDraft
+        );
+        if (!customFieldsValidation.success) {
+          return new Output(false, [], customFieldsValidation.errors, null);
+        }
+      }
+      const allowedCustomFieldKeys = new Set(publicCustomFieldDtos.map((definition) => definition.key));
+      const sanitizedCustomFields = data.customFields
+        ? Object.fromEntries(
+            Object.entries(data.customFields).filter(([key]) => allowedCustomFieldKeys.has(key))
+          )
+        : undefined;
+
       const hasMeetingData =
         !saveAsDraft && !data.isTransfer && !!(data.closerId && data.meetingDate && data.meetingTitle);
       const createLeadData: CreateLeadRequest = {
@@ -275,6 +299,10 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         soldPlan: undefined,
         isTransfer: data.isTransfer === true,
         saveAsDraft,
+        customFields:
+          sanitizedCustomFields && Object.keys(sanitizedCustomFields).length > 0
+            ? sanitizedCustomFields
+            : undefined,
         status: saveAsDraft
           ? null
           : hasMeetingData
@@ -401,10 +429,12 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       }
 
       const access = accessResult.access as PublicIntegrationAccess;
-      const [healthPlanOptions, teamMembers, transferRoutesCount] = await Promise.all([
+      const [healthPlanOptions, teamMembers, transferRoutesCount, publicCustomFieldDefinitions] =
+        await Promise.all([
         healthPlanService.listOptions(),
         this.listTeamMembersSnapshot(access.teamId),
         prisma.teamTransferRoute.count({ where: { sourceTeamId: access.teamId } }),
+        leadCustomFieldService.listActivePublicDefinitionsByTeamId(access.teamId),
       ]);
 
       const healthPlans = healthPlanOptions.map((option) => ({
@@ -427,6 +457,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         guestCandidates,
         timezone: access.timezone,
         hasTransferTargets: transferRoutesCount > 0,
+        customFieldDefinitions: publicCustomFieldDefinitions.map(mapLeadCustomFieldDefinitionToDTO),
       });
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao carregar bootstrap do formulário público:", error);

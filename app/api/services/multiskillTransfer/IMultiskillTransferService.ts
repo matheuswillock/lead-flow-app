@@ -9,13 +9,12 @@ export type {
 
 export interface IMultiskillTransferService {
   listTransferTargets(input: {
-    multiskillMasterId: string;
+    originMasterId: string;
     query?: string;
     page: number;
     pageSize: number;
   }): Promise<ListMultiskillTransferTargetsResult>;
   resolveDefaultTeamForMaster(masterId: string): Promise<{ id: string; name: string } | null>;
-  resolveMultiskillMasterId(): Promise<string | null>;
 }
 
 export type MultiskillCallerContext = TeamAccess;

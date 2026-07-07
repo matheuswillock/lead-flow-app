@@ -1,4 +1,4 @@
-import { ILeadRepository, type LeadCreateRepositoryInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
+import { ILeadRepository, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
 import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
@@ -1059,6 +1059,170 @@ export class LeadRepository implements ILeadRepository {
         cnpj: true,
         status: true,
       },
+    });
+  }
+
+  private readonly duplicateCandidateSelect = {
+    id: true,
+    leadCode: true,
+    name: true,
+    phone: true,
+    email: true,
+    status: true,
+    createdAt: true,
+  } as const;
+
+  async findDuplicateDirectMatches(
+    teamId: string,
+    input: { phone?: string; email?: string; excludeLeadId?: string; limit?: number }
+  ): Promise<LeadDuplicateCandidateRecord[]> {
+    const orConditions: Prisma.LeadWhereInput[] = [];
+    if (input.phone) orConditions.push({ phone: input.phone });
+    if (input.email) orConditions.push({ email: input.email });
+    if (!orConditions.length) return [];
+
+    return prisma.lead.findMany({
+      where: {
+        teamId,
+        ...(input.excludeLeadId ? { id: { not: input.excludeLeadId } } : {}),
+        OR: orConditions,
+      },
+      select: this.duplicateCandidateSelect,
+      take: input.limit ?? 5,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async findDuplicateScanCandidates(
+    teamId: string,
+    input: { hasPhone: boolean; hasEmail: boolean; excludeLeadId?: string; limit?: number }
+  ): Promise<LeadDuplicateCandidateRecord[]> {
+    const orConditions: Prisma.LeadWhereInput[] = [];
+    if (input.hasPhone) orConditions.push({ phone: { not: null } });
+    if (input.hasEmail) orConditions.push({ email: { not: null } });
+    if (!orConditions.length) return [];
+
+    return prisma.lead.findMany({
+      where: {
+        teamId,
+        ...(input.excludeLeadId ? { id: { not: input.excludeLeadId } } : {}),
+        OR: orConditions,
+      },
+      select: this.duplicateCandidateSelect,
+      take: input.limit ?? 200,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getMergeRelationSnapshot(targetLeadId: string, sourceLeadId: string) {
+    const [
+      targetPortfolio,
+      sourcePortfolio,
+      targetProposalReview,
+      sourceProposalReview,
+      targetSchedule,
+      sourceSchedule,
+    ] = await Promise.all([
+      prisma.leadPortfolio.findUnique({ where: { leadId: targetLeadId }, select: { id: true } }),
+      prisma.leadPortfolio.findUnique({ where: { leadId: sourceLeadId }, select: { id: true } }),
+      prisma.leadProposalReview.findUnique({ where: { leadId: targetLeadId }, select: { id: true } }),
+      prisma.leadProposalReview.findUnique({ where: { leadId: sourceLeadId }, select: { id: true } }),
+      prisma.leadsSchedule.findUnique({ where: { leadId: targetLeadId }, select: { id: true } }),
+      prisma.leadsSchedule.findUnique({ where: { leadId: sourceLeadId }, select: { id: true } }),
+    ]);
+
+    return {
+      targetPortfolio: Boolean(targetPortfolio),
+      sourcePortfolio: Boolean(sourcePortfolio),
+      targetProposalReview: Boolean(targetProposalReview),
+      sourceProposalReview: Boolean(sourceProposalReview),
+      targetSchedule: Boolean(targetSchedule),
+      sourceSchedule: Boolean(sourceSchedule),
+    };
+  }
+
+  async mergeLeadsInTransaction(input: LeadMergeTransactionInput): Promise<void> {
+    const { targetLead, sourceLead, fillPatch, mergedByProfileId, migratePortfolio, migrateProposalReview } =
+      input;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.leadActivity.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.task.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadsSchedule.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadFinalized.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadTransfer.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadAttachment.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadRequiredDocument.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.whatsAppConversation.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.whatsAppMessage.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.lead.updateMany({
+        where: { referrerLeadId: sourceLead.id },
+        data: { referrerLeadId: targetLead.id },
+      });
+
+      if (migratePortfolio) {
+        await tx.leadPortfolio.update({
+          where: { leadId: sourceLead.id },
+          data: { leadId: targetLead.id },
+        });
+      }
+
+      if (migrateProposalReview) {
+        await tx.leadProposalReview.update({
+          where: { leadId: sourceLead.id },
+          data: { leadId: targetLead.id },
+        });
+      }
+
+      await tx.lead.delete({ where: { id: sourceLead.id } });
+
+      if (Object.keys(fillPatch).length > 0) {
+        await tx.lead.update({
+          where: { id: targetLead.id },
+          data: fillPatch,
+        });
+      }
+
+      await tx.leadActivity.create({
+        data: {
+          leadId: targetLead.id,
+          type: ActivityType.note,
+          body: `Lead ${sourceLead.leadCode} mesclado neste registro`,
+          createdBy: mergedByProfileId,
+          payload: {
+            mergedLeadId: sourceLead.id,
+            mergedLeadCode: sourceLead.leadCode,
+            mergedBy: mergedByProfileId,
+          },
+        },
+      });
     });
   }
 }

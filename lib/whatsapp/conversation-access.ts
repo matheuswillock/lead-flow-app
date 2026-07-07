@@ -52,3 +52,31 @@ export function buildOperatorConversationVisibilityWhere(
 
   return { OR: orFilters }
 }
+
+/** Espelha whatsapp_user_can_view_conversation para operator (paridade TS×RLS em testes). */
+export function operatorCanViewConversation(input: {
+  profileId: string
+  assignedProfileId: string | null
+  leadId: string | null
+  normalizedPhone: string | null
+  leadAssignedTo: string | null
+  leadCloserId: string | null
+  operatorLeadPhones: string[]
+}): boolean {
+  if (input.assignedProfileId === input.profileId) return true
+  if (input.assignedProfileId === null) return true
+  if (
+    input.leadId &&
+    (input.leadAssignedTo === input.profileId || input.leadCloserId === input.profileId)
+  ) {
+    return true
+  }
+  if (
+    !input.leadId &&
+    input.normalizedPhone &&
+    input.operatorLeadPhones.includes(input.normalizedPhone)
+  ) {
+    return true
+  }
+  return false
+}

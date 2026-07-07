@@ -6,6 +6,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
+import { emailCampaignLeadActivityService } from "@/app/api/services/email/EmailCampaignLeadActivityService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
@@ -406,6 +407,40 @@ export class EmailCampaignUseCase {
     return (_max.dispatchNumber ?? 0) + 1
   }
 
+  private recordDispatchLeadActivities(params: {
+    teamId: string
+    campaignId: string
+    dispatchId: string
+    recipients: Array<{ email: string; name?: string | null; customFields?: Record<string, unknown> | null }>
+    dispatchedEmails: Set<string>
+    subject: string
+    globalDefaults: Record<string, string>
+    templateVariables: ReturnType<EmailCampaignRecipientService["parseTemplateVariables"]>
+  }): void {
+    for (const recipient of params.recipients) {
+      if (!params.dispatchedEmails.has(recipient.email)) continue
+
+      const renderedSubject = interpolateEmailTemplate(
+        params.subject,
+        recipient,
+        params.globalDefaults,
+        params.templateVariables
+      )
+
+      void emailCampaignLeadActivityService
+        .recordDispatchForRecipient({
+          teamId: params.teamId,
+          campaignId: params.campaignId,
+          dispatchId: params.dispatchId,
+          recipientEmail: recipient.email,
+          subject: renderedSubject,
+        })
+        .catch((activityError) => {
+          console.error("[EmailCampaignUseCase][recordDispatchLeadActivities]", activityError)
+        })
+    }
+  }
+
   private async reserveTeamCreditsForDispatch(
     teamId: string,
     recipientCount: number,
@@ -637,6 +672,16 @@ export class EmailCampaignUseCase {
         sentCount = dispatchResult.sent
 
         const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
+        this.recordDispatchLeadActivities({
+          teamId: ctx.teamId,
+          campaignId: campaign.id,
+          dispatchId: dispatchRecord.id,
+          recipients: recipientsList,
+          dispatchedEmails,
+          subject: dispatchInput.subject,
+          globalDefaults,
+          templateVariables,
+        })
         await withConcurrencyLimit(
           dispatchResult.dispatched,
           EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
@@ -664,6 +709,7 @@ export class EmailCampaignUseCase {
             data: {
               totalSent: dispatchResult.sent,
               status: terminal.dispatchStatus,
+              errorMessage: terminal.errorMessage,
             },
           }),
           prisma.emailCampaign.update({
@@ -721,7 +767,10 @@ export class EmailCampaignUseCase {
         await prisma.emailCampaignDispatch
           .update({
             where: { id: dispatchRecordId },
-            data: { status: "failed" },
+            data: {
+              status: "failed",
+              errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
+            },
           })
           .catch(() => null)
       }
@@ -762,7 +811,10 @@ export class EmailCampaignUseCase {
       }),
       prisma.emailCampaignDispatch.updateMany({
         where: { status: "sending", updatedAt: { lt: threshold } },
-        data: { status: "failed" },
+        data: {
+          status: "failed",
+          errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.STUCK_SENDING,
+        },
       }),
     ])
 
@@ -981,6 +1033,16 @@ export class EmailCampaignUseCase {
         sentCount = dispatchResult.sent
 
         const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
+        this.recordDispatchLeadActivities({
+          teamId: campaign.teamId,
+          campaignId: campaign.id,
+          dispatchId: dispatchRecord.id,
+          recipients: recipientsList,
+          dispatchedEmails,
+          subject: dispatchInput.subject,
+          globalDefaults: dispatchInput.globalDefaults,
+          templateVariables: dispatchInput.templateVariables,
+        })
         await withConcurrencyLimit(
           dispatchResult.dispatched,
           EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
@@ -1008,6 +1070,7 @@ export class EmailCampaignUseCase {
             data: {
               totalSent: dispatchResult.sent,
               status: terminal.dispatchStatus,
+              errorMessage: terminal.errorMessage,
             },
           }),
           prisma.emailCampaign.update({

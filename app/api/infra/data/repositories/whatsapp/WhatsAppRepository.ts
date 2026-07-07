@@ -37,6 +37,7 @@ const CONFIG_SELECT = {
   historySyncError: true,
   usageLimitMonthly: true,
   billingEnabled: true,
+  webhookConsecutiveFailures: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -177,6 +178,31 @@ class WhatsAppRepository implements IWhatsAppRepository {
       },
     })
     return result.count > 0
+  }
+
+  async incrementWebhookConsecutiveFailures(configId: string): Promise<{
+    webhookConsecutiveFailures: number
+    instanceName: string
+    phoneNumber: string | null
+    status: string
+  }> {
+    return prisma.teamWhatsAppConfig.update({
+      where: { id: configId },
+      data: { webhookConsecutiveFailures: { increment: 1 } },
+      select: {
+        webhookConsecutiveFailures: true,
+        instanceName: true,
+        phoneNumber: true,
+        status: true,
+      },
+    })
+  }
+
+  async resetWebhookConsecutiveFailures(configId: string): Promise<void> {
+    await prisma.teamWhatsAppConfig.updateMany({
+      where: { id: configId, webhookConsecutiveFailures: { gt: 0 } },
+      data: { webhookConsecutiveFailures: 0 },
+    })
   }
 
   async deleteConfig(id: string): Promise<void> {

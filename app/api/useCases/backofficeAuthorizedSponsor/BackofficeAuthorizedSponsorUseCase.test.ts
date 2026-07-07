@@ -55,4 +55,28 @@ describe("BackofficeAuthorizedSponsorUseCase", () => {
     expect(output.isValid).toBe(false)
     expect(output.errorMessages[0]).toContain("Somente masters")
   })
+
+  it("retorna erro quando grant duplicado", async () => {
+    const useCase = new BackofficeAuthorizedSponsorUseCase(
+      createServiceMock({
+        grant: async () => ({ error: "Este master já está autorizado como patrocinador" }),
+      })
+    )
+
+    const output = await useCase.grant("p1", "admin-profile")
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("já está autorizado")
+  })
+
+  it("retorna erro ao revogar patrocinador inexistente", async () => {
+    const useCase = new BackofficeAuthorizedSponsorUseCase(
+      createServiceMock({
+        revoke: async () => ({ error: "Patrocinador não encontrado" }),
+      })
+    )
+
+    const output = await useCase.revoke("missing", "admin-profile")
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("não encontrado")
+  })
 })

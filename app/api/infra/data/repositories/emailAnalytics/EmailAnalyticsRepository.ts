@@ -107,6 +107,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         totalBounced: true,
         totalComplained: true,
         status: true,
+        errorMessage: true,
       },
       orderBy: { dispatchNumber: "desc" },
     })

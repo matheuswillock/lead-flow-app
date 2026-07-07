@@ -57,6 +57,8 @@ export const CreateLeadRequestSchema = z.object({
   referrerLeadId: z.string().uuid("ID do lead indicador deve ser um UUID válido").optional(),
   referrerName: z.string().optional(),
   referrerPhone: z.string().optional(),
+  confirmDuplicate: z.boolean().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema>;

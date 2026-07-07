@@ -38,6 +38,7 @@ export function CampanhasContainer() {
   const [analyticsCampaign, setAnalyticsCampaign] = useState<{
     id: string
     name: string
+    errorMessage?: string | null
   } | null>(null)
 
   function openGeneralAnalytics() {
@@ -45,7 +46,11 @@ export function CampanhasContainer() {
     setAnalyticsOpen(true)
   }
 
-  function openCampaignAnalytics(campaign: { id: string; name: string }) {
+  function openCampaignAnalytics(campaign: {
+    id: string
+    name: string
+    errorMessage?: string | null
+  }) {
     setAnalyticsCampaign(campaign)
     setAnalyticsOpen(true)
   }
@@ -92,6 +97,7 @@ export function CampanhasContainer() {
         onOpenChange={setAnalyticsOpen}
         campaignId={analyticsCampaign?.id}
         campaignName={analyticsCampaign?.name}
+        campaignErrorMessage={analyticsCampaign?.errorMessage}
       />
     </div>
   )

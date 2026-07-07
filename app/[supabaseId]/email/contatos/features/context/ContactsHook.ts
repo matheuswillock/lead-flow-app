@@ -87,7 +87,19 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
 
   useEffect(() => {
     void fetchLists();
-  }, [supabaseId]);
+  }, [supabaseId, fetchLists]);
+
+  const hasActiveImport = lists.some((list) => list.activeImport != null);
+
+  useEffect(() => {
+    if (!hasActiveImport) return;
+
+    const intervalId = setInterval(() => {
+      void fetchLists();
+    }, 10_000);
+
+    return () => clearInterval(intervalId);
+  }, [hasActiveImport, fetchLists]);
 
   useEffect(() => {
     if (!selectedListId) {

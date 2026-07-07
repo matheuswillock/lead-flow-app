@@ -1,8 +1,6 @@
 export const FEATURE_SLUGS = {
   CRM: "crm",
   CRM_LEAD_TRANSFERS: "crm-lead-transfers",
-  CRM_MULTISKILL_TRANSFERS: "crm-multiskill-transfers",
-  CRM_BACKOFFICE_ASSOCIADOS: "crm-backoffice-associados",
   CRM_DASHBOARD: "crm-dashboard",
   CRM_CALENDAR: "crm-calendar",
   CRM_PERFORMANCE: "crm-performance",
@@ -11,6 +9,7 @@ export const FEATURE_SLUGS = {
   CRM_TIME_MANAGE_TEAMS: "crm-time-manage-teams",
   CRM_TIME_MANAGE_USERS: "crm-time-manage-users",
   CRM_WALLET: "crm-wallet",
+  CRM_AUTOMATIONS: "crm-automations",
   EMAIL: "email",
   EMAIL_TEMPLATES: "email-templates",
   EMAIL_CONTACTS: "email-contacts",

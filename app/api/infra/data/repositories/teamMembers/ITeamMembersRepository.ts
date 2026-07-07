@@ -63,6 +63,7 @@ export interface ITeamMembersRepository {
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;
   findMasterAccountProfiles(masterId: string): Promise<TeamMembersProfileOption[]>;
   findTransferTargets(teamId: string): Promise<TeamMembersTransferTarget[]>;
+  hasTransferRoute(sourceTeamId: string, targetTeamId: string): Promise<boolean>;
   findExistingMember(teamId: string, profileId: string): Promise<{ id: string } | null>;
   findEligibleProfile(profileId: string, masterId: string): Promise<TeamMembersEligibleProfile | null>;
   createMember(input: {

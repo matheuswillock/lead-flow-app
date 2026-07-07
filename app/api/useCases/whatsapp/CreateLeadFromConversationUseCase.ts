@@ -9,6 +9,7 @@ import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/W
 import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseFactory"
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
 import { isGroupChat } from "@/app/api/services/whatsapp/phoneUtils"
+import { whatsAppLeadActivityService } from "@/app/api/services/whatsapp/WhatsAppLeadActivityService"
 import {
   resolveContactNameUpdate,
   type ContactNameSource,
@@ -106,6 +107,21 @@ class CreateLeadFromConversationUseCase {
       const finalConversation = nameUpdate
         ? await whatsAppRepository.updateConversation(input.conversationId, nameUpdate)
         : linkedConversation
+
+      try {
+        await whatsAppLeadActivityService.recordConversationMilestone({
+          teamId: conversation.teamId,
+          leadId: createdLead.id,
+          conversationId: input.conversationId,
+          milestone: "conversation_started",
+          preview: finalConversation.lastMessagePreview,
+        })
+      } catch (activityError) {
+        console.error(
+          "[CreateLeadFromConversationUseCase][execute] Falha ao registrar atividade",
+          activityError
+        )
+      }
 
       return new Output(
         true,
