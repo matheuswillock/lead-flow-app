@@ -11469,7 +11469,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"id\": \"{{gateId}}\",\n  \"gate\": {\n    \"name\": \"Nova oportunidade: destinos permitidos\",\n    \"gateType\": \"allowed_target_statuses\",\n    \"sourceStatus\": \"new_opportunity\",\n    \"targetStatus\": null,\n    \"config\": { \"allowedTargetStatuses\": [\"scheduled\", \"opportunityLost\"] },\n    \"blockerType\": \"validation_error\",\n    \"errorMessage\": \"De Nova oportunidade, o lead só pode ser movido para Agendado ou Perdido.\",\n    \"isEnabled\": true,\n    \"sortOrder\": 10\n  }\n}"
+                  "raw": "{\n  \"id\": \"{{gateId}}\",\n  \"gate\": {\n    \"name\": \"Nova oportunidade: destinos permitidos\",\n    \"gateType\": \"allowed_target_statuses\",\n    \"sourceStatus\": \"new_opportunity\",\n    \"targetStatus\": null,\n    \"config\": { \"allowedTargetStatuses\": [\"scheduled\", \"future_sale\", \"opportunityLost\"] },\n    \"blockerType\": \"validation_error\",\n    \"errorMessage\": \"De Nova oportunidade, o lead só pode ser movido para Agendado, Venda Futura ou Perdido.\",\n    \"isEnabled\": true,\n    \"sortOrder\": 10\n  }\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/lead-status-transition-gates",

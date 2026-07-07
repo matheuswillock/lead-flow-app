@@ -169,7 +169,7 @@ export function getAllowedTargetStatusesFromGates(
 /** Fallback client-side quando a API de gates ainda não carregou (espelha seed `new_opportunity_allowed_targets`). */
 export function getBuiltinAllowedTargetStatuses(sourceStatus: LeadStatus): LeadStatus[] | null {
   if (sourceStatus === "new_opportunity") {
-    return ["scheduled", "opportunityLost"];
+    return ["scheduled", "future_sale", "opportunityLost"];
   }
   return null;
 }
