@@ -16,17 +16,19 @@ export type LeadCustomFieldDefinitionRecord = Pick<
   | "isRequired"
   | "displayOrder"
   | "isActive"
+  | "showOnPublicForm"
   | "createdAt"
   | "updatedAt"
 >;
 
 export type LeadCustomFieldDefinitionCreateInput = {
-  key: string;
+  key?: string;
   label: string;
   type: LeadCustomFieldType;
   options?: Prisma.InputJsonValue | null;
   isRequired?: boolean;
   displayOrder?: number;
+  showOnPublicForm?: boolean;
 };
 
 export type LeadCustomFieldDefinitionUpdateInput = {
@@ -35,6 +37,7 @@ export type LeadCustomFieldDefinitionUpdateInput = {
   isRequired?: boolean;
   displayOrder?: number;
   isActive?: boolean;
+  showOnPublicForm?: boolean;
 };
 
 export interface ILeadCustomFieldRepository {
@@ -43,7 +46,7 @@ export interface ILeadCustomFieldRepository {
   countActiveByTeamWithCtx(access: TeamAccess): Promise<number>;
   createWithCtx(
     access: TeamAccess,
-    input: LeadCustomFieldDefinitionCreateInput
+    input: LeadCustomFieldDefinitionCreateInput & { key: string }
   ): Promise<LeadCustomFieldDefinitionRecord>;
   updateWithCtx(
     access: TeamAccess,
@@ -53,6 +56,7 @@ export interface ILeadCustomFieldRepository {
   countValuesByDefinitionId(definitionId: string): Promise<number>;
   deleteDefinition(definitionId: string): Promise<void>;
   listActiveByTeamId(teamId: string): Promise<LeadCustomFieldDefinitionRecord[]>;
+  listActivePublicByTeamId(teamId: string): Promise<LeadCustomFieldDefinitionRecord[]>;
   listValuesByLeadId(leadId: string): Promise<
     Array<{
       definitionId: string;
@@ -79,6 +83,7 @@ export function mapLeadCustomFieldDefinitionToDTO(
     isRequired: definition.isRequired,
     displayOrder: definition.displayOrder,
     isActive: definition.isActive,
+    showOnPublicForm: definition.showOnPublicForm,
     createdAt: definition.createdAt.toISOString(),
     updatedAt: definition.updatedAt.toISOString(),
   };

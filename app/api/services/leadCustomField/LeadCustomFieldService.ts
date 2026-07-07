@@ -1,6 +1,7 @@
 import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
 import {
   MAX_ACTIVE_LEAD_CUSTOM_FIELD_DEFINITIONS,
+  slugifyLeadCustomFieldKey,
 } from "@/lib/leadCustomFields/types";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import {
@@ -25,10 +26,13 @@ export class LeadCustomFieldService implements ILeadCustomFieldService {
   }
 
   async createDefinition(access: TeamAccess, input: LeadCustomFieldDefinitionCreateInput) {
-    if (!isValidLeadCustomFieldKey(input.key)) {
+    const key = input.key?.trim() || slugifyLeadCustomFieldKey(input.label);
+    const normalizedInput = { ...input, key, label: input.label.trim() };
+
+    if (!isValidLeadCustomFieldKey(normalizedInput.key)) {
       return { error: "duplicate_key" as const };
     }
-    if (!validateOptionsForType(input.type, input.options)) {
+    if (!validateOptionsForType(normalizedInput.type, normalizedInput.options)) {
       return { error: "invalid_options" as const };
     }
 
@@ -38,7 +42,7 @@ export class LeadCustomFieldService implements ILeadCustomFieldService {
     }
 
     try {
-      const definition = await this.repository.createWithCtx(access, input);
+      const definition = await this.repository.createWithCtx(access, normalizedInput);
       return { definition };
     } catch (error) {
       if (error instanceof Error && error.message.includes("Unique constraint")) {
@@ -91,13 +95,21 @@ export class LeadCustomFieldService implements ILeadCustomFieldService {
     return this.repository.listActiveByTeamId(teamId);
   }
 
+  async listActivePublicDefinitionsByTeamId(teamId: string) {
+    return this.repository.listActivePublicByTeamId(teamId);
+  }
+
   async persistLeadCustomFieldValues(input: {
     teamId: string;
     leadId: string;
     customFields?: Record<string, unknown>;
     enforceRequired: boolean;
+    definitionsScope?: "active" | "public";
   }) {
-    const definitions = await this.repository.listActiveByTeamId(input.teamId);
+    const definitions =
+      input.definitionsScope === "public"
+        ? await this.repository.listActivePublicByTeamId(input.teamId)
+        : await this.repository.listActiveByTeamId(input.teamId);
     const definitionDtos = definitions.map(mapLeadCustomFieldDefinitionToDTO);
     const validation = validateLeadCustomFieldsPayload(
       definitionDtos,

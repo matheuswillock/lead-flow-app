@@ -16,7 +16,7 @@ function buildFieldSchema(definition: LeadCustomFieldDefinitionDTO): z.ZodTypeAn
     }
     case "number": {
       const base = z
-        .number({ invalid_type_error: `${definition.label} deve ser um número` })
+        .number({ error: `${definition.label} deve ser um número` })
         .finite(`${definition.label} deve ser um número válido`);
       return definition.isRequired ? base : base.optional();
     }
@@ -37,7 +37,7 @@ function buildFieldSchema(definition: LeadCustomFieldDefinitionDTO): z.ZodTypeAn
         optionValues.length === 1
           ? z.literal(optionValues[0])
           : z.enum(optionValues as [string, ...string[]], {
-              errorMap: () => ({ message: `${definition.label} possui valor inválido` }),
+              message: `${definition.label} possui valor inválido`,
             });
       return definition.isRequired ? base : base.optional();
     }
@@ -57,20 +57,18 @@ function buildFieldSchema(definition: LeadCustomFieldDefinitionDTO): z.ZodTypeAn
         : base.optional();
     }
     case "boolean": {
-      const base = z.boolean({ invalid_type_error: `${definition.label} deve ser verdadeiro ou falso` });
+      const base = z.boolean({ error: `${definition.label} deve ser verdadeiro ou falso` });
       return definition.isRequired ? base : base.optional();
     }
-    default: {
-      const _exhaustive: never = definition.type;
-      return _exhaustive;
-    }
+    default:
+      return z.unknown();
   }
 }
 
 export function buildLeadCustomFieldsSchema(definitions: LeadCustomFieldDefinitionDTO[]) {
   const activeDefinitions = definitions.filter((definition) => definition.isActive);
   if (activeDefinitions.length === 0) {
-    return z.object({ customFields: z.record(z.unknown()).optional() });
+    return z.object({ customFields: z.record(z.string(), z.unknown()).optional() });
   }
 
   const shape: Record<string, z.ZodTypeAny> = {};

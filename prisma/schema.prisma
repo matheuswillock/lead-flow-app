@@ -1811,10 +1811,11 @@ model LeadCustomFieldDefinition {
   label        String              @db.Text
   type         LeadCustomFieldType
   options      Json?
-  isRequired   Boolean             @default(false)
-  displayOrder Int                 @default(0)
-  isActive     Boolean             @default(true)
-  createdAt    DateTime            @default(now()) @db.Timestamptz(6)
+  isRequired       Boolean             @default(false)
+  displayOrder     Int                 @default(0)
+  isActive         Boolean             @default(true)
+  showOnPublicForm Boolean             @default(false)
+  createdAt        DateTime            @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
 
   team    Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -1822,7 +1823,8 @@ model LeadCustomFieldDefinition {
   values  LeadCustomFieldValue[]
 
   @@unique([teamId, key])
-  @@index([teamId, isActive, displayOrder])
+  @@index([teamId, isActive, displayOrder], map: "lead_custom_field_defs_team_active_order_idx")
+  @@index([teamId, isActive, showOnPublicForm, displayOrder], map: "lead_custom_field_defs_team_public_order_idx")
   @@map("corretor_studio_lead_custom_field_definitions")
 }
 

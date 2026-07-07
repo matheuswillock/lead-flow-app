@@ -5,6 +5,16 @@ export type LeadCustomFieldOption = {
   label: string;
 };
 
+export type LeadCustomFieldDefinitionApiCreateInput = {
+  label: string;
+  key?: string;
+  type: LeadCustomFieldType;
+  options?: LeadCustomFieldOption[];
+  isRequired?: boolean;
+  displayOrder?: number;
+  showOnPublicForm?: boolean;
+};
+
 export type LeadCustomFieldDefinitionDTO = {
   id: string;
   teamId: string;
@@ -15,6 +25,7 @@ export type LeadCustomFieldDefinitionDTO = {
   isRequired: boolean;
   displayOrder: number;
   isActive: boolean;
+  showOnPublicForm: boolean;
   createdAt: string;
   updatedAt: string;
 };

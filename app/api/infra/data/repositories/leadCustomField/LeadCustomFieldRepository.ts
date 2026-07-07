@@ -18,6 +18,7 @@ const definitionSelect = {
   isRequired: true,
   displayOrder: true,
   isActive: true,
+  showOnPublicForm: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.LeadCustomFieldDefinitionSelect;
@@ -49,7 +50,7 @@ export class LeadCustomFieldRepository implements ILeadCustomFieldRepository {
 
   async createWithCtx(
     access: TeamAccess,
-    input: LeadCustomFieldDefinitionCreateInput
+    input: LeadCustomFieldDefinitionCreateInput & { key: string }
   ): Promise<LeadCustomFieldDefinitionRecord> {
     return prisma.leadCustomFieldDefinition.create({
       data: {
@@ -61,6 +62,7 @@ export class LeadCustomFieldRepository implements ILeadCustomFieldRepository {
         options: input.options ?? undefined,
         isRequired: input.isRequired ?? false,
         displayOrder: input.displayOrder ?? 0,
+        showOnPublicForm: input.showOnPublicForm ?? false,
       },
       select: definitionSelect,
     });
@@ -82,6 +84,7 @@ export class LeadCustomFieldRepository implements ILeadCustomFieldRepository {
         ...(input.isRequired !== undefined ? { isRequired: input.isRequired } : {}),
         ...(input.displayOrder !== undefined ? { displayOrder: input.displayOrder } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        ...(input.showOnPublicForm !== undefined ? { showOnPublicForm: input.showOnPublicForm } : {}),
       },
       select: definitionSelect,
     });
@@ -98,6 +101,14 @@ export class LeadCustomFieldRepository implements ILeadCustomFieldRepository {
   async listActiveByTeamId(teamId: string): Promise<LeadCustomFieldDefinitionRecord[]> {
     return prisma.leadCustomFieldDefinition.findMany({
       where: { teamId, isActive: true },
+      select: definitionSelect,
+      orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  async listActivePublicByTeamId(teamId: string): Promise<LeadCustomFieldDefinitionRecord[]> {
+    return prisma.leadCustomFieldDefinition.findMany({
+      where: { teamId, isActive: true, showOnPublicForm: true },
       select: definitionSelect,
       orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
     });

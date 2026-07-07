@@ -1,3 +1,5 @@
+import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
+
 export interface HealthPlanOption {
   id: string;
   name: string;
@@ -43,6 +45,7 @@ export interface SubmitPublicLeadPayload {
   extraGuests?: string[];
   isTransfer?: boolean;
   saveAsDraft?: boolean;
+  customFields?: Record<string, unknown>;
   source?: string;
   utmSource?: string;
   utmMedium?: string;
@@ -75,6 +78,7 @@ export interface PublicLeadFormBootstrapData {
   guestCandidates: GuestCandidateOption[];
   timezone: string;
   hasTransferTargets: boolean;
+  customFieldDefinitions: LeadCustomFieldDefinitionDTO[];
 }
 
 export interface PreScheduleSlotsResult {

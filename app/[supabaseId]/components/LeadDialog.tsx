@@ -264,8 +264,23 @@ export default function LeadDialog({
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeTeam, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
-  const { activeDefinitions: leadCustomFieldDefinitions } = useLeadCustomFieldDefinitions({
-    teamId: activeTeamId,
+  const leadDetailsTeamId = currentLead?.teamId ?? activeTeamId ?? null;
+  const {
+    details: leadDetails,
+    loading: leadDetailsLoading,
+    error: leadDetailsError,
+    refresh: refreshLeadDetails,
+  } = useLeadDetails(currentLeadId || null, leadDetailsTeamId, supabaseId);
+  const customFieldsTeamId = useMemo(
+    () => leadDetails?.lead?.teamId ?? currentLead?.teamId ?? activeTeamId ?? null,
+    [leadDetails?.lead?.teamId, currentLead?.teamId, activeTeamId]
+  );
+  const {
+    activeDefinitions: leadCustomFieldDefinitions,
+    isLoading: leadCustomFieldDefinitionsLoading,
+    refresh: refreshLeadCustomFieldDefinitions,
+  } = useLeadCustomFieldDefinitions({
+    teamId: customFieldsTeamId,
     supabaseId,
   });
   const form = useLeadForm(leadCustomFieldDefinitions);
@@ -275,12 +290,6 @@ export default function LeadDialog({
   const canMergeLead =
     Boolean(currentLead) &&
     (isTeamMaster || isManagerLikeRole(activeRole ?? user?.role ?? ""));
-  const {
-    details: leadDetails,
-    loading: leadDetailsLoading,
-    error: leadDetailsError,
-    refresh: refreshLeadDetails,
-  } = useLeadDetails(currentLeadId || null, activeTeamId, supabaseId);
   const allowedTransferTargetIds = useMemo(
     () => (leadDetails?.transferTargets ?? []).map((target) => target.teamId),
     [leadDetails?.transferTargets]
@@ -330,7 +339,10 @@ export default function LeadDialog({
     leadDetailsLoading || (!!currentLead && leadDetails?.lead?.id !== currentLead?.id);
   // Único gating de loading do conteúdo do dialog: o useLeadDetails carrega lead,
   // anexos e membros em paralelo — basta aguardar o loading dele.
-  const isLeadContentLoading = !!currentLead && leadDetailsLoading;
+  const isCustomFieldsLoading =
+    Boolean(customFieldsTeamId) && leadCustomFieldDefinitionsLoading;
+  const isLeadContentLoading =
+    (!!currentLead && leadDetailsLoading) || isCustomFieldsLoading;
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1572,9 +1584,6 @@ export default function LeadDialog({
             id: loadingToast,
             duration: 3000,
           });
-          if (result.message.includes("não foi possível consultar a razão social")) {
-            toast.warning("Lead salvo, mas não foi possível consultar a razão social.");
-          }
           if (result.lead) {
             form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
             await applyLocalLeadPatch(currentLead.id, result.lead);
@@ -1616,9 +1625,6 @@ export default function LeadDialog({
               id: loadingToast,
               duration: 4000,
             });
-            if (result.message.includes("não foi possível consultar a razão social")) {
-              toast.warning("Lead salvo, mas não foi possível consultar a razão social.");
-            }
             if (result.lead) {
               form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
               setLocalLead(result.lead as Lead);
@@ -2371,6 +2377,43 @@ export default function LeadDialog({
       });
     }
   }, [currentLead, open, form]);
+
+  useEffect(() => {
+    if (!open) return;
+    refreshLeadCustomFieldDefinitions();
+  }, [open, customFieldsTeamId, refreshLeadCustomFieldDefinitions]);
+
+  useEffect(() => {
+    if (!open || leadCustomFieldDefinitions.length === 0) return;
+
+    const leadCustomFields =
+      leadDetails?.lead?.customFields ?? currentLead?.customFields ?? [];
+    const fromLead = Object.fromEntries(
+      leadCustomFields.map((field) => [field.key, field.value])
+    );
+    const merged: Record<string, unknown> = { ...fromLead };
+
+    for (const definition of leadCustomFieldDefinitions) {
+      if (!(definition.key in merged)) {
+        if (definition.type === "boolean") {
+          merged[definition.key] = false;
+        } else if (definition.type === "multi_select") {
+          merged[definition.key] = [];
+        } else {
+          merged[definition.key] = "";
+        }
+      }
+    }
+
+    form.setValue("customFields", merged, { shouldDirty: false, shouldValidate: false });
+  }, [
+    open,
+    currentLead?.id,
+    currentLead?.customFields,
+    leadDetails?.lead?.customFields,
+    leadCustomFieldDefinitions,
+    form,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();

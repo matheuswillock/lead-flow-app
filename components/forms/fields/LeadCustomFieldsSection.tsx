@@ -1,7 +1,9 @@
 "use client";
 
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
+import { useTimezone } from "@/app/context/TimezoneContext";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -48,6 +50,7 @@ export function LeadCustomFieldsSection({
   definitions,
   readOnly = false,
 }: LeadCustomFieldsSectionProps) {
+  const { tz } = useTimezone();
   const activeDefinitions = definitions
     .filter((definition) => definition.isActive)
     .sort((a, b) => a.displayOrder - b.displayOrder);
@@ -98,20 +101,19 @@ export function LeadCustomFieldsSection({
                     }}
                   />
                 ) : definition.type === "date" ? (
-                  <Input
-                    type="date"
-                    value={
+                  <DateTimePicker
+                    date={
                       typeof field.value === "string" && field.value
-                        ? field.value.slice(0, 10)
-                        : ""
+                        ? new Date(field.value)
+                        : undefined
                     }
-                    onChange={(event) =>
-                      field.onChange(
-                        event.target.value
-                          ? new Date(`${event.target.value}T12:00:00.000Z`).toISOString()
-                          : undefined
-                      )
-                    }
+                    onDateChange={(date) => {
+                      field.onChange(date ? date.toISOString() : undefined);
+                    }}
+                    label=""
+                    showTime={false}
+                    disablePastDates={false}
+                    tz={tz}
                   />
                 ) : definition.type === "select" ? (
                   <Select value={typeof field.value === "string" ? field.value : ""} onValueChange={field.onChange}>

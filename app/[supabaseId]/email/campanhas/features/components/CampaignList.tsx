@@ -188,15 +188,15 @@ export function CampaignList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Nome</TableHead>
-              <TableHead>Criado por</TableHead>
-              <TableHead>Template / Lista</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Destinatários</TableHead>
-              <TableHead>Qtd. disparos</TableHead>
-              <TableHead>Data de criação</TableHead>
-              <TableHead>Último disparo</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead className="text-center">Nome</TableHead>
+              <TableHead className="text-center">Criado por</TableHead>
+              <TableHead className="text-center">Template / Lista</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-center">Destinatários</TableHead>
+              <TableHead className="text-center">Qtd. disparos</TableHead>
+              <TableHead className="text-center">Data de criação</TableHead>
+              <TableHead className="text-center">Último disparo</TableHead>
+              <TableHead className="text-center">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -221,21 +221,27 @@ export function CampaignList({
 
               return (
                 <TableRow key={campaign.id}>
-                  <TableCell className="align-middle font-medium">{campaign.name}</TableCell>
-                  <TableCell className="align-middle text-sm text-muted-foreground">
+                  <TableCell className="align-middle text-center font-medium">{campaign.name}</TableCell>
+                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
                     {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
                   </TableCell>
-                  <TableCell className="align-middle text-sm text-muted-foreground">
-                    <div>{campaign.template?.name ?? '—'}</div>
-                    <div className="text-xs">{campaign.contactList?.name ?? '—'}</div>
+                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                    <div>{campaign.template?.name ?? "—"}</div>
+                    <div className="text-xs">{campaign.contactList?.name ?? "—"}</div>
                   </TableCell>
-                  <TableCell className="align-middle">
-                    <div className="flex flex-col gap-1">
-                      <CampaignStatusBadge status={isSending ? "sending" : campaign.status} />
+                  <TableCell className="align-middle text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <CampaignStatusBadge
+                        status={isSending ? "sending" : campaign.status}
+                        scheduledAt={campaign.scheduledAt}
+                      />
                       {campaign.status === "failed" && campaign.errorMessage ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Badge variant="destructive" className="max-w-[220px] truncate font-normal">
+                            <Badge
+                              variant="destructive"
+                              className="w-fit max-w-[220px] truncate font-normal"
+                            >
                               {campaign.errorMessage}
                             </Badge>
                           </TooltipTrigger>
@@ -244,22 +250,22 @@ export function CampaignList({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="align-middle text-sm">
+                  <TableCell className="align-middle text-center text-sm">
                     {campaign.totalRecipients.toLocaleString("pt-BR")}
                   </TableCell>
-                  <TableCell className="align-middle text-sm text-muted-foreground">
+                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
                     {campaign.dispatchCount.toLocaleString("pt-BR")}
                   </TableCell>
-                  <TableCell className="align-middle text-sm text-muted-foreground">
+                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
                     {formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
-                  <TableCell className="align-middle text-sm text-muted-foreground">
+                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
                     {campaign.sentAt
                       ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy HH:mm", tz)
                       : "—"}
                   </TableCell>
-                  <TableCell className="align-middle">
-                    <div className="flex items-center justify-end gap-1">
+                  <TableCell className="align-middle text-center">
+                    <div className="flex items-center justify-center gap-1">
                       {isSending ? (
                         <span className="inline-flex items-center gap-1.5 text-xs text-semantic-warning">
                           <Loader2 className="size-3.5 animate-spin" />

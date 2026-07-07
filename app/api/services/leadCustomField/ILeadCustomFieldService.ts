@@ -28,11 +28,13 @@ export interface ILeadCustomFieldService {
     definitionId: string
   ): Promise<{ removed: boolean; softDeleted?: boolean; error?: "not_found" }>;
   listActiveDefinitionsByTeamId(teamId: string): Promise<LeadCustomFieldDefinitionRecord[]>;
+  listActivePublicDefinitionsByTeamId(teamId: string): Promise<LeadCustomFieldDefinitionRecord[]>;
   persistLeadCustomFieldValues(input: {
     teamId: string;
     leadId: string;
     customFields?: Record<string, unknown>;
     enforceRequired: boolean;
+    definitionsScope?: "active" | "public";
   }): Promise<{ success: true } | { success: false; errors: string[] }>;
   getLeadCustomFieldValues(leadId: string): Promise<
     Array<{

@@ -18,6 +18,7 @@ const updateDefinitionSchema = z
     isRequired: z.boolean().optional(),
     displayOrder: z.number().int().min(0).optional(),
     isActive: z.boolean().optional(),
+    showOnPublicForm: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo para atualizar");
 

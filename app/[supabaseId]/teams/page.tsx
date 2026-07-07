@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -202,6 +203,19 @@ export default function TeamsPage() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && activeTeam?.canManageAccountTeams));
+  const managedTeam = React.useMemo(
+    () => teams.find((team) => team.id === manageTeamId) ?? null,
+    [teams, manageTeamId]
+  );
+  const isManagedTeamDefault = managedTeam?.isDefault === true;
+  const isSettingManagedTeamDefault = settingDefaultTeamId === manageTeamId;
+  const defaultTeamToggleDisabled =
+    !canManageTeams ||
+    !manageTeamId ||
+    managedTeam?.isAssociateAccount === true ||
+    managedTeam?.isPending === true ||
+    isManagedTeamDefault ||
+    isSettingManagedTeamDefault;
   const { hasAvailableTeamSlot } = useBillingSlots(supabaseId, !!user?.isMaster);
   const isOnlyMasterTeam = user?.id
     ? teams.filter((team) => team.masterId === user.id).length <= 1
@@ -678,7 +692,10 @@ export default function TeamsPage() {
     setManageLoading(true);
     try {
       const response = await fetch(`/api/v1/teams/${teamId}/members`, {
-        headers: { "x-supabase-user-id": supabaseId },
+        headers: {
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": teamId,
+        },
       });
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
@@ -815,6 +832,7 @@ export default function TeamsPage() {
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": manageTeamId,
         },
         body: JSON.stringify({
           profileId: selectedProfileId,
@@ -848,6 +866,7 @@ export default function TeamsPage() {
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": manageTeamId,
         },
         body: JSON.stringify({ profileId }),
       });
@@ -1076,9 +1095,10 @@ export default function TeamsPage() {
               </div>
             ) : (
               <Tabs defaultValue="basic-info" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="basic-info">Informações básicas</TabsTrigger>
                   <TabsTrigger value="rules">Regras</TabsTrigger>
+                  <TabsTrigger value="custom-fields">Campos personalizados</TabsTrigger>
                 </TabsList>
                 <TabsContent value="basic-info" className="mt-4">
                   <div className="space-y-6">
@@ -1099,6 +1119,25 @@ export default function TeamsPage() {
                     {isRenaming ? "Salvando..." : "Salvar"}
                   </Button>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-3">
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium">Time padrão</p>
+                  <p className="text-xs text-muted-foreground">
+                    Este time será selecionado automaticamente ao entrar na conta.
+                  </p>
+                </div>
+                <Switch
+                  checked={isManagedTeamDefault}
+                  disabled={defaultTeamToggleDisabled}
+                  onCheckedChange={(checked) => {
+                    if (checked && manageTeamId && !isManagedTeamDefault) {
+                      void handleSetDefaultTeam(manageTeamId);
+                    }
+                  }}
+                  aria-label={`Definir ${manageTeamName || "time"} como padrão`}
+                />
               </div>
 
               {canManageTransferRoutes ? (
@@ -1666,7 +1705,8 @@ export default function TeamsPage() {
                       {rulesSaving ? "Salvando regras..." : "Salvar regras"}
                     </Button>
                   </div>
-
+                </TabsContent>
+                <TabsContent value="custom-fields" className="mt-4">
                   {manageTeamId ? (
                     <TeamLeadCustomFieldsSection
                       teamId={manageTeamId}

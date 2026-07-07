@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
 
 type UseLeadCustomFieldDefinitionsOptions = {
@@ -77,11 +77,13 @@ export function useLeadCustomFieldDefinitions({
     };
   }, [teamId, supabaseId, includeInactive]);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     lastSuccessKeyRef.current = null;
     if (!teamId || !supabaseId) return;
     const requestKey = `${teamId}:${includeInactive ? "all" : "active"}`;
     inFlightKeyRef.current = null;
+    setIsLoading(true);
+    setError(null);
     void fetch(`/api/v1/teams/${teamId}/lead-custom-fields${includeInactive ? "?includeInactive=true" : ""}`, {
       headers: {
         "x-supabase-user-id": supabaseId,
@@ -98,12 +100,20 @@ export function useLeadCustomFieldDefinitions({
       })
       .catch((fetchError) => {
         setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar campos personalizados");
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
-  };
+  }, [teamId, supabaseId, includeInactive]);
+
+  const activeDefinitions = useMemo(
+    () => definitions.filter((definition) => definition.isActive),
+    [definitions]
+  );
 
   return {
     definitions,
-    activeDefinitions: definitions.filter((definition) => definition.isActive),
+    activeDefinitions,
     isLoading,
     error,
     refresh,

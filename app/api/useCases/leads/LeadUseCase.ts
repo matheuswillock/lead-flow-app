@@ -49,7 +49,7 @@ import {
   buildCurrentLeadInfo,
   resolveMissingLeadFields,
 } from "@/lib/leadStatusTransitionFields";
-import { resolveLeadRazaoSocial } from "@/app/api/services/cnpjLookup/CnpjLookupService";
+import { cnpjLookupService } from "@/app/api/services/cnpjLookup/CnpjLookupService";
 import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
 import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
 import { leadCustomFieldService } from "@/app/api/services/leadCustomField/LeadCustomFieldService";
@@ -428,10 +428,6 @@ export class LeadUseCase implements ILeadUseCase {
         assignedTo = profileInfo.id;
       }
 
-      const razaoSocialResult = await resolveLeadRazaoSocial({
-        cnpj: data.cnpj || null,
-      });
-
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
         team: { connect: { id: teamId } },
@@ -440,7 +436,8 @@ export class LeadUseCase implements ILeadUseCase {
         email: data.email || null,
         phone: data.phone || null,
         cnpj: data.cnpj || null,
-        razaoSocial: razaoSocialResult.razaoSocial,
+        // Razão social é resolvida em background após a criação (ver enrichLeadRazaoSocial).
+        razaoSocial: null,
         age: data.age || null,
         currentHealthPlan: normalizedPlans.currentHealthPlan,
         currentValue: data.currentValue || null,
@@ -536,12 +533,7 @@ export class LeadUseCase implements ILeadUseCase {
 
       return new Output(
         true,
-        [
-          "Lead criado com sucesso",
-          ...(razaoSocialResult.lookupAttempted && !razaoSocialResult.lookupSucceeded
-            ? ["Lead salvo, mas não foi possível consultar a razão social."]
-            : []),
-        ],
+        ["Lead criado com sucesso"],
         [],
         await this.attachCustomFieldsToDto(lead.id, this.transformToDTO(lead))
       );
@@ -950,7 +942,6 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const updateData: LeadUpdateRepositoryInput = {};
-      let razaoSocialLookupWarning = false;
       const shouldValidateHealthPlans = data.currentHealthPlan !== undefined || data.soldPlan !== undefined;
       const normalizedPlans = shouldValidateHealthPlans
         ? await this.validateAndNormalizeLeadPlans({
@@ -966,15 +957,22 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.email !== undefined) updateData.email = data.email || null;
       if (data.phone !== undefined) updateData.phone = data.phone || null;
       if (data.cnpj !== undefined) {
-        const razaoSocialResult = await resolveLeadRazaoSocial({
-          cnpj: data.cnpj || null,
-          previousCnpj: leadForDraft.cnpj,
-          previousRazaoSocial: leadForDraft.razaoSocial,
-        });
-        updateData.cnpj = data.cnpj || null;
-        updateData.razaoSocial = razaoSocialResult.razaoSocial;
-        if (razaoSocialResult.lookupAttempted && !razaoSocialResult.lookupSucceeded && data.cnpj) {
-          razaoSocialLookupWarning = true;
+        const nextCnpj = data.cnpj?.trim() || null;
+        const previousCnpj = leadForDraft.cnpj?.trim() || null;
+        const previousRazaoSocial = leadForDraft.razaoSocial?.trim() || null;
+
+        updateData.cnpj = nextCnpj;
+        if (!nextCnpj) {
+          // CNPJ removido: não pode existir razão social sem CNPJ.
+          updateData.razaoSocial = null;
+        } else if (nextCnpj === previousCnpj && previousRazaoSocial) {
+          // CNPJ inalterado e já tínhamos razão social: reaproveita, sem custo de rede.
+          updateData.razaoSocial = previousRazaoSocial;
+        } else {
+          // CNPJ novo/alterado (ou ainda sem razão social resolvida): limpa até o
+          // enriquecimento em background terminar — nunca mostrar razão social
+          // que pertence ao CNPJ antigo.
+          updateData.razaoSocial = null;
         }
       }
       if (data.age !== undefined) updateData.age = data.age;
@@ -1217,12 +1215,7 @@ export class LeadUseCase implements ILeadUseCase {
 
       return new Output(
         true,
-        [
-          "Lead atualizado com sucesso",
-          ...(razaoSocialLookupWarning
-            ? ["Lead salvo, mas não foi possível consultar a razão social."]
-            : []),
-        ],
+        ["Lead atualizado com sucesso"],
         [],
         await this.attachCustomFieldsToDto(id, this.transformToDTO(lead))
       );
@@ -2652,6 +2645,27 @@ export class LeadUseCase implements ILeadUseCase {
         publicShareExpiresAt: null,
       },
     });
+  }
+
+  async enrichLeadRazaoSocial(leadId: string, cnpj: string): Promise<void> {
+    try {
+      const razaoSocial = await cnpjLookupService.lookupRazaoSocial(cnpj);
+      if (!razaoSocial) {
+        console.warn(
+          "[LeadUseCase][enrichLeadRazaoSocial] Razão social não resolvida em background",
+          { leadId }
+        );
+        return;
+      }
+
+      await this.leadRepository.update(leadId, { razaoSocial });
+      console.info(
+        "[LeadUseCase][enrichLeadRazaoSocial] Razão social atualizada em background",
+        { leadId }
+      );
+    } catch (error) {
+      console.error("[LeadUseCase][enrichLeadRazaoSocial] Background error:", error);
+    }
   }
 
   private async resolveTransferScheduleShareUrl(lead: any, teamId: string): Promise<string | null> {

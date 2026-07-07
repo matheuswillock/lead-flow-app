@@ -49,6 +49,7 @@ type FieldDraft = {
   type: LeadCustomFieldType;
   options: LeadCustomFieldOption[];
   isRequired: boolean;
+  showOnPublicForm: boolean;
 };
 
 const FIELD_TYPES: LeadCustomFieldType[] = [
@@ -66,6 +67,7 @@ const emptyDraft = (): FieldDraft => ({
   type: "text",
   options: [{ value: "", label: "" }],
   isRequired: false,
+  showOnPublicForm: false,
 });
 
 export function TeamLeadCustomFieldsSection({
@@ -133,6 +135,7 @@ export function TeamLeadCustomFieldsSection({
       type: definition.type,
       options: definition.options?.length ? definition.options : [{ value: "", label: "" }],
       isRequired: definition.isRequired,
+      showOnPublicForm: definition.showOnPublicForm,
     });
     setLockKey(true);
     setDialogOpen(true);
@@ -156,6 +159,7 @@ export function TeamLeadCustomFieldsSection({
         ...(lockKey ? {} : { key: slugifyLeadCustomFieldKey(draft.label) }),
         type: draft.type,
         isRequired: draft.isRequired,
+        showOnPublicForm: draft.showOnPublicForm,
         options:
           draft.type === "select" || draft.type === "multi_select"
             ? draft.options
@@ -268,7 +272,9 @@ export function TeamLeadCustomFieldsSection({
         <div className="flex flex-col gap-1">
           <h3 className="text-lg font-semibold">Campos personalizados</h3>
           <p className="text-sm text-muted-foreground">
-            Defina campos adicionais exibidos no formulário de leads deste time.
+            Defina campos adicionais exibidos no formulário de leads deste time. Marque
+            &quot;Exibir no formulário público&quot; para campos que devem aparecer em
+            /lead-form. Leads de outros times da conta não exibirão estes campos.
           </p>
         </div>
         <Button type="button" size="sm" onClick={openCreateDialog} disabled={loading || isSaving}>
@@ -299,6 +305,7 @@ export function TeamLeadCustomFieldsSection({
               <TableHead>Rótulo</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Obrigatório</TableHead>
+              <TableHead>Formulário público</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -317,6 +324,11 @@ export function TeamLeadCustomFieldsSection({
                 </TableCell>
                 <TableCell>{definition.isRequired ? "Sim" : "Não"}</TableCell>
                 <TableCell>
+                  <Badge variant={definition.showOnPublicForm ? "default" : "outline"}>
+                    {definition.showOnPublicForm ? "Público" : "Interno"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
                   <Badge variant={definition.isActive ? "default" : "outline"}>
                     {definition.isActive ? "Ativo" : "Inativo"}
                   </Badge>
@@ -326,7 +338,8 @@ export function TeamLeadCustomFieldsSection({
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon-sm"
+                      size="icon"
+                      className="size-8"
                       disabled={index === 0 || isSaving}
                       onClick={() => void reorderDefinition(definition, "up")}
                     >
@@ -335,19 +348,21 @@ export function TeamLeadCustomFieldsSection({
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon-sm"
+                      size="icon"
+                      className="size-8"
                       disabled={index === sortedDefinitions.length - 1 || isSaving}
                       onClick={() => void reorderDefinition(definition, "down")}
                     >
                       <ArrowDown />
                     </Button>
-                    <Button type="button" variant="ghost" size="icon-sm" onClick={() => openEditDialog(definition)}>
+                    <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => openEditDialog(definition)}>
                       <Pencil />
                     </Button>
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon-sm"
+                      size="icon"
+                      className="size-8"
                       onClick={() => setDeleteTarget(definition)}
                     >
                       <Trash2 />
@@ -383,7 +398,11 @@ export function TeamLeadCustomFieldsSection({
               </Field>
               <Field>
                 <FieldLabel>Chave</FieldLabel>
-                <Input value={draft.key} disabled={lockKey || Boolean(editingDefinition)} />
+                <Input
+                  value={draft.key}
+                  readOnly
+                  disabled={lockKey || Boolean(editingDefinition)}
+                />
               </Field>
               <Field>
                 <FieldLabel>Tipo</FieldLabel>
@@ -458,6 +477,15 @@ export function TeamLeadCustomFieldsSection({
                   onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isRequired: checked }))}
                 />
                 <FieldLabel>Obrigatório</FieldLabel>
+              </Field>
+              <Field orientation="horizontal">
+                <Switch
+                  checked={draft.showOnPublicForm}
+                  onCheckedChange={(checked) =>
+                    setDraft((prev) => ({ ...prev, showOnPublicForm: checked }))
+                  }
+                />
+                <FieldLabel>Exibir no formulário público</FieldLabel>
               </Field>
             </FieldGroup>
           </div>

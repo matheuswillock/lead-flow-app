@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useForm, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { leadFormData, leadFormSchema, loginFormData, loginFormSchema, signUpFormData, signUpOAuthFormData, signupFormSchema, signupFormSchemaOAuth, updateAccountFormData, updateAccountFormSchema } from "@/lib/validations/validationForms";
@@ -63,16 +63,36 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
   });
 }
 
+function buildCustomFieldDefinitionsFingerprint(
+  definitions: LeadCustomFieldDefinitionDTO[]
+): string {
+  return definitions
+    .map(
+      (definition) =>
+        `${definition.id}:${definition.key}:${definition.type}:${definition.isRequired}:${definition.displayOrder}:${definition.isActive}:${definition.showOnPublicForm}`
+    )
+    .sort()
+    .join("|");
+}
+
 export function useLeadForm(customFieldDefinitions: LeadCustomFieldDefinitionDTO[] = []) {
+  const definitionsRef = useRef(customFieldDefinitions);
+  definitionsRef.current = customFieldDefinitions;
+
+  const definitionsFingerprint = buildCustomFieldDefinitionsFingerprint(customFieldDefinitions);
+
   const schema = useMemo(() => {
-    if (customFieldDefinitions.length === 0) {
+    const definitions = definitionsRef.current;
+    if (definitions.length === 0) {
       return leadFormSchema;
     }
-    return leadFormSchema.merge(buildLeadCustomFieldsSchema(customFieldDefinitions));
-  }, [customFieldDefinitions]);
+    return leadFormSchema.merge(buildLeadCustomFieldsSchema(definitions));
+  }, [definitionsFingerprint]);
+
+  const resolver = useMemo(() => zodResolver(schema), [schema]);
 
   return useForm<LeadFormWithCustomFields>({
-    resolver: zodResolver(schema),
+    resolver,
     mode: "onChange",
     defaultValues: {
       name: "",

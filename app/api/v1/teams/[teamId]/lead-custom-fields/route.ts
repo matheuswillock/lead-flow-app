@@ -31,6 +31,7 @@ const createDefinitionSchema = z.object({
   options: z.array(optionSchema).optional(),
   isRequired: z.boolean().optional(),
   displayOrder: z.number().int().min(0).optional(),
+  showOnPublicForm: z.boolean().optional(),
 });
 
 export async function GET(

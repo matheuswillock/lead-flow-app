@@ -1,9 +1,7 @@
 import { Output } from "@/lib/output";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
-import type { LeadCustomFieldType } from "@prisma/client";
 import {
   mapLeadCustomFieldDefinitionToDTO,
-  type LeadCustomFieldDefinitionCreateInput,
   type LeadCustomFieldDefinitionUpdateInput,
 } from "@/app/api/infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
 import type { ILeadCustomFieldService } from "@/app/api/services/leadCustomField/ILeadCustomFieldService";
@@ -11,11 +9,13 @@ import { leadCustomFieldService } from "@/app/api/services/leadCustomField/LeadC
 import {
   MAX_ACTIVE_LEAD_CUSTOM_FIELD_DEFINITIONS,
   slugifyLeadCustomFieldKey,
+  type LeadCustomFieldDefinitionApiCreateInput,
 } from "@/lib/leadCustomFields/types";
+import type { Prisma } from "@prisma/client";
 
 export interface ILeadCustomFieldsUseCase {
   listDefinitions(access: TeamAccess, includeInactive?: boolean): Promise<Output>;
-  createDefinition(access: TeamAccess, input: LeadCustomFieldDefinitionCreateInput): Promise<Output>;
+  createDefinition(access: TeamAccess, input: LeadCustomFieldDefinitionApiCreateInput): Promise<Output>;
   updateDefinition(
     access: TeamAccess,
     definitionId: string,
@@ -37,12 +37,13 @@ export class LeadCustomFieldsUseCase implements ILeadCustomFieldsUseCase {
     );
   }
 
-  async createDefinition(access: TeamAccess, input: LeadCustomFieldDefinitionCreateInput): Promise<Output> {
-    const key = (input.key?.trim() || slugifyLeadCustomFieldKey(input.label));
+  async createDefinition(access: TeamAccess, input: LeadCustomFieldDefinitionApiCreateInput): Promise<Output> {
+    const key = input.key?.trim() || slugifyLeadCustomFieldKey(input.label);
     const result = await this.service.createDefinition(access, {
       ...input,
       key,
       label: input.label.trim(),
+      options: input.options as Prisma.InputJsonValue | undefined,
     });
 
     if ("error" in result) {
@@ -60,6 +61,7 @@ export class LeadCustomFieldsUseCase implements ILeadCustomFieldsUseCase {
       if (result.error === "invalid_options") {
         return new Output(false, [], ["Campos do tipo seleção precisam de opções válidas"], null);
       }
+      return new Output(false, [], ["Não foi possível criar o campo personalizado"], null);
     }
 
     return new Output(
@@ -83,6 +85,7 @@ export class LeadCustomFieldsUseCase implements ILeadCustomFieldsUseCase {
       if (result.error === "invalid_options") {
         return new Output(false, [], ["Campos do tipo seleção precisam de opções válidas"], null);
       }
+      return new Output(false, [], ["Não foi possível atualizar o campo personalizado"], null);
     }
 
     return new Output(

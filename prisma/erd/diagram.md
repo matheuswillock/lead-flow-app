@@ -1462,6 +1462,7 @@ failed failed
     Boolean isRequired 
     Int displayOrder 
     Boolean isActive 
+    Boolean showOnPublicForm 
     DateTime createdAt 
     DateTime updatedAt 
     }

@@ -101,8 +101,21 @@ export function LeadMergeDialog({
         },
       });
       const data = await response.json();
-      const leads = (data?.result?.leads ?? data?.leads ?? []) as LeadResponseDTO[];
-      setResults(leads.filter((lead) => lead.id !== targetLead.id));
+      if (!response.ok || !data?.isValid) {
+        setResults([]);
+        return;
+      }
+
+      const rawResult = data.result;
+      const leads = (
+        Array.isArray(rawResult)
+          ? rawResult
+          : Array.isArray(rawResult?.leads)
+            ? rawResult.leads
+            : []
+      ) as LeadResponseDTO[];
+
+      setResults(leads.filter((lead) => lead.id !== targetLead.id).slice(0, 10));
     } catch {
       toast.error("Não foi possível buscar leads");
       setResults([]);
