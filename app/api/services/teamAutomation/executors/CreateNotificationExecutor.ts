@@ -32,7 +32,6 @@ export class CreateNotificationExecutor implements IAutomationActionExecutor {
       where: {
         teamId: ctx.lead.teamId,
         profileId: { in: recipientIds },
-        isActive: true,
       },
       select: { profileId: true },
     });

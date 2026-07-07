@@ -4,12 +4,12 @@ import type { BackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackoffi
 
 function makeAccess(isOperator: boolean): BackofficeAccess {
   return {
+    supabaseId: "supabase-1",
     profileId: "profile-1",
     backofficeUserId: "bo-1",
-    email: "user@test.com",
-    fullName: "User",
+    backofficeEmail: "user@test.com",
+    fullAccess: !isOperator,
     isOperator,
-    isActive: true,
   }
 }
 

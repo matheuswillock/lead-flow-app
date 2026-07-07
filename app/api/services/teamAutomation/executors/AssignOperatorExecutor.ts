@@ -14,7 +14,7 @@ export class AssignOperatorExecutor implements IAutomationActionExecutor {
     let targetProfileId = ctx.actionConfig.operatorProfileId ?? null;
 
     const activeMembers = await prisma.teamMember.findMany({
-      where: { teamId: ctx.lead.teamId, isActive: true },
+      where: { teamId: ctx.lead.teamId },
       select: { profileId: true, role: true },
       orderBy: { createdAt: "asc" },
     });

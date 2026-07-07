@@ -50,6 +50,22 @@ function createRepositoryMock(
     }),
     revoke: async () => null,
     findActiveMultiskillGrantByTeamId: async () => null,
+    provisionMultiskillOriginGrant: async () => ({
+      id: "grant-ms-provisioned",
+      capability: BackofficeOperationalCapability.MULTISKILL_TRANSFER_ORIGIN,
+      profileId: null,
+      teamId: "team-1",
+      isActive: true,
+      notes: null,
+      grantedByProfileId: "admin",
+      grantedAt: new Date(),
+      revokedByProfileId: null,
+      revokedAt: null,
+      profile: null,
+      team: null,
+      grantedBy: null,
+      revokedBy: null,
+    }),
     ...overrides,
   };
 }

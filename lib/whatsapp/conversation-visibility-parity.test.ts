@@ -74,7 +74,7 @@ describe("paridade TS×RLS (operator visibility)", () => {
       },
       expected: true,
     },
-  ] as const
+  ]
 
   for (const scenario of scenarios) {
     it(scenario.name, () => {

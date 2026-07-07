@@ -1683,7 +1683,7 @@ export class LeadUseCase implements ILeadUseCase {
           }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
         }
 
-        if (existingLead.status !== status) {
+        if (existingLead.status !== status && existingLead.teamId) {
           teamAutomationDispatcherService
             .dispatch({
               type: status === LeadStatus.no_show ? "meeting_no_show" : "status_changed",

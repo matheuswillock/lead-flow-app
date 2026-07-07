@@ -58,7 +58,7 @@ export const CreateLeadRequestSchema = z.object({
   referrerName: z.string().optional(),
   referrerPhone: z.string().optional(),
   confirmDuplicate: z.boolean().optional(),
-  customFields: z.record(z.unknown()).optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema>;

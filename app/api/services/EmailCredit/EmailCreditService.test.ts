@@ -47,7 +47,9 @@ describe("EmailCreditService", () => {
     executeRawMock.mockResolvedValueOnce(0)
     const result = await service.reserveCredits("team-1", 50)
     expect(result.ok).toBe(false)
-    expect(result.reason).toBe("insufficient_balance")
+    if (!result.ok) {
+      expect(result.reason).toBe("insufficient_balance")
+    }
   })
 
   it("releaseCredits é idempotente para amount <= 0", async () => {

@@ -23,7 +23,7 @@ const { HealthPlanUseCase } = await import("@/app/api/useCases/healthPlans/Healt
 
 describe("HealthPlanUseCase.createHealthPlan", () => {
   it("retorna 403 para usuário sem fullAccess no backoffice", async () => {
-    const repo: IBackofficeUserRepository = {
+    const repo = {
       findByProfileId: async () => ({
         id: "bo-1",
         profileId: "profile-1",
@@ -35,7 +35,7 @@ describe("HealthPlanUseCase.createHealthPlan", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-    } as IBackofficeUserRepository
+    } as unknown as IBackofficeUserRepository
 
     const useCase = new HealthPlanUseCase(repo)
     const output = await useCase.createHealthPlan("supabase-1", "Plano Teste")
@@ -44,7 +44,7 @@ describe("HealthPlanUseCase.createHealthPlan", () => {
   })
 
   it("cria plano para backoffice master ativo", async () => {
-    const repo: IBackofficeUserRepository = {
+    const repo = {
       findByProfileId: async () => ({
         id: "bo-1",
         profileId: "profile-1",
@@ -56,7 +56,7 @@ describe("HealthPlanUseCase.createHealthPlan", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-    } as IBackofficeUserRepository
+    } as unknown as IBackofficeUserRepository
 
     const useCase = new HealthPlanUseCase(repo)
     const output = await useCase.createHealthPlan("supabase-1", "Plano Teste")

@@ -1,4 +1,4 @@
-import type { ColumnKey } from "../context/BoardContext";
+import type { ColumnKey } from "../context/BoardTypes";
 
 export type BoardFiltersState = {
   query: string;

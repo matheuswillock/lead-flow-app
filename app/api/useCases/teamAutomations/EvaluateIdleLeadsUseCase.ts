@@ -49,6 +49,7 @@ export class EvaluateIdleLeadsUseCase implements IEvaluateIdleLeadsUseCase {
           if (leads.length === 0) break;
 
           for (const lead of leads) {
+            if (!lead.teamId) continue;
             processedLeads += 1;
             await teamAutomationDispatcherService.dispatch({
               type: "lead_idle_in_status",

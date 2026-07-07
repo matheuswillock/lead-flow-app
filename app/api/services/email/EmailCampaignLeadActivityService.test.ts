@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from "bun:test"
 
 const createIdempotentLeadActivity = mock(async () => ({ id: "activity-1" }))
-const resolveLeadIdFromRecipientEmail = mock(async () => "lead-1")
+const resolveLeadIdFromRecipientEmail = mock(async (): Promise<string | null> => "lead-1")
 
 mock.module("@/lib/lead-activities/createIdempotentLeadActivity", () => ({
   createIdempotentLeadActivity,

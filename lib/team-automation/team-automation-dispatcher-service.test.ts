@@ -3,7 +3,7 @@ import type { TeamAutomationEvent } from "@/lib/team-automation/types";
 
 const mockFindEnabled = mock(async () => [] as unknown[]);
 const mockFindLead = mock(async () => null as unknown);
-const mockTryCreateRunLog = mock(async () => ({ id: "log-1" }));
+const mockTryCreateRunLog = mock(async (): Promise<{ id: string } | null> => ({ id: "log-1" }));
 const mockCountMessaging = mock(async () => 0);
 const mockUpdateRunLog = mock(async () => ({}));
 
@@ -135,7 +135,9 @@ describe("TeamAutomationDispatcherService", () => {
     await expect(service.dispatch(baseEvent)).resolves.toBeUndefined();
 
     expect(mockUpdateRunLog).toHaveBeenCalled();
-    const updateArgs = mockUpdateRunLog.mock.calls[0];
+    const updateArgs = mockUpdateRunLog.mock.calls.at(0) as unknown as
+      | [string, { status?: string; errorMessage?: string | null }]
+      | undefined;
     expect(updateArgs?.[1]).toMatchObject({ status: "failed" });
   });
 });

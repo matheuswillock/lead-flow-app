@@ -108,9 +108,7 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     const result = await service.processPendingBatch()
 
     expect(result.skipped).toBe(1)
-    const updateCall = updateMock.mock.calls[0]?.[0] as {
-      data: { status: string }
-    }
-    expect(updateCall.data.status).toBe("skipped")
+    const updateCall = (updateMock.mock.calls as unknown as Array<[{ data: { status: string } }]>).at(0)?.[0]
+    expect(updateCall?.data.status).toBe("skipped")
   })
 })

@@ -1,9 +1,9 @@
 import { describe, expect, it, mock } from "bun:test"
 import type { ResendWebhookService } from "@/app/api/services/resend/ResendWebhookService"
 
-const findByResendEmailIdMock = mock(async () => null)
+const findByResendEmailIdMock = mock(async () => null as Awaited<ReturnType<typeof import("@/app/api/infra/data/repositories/emailLog/EmailLogRepository").emailLogRepository.findByResendEmailId>>)
 const queueOrphanEventMock = mock(async () => {})
-const processEmailLogWebhookMock = mock(async () => {})
+const processEmailLogWebhookMock = mock(async () => true)
 const applyResendWebhookEventMock = mock(async () => new (await import("@/lib/output")).Output(true, [], [], { handled: false }))
 
 mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
@@ -46,14 +46,14 @@ function createWebhookService(): ResendWebhookService {
       return null
     },
     processEmailLogWebhook: processEmailLogWebhookMock,
-  }
+  } as unknown as ResendWebhookService
 }
 
 describe("ResendWebhookUseCase", () => {
   it("ignora evento sem email_id", async () => {
     const useCase = new ResendWebhookUseCase(createWebhookService())
     const output = await useCase.handle({
-      event: { type: "email.delivered", data: {} },
+      event: { type: "email.delivered", data: { created_at: new Date().toISOString() } },
     })
 
     expect(output.isValid).toBe(true)
@@ -83,9 +83,16 @@ describe("ResendWebhookUseCase", () => {
     findByResendEmailIdMock.mockResolvedValueOnce({
       id: "log-1",
       teamId: "team-1",
+      status: "sent",
       recipientEmail: "a@test.com",
       recipientName: null,
       campaignId: null,
+      dispatchId: null,
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      bouncedAt: null,
+      complainedAt: null,
     })
 
     const useCase = new ResendWebhookUseCase(createWebhookService())

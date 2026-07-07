@@ -1,4 +1,4 @@
-import type { LeadStatus } from "@prisma/client";
+import { Prisma, type LeadStatus } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import {
   teamAutomationRuleRepository,
@@ -54,12 +54,14 @@ export class TeamAutomationDispatcherService implements ITeamAutomationDispatche
         },
       });
 
-      if (!lead) return;
+      if (!lead?.teamId) return;
+
+      const leadWithTeam = { ...lead, teamId: lead.teamId };
 
       const dedupeKey = buildAutomationDedupeKey(event);
 
       for (const rule of rules) {
-        await this.processRule(rule, lead, event, dedupeKey).catch((error) => {
+        await this.processRule(rule, leadWithTeam, event, dedupeKey).catch((error) => {
           console.error("[TeamAutomationDispatcherService] Erro ao processar regra:", {
             ruleId: rule.id,
             error,
@@ -99,7 +101,7 @@ export class TeamAutomationDispatcherService implements ITeamAutomationDispatche
       dedupeKey,
       status: "skipped",
       errorMessage: null,
-      payload: null,
+      payload: Prisma.DbNull,
     });
 
     if (!runLog) return;
@@ -135,7 +137,9 @@ export class TeamAutomationDispatcherService implements ITeamAutomationDispatche
       await teamAutomationRuleRepository.updateRunLog(runLog.id, {
         status: result.status,
         errorMessage: result.errorMessage ?? null,
-        payload: result.payload ? sanitizeRunLogPayload(result.payload) : null,
+        payload: result.payload
+          ? (sanitizeRunLogPayload(result.payload) as Prisma.InputJsonValue)
+          : Prisma.DbNull,
       });
     } catch (error) {
       console.error("[TeamAutomationDispatcherService] Executor error:", error);

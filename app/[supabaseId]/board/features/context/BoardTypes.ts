@@ -1,4 +1,4 @@
-import type { LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadCustomFieldType, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export type Lead = {
   id: string;
@@ -53,7 +53,7 @@ export type Lead = {
   customFields?: Array<{
     key: string;
     label: string;
-    type: string;
+    type: LeadCustomFieldType;
     value: unknown;
     isRequired: boolean;
   }>;

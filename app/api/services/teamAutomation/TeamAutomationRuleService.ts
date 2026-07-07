@@ -93,7 +93,7 @@ export class TeamAutomationRuleService implements ITeamAutomationRuleService {
   async validateNotifyProfileIds(teamId: string, profileIds: string[]) {
     if (profileIds.length === 0) return true;
     const members = await prisma.teamMember.findMany({
-      where: { teamId, profileId: { in: profileIds }, isActive: true },
+      where: { teamId, profileId: { in: profileIds } },
       select: { profileId: true },
     });
     return members.length === profileIds.length;

@@ -1,6 +1,11 @@
 import { describe, expect, it, mock, beforeEach } from "bun:test"
 
-const incrementMock = mock(async () => ({
+const incrementMock = mock(async (): Promise<{
+  webhookConsecutiveFailures: number
+  instanceName: string
+  phoneNumber: string | null
+  status: string
+}> => ({
   webhookConsecutiveFailures: 5,
   instanceName: "team_instance",
   phoneNumber: "5511999999999",
@@ -20,16 +25,16 @@ mock.module("@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository", () 
 
 mock.module("@sentry/nextjs", () => ({
   withScope: (fn: (scope: {
-    setLevel: typeof mock
-    setFingerprint: typeof mock
-    setTag: typeof mock
-    setContext: typeof mock
+    setLevel: (level: string) => void
+    setFingerprint: (fingerprint: string[]) => void
+    setTag: (key: string, value: string) => void
+    setContext: (key: string, context: Record<string, unknown>) => void
   }) => void) => {
     fn({
-      setLevel: mock(() => {}),
-      setFingerprint: mock(() => {}),
-      setTag: mock(() => {}),
-      setContext: mock(() => {}),
+      setLevel: () => {},
+      setFingerprint: () => {},
+      setTag: () => {},
+      setContext: () => {},
     })
   },
   captureMessage: captureMessageMock,

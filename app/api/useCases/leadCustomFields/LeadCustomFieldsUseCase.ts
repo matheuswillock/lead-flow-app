@@ -11,7 +11,7 @@ import {
   slugifyLeadCustomFieldKey,
   type LeadCustomFieldDefinitionApiCreateInput,
 } from "@/lib/leadCustomFields/types";
-import type { Prisma } from "@prisma/client";
+import type { LeadCustomFieldType, Prisma } from "@prisma/client";
 
 export interface ILeadCustomFieldsUseCase {
   listDefinitions(access: TeamAccess, includeInactive?: boolean): Promise<Output>;

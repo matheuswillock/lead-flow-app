@@ -192,7 +192,7 @@ export function AutomationsContainer() {
                 <Badge variant="secondary">{ACTION_LABELS[rule.actionType]}</Badge>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" disabled={mutationLock}>
+                    <Button variant="ghost" size="icon" className="size-8" disabled={mutationLock}>
                       <MoreHorizontal />
                     </Button>
                   </DropdownMenuTrigger>

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { FilterPresetScope } from "@prisma/client";
+import type { FilterPresetScope, Prisma } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
-import type { TeamFilterPresetInput } from "@/app/api/useCases/teamFilterPresets/ITeamFilterPresetsUseCase";
+import type { TeamFilterPresetInput, TeamFilterPresetUpdateInput } from "@/app/api/useCases/teamFilterPresets/ITeamFilterPresetsUseCase";
 import { invalidateTeamFilterPresetsCache } from "@/lib/cache/invalidation";
 import { isManagerLikeRole } from "@/lib/roles";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
@@ -166,11 +166,19 @@ export async function handleFilterPresetUpdate(
     }
 
     const isManager = isManagerLikeRole(teamAccess.access.teamMember.role);
+    const updateInput: TeamFilterPresetUpdateInput = {
+      name: parsed.data.name,
+      description: parsed.data.description,
+      visibility: parsed.data.visibility,
+      ...(parsed.data.queryJson !== undefined
+        ? { queryJson: parsed.data.queryJson as Prisma.InputJsonValue }
+        : {}),
+    };
     const output = await teamFilterPresetsUseCase.update(
       teamId,
       teamAccess.access.profileId,
       presetId,
-      parsed.data,
+      updateInput,
       isManager
     );
     if (output.isValid) {
