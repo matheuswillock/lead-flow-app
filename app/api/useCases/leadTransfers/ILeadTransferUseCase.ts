@@ -5,6 +5,7 @@ import type { Output } from "@/lib/output";
 export type LeadTransferListQuery = {
   search?: string;
   transferStatuses?: Array<"pending" | "completed">;
+  multiskillOnly?: boolean;
   leadStatus?: string;
   toTeamIds?: string[];
   transferredByProfileIds?: string[];

@@ -4,6 +4,10 @@ import {
   type BackofficeOperationalAccessRepository,
 } from "@/app/api/infra/data/repositories/backofficeOperationalAccess/BackofficeOperationalAccessRepository";
 import { MULTISKILL_TEAM_NAME } from "@/lib/multiskill/constants";
+import {
+  isMultiskillOriginAccountMasterId,
+  resolveMultiskillOriginMasterId,
+} from "@/lib/multiskill/is-multiskill-origin-master";
 import type {
   IBackofficeOperationalAccessService,
   OperationalAccessListResult,
@@ -19,11 +23,19 @@ export class BackofficeOperationalAccessService implements IBackofficeOperationa
   ) {}
 
   async resolveOperationalAccess(profileId: string, teamId: string | null) {
-    const [associadosQueue, multiskillTransferOrigin] = await Promise.all([
-      this.hasAssociadosQueueAccess(profileId),
-      teamId ? this.hasMultiskillOriginTeam(teamId) : Promise.resolve(false),
-    ]);
-    return { associadosQueue, multiskillTransferOrigin };
+    const [associadosQueue, multiskillTransferOrigin, originMasterId, team] =
+      await Promise.all([
+        this.hasAssociadosQueueAccess(profileId),
+        teamId ? this.hasMultiskillOriginTeam(teamId) : Promise.resolve(false),
+        resolveMultiskillOriginMasterId(),
+        teamId ? this.repository.findTeamById(teamId) : Promise.resolve(null),
+      ]);
+
+    const multiskillExternalTransfer =
+      multiskillTransferOrigin &&
+      isMultiskillOriginAccountMasterId(team?.masterId ?? "", originMasterId);
+
+    return { associadosQueue, multiskillTransferOrigin, multiskillExternalTransfer };
   }
 
   async assertAssociadosQueueAccess(profileId: string): Promise<void> {

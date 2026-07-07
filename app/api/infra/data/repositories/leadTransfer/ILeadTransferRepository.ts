@@ -52,6 +52,7 @@ export type LeadTransferListFilters = {
   preScheduledDateTo?: Date;
   scheduledDateFrom?: Date;
   scheduledDateTo?: Date;
+  multiskillOnly?: boolean;
 };
 
 export interface ILeadTransferRepository {

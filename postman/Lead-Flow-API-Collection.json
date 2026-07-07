@@ -1542,7 +1542,52 @@
               "response": []
             },
             {
-              "name": "13b. Listar Destinos MultiSkill",
+              "name": "13b. Listar Destinos de Transferência (combobox)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/transfer-targets?q=&page=1&pageSize=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "teams",
+                    "{{teamId}}",
+                    "transfer-targets"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": ""
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Lista destinos de transferência (internos e MultiSkill quando conta Bruno + time origem autorizado). Busca server-side por time, closer e — no branch MultiSkill — master."
+              },
+              "response": []
+            },
+            {
+              "name": "13b-legacy. Listar Destinos MultiSkill",
               "request": {
                 "method": "GET",
                 "header": [
@@ -1663,6 +1708,12 @@
                       "key": "transferStatuses",
                       "value": "pending,completed",
                       "disabled": true
+                    },
+                    {
+                      "key": "multiskillOnly",
+                      "value": "true",
+                      "disabled": true,
+                      "description": "Somente conta Bruno: filtra transferências externas cross-account"
                     },
                     {
                       "key": "leadStatus",

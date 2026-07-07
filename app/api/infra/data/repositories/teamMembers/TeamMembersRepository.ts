@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import type {
   ITeamMembersRepository,
@@ -154,6 +155,51 @@ export class TeamMembersRepository implements ITeamMembersRepository {
   async findTransferTargets(teamId: string) {
     const routes = await prisma.teamTransferRoute.findMany({
       where: { sourceTeamId: teamId },
+      select: {
+        targetTeamId: true,
+        targetTeam: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { targetTeam: { name: "asc" } },
+    });
+
+    return routes.map((item) => ({
+      teamId: item.targetTeamId,
+      teamName: item.targetTeam.name,
+    }));
+  }
+
+  async findInternalTransferTargetsWithSearch(sourceTeamId: string, query?: string) {
+    const q = query?.trim();
+    const targetTeamFilter: Prisma.TeamWhereInput | undefined = q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            {
+              members: {
+                some: {
+                  functions: { has: "CLOSER" },
+                  profile: {
+                    OR: [
+                      { fullName: { contains: q, mode: "insensitive" } },
+                      { email: { contains: q, mode: "insensitive" } },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+
+    const routes = await prisma.teamTransferRoute.findMany({
+      where: {
+        sourceTeamId,
+        ...(targetTeamFilter ? { targetTeam: targetTeamFilter } : {}),
+      },
       select: {
         targetTeamId: true,
         targetTeam: {

@@ -20,7 +20,7 @@ class LeadTransfersService implements ILeadTransfersService {
 
     if (filters.search) params.set("search", filters.search);
     appendCsv(params, "transferStatuses", filters.transferStatuses);
-    if (filters.leadStatus) params.set("leadStatus", filters.leadStatus);
+    if (filters.multiskillOnly) params.set("multiskillOnly", "true");
     appendCsv(params, "toTeamIds", filters.toTeamIds);
     appendCsv(params, "transferredByProfileIds", filters.transferredByProfileIds);
     appendCsv(params, "sdrProfileIds", filters.sdrProfileIds);

@@ -7,6 +7,7 @@ import type {
   LeadTransferPendingRow,
   LeadTransferProfileRef,
 } from "./ILeadTransferRepository";
+import { filterMultiskillExternalLeadTransfers } from "@/lib/multiskill/multiskill-lead-transfer-filter";
 
 const PROFILE_SELECT = {
   id: true,
@@ -56,6 +57,10 @@ function hasTransferDateFilter(filters: LeadTransferListFilters): boolean {
 export class LeadTransferRepository implements ILeadTransferRepository {
   async findPendingByTeam(filters: LeadTransferListFilters): Promise<LeadTransferPendingRow[]> {
     if (hasTransferDateFilter(filters)) {
+      return [];
+    }
+
+    if (filters.multiskillOnly) {
       return [];
     }
 
@@ -170,8 +175,15 @@ export class LeadTransferRepository implements ILeadTransferRepository {
         id: true,
         createdAt: true,
         preScheduledAt: true,
+        fromManagerId: true,
+        toManagerId: true,
         toTeamId: true,
-        toTeam: { select: { name: true } },
+        toTeam: {
+          select: {
+            name: true,
+            master: { select: { multiskillEnabled: true } },
+          },
+        },
         transferredByProfile: { select: PROFILE_SELECT },
         receivedByProfile: { select: PROFILE_SELECT },
         lead: {
@@ -188,7 +200,9 @@ export class LeadTransferRepository implements ILeadTransferRepository {
       orderBy: { createdAt: "desc" },
     });
 
-    return transfers.map((transfer) => ({
+    const scopedTransfers = filterMultiskillExternalLeadTransfers(transfers, filters.multiskillOnly);
+
+    return scopedTransfers.map((transfer) => ({
       kind: "completed" as const,
       transferId: transfer.id,
       leadId: transfer.lead.id,
