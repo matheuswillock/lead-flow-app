@@ -45,6 +45,7 @@ export interface BackofficeAdhesionItem {
   asaasPaymentId: string | null
   productId: string | null
   multiskillEnabled?: boolean
+  hasUnlimitedUsers?: boolean
 }
 
 export interface BackofficeAdhesionProductVariant {
@@ -122,6 +123,7 @@ export interface BackofficeAdhesionFormValues {
   memberProAccessDays: string
   sponsorMasterId: string | null
   multiskillEnabled: boolean
+  hasUnlimitedUsers: boolean
   additionalUsers: BackofficeAdhesionAdditionalUser[]
   additionalTeams: BackofficeAdhesionAdditionalTeam[]
 }

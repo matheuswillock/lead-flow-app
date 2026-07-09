@@ -641,6 +641,7 @@ model Profile {
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
+  hasUnlimitedUsers        Boolean             @default(false) // Master com usuários ilimitados (sem cobrança/checkout de usuário)
   multiskillEnabled        Boolean             @default(false) // Master habilitado a receber transferências MultiSkill
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
@@ -1121,6 +1122,7 @@ model BackofficeAdhesion {
   requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
   sponsorMasterId                   String?   @map("sponsorMasterId") @db.Uuid
   multiskillEnabled                 Boolean   @default(false) @map("multiskillEnabled")
+  hasUnlimitedUsers                 Boolean   @default(false) @map("hasUnlimitedUsers")
   additionalUsersData       Json                           @default("[]") @map("additional_users_data")
   additionalTeamsData       Json                           @default("[]") @map("additional_teams_data")
   createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)

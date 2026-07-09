@@ -165,8 +165,10 @@ export function BackofficeClientDetailsContainer() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isTogglingLifetime, setIsTogglingLifetime] = useState(false)
   const [isTogglingMultiskill, setIsTogglingMultiskill] = useState(false)
+  const [isTogglingUnlimitedUsers, setIsTogglingUnlimitedUsers] = useState(false)
   const lifetimeInFlight = useRef(false)
   const multiskillInFlight = useRef(false)
+  const unlimitedUsersInFlight = useRef(false)
   const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
@@ -278,6 +280,27 @@ export function BackofficeClientDetailsContainer() {
     }
   }
 
+  async function handleToggleUnlimitedUsers() {
+    if (!details || unlimitedUsersInFlight.current) return
+    unlimitedUsersInFlight.current = true
+    setIsTogglingUnlimitedUsers(true)
+    const nextValue = !details.hasUnlimitedUsers
+    try {
+      await service.updateClient(masterId, { hasUnlimitedUsers: nextValue })
+      toast.success(
+        nextValue
+          ? "Usuários ilimitados habilitados. Cobrança de usuários será removida na próxima fatura."
+          : "Usuários ilimitados desabilitados. Cobrança de usuários volta na próxima fatura."
+      )
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar usuários ilimitados")
+    } finally {
+      setIsTogglingUnlimitedUsers(false)
+      unlimitedUsersInFlight.current = false
+    }
+  }
+
   async function handleSendMemberAccessEmail(
     member: BackofficeClientTeamMember,
     mode: "invite" | "reset_password"
@@ -364,6 +387,9 @@ export function BackofficeClientDetailsContainer() {
                   {details.multiskillEnabled ? (
                     <Badge variant="secondary">MultiSkill</Badge>
                   ) : null}
+                  {details.hasUnlimitedUsers ? (
+                    <Badge variant="secondary">Usuários ilimitados</Badge>
+                  ) : null}
                   {details.subscription.hasAccess ? (
                     <Badge
                       variant="outline"
@@ -402,6 +428,17 @@ export function BackofficeClientDetailsContainer() {
                     checked={details.multiskillEnabled}
                     disabled={isTogglingMultiskill}
                     onCheckedChange={() => void handleToggleMultiskill()}
+                  />
+                </div>
+                <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+                  <div className="text-right">
+                    <p className="text-sm font-medium">Usuários ilimitados</p>
+                    <p className="text-xs text-muted-foreground">Sem checkout de usuários</p>
+                  </div>
+                  <Switch
+                    checked={details.hasUnlimitedUsers}
+                    disabled={isTogglingUnlimitedUsers}
+                    onCheckedChange={() => void handleToggleUnlimitedUsers()}
                   />
                 </div>
                 <Button

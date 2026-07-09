@@ -134,6 +134,7 @@ function defaultValues(): BackofficeAdhesionFormValues {
     memberProAccessDays: "",
     sponsorMasterId: null,
     multiskillEnabled: false,
+    hasUnlimitedUsers: false,
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -163,6 +164,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     memberProAccessDays: "",
     sponsorMasterId: null,
     multiskillEnabled: adhesion.multiskillEnabled ?? false,
+    hasUnlimitedUsers: adhesion.hasUnlimitedUsers === true || adhesion.cycle === "annual",
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -396,14 +398,24 @@ export function BackofficeAdhesionDialog({
           defaultAdditionalTeam
         )
       }
-      if (key === "cycle" && current.userType === "member_pro") {
-        next.memberProAccessDays = String(CYCLE_DAYS[value as BackofficeAdhesionBillingCycleKey])
+      if (key === "cycle") {
+        const cycle = value as BackofficeAdhesionBillingCycleKey
+        if (current.userType === "member_pro") {
+          next.memberProAccessDays = String(CYCLE_DAYS[cycle])
+        }
+        if (cycle === "annual" || current.userType === "member_pro") {
+          next.hasUnlimitedUsers = true
+        }
       }
       if (key === "userType" && value === "member_pro") {
         next.memberProAccessDays = String(CYCLE_DAYS[current.cycle])
+        next.hasUnlimitedUsers = true
       }
       if (key === "userType" && value !== "member_pro") {
         next.memberProAccessDays = ""
+        if (current.cycle !== "annual") {
+          next.hasUnlimitedUsers = current.hasUnlimitedUsers
+        }
       }
       if (key === "userType" && value !== "associate" && value !== "guest") {
         next.sponsorMasterId = null
@@ -482,6 +494,7 @@ export function BackofficeAdhesionDialog({
           activationMode: values.billingType === "EXTERNAL" ? "external_paid" : "checkout",
           sdrBackofficeUserId: values.sdrBackofficeUserId,
           closerBackofficeUserId: values.closerBackofficeUserId,
+          hasUnlimitedUsers: values.cycle === "annual" || values.hasUnlimitedUsers,
         })
         toast.success("Adesão atualizada")
         await onSaved?.()
@@ -502,6 +515,10 @@ export function BackofficeAdhesionDialog({
         cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
         billingType: chargeBillingType,
         accessExpiresAt,
+        hasUnlimitedUsers:
+          values.cycle === "annual" ||
+          values.userType === "member_pro" ||
+          values.hasUnlimitedUsers,
       })
       setResult(created)
       await onSaved?.()
@@ -625,6 +642,25 @@ export function BackofficeAdhesionDialog({
                   checked={values.multiskillEnabled}
                   disabled={isSubmitting}
                   onCheckedChange={(checked) => updateValue("multiskillEnabled", checked)}
+                />
+              </div>
+            ) : null}
+
+            {!isGuest ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div>
+                  <Label htmlFor="adhesion-unlimited-users">Usuários ilimitados</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Ciclo anual e Member PRO ativam automaticamente. Sem cobrança/checkout de usuários extras.
+                  </p>
+                </div>
+                <Switch
+                  id="adhesion-unlimited-users"
+                  checked={values.cycle === "annual" || values.userType === "member_pro" || values.hasUnlimitedUsers}
+                  disabled={
+                    isSubmitting || values.cycle === "annual" || values.userType === "member_pro"
+                  }
+                  onCheckedChange={(checked) => updateValue("hasUnlimitedUsers", checked)}
                 />
               </div>
             ) : null}

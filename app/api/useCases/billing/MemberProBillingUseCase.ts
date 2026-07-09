@@ -37,11 +37,18 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
   constructor(private readonly repository: IMemberProBillingRepository = memberProBillingRepository) {}
 
   async getMemberProContext(masterId: string): Promise<MemberProBillingContext> {
-    const assignment = await this.repository.findUserTypeAssignment(masterId);
-    if (!assignment) {
-      return { slug: "common", isActive: false, accessExpiresAt: null };
-    }
-    return buildMemberProContextFromAssignment(assignment);
+    const [assignment, owner] = await Promise.all([
+      this.repository.findUserTypeAssignment(masterId),
+      this.repository.findBillingOwner(masterId),
+    ]);
+    const base = assignment
+      ? buildMemberProContextFromAssignment(assignment)
+      : { slug: "common", isActive: false, accessExpiresAt: null };
+    return {
+      ...base,
+      hasUnlimitedUsers:
+        owner?.hasUnlimitedUsers === true || owner?.hasPermanentSubscription === true,
+    };
   }
 
   async isMemberProDeferredBillingActive(masterId: string): Promise<boolean> {
@@ -68,7 +75,12 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
         return;
       }
 
-      if (!context.isActive && context.slug !== "member_pro") {
+      if (
+        !context.isActive &&
+        context.slug !== "member_pro" &&
+        reason !== "has_unlimited_users_toggle" &&
+        reason !== "member_pro_expiration"
+      ) {
         return;
       }
 
@@ -93,7 +105,7 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
   async syncBillingAfterUsageChange(masterId: string, reason: string): Promise<void> {
     const context = await this.getMemberProContext(masterId);
 
-    if (context.slug === "member_pro") {
+    if (context.slug === "member_pro" || reason === "has_unlimited_users_toggle") {
       await this.syncUsageToSubscription(masterId, reason);
       return;
     }
@@ -125,6 +137,7 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
       const DAY_MS = 24 * 60 * 60 * 1000;
 
       for (const assignment of assignments) {
+        await this.repository.clearUnlimitedUsersUnlessAnnualAdhesion(assignment.profileId);
         await this.syncUsageToSubscription(assignment.profileId, "member_pro_expiration");
 
         const shouldNotify =

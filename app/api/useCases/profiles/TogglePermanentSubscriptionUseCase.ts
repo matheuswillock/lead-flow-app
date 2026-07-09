@@ -41,18 +41,20 @@ export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubsc
         );
       }
 
-      // Atualizar status de assinatura permanente
+      // Atualizar status de assinatura permanente (vitalício = usuários ilimitados)
       const updatedProfile = await prisma.profile.update({
         where: { id: profileId },
         data: {
           hasPermanentSubscription: enable,
+          ...(enable ? { hasUnlimitedUsers: true } : {}),
           updatedAt: new Date()
         },
         select: {
           id: true,
           email: true,
           fullName: true,
-          hasPermanentSubscription: true
+          hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
         }
       });
 

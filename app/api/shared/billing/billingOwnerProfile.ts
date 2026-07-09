@@ -15,5 +15,6 @@ export interface BillingOwnerProfile {
   subscriptionNextDueDate: Date | null;
   subscriptionCycle: string | null;
   hasPermanentSubscription: boolean;
+  hasUnlimitedUsers: boolean;
   timezone: string | null;
 }

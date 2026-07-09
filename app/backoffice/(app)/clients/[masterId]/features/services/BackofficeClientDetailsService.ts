@@ -162,6 +162,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
   ): Promise<void> {

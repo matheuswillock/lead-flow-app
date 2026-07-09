@@ -139,14 +139,14 @@ export class BackofficeProfileUserTypeUseCase {
           assignedByProfileId,
         })
 
+        await this.repository.setHasPermanentSubscription(profileId, false)
         if (memberProContext.slug === "member_pro") {
+          await this.repository.clearHasUnlimitedUsersUnlessAnnualAdhesion(profileId)
           await memberProBillingUseCase.syncBillingAfterUsageChange(
             profileId,
             "member_pro_to_common"
           )
         }
-
-        await this.repository.setHasPermanentSubscription(profileId, false)
 
         return new Output(true, ["Tipo de usuário atualizado para Comum"], [], { userType })
       }
@@ -175,6 +175,11 @@ export class BackofficeProfileUserTypeUseCase {
       })
 
       await this.repository.setHasPermanentSubscription(profileId, false)
+      await this.repository.setHasUnlimitedUsers(profileId, true)
+      await memberProBillingUseCase.syncBillingAfterUsageChange(
+        profileId,
+        "common_to_member_pro"
+      )
 
       return new Output(true, ["Tipo de usuário atualizado para Member PRO"], [], { userType })
     } catch (error) {

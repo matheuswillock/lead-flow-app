@@ -69,6 +69,7 @@ async function getBillingOwnerProfile(profileId: string): Promise<BillingOwnerPr
       subscriptionNextDueDate: true,
       subscriptionCycle: true,
       hasPermanentSubscription: true,
+      hasUnlimitedUsers: true,
       timezone: true,
     },
   });

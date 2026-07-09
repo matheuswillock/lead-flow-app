@@ -81,6 +81,8 @@ export async function PATCH(
       activationMode: parseActivationMode(data.activationMode),
       sdrBackofficeUserId: optionalString(data, "sdrBackofficeUserId"),
       closerBackofficeUserId: optionalString(data, "closerBackofficeUserId"),
+      hasUnlimitedUsers:
+        typeof data.hasUnlimitedUsers === "boolean" ? data.hasUnlimitedUsers : undefined,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })

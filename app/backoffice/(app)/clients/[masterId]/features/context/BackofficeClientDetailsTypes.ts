@@ -61,6 +61,7 @@ export interface BackofficeClientDetails {
     slug: "common" | "member_pro"
     isExpired: boolean
   }
+  hasUnlimitedUsers: boolean
   multiskillEnabled: boolean
   isBanned?: boolean
 }

@@ -74,10 +74,13 @@ export class UpdatePermanentSubscriptionUseCase {
         );
       }
 
-      // 5. Atualizar flag hasPermanentSubscription usando o ID interno
+      // 5. Atualizar flag hasPermanentSubscription (vitalício = usuários ilimitados)
       const updatedProfile = await prisma.profile.update({
         where: { id: targetProfile.id },
-        data: { hasPermanentSubscription }
+        data: {
+          hasPermanentSubscription,
+          ...(hasPermanentSubscription ? { hasUnlimitedUsers: true } : {}),
+        },
       });
 
       return new Output(
