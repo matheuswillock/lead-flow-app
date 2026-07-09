@@ -1,29 +1,47 @@
 # ASSOCIATED_SPONSOR_AUDIT.md — Auditoria do Tipo de Usuário "Associado" e Restrição de Patrocinador
 
-**Data:** 2026-07-06
+**Data:** 2026-07-06 · **Atualizado:** 2026-07-09 (definições do owner + fluxo Proposta auditado + estado da implementação)
 **Escopo:** tipo de conta `associate` (e o irmão `guest`), vínculo `Profile.sponsorMasterId`, flag `Profile.canSponsorAccounts`, fluxos de conversão (Backoffice admin) e adesão (Backoffice), fila Associados no produto, rastreabilidade e ocorrências hardcoded dos e-mails `matheuswillock@gmail.com` / `bruno@onsidemarketing.com.br`.
-**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 7 requisitos.
+**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos (7 originais + fluxo Proposta definido pelo owner em 09/07).
 **Rodada somente-leitura:** nenhum código de produção foi alterado.
 **Verificação em produção pendente:** os MCPs Supabase e Vercel não estão autenticados nesta sessão; a checagem do estado real do banco (seção 4.1) precisa ser feita em sessão autenticada ou via SQL read-only autorizado.
 
 ---
 
+## 🟢 Adendo 2026-07-09 — definições do owner e estado da implementação
+
+**Definições confirmadas pelo owner:**
+
+1. **Usuário Associado** = usuário do produto Corretor Studio que tem outro usuário como **patrocinador**. Hoje existem exatamente 2 patrocinadores válidos: `matheuswillock@gmail.com` e `bruno@onsidemarketing.com.br` (grafia correta confirmada: **onside**, sem o "e" — o typo `onseidemarketing` das migrations deixa de ser hipótese e vira **bug confirmado**; ver box abaixo).
+2. **Fluxo Proposta:** quando o associado muda o status de um lead para **Proposta** (`offerSubmission`), o sistema deve (a) enviar notificação e (b) adicionar o lead à seção **Backoffice > Associados** do menu do patrocinador, para seguir o fluxo de registro na operadora (crítica / registrar venda). Este requisito foi auditado como **item 8** — veredito: **existe**, ver seção 3.8.
+
+**Estado da implementação (verificado no repositório em 09/07):** os Estágios 1–5 da `ASSOCIATED_SPONSOR_SPEC.md` foram implementados e commitados após a rodada original desta auditoria:
+
+- Tabela `backoffice_authorized_sponsors` (migrations `20260706173718` + seed `20260706173731`, que cobre **ambas** as grafias do e-mail do Bruno e emite `RAISE WARNING` se nenhum profile for encontrado) e remoção de `Profile.canSponsorAccounts` (`20260706174853`) — o campo não existe mais no `schema.prisma`.
+- `BackofficeSponsorAuthorizationService.assertAuthorizedSponsor` como ponto único de validação, consumido por `BackofficeProfileUserTypeUseCase.convert` (branches `associate` e `guest`), `BackofficeAdhesionUseCase`/`Service` e pelas rotas de dropdown.
+- Rotas `app/api/v1/backoffice/authorized-sponsors/**` + tela `app/backoffice/(app)/clients/authorized-sponsors/` (gestão sem deploy).
+- Testes: `BackofficeSponsorAuthorizationService.test.ts`, `BackofficeProfileUserTypeUseCase.test.ts`, `BackofficeAdhesionUseCase.test.ts`, `BackofficeAuthorizedSponsorUseCase.test.ts`.
+
+**Pendências remanescentes:** aplicar as migrations no remoto (`db:migrate:push`, exige autorização do owner) e rodar a verificação de produção da seção 4 (Estágio 0 da spec) — até lá, o Bruno segue sem poder ser selecionado como patrocinador em produção. Cobertura do caminho `notifyAssociateOfferSubmission` segue sem teste (ver 3.8).
+
+---
+
 ## 🔴 Achado mais importante da rodada: typo silencioso no e-mail do Bruno
 
-A migration de seed que marca os dois patrocinadores autorizados usa **`bruno@onsidemarketing.com.br`** — com um "e" a mais ("ons**e**ide" em vez de "onside"):
+A migration de seed que marca os dois patrocinadores autorizados usa **`bruno@onseidemarketing.com.br`** — com um "e" a mais ("ons**e**ide" em vez de "onside"). O SQL abaixo é o conteúdo literal do arquivo em `supabase/migrations/`, preservado aqui exatamente como está no disco para documentar o bug:
 
 ```sql
 -- supabase/migrations/20260629201647_seed-guest-user-type-and-sponsors.sql:17-19
 UPDATE "public"."corretor_studio_profiles"
 SET "canSponsorAccounts" = true
-WHERE "email" IN ('matheuswillock@gmail.com', 'bruno@onsidemarketing.com.br');
+WHERE "email" IN ('matheuswillock@gmail.com', 'bruno@onseidemarketing.com.br');
 ```
 
-Todas as outras fontes do projeto usam o e-mail **sem** o "e": `prisma/seed.ts:18`, `prisma/seed-app.ts:8`, `postman/Lead-Flow-API-Collection.json:41` (`bruno@onsidemarketing.com.br`). Se o e-mail correto do profile em produção é `onsidemarketing`, o `UPDATE ... WHERE email IN (...)` foi um **no-op silencioso para o Bruno**: nenhum erro, nenhuma linha afetada, e o Bruno **não aparece em nenhum dropdown de patrocinador** (a lista é filtrada por `canSponsorAccounts = true`). Este é exatamente o modo de falha que o requisito 2 antecipava — "um typo silencioso quebra a validação sem erro claro".
+O owner confirmou (2026-07-09) que o e-mail correto é **`bruno@onsidemarketing.com.br`** — a mesma grafia usada em `prisma/seed.ts:18`, `prisma/seed-app.ts:8` e `postman/Lead-Flow-API-Collection.json:41`. Portanto o `UPDATE ... WHERE email IN (...)` foi um **no-op silencioso para o Bruno**: nenhum erro, nenhuma linha afetada, e o Bruno **não aparece em nenhum dropdown de patrocinador**. Este é exatamente o modo de falha que o requisito 2 antecipava — "um typo silencioso quebra a validação sem erro claro".
 
-O typo não é um acidente isolado da migration: ele nasce em `specs/associados.md` (linhas 3 e 599 usam `onsidemarketing`) e se propaga para a migration de referência `20260628192207_seed-bruno-sponsor-reference.sql:9-11`. A própria spec registrou a dúvida em Open Questions ("confirmar profileId em cada ambiente?") e ela nunca foi fechada.
+O typo não foi um acidente isolado da migration: ele nasceu em `specs/associados.md` (já corrigida) e se propagou para a migration de referência `20260628192207_seed-bruno-sponsor-reference.sql:9-11`. A própria spec registrou a dúvida em Open Questions ("confirmar profileId em cada ambiente?") e ela nunca foi fechada.
 
-**Ação requerida (não executada nesta rodada):** confirmar em produção qual e-mail existe em `corretor_studio_profiles` e o valor de `canSponsorAccounts` do Bruno; corrigir via migration de dados (nunca SQL Editor).
+**Estado da correção:** a migration `20260706173731_seed-authorized-sponsors-fix.sql` já existe no repositório e resolve o problema — insere o Bruno em `backoffice_authorized_sponsors` cobrindo **ambas** as grafias e emite `RAISE WARNING` se nenhum profile for encontrado (fim do no-op mudo). Falta **aplicá-la no remoto** (`db:migrate:push`, somente com autorização do owner) e confirmar o resultado com a verificação da seção 4.
 
 ---
 
@@ -38,10 +56,11 @@ O typo não é um acidente isolado da migration: ele nasce em `specs/associados.
 | 5 | Isolamento e RBAC (Backoffice vs produto) | **parcial** — híbrido deliberado e documentado; lacunas pontuais (FK ausente, RLS sem policies) | 🟡 médio |
 | 6 | Efeito da associação levantado e explícito | **existe** — `guest` = conta 100% gratuita ilimitada; `associate` = paga normal + fila operacional do patrocinador | 🟢 (informativo) |
 | 7 | Rastreabilidade de quem aprovou/quando | **parcial** — fluxo admin registra `assignedByProfileId`; fluxo de adesão grava `null`; sem histórico; sponsor/flag sem trilha | 🟡 médio |
+| 8 | Lead do associado em Proposta → notificação + fila do patrocinador (definição do owner, 09/07) | **existe** — implementado ponta a ponta (seção 3.8); sem teste no caminho de notificação | 🟢 baixo |
 
 **Os 5 achados estruturais mais importantes:**
 
-1. **Typo `onsidemarketing` na migration de seed** (box acima) — o Bruno provavelmente não está marcado como patrocinador em produção; falha silenciosa, sem erro em lugar nenhum.
+1. **Typo `onseidemarketing` na migration de seed** (box acima; grafia correta `onsidemarketing` confirmada pelo owner em 09/07) — o Bruno não foi marcado como patrocinador em produção; falha silenciosa, sem erro em lugar nenhum. Correção já commitada (`20260706173731`), pendente de push autorizado.
 2. **`canSponsorAccounts` nunca é validado no caminho de escrita.** O flag existe e alimenta os dropdowns (`BackofficeAllUsersRepository.findSponsorMasterOptions`, `BackofficeAdhesionRepository.getOptions`), mas `BackofficeProfileUserTypeUseCase.convert()` valida apenas `findIsMaster(sponsorMasterId)` — **qualquer master da plataforma pode ser passado como patrocinador via API**, ignorando a lista de autorizados. A restrição "só 2 patrocinadores" é, hoje, uma restrição de UI.
 3. **O fluxo de adesão valida ainda menos:** `BackofficeAdhesionUseCase.create` checa só a **presença** de `sponsorMasterId` (nem `isMaster`, nem existência do profile, nem autorização), e `backoffice_adhesions.sponsorMasterId` foi criada **sem FK** — um UUID inválido só explode na criação da conta (depois do fluxo de pagamento), quando o valor é copiado para `Profile.sponsorMasterId` (que tem FK).
 4. **`guest` concede assinatura permanente (conta 100% gratuita e ilimitada)** — é o efeito financeiro direto do patrocínio, e é justamente o tipo com a trilha de auditoria mais fraca: no fluxo de adesão o `assignedByProfileId` é gravado como `null`.
@@ -169,6 +188,28 @@ Ou seja: **o tipo com maior efeito financeiro é o `guest`** (isenção total de
 - ❌ `updateSponsorMasterId` não registra quem/quando alterou o vínculo, e mudanças em `canSponsorAccounts` não têm trilha nenhuma (hoje só existem via SQL).
 - ❌ Não existem os campos `sponsoredAt`/`sponsoredBy` (ou equivalente) previstos no estado-alvo.
 
+### 3.8 Fluxo Proposta: notificação + fila do patrocinador — **existe** ✅ (auditado em 09/07 sob a definição do owner)
+
+**Definição do owner:** quando o usuário associado muda o status de um lead para **Proposta**, o sistema deve enviar notificação e adicionar o lead à seção **Backoffice > Associados** do menu do patrocinador, para o lead seguir o fluxo de registro na operadora.
+
+**Implementação encontrada (ponta a ponta):**
+
+| Etapa | Evidência |
+|-------|-----------|
+| Gatilho na transição para Proposta | `LeadUseCase.handleOfferSubmissionAlert` (`app/api/useCases/leads/LeadUseCase.ts:2459`), chamado nos dois caminhos de update de status (:1194, :1677); guard dispara só na **entrada** em `offerSubmission` (:2466-2471) |
+| Detecção de conta associada | `team.master.sponsorMasterId` preenchido (:2519, :2535) — contas comuns seguem o e-mail interno tradicional; contas associadas seguem o caminho do patrocinador |
+| Entrada na fila do patrocinador | `notifyAssociateOfferSubmission` → `ensureProposalArtifacts` cria o `LeadProposalReview` (`AssociateProposalRepository.ts:275-280`); a fila `GET /associates/proposals` lista leads em `offerSubmission` de contas com `sponsorMasterId` do patrocinador — o lead aparece na tela `app/[supabaseId]/associados` |
+| Menu do patrocinador | Grupo **Backoffice > Associados** em `components/app-sidebar.tsx`, gated pela feature `crm-backoffice-associados` + matriz de papéis (sponsor master / `backoffice` / manager delegado) via `AssociateBackofficeAccessUseCase` |
+| Notificações (3 canais) | `AssociateProposalUseCase.notifyAssociateOfferSubmission` (:45-108): in-app (`createLeadProposalPendingNotification`), web push (`LEAD_PROPOSAL_PENDING` — "aguarda registro na operadora") e e-mail (`sendLeadProposalPendingUrgentEmail`) |
+| Destinatários | Patrocinador (master), master da conta associada e todos os membros `backoffice` dos times do patrocinador — `findAssociateOfferNotificationRecipients` (`AssociateProposalRepository.ts:293-348`), com dedupe |
+| Reenvio após crítica | `resetReviewOnResubmit` (:2474) limpa a crítica quando o lead volta a Proposta |
+
+**Ressalvas:**
+
+1. **Dependência do vínculo:** o fluxo inteiro é chaveado por `sponsorMasterId` — que hoje **não pode ser atribuído com o Bruno como patrocinador em produção** por causa do typo (box no topo). Ou seja: o fluxo está correto, mas está morto para o Bruno até a migration de correção ser aplicada no remoto.
+2. **Sem teste:** o caminho `handleOfferSubmissionAlert → notifyAssociateOfferSubmission` (bifurcação associado vs conta comum, destinatários, criação do `LeadProposalReview`) não tem cobertura — os erros são engolidos por `.catch(console.error)`, então uma regressão aqui seria silenciosa. Adicionado como pendência na spec.
+3. As notificações rodam em background (fire-and-forget) após o update do lead — falha de notificação não desfaz a transição de status, o que é o comportamento correto, mas reforça a necessidade do teste acima.
+
 ---
 
 ## 4. Verificações pendentes (exigem acesso a produção)
@@ -184,7 +225,7 @@ WHERE email ILIKE '%onside%' OR email ILIKE '%onseide%'
    OR email = 'matheuswillock@gmail.com';
 ```
 
-Hipótese a confirmar: o profile do Bruno existe com `onsidemarketing` e está com `canSponsorAccounts = false` (o UPDATE do seed não o encontrou).
+Expectativa (grafia `onsidemarketing` confirmada pelo owner em 09/07): o profile do Bruno existe com `onsidemarketing` e está com `canSponsorAccounts = false` (o UPDATE do seed não o encontrou). Após o push das migrations pendentes, a coluna deixa de existir e a query passa a ser sobre `backoffice_authorized_sponsors`.
 
 ### 4.2 Integridade dos vínculos existentes
 
@@ -212,9 +253,10 @@ WHERE a."sponsorMasterId" IS NOT NULL AND p.id IS NULL;
 
 | Arquivo:linha | Conteúdo | Classificação |
 |---------------|----------|---------------|
-| `supabase/migrations/20260629201647_seed-guest-user-type-and-sponsors.sql:19` | `WHERE "email" IN ('matheuswillock@gmail.com', 'bruno@onsidemarketing.com.br')` | Seed de dados (aceitável em migration) — **mas com typo no Bruno** 🔴 |
-| `supabase/migrations/20260628192207_seed-bruno-sponsor-reference.sql:9,11` | `bruno@onsidemarketing.com.br` | Migration de referência (no-op) — **typo** |
-| `specs/associados.md:3,599` | `bruno@onsidemarketing.com.br` | Documentação — **origem do typo**, corrigir |
+| `supabase/migrations/20260629201647_seed-guest-user-type-and-sponsors.sql:19` | `WHERE "email" IN ('matheuswillock@gmail.com', 'bruno@onseidemarketing.com.br')` | Seed de dados (aceitável em migration) — **mas com typo no Bruno** 🔴 (corrigido pela `20260706173731`, pendente de push) |
+| `supabase/migrations/20260628192207_seed-bruno-sponsor-reference.sql:9,11` | `bruno@onseidemarketing.com.br` | Migration de referência (no-op) — **typo** (histórico imutável; sem efeito prático) |
+| `supabase/migrations/20260706173731_seed-authorized-sponsors-fix.sql:17-18` | ambas as grafias (`onside` + `onseide`) | Migration de **correção** — cobre o typo histórico deliberadamente ✅ |
+| `specs/associados.md` | `bruno@onsidemarketing.com.br` | Documentação — origem do typo, **já corrigida** ✅ |
 
 ### Não relacionadas a patrocinador, mas mesmo anti-padrão (e-mail literal com efeito de autorização/roteamento)
 

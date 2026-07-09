@@ -1,8 +1,13 @@
 # Spec: Patrocinador Autorizado — Fonte Única, Enforcement no Servidor e Gestão sem Deploy
 
-**Data:** 2026-07-06
+**Data:** 2026-07-06 · **Atualizado:** 2026-07-09
 **Base:** `ASSOCIATED_SPONSOR_AUDIT.md` (mesma rodada). Números de seção citados (ex.: 3.3) referem-se ao audit.
-**Status:** proposta — Estágio 0 (verificação em produção) é pré-requisito de tudo; decisão D1 do owner antes do Estágio 1.
+**Status:** Estágios 1–5 **implementados e commitados** (D1 opção A executada: tabela `backoffice_authorized_sponsors`, service `assertAuthorizedSponsor`, rotas + tela Backoffice, drop de `canSponsorAccounts`, testes dos 4 UseCases/Services). Pendentes: **Estágio 0** (verificação em produção), **push autorizado das migrations** e **Estágio 6** (cobertura do fluxo Proposta, adicionado em 09/07).
+
+## Definições do owner (2026-07-09)
+
+- **Usuário Associado** = usuário do produto Corretor Studio com outro usuário como **patrocinador**. Hoje existem exatamente 2 patrocinadores válidos: `matheuswillock@gmail.com` e `bruno@onsidemarketing.com.br` (grafia correta: **onside** — confirma o typo `onseidemarketing` das migrations históricas como bug).
+- **Fluxo Proposta:** quando o associado move um lead para **Proposta** (`offerSubmission`), o sistema envia notificação e adiciona o lead à seção **Backoffice > Associados** do menu do patrocinador, para seguir o fluxo de registro na operadora (crítica / registrar venda). Auditado como item 8 do audit (seção 3.8): **já implementado** ponta a ponta (gatilho em `LeadUseCase.handleOfferSubmissionAlert`, fila via `LeadProposalReview`, notificação in-app + push + e-mail para patrocinador, master associado e backoffice do patrocinador). Lacuna restante: **sem testes** nesse caminho → Estágio 6.
 
 ---
 
@@ -342,6 +347,41 @@ NÃO execute db:migrate:push. Rode a sequência completa de validação.
 
 > Se as senhas de `seed.ts` alguma vez foram usadas em ambiente real, **rotacioná-las imediatamente** — isso independe do estágio e não espera a spec.
 
+### Estágio 6 — Cobertura do fluxo Proposta do associado (adicionado 2026-07-09)
+
+O fluxo definido pelo owner (associado move lead para Proposta → notificação + fila do patrocinador) já está implementado (audit 3.8), mas sem nenhum teste — e os erros do caminho são engolidos por `.catch(console.error)`, então regressão ali é silenciosa.
+
+**Prompt Codex:**
+
+```text
+No lead-flow-app, siga agents.md. Adicione testes (padrão dos *.test.ts existentes em
+app/api/useCases/**) para o fluxo de Proposta em conta associada — NENHUMA mudança de
+comportamento, somente testes; se um teste revelar bug, reporte antes de corrigir:
+
+1. AssociateProposalUseCase.notifyAssociateOfferSubmission
+   (app/api/useCases/associateProposal/AssociateProposalUseCase.ts:45):
+   - time de conta associada: cria LeadProposalReview via ensureProposalArtifacts,
+     dispara notificação in-app, web push e e-mail para os destinatários resolvidos;
+   - sem destinatários (recipients null/vazio): retorna sem efeitos colaterais;
+   - falha em um canal (ex.: e-mail) não impede os demais.
+2. Resolução de destinatários — findAssociateOfferNotificationRecipients
+   (AssociateProposalRepository.ts:293): retorna patrocinador + master associado +
+   membros backoffice dos times do patrocinador, com dedupe; retorna null para time
+   sem sponsorMasterId.
+3. LeadUseCase.handleOfferSubmissionAlert (LeadUseCase.ts:2459), bifurcação:
+   - guard: só dispara na entrada em offerSubmission (não em re-save no mesmo status);
+   - conta associada: chama notifyAssociateOfferSubmission e NÃO envia o e-mail
+     interno tradicional (emailRecipients vazio, sem anexos);
+   - conta comum: caminho tradicional inalterado;
+   - resetReviewOnResubmit chamado ao reentrar em Proposta.
+
+Rode bun run typecheck, lint, governance:check e lint:pt-br.
+```
+
+**Não tocar:** comportamento de `LeadUseCase`, `AssociateProposalUseCase`, service e repository (somente testes); notificações/e-mails; migrations.
+**Aceite:** os 3 blocos cobertos; suíte verde; nenhuma mudança de produção no diff além de arquivos `*.test.ts`.
+**Validação manual (E2E, após push autorizado das migrations):** converter uma conta de teste para Associado com o Bruno como patrocinador, mover um lead para Proposta e confirmar: lead visível em **Backoffice > Associados** do Bruno, notificação in-app + push + e-mail recebidos por Bruno, master associado e backoffice do Bruno.
+
 ---
 
 ## Critérios de aceite globais
@@ -356,6 +396,7 @@ NÃO execute db:migrate:push. Rode a sequência completa de validação.
 | 6 | Trilha de conversão completa também no fluxo de adesão | `assignedByProfileId` populado (E3) |
 | 7 | Zero e-mail literal com efeito de autorização em código de produto | grep pós-E5 |
 | 8 | Todos os UseCases/rotas tocados com testes | CI |
+| 9 | Associado move lead para Proposta → lead na fila Backoffice > Associados do patrocinador + notificação in-app/push/e-mail (definição do owner 09/07) | testes do Estágio 6 + validação E2E com o Bruno após push |
 
 ## Perguntas abertas (não bloqueantes)
 
@@ -376,3 +417,9 @@ NÃO execute db:migrate:push. Rode a sequência completa de validação.
 
 > **Q:** O que a associação desbloqueia?
 > **A:** Respondido pelo código (audit 3.6): `guest` = isenção total de cobrança (`hasPermanentSubscription`); `associate` = paga normal + operação da fila pelo patrocinador. Nenhuma suposição pendente.
+
+> **Q:** Qual a grafia correta do e-mail do Bruno? (Open Question herdada de `specs/associados.md`)
+> **A:** `bruno@onsidemarketing.com.br` (**onside**, sem o "e") — confirmado pelo owner em 2026-07-09. As migrations históricas com `onseidemarketing` permanecem intocadas (histórico imutável); a correção vive em `20260706173731_seed-authorized-sponsors-fix.sql`, que cobre ambas as grafias.
+
+> **Q:** O fluxo Proposta → fila do patrocinador precisa ser construído?
+> **A:** Não — já existe ponta a ponta (audit 3.8). O que falta é cobertura de testes (Estágio 6) e a validação E2E em produção, que depende do push autorizado das migrations para o Bruno finalmente poder ser patrocinador.
