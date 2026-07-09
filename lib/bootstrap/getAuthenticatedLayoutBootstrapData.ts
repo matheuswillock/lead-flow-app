@@ -163,6 +163,7 @@ export async function getAuthenticatedLayoutBootstrapData(
               ...(output.result as {
                 associadosQueue: boolean;
                 multiskillTransferOrigin: boolean;
+                multiskillExternalTransfer: boolean;
               }),
               profileId: user.id,
               teamId: activeTeamId,

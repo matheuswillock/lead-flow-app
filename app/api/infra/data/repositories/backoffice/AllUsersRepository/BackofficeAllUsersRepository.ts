@@ -731,8 +731,53 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
   async setHasPermanentSubscription(profileId: string, value: boolean): Promise<void> {
     await prisma.profile.update({
       where: { id: profileId },
-      data: { hasPermanentSubscription: value },
+      data: {
+        hasPermanentSubscription: value,
+        // Vitalício sempre concede usuários ilimitados.
+        ...(value ? { hasUnlimitedUsers: true } : {}),
+      },
     })
+  }
+
+  async setHasUnlimitedUsers(profileId: string, value: boolean): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { hasUnlimitedUsers: value },
+    })
+  }
+
+  async clearHasUnlimitedUsersUnlessAnnualAdhesion(profileId: string): Promise<boolean> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { hasPermanentSubscription: true },
+    })
+
+    // Mantém ilimitado se vitalício ou se ainda houver adesão anual paga (flag de intenção anual).
+    if (profile?.hasPermanentSubscription) {
+      return false
+    }
+
+    const annualAdhesionCount = await prisma.backofficeAdhesion.count({
+      where: {
+        createdProfileId: profileId,
+        status: "paid",
+        cycle: "annual",
+      },
+    })
+
+    if (annualAdhesionCount > 0) {
+      await prisma.profile.update({
+        where: { id: profileId },
+        data: { hasUnlimitedUsers: true },
+      })
+      return false
+    }
+
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { hasUnlimitedUsers: false },
+    })
+    return true
   }
 
   async hasOpenProposalReviewsForAssociate(profileId: string): Promise<boolean> {

@@ -79,6 +79,9 @@ export async function PATCH(
       hasPermanentSubscription: typeof body.hasPermanentSubscription === "boolean"
         ? body.hasPermanentSubscription
         : undefined,
+      hasUnlimitedUsers: typeof body.hasUnlimitedUsers === "boolean"
+        ? body.hasUnlimitedUsers
+        : undefined,
       multiskillEnabled: typeof body.multiskillEnabled === "boolean"
         ? body.multiskillEnabled
         : undefined,

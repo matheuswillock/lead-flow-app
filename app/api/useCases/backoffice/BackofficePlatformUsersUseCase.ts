@@ -446,6 +446,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           status: master.subscriptionStatus,
         },
         userType: master.userType,
+        hasUnlimitedUsers: master.hasUnlimitedUsers || master.hasPermanentSubscription,
         multiskillEnabled: master.multiskillEnabled,
         isBanned: Boolean(activeBan),
         allTeams: master.allTeams,
@@ -834,6 +835,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
   ): Promise<Output> {
@@ -850,9 +852,40 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         data = { ...data, state: data.state.toUpperCase().slice(0, 2) }
       }
 
+      const shouldSyncUnlimited =
+        data.hasUnlimitedUsers !== undefined || data.hasPermanentSubscription !== undefined
+      const previous = shouldSyncUnlimited
+        ? await this.platformUsersRepository.findMasterUserDetailsById(masterProfileId, {
+            page: 1,
+            pageSize: 5,
+          })
+        : null
+
       const updated = await this.platformUsersRepository.updateMasterUserProfile(masterProfileId, data)
       if (!updated) {
         return new Output(false, [], ["Usuário master não encontrado ou não foi possível atualizar"], null)
+      }
+
+      const nextUnlimited =
+        data.hasUnlimitedUsers !== undefined
+          ? data.hasUnlimitedUsers
+          : data.hasPermanentSubscription === true
+            ? true
+            : previous?.hasUnlimitedUsers
+      const previousUnlimited =
+        previous !== null
+          ? previous.hasUnlimitedUsers || previous.hasPermanentSubscription
+          : null
+
+      if (
+        previousUnlimited !== null &&
+        nextUnlimited !== undefined &&
+        previousUnlimited !== nextUnlimited
+      ) {
+        await memberProBillingUseCase.syncBillingAfterUsageChange(
+          masterProfileId,
+          "has_unlimited_users_toggle"
+        )
       }
 
       return new Output(true, ["Dados atualizados com sucesso"], [], { id: updated.id })

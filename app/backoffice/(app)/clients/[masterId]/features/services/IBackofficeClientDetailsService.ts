@@ -57,6 +57,7 @@ export interface IBackofficeClientDetailsService {
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
   ): Promise<void>

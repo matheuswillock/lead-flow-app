@@ -1,4 +1,5 @@
 import prisma from "@/app/api/infra/data/prisma";
+import { resolveHasUnlimitedUsers } from "@/app/api/shared/billing/memberProBillingRules";
 import type {
   BillingSnapshot,
   IBillingRepository,
@@ -12,29 +13,27 @@ type BillingQuota = Pick<
 
 class PrismaBillingRepository implements IBillingRepository {
   async getBillingSnapshot(masterId: string): Promise<BillingSnapshot | null> {
-    const [master, hasUnlimitedUsers] = await Promise.all([
-      prisma.profile.findUnique({
+    const master = await prisma.profile.findUnique({
       where: { id: masterId },
-      select: { hasPermanentSubscription: true },
-      }),
-      this.resolveHasUnlimitedUsers(masterId),
-    ]);
+      select: { hasPermanentSubscription: true, hasUnlimitedUsers: true },
+    });
 
     if (!master) {
       return null;
     }
 
-    const teamCount = await prisma.team.count({
-      where: { masterId },
-    });
-
-    const teamMembers = await prisma.teamMember.findMany({
-      where: {
-        team: { masterId },
-      },
-      select: { profileId: true },
-      distinct: ["profileId"],
-    });
+    const [teamCount, teamMembers] = await Promise.all([
+      prisma.team.count({
+        where: { masterId },
+      }),
+      prisma.teamMember.findMany({
+        where: {
+          team: { masterId },
+        },
+        select: { profileId: true },
+        distinct: ["profileId"],
+      }),
+    ]);
 
     const distinctUserCount = teamMembers.filter((member) => member.profileId !== masterId).length;
     const legacyQuota = await this.getLegacyAdhesionQuota(masterId);
@@ -43,7 +42,10 @@ class PrismaBillingRepository implements IBillingRepository {
 
     return {
       hasPermanentSubscription: master.hasPermanentSubscription,
-      hasUnlimitedUsers,
+      hasUnlimitedUsers: resolveHasUnlimitedUsers({
+        hasUnlimitedUsersFlag: master.hasUnlimitedUsers,
+        hasPermanentSubscription: master.hasPermanentSubscription,
+      }),
       teamCount,
       distinctUserCount,
       totalUsersIncludingMaster: distinctUserCount + 1,
@@ -52,40 +54,6 @@ class PrismaBillingRepository implements IBillingRepository {
       manualAdjustmentExtraTeams: quota.manualAdjustmentExtraTeams,
       manualAdjustmentExtraUsers: quota.manualAdjustmentExtraUsers,
     };
-  }
-
-  private async resolveHasUnlimitedUsers(masterId: string): Promise<boolean> {
-    const now = new Date();
-    const [profileSubscription, annualAdhesionCount] = await Promise.all([
-      prisma.profileSubscription.findUnique({
-        where: { profileId: masterId },
-        select: {
-          subscriptionCycle: true,
-          subscriptionStatus: true,
-          subscriptionStartDate: true,
-          subscriptionEndDate: true,
-        },
-      }),
-      prisma.backofficeAdhesion.count({
-        where: {
-          createdProfileId: masterId,
-          status: "paid",
-          cycle: "annual",
-        },
-      }),
-    ]);
-
-    const isYearlyCycle = profileSubscription?.subscriptionCycle === "YEARLY";
-    const isActiveSubscriptionStatus = !profileSubscription?.subscriptionStatus || profileSubscription.subscriptionStatus === "active";
-    const isWithinSubscriptionWindow =
-      (!profileSubscription?.subscriptionStartDate || profileSubscription.subscriptionStartDate <= now) &&
-      (!profileSubscription?.subscriptionEndDate || profileSubscription.subscriptionEndDate >= now);
-
-    if (isYearlyCycle && isActiveSubscriptionStatus && isWithinSubscriptionWindow) {
-      return true;
-    }
-
-    return annualAdhesionCount > 0;
   }
 
   private async getLegacyAdhesionQuota(masterId: string): Promise<BillingQuota> {

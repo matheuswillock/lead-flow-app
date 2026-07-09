@@ -5,6 +5,10 @@ import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess"
 import { leadTransferUseCase } from "@/app/api/useCases/leadTransfers/LeadTransferUseCase";
 import { leadStatusLabels } from "@/lib/lead-status";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import {
+  isMultiskillOriginMaster,
+  resolveMultiskillOriginMasterId,
+} from "@/lib/multiskill/is-multiskill-origin-master";
 
 const leadStatusValues = Object.keys(leadStatusLabels) as [string, ...string[]];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,6 +16,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const listSchema = z.object({
   search: z.string().optional(),
   transferStatuses: z.string().optional(),
+  multiskillOnly: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => value === "true"),
   leadStatus: z.enum(leadStatusValues).optional(),
   toTeamIds: z.string().optional(),
   transferredByProfileIds: z.string().optional(),
@@ -92,9 +100,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (parsed.data.multiskillOnly) {
+      const originMasterId = await resolveMultiskillOriginMasterId();
+      if (!isMultiskillOriginMaster(teamAccess.access, originMasterId)) {
+        return NextResponse.json(
+          new Output(
+            false,
+            [],
+            ["Acesso negado: conta não autorizada para filtro MultiSkill"],
+            null
+          ),
+          { status: 403 }
+        );
+      }
+    }
+
     const output = await leadTransferUseCase.listWithCtx(teamAccess.access, {
       search: parsed.data.search,
       transferStatuses: splitTransferStatuses(parsed.data.transferStatuses),
+      multiskillOnly: parsed.data.multiskillOnly,
       leadStatus: parsed.data.leadStatus,
       toTeamIds: splitUuidCsv(parsed.data.toTeamIds),
       transferredByProfileIds: splitUuidCsv(parsed.data.transferredByProfileIds),

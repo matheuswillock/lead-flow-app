@@ -107,6 +107,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         subscriptionNextDueDate: true,
         subscriptionCycle: true,
         hasPermanentSubscription: true,
+        hasUnlimitedUsers: true,
         timezone: true,
         isMaster: true,
       },

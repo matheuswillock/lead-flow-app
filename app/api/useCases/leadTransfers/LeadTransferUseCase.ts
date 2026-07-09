@@ -80,6 +80,7 @@ export class LeadTransferUseCase implements ILeadTransferUseCase {
         teamId: ctx.teamId,
         search: query.search,
         leadStatus: query.leadStatus,
+        multiskillOnly: query.multiskillOnly,
         toTeamIds: query.toTeamIds,
         transferredByProfileIds: query.transferredByProfileIds,
         sdrProfileIds: query.sdrProfileIds,

@@ -154,6 +154,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           profileIconUrl: true,
           createdAt: true,
           hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
           multiskillEnabled: true,
           subscriptionPlan: true,
           operatorCount: true,
@@ -229,6 +230,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
+      hasUnlimitedUsers: master.hasUnlimitedUsers,
       multiskillEnabled: master.multiskillEnabled,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
@@ -280,6 +282,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         profileIconUrl: true,
         createdAt: true,
         hasPermanentSubscription: true,
+        hasUnlimitedUsers: true,
         multiskillEnabled: true,
         subscriptionPlan: true,
         subscriptionStatus: true,
@@ -446,6 +449,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
+      hasUnlimitedUsers: master.hasUnlimitedUsers,
       multiskillEnabled: master.multiskillEnabled,
       subscriptionPlan: master.subscriptionPlan,
       subscriptionStatus: master.subscriptionStatus,
@@ -518,6 +522,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         subscriptionEndDate: true,
         subscriptionCycle: true,
         hasPermanentSubscription: true,
+        hasUnlimitedUsers: true,
         timezone: true,
         functions: true,
       },
@@ -567,6 +572,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
   ): Promise<{ id: string } | null> {
@@ -583,7 +589,14 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       if (data.city !== undefined) updateData.city = data.city
       if (data.state !== undefined) updateData.state = data.state
       if (data.functions !== undefined) updateData.functions = data.functions
-      if (data.hasPermanentSubscription !== undefined) updateData.hasPermanentSubscription = data.hasPermanentSubscription
+      if (data.hasPermanentSubscription !== undefined) {
+        updateData.hasPermanentSubscription = data.hasPermanentSubscription
+        // Vitalício concede usuários ilimitados.
+        if (data.hasPermanentSubscription === true) {
+          updateData.hasUnlimitedUsers = true
+        }
+      }
+      if (data.hasUnlimitedUsers !== undefined) updateData.hasUnlimitedUsers = data.hasUnlimitedUsers
       if (data.multiskillEnabled !== undefined) updateData.multiskillEnabled = data.multiskillEnabled
 
       if (Object.keys(updateData).length === 0) return null

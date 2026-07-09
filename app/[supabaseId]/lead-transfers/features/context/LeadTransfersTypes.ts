@@ -42,6 +42,7 @@ export type LeadTransfersData = {
 export type LeadTransfersFiltersState = {
   search: string;
   transferStatuses: LeadTransferStateFilter[];
+  multiskillOnly: boolean;
   leadStatus: LeadStatus | "";
   toTeamIds: string[];
   transferredByProfileIds: string[];
@@ -60,6 +61,7 @@ export type LeadTransfersFiltersState = {
 export const DEFAULT_LEAD_TRANSFERS_FILTERS: LeadTransfersFiltersState = {
   search: "",
   transferStatuses: [],
+  multiskillOnly: false,
   leadStatus: "",
   toTeamIds: [],
   transferredByProfileIds: [],
@@ -79,6 +81,7 @@ export function isLeadTransfersFiltersChanged(filters: LeadTransfersFiltersState
   return (
     filters.search.trim().length > 0 ||
     filters.transferStatuses.length > 0 ||
+    filters.multiskillOnly ||
     filters.leadStatus !== "" ||
     filters.toTeamIds.length > 0 ||
     filters.transferredByProfileIds.length > 0 ||

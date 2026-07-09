@@ -124,6 +124,8 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
     billingType: adhesion.billingType,
     asaasPaymentId: adhesion.asaasPaymentId,
     productId: adhesion.productId,
+    hasUnlimitedUsers: adhesion.hasUnlimitedUsers === true,
+    multiskillEnabled: adhesion.multiskillEnabled === true,
   }
 }
 
@@ -419,6 +421,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           : null,
       sponsorMasterId: normalized.sponsorMasterId ?? null,
       multiskillEnabled: normalized.multiskillEnabled ?? false,
+      hasUnlimitedUsers: normalized.hasUnlimitedUsers === true,
       additionalUsersData: normalized.additionalUsers ?? [],
       additionalTeamsData: normalized.additionalTeams ?? [],
     })
@@ -554,6 +557,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           ? input.closerBackofficeUserId
           : existing.closerBackofficeUserId,
       activationMode,
+      hasUnlimitedUsers:
+        input.hasUnlimitedUsers !== undefined
+          ? input.hasUnlimitedUsers
+          : existing.hasUnlimitedUsers,
     })
     const crmWithRules = await this.getProductForAdhesion(
       CRM_PRODUCT_SLUG,
@@ -611,6 +618,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       billingType: next.billingType,
       sdrBackofficeUserId: next.sdrBackofficeUserId,
       closerBackofficeUserId: next.closerBackofficeUserId,
+      hasUnlimitedUsers: next.hasUnlimitedUsers === true,
     })
 
     const persisted = shouldResetPaymentData
@@ -1035,6 +1043,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       accessExpiresAt: input.accessExpiresAt ?? null,
       sponsorMasterId: normalizeText(input.sponsorMasterId) ?? null,
       multiskillEnabled: input.multiskillEnabled === true,
+      hasUnlimitedUsers:
+        input.cycle === "annual" ||
+        input.userType === "member_pro" ||
+        input.hasUnlimitedUsers === true,
       additionalUsers: input.additionalUsers ?? [],
       additionalTeams: input.additionalTeams ?? [],
     }
@@ -1354,6 +1366,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         city: adhesion.city,
         state: adhesion.state,
         hasPermanentSubscription: isGuest,
+        hasUnlimitedUsers:
+          isGuest ||
+          adhesion.hasUnlimitedUsers === true ||
+          adhesion.cycle === "annual" ||
+          adhesion.requestedUserTypeSlug === "member_pro",
         multiskillEnabled: adhesion.multiskillEnabled ?? false,
         sponsorMasterId: resolvedSponsorMasterId,
       })
@@ -1379,6 +1396,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           accessExpiresAt: adhesion.requestedMemberProAccessExpiresAt,
           assignedByProfileId,
         })
+        await this.allUsersRepo.setHasUnlimitedUsers(createdProfile.profileId, true)
       } else if (adhesion.requestedUserTypeSlug === "guest") {
         await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
           userType: "guest",
