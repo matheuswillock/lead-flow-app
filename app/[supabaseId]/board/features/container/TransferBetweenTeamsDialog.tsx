@@ -212,6 +212,8 @@ export function TransferBetweenTeamsDialog({
       if (!isMultiskillDestination) {
         setTeamMembers([]);
       }
+      // Clear loading when skipping fetch (e.g. switch internal → MultiSkill mid-request).
+      setMembersLoading(false);
       return;
     }
 
@@ -559,7 +561,7 @@ export function TransferBetweenTeamsDialog({
             <Select
               value={closerId}
               onValueChange={setCloserId}
-              disabled={!selectedTarget || membersLoading}
+              disabled={!selectedTarget || (membersLoading && !isMultiskillDestination)}
             >
               <SelectTrigger id="closer">
                 <SelectValue

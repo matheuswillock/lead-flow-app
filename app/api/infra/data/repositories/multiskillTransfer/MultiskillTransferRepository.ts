@@ -4,7 +4,6 @@ import type { TransferToTeamSanitization } from "@/app/api/infra/data/repositori
 import type {
   ListMultiskillTransferTargetsResult,
   MultiskillTransferTarget,
-  MultiskillTransferTargetCloser,
 } from "@/lib/multiskill/types";
 import { isLostStatus } from "@/lib/leadImport/normalizers";
 import type { IMultiskillTransferRepository } from "./IMultiskillTransferRepository";
@@ -135,19 +134,7 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
         master.teamsOwned.find((team) => team.isDefault) ?? master.teamsOwned[0] ?? null;
       if (!defaultTeam) return [];
 
-      const closersMap = new Map<string, MultiskillTransferTargetCloser>();
-      for (const team of master.teamsOwned) {
-        for (const member of team.members) {
-          closersMap.set(member.profile.id, {
-            profileId: member.profile.id,
-            fullName: member.profile.fullName,
-            email: member.profile.email,
-            teamId: member.teamId,
-            teamName: member.team.name,
-          });
-        }
-      }
-
+      // Only default-team closers: transfer validates with findCloserOnDefaultTeam.
       const defaultTeamClosers = defaultTeam.members.map((member) => ({
         profileId: member.profile.id,
         fullName: member.profile.fullName,
@@ -163,8 +150,7 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
           masterEmail: master.email,
           defaultTeamId: defaultTeam.id,
           defaultTeamName: defaultTeam.name,
-          closers:
-            defaultTeamClosers.length > 0 ? defaultTeamClosers : Array.from(closersMap.values()),
+          closers: defaultTeamClosers,
         },
       ];
     });
