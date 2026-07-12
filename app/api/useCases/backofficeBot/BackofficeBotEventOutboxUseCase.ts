@@ -56,7 +56,19 @@ export class BackofficeBotEventOutboxUseCase implements IBackofficeBotEventOutbo
         }
       }
 
-      return new Output(true, [], [], { dispatched: results.length, results });
+      const failed = results.filter((item) => !item.ok);
+      if (failed.length > 0) {
+        console.error(
+          `[BackofficeBotEventOutboxUseCase][dispatchPending] ${failed.length} evento(s) falharam`,
+          {
+            failedCount: failed.length,
+            eventIds: failed.map((item) => item.eventId),
+            results: failed,
+          }
+        );
+      }
+
+      return new Output(true, [], [], { dispatched: results.length, failed: failed.length, results });
     } catch (error) {
       console.error("[BackofficeBotEventOutboxUseCase][dispatchPending]", error);
       return new Output(false, [], ["Erro ao despachar eventos"], null);

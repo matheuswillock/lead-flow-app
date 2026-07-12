@@ -2,6 +2,7 @@ import type {
   BackofficeEvoConnectResult,
   IBackofficeEvoApiService,
 } from "./IBackofficeEvoApiService";
+import { phoneDigitsFromOwnerJid } from "@/lib/studio-bot/phone";
 
 /**
  * Cliente Evolution API dedicado ao módulo backoffice (Bethânia).
@@ -106,15 +107,42 @@ interface EvoConnectionStateResponse {
   instance?: { state?: string };
 }
 
-interface EvoFetchInstancesResponse {
-  instance?: { instanceName?: string };
+interface EvoFetchInstanceItem {
+  name?: string;
+  instanceName?: string;
+  ownerJid?: string | null;
+  number?: string | null;
+  instance?: { instanceName?: string; ownerJid?: string | null; number?: string | null };
 }
 
-type EvoFetchInstancesListResponse = Array<{ name?: string; instanceName?: string }>;
+type EvoFetchInstancesResponse = EvoFetchInstanceItem | EvoFetchInstanceItem[];
 
 interface EvoQrCodeResponse {
   code?: string;
   base64?: string;
+}
+
+function extractPhoneFromFetchItem(item: EvoFetchInstanceItem | null | undefined): string | null {
+  if (!item) {
+    return null;
+  }
+
+  const fromOwner =
+    phoneDigitsFromOwnerJid(item.ownerJid) ??
+    phoneDigitsFromOwnerJid(item.instance?.ownerJid);
+  if (fromOwner) {
+    return fromOwner;
+  }
+
+  const rawNumber = item.number ?? item.instance?.number;
+  if (typeof rawNumber === "string") {
+    const digits = rawNumber.replace(/\D/g, "");
+    if (digits.length >= 10) {
+      return digits;
+    }
+  }
+
+  return null;
 }
 
 export class BackofficeEvoApiService implements IBackofficeEvoApiService {
@@ -179,10 +207,35 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
     return normalizeStatus(data.instance?.state);
   }
 
+  async getInstanceConnectionState(
+    instanceName: string
+  ): Promise<"open" | "close" | "connecting"> {
+    return this.getConnectionState(instanceName);
+  }
+
+  async getInstancePhoneNumber(instanceName: string): Promise<string | null> {
+    const url = `${getBaseUrl()}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
+
+    const data = await fetchEvoWithRetry<EvoFetchInstancesResponse>(
+      url,
+      { method: "GET", headers: buildHeaders(getApiKey()) },
+      "getInstancePhoneNumber"
+    );
+
+    if (Array.isArray(data)) {
+      const match =
+        data.find((item) => item.instanceName === instanceName || item.name === instanceName) ??
+        data[0];
+      return extractPhoneFromFetchItem(match);
+    }
+
+    return extractPhoneFromFetchItem(data);
+  }
+
   private async fetchInstance(instanceName: string): Promise<{ instanceName: string } | null> {
     const url = `${getBaseUrl()}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
 
-    const data = await fetchEvoWithRetry<EvoFetchInstancesResponse | EvoFetchInstancesListResponse>(
+    const data = await fetchEvoWithRetry<EvoFetchInstancesResponse>(
       url,
       { method: "GET", headers: buildHeaders(getApiKey()) },
       "fetchInstance"
@@ -192,10 +245,13 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
       const match = data.find(
         (item) => item.instanceName === instanceName || item.name === instanceName
       );
-      return match ? { instanceName: match.instanceName ?? match.name ?? instanceName } : null;
+      return match
+        ? { instanceName: match.instanceName ?? match.name ?? instanceName }
+        : null;
     }
 
-    return data.instance ? { instanceName: data.instance.instanceName ?? instanceName } : null;
+    const name = data.instanceName ?? data.instance?.instanceName ?? data.name;
+    return name || data.instance ? { instanceName: name ?? instanceName } : null;
   }
 
   private async getQrCode(instanceName: string): Promise<{ text: string; base64: string }> {
@@ -222,7 +278,16 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   }): Promise<BackofficeEvoConnectResult> {
     try {
       const created = await this.createInstance(params);
-      return { instanceName: created.instanceName, status: created.status, qrCode: created.qrCode };
+      const phoneNumber =
+        created.status === "open"
+          ? await this.getInstancePhoneNumber(created.instanceName).catch(() => null)
+          : null;
+      return {
+        instanceName: created.instanceName,
+        status: created.status,
+        qrCode: created.qrCode,
+        phoneNumber,
+      };
     } catch (error) {
       if (!isInstanceNameAlreadyInUseError(error)) {
         throw error;
@@ -250,8 +315,85 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
         }
       }
 
-      return { instanceName: existing.instanceName, status, qrCode };
+      const phoneNumber =
+        status === "open"
+          ? await this.getInstancePhoneNumber(params.instanceName).catch(() => null)
+          : null;
+
+      return { instanceName: existing.instanceName, status, qrCode, phoneNumber };
     }
+  }
+
+  async disconnectInstance(instanceName: string): Promise<void> {
+    const url = `${getBaseUrl()}/instance/logout/${encodeURIComponent(instanceName)}`;
+
+    console.info("[BackofficeEvoApiService][disconnectInstance] Logging out", instanceName);
+
+    try {
+      await fetchEvoWithRetry<unknown>(
+        url,
+        {
+          method: "DELETE",
+          headers: buildHeaders(getApiKey()),
+        },
+        "disconnectInstance"
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const normalized = message.toLowerCase();
+      const alreadyDisconnected =
+        normalized.includes("connection closed") ||
+        ((message.includes("HTTP 400") || message.includes("HTTP 404")) &&
+          (normalized.includes("not connected") ||
+            normalized.includes("already disconnected") ||
+            normalized.includes("is not connected")));
+
+      if (alreadyDisconnected) {
+        console.info(
+          "[BackofficeEvoApiService][disconnectInstance] Instance already disconnected",
+          instanceName
+        );
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  async sendTextMessage(params: {
+    instanceName: string;
+    number: string;
+    text: string;
+  }): Promise<void> {
+    const digits = params.number.replace(/\D/g, "");
+    if (digits.length < 10) {
+      throw new Error(
+        `[BackofficeEvoApiService][sendTextMessage] Invalid destination number "${params.number}"`
+      );
+    }
+
+    const url = `${getBaseUrl()}/message/sendText/${encodeURIComponent(params.instanceName)}`;
+
+    console.info(
+      "[BackofficeEvoApiService][sendTextMessage] Sending to",
+      digits,
+      "via",
+      params.instanceName
+    );
+
+    await fetchEvoWithRetry<unknown>(
+      url,
+      {
+        method: "POST",
+        headers: buildHeaders(getApiKey()),
+        body: JSON.stringify({
+          number: digits,
+          text: params.text,
+          linkPreview: true,
+        }),
+      },
+      "sendTextMessage"
+    );
   }
 }
 

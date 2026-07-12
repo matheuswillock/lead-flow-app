@@ -5,7 +5,11 @@ export interface IProfileRepository {
   findBySupabaseId(supabaseId: string): Promise<Profile | null>;
   findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null>;
   findFirstTeamIdByProfileId(profileId: string): Promise<string | null>;
-  existingByEmailOrPhone(email: string, phone: string): Promise<boolean>;
+  existingByEmailOrPhone(
+    email: string,
+    phone: string,
+    excludeProfileId?: string
+  ): Promise<boolean>;
   findByEmail(email: string): Promise<Profile | null>;
   findByGoogleEmail(googleEmail: string): Promise<Profile | null>;
   createProfile(

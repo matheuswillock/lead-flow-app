@@ -206,12 +206,21 @@ export class RegisterNewUserProfile implements IProfileUseCase {
 
             // Check if email or phone already exists for other users
             if (updates.email || updates.phone) {
-                const email = updates.email || existingProfile.email || "";
-                const phone = updates.phone || existingProfile.phone || "";
-                
-                const alreadyExists = await this.repo.existingByEmailOrPhone(email, phone);
-                if (alreadyExists && (updates.email !== existingProfile.email || updates.phone !== existingProfile.phone)) {
-                    return new Output(false, [], ["Email or phone already exists"], null);
+                const emailToCheck = updates.email?.trim() || "";
+                const phoneToCheck = updates.phone?.trim() || "";
+
+                const alreadyExists = await this.repo.existingByEmailOrPhone(
+                    emailToCheck,
+                    phoneToCheck,
+                    existingProfile.id
+                );
+                if (alreadyExists) {
+                    return new Output(
+                        false,
+                        [],
+                        ["E-mail ou telefone já cadastrado em outra conta"],
+                        null
+                    );
                 }
             }
 

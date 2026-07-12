@@ -41,6 +41,7 @@ services:
       - evolution_instances:/evolution/instances
     networks:
       - evolution-net
+      - n8n-net
     env_file:
       - .env.evolution
     extra_hosts:
@@ -72,3 +73,7 @@ networks:
   evolution-net:
     name: evolution-net
     driver: bridge
+  # Permite webhook Bethânia em http://n8n:5678/... no dev local (stack n8n separada)
+  n8n-net:
+    name: n8n-net
+    external: true
