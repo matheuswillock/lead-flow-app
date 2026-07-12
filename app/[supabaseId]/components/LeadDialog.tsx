@@ -90,6 +90,7 @@ import {
 } from "@/lib/services/leadStatusTransitionClient";
 import { mapLeadInfoPayloadForUpdate } from "@/lib/leadStatusTransitionFields";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
 import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timeline/LeadActivityTimeline";
@@ -294,7 +295,10 @@ export default function LeadDialog({
     () => (leadDetails?.transferTargets ?? []).map((target) => target.teamId),
     [leadDetails?.transferTargets]
   );
-  const hasTransferTargets = allowedTransferTargetIds.length > 0;
+  const { access: operationalAccess } = useOperationalAccess();
+  // Contas MultiSkill externas podem transferir mesmo sem rotas internas cadastradas.
+  const hasTransferTargets =
+    allowedTransferTargetIds.length > 0 || operationalAccess.multiskillExternalTransfer;
   const isCloserOperator =
     activeFunctions.includes("CLOSER") &&
     !isTeamMaster &&

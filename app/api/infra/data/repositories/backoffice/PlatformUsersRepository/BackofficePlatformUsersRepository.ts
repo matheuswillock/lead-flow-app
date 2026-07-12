@@ -575,7 +575,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; hasUnlimitedUsers: boolean } | null> {
     try {
       const updateData: Record<string, unknown> = {}
       if (data.fullName !== undefined) updateData.fullName = data.fullName
@@ -594,6 +594,11 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         // Vitalício concede usuários ilimitados.
         if (data.hasPermanentSubscription === true) {
           updateData.hasUnlimitedUsers = true
+        } else if (data.hasUnlimitedUsers === undefined) {
+          // Ao remover o vitalício, mantém ilimitado apenas se houver grant independente
+          // (adesão anual paga, Member PRO ativo ou assinatura YEARLY ativa).
+          updateData.hasUnlimitedUsers =
+            await this.hasIndependentUnlimitedUsersGrant(masterProfileId)
         }
       }
       if (data.hasUnlimitedUsers !== undefined) updateData.hasUnlimitedUsers = data.hasUnlimitedUsers
@@ -608,11 +613,51 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           role: "manager",
         },
         data: updateData,
-        select: { id: true },
+        select: { id: true, hasUnlimitedUsers: true },
       })
     } catch {
       return null
     }
+  }
+
+  // Espelha o backfill da migration add-has-unlimited-users, exceto o vitalício
+  // (que é justamente o grant sendo removido no caminho false).
+  private async hasIndependentUnlimitedUsersGrant(masterProfileId: string): Promise<boolean> {
+    const now = new Date()
+    const [paidUnlimitedAdhesion, activeMemberPro, activeYearlySubscription] = await Promise.all([
+      prisma.backofficeAdhesion.findFirst({
+        where: {
+          createdProfileId: masterProfileId,
+          status: "paid",
+          OR: [{ cycle: "annual" }, { hasUnlimitedUsers: true }],
+        },
+        select: { id: true },
+      }),
+      prisma.profileUserTypeAssignment.findFirst({
+        where: {
+          profileId: masterProfileId,
+          userType: { slug: "member_pro" },
+          OR: [{ accessExpiresAt: null }, { accessExpiresAt: { gt: now } }],
+        },
+        select: { id: true },
+      }),
+      prisma.profileSubscription.findFirst({
+        where: {
+          profileId: masterProfileId,
+          subscriptionCycle: "YEARLY",
+          OR: [{ subscriptionStatus: null }, { subscriptionStatus: "active" }],
+          AND: [
+            { OR: [{ subscriptionStartDate: null }, { subscriptionStartDate: { lte: now } }] },
+            { OR: [{ subscriptionEndDate: null }, { subscriptionEndDate: { gte: now } }] },
+          ],
+        },
+        select: { id: true },
+      }),
+    ])
+
+    return (
+      paidUnlimitedAdhesion !== null || activeMemberPro !== null || activeYearlySubscription !== null
+    )
   }
 
   async findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null> {
