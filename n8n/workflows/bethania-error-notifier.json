@@ -1,0 +1,56 @@
+{
+  "id": "a1b2c3d4-err0-4000-8000-0000000000ef",
+  "name": "bethania-error-notifier",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-err0-4000-8000-000000000001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = $input.first().json;\nconst execution = root.execution ?? {};\nconst workflow = root.workflow ?? {};\nconst error = execution.error ?? root.error ?? {};\nconst workflowName = workflow.name ?? execution.workflowName ?? 'unknown';\nconst executionId = execution.id ?? 'n/a';\nconst nodeName = execution.lastNodeExecuted ?? error.node ?? 'n/a';\nconst message = error.message ?? String(error) ?? 'Erro sem mensagem';\nconst startedAt = execution.startedAt ?? new Date().toISOString();\nconst n8nBase = ($env.N8N_BASE_URL || $env.WEBHOOK_URL || 'http://127.0.0.1:5678').replace(/\\/$/, '');\nconst execUrl = `${n8nBase}/workflow/${workflow.id || ''}/executions/${executionId}`;\nconst text = [\n  ':rotating_light: *Bethânia N8N — falha*',\n  `*Workflow:* ${workflowName}`,\n  `*Node:* ${nodeName}`,\n  `*Erro:* ${message}`,\n  `*Execution:* ${executionId}`,\n  `*Quando:* ${startedAt}`,\n  `*Link:* ${execUrl}`,\n].join('\\n');\nconst webhookUrl = ($env.BETHANIA_SLACK_WEBHOOK_URL || '').trim();\nif (!webhookUrl) {\n  throw new Error('BETHANIA_SLACK_WEBHOOK_URL não configurada');\n}\nreturn [{ json: { webhookUrl, text, workflowName, executionId, nodeName, message } }];"
+      },
+      "id": "a1b2c3d4-err0-4000-8000-000000000002",
+      "name": "Format Slack Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.webhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-err0-4000-8000-000000000003",
+      "name": "Slack Incoming Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 0]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [[{ "node": "Format Slack Payload", "type": "main", "index": 0 }]]
+    },
+    "Format Slack Payload": {
+      "main": [[{ "node": "Slack Incoming Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "bethania-error-notifier-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [{ "name": "bethania" }]
+}

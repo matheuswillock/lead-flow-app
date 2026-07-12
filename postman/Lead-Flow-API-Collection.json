@@ -15266,6 +15266,32 @@
           }
         },
         {
+          "name": "POST Backoffice Bot Channel Disconnect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/channel/disconnect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "channel",
+                "disconnect"
+              ]
+            }
+          }
+        },
+        {
           "name": "POST Studio Bot Inbound Webhook",
           "request": {
             "method": "POST",

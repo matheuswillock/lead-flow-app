@@ -23,6 +23,57 @@ export function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
+/** Extrai dígitos do ownerJid Evolution (`5511...@s.whatsapp.net`). */
+export function phoneDigitsFromOwnerJid(ownerJid: string | null | undefined): string | null {
+  if (!ownerJid) {
+    return null;
+  }
+
+  const beforeAt = ownerJid.split("@")[0] ?? "";
+  const digits = beforeAt.replace(/\D/g, "");
+  return digits.length >= 10 ? digits : null;
+}
+
+/** Formata dígitos E.164/BR para exibição (ex.: +55 (11) 98370-9790). */
+export function formatWhatsappPhoneDisplay(raw: string | null | undefined): string | null {
+  const digits = raw?.replace(/\D/g, "") ?? "";
+  if (digits.length < 10) {
+    return null;
+  }
+
+  if (digits.startsWith("55") && digits.length >= 12) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 9) {
+      return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    }
+    if (rest.length === 8) {
+      return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+  }
+
+  return `+${digits}`;
+}
+
+/** Compara telefones ignorando formatação (+55, espaços, etc.). */
+export function phoneDigitsEqual(
+  left: string | null | undefined,
+  right: string | null | undefined
+): boolean {
+  const leftDigits = left?.replace(/\D/g, "") ?? "";
+  const rightDigits = right?.replace(/\D/g, "") ?? "";
+  if (leftDigits.length < 10 || rightDigits.length < 10) {
+    return false;
+  }
+  if (leftDigits === rightDigits) {
+    return true;
+  }
+
+  const leftTail = leftDigits.slice(-11);
+  const rightTail = rightDigits.slice(-11);
+  return leftTail.length >= 10 && leftTail === rightTail;
+}
+
 export function parseVincularCode(text: string): string | null {
   const trimmed = text.trim();
   const vincularMatch = /^VINCULAR\s+(\d{6})$/i.exec(trimmed);

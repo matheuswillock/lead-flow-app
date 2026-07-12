@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { useBackofficeStudioBot } from "../context/BackofficeStudioBotHook"
 import { BackofficeBotChannelStatusBadge } from "../components/BackofficeBotChannelStatusBadge"
-import { maskPhone } from "@/lib/masks"
+import { formatWhatsappPhoneDisplay } from "@/lib/studio-bot/phone"
 
 export function BackofficeStudioBotOverviewContainer() {
   const {
@@ -60,9 +60,11 @@ export function BackofficeStudioBotOverviewContainer() {
                 </div>
                 {channel?.phoneNumber ? (
                   <span className="text-sm text-muted-foreground">
-                    {maskPhone(channel.phoneNumber)}
+                    {formatWhatsappPhoneDisplay(channel.phoneNumber) ?? channel.phoneNumber}
                   </span>
-                ) : null}
+                ) : (
+                  <span className="text-sm text-muted-foreground">Telefone não configurado</span>
+                )}
                 {channel?.displayName ? (
                   <span className="text-sm font-medium">{channel.displayName}</span>
                 ) : null}

@@ -1,8 +1,18 @@
 "use client"
 
-import { useEffect } from "react"
-import { Loader2, RefreshCw } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Loader2, RefreshCw, Unplug } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
@@ -16,10 +26,13 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
-import { maskPhone } from "@/lib/masks"
+import { formatWhatsappPhoneDisplay } from "@/lib/studio-bot/phone"
 import { useBackofficeStudioBot } from "../context/BackofficeStudioBotHook"
 import { BackofficeBotChannelStatusBadge } from "../components/BackofficeBotChannelStatusBadge"
 import { BackofficeBotProfileForm } from "../components/BackofficeBotProfileForm"
+
+const QR_POLL_INTERVAL_MS = 3000
+const QR_POLL_MAX_TICKS = 40
 
 export function BackofficeStudioBotCanalContainer() {
   const { tz } = useTimezone()
@@ -29,20 +42,56 @@ export function BackofficeStudioBotCanalContainer() {
     isLoadingChannel,
     isTestingPing,
     isReconnecting,
+    isDisconnecting,
     isSyncingProfile,
     canManage,
     loadChannel,
     testPing,
     reconnectChannel,
+    refreshChannelConnection,
+    replaceChannelConnection,
     clearQrCode,
     syncChannelProfile,
     updateChannel,
     isSavingProfile,
   } = useBackofficeStudioBot()
 
+  const [replaceDialogOpen, setReplaceDialogOpen] = useState(false)
+  const qrPollTicksRef = useRef(0)
+  const connectionBusy = isTestingPing || isReconnecting || isDisconnecting || isSyncingProfile
+  const isConnected = channel?.status === "connected"
+
   useEffect(() => {
     void loadChannel()
   }, [loadChannel])
+
+  useEffect(() => {
+    if (!qrCode) {
+      qrPollTicksRef.current = 0
+      return
+    }
+
+    qrPollTicksRef.current = 0
+    const timer = window.setInterval(() => {
+      qrPollTicksRef.current += 1
+      if (qrPollTicksRef.current > QR_POLL_MAX_TICKS) {
+        window.clearInterval(timer)
+        return
+      }
+      void refreshChannelConnection()
+    }, QR_POLL_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [qrCode, refreshChannelConnection])
+
+  const handleReplaceConnection = async () => {
+    const ok = await replaceChannelConnection()
+    if (ok) {
+      setReplaceDialogOpen(false)
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 p-4">
@@ -74,12 +123,19 @@ export function BackofficeStudioBotCanalContainer() {
                   <span className="text-sm">Não configurado</span>
                 )}
               </div>
-              {channel?.phoneNumber ? (
-                <div className="flex flex-col gap-1 text-sm">
-                  <span className="text-muted-foreground">Telefone</span>
-                  <span>{maskPhone(channel.phoneNumber)}</span>
-                </div>
-              ) : null}
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Número atual do bot</p>
+                {channel?.phoneNumber ? (
+                  <p className="mt-1 font-mono text-base font-semibold tracking-wide text-foreground">
+                    {formatWhatsappPhoneDisplay(channel.phoneNumber) ?? channel.phoneNumber}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Nenhum WhatsApp conectado no momento. Use &quot;Conectar novo WhatsApp&quot; e
+                    escaneie o QR Code.
+                  </p>
+                )}
+              </div>
               {channel?.lastProfileSyncAt ? (
                 <div className="flex flex-col gap-1 text-sm">
                   <span className="text-muted-foreground">Última sincronização de perfil</span>
@@ -93,7 +149,7 @@ export function BackofficeStudioBotCanalContainer() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={isTestingPing || isReconnecting || isSyncingProfile}
+                    disabled={connectionBusy}
                     onClick={() => void testPing()}
                   >
                     {isTestingPing ? (
@@ -104,20 +160,68 @@ export function BackofficeStudioBotCanalContainer() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={isReconnecting || isTestingPing || isSyncingProfile}
+                    disabled={connectionBusy}
                     onClick={() => void reconnectChannel()}
                   >
-                    {isReconnecting ? (
+                    {isReconnecting && !isDisconnecting ? (
                       <Loader2 className="animate-spin" data-icon="inline-start" />
                     ) : (
                       <RefreshCw data-icon="inline-start" />
                     )}
-                    {isReconnecting ? "Reconectando..." : "Reconectar Evolution"}
+                    {isReconnecting && !isDisconnecting
+                      ? "Conectando..."
+                      : isConnected
+                        ? "Reconectar Evolution"
+                        : "Conectar novo WhatsApp"}
                   </Button>
+                  {isConnected ? (
+                    <AlertDialog open={replaceDialogOpen} onOpenChange={setReplaceDialogOpen}>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-foreground/20 text-destructive hover:border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                          disabled={connectionBusy}
+                        >
+                          {isDisconnecting ? (
+                            <Loader2 className="animate-spin" data-icon="inline-start" />
+                          ) : (
+                            <Unplug data-icon="inline-start" />
+                          )}
+                          {isDisconnecting ? "Desconectando..." : "Trocar WhatsApp"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="max-h-[90vh] flex flex-col border-destructive/40">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="text-destructive">
+                            Derrubar vinculação atual?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Isso desconecta o WhatsApp atual da Bethânia
+                            {channel?.phoneNumber
+                              ? ` (${formatWhatsappPhoneDisplay(channel.phoneNumber) ?? channel.phoneNumber})`
+                              : ""}{" "}
+                            e gera um novo QR Code para conectar outro número. Vínculos de usuários
+                            na Account não são removidos automaticamente.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel disabled={connectionBusy}>Cancelar</AlertDialogCancel>
+                          <Button
+                            variant="destructive"
+                            disabled={connectionBusy}
+                            onClick={() => void handleReplaceConnection()}
+                          >
+                            {connectionBusy ? "Processando..." : "Desconectar e gerar QR"}
+                          </Button>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={isSyncingProfile || isTestingPing || isReconnecting}
+                    disabled={connectionBusy}
                     onClick={() => void syncChannelProfile()}
                   >
                     {isSyncingProfile ? (
@@ -167,8 +271,15 @@ export function BackofficeStudioBotCanalContainer() {
                       disabled={!canManage || isSavingProfile}
                     />
                     <FieldDescription>
-                      URL interna do N8N na VPS (rede Docker), não o domínio público. Salve antes de
-                      clicar em &quot;Reconectar Evolution&quot;.
+                      Em produção (VPS, mesma rede Docker do N8N):{" "}
+                      <span className="font-mono text-foreground">
+                        http://n8n:5678/webhook/bethania-inbound
+                      </span>
+                      . Em dev local, a Evolution precisa alcançar o host:{" "}
+                      <span className="font-mono text-foreground">
+                        http://host.docker.internal:5678/webhook/bethania-inbound
+                      </span>
+                      . Salve antes de clicar em &quot;Reconectar Evolution&quot;.
                     </FieldDescription>
                   </Field>
                 </FieldGroup>
@@ -197,7 +308,8 @@ export function BackofficeStudioBotCanalContainer() {
             <DialogTitle>Escaneie o QR Code</DialogTitle>
             <DialogDescription>
               No WhatsApp da Bethânia: Aparelhos conectados → Conectar aparelho. Escaneie em até 60
-              segundos. Se falhar, clique em &quot;Reconectar Evolution&quot; novamente.
+              segundos. Se falhar, use &quot;Trocar WhatsApp&quot; ou &quot;Conectar novo
+              WhatsApp&quot;.
             </DialogDescription>
           </DialogHeader>
           {qrCode ? (
@@ -207,6 +319,10 @@ export function BackofficeStudioBotCanalContainer() {
                 alt="QR Code WhatsApp da Bethânia"
                 className="size-56 rounded-lg border bg-background object-contain"
               />
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                Aguardando confirmação da conexão...
+              </p>
             </div>
           ) : null}
         </DialogContent>

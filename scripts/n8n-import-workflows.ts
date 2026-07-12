@@ -26,10 +26,27 @@ function run(cmd: string, args: string[]): { ok: boolean; output: string } {
 
 function ensureContainerRunning(): void {
   const { ok, output } = run("docker", ["inspect", "-f", "{{.State.Running}}", CONTAINER]);
-  if (!ok || output !== "true") {
-    console.error(`Container ${CONTAINER} não está rodando. Execute: bun run n8n:up`);
-    process.exit(1);
+  if (ok && output === "true") {
+    return;
   }
+
+  // Fallback: podman/docker CLI às vezes falha no inspect; healthz do N8N basta.
+  try {
+    const health = spawnSync("curl", ["-sf", "http://127.0.0.1:5678/healthz"], {
+      encoding: "utf8",
+    });
+    if (health.status === 0) {
+      console.warn(
+        `[n8n:import] docker inspect falhou (${output || "sem saída"}); seguindo via healthz.`
+      );
+      return;
+    }
+  } catch {
+    // ignore
+  }
+
+  console.error(`Container ${CONTAINER} não está rodando. Execute: bun run n8n:up`);
+  process.exit(1);
 }
 
 function importWorkflow(filename: string): void {

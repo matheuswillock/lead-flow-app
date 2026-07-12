@@ -589,6 +589,10 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
       return link.normalizedPhone;
     }
 
+    return this.resolveProfilePhone(profileId);
+  }
+
+  async resolveProfilePhone(profileId: string): Promise<string | null> {
     const profile = await prisma.profile.findUnique({
       where: { id: profileId },
       select: { phone: true },

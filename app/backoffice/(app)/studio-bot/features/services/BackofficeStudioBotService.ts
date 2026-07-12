@@ -61,6 +61,22 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
     >
   }
 
+  async refreshChannelConnection() {
+    const res = await fetch("/api/v1/backoffice/bot/channel/refresh-connection", { method: "POST" })
+    return res.json() as Promise<
+      ApiOutput<{
+        channel: BackofficeStudioBotChannel
+        evoStatus: "open" | "close" | "connecting"
+        connected: boolean
+      }>
+    >
+  }
+
+  async disconnectChannel() {
+    const res = await fetch("/api/v1/backoffice/bot/channel/disconnect", { method: "POST" })
+    return res.json() as Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
+  }
+
   async syncChannelProfile() {
     const res = await fetch("/api/v1/backoffice/bot/channel/sync-profile", { method: "POST" })
     return res.json() as Promise<ApiOutput<{ ok: boolean; status: number }>>

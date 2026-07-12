@@ -1,6 +1,11 @@
 import { Output } from "@/lib/output";
 import { backofficeBotAuthService } from "@/app/api/services/backofficeBot/BackofficeBotAuthService";
+import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
+import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import type { IBackofficeBotAuthUseCase } from "./IBackofficeBotAuthUseCase";
+
+const LINK_CONFIRMED_WHATSAPP_MESSAGE =
+  "✅ Vinculação concluída com sucesso!\n\nSeu WhatsApp está conectado à Bethânia no Corretor Studio. Digite *menu* para ver o que posso fazer por você.";
 
 function mapAuthError(error: string): string {
   switch (error) {
@@ -14,6 +19,10 @@ function mapAuthError(error: string): string {
       return "Código incorreto";
     case "PHONE_ALREADY_LINKED":
       return "Este número já está vinculado a outra conta";
+    case "PHONE_MISMATCH":
+      return "O WhatsApp que enviou o código não é o mesmo número cadastrado na conta";
+    case "PROFILE_PHONE_REQUIRED":
+      return "Cadastre um telefone na Account antes de vincular a Bethânia";
     case "PROFILE_NOT_FOUND":
       return "Perfil não encontrado";
     case "TEAM_NOT_FOUND":
@@ -47,10 +56,46 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
       if (!result.ok) {
         return new Output(false, [], [mapAuthError(result.error)], { errorCode: result.error });
       }
+
+      await this.notifyLinkConfirmed(normalizedPhone, result.result.userLinkId);
+
       return new Output(true, ["Vínculo confirmado"], [], result.result);
     } catch (error) {
       console.error("[BackofficeBotAuthUseCase][verifyCode]", error);
       return new Output(false, [], ["Erro ao verificar código"], null);
+    }
+  }
+
+  private async notifyLinkConfirmed(normalizedPhone: string, userLinkId: string): Promise<void> {
+    try {
+      const channel = await backofficeBotRepository.getActiveChannel();
+      const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
+
+      await backofficeEvoApiService.sendTextMessage({
+        instanceName,
+        number: normalizedPhone,
+        text: LINK_CONFIRMED_WHATSAPP_MESSAGE,
+      });
+
+      if (channel) {
+        await backofficeBotRepository.createMessage({
+          channelId: channel.id,
+          userLinkId,
+          direction: "outbound",
+          payload: {
+            messageType: "text",
+            contentText: LINK_CONFIRMED_WHATSAPP_MESSAGE,
+            mediaUrl: null,
+            caption: null,
+            mediaFileName: null,
+            linkPreview: null,
+            pushName: channel.displayName,
+          },
+        });
+      }
+    } catch (error) {
+      // Vínculo já está confirmado — falha no aviso não deve reverter o auth.
+      console.error("[BackofficeBotAuthUseCase][notifyLinkConfirmed]", error);
     }
   }
 

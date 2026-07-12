@@ -13,38 +13,127 @@
       "name": "Webhook Inbound",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "webhookId": "bethania-inbound"
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "={{ $env.LEAD_FLOW_API_BASE_URL }}/api/v1/bot/auth/status",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
+        "jsCode": "const crypto = require('crypto');\nconst root = $input.first().json;\nconst body = root.body ?? root;\nconst data = Array.isArray(body.data) ? body.data[0] : body.data;\n\nif (!data || !data.key) {\n  return [{ json: { skip: true, reason: 'no_data' } }];\n}\n\nif (data.key.fromMe === true) {\n  return [{ json: { skip: true, reason: 'from_me' } }];\n}\n\nconst remoteJid = String(data.key.remoteJid || '');\nif (!remoteJid || remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') {\n  return [{ json: { skip: true, reason: 'ignored_jid' } }];\n}\n\nconst digits = remoteJid.replace(/@.*$/, '').replace(/\\D/g, '');\nif (digits.length < 10) {\n  return [{ json: { skip: true, reason: 'invalid_phone' } }];\n}\n\nconst normalizedPhone = digits.startsWith('55') ? `+${digits}` : `+55${digits}`;\nconst message = data.message || {};\nconst contentText =\n  message.conversation ||\n  message.extendedTextMessage?.text ||\n  message.imageMessage?.caption ||\n  message.documentMessage?.caption ||\n  message.videoMessage?.caption ||\n  null;\n\nlet messageType = 'text';\nif (message.imageMessage) messageType = 'image';\nelse if (message.documentMessage) messageType = 'document';\nelse if (message.audioMessage) messageType = 'audio';\nelse if (message.videoMessage) messageType = 'video';\nelse if (message.stickerMessage) messageType = 'sticker';\nelse if (message.locationMessage) messageType = 'location';\n\nconst inboundBody = {\n  normalizedPhone,\n  channelMessageId: data.key.id || undefined,\n  payload: {\n    messageType,\n    contentText,\n    mediaUrl: null,\n    caption: message.imageMessage?.caption || message.documentMessage?.caption || null,\n    mediaFileName: message.documentMessage?.fileName || null,\n    linkPreview: null,\n    pushName: data.pushName || null,\n  },\n};\n\nconst requestBodyString = JSON.stringify(inboundBody);\nconst secret = $env.BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET || '';\nconst hash = crypto.createHmac('sha256', secret).update(requestBodyString).digest('hex');\nconst base = ($env.LEAD_FLOW_API_BASE_URL || '').replace(/\\/$/, '');\n\nreturn [{\n  json: {\n    skip: false,\n    inboundBody,\n    requestBodyString,\n    hmacSignature: `sha256=${hash}`,\n    inboundUrl: `${base}/api/webhooks/backoffice/studio-bot/inbound`,\n    idempotencyKey: data.key.id || undefined,\n  },\n}];"
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000010",
+      "name": "Normalize And Sign",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
             {
-              "name": "phone",
-              "value": "={{ $json.body?.data?.key?.remoteJid?.replace('@s.whatsapp.net', '') ?? $json.normalizedPhone }}"
+              "id": "cond-process",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000011",
+      "name": "Should Process",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.inboundUrl }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
               "name": "x-studio-bot-signature",
-              "value": "REPLACE_WITH_HMAC_SIGNATURE"
+              "value": "={{ $json.hmacSignature }}"
+            },
+            {
+              "name": "x-idempotency-key",
+              "value": "={{ $json.idempotencyKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.requestBodyString }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000012",
+      "name": "Forward Inbound API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "skip-reason",
+              "name": "skipped",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "skip-detail",
+              "name": "reason",
+              "value": "={{ $json.reason }}",
+              "type": "string"
             }
           ]
         },
         "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000002",
-      "name": "Auth Status",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [280, 0]
+      "id": "a1b2c3d4-0001-4000-8000-000000000013",
+      "name": "Skipped Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        760,
+        120
+      ]
     }
   ],
   "connections": {
@@ -52,7 +141,36 @@
       "main": [
         [
           {
-            "node": "Auth Status",
+            "node": "Normalize And Sign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize And Sign": {
+      "main": [
+        [
+          {
+            "node": "Should Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Process": {
+      "main": [
+        [
+          {
+            "node": "Forward Inbound API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skipped Response",
             "type": "main",
             "index": 0
           }
@@ -60,11 +178,12 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "a1b2c3d4-err0-4000-8000-0000000000ef"
   },
-  "versionId": "bethania-router-v1",
+  "versionId": "bethania-router-v4",
   "meta": {
     "templateCredsSetupCompleted": false
   },

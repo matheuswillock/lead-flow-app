@@ -30,6 +30,14 @@ export interface IBackofficeStudioBotService {
   reconnectChannel(): Promise<
     ApiOutput<{ channel: BackofficeStudioBotChannel; qrCode: BackofficeStudioBotQrCode | null }>
   >
+  refreshChannelConnection(): Promise<
+    ApiOutput<{
+      channel: BackofficeStudioBotChannel
+      evoStatus: "open" | "close" | "connecting"
+      connected: boolean
+    }>
+  >
+  disconnectChannel(): Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
   syncChannelProfile(): Promise<ApiOutput<{ ok: boolean; status: number }>>
   listConversations(
     filters: BackofficeStudioBotConversationsFilters,

@@ -1,4 +1,5 @@
 import { Output } from "@/lib/output";
+import { formatWhatsappPhoneDisplay } from "@/lib/studio-bot/phone";
 import type {
   BethaniaLinkInitiateResult,
   BethaniaLinkStatus,
@@ -20,6 +21,20 @@ class BethaniaLinkService implements IBethaniaLinkService {
   private async parseOutput(response: Response): Promise<Output> {
     const data = await response.json();
     return data as Output;
+  }
+
+  private resolvePhoneDigits(phoneDigits?: string | null): string | null {
+    const fromArg = phoneDigits?.replace(/\D/g, "") ?? "";
+    if (fromArg.length >= 10) {
+      return fromArg;
+    }
+
+    const fromEnv = process.env.NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER?.replace(/\D/g, "") ?? "";
+    if (fromEnv.length >= 10) {
+      return fromEnv;
+    }
+
+    return null;
   }
 
   async getStatus(context: BethaniaRequestContext): Promise<BethaniaLinkStatus> {
@@ -67,8 +82,21 @@ class BethaniaLinkService implements IBethaniaLinkService {
     return `VINCULAR ${code}`;
   }
 
-  buildWhatsappDeepLink(code: string): string | null {
-    const phone = process.env.NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER?.replace(/\D/g, "");
+  formatAssistantPhone(phoneDigits: string | null | undefined): string | null {
+    return formatWhatsappPhoneDisplay(this.resolvePhoneDigits(phoneDigits));
+  }
+
+  buildWhatsappChatLink(phoneDigits: string | null | undefined): string | null {
+    const phone = this.resolvePhoneDigits(phoneDigits);
+    if (!phone) {
+      return null;
+    }
+
+    return `https://wa.me/${phone}`;
+  }
+
+  buildWhatsappDeepLink(code: string, phoneDigits?: string | null): string | null {
+    const phone = this.resolvePhoneDigits(phoneDigits);
     if (!phone) {
       return null;
     }

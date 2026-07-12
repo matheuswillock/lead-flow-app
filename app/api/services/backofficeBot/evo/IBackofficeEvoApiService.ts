@@ -7,6 +7,8 @@ export interface BackofficeEvoConnectResult {
   instanceName: string;
   status: "open" | "close" | "connecting";
   qrCode: BackofficeEvoQrCode | null;
+  /** Dígitos do WhatsApp conectado (ownerJid), quando disponível. */
+  phoneNumber?: string | null;
 }
 
 export interface IBackofficeEvoApiService {
@@ -14,4 +16,14 @@ export interface IBackofficeEvoApiService {
     instanceName: string;
     webhookUrl: string;
   }): Promise<BackofficeEvoConnectResult>;
+  getInstanceConnectionState(
+    instanceName: string
+  ): Promise<"open" | "close" | "connecting">;
+  getInstancePhoneNumber(instanceName: string): Promise<string | null>;
+  disconnectInstance(instanceName: string): Promise<void>;
+  sendTextMessage(params: {
+    instanceName: string;
+    number: string;
+    text: string;
+  }): Promise<void>;
 }

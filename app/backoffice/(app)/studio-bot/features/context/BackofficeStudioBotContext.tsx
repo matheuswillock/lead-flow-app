@@ -82,6 +82,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
   const [isTestingPing, setIsTestingPing] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [isSyncingProfile, setIsSyncingProfile] = useState(false)
   const [isLoadingUserLinks, setIsLoadingUserLinks] = useState(false)
   const [isRevokingLink, setIsRevokingLink] = useState(false)
@@ -219,6 +220,53 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       return false
     } finally {
       setIsReconnecting(false)
+    }
+  }, [canManage, service])
+
+  const disconnectChannel = useCallback(async () => {
+    if (!canManage) return false
+    setIsDisconnecting(true)
+    try {
+      const output = await service.disconnectChannel()
+      if (!output.isValid) {
+        toast.error(output.errorMessages?.[0] ?? "Erro ao desconectar canal")
+        return false
+      }
+      if (output.result?.channel) setChannel(output.result.channel)
+      setQrCode(null)
+      toast.success(output.successMessages?.[0] ?? "WhatsApp da Bethânia desconectado")
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao desconectar canal")
+      return false
+    } finally {
+      setIsDisconnecting(false)
+    }
+  }, [canManage, service])
+
+  const replaceChannelConnection = useCallback(async () => {
+    if (!canManage) return false
+    const disconnected = await disconnectChannel()
+    if (!disconnected) return false
+    return reconnectChannel()
+  }, [canManage, disconnectChannel, reconnectChannel])
+
+  const refreshChannelConnection = useCallback(async () => {
+    if (!canManage) return false
+    try {
+      const output = await service.refreshChannelConnection()
+      if (!output.isValid) {
+        return false
+      }
+      if (output.result?.channel) setChannel(output.result.channel)
+      if (output.result?.connected) {
+        setQrCode(null)
+        toast.success("Bethânia conectada no WhatsApp")
+      }
+      return Boolean(output.result?.connected)
+    } catch (err) {
+      console.error("[BackofficeStudioBotContext][refreshChannelConnection]", err)
+      return false
     }
   }, [canManage, service])
 
@@ -409,6 +457,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
     isTestingPing,
     isUploadingAvatar,
     isReconnecting,
+    isDisconnecting,
     isSyncingProfile,
     userLinks,
     userLinksPagination,
@@ -426,6 +475,9 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
     testPing,
     uploadChannelAvatar,
     reconnectChannel,
+    refreshChannelConnection,
+    disconnectChannel,
+    replaceChannelConnection,
     clearQrCode,
     syncChannelProfile,
     setConversationsFilters,
