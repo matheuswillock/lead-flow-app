@@ -69,7 +69,17 @@
       "Read(//a/develop//**)",
       "Read(//a/develop/**)",
       "Bash(mkdir -p \"A:\\\\\\\\develop\\\\\\\\corretor-studio-backup\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(git log *)",
+      "Bash(gh pr *)",
+      "Bash(gh auth *)",
+      "WebFetch(domain:documenter.getpostman.com)",
+      "WebFetch(domain:3cplusnow.com)",
+      "WebFetch(domain:alo.3cplusnow.com)",
+      "WebFetch(domain:api-docs.3c.fluxoti.com)",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "Bash(curl -s -L \"https://app.3c.plus/api/v1/swagger.json\" -o /tmp/claude-1000/-home-matheuswillock-develop-lead-flow-app/1f5cf724-f2da-4c2b-8cdf-4c71084184de/scratchpad/3cplus-swagger.json --max-time 30 -w \"HTTP %{http_code}, size %{size_download} bytes\\\\n\")"
     ]
   }
 }

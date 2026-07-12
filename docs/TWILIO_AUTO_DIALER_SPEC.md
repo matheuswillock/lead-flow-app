@@ -1,8 +1,10 @@
 # Especificação — Módulo Discadora Automática (Twilio)
 
+> **⚠️ DEPRECATED (2026-07-12):** decisão de produto confirmada de migrar o motor de discagem de Twilio para **3C Plus**. Este documento é mantido apenas como referência histórica do estágio 1 (Fundação: CRUD de campanha/contato, agnóstico de provedor — já implementado na branch `claude/loving-wozniak-y4bmrd`). Toda decisão a partir do provisionamento de voz (estágio 2 em diante) está em [`DIALER_SPEC.md`](DIALER_SPEC.md). Ver [`DIALER_3CPLUS_AUDIT.md`](DIALER_3CPLUS_AUDIT.md) para o raciocínio completo da migração.
+
 **Versão:** 2.1.0
 **Data:** 2026-06-12
-**Status:** Plano de implementação aprovado
+**Status:** Substituído — ver aviso acima
 **Produto:** Lead Flow — Corretor Studio
 **Substitui:** v2.0.0 (2026-06-11) — troca a infra de jobs Upstash QStash pelo padrão **Vercel Cron + tabela de jobs no banco**, alinhando à estratégia de email (`docs/specs/email-dispatch.md`): sem fila externa.
 
