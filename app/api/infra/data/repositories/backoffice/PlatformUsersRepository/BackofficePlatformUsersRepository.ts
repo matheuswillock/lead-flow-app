@@ -1,6 +1,7 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { Prisma, UserRole, UserFunction } from "@prisma/client"
 import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
+import { hasAnnualOrActiveYearlyUnlimitedGrant } from "@/app/api/infra/data/repositories/billing/unlimitedUsersGrantQueries"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 import type {
   IBackofficePlatformUsersRepository,
@@ -624,12 +625,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
   // (que é justamente o grant sendo removido no caminho false).
   private async hasIndependentUnlimitedUsersGrant(masterProfileId: string): Promise<boolean> {
     const now = new Date()
-    const [paidUnlimitedAdhesion, activeMemberPro, activeYearlySubscription] = await Promise.all([
+    const [paidUnlimitedAdhesion, activeMemberPro, hasAnnualOrYearlyGrant] = await Promise.all([
       prisma.backofficeAdhesion.findFirst({
         where: {
           createdProfileId: masterProfileId,
           status: "paid",
-          OR: [{ cycle: "annual" }, { hasUnlimitedUsers: true }],
+          hasUnlimitedUsers: true,
         },
         select: { id: true },
       }),
@@ -641,23 +642,10 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         },
         select: { id: true },
       }),
-      prisma.profileSubscription.findFirst({
-        where: {
-          profileId: masterProfileId,
-          subscriptionCycle: "YEARLY",
-          OR: [{ subscriptionStatus: null }, { subscriptionStatus: "active" }],
-          AND: [
-            { OR: [{ subscriptionStartDate: null }, { subscriptionStartDate: { lte: now } }] },
-            { OR: [{ subscriptionEndDate: null }, { subscriptionEndDate: { gte: now } }] },
-          ],
-        },
-        select: { id: true },
-      }),
+      hasAnnualOrActiveYearlyUnlimitedGrant(masterProfileId),
     ])
 
-    return (
-      paidUnlimitedAdhesion !== null || activeMemberPro !== null || activeYearlySubscription !== null
-    )
+    return paidUnlimitedAdhesion !== null || activeMemberPro !== null || hasAnnualOrYearlyGrant
   }
 
   async findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null> {
