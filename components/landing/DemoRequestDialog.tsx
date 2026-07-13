@@ -21,12 +21,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Field,
-  FieldContent,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { cn } from "@/lib/utils"
 import { isValidPhone, maskPhone, unmask } from "@/lib/masks"
 
@@ -45,18 +40,42 @@ const guidedBenefits = [
   },
 ]
 
-const teamSizeOptions = [
-  "Só eu",
-  "2 a 5 corretores",
-  "6 a 15 corretores",
-  "Mais de 15",
-]
+const teamSizeOptions = ["Só eu", "2 a 5 corretores", "6 a 15 corretores", "Mais de 15"]
 
 const contactTimeOptions = ["Manhã", "Tarde", "Fim do dia"]
 
 const inputClassName =
   "w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
 const fieldClassName = "gap-1.5"
+
+const nameAllowedPattern = /^[\p{L}\p{M}\s'-]+$/u
+
+type DemoRequiredField = "firstName" | "lastName" | "email" | "whatsapp"
+
+type DemoTouchedFields = Record<DemoRequiredField, boolean>
+
+const initialTouchedFields: DemoTouchedFields = {
+  firstName: false,
+  lastName: false,
+  email: false,
+  whatsapp: false,
+}
+
+function hasAtLeastTwoLetters(value: string) {
+  const letters = value.match(/\p{L}/gu)
+
+  return (letters?.length ?? 0) >= 2
+}
+
+function isValidNamePart(value: string) {
+  const normalizedValue = value.trim()
+
+  return hasAtLeastTwoLetters(normalizedValue) && nameAllowedPattern.test(normalizedValue)
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
 
 type DemoRequestDialogContextValue = {
   openDialog: () => void
@@ -134,6 +153,8 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
   const [preferredContactTime, setPreferredContactTime] = useState("Manhã")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [touchedFields, setTouchedFields] = useState<DemoTouchedFields>(initialTouchedFields)
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
 
   const resetForm = useCallback(() => {
     setFirstName("")
@@ -144,6 +165,8 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
     setPreferredContactTime("Manhã")
     setIsSubmitting(false)
     setIsSuccess(false)
+    setTouchedFields(initialTouchedFields)
+    setHasAttemptedSubmit(false)
   }, [])
 
   useEffect(() => {
@@ -152,17 +175,51 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
     }
   }, [open, resetForm])
 
-  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+  const fullName = useMemo(
+    () => `${firstName.trim()} ${lastName.trim()}`.trim(),
+    [firstName, lastName],
+  )
 
-  const fullName = useMemo(() => `${firstName.trim()} ${lastName.trim()}`.trim(), [firstName, lastName])
+  const fieldErrors = useMemo(
+    () => ({
+      firstName: isValidNamePart(firstName) ? "" : "Informe seu nome com pelo menos 2 letras.",
+      lastName: isValidNamePart(lastName) ? "" : "Informe seu sobrenome com pelo menos 2 letras.",
+      email: isValidEmail(email) ? "" : "Informe um e-mail válido.",
+      whatsapp: isValidPhone(whatsapp) ? "" : "Informe um WhatsApp com DDD.",
+    }),
+    [email, firstName, lastName, whatsapp],
+  )
 
   const isFormValid = useMemo(() => {
-    return firstName.trim().length >= 2 && isValidEmail(email.trim()) && isValidPhone(whatsapp)
-  }, [email, firstName, whatsapp])
+    return Object.values(fieldErrors).every((error) => error.length === 0)
+  }, [fieldErrors])
+
+  const markFieldAsTouched = useCallback((field: DemoRequiredField) => {
+    setTouchedFields((current) => ({ ...current, [field]: true }))
+  }, [])
+
+  const shouldShowFieldError = useCallback(
+    (field: DemoRequiredField) => {
+      return Boolean(fieldErrors[field]) && (touchedFields[field] || hasAttemptedSubmit)
+    },
+    [fieldErrors, hasAttemptedSubmit, touchedFields],
+  )
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!isFormValid || isSubmitting) return
+    setHasAttemptedSubmit(true)
+
+    if (!isFormValid) {
+      setTouchedFields({
+        firstName: true,
+        lastName: true,
+        email: true,
+        whatsapp: true,
+      })
+      return
+    }
+
+    if (isSubmitting) return
 
     setIsSubmitting(true)
     try {
@@ -182,7 +239,9 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
 
       const result = await response.json()
       if (!response.ok) {
-        const message = (result?.errorMessages && result.errorMessages.join(", ")) || "Erro ao enviar. Tente novamente."
+        const message =
+          (result?.errorMessages && result.errorMessages.join(", ")) ||
+          "Erro ao enviar. Tente novamente."
         toast.error(message)
         return
       }
@@ -211,7 +270,9 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
           <X className="size-5" aria-hidden />
           <span className="sr-only">Fechar</span>
         </DialogClose>
-        <DialogTitle className="sr-only">Solicitar demonstração guiada do Corretor Studio</DialogTitle>
+        <DialogTitle className="sr-only">
+          Solicitar demonstração guiada do Corretor Studio
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Formulário para solicitar uma demonstração guiada do Corretor Studio.
         </DialogDescription>
@@ -226,8 +287,8 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
               <span className="block">seus próprios números</span>
             </h2>
             <p className="mt-3 max-w-md text-[15px] leading-[1.55] text-muted-foreground">
-              Em 30 minutos mostramos como organizar seus leads, disparar campanhas e acompanhar sua carteira,
-              sem compromisso.
+              Em 30 minutos mostramos como organizar seus leads, disparar campanhas e acompanhar sua
+              carteira, sem compromisso.
             </p>
 
             <ul className="mt-[26px] flex flex-col gap-[18px]">
@@ -272,18 +333,25 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
                 </h3>
                 <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
                   Recebemos seu pedido. Um especialista vai entrar em contato pelo WhatsApp em até{" "}
-                  <strong className="font-semibold text-landing-ink">1 dia útil</strong> para confirmar o melhor horário.
+                  <strong className="font-semibold text-landing-ink">1 dia útil</strong> para
+                  confirmar o melhor horário.
                 </p>
                 <DialogClose className="landing-primary-cta mt-6 inline-flex min-h-11 items-center justify-center rounded-2xl px-6 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
                   Fechar
                 </DialogClose>
               </div>
             ) : (
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={handleSubmit} noValidate>
                 <FieldGroup className="gap-4">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field className={fieldClassName}>
-                      <FieldLabel htmlFor="demo-first-name" className="font-display text-sm font-semibold text-landing-ink">
+                    <Field
+                      className={fieldClassName}
+                      data-invalid={shouldShowFieldError("firstName") ? "true" : undefined}
+                    >
+                      <FieldLabel
+                        htmlFor="demo-first-name"
+                        className="font-display text-sm font-semibold text-landing-ink"
+                      >
                         Nome <span className="text-primary">*</span>
                       </FieldLabel>
                       <FieldContent>
@@ -293,15 +361,37 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
                           placeholder="Seu nome"
                           value={firstName}
                           onChange={(event) => setFirstName(event.target.value)}
+                          onBlur={() => markFieldAsTouched("firstName")}
+                          autoComplete="given-name"
                           required
-                          className={inputClassName}
+                          minLength={2}
+                          aria-invalid={shouldShowFieldError("firstName") || undefined}
+                          aria-describedby={
+                            shouldShowFieldError("firstName") ? "demo-first-name-error" : undefined
+                          }
+                          className={cn(
+                            inputClassName,
+                            shouldShowFieldError("firstName") &&
+                              "border-destructive focus:ring-destructive",
+                          )}
                         />
+                        {shouldShowFieldError("firstName") && (
+                          <FieldError id="demo-first-name-error" className="text-xs">
+                            {fieldErrors.firstName}
+                          </FieldError>
+                        )}
                       </FieldContent>
                     </Field>
 
-                    <Field className={fieldClassName}>
-                      <FieldLabel htmlFor="demo-last-name" className="font-display text-sm font-semibold text-landing-ink">
-                        Sobrenome
+                    <Field
+                      className={fieldClassName}
+                      data-invalid={shouldShowFieldError("lastName") ? "true" : undefined}
+                    >
+                      <FieldLabel
+                        htmlFor="demo-last-name"
+                        className="font-display text-sm font-semibold text-landing-ink"
+                      >
+                        Sobrenome <span className="text-primary">*</span>
                       </FieldLabel>
                       <FieldContent>
                         <input
@@ -310,14 +400,37 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
                           placeholder="Sobrenome"
                           value={lastName}
                           onChange={(event) => setLastName(event.target.value)}
-                          className={inputClassName}
+                          onBlur={() => markFieldAsTouched("lastName")}
+                          autoComplete="family-name"
+                          required
+                          minLength={2}
+                          aria-invalid={shouldShowFieldError("lastName") || undefined}
+                          aria-describedby={
+                            shouldShowFieldError("lastName") ? "demo-last-name-error" : undefined
+                          }
+                          className={cn(
+                            inputClassName,
+                            shouldShowFieldError("lastName") &&
+                              "border-destructive focus:ring-destructive",
+                          )}
                         />
+                        {shouldShowFieldError("lastName") && (
+                          <FieldError id="demo-last-name-error" className="text-xs">
+                            {fieldErrors.lastName}
+                          </FieldError>
+                        )}
                       </FieldContent>
                     </Field>
                   </div>
 
-                  <Field className={fieldClassName}>
-                    <FieldLabel htmlFor="demo-email" className="font-display text-sm font-semibold text-landing-ink">
+                  <Field
+                    className={fieldClassName}
+                    data-invalid={shouldShowFieldError("email") ? "true" : undefined}
+                  >
+                    <FieldLabel
+                      htmlFor="demo-email"
+                      className="font-display text-sm font-semibold text-landing-ink"
+                    >
                       E-mail profissional <span className="text-primary">*</span>
                     </FieldLabel>
                     <FieldContent>
@@ -327,15 +440,36 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
                         placeholder="voce@empresa.com.br"
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
+                        onBlur={() => markFieldAsTouched("email")}
+                        autoComplete="email"
                         required
-                        className={inputClassName}
+                        aria-invalid={shouldShowFieldError("email") || undefined}
+                        aria-describedby={
+                          shouldShowFieldError("email") ? "demo-email-error" : undefined
+                        }
+                        className={cn(
+                          inputClassName,
+                          shouldShowFieldError("email") &&
+                            "border-destructive focus:ring-destructive",
+                        )}
                       />
+                      {shouldShowFieldError("email") && (
+                        <FieldError id="demo-email-error" className="text-xs">
+                          {fieldErrors.email}
+                        </FieldError>
+                      )}
                     </FieldContent>
                   </Field>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field className={fieldClassName}>
-                      <FieldLabel htmlFor="demo-whatsapp" className="font-display text-sm font-semibold text-landing-ink">
+                    <Field
+                      className={fieldClassName}
+                      data-invalid={shouldShowFieldError("whatsapp") ? "true" : undefined}
+                    >
+                      <FieldLabel
+                        htmlFor="demo-whatsapp"
+                        className="font-display text-sm font-semibold text-landing-ink"
+                      >
                         WhatsApp <span className="text-primary">*</span>
                       </FieldLabel>
                       <FieldContent>
@@ -349,14 +483,33 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
                             const unmasked = unmask(masked)
                             setWhatsapp(unmasked)
                           }}
+                          onBlur={() => markFieldAsTouched("whatsapp")}
+                          autoComplete="tel"
                           required
-                          className={inputClassName}
+                          inputMode="tel"
+                          aria-invalid={shouldShowFieldError("whatsapp") || undefined}
+                          aria-describedby={
+                            shouldShowFieldError("whatsapp") ? "demo-whatsapp-error" : undefined
+                          }
+                          className={cn(
+                            inputClassName,
+                            shouldShowFieldError("whatsapp") &&
+                              "border-destructive focus:ring-destructive",
+                          )}
                         />
+                        {shouldShowFieldError("whatsapp") && (
+                          <FieldError id="demo-whatsapp-error" className="text-xs">
+                            {fieldErrors.whatsapp}
+                          </FieldError>
+                        )}
                       </FieldContent>
                     </Field>
 
                     <Field className={fieldClassName}>
-                      <FieldLabel htmlFor="demo-team-size" className="font-display text-sm font-semibold text-landing-ink">
+                      <FieldLabel
+                        htmlFor="demo-team-size"
+                        className="font-display text-sm font-semibold text-landing-ink"
+                      >
                         Tamanho da equipe
                       </FieldLabel>
                       <FieldContent>
@@ -381,7 +534,11 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
                       Melhor horário para o contato
                     </FieldLabel>
                     <FieldContent>
-                      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Melhor horário para contato">
+                      <div
+                        className="grid grid-cols-3 gap-2"
+                        role="radiogroup"
+                        aria-label="Melhor horário para contato"
+                      >
                         {contactTimeOptions.map((option) => {
                           const isSelected = preferredContactTime === option
 
@@ -407,9 +564,9 @@ function DemoRequestDialog({ open, onOpenChange }: DemoRequestDialogProps) {
 
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={!isFormValid || isSubmitting}
                     aria-disabled={!isFormValid || isSubmitting}
-                    className="landing-primary-cta inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-base font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="landing-primary-cta inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-base font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {isSubmitting ? "Enviando..." : "Agendar minha demonstração"}
                     <ArrowRight className="size-5" aria-hidden />
