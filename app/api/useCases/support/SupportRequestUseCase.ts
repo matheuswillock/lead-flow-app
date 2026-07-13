@@ -6,9 +6,12 @@ import type {
   SupportRequestAttachmentInput,
 } from "./ISupportRequestUseCase";
 import { supportRequestService } from "@/app/api/services/support/SupportRequestService";
+import { STORAGE_BUCKETS, SupabaseStorageService } from "@/lib/supabase/storage";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_TYPES =
+  SupabaseStorageService.getBucketConfig(STORAGE_BUCKETS.SUPPORT_REQUEST_ATTACHMENTS)?.allowedTypes || [];
 
 const supportRequestSchema = z.object({
   subject: z.string().trim().min(1, "Assunto e obrigatorio"),
@@ -81,8 +84,8 @@ export class SupportRequestUseCase implements ISupportRequestUseCase {
         return { error: "Arquivo invalido enviado" };
       }
 
-      if (!attachment.contentType.startsWith("image/")) {
-        return { error: "Apenas imagens sao permitidas" };
+      if (!ALLOWED_ATTACHMENT_TYPES.includes(attachment.contentType)) {
+        return { error: "Formato de imagem nao suportado (use JPEG, PNG, WEBP ou GIF)" };
       }
 
       if (attachment.size <= 0 || attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {

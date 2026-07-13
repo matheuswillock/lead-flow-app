@@ -3,6 +3,23 @@ import { STORAGE_BUCKETS, SupabaseStorageService } from "@/lib/supabase/storage"
 
 const ATTACHMENT_SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 dias
 
+// Slack section blocks aceitam ate 3000 caracteres em `text.text`:
+// https://docs.slack.dev/reference/block-kit/blocks/section-block
+// Usamos uma margem para o rotulo "*Mensagem (n/n):*\n" adicionado a cada pedaco.
+const MESSAGE_CHUNK_SIZE = 2900;
+
+function escapeSlackMrkdwn(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function chunkText(text: string, size: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += size) {
+    chunks.push(text.slice(i, i + size));
+  }
+  return chunks.length > 0 ? chunks : [""];
+}
+
 export class SupportRequestService implements ISupportRequestService {
   async sendSupportRequest(data: SupportRequestData): Promise<{ success: boolean; error?: string }> {
     try {
@@ -15,13 +32,18 @@ export class SupportRequestService implements ISupportRequestService {
         };
       }
 
-      const safeSubject = data.subject.trim();
-      const safeMessage = data.message.trim();
-      const safeName = data.requesterName.trim() || "Usuário";
-      const safeEmail = data.requesterEmail.trim() || "E-mail não informado";
+      // Escapado para evitar que texto do solicitante (ex.: "<!channel>") seja
+      // interpretado como sintaxe de controle do mrkdwn do Slack.
+      const safeSubject = escapeSlackMrkdwn(data.subject.trim());
+      const safeMessage = escapeSlackMrkdwn(data.message.trim());
+      const safeName = escapeSlackMrkdwn(data.requesterName.trim() || "Usuário");
+      const safeEmail = escapeSlackMrkdwn(data.requesterEmail.trim() || "E-mail não informado");
       const supportId = data.supportId;
 
-      const attachmentUrls = await this.uploadAttachments(data.attachments || [], supportId);
+      const uploadResult = await this.uploadAttachments(data.attachments || [], supportId);
+      if (uploadResult.error) {
+        return { success: false, error: uploadResult.error };
+      }
 
       const payload = this.buildSlackPayload({
         supportId,
@@ -29,7 +51,7 @@ export class SupportRequestService implements ISupportRequestService {
         requesterName: safeName,
         requesterEmail: safeEmail,
         message: safeMessage,
-        attachmentUrls,
+        attachmentUrls: uploadResult.urls,
       });
 
       const response = await fetch(slackWebhookUrl, {
@@ -57,9 +79,9 @@ export class SupportRequestService implements ISupportRequestService {
   private async uploadAttachments(
     attachments: SupportRequestData["attachments"],
     supportId: string,
-  ): Promise<string[]> {
+  ): Promise<{ urls: string[]; error?: string }> {
     if (!attachments || attachments.length === 0) {
-      return [];
+      return { urls: [] };
     }
 
     const urls: string[] = [];
@@ -81,7 +103,7 @@ export class SupportRequestService implements ISupportRequestService {
           fileName: attachment.fileName,
           error: uploadResult.error,
         });
-        continue;
+        return { urls: [], error: uploadResult.error || "Falha ao enviar imagem anexada" };
       }
 
       const signedUrlResult = await SupabaseStorageService.createSignedUrl(
@@ -90,18 +112,19 @@ export class SupportRequestService implements ISupportRequestService {
         ATTACHMENT_SIGNED_URL_TTL_SECONDS,
       );
 
-      if (signedUrlResult.success && signedUrlResult.signedUrl) {
-        urls.push(signedUrlResult.signedUrl);
-      } else {
+      if (!signedUrlResult.success || !signedUrlResult.signedUrl) {
         console.error("[SupportRequestService][uploadAttachments] Falha ao gerar URL assinada:", {
           supportId,
           fileName: attachment.fileName,
           error: signedUrlResult.error,
         });
+        return { urls: [], error: signedUrlResult.error || "Falha ao gerar link da imagem anexada" };
       }
+
+      urls.push(signedUrlResult.signedUrl);
     }
 
-    return urls;
+    return { urls };
   }
 
   private buildSlackPayload(params: {
@@ -127,10 +150,7 @@ export class SupportRequestService implements ISupportRequestService {
           { type: "mrkdwn", text: `*Email:*\n${requesterEmail}` },
         ],
       },
-      {
-        type: "section",
-        text: { type: "mrkdwn", text: `*Mensagem:*\n${message}` },
-      },
+      ...this.buildMessageBlocks(message),
     ];
 
     if (attachmentUrls.length > 0) {
@@ -147,6 +167,18 @@ export class SupportRequestService implements ISupportRequestService {
       text: `Novo pedido de suporte [${supportId}]: ${subject}`,
       blocks,
     };
+  }
+
+  private buildMessageBlocks(message: string): Record<string, unknown>[] {
+    const chunks = chunkText(message, MESSAGE_CHUNK_SIZE);
+
+    return chunks.map((chunk, index) => {
+      const label = chunks.length > 1 ? `*Mensagem (${index + 1}/${chunks.length}):*\n` : "*Mensagem:*\n";
+      return {
+        type: "section",
+        text: { type: "mrkdwn", text: `${label}${chunk}` },
+      };
+    });
   }
 }
 
