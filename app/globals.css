@@ -440,10 +440,6 @@ h1, h2, h3, h4, h5, h6 {
       radial-gradient(28% 24% at 18% 72%, color-mix(in oklab, var(--primary) 12%, transparent) 0%, transparent 65%);
   }
 
-  .landing-pricing-orbs {
-    background: radial-gradient(45% 45% at 50% 50%, color-mix(in oklab, var(--primary) 18%, transparent) 0%, transparent 60%);
-  }
-
   .landing-footer-orb {
     background: radial-gradient(50% 40% at 50% 100%, color-mix(in oklab, var(--primary) 15%, transparent) 0%, transparent 60%);
   }
@@ -488,10 +484,8 @@ h1, h2, h3, h4, h5, h6 {
 
   .landing-surface-card-soft {
     border: 1px solid var(--border);
-    background: color-mix(in oklab, var(--card) 70%, transparent);
-    box-shadow: 0 16px 32px -24px color-mix(in oklab, var(--primary) 18%, transparent);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
+    background: color-mix(in oklab, var(--card) 92%, var(--muted));
+    box-shadow: 0 8px 16px -14px color-mix(in oklab, var(--foreground) 24%, transparent);
   }
 
   .landing-hero-floating {

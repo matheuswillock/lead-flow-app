@@ -5,13 +5,13 @@ import Link from "next/link"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
 const navLinks = [
   { label: "Plataforma", href: "/#crm" },
   { label: "Como funciona", href: "/#como" },
   { label: "Integrações", href: "/#integ" },
   { label: "Dúvidas", href: "/#faq" },
-  { label: "Demonstração", href: "/#demo" },
 ]
 
 export function MobileNavMenu() {
@@ -45,6 +45,12 @@ export function MobileNavMenu() {
                 {link.label}
               </Link>
             ))}
+            <DemoRequestDialogButton
+              onClick={() => setOpen(false)}
+              className="rounded-lg px-4 py-3 text-left text-base font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Demonstração
+            </DemoRequestDialogButton>
           </nav>
         </SheetContent>
       </Sheet>

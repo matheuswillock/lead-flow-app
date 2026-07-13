@@ -3,6 +3,7 @@ import { BackofficeLeadOrigin, BackofficeLeadStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
 import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/IBackofficeLeadRepository"
+import { backofficeLeadSlackNotificationService } from "@/app/api/services/backofficeLeadSlack/BackofficeLeadSlackNotificationService"
 import { getEmailService } from "@/lib/services/EmailService"
 import type { CreateDemoLeadInput, IBackofficeDemoLeadUseCase } from "./IBackofficeDemoLeadUseCase"
 
@@ -21,6 +22,16 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#039;")
 }
 
+function buildDemoLeadNotes(input: CreateDemoLeadInput) {
+  return [
+    "Solicitação de demonstração via landing page.",
+    input.teamSize ? `Tamanho da equipe: ${input.teamSize}` : null,
+    input.preferredContactTime ? `Melhor horário para contato: ${input.preferredContactTime}` : null,
+  ]
+    .filter((item): item is string => Boolean(item))
+    .join("\n")
+}
+
 export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
   constructor(private readonly leadRepository: IBackofficeLeadRepository) {}
 
@@ -29,6 +40,12 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
       const sourceExternalId = `demo:${input.email.trim().toLowerCase()}`
       const existing = await this.leadRepository.findBySourceExternalId(sourceExternalId)
       if (existing) {
+        await backofficeLeadSlackNotificationService.sendLeadCreatedEventBestEffort({
+          lead: existing,
+          title: "Nova solicitação de demonstração (lead existente)",
+          force: true,
+        })
+
         await this.sendDemoRequestEmailBestEffort(input, existing.id, true)
 
         return new Output(true, ["Lead já existente para esta demonstração"], [], { id: existing.id })
@@ -39,6 +56,7 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
         name: input.name,
         email: input.email,
         phone: input.phone,
+        notes: buildDemoLeadNotes(input),
         status: BackofficeLeadStatus.new_opportunity,
         origin: BackofficeLeadOrigin.landing_page,
         sourceExternalId,
@@ -46,6 +64,11 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
       })
 
       console.info("[BackofficeDemoLeadUseCase][create] Lead criado com sucesso", { id: lead.id })
+
+      await backofficeLeadSlackNotificationService.sendLeadCreatedEventBestEffort({
+        lead,
+        title: "Nova solicitação de demonstração",
+      })
 
       await this.sendDemoRequestEmailBestEffort(input, lead.id, false)
 
@@ -81,6 +104,8 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
     const safeName = escapeHtml(input.name)
     const safeEmail = escapeHtml(input.email)
     const safePhone = escapeHtml(input.phone)
+    const safeTeamSize = escapeHtml(input.teamSize || "Não informado")
+    const safePreferredContactTime = escapeHtml(input.preferredContactTime || "Não informado")
     const safeLeadId = escapeHtml(leadId)
     const submittedAt = new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",
@@ -124,6 +149,14 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
                           <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;text-align:right;">${safePhone}</td>
                         </tr>
                         <tr>
+                          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">Tamanho da equipe</td>
+                          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;text-align:right;">${safeTeamSize}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">Melhor horário</td>
+                          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;text-align:right;">${safePreferredContactTime}</td>
+                        </tr>
+                        <tr>
                           <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">Status</td>
                           <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;text-align:right;">${duplicateLabel}</td>
                         </tr>
@@ -148,6 +181,8 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
       `Nome: ${input.name}`,
       `E-mail: ${input.email}`,
       `WhatsApp: ${input.phone}`,
+      `Tamanho da equipe: ${input.teamSize || "Não informado"}`,
+      `Melhor horário: ${input.preferredContactTime || "Não informado"}`,
       `Status: ${duplicateLabel}`,
       `Lead no backoffice: ${leadId}`,
     ].join("\n")

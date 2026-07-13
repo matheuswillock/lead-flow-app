@@ -113,7 +113,7 @@ export function ResourceDetailContainer() {
         </div>
 
         {resource.introDefinition && (
-          <p className="mt-6 text-base leading-relaxed text-foreground/90 border-l-2 border-primary/30 pl-4">
+          <p className="mt-6 rounded-md border border-primary/20 bg-primary/5 px-4 py-3 text-base leading-relaxed text-foreground/90">
             {resource.introDefinition}
           </p>
         )}

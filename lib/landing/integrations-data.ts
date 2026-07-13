@@ -38,7 +38,7 @@ export const integrationsData: IntegrationItem[] = [
     tone: "success",
   },
   {
-    title: "E-mail e Gmail",
+    title: "E-mails",
     description: "Campanhas segmentadas direto da base comercial.",
     icon: Mail,
     tone: "danger",

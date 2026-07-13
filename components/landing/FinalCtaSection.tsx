@@ -1,5 +1,5 @@
-import Link from "next/link"
 import { ArrowRight } from "lucide-react"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
 export function FinalCtaSection() {
   return (
@@ -13,15 +13,14 @@ export function FinalCtaSection() {
               Pronto para vender mais organizado?
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-pretty text-lg leading-8 text-landing-panel-body">
-              Agende uma demonstração e veja o Corretor Studio com os seus próprios números.
+              Solicite uma demonstração e veja o Corretor Studio com os seus próprios números.
             </p>
-            <Link
-              href="/#demo"
+            <DemoRequestDialogButton
               className="mt-8 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-card px-6 py-3 font-semibold text-landing-ink transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              Agendar demonstração
+              Solicitar demonstração
               <ArrowRight className="size-5" aria-hidden />
-            </Link>
+            </DemoRequestDialogButton>
           </div>
         </div>
       </div>

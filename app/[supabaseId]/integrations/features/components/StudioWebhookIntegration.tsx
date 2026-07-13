@@ -61,19 +61,21 @@ const renderStudioJsonSnippet = (json: string): ReactNode[] =>
 
       if (startIndex > lastIndex) {
         tokens.push(
-          <span key={`plain-${lineIndex}-${lastIndex}`} className="text-[#f8f8f2]">
+          <span key={`plain-${lineIndex}-${lastIndex}`} className="text-foreground">
             {line.slice(lastIndex, startIndex)}
           </span>
         );
       }
 
-      let tokenClassName = "text-[#f8f8f2]";
+      let tokenClassName = "text-foreground";
       if (token.startsWith('"')) {
-        tokenClassName = token.trimEnd().endsWith(":") ? "text-[#8be9fd]" : "text-[#f1fa8c]";
+        tokenClassName = token.trimEnd().endsWith(":")
+          ? "text-semantic-info"
+          : "text-semantic-warning";
       } else if (token === "true" || token === "false" || token === "null") {
-        tokenClassName = "text-[#ff79c6]";
+        tokenClassName = "text-semantic-danger";
       } else {
-        tokenClassName = "text-[#bd93f9]";
+        tokenClassName = "text-precision-indigo";
       }
 
       tokens.push(
@@ -87,13 +89,13 @@ const renderStudioJsonSnippet = (json: string): ReactNode[] =>
 
     if (lastIndex < line.length) {
       tokens.push(
-          <span key={`tail-${lineIndex}-${lastIndex}`} className="text-[#f8f8f2]">
+        <span key={`tail-${lineIndex}-${lastIndex}`} className="text-foreground">
           {line.slice(lastIndex)}
         </span>
       );
     }
 
-  return (
+    return (
       <div key={`line-${lineIndex}`} className="leading-6">
         {tokens}
       </div>
@@ -467,7 +469,7 @@ export function StudioWebhookIntegration() {
             <div className="mt-4 space-y-3 border-t pt-4">
               <h4 className="text-sm font-semibold">Contrato JSON do webhook</h4>
               <p className="text-sm text-muted-foreground">Use este para enviar eventos ao webhook do seu corretor studio.</p>
-              <div className="group relative overflow-x-auto rounded-md border border-[#44475a] bg-[#282a36] p-3">
+              <div className="group relative overflow-x-auto rounded-md border border-border bg-muted/70 p-3">
                 <Button
                   variant="outline"
                   size="sm"

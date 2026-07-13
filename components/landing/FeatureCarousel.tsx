@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { ChevronLeft, ChevronRight, Check } from "lucide-react"
 import { div as MotionDiv } from "framer-motion/client"
 import { useReducedMotion } from "framer-motion"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 import { featurePanelsData } from "@/lib/landing/feature-panels-data"
 import { cn } from "@/lib/utils"
 import { useLandingReveal } from "@/lib/landing/use-landing-motion"
@@ -40,7 +40,7 @@ export function FeatureCarousel() {
     }
   }, [resetAutoplay])
 
-  const crmImage = crmView === "pipeline" ? "/images/landing/crm.png" : "/images/landing/crm-kanban.png"
+  const crmImage = crmView === "pipeline" ? "/images/landing/crm.webp" : "/images/landing/crm-kanban.webp"
   const crmAlt =
     crmView === "pipeline"
       ? "Tela do CRM com pipeline de leads em tabela"
@@ -61,6 +61,7 @@ export function FeatureCarousel() {
                 const isCrm = panel.hasCrmToggle
                 const imageSrc = isCrm ? crmImage : panel.image
                 const imageAlt = isCrm ? crmAlt : panel.imageAlt
+                const isDashboardLcpImage = imageSrc === "/images/landing/dashboard-dark.webp"
 
                 return (
                   <article key={panel.id} className={cn("landing-feature-panel", panel.colorClass)}>
@@ -86,12 +87,11 @@ export function FeatureCarousel() {
                             </li>
                           ))}
                         </ul>
-                        <Link
-                          href="/#demo"
+                        <DemoRequestDialogButton
                           className="mt-8 inline-flex min-h-12 items-center justify-center rounded-2xl bg-card px-5 py-3 font-semibold text-landing-ink transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
                           {panel.cta}
-                        </Link>
+                        </DemoRequestDialogButton>
                       </div>
 
                       <div>
@@ -109,6 +109,7 @@ export function FeatureCarousel() {
                             height={802}
                             className="h-auto w-full"
                             sizes="(max-width: 1024px) 88vw, 600px"
+                            loading={isDashboardLcpImage ? "eager" : "lazy"}
                           />
                         </div>
                         {isCrm && (

@@ -8,7 +8,7 @@ import { StatsBand } from "@/components/landing/StatsBand"
 import { IntegrationsSection } from "@/components/landing/IntegrationsSection"
 import { HowItWorksSteps } from "@/components/landing/HowItWorksSteps"
 import { FaqSection } from "@/components/landing/FaqSection"
-import { PricingSection } from "@/components/landing/PricingSection"
+import { DemoRequestDialogProvider } from "@/components/landing/DemoRequestDialog"
 import { FinalCtaSection } from "@/components/landing/FinalCtaSection"
 import { LandingFooter } from "@/components/landing/LandingFooter"
 import { HomeClientRuntime } from "@/components/landing/HomeClientRuntime"
@@ -21,7 +21,7 @@ import { buildStatsData } from "@/lib/landing/stats-data"
 
 const homeTitle = "Corretor Studio | CRM e Marketing para Corretores de Saúde"
 const homeDescription =
-  "CRM para corretores de saúde com pipeline Kanban, gestão de equipe, agenda e métricas. Agende uma demonstração gratuita e aumente sua conversão."
+  "CRM para corretores de saúde com pipeline Kanban, gestão de equipe, agenda e métricas. Solicite uma demonstração gratuita e aumente sua conversão."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
@@ -104,33 +104,35 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="landing-page min-h-screen bg-card text-landing-ink">
+    <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(graphSchema) }}
       />
+      <DemoRequestDialogProvider>
+        <main className="landing-page min-h-screen bg-card text-landing-ink">
+          <LandingHeader />
+          <LandingHero />
+          <OperatorsMarquee />
+          <FeatureCarousel />
+          <StatsBand stats={statsData} />
+          <IntegrationsSection />
+          <HowItWorksSteps />
+          <FaqSection />
+          <FinalCtaSection />
+          <LandingFooter />
+          <HomeClientRuntime />
 
-      <LandingHeader />
-      <LandingHero />
-      <OperatorsMarquee />
-      <FeatureCarousel />
-      <StatsBand stats={statsData} />
-      <IntegrationsSection />
-      <HowItWorksSteps />
-      <FaqSection />
-      <PricingSection />
-      <FinalCtaSection />
-      <LandingFooter />
-      <HomeClientRuntime />
-
-      <section className="sr-only" aria-label="Resumo da plataforma">
-        <h2>CRM para corretores de planos de saúde</h2>
-        <p>
-          O Corretor Studio reúne pipeline Kanban, carteira, campanhas de e-mail, dashboard,
-          times, operadores, integrações e agenda para organizar a rotina comercial de corretores
-          de saúde.
-        </p>
-      </section>
-    </main>
+          <section className="sr-only" aria-label="Resumo da plataforma">
+            <h2>CRM para corretores de planos de saúde</h2>
+            <p>
+              O Corretor Studio reúne pipeline Kanban, carteira, campanhas de e-mail, dashboard,
+              times, operadores, integrações e agenda para organizar a rotina comercial de
+              corretores de saúde.
+            </p>
+          </section>
+        </main>
+      </DemoRequestDialogProvider>
+    </>
   )
 }

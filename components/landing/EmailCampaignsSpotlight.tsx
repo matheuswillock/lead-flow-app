@@ -2,8 +2,8 @@
 
 import { div as MotionDiv } from "framer-motion/client"
 import { ArrowRight, BarChart2, CalendarClock, CheckCircle2, FileText, Mail, Upload } from "lucide-react"
-import Link from "next/link"
 import type { ElementType } from "react"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 import { emailBenefitsData, EMAIL_SPOTLIGHT_HEADING, EMAIL_SPOTLIGHT_SUBHEADING } from "@/lib/landing/email-spotlight-data"
 import { useLandingReveal } from "@/lib/landing/use-landing-motion"
 
@@ -125,13 +125,12 @@ export function EmailCampaignsSpotlight() {
               ))}
             </ul>
 
-            <Link
-              href="#demo"
+            <DemoRequestDialogButton
               className="group inline-flex items-center gap-2 text-sm font-semibold mb-10 transition-colors text-primary"
             >
               Quero entrar na lista de prioridade
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+            </DemoRequestDialogButton>
 
             <div>
               <p className="text-sm font-semibold text-foreground mb-3">Disponibilidade de lançamento</p>

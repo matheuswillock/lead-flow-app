@@ -62,7 +62,7 @@ export function analyzeEmailHtml(html: string, sendingDomain?: string | null): E
       severity: "warning",
       title: "Prefira PNG ou JPG em vez de SVG",
       message:
-        "Imagens SVG costumam não ser renderizadas por provedores como Gmail. Use PNG ou JPG hospedadas com <img>.",
+        "Imagens SVG costumam não ser renderizadas por provedores como Gmail. Use PNG ou JPG hospedadas com a tag de imagem HTML.",
       detail: `Tags SVG encontradas: ${svgCount}`,
     })
   }
@@ -162,7 +162,7 @@ export const EMAIL_CREATION_STATIC_TIPS: EmailCreationStaticTip[] = [
     severity: "info",
     title: "Prefira PNG ou JPG para imagens",
     message:
-      "SVG e formatos vetoriais embutidos podem não aparecer no Gmail e em outros clientes. Hospede PNG ou JPG e referencie com <img width height alt>.",
+      "SVG e formatos vetoriais embutidos podem não aparecer no Gmail e em outros clientes. Hospede PNG ou JPG e referencie com largura, altura e texto alternativo.",
   },
   {
     id: "inline-styles",

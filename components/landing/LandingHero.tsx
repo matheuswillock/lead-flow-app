@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { ArrowRight, Check } from "lucide-react"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
 export function LandingHero() {
   return (
@@ -25,13 +26,12 @@ export function LandingHero() {
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/#demo"
+            <DemoRequestDialogButton
               className="landing-primary-cta inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-6 py-3 text-base font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              Agendar demonstração
+              Solicitar demonstração
               <ArrowRight className="size-5" aria-hidden />
-            </Link>
+            </DemoRequestDialogButton>
             <Link
               href="/#crm"
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-landing-ink px-6 py-3 text-base font-semibold text-landing-invert transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -60,13 +60,14 @@ export function LandingHero() {
             <p>Corretor Studio · Dashboard</p>
           </div>
           <Image
-            src="/images/landing/dashboard-dark.png"
+            src="/images/landing/dashboard-dark.webp"
             alt="Dashboard do Corretor Studio com métricas em tempo real"
             width={1322}
             height={802}
             className="h-auto w-full"
             sizes="(max-width: 1024px) 92vw, 640px"
             priority
+            loading="eager"
           />
         </div>
       </div>

@@ -22,6 +22,7 @@ import type {
 } from "./IBackofficeLeadUseCase"
 import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 import { BackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import { backofficeLeadSlackNotificationService } from "@/app/api/services/backofficeLeadSlack/BackofficeLeadSlackNotificationService"
 
 export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "new_opportunity",
@@ -412,6 +413,10 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           })
         }
       }
+
+      await backofficeLeadSlackNotificationService.sendLeadCreatedEventBestEffort({
+        lead,
+      })
 
       return new Output(true, ["Lead criado com sucesso"], [], mapLead(lead))
     } catch (error) {

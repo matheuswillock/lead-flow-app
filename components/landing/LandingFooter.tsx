@@ -1,14 +1,30 @@
 import Link from "next/link"
 import Image from "next/image"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
-const footerLinks = {
+type FooterHrefLink = {
+  label: string
+  href: string
+}
+
+type FooterDemoLink = {
+  label: string
+  action: "demo"
+}
+
+type FooterLink = FooterHrefLink | FooterDemoLink
+
+const footerLinks: {
+  empresa: { title: string; links: FooterLink[] }
+  suporte: { title: string; links: FooterHrefLink[] }
+} = {
   empresa: {
     title: "Empresa",
     links: [
       { label: "Plataforma", href: "/#crm" },
       { label: "Como funciona", href: "/#como" },
       { label: "Integrações", href: "/#integ" },
-      { label: "Agendar demo", href: "/#demo" },
+      { label: "Solicitar demonstração", action: "demo" },
     ],
   },
   suporte: {
@@ -35,7 +51,7 @@ export function LandingFooter() {
                 alt="Corretor Studio"
                 width={34}
                 height={34}
-                className="size-8 rounded-xl"
+                className="size-8 rounded-full"
               />
               <span className="text-lg font-bold tracking-tight">Corretor Studio</span>
             </Link>
@@ -49,12 +65,18 @@ export function LandingFooter() {
             <ul className="flex flex-col gap-3">
               {footerLinks.empresa.links.map((link) => (
                 <li key={link.label}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
-                  >
-                    {link.label}
-                  </Link>
+                  {"href" in link ? (
+                    <Link
+                      href={link.href}
+                      className="text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <DemoRequestDialogButton className="text-left text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]">
+                      {link.label}
+                    </DemoRequestDialogButton>
+                  )}
                 </li>
               ))}
             </ul>

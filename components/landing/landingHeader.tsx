@@ -1,6 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { ArrowRight, LogIn } from "lucide-react"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 import { MobileNavMenu } from "./MobileNavMenu"
 
 export function LandingHeader() {
@@ -15,7 +16,7 @@ export function LandingHeader() {
             alt="Corretor Studio"
             width={34}
             height={34}
-            className="size-8 rounded-xl"
+            className="size-8 rounded-full"
             priority
           />
           <span className="hidden sm:inline">Corretor Studio</span>
@@ -45,13 +46,12 @@ export function LandingHeader() {
             <LogIn className="size-4" aria-hidden />
             Entrar
           </Link>
-          <Link
-            href="/#demo"
+          <DemoRequestDialogButton
             className="landing-primary-cta inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            Agendar demo
+            Solicitar demonstração
             <ArrowRight className="size-4" aria-hidden />
-          </Link>
+          </DemoRequestDialogButton>
         </div>
       </div>
     </header>
