@@ -147,7 +147,7 @@ Migration manual (`bun run db:migrate:new`): trigger `BEFORE UPDATE OR DELETE` e
 
 ### D10 — Página de aceite: pública por token, produto-side
 
-Rota de página `app/primeiro-acesso/aceite/` (produto, como `/set-password`), com API pública sob `app/api/v1/backoffice/adhesions/acceptance/**` (GET por token: dados pré-preenchidos + 3 documentos ativos; POST: aceite). Sem sessão — autenticação é o token de aceite. IP extraído de `x-forwarded-for` no servidor; user-agent do header; o cliente **não** envia IP/UA/timestamp/protocolo.
+Rota de página `app/primeiro-acesso/aceite/` (produto, como `/set-password`), com API pública sob `app/api/v1/backoffice/adhesions/acceptance/**` (GET por token: dados pré-preenchidos + 3 documentos ativos; POST: aceite). Sem sessão — autenticação é o token de aceite. IP extraído de `x-forwarded-for` no servidor; user-agent do header; o cliente **não** envia IP/UA/timestamp/protocolo. O que o cliente **envia** são os `legalDocumentId`/`contentHash` recebidos no GET (binding de versão exibida — o servidor valida que ainda são os vigentes e rejeita com 409 se houve publicação no intervalo, ver Estágio 2). O consumo do token é por `expiresAt`, preservando o hash, para que um retry após aceite commitado resolva a adesão e receba o aceite existente em vez de um erro.
 
 ---
 
@@ -200,31 +200,54 @@ BackofficeAdhesionService (token hash/preview) e getPublicDetails. Implemente:
 1. app/api/services/backofficeTermsAcceptance/ (I*Service + Service):
    - getAcceptancePageData(token): valida token (hash + expiração), retorna dados
      pré-preenchidos da adesão (email, whatsapp, cpfCnpj quando 14 dígitos → cnpj)
-     e os 3 documentos ativos (id, type, version, title, content).
-   - submitAcceptance(token, form, ctx { ip, userAgent, locale }): revalida token;
-     idempotência por adhesionId (se já existe aceite, retornar o existente com
-     mensagem própria, HTTP 200); valida form (CNPJ 14 dígitos, CPF 11, e-mail,
-     whatsapp 10-11, cargo em lista, razão social >= 2 chars — mesmas regras do
-     mockup, server-side com zod); recalcula o contentHash de cada documento ativo
-     e confere com o armazenado; gera protocolo (D5, retry em colisão de unique);
-     cria BackofficeTermsAcceptance + 3 documents em transação; invalida o token
-     de aceite; retorna protocolo + dados para a tela de sucesso.
+     e os 3 documentos ativos (id, type, version, title, content, contentHash) —
+     o cliente devolve esses ids/hashes no POST (binding de versão exibida).
+   - submitAcceptance(token, form, displayedDocuments, ctx { ip, userAgent, locale }),
+     onde displayedDocuments = [{ legalDocumentId, contentHash }] vindos do GET.
+     Ordem obrigatória das checagens:
+     (a) resolve a adesão pelo hash do token MESMO que expirado/consumido — a
+         invalidação do token é sempre por expiresAt, nunca limpando o hash,
+         para que retries pós-consumo continuem resolvendo a adesão;
+     (b) idempotência ANTES de rejeitar token consumido: se já existe
+         BackofficeTermsAcceptance para o adhesionId, retornar o aceite
+         existente (protocolo + setPasswordUrl) com HTTP 200 e mensagem própria
+         — cobre o retry do usuário quando o 1º POST commitou mas a resposta
+         se perdeu;
+     (c) só então validar frescor do token (expiração) para aceites novos;
+     (d) valida form (CNPJ 14 dígitos, CPF 11, e-mail, whatsapp 10-11, cargo em
+         lista, razão social >= 2 chars — mesmas regras do mockup, server-side
+         com zod);
+     (e) valida o binding de versão: cada displayedDocuments[i] deve corresponder
+         exatamente à versão ativa atual (mesmo legalDocumentId e contentHash,
+         hash recalculado do conteúdo e conferido com o armazenado). Se um
+         documento foi publicado entre o GET e o POST, rejeitar com HTTP 409 e
+         mensagem instruindo recarregar a página — o aceite NUNCA registra
+         versão que o usuário não viu;
+     (f) gera protocolo (D5, retry em colisão de unique); cria
+         BackofficeTermsAcceptance + 3 documents em transação gravando os
+         legalDocumentId/versão/hash validados em (e); consome o token
+         (expiresAt = now, hash preservado); retorna protocolo + dados para a
+         tela de sucesso.
 2. app/api/useCases/backofficeTermsAcceptance/ retornando Output (lib/output).
 3. Rotas: app/api/v1/backoffice/adhesions/acceptance/[token]/route.ts (GET) e
    .../acceptance/[token]/accept/route.ts (POST). HTTP-only: parse, IP de
    x-forwarded-for (primeiro hop), user-agent do header, mapear Output→status.
    Logs [BackofficeTermsAcceptanceRoute][GET|POST].
 4. Utilitário do token de aceite no padrão do token de adesão (generate/hash/preview,
-   node:crypto), expiração 7 dias, colunas criadas no Estágio 1.
+   node:crypto), expiração 7 dias, colunas criadas no Estágio 1. Consumo/invalidação
+   sempre via expiresAt; o acceptanceTokenHash nunca é limpo (requisito de (a)/(b)).
 Testes (mesmo padrão BackofficeAdhesionUseCase.test.ts): idempotência (2º POST não
-cria 2º log), protocolo único e no formato, hash divergente rejeita, token expirado/
-inválido rejeita, validações de form, snapshot dos campos gravados.
+cria 2º log), retry com token já consumido após aceite commitado retorna o aceite
+existente com 200 (não 4xx), protocolo único e no formato, binding de versão
+(POST com legalDocumentId/hash de versão desativada → 409; hash divergente do
+armazenado → rejeita), token expirado sem aceite prévio rejeita, validações de
+form, snapshot dos campos gravados.
 Atualize postman/Lead-Flow-API-Collection.json com as 2 rotas.
 Não tocar: ensureAccountForPaidAdhesion (integração é o Estágio 5), EmailService,
 telas, schema (pronto no Estágio 1).
 ```
 
-**Critérios de aceite:** GET com token válido traz documentos ativos do banco (nunca hardcoded); POST cria exatamente 1 log com 3 filhas; replay do POST não duplica; testes verdes.
+**Critérios de aceite:** GET com token válido traz documentos ativos do banco (nunca hardcoded); POST cria exatamente 1 log com 3 filhas registrando exatamente as versões exibidas no GET; publicar nova versão entre GET e POST resulta em 409 (nunca em aceite de versão não vista); replay do POST não duplica e, com token já consumido, devolve o aceite existente com 200; testes verdes.
 **Validação manual:** com Supabase local, criar adesão de teste + token, chamar GET/POST via Postman e conferir linhas no banco.
 
 ### Estágio 3 — PDF server-side + Storage
@@ -341,8 +364,12 @@ disabled até finally); mensagens de status de pendência; tela de sucesso
 URL do backend) e "Criar senha" (setPasswordUrl). Timestamp exibido é
 informativo; o valor probatório vem do servidor. Documentos renderizados a
 partir dos blocos JSON do banco — nenhum texto legal no código. Tokens
-semânticos, sem hex, FieldGroup/Field, gap-*, sonner para erros. Token
-inválido/expirado: estado de erro com orientação de reenvio.
+semânticos, sem hex, FieldGroup/Field, gap-*, sonner para erros. O POST envia
+os legalDocumentId/contentHash recebidos no GET; resposta 409 (documento
+republicado no intervalo) → toast explicativo + recarregar documentos e zerar
+os aceites/scroll-gates; resposta 200 de aceite já existente (retry) → ir
+direto à tela de sucesso com o protocolo retornado. Token inválido/expirado:
+estado de erro com orientação de reenvio.
 Rodar também bun run design:check.
 Não tocar: backend (Estágios 2-5), set-password, landing pages.
 ```
