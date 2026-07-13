@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
 const navLinks = [
-  { label: "Funcionalidades", href: "/#features" },
-  { label: "Campanhas", href: "/#email-campaigns" },
-  { label: "Como funciona", href: "/#how-it-works" },
-  { label: "Recursos", href: "/recursos" },
+  { label: "Plataforma", href: "/#crm" },
+  { label: "Como funciona", href: "/#como" },
+  { label: "Integrações", href: "/#integ" },
+  { label: "Dúvidas", href: "/#faq" },
   { label: "Demonstração", href: "/#demo" },
 ]
 
@@ -22,7 +22,7 @@ export function MobileNavMenu() {
       <Button
         variant="ghost"
         size="icon"
-        className="xl:hidden"
+        className="min-[920px]:hidden"
         aria-label="Abrir menu de navegação"
         onClick={() => setOpen(true)}
       >

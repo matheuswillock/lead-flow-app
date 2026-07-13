@@ -1,70 +1,59 @@
-import Link from "next/link";
-import Image from "next/image";
-import { Button } from "../ui/button";
-import { ArrowRight, LogIn } from "lucide-react";
-import { MobileNavMenu } from "./MobileNavMenu";
+import Link from "next/link"
+import Image from "next/image"
+import { ArrowRight, LogIn } from "lucide-react"
+import { MobileNavMenu } from "./MobileNavMenu"
 
 export function LandingHeader() {
-    return (
-        <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-lg">
-            <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 h-16 flex items-center">
-                <MobileNavMenu />
+  return (
+    <header className="fixed inset-x-0 top-0 z-30 px-4 pt-3">
+      <div className="landing-nav-pill mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-5">
+        <MobileNavMenu />
 
-                <Link href="/" className="flex items-center gap-2 font-bold tracking-tight flex-shrink-0 xl:mr-0 ml-2 xl:ml-0">
-                    <Image
-                        src="/corretor-studio-icon.svg"
-                        alt="Corretor Studio"
-                        width={32}
-                        height={32}
-                        className="h-8 w-8"
-                        priority
-                    />
-                    <span className="hidden sm:inline">Corretor Studio</span>
-                </Link>
+        <Link href="/#top" className="flex shrink-0 items-center gap-2 font-display text-lg font-bold tracking-[-0.02em]">
+          <Image
+            src="/corretor-studio-icon.svg"
+            alt="Corretor Studio"
+            width={34}
+            height={34}
+            className="size-8 rounded-xl"
+            priority
+          />
+          <span className="hidden sm:inline">Corretor Studio</span>
+        </Link>
 
-                <div className="hidden xl:flex flex-1 justify-center px-6">
-                    <nav className="flex items-center gap-7 text-sm font-medium text-muted-foreground">
-                        <Link href="/#features" className="hover:text-foreground transition-colors">
-                            Funcionalidades
-                        </Link>
-                        <Link href="/#email-campaigns" className="hover:text-foreground transition-colors">
-                            Campanhas
-                        </Link>
-                        <Link href="/#how-it-works" className="hover:text-foreground transition-colors">
-                            Como funciona
-                        </Link>
-                        <Link href="/recursos" className="hover:text-foreground transition-colors">
-                            Recursos
-                        </Link>
-                        <Link href="/#demo" className="hover:text-foreground transition-colors">
-                            Demonstração
-                        </Link>
-                    </nav>
-                </div>
+        <nav className="hidden flex-1 items-center justify-center gap-7 text-sm font-medium text-landing-body min-[920px]:flex">
+          <Link href="/#crm" className="transition-colors hover:text-[var(--landing-ink)]">
+            Plataforma
+          </Link>
+          <Link href="/#como" className="transition-colors hover:text-[var(--landing-ink)]">
+            Como funciona
+          </Link>
+          <Link href="/#integ" className="transition-colors hover:text-[var(--landing-ink)]">
+            Integrações
+          </Link>
+          <Link href="/#faq" className="transition-colors hover:text-[var(--landing-ink)]">
+            Dúvidas
+          </Link>
+        </nav>
 
-                <div className="ml-auto flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
-                    <Button
-                        asChild
-                        variant="ghost"
-                        className="inline-flex items-center gap-2 px-2.5 text-sm font-medium text-foreground/70 hover:text-foreground"
-                    >
-                        <Link href="/sign-in" aria-label="Entrar na conta">
-                            <LogIn className="h-4 w-4" />
-                            <span>Entrar</span>
-                        </Link>
-                    </Button>
-
-                    <Button
-                        asChild
-                        className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                    >
-                        <Link href="/#demo">
-                            Agendar demonstração
-                            <ArrowRight className="h-4 w-4" />
-                        </Link>
-                    </Button>
-                </div>
-            </div>
-        </header>
-    );
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Link
+            href="/sign-in"
+            className="hidden min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-landing-body transition-colors hover:text-[var(--landing-ink)] sm:inline-flex"
+            aria-label="Entrar na conta"
+          >
+            <LogIn className="size-4" aria-hidden />
+            Entrar
+          </Link>
+          <Link
+            href="/#demo"
+            className="landing-primary-cta inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            Agendar demo
+            <ArrowRight className="size-4" aria-hidden />
+          </Link>
+        </div>
+      </div>
+    </header>
+  )
 }
