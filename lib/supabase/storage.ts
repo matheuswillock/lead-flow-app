@@ -22,6 +22,8 @@ export const STORAGE_BUCKETS = {
   EMAIL_TEMPLATE_ASSETS:
     process.env.SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET || "email-template-assets",
   CONTRACTS: process.env.SUPABASE_CONTRACTS_BUCKET || "backoffice-contracts",
+  SUPPORT_REQUEST_ATTACHMENTS:
+    process.env.SUPABASE_SUPPORT_ATTACHMENTS_BUCKET || "support-request-attachments",
 } as const;
 
 export type BucketName = typeof STORAGE_BUCKETS[keyof typeof STORAGE_BUCKETS];
@@ -75,6 +77,11 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
     maxFileSize: 10 * 1024 * 1024, // 10MB
     allowedTypes: ["application/pdf"],
     description: "PDFs de contratos do backoffice (bucket privado)",
+  },
+  [STORAGE_BUCKETS.SUPPORT_REQUEST_ATTACHMENTS]: {
+    maxFileSize: 5 * 1024 * 1024, // 5MB
+    allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    description: "Imagens anexadas a pedidos de suporte (bucket privado)",
   },
 };
 

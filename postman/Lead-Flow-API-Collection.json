@@ -7436,7 +7436,7 @@
                 "support"
               ]
             },
-            "description": "Envia um pedido de suporte com assunto, mensagem e anexos de imagem opcionais. O backend envia via Resend para SUPPORT_EMAIL."
+            "description": "Envia um pedido de suporte com assunto, mensagem e anexos de imagem opcionais. O backend faz upload das imagens no Supabase Storage e envia a mensagem via webhook do Slack (SLACK_SUPPORT_WEBHOOK_URL)."
           },
           "response": []
         }
