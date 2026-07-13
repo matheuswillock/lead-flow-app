@@ -1,13 +1,18 @@
 import type { ISupportRequestService, SupportRequestData } from "./ISupportRequestService";
-import { getEmailService } from "@/lib/services/EmailService";
+import { STORAGE_BUCKETS, SupabaseStorageService } from "@/lib/supabase/storage";
+
+const ATTACHMENT_SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 dias
 
 export class SupportRequestService implements ISupportRequestService {
   async sendSupportRequest(data: SupportRequestData): Promise<{ success: boolean; error?: string }> {
     try {
-      const supportEmail = process.env.SUPPORT_EMAIL;
+      const slackWebhookUrl = process.env.SLACK_SUPPORT_WEBHOOK_URL;
 
-      if (!supportEmail) {
-        return { success: false, error: "SUPPORT_EMAIL não configurado nas variáveis de ambiente" };
+      if (!slackWebhookUrl) {
+        return {
+          success: false,
+          error: "SLACK_SUPPORT_WEBHOOK_URL não configurado nas variáveis de ambiente",
+        };
       }
 
       const safeSubject = data.subject.trim();
@@ -16,65 +21,30 @@ export class SupportRequestService implements ISupportRequestService {
       const safeEmail = data.requesterEmail.trim() || "E-mail não informado";
       const supportId = data.supportId;
 
-      const html = `
-        <!DOCTYPE html>
-        <html lang="pt-BR">
-          <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          </head>
-          <body style="margin:0;padding:0;background:#f5f5f5;font-family:Segoe UI,Arial,sans-serif;">
-            <table role="presentation" style="width:100%;border-collapse:collapse;">
-              <tr>
-                <td align="center" style="padding:24px;">
-                  <table role="presentation" style="max-width:640px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-                    <tr>
-                      <td style="background:#111827;padding:20px 24px;">
-                        <h1 style="margin:0;color:#ffffff;font-size:20px;">Novo pedido de suporte</h1>
-                        <p style="margin:8px 0 0 0;color:#d1d5db;font-size:13px;">ID: ${supportId}</p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="padding:24px;">
-                        <p style="margin:0 0 16px 0;color:#111827;font-size:14px;"><strong>Assunto:</strong> ${safeSubject}</p>
-                        <p style="margin:0 0 8px 0;color:#111827;font-size:14px;"><strong>Solicitante:</strong> ${safeName}</p>
-                        <p style="margin:0 0 8px 0;color:#111827;font-size:14px;"><strong>Email:</strong> ${safeEmail}</p>
-                        <div style="margin-top:16px;padding:16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
-                          <p style="margin:0 0 8px 0;color:#111827;font-size:14px;"><strong>Mensagem:</strong></p>
-                          <p style="margin:0;white-space:pre-wrap;color:#374151;font-size:14px;line-height:1.5;">${safeMessage}</p>
-                        </div>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
+      const attachmentUrls = await this.uploadAttachments(data.attachments || [], supportId);
 
-      const text = [
-        "Novo pedido de suporte",
-        `ID: ${supportId}`,
-        `Assunto: ${safeSubject}`,
-        `Solicitante: ${safeName}`,
-        `Email: ${safeEmail}`,
-        "",
-        "Mensagem:",
-        safeMessage,
-      ].join("\n");
-
-      const emailService = getEmailService();
-      const result = await emailService.sendEmailUntracked({
-        to: [supportEmail],
-        subject: `[SUPORTE][${supportId}] ${safeSubject}`,
-        html,
-        text,
-        attachments: data.attachments,
+      const payload = this.buildSlackPayload({
+        supportId,
+        subject: safeSubject,
+        requesterName: safeName,
+        requesterEmail: safeEmail,
+        message: safeMessage,
+        attachmentUrls,
       });
 
-      if (!result.success) {
-        return { success: false, error: result.error || "Falha ao enviar pedido de suporte" };
+      const response = await fetch(slackWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const responseBody = await response.text().catch(() => "");
+        console.error("[SupportRequestService][sendSupportRequest] Slack webhook retornou erro:", {
+          status: response.status,
+          responseBody,
+        });
+        return { success: false, error: "Falha ao enviar pedido de suporte" };
       }
 
       return { success: true };
@@ -82,6 +52,101 @@ export class SupportRequestService implements ISupportRequestService {
       console.error("[SupportRequestService][sendSupportRequest] Erro ao enviar pedido de suporte:", error);
       return { success: false, error: "Erro interno ao enviar pedido de suporte" };
     }
+  }
+
+  private async uploadAttachments(
+    attachments: SupportRequestData["attachments"],
+    supportId: string,
+  ): Promise<string[]> {
+    if (!attachments || attachments.length === 0) {
+      return [];
+    }
+
+    const urls: string[] = [];
+
+    for (const attachment of attachments) {
+      const buffer = Buffer.from(attachment.contentBase64, "base64");
+      const file = new File([buffer], attachment.fileName, { type: attachment.contentType });
+
+      const uploadResult = await SupabaseStorageService.uploadFile(
+        file,
+        STORAGE_BUCKETS.SUPPORT_REQUEST_ATTACHMENTS,
+        supportId,
+        attachment.fileName,
+      );
+
+      if (!uploadResult.success || !uploadResult.fileId) {
+        console.error("[SupportRequestService][uploadAttachments] Falha ao subir anexo:", {
+          supportId,
+          fileName: attachment.fileName,
+          error: uploadResult.error,
+        });
+        continue;
+      }
+
+      const signedUrlResult = await SupabaseStorageService.createSignedUrl(
+        uploadResult.fileId,
+        STORAGE_BUCKETS.SUPPORT_REQUEST_ATTACHMENTS,
+        ATTACHMENT_SIGNED_URL_TTL_SECONDS,
+      );
+
+      if (signedUrlResult.success && signedUrlResult.signedUrl) {
+        urls.push(signedUrlResult.signedUrl);
+      } else {
+        console.error("[SupportRequestService][uploadAttachments] Falha ao gerar URL assinada:", {
+          supportId,
+          fileName: attachment.fileName,
+          error: signedUrlResult.error,
+        });
+      }
+    }
+
+    return urls;
+  }
+
+  private buildSlackPayload(params: {
+    supportId: string;
+    subject: string;
+    requesterName: string;
+    requesterEmail: string;
+    message: string;
+    attachmentUrls: string[];
+  }) {
+    const { supportId, subject, requesterName, requesterEmail, message, attachmentUrls } = params;
+
+    const blocks: Record<string, unknown>[] = [
+      {
+        type: "header",
+        text: { type: "plain_text", text: `Novo pedido de suporte [${supportId}]`, emoji: true },
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*Assunto:*\n${subject}` },
+          { type: "mrkdwn", text: `*Solicitante:*\n${requesterName}` },
+          { type: "mrkdwn", text: `*Email:*\n${requesterEmail}` },
+        ],
+      },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `*Mensagem:*\n${message}` },
+      },
+    ];
+
+    if (attachmentUrls.length > 0) {
+      const imagesText = attachmentUrls
+        .map((url, index) => `<${url}|Imagem ${index + 1}>`)
+        .join("\n");
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: `*Imagens anexadas:*\n${imagesText}` },
+      });
+    }
+
+    return {
+      text: `Novo pedido de suporte [${supportId}]: ${subject}`,
+      blocks,
+    };
   }
 }
 

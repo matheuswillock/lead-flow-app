@@ -66,6 +66,10 @@ export const envSchema = z.object({
   SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET: nonEmptyString.describe(
     'Supabase bucket name for email template images (PNG/JPG)'
   ),
+  SUPABASE_SUPPORT_ATTACHMENTS_BUCKET: z
+    .string()
+    .optional()
+    .describe('Supabase bucket name for support request image attachments'),
 
   // Database PostgreSQL
   POSTGRES_USER: nonEmptyString.describe('PostgreSQL username'),
@@ -87,7 +91,9 @@ export const envSchema = z.object({
     .describe('Resend API key for email sending'),
   EMAIL_TEST_MODE: booleanStringSchema.describe('Enable email test mode'),
   RESEND_OWNER_EMAIL: emailSchema.describe('Owner email address'),
-  SUPPORT_EMAIL: emailSchema.describe('Support email address'),
+
+  // Slack
+  SLACK_SUPPORT_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for support requests'),
 
   // Asaas Payment Gateway
   ASAAS_API_KEY: asaasApiKeySchema.describe('Asaas API key'),

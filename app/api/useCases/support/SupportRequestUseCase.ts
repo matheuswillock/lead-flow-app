@@ -1,4 +1,3 @@
-import type { Attachment } from "resend";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import type {
@@ -72,12 +71,10 @@ export class SupportRequestUseCase implements ISupportRequestUseCase {
 
   private parseAttachments(
     rawAttachments: SupportRequestAttachmentInput[],
-  ): { data?: Attachment[]; error?: string } {
+  ): { data?: SupportRequestAttachmentInput[]; error?: string } {
     if (rawAttachments.length > MAX_ATTACHMENTS) {
       return { error: `Limite de ${MAX_ATTACHMENTS} imagens por envio` };
     }
-
-    const parsed: Attachment[] = [];
 
     for (const attachment of rawAttachments) {
       if (!attachment.fileName || !attachment.contentBase64 || !attachment.contentType) {
@@ -91,15 +88,9 @@ export class SupportRequestUseCase implements ISupportRequestUseCase {
       if (attachment.size <= 0 || attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
         return { error: "Cada imagem deve ter ate 5MB" };
       }
-
-      parsed.push({
-        filename: attachment.fileName,
-        content: attachment.contentBase64,
-        contentType: attachment.contentType,
-      });
     }
 
-    return { data: parsed };
+    return { data: rawAttachments };
   }
 }
 
