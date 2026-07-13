@@ -917,47 +917,68 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .landing-feature-accent--orange {
+  --landing-feature-active-bg: var(--primary);
   color: var(--primary);
 }
 
 .landing-feature-accent--coral {
+  --landing-feature-active-bg: var(--semantic-danger);
   color: var(--semantic-danger);
 }
 
 .landing-feature-accent--rose {
+  --landing-feature-active-bg: var(--brand-rose);
   color: var(--brand-rose);
 }
 
 .landing-feature-accent--magenta,
 .landing-feature-accent--pink {
+  --landing-feature-active-bg: var(--brand-pink);
   color: var(--brand-pink);
 }
 
 .landing-feature-accent--purple {
+  --landing-feature-active-bg: var(--precision-indigo);
   color: var(--precision-indigo);
 }
 
 .landing-feature-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 11px;
+  height: 11px;
+  min-width: 11px;
   min-height: 11px;
+  padding: 0;
   overflow: hidden;
   border-radius: 999px;
   background: color-mix(in oklab, var(--landing-ink) 16%, transparent);
-  color: var(--landing-invert);
-  font-size: 0;
+  color: transparent;
   font-weight: 700;
-  transition: background 280ms var(--motion-ease-standard), color 280ms var(--motion-ease-standard);
+  line-height: 1;
+  transition:
+    background 280ms var(--motion-ease-standard),
+    color 280ms var(--motion-ease-standard),
+    height 280ms var(--motion-ease-standard),
+    width 280ms var(--motion-ease-standard);
 }
 
 .landing-feature-dot--active {
   width: auto;
+  height: 32px;
+  min-width: 0;
   min-height: 32px;
-  padding: 7px 16px;
-  background: currentColor;
+  padding: 0 16px;
+  background: var(--landing-feature-active-bg, var(--primary));
+  color: var(--landing-invert);
   font-size: 12px;
+  box-shadow: 0 10px 22px -14px var(--landing-feature-active-bg, var(--primary));
 }
 
-.landing-feature-dot--active span {
+.landing-feature-dot-label {
+  display: block;
+  white-space: nowrap;
   color: var(--landing-invert);
 }
 

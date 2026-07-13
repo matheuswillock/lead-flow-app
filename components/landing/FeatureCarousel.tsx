@@ -164,24 +164,28 @@ export function FeatureCarousel() {
           </button>
 
           <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
-            {featurePanelsData.map((panel, index) => (
-              <button
-                key={panel.id}
-                type="button"
-                className={cn(
-                  "landing-feature-dot",
-                  index === activeIndex && cn("landing-feature-dot--active", panel.accentClass),
-                )}
-                aria-label={`Ver recurso ${panel.navLabel}`}
-                aria-current={index === activeIndex}
-                onClick={() => {
-                  goTo(index)
-                  resetAutoplay()
-                }}
-              >
-                <span>{panel.navLabel}</span>
-              </button>
-            ))}
+            {featurePanelsData.map((panel, index) => {
+              const isActive = index === activeIndex
+
+              return (
+                <button
+                  key={panel.id}
+                  type="button"
+                  className={cn(
+                    "landing-feature-dot",
+                    isActive && cn("landing-feature-dot--active", panel.accentClass),
+                  )}
+                  aria-label={`Ver recurso ${panel.navLabel}`}
+                  aria-current={isActive}
+                  onClick={() => {
+                    goTo(index)
+                    resetAutoplay()
+                  }}
+                >
+                  {isActive && <span className="landing-feature-dot-label">{panel.navLabel}</span>}
+                </button>
+              )
+            })}
           </div>
         </div>
       </MotionDiv>

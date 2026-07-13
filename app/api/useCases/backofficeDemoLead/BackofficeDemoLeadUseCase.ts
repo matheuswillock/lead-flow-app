@@ -29,10 +29,7 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
       const sourceExternalId = `demo:${input.email.trim().toLowerCase()}`
       const existing = await this.leadRepository.findBySourceExternalId(sourceExternalId)
       if (existing) {
-        const notification = await this.sendDemoRequestEmail(input, existing.id, true)
-        if (!notification.success) {
-          return new Output(false, [], [notification.error || "Erro ao enviar notificação de demonstração"], { id: existing.id })
-        }
+        await this.sendDemoRequestEmailBestEffort(input, existing.id, true)
 
         return new Output(true, ["Lead já existente para esta demonstração"], [], { id: existing.id })
       }
@@ -50,15 +47,33 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
 
       console.info("[BackofficeDemoLeadUseCase][create] Lead criado com sucesso", { id: lead.id })
 
-      const notification = await this.sendDemoRequestEmail(input, lead.id, false)
-      if (!notification.success) {
-        return new Output(false, [], [notification.error || "Erro ao enviar notificação de demonstração"], { id: lead.id })
-      }
+      await this.sendDemoRequestEmailBestEffort(input, lead.id, false)
 
       return new Output(true, ["Lead criado com sucesso"], [], { id: lead.id })
     } catch (error) {
       console.error("[BackofficeDemoLeadUseCase][create] Erro ao criar lead", error)
       return new Output(false, [], ["Erro ao registrar lead"], null)
+    }
+  }
+
+  private async sendDemoRequestEmailBestEffort(
+    input: CreateDemoLeadInput,
+    leadId: string,
+    isDuplicate: boolean,
+  ) {
+    try {
+      const notification = await this.sendDemoRequestEmail(input, leadId, isDuplicate)
+      if (!notification.success) {
+        console.error("[BackofficeDemoLeadUseCase][create] Erro ao enviar notificação de demonstração", {
+          leadId,
+          error: notification.error,
+        })
+      }
+    } catch (error) {
+      console.error("[BackofficeDemoLeadUseCase][create] Exceção ao enviar notificação de demonstração", {
+        leadId,
+        error,
+      })
     }
   }
 
