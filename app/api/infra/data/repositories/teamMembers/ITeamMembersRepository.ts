@@ -56,6 +56,15 @@ export interface TeamMembersMembershipAccess {
   canManageAccountTeams: boolean;
 }
 
+export interface TeamMembersSnapshot {
+  id: string;
+  teamId: string;
+  profileId: string;
+  role: UserRole;
+  functions: UserFunction[];
+  createdAt: Date;
+}
+
 export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
@@ -71,6 +80,7 @@ export interface ITeamMembersRepository {
   ): Promise<TeamMembersInternalTransferTarget[]>;
   hasTransferRoute(sourceTeamId: string, targetTeamId: string): Promise<boolean>;
   findExistingMember(teamId: string, profileId: string): Promise<{ id: string } | null>;
+  findMemberSnapshot(teamId: string, profileId: string): Promise<TeamMembersSnapshot | null>;
   findEligibleProfile(profileId: string, masterId: string): Promise<TeamMembersEligibleProfile | null>;
   createMember(input: {
     teamId: string;
