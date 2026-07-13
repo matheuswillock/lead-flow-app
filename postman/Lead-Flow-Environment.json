@@ -206,11 +206,11 @@
       "description": "Alias legado de supabaseId"
     },
     {
-      "key": "SUPPORT_EMAIL",
-      "value": "matheuswillock@gmail.com",
+      "key": "SLACK_SUPPORT_WEBHOOK_URL",
+      "value": "",
       "type": "default",
       "enabled": true,
-      "description": "Email de destino para os pedidos de suporte (variavel do backend)"
+      "description": "Incoming Webhook do Slack para pedidos de suporte (variavel do backend)"
     },
     {
       "key": "backofficeSupabaseId",

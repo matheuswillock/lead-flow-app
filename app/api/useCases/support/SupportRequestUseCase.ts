@@ -1,4 +1,3 @@
-import type { Attachment } from "resend";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import type {
@@ -7,9 +6,12 @@ import type {
   SupportRequestAttachmentInput,
 } from "./ISupportRequestUseCase";
 import { supportRequestService } from "@/app/api/services/support/SupportRequestService";
+import { STORAGE_BUCKETS, SupabaseStorageService } from "@/lib/supabase/storage";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_TYPES =
+  SupabaseStorageService.getBucketConfig(STORAGE_BUCKETS.SUPPORT_REQUEST_ATTACHMENTS)?.allowedTypes || [];
 
 const supportRequestSchema = z.object({
   subject: z.string().trim().min(1, "Assunto e obrigatorio"),
@@ -72,34 +74,26 @@ export class SupportRequestUseCase implements ISupportRequestUseCase {
 
   private parseAttachments(
     rawAttachments: SupportRequestAttachmentInput[],
-  ): { data?: Attachment[]; error?: string } {
+  ): { data?: SupportRequestAttachmentInput[]; error?: string } {
     if (rawAttachments.length > MAX_ATTACHMENTS) {
       return { error: `Limite de ${MAX_ATTACHMENTS} imagens por envio` };
     }
-
-    const parsed: Attachment[] = [];
 
     for (const attachment of rawAttachments) {
       if (!attachment.fileName || !attachment.contentBase64 || !attachment.contentType) {
         return { error: "Arquivo invalido enviado" };
       }
 
-      if (!attachment.contentType.startsWith("image/")) {
-        return { error: "Apenas imagens sao permitidas" };
+      if (!ALLOWED_ATTACHMENT_TYPES.includes(attachment.contentType)) {
+        return { error: "Formato de imagem nao suportado (use JPEG, PNG, WEBP ou GIF)" };
       }
 
       if (attachment.size <= 0 || attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
         return { error: "Cada imagem deve ter ate 5MB" };
       }
-
-      parsed.push({
-        filename: attachment.fileName,
-        content: attachment.contentBase64,
-        contentType: attachment.contentType,
-      });
     }
 
-    return { data: parsed };
+    return { data: rawAttachments };
   }
 }
 
