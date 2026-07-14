@@ -94,6 +94,7 @@ export const envSchema = z.object({
 
   // Slack
   SLACK_SUPPORT_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for support requests'),
+  SLACK_BACKOFFICE_LEADS_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for backoffice lead events'),
 
   // Asaas Payment Gateway
   ASAAS_API_KEY: asaasApiKeySchema.describe('Asaas API key'),
@@ -170,6 +171,7 @@ export const CRITICAL_ENV_VARS = [
   'ENCRYPTION_KEY',
   'NEXT_PUBLIC_APP_URL',
   'NEXT_PUBLIC_SENTRY_DSN',
+  'SLACK_BACKOFFICE_LEADS_WEBHOOK_URL',
 ] as const;
 
 /**
