@@ -576,7 +576,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; hasUnlimitedUsers: boolean } | null> {
     try {
       const updateData: Record<string, unknown> = {}
       if (data.fullName !== undefined) updateData.fullName = data.fullName
@@ -597,7 +597,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           updateData.hasUnlimitedUsers = true
         } else if (data.hasUnlimitedUsers === undefined) {
           // Sem grant explícito nesta requisição: recalcula com base em outras fontes
-          // (adesão anual paga, Member PRO ativo) em vez de manter a flag antiga.
+          // (adesão anual paga, Member PRO ativo, assinatura YEARLY ativa) em vez de manter a flag antiga.
           updateData.hasUnlimitedUsers = await this.hasOtherUnlimitedUsersGrant(masterProfileId)
         }
       }
@@ -613,7 +613,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           role: "manager",
         },
         data: updateData,
-        select: { id: true },
+        select: { id: true, hasUnlimitedUsers: true },
       })
     } catch {
       return null

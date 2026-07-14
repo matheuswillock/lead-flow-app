@@ -171,7 +171,7 @@ export interface IBackofficePlatformUsersRepository {
       hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
-  ): Promise<{ id: string } | null>
+  ): Promise<{ id: string; hasUnlimitedUsers: boolean } | null>
 
   findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null>
 

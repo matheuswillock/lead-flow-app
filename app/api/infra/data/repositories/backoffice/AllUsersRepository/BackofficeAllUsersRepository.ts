@@ -1,5 +1,6 @@
 import type { LeadStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { hasAnnualOrActiveYearlyUnlimitedGrant } from "@/app/api/infra/data/repositories/billing/unlimitedUsersGrantQueries"
 import {
   getScheduleMeetingStatus,
   type ScheduleMeetingStatus,
@@ -757,15 +758,9 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
       return false
     }
 
-    const annualAdhesionCount = await prisma.backofficeAdhesion.count({
-      where: {
-        createdProfileId: profileId,
-        status: "paid",
-        cycle: "annual",
-      },
-    })
+    const hasIndependentGrant = await hasAnnualOrActiveYearlyUnlimitedGrant(profileId)
 
-    if (annualAdhesionCount > 0) {
+    if (hasIndependentGrant) {
       await prisma.profile.update({
         where: { id: profileId },
         data: { hasUnlimitedUsers: true },

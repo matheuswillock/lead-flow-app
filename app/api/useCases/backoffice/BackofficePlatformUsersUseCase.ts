@@ -866,12 +866,13 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado ou não foi possível atualizar"], null)
       }
 
-      const nextUnlimited =
-        data.hasUnlimitedUsers !== undefined
-          ? data.hasUnlimitedUsers
-          : data.hasPermanentSubscription === true
-            ? true
-            : previous?.hasUnlimitedUsers
+      const nextPermanent =
+        data.hasPermanentSubscription !== undefined
+          ? data.hasPermanentSubscription
+          : previous?.hasPermanentSubscription === true
+      const nextUnlimited = shouldSyncUnlimited
+        ? updated.hasUnlimitedUsers || nextPermanent
+        : undefined
       const previousUnlimited =
         previous !== null
           ? previous.hasUnlimitedUsers || previous.hasPermanentSubscription
