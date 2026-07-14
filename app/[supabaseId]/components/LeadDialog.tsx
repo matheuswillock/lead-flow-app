@@ -47,6 +47,7 @@ import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { Textarea } from "@/components/ui/textarea";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -90,7 +91,6 @@ import {
 } from "@/lib/services/leadStatusTransitionClient";
 import { mapLeadInfoPayloadForUpdate } from "@/lib/leadStatusTransitionFields";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
-import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
 import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timeline/LeadActivityTimeline";
@@ -286,6 +286,7 @@ export default function LeadDialog({
   });
   const form = useLeadForm(leadCustomFieldDefinitions);
   const { hasAccess } = useFeatureAccess();
+  const { access: operationalAccess } = useOperationalAccess();
   const canTransferBetweenTeams =
     isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
   const canMergeLead =
@@ -295,10 +296,12 @@ export default function LeadDialog({
     () => (leadDetails?.transferTargets ?? []).map((target) => target.teamId),
     [leadDetails?.transferTargets]
   );
-  const { access: operationalAccess } = useOperationalAccess();
-  // Contas MultiSkill externas podem transferir mesmo sem rotas internas cadastradas.
+  // MultiSkill origin teams may have no internal transfer route yet the external
+  // MultiSkill lookup still yields valid targets. multiskillExternalTransfer is a
+  // team-level flag, not a per-user one, so it must still respect transfer delegation.
   const hasTransferTargets =
-    allowedTransferTargetIds.length > 0 || operationalAccess.multiskillExternalTransfer;
+    allowedTransferTargetIds.length > 0 ||
+    (canTransferBetweenTeams && operationalAccess.multiskillExternalTransfer);
   const isCloserOperator =
     activeFunctions.includes("CLOSER") &&
     !isTeamMaster &&

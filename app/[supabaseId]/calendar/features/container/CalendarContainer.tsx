@@ -1235,7 +1235,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                           }
                         }}
                         className={cn(
-                          "shadow-none border-l-4 border-l-primary/80 cursor-pointer",
+                          "cursor-pointer border-primary/35 bg-primary/5 shadow-none",
                           isCanceled && "opacity-70",
                           isOverdue && "border-destructive/70 ring-1 ring-destructive/40",
                           !isOverdue &&

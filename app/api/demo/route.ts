@@ -8,9 +8,13 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const fullName = String(body?.fullName || "").trim();
+    const firstName = String(body?.firstName || "").trim();
+    const lastName = String(body?.lastName || "").trim();
+    const fullName = String(body?.fullName || `${firstName} ${lastName}`).trim();
     const email = String(body?.email || "").trim();
     const whatsapp = String(body?.whatsapp || "").trim();
+    const teamSize = String(body?.teamSize || "").trim();
+    const preferredContactTime = String(body?.preferredContactTime || "").trim();
 
     const errors: string[] = [];
     if (!fullName) errors.push("Nome completo é obrigatório");
@@ -26,6 +30,10 @@ export async function POST(request: NextRequest) {
       name: fullName,
       email,
       phone: whatsapp,
+      firstName,
+      lastName,
+      teamSize: teamSize || null,
+      preferredContactTime: preferredContactTime || null,
     });
 
     if (!result.isValid) {

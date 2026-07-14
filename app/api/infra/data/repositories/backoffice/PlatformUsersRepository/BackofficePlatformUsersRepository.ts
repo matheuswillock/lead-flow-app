@@ -1,8 +1,8 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { Prisma, UserRole, UserFunction } from "@prisma/client"
 import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
-import { hasAnnualOrActiveYearlyUnlimitedGrant } from "@/app/api/infra/data/repositories/billing/unlimitedUsersGrantQueries"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
+import { isActiveMemberProAssignment } from "@/app/api/shared/billing/memberProBillingRules"
 import type {
   IBackofficePlatformUsersRepository,
   MasterPlatformUserBillingRecord,
@@ -596,10 +596,9 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         if (data.hasPermanentSubscription === true) {
           updateData.hasUnlimitedUsers = true
         } else if (data.hasUnlimitedUsers === undefined) {
-          // Ao remover o vitalício, mantém ilimitado apenas se houver grant independente
-          // (adesão anual paga, Member PRO ativo ou assinatura YEARLY ativa).
-          updateData.hasUnlimitedUsers =
-            await this.hasIndependentUnlimitedUsersGrant(masterProfileId)
+          // Sem grant explícito nesta requisição: recalcula com base em outras fontes
+          // (adesão anual paga, Member PRO ativo, assinatura YEARLY ativa) em vez de manter a flag antiga.
+          updateData.hasUnlimitedUsers = await this.hasOtherUnlimitedUsersGrant(masterProfileId)
         }
       }
       if (data.hasUnlimitedUsers !== undefined) updateData.hasUnlimitedUsers = data.hasUnlimitedUsers
@@ -621,31 +620,55 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     }
   }
 
-  // Espelha o backfill da migration add-has-unlimited-users, exceto o vitalício
-  // (que é justamente o grant sendo removido no caminho false).
-  private async hasIndependentUnlimitedUsersGrant(masterProfileId: string): Promise<boolean> {
-    const now = new Date()
-    const [paidUnlimitedAdhesion, activeMemberPro, hasAnnualOrYearlyGrant] = await Promise.all([
-      prisma.backofficeAdhesion.findFirst({
+  private async hasOtherUnlimitedUsersGrant(masterProfileId: string): Promise<boolean> {
+    const [annualAdhesionCount, userTypeAssignment, profileSubscription] = await Promise.all([
+      prisma.backofficeAdhesion.count({
         where: {
           createdProfileId: masterProfileId,
           status: "paid",
-          hasUnlimitedUsers: true,
+          cycle: "annual",
         },
-        select: { id: true },
       }),
-      prisma.profileUserTypeAssignment.findFirst({
-        where: {
-          profileId: masterProfileId,
-          userType: { slug: "member_pro" },
-          OR: [{ accessExpiresAt: null }, { accessExpiresAt: { gt: now } }],
+      prisma.profileUserTypeAssignment.findUnique({
+        where: { profileId: masterProfileId },
+        select: {
+          accessExpiresAt: true,
+          userType: { select: { slug: true } },
         },
-        select: { id: true },
       }),
-      hasAnnualOrActiveYearlyUnlimitedGrant(masterProfileId),
+      prisma.profileSubscription.findUnique({
+        where: { profileId: masterProfileId },
+        select: {
+          subscriptionCycle: true,
+          subscriptionStatus: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
+        },
+      }),
     ])
 
-    return paidUnlimitedAdhesion !== null || activeMemberPro !== null || hasAnnualOrYearlyGrant
+    if (annualAdhesionCount > 0) {
+      return true
+    }
+
+    if (isActiveMemberProAssignment(
+      userTypeAssignment
+        ? { slug: userTypeAssignment.userType.slug, accessExpiresAt: userTypeAssignment.accessExpiresAt }
+        : null
+    )) {
+      return true
+    }
+
+    // Mesma regra usada pelo backfill: assinatura anual ativa dentro da janela concede ilimitado.
+    const now = new Date()
+    const isYearlyCycle = profileSubscription?.subscriptionCycle === "YEARLY"
+    const isActiveSubscriptionStatus =
+      !profileSubscription?.subscriptionStatus || profileSubscription.subscriptionStatus === "active"
+    const isWithinSubscriptionWindow =
+      (!profileSubscription?.subscriptionStartDate || profileSubscription.subscriptionStartDate <= now) &&
+      (!profileSubscription?.subscriptionEndDate || profileSubscription.subscriptionEndDate >= now)
+
+    return isYearlyCycle && isActiveSubscriptionStatus && isWithinSubscriptionWindow
   }
 
   async findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null> {

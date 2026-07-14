@@ -147,7 +147,7 @@ function LandingScreen({ onEnterApp }) {
               <li><span className="ico"><Icon name="calendar" size={16}/></span>Integração nativa com Google Calendar</li>
               <li><span className="ico"><Icon name="users" size={16}/></span>Gestão de times: SDR, Closer e Manager</li>
               <li><span className="ico"><Icon name="barchart" size={16}/></span>Dashboard com métricas em tempo real</li>
-              <li><span className="ico"><Icon name="mail" size={16}/></span>Módulo de campanhas de email <span className="cs-gradient-text" style={{ fontWeight: 600 }}>(em breve)</span></li>
+              <li><span className="ico"><Icon name="mail" size={16}/></span>Módulo de campanhas de email</li>
               <li><span className="ico"><Icon name="lifebuoy" size={16}/></span>Suporte em português, sem complicação</li>
             </ul>
           </div>

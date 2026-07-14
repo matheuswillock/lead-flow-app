@@ -35,7 +35,7 @@ function buildMasterNotificationEmail(params: {
     <!DOCTYPE html>
     <html lang="pt-BR">
       <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
         <table role="presentation" style="width:100%;border-collapse:collapse;">
           <tr>
             <td align="center" style="padding:24px;">
@@ -73,7 +73,7 @@ function buildAddedToTeamEmail(params: { userName: string; loginUrl: string }): 
     <!DOCTYPE html>
     <html lang="pt-BR">
       <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
         <table role="presentation" style="width:100%;border-collapse:collapse;">
           <tr>
             <td align="center" style="padding:24px;">
@@ -742,7 +742,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           </head>
-          <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+          <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
             <table role="presentation" style="width:100%;border-collapse:collapse;">
               <tr>
                 <td align="center" style="padding:24px;">

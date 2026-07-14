@@ -1,0 +1,16 @@
+export const operatorsData = [
+  "Amil",
+  "Benevida",
+  "Bradesco",
+  "Hapvida",
+  "MedSênior",
+  "NotreDame Intermédica (GNDI)",
+  "Omint",
+  "Plena",
+  "Porto Seguro",
+  "Prevent Senior",
+  "Santa Casa",
+  "Sermed",
+  "SulAmérica",
+  "Unimed",
+]
