@@ -212,8 +212,10 @@ export function formatMeetingDatetimePrompt(leadCode?: string | number | null): 
     `Envie a data e hora da reunião do lead *${code}* neste formato:`,
     `*DD/MM/AAAA HH:mm*`,
     "",
-    "Opcional: título após `|`",
+    "Opcional: título e/ou link da reunião após `|`",
     "Ex.: `15/07/2026 14:30 | Visita técnica`",
+    "Ex.: `15/07/2026 14:30 | Visita técnica | https://meet.google.com/abc`",
+    "(o link é obrigatório se o closer não tiver Google conectado)",
     "",
     "Digite *menu* para cancelar.",
   ].join("\n");

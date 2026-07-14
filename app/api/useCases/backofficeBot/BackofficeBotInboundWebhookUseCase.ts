@@ -275,6 +275,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
             leadId: session.currentLeadId,
             date: parsed.isoDate,
             ...(parsed.title ? { meetingTitle: parsed.title } : {}),
+            ...(parsed.meetingLink ? { meetingLink: parsed.meetingLink } : {}),
           },
           nextFlowStep: "lead_submenu",
           currentLeadId: session.currentLeadId,

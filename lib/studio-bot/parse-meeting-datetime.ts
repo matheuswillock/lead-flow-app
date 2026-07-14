@@ -1,18 +1,27 @@
 /**
  * Parseia data/hora em pt-BR para ISO (America/Sao_Paulo).
- * Aceita: "15/07/2026 14:30" ou "15/07/2026 14:30 | Título"
+ * Aceita: "15/07/2026 14:30", com título e/ou link opcionais após `|`:
+ * "15/07/2026 14:30 | Visita técnica | https://meet.example.com/abc"
  */
 export type ParsedMeetingInput = {
   isoDate: string;
   title: string | null;
+  meetingLink: string | null;
 };
+
+function isHttpLink(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
 
 export function parseMeetingDatetimeInput(raw: string): ParsedMeetingInput | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  const [datetimePart, ...titleParts] = trimmed.split("|");
-  const title = titleParts.join("|").trim() || null;
+  const [datetimePart, ...extraParts] = trimmed.split("|");
+  const extras = extraParts.map((part) => part.trim()).filter(Boolean);
+  const meetingLink = extras.find(isHttpLink) ?? null;
+  const title = extras.find((part) => !isHttpLink(part)) ?? null;
+
   const match = datetimePart
     .trim()
     .match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
@@ -42,5 +51,15 @@ export function parseMeetingDatetimeInput(raw: string): ParsedMeetingInput | nul
   const date = new Date(isoLocal);
   if (Number.isNaN(date.getTime())) return null;
 
-  return { isoDate: date.toISOString(), title };
+  // Rejeita datas inexistentes (ex.: 31/02) — Date normalizaria para o mês seguinte.
+  const spTime = new Date(date.getTime() - 3 * 60 * 60 * 1000);
+  if (
+    spTime.getUTCFullYear() !== year ||
+    spTime.getUTCMonth() + 1 !== month ||
+    spTime.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { isoDate: date.toISOString(), title, meetingLink };
 }
