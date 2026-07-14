@@ -12,7 +12,9 @@ WHERE "cycle" = 'annual'
   AND "hasUnlimitedUsers" = false;
 
 -- Backfill masters that should have unlimited users:
--- vitalício, adesão anual paga, Member PRO ativo (grava a flag; runtime não usa mais fallback).
+-- vitalício, adesão anual paga, Member PRO ativo, assinatura anual ativa dentro da janela
+-- (mesma regra que o runtime aplicava via fallback annual/YEARLY antes desta flag existir;
+-- grava a flag aqui pois o runtime não usa mais fallback).
 UPDATE "public"."corretor_studio_profiles" p
 SET "hasUnlimitedUsers" = true
 WHERE p."hasUnlimitedUsers" = false
@@ -32,5 +34,14 @@ WHERE p."hasUnlimitedUsers" = false
       WHERE uta."profileId" = p.id
         AND ut.slug = 'member_pro'
         AND (uta."accessExpiresAt" IS NULL OR uta."accessExpiresAt" > now())
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM "public"."corretor_studio_profile_subscriptions" ps
+      WHERE ps."profileId" = p.id
+        AND ps."subscriptionCycle" = 'YEARLY'
+        AND (ps."subscriptionStatus" IS NULL OR ps."subscriptionStatus" = 'active')
+        AND (ps."subscriptionStartDate" IS NULL OR ps."subscriptionStartDate" <= now())
+        AND (ps."subscriptionEndDate" IS NULL OR ps."subscriptionEndDate" >= now())
     )
   );
