@@ -1,5 +1,6 @@
 import { BackofficeLeadOrigin, BackofficeLeadStatus, Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
+import { backofficeLeadSlackNotificationService } from "@/app/api/services/backofficeLeadSlack/BackofficeLeadSlackNotificationService"
 import { getFullUrl } from "@/lib/utils/app-url"
 import {
   decryptBackofficeWebhookToken,
@@ -256,6 +257,11 @@ export class BackofficeMetaWebhookUseCase implements IBackofficeMetaWebhookUseCa
           qualificationLeadOrganization: leadPayload.lead.qualificationLeadOrganization,
           qualificationAvgUsers: leadPayload.lead.qualificationAvgUsers,
           qualificationProfileFit: leadPayload.lead.qualificationProfileFit,
+        })
+
+        await backofficeLeadSlackNotificationService.sendLeadCreatedEventBestEffort({
+          lead,
+          title: "Novo lead do Meta no backoffice",
         })
 
         await this.eventRepo.markProcessed(event.id)

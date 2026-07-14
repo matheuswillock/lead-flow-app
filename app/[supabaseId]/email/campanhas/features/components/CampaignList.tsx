@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { CalendarX, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -45,8 +45,10 @@ function CampaignActionsMenu({
   canSendCampaign,
   sendBlockReason,
   deletingId,
+  cancelingId,
   openEdit,
   handleSend,
+  handleCancel,
   handleDeleteDraft,
   onOpenAnalytics,
 }: {
@@ -54,12 +56,16 @@ function CampaignActionsMenu({
   canSendCampaign: boolean
   sendBlockReason?: string
   deletingId: string | null
+  cancelingId: string | null
   openEdit: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
+  handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
   onOpenAnalytics: (campaign: Campaign) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const canSendByStatus =
     campaign.status === "draft" ||
@@ -70,6 +76,7 @@ function CampaignActionsMenu({
     sendBlockReason ??
     (!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined)
   const canEdit = campaign.status === "draft" || campaign.status === "scheduled"
+  const canCancel = campaign.status === "scheduled"
   const canDelete = campaign.status === "draft"
 
   async function handleSendConfirm() {
@@ -80,6 +87,16 @@ function CampaignActionsMenu({
       setSending(false)
       setSendConfirmOpen(false)
     }
+  }
+
+  async function handleCancelConfirm() {
+    await handleCancel(campaign.id)
+    setCancelConfirmOpen(false)
+  }
+
+  async function handleDeleteConfirm() {
+    await handleDeleteDraft(campaign.id)
+    setDeleteConfirmOpen(false)
   }
 
   return (
@@ -110,16 +127,22 @@ function CampaignActionsMenu({
             <BarChart3 className="mr-2 h-4 w-4" />
             Métricas
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setCancelConfirmOpen(true)}
+            disabled={!canCancel || cancelingId === campaign.id}
+          >
+            <CalendarX className="mr-2 h-4 w-4" />
+            {cancelingId === campaign.id ? "Cancelando..." : "Cancelar agendamento"}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => handleDeleteDraft(campaign.id)}
+            onClick={() => setDeleteConfirmOpen(true)}
             disabled={deletingId === campaign.id || !canDelete}
             className="text-destructive"
           >
             <Trash2 className="mr-2 h-4 w-4" />
             {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
           </DropdownMenuItem>
-
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -136,8 +159,66 @@ function CampaignActionsMenu({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSendConfirm} disabled={sending}>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleSendConfirm()
+              }}
+              disabled={sending}
+            >
               {sending ? "Disparando..." : "Sim, disparar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar agendamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A campanha <strong>"{campaign.name}"</strong> voltará para rascunho e não será
+              disparada no horário agendado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelingId === campaign.id}>
+              Manter agendamento
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleCancelConfirm()
+              }}
+              disabled={cancelingId === campaign.id}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {cancelingId === campaign.id ? "Cancelando..." : "Sim, cancelar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir rascunho?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A campanha <strong>"{campaign.name}"</strong> será removida permanentemente. Esta
+              ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingId === campaign.id}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDeleteConfirm()
+              }}
+              disabled={deletingId === campaign.id}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingId === campaign.id ? "Excluindo..." : "Excluir rascunho"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -160,10 +241,13 @@ export function CampaignList({
     totalPages,
     loading,
     deletingId,
+    cancelingId,
     sendingId,
     handleSend,
+    handleCancel,
     handleDeleteDraft,
     handlePageChange,
+    openWizard,
     openEdit,
     credits,
   } = useCampanhasContext()
@@ -184,8 +268,8 @@ export function CampaignList({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-md border">
-        <Table>
+      <div className="overflow-hidden rounded-md border">
+        <Table className="min-w-[1180px]">
           <TableHeader>
             <TableRow>
               <TableHead className="text-center">Nome</TableHead>
@@ -204,90 +288,108 @@ export function CampaignList({
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   {Array.from({ length: 9 }).map((__, j) => (
-                    <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                    <TableCell key={j}>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
-                  Nenhuma campanha encontrada
+                <TableCell colSpan={9} className="py-12">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Nenhuma campanha encontrada
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Crie uma campanha para disparar comunicações para a sua base.
+                      </p>
+                    </div>
+                    <Button type="button" size="sm" onClick={() => void openWizard()}>
+                      Criar campanha
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
               campaigns.map((campaign) => {
-              const isSending =
-                campaign.status === "sending" || sendingId === campaign.id
+                const isSending =
+                  campaign.status === "sending" || sendingId === campaign.id
 
-              return (
-                <TableRow key={campaign.id}>
-                  <TableCell className="align-middle text-center font-medium">{campaign.name}</TableCell>
-                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                    {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
-                  </TableCell>
-                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                    <div>{campaign.template?.name ?? "—"}</div>
-                    <div className="text-xs">{campaign.contactList?.name ?? "—"}</div>
-                  </TableCell>
-                  <TableCell className="align-middle text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <CampaignStatusBadge
-                        status={isSending ? "sending" : campaign.status}
-                        scheduledAt={campaign.scheduledAt}
-                      />
-                      {campaign.status === "failed" && campaign.errorMessage ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge
-                              variant="destructive"
-                              className="w-fit max-w-[220px] truncate font-normal"
-                            >
-                              {campaign.errorMessage}
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-sm">{campaign.errorMessage}</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="align-middle text-center text-sm">
-                    {campaign.totalRecipients.toLocaleString("pt-BR")}
-                  </TableCell>
-                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                    {campaign.dispatchCount.toLocaleString("pt-BR")}
-                  </TableCell>
-                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                    {formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
-                  </TableCell>
-                  <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                    {campaign.sentAt
-                      ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy HH:mm", tz)
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="align-middle text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      {isSending ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-semantic-warning">
-                          <Loader2 className="size-3.5 animate-spin" />
-                          Enviando...
-                        </span>
-                      ) : (
-                        <CampaignActionsMenu
-                          campaign={campaign}
-                          canSendCampaign={canSendCampaign}
-                          sendBlockReason={getSendBlockReason(campaign)}
-                          deletingId={deletingId}
-                          openEdit={openEdit}
-                          handleSend={handleSend}
-                          handleDeleteDraft={handleDeleteDraft}
-                          onOpenAnalytics={onOpenAnalytics}
+                return (
+                  <TableRow key={campaign.id}>
+                    <TableCell className="align-middle text-center font-medium">
+                      {campaign.name}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      <div>{campaign.template?.name ?? "—"}</div>
+                      <div className="text-xs">{campaign.contactList?.name ?? "—"}</div>
+                    </TableCell>
+                    <TableCell className="align-middle text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <CampaignStatusBadge
+                          status={isSending ? "sending" : campaign.status}
+                          scheduledAt={campaign.scheduledAt}
                         />
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })
+                        {campaign.status === "failed" && campaign.errorMessage ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant="destructive"
+                                className="w-fit max-w-[220px] truncate font-normal"
+                              >
+                                {campaign.errorMessage}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-sm">{campaign.errorMessage}</TooltipContent>
+                          </Tooltip>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm">
+                      {campaign.totalRecipients.toLocaleString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {campaign.dispatchCount.toLocaleString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {campaign.sentAt
+                        ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy HH:mm", tz)
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="align-middle text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {isSending ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-semantic-warning">
+                            <Loader2 className="size-3.5 animate-spin" />
+                            Enviando...
+                          </span>
+                        ) : (
+                          <CampaignActionsMenu
+                            campaign={campaign}
+                            canSendCampaign={canSendCampaign}
+                            sendBlockReason={getSendBlockReason(campaign)}
+                            deletingId={deletingId}
+                            cancelingId={cancelingId}
+                            openEdit={openEdit}
+                            handleSend={handleSend}
+                            handleCancel={handleCancel}
+                            handleDeleteDraft={handleDeleteDraft}
+                            onOpenAnalytics={onOpenAnalytics}
+                          />
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
