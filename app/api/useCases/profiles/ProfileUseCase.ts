@@ -430,7 +430,9 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 entityType: "PROFILE",
                 entityId: existingProfile.id,
                 action: "DELETE",
-                actorProfileId: existingProfile.id,
+                // O profile ja foi excluido acima; usar seu proprio id como
+                // actorProfileId violaria a FK para corretor_studio_profiles.
+                actorProfileId: null,
                 before: {
                     id: existingProfile.id,
                     email: existingProfile.email,
@@ -438,7 +440,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                     role: existingProfile.role,
                 },
                 after: null,
-                metadata: null,
+                metadata: { selfDeletedProfileId: existingProfile.id },
             });
 
             return new Output(true, ["Profile and authentication deleted successfully"], [], { deletedProfile: deletedProfile.id });
