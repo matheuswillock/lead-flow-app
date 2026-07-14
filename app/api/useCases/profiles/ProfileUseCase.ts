@@ -7,6 +7,7 @@ import type { IProfileUseCase, ProfileInfo } from "./IProfileUseCase";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { createProfileOutput } from "../../v1/profiles/DTO/profileResponseDTO";
 import { createProfileUpdateOutput } from "../../v1/profiles/DTO/profileUpdateResponseDTO";
+import { auditLogService } from "@/app/api/services/audit/AuditLogService";
 
 export class RegisterNewUserProfile implements IProfileUseCase {
     constructor(private readonly repo: IProfileRepository = profileRepository) {}
@@ -79,9 +80,19 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 return new Output(false, [], ["Falha ao criar perfil do usuário"], null);
             }
 
-            return new Output(true, ["Perfil de usuário registrado com sucesso"], [], { 
+            await auditLogService.logAudit({
+                entityType: "PROFILE",
+                entityId: result.profileId,
+                action: "CREATE",
+                actorProfileId: result.profileId,
+                before: null,
+                after: { profileId: result.profileId, email: typedInput.email, role: typedInput.role || UserRole.manager },
+                metadata: null,
+            });
+
+            return new Output(true, ["Perfil de usuário registrado com sucesso"], [], {
                 profileId: result.profileId,
-                supabaseId: result.supabaseId 
+                supabaseId: result.supabaseId
             });
         } catch (error: any) {
             console.error("Erro ao registrar perfil do usuário:", error);
@@ -256,6 +267,26 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 }
             }
 
+            await auditLogService.logAudit({
+                entityType: "PROFILE",
+                entityId: existingProfile.id,
+                action: updates.functions !== undefined ? "ROLE_CHANGE" : "UPDATE",
+                actorProfileId: existingProfile.id,
+                before: {
+                    fullName: existingProfile.fullName,
+                    phone: existingProfile.phone,
+                    email: existingProfile.email,
+                    functions: existingProfile.functions,
+                },
+                after: {
+                    fullName: updatedProfile.fullName,
+                    phone: updatedProfile.phone,
+                    email: updatedProfile.email,
+                    functions: updatedProfile.functions,
+                },
+                metadata: null,
+            });
+
             // Usar o novo DTO que retorna apenas email, fullName e phone
             return createProfileUpdateOutput(updatedProfile);
         } catch (error) {
@@ -390,10 +421,27 @@ export class RegisterNewUserProfile implements IProfileUseCase {
 
             // Delete profile from database
             const deletedProfile = await this.repo.deleteProfile(supabaseId);
-            
+
             if (!deletedProfile) {
                 return new Output(false, [], ["Failed to delete profile"], null);
             }
+
+            await auditLogService.logAudit({
+                entityType: "PROFILE",
+                entityId: existingProfile.id,
+                action: "DELETE",
+                // O profile ja foi excluido acima; usar seu proprio id como
+                // actorProfileId violaria a FK para corretor_studio_profiles.
+                actorProfileId: null,
+                before: {
+                    id: existingProfile.id,
+                    email: existingProfile.email,
+                    fullName: existingProfile.fullName,
+                    role: existingProfile.role,
+                },
+                after: null,
+                metadata: { selfDeletedProfileId: existingProfile.id },
+            });
 
             return new Output(true, ["Profile and authentication deleted successfully"], [], { deletedProfile: deletedProfile.id });
         } catch (error) {
@@ -466,9 +514,19 @@ export class RegisterExistingUserProfile implements IProfileUseCase {
                 return new Output(false, [], ["Falha ao criar perfil do usuário"], null);
             }
 
-            return new Output(true, ["Perfil de usuário registrado com sucesso"], [], { 
+            await auditLogService.logAudit({
+                entityType: "PROFILE",
+                entityId: result.profileId,
+                action: "CREATE",
+                actorProfileId: result.profileId,
+                before: null,
+                after: { profileId: result.profileId, email: input.email, role: input.role || UserRole.manager },
+                metadata: { flow: "oauth" },
+            });
+
+            return new Output(true, ["Perfil de usuário registrado com sucesso"], [], {
                 profileId: result.profileId,
-                supabaseId: result.supabaseId 
+                supabaseId: result.supabaseId
             });
         } catch (error: any) {
             console.error("Erro ao registrar perfil OAuth:", error);

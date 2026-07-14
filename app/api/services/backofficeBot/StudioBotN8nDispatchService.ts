@@ -8,7 +8,7 @@ export class StudioBotN8nDispatchService {
       return null;
     }
 
-    const channel = await backofficeBotRepository.getActiveChannel();
+    const channel = await backofficeBotRepository.findPrimaryChannel();
     const secret =
       channel?.n8nOutboundSecret ??
       process.env.BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET?.trim() ??

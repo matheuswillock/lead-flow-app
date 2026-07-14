@@ -204,9 +204,27 @@ export class BackofficeBotActionUseCase implements IBackofficeBotActionUseCase {
 
         case "lead_detail": {
 
-          const id = typeof params.leadId === "string" ? params.leadId : null;
+          let id = typeof params.leadId === "string" ? params.leadId : null;
 
-          if (!id) return new Output(false, [], ["leadId é obrigatório"], null);
+          const leadCode =
+
+            typeof params.leadCode === "string"
+
+              ? params.leadCode.trim()
+
+              : typeof params.query === "string"
+
+                ? params.query.trim()
+
+                : "";
+
+          if (!id && leadCode) {
+
+            id = await studioBotActionRepository.findLeadIdByCode(access, leadCode);
+
+          }
+
+          if (!id) return new Output(false, [], ["leadId ou leadCode é obrigatório"], null);
 
           const lead = await studioBotActionRepository.findLeadDetail(id, access.teamId);
 

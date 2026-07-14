@@ -238,6 +238,20 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
+  async findMemberSnapshot(teamId: string, profileId: string) {
+    return prisma.teamMember.findUnique({
+      where: { teamId_profileId: { teamId, profileId } },
+      select: {
+        id: true,
+        teamId: true,
+        profileId: true,
+        role: true,
+        functions: true,
+        createdAt: true,
+      },
+    });
+  }
+
   async findEligibleProfile(
     profileId: string,
     masterId: string

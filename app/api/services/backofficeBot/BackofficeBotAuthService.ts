@@ -191,6 +191,12 @@ export class BackofficeBotAuthService {
   }
 
   async linkInitiate(profileId: string) {
+    const channel = await backofficeBotRepository.findPrimaryChannel();
+    const botAvailable = Boolean(channel?.isActive && channel.status === "connected");
+    if (!botAvailable) {
+      return { ok: false as const, error: "BOT_UNAVAILABLE" };
+    }
+
     const since = new Date(Date.now() - 60 * 60 * 1000);
     const recentCount = await backofficeBotRepository.countRecentChallengesForProfile(
       profileId,
@@ -231,7 +237,7 @@ export class BackofficeBotAuthService {
   }
 
   async linkStatus(profileId: string) {
-    const channel = await backofficeBotRepository.getActiveChannel();
+    const channel = await backofficeBotRepository.findPrimaryChannel();
     const botAvailable = Boolean(channel?.isActive && channel.status === "connected");
     const botStatus = channel?.status ?? ("unavailable" as const);
     const assistantPhone = resolveAssistantPhoneDigits(channel?.phoneNumber);

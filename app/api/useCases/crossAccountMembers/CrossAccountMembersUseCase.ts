@@ -9,6 +9,7 @@ import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/reposito
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import { teamMembersUseCase } from "@/app/api/useCases/teamMembers/TeamMembersUseCase";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { auditLogService } from "@/app/api/services/audit/AuditLogService";
 import { NotificationType } from "@prisma/client";
 import type {
   ICrossAccountMembersUseCase,
@@ -158,13 +159,23 @@ export class CrossAccountMembersUseCase implements ICrossAccountMembersUseCase {
       const billingOwner = master;
 
       if (await memberProBillingUseCase.shouldBypassIncrementalCharge(team.masterId)) {
-        await this.platformUsersRepository.addExistingProfileToTeam(
+        const created = await this.platformUsersRepository.addExistingProfileToTeam(
           targetProfile.id,
           teamId,
           data.role,
           data.functions,
           delegatedPermissions
         );
+
+        await auditLogService.logAudit({
+          entityType: "TEAM_MEMBER",
+          entityId: created.teamMemberId,
+          action: "CREATE",
+          actorProfileId: requester.id,
+          before: null,
+          after: { profileId: targetProfile.id, teamId, role: data.role, functions: data.functions, ...delegatedPermissions },
+          metadata: { teamId, flow: "cross_account_bypass_charge" },
+        });
 
         await this.sendAddedNotifications({
           requester,
@@ -222,13 +233,23 @@ export class CrossAccountMembersUseCase implements ICrossAccountMembersUseCase {
       }
 
       await this.platformUsersRepository.assertUserSubscriptionCapacity(team.masterId);
-      await this.platformUsersRepository.addExistingProfileToTeam(
+      const createdMember = await this.platformUsersRepository.addExistingProfileToTeam(
         targetProfile.id,
         teamId,
         data.role,
         data.functions,
         delegatedPermissions
       );
+
+      await auditLogService.logAudit({
+        entityType: "TEAM_MEMBER",
+        entityId: createdMember.teamMemberId,
+        action: "CREATE",
+        actorProfileId: requester.id,
+        before: null,
+        after: { profileId: targetProfile.id, teamId, role: data.role, functions: data.functions, ...delegatedPermissions },
+        metadata: { teamId, flow: "cross_account_direct" },
+      });
 
       await this.sendAddedNotifications({
         requester,

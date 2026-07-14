@@ -764,6 +764,8 @@ model Profile {
   operationalAccessGrantsRevoked BackofficeOperationalAccessGrant[] @relation("OperationalAccessRevokedBy")
   sponsoredAdhesions            BackofficeAdhesion[]          @relation("BackofficeAdhesionSponsorMaster")
 
+  auditLogsAsActor              AuditLog[]                    @relation("AuditLogActor")
+
   @@index([role])
   @@index([managerId])
   @@index([sponsorMasterId])
@@ -1422,6 +1424,42 @@ model LeadActivityReaction {
   @@index([activityId])
   @@index([profileId])
   @@map("corretor_studio_lead_activity_reactions")
+}
+
+// -----------------------------
+// AUDIT LOG (public.corretor_studio_audit_logs)
+// -----------------------------
+
+enum AuditEntityType {
+  PROFILE
+  TEAM
+  TEAM_MEMBER
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ROLE_CHANGE
+}
+
+model AuditLog {
+  id             String          @id @default(uuid()) @db.Uuid
+  entityType     AuditEntityType
+  entityId       String          @db.Uuid
+  action         AuditAction
+  actorProfileId String?         @db.Uuid
+  before         Json?
+  after          Json?
+  metadata       Json?
+  createdAt      DateTime        @default(now()) @db.Timestamptz(6)
+
+  actor Profile? @relation("AuditLogActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([actorProfileId])
+  @@index([action])
+  @@map("corretor_studio_audit_logs")
 }
 
 // -----------------------------

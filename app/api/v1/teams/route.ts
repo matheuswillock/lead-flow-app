@@ -15,6 +15,7 @@ import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { getAccountSubscriptionStatus } from "@/lib/subscription/isAccountSubscriptionActive";
 import { findActiveAccountBannedMasterIds } from "@/lib/account/isAccountMasterBanned";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -101,6 +102,16 @@ async function createTeamForAccount(args: {
       },
     });
   }
+
+  await auditLogWriter.logAudit({
+    entityType: "TEAM",
+    entityId: team.id,
+    action: "CREATE",
+    actorProfileId: args.requesterProfileId,
+    before: null,
+    after: team,
+    metadata: { masterId: args.masterId },
+  });
 
   return team;
 }
