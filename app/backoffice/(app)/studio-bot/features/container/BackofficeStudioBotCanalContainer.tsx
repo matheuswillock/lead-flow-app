@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Loader2, RefreshCw, Unplug } from "lucide-react"
+import { Loader2, Power, PowerOff, RefreshCw, Unplug } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -57,9 +57,13 @@ export function BackofficeStudioBotCanalContainer() {
   } = useBackofficeStudioBot()
 
   const [replaceDialogOpen, setReplaceDialogOpen] = useState(false)
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false)
+  const [isTogglingBot, setIsTogglingBot] = useState(false)
   const qrPollTicksRef = useRef(0)
-  const connectionBusy = isTestingPing || isReconnecting || isDisconnecting || isSyncingProfile
+  const connectionBusy =
+    isTestingPing || isReconnecting || isDisconnecting || isSyncingProfile || isTogglingBot
   const isConnected = channel?.status === "connected"
+  const isBotEnabled = channel?.isActive ?? false
 
   useEffect(() => {
     void loadChannel()
@@ -93,6 +97,18 @@ export function BackofficeStudioBotCanalContainer() {
     }
   }
 
+  const handleToggleBotEnabled = async (nextEnabled: boolean) => {
+    setIsTogglingBot(true)
+    try {
+      const ok = await updateChannel({ isActive: nextEnabled })
+      if (ok && !nextEnabled) {
+        setDisableDialogOpen(false)
+      }
+    } finally {
+      setIsTogglingBot(false)
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 p-4">
       <div>
@@ -123,6 +139,18 @@ export function BackofficeStudioBotCanalContainer() {
                   <span className="text-sm">Não configurado</span>
                 )}
               </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-muted-foreground">Disponível para usuários</span>
+                <span className="text-sm font-medium">
+                  {channel ? (isBotEnabled ? "Habilitada" : "Desabilitada") : "—"}
+                </span>
+              </div>
+              {!isBotEnabled && channel ? (
+                <p className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
+                  A Bethânia está desabilitada. O card de vínculo em Conexões fica oculto e novas
+                  vinculações são bloqueadas.
+                </p>
+              ) : null}
               <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
                 <p className="text-xs text-muted-foreground">Número atual do bot</p>
                 {channel?.phoneNumber ? (
@@ -146,6 +174,63 @@ export function BackofficeStudioBotCanalContainer() {
               ) : null}
               {canManage ? (
                 <div className="flex flex-col gap-2">
+                  {channel ? (
+                    isBotEnabled ? (
+                      <AlertDialog open={disableDialogOpen} onOpenChange={setDisableDialogOpen}>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-foreground/20 text-destructive hover:border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                            disabled={connectionBusy}
+                          >
+                            {isTogglingBot ? (
+                              <Loader2 className="animate-spin" data-icon="inline-start" />
+                            ) : (
+                              <PowerOff data-icon="inline-start" />
+                            )}
+                            {isTogglingBot ? "Desabilitando..." : "Desabilitar Bethânia"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="max-h-[90vh] flex flex-col border-destructive/40">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-destructive">
+                              Desabilitar a Bethânia para usuários?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              O card de vínculo some de Conexões e ninguém consegue gerar código
+                              `VINCULAR` enquanto estiver desabilitada. A conexão WhatsApp/Evolution
+                              não é derrubada.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isTogglingBot}>Cancelar</AlertDialogCancel>
+                            <Button
+                              variant="destructive"
+                              disabled={isTogglingBot}
+                              onClick={() => void handleToggleBotEnabled(false)}
+                            >
+                              {isTogglingBot ? "Desabilitando..." : "Confirmar desabilitação"}
+                            </Button>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={connectionBusy}
+                        onClick={() => void handleToggleBotEnabled(true)}
+                      >
+                        {isTogglingBot ? (
+                          <Loader2 className="animate-spin" data-icon="inline-start" />
+                        ) : (
+                          <Power data-icon="inline-start" />
+                        )}
+                        {isTogglingBot ? "Habilitando..." : "Habilitar Bethânia"}
+                      </Button>
+                    )
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"

@@ -23,6 +23,8 @@ function mapAuthError(error: string): string {
       return "O WhatsApp que enviou o código não é o mesmo número cadastrado na conta";
     case "PROFILE_PHONE_REQUIRED":
       return "Cadastre um telefone na Account antes de vincular a Bethânia";
+    case "BOT_UNAVAILABLE":
+      return "A Bethânia está temporariamente desabilitada. Tente novamente mais tarde.";
     case "PROFILE_NOT_FOUND":
       return "Perfil não encontrado";
     case "TEAM_NOT_FOUND":
@@ -68,7 +70,7 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
 
   private async notifyLinkConfirmed(normalizedPhone: string, userLinkId: string): Promise<void> {
     try {
-      const channel = await backofficeBotRepository.getActiveChannel();
+      const channel = await backofficeBotRepository.findPrimaryChannel();
       const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
 
       await backofficeEvoApiService.sendTextMessage({

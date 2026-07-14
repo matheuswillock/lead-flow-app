@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import { hasAnnualOrActiveYearlyUnlimitedGrant } from "@/app/api/infra/data/repositories/billing/unlimitedUsersGrantQueries";
 import type { BillingOwnerProfile } from "@/app/api/shared/billing/billingOwnerProfile";
 
 export interface MemberProAssignmentRecord {
@@ -80,15 +81,9 @@ export class MemberProBillingRepository implements IMemberProBillingRepository {
       return false;
     }
 
-    const annualAdhesionCount = await prisma.backofficeAdhesion.count({
-      where: {
-        createdProfileId: masterId,
-        status: "paid",
-        cycle: "annual",
-      },
-    });
+    const hasIndependentGrant = await hasAnnualOrActiveYearlyUnlimitedGrant(masterId);
 
-    if (annualAdhesionCount > 0) {
+    if (hasIndependentGrant) {
       await prisma.profile.update({
         where: { id: masterId },
         data: { hasUnlimitedUsers: true },

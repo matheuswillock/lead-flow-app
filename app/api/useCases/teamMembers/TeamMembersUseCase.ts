@@ -3,6 +3,7 @@ import { NotificationType, type UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { cacheTags } from "@/lib/cache/cacheTags";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { auditLogService } from "@/app/api/services/audit/AuditLogService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import type { ITeamMembersRepository, TeamMembersListItem, TeamMembersTeam, TeamMembersProfileOption } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
@@ -447,6 +448,16 @@ export class TeamMembersUseCase {
         console.error("[TeamMembersUseCase][addMember] Erro ao criar notificação de membro adicionado:", notificationError);
       }
 
+      await auditLogService.logAudit({
+        entityType: "TEAM_MEMBER",
+        entityId: newMember.id,
+        action: "CREATE",
+        actorProfileId: profile.id,
+        before: null,
+        after: newMember,
+        metadata: { teamId },
+      });
+
       return new Output(true, ["Membro adicionado com sucesso"], [], newMember);
     } catch (error) {
       console.error("[TeamMembersUseCase][addMember] Erro ao adicionar membro:", error);
@@ -474,6 +485,8 @@ export class TeamMembersUseCase {
         return new Output(false, [], ["Não é possível remover o master do time"], null);
       }
 
+      const memberSnapshot = await this.repository.findMemberSnapshot(teamId, profileId);
+
       try {
         await notificationService.createTeamMembershipNotification({
           teamId,
@@ -488,6 +501,18 @@ export class TeamMembersUseCase {
       }
 
       await this.repository.deleteMember(teamId, profileId);
+
+      if (memberSnapshot) {
+        await auditLogService.logAudit({
+          entityType: "TEAM_MEMBER",
+          entityId: memberSnapshot.id,
+          action: "DELETE",
+          actorProfileId: profile.id,
+          before: memberSnapshot,
+          after: null,
+          metadata: { teamId },
+        });
+      }
 
       await memberProBillingUseCase.syncBillingAfterUsageChange(team.masterId, "remove_member");
 

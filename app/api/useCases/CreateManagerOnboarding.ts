@@ -14,6 +14,7 @@
 
 import type { IAsaasCustomerService, IAsaasSubscriptionService } from '@/app/api/services';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { auditLogService } from '@/app/api/services/audit/AuditLogService';
 
 export interface CreateManagerOnboardingInput {
   profileId: string;
@@ -95,7 +96,7 @@ export class CreateManagerOnboarding {
       console.info(`✅ Assinatura criada: ${subscription.subscriptionId}`);
 
       // 5. Atualizar profile com dados de assinatura
-      await prisma.profile.update({
+      const updatedProfile = await prisma.profile.update({
         where: { id: profileId },
         data: {
           subscriptionId: subscription.subscriptionId,
@@ -103,6 +104,27 @@ export class CreateManagerOnboarding {
           subscriptionPlan: 'manager_base',
           subscriptionStartDate: new Date(),
         },
+        select: {
+          id: true,
+          asaasCustomerId: true,
+          subscriptionId: true,
+          subscriptionStatus: true,
+          subscriptionPlan: true,
+          subscriptionStartDate: true,
+        },
+      });
+
+      await auditLogService.logAudit({
+        entityType: 'PROFILE',
+        entityId: profileId,
+        action: 'UPDATE',
+        actorProfileId: profileId,
+        before: {
+          asaasCustomerId: profile.asaasCustomerId,
+          subscriptionId: profile.subscriptionId,
+        },
+        after: updatedProfile,
+        metadata: { flow: 'manager_onboarding' },
       });
 
       console.info('🎉 Onboarding completo!');
