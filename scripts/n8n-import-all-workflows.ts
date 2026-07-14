@@ -143,6 +143,36 @@ function activateWorkflowByName(name: string): void {
   console.warn(`[n8n:import:all] Falha ao ativar ${name}: ${activated.output}`);
 }
 
+function deactivateWorkflowByName(name: string): void {
+  const listed = run("docker", ["exec", CONTAINER, "n8n", "list:workflow"]);
+  if (!listed.ok) {
+    console.warn(`[n8n:import:all] Não foi possível listar workflows: ${listed.output}`);
+    return;
+  }
+
+  const line = listed.output.split("\n").find((row) => row.includes(name));
+  if (!line) {
+    console.warn(`[n8n:import:all] Workflow "${name}" não encontrado para deactivate`);
+    return;
+  }
+
+  const id = line.trim().split("|")[0];
+  const deactivated = run("docker", [
+    "exec",
+    CONTAINER,
+    "n8n",
+    "update:workflow",
+    `--id=${id}`,
+    "--active=false",
+  ]);
+  if (deactivated.ok) {
+    console.info(`[n8n:import:all] Desativado (stub): ${name} (${id})`);
+    return;
+  }
+
+  console.warn(`[n8n:import:all] Falha ao desativar ${name}: ${deactivated.output}`);
+}
+
 function restartN8nForWebhooks(): void {
   console.info("[n8n:import:all] Reiniciando container n8n para registrar webhooks de produção...");
   const restarted = run("docker", ["restart", CONTAINER]);
@@ -178,13 +208,28 @@ function main(): void {
   }
 
   // Error notifier + webhooks de produção precisam estar active no DB + processo n8n reiniciado.
-  for (const name of ["bethania-error-notifier", "bethania-push-outbound", "bethania-router"]) {
+  // Stubs (menu/list/verify) NÃO devem ficar ativos — só Manual Trigger → WorkflowActivationError no Slack.
+  const ACTIVE_WORKFLOWS = ["bethania-error-notifier", "bethania-push-outbound", "bethania-router"] as const;
+  const STUB_WORKFLOWS = [
+    "bethania-verification-channel",
+    "bethania-verification-web",
+    "bethania-menu-main",
+    "bethania-list-leads",
+    "bethania-agenda-today",
+    "bethania-list-tasks",
+    "bethania-add-note-confirm",
+  ] as const;
+
+  for (const name of ACTIVE_WORKFLOWS) {
     activateWorkflowByName(name);
+  }
+  for (const name of STUB_WORKFLOWS) {
+    deactivateWorkflowByName(name);
   }
   restartN8nForWebhooks();
 
   console.info(
-    "[n8n:import:all] Concluído. Próximo: Salvar URL inbound no Canal → Reconectar Evolution."
+    "[n8n:import:all] Concluído. Ativos: router, push-outbound, error-notifier. Stubs desativados."
   );
 }
 

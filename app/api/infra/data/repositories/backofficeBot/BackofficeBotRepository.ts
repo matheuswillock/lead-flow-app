@@ -93,6 +93,12 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
     });
   }
 
+  async findPrimaryChannel() {
+    return prisma.backofficeBotChannel.findFirst({
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
   async findChannelById(channelId: string) {
     return prisma.backofficeBotChannel.findUnique({ where: { id: channelId } });
   }
@@ -110,7 +116,7 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
     n8nOutboundSecret?: string;
     isActive?: boolean;
   }) {
-    const existing = await this.getActiveChannel();
+    const existing = await this.findPrimaryChannel();
     const webhookSecret =
       data.webhookSecret ??
       process.env.BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET?.trim() ??

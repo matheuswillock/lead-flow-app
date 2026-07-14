@@ -20,6 +20,8 @@ export type BotMessagePayload = {
   mediaUrl?: string | null;
   caption?: string | null;
   mediaFileName?: string | null;
+  /** Chave Evolution (`data.key`) para download via getBase64FromMediaMessage. */
+  mediaKey?: Record<string, unknown> | null;
   linkPreview?: BotMessageLinkPreview | null;
   pushName?: string | null;
 };
