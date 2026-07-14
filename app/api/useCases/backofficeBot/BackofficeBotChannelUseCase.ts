@@ -46,10 +46,74 @@ function toChannelDto(channel: Awaited<ReturnType<typeof backofficeBotRepository
   };
 }
 
+function mapEvoStatusToChannelStatus(
+  evoStatus: "open" | "close" | "connecting"
+): BackofficeBotChannelStatus {
+  if (evoStatus === "open") {
+    return "connected";
+  }
+  if (evoStatus === "close") {
+    return "disconnected";
+  }
+  return "pending";
+}
+
 export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase {
+  /**
+   * Alinha status/telefone do canal com a instância Evolution (fonte de verdade do número).
+   */
+  private async syncChannelFromEvolution(
+    channel: NonNullable<Awaited<ReturnType<typeof backofficeBotRepository.getActiveChannel>>>
+  ) {
+    const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
+
+    const evoStatus = await backofficeEvoApiService
+      .getInstanceConnectionState(instanceName)
+      .catch((error) => {
+        console.error("[BackofficeBotChannelUseCase][syncChannelFromEvolution] state", error);
+        return null;
+      });
+
+    if (!evoStatus) {
+      return channel;
+    }
+
+    const nextStatus = mapEvoStatusToChannelStatus(evoStatus);
+    let phoneNumber = channel.phoneNumber;
+
+    if (evoStatus === "open") {
+      const livePhone = await backofficeEvoApiService
+        .getInstancePhoneNumber(instanceName)
+        .catch((error) => {
+          console.error("[BackofficeBotChannelUseCase][syncChannelFromEvolution] phone", error);
+          return null;
+        });
+      if (livePhone) {
+        phoneNumber = livePhone;
+      }
+    }
+
+    const phoneChanged = (phoneNumber ?? null) !== (channel.phoneNumber ?? null);
+    const statusChanged = channel.status !== nextStatus;
+
+    if (!phoneChanged && !statusChanged) {
+      return channel;
+    }
+
+    return backofficeBotRepository.upsertChannel({
+      status: nextStatus,
+      phoneNumber: phoneNumber ?? null,
+    });
+  }
+
   async getChannel(): Promise<Output> {
     try {
-      const channel = await backofficeBotRepository.getActiveChannel();
+      let channel = await backofficeBotRepository.getActiveChannel();
+
+      if (channel) {
+        channel = await this.syncChannelFromEvolution(channel);
+      }
+
       return new Output(true, [], [], { channel: toChannelDto(channel) });
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][getChannel]", error);
@@ -203,13 +267,26 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
       if (result.status === 0) {
         return new Output(false, [], ["BACKOFFICE_N8N_OUTBOUND_URL não configurada"], null);
       }
-      return new Output(result.ok, [], result.ok ? [] : ["N8N não respondeu com sucesso"], {
+      if (result.ok) {
+        return new Output(true, [], [], { status: result.status, ok: true });
+      }
+
+      const hint =
+        result.status === 404
+          ? "N8N respondeu 404 — importe e ative o workflow bethania-push-outbound (bun run n8n:import)."
+          : `N8N não respondeu com sucesso (HTTP ${result.status}).`;
+
+      return new Output(false, [], [hint], {
         status: result.status,
-        ok: result.ok,
+        ok: false,
       });
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][testPing]", error);
-      return new Output(false, [], ["Erro ao testar ping N8N"], null);
+      const message =
+        error instanceof TypeError
+          ? "N8N inacessível — confira se o stack está no ar (bun run n8n:up) e BACKOFFICE_N8N_OUTBOUND_URL."
+          : "Erro ao testar ping N8N";
+      return new Output(false, [], [message], null);
     }
   }
 
@@ -279,6 +356,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
       const channel = await backofficeBotRepository.upsertChannel({
         status: result.status === "open" ? "connected" : "pending",
         providerConfig: { instanceName },
+        ...(result.phoneNumber ? { phoneNumber: result.phoneNumber } : {}),
       });
 
       return new Output(true, [], [], {
@@ -290,6 +368,60 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][reconnectChannel]", error);
       return new Output(false, [], ["Erro ao reconectar canal"], null);
+    }
+  }
+
+  async refreshChannelConnection(): Promise<Output> {
+    try {
+      const active = await backofficeBotRepository.getActiveChannel();
+      if (!active) {
+        return new Output(false, [], ["Canal não configurado"], null);
+      }
+
+      const channel = await this.syncChannelFromEvolution(active);
+      const connected = channel.status === "connected";
+
+      return new Output(true, [], [], {
+        channel: toChannelDto(channel),
+        evoStatus:
+          channel.status === "connected"
+            ? "open"
+            : channel.status === "pending"
+              ? "connecting"
+              : "close",
+        connected,
+      });
+    } catch (error) {
+      console.error("[BackofficeBotChannelUseCase][refreshChannelConnection]", error);
+      return new Output(false, [], ["Erro ao atualizar status da conexão"], null);
+    }
+  }
+
+  async disconnectChannel(): Promise<Output> {
+    try {
+      const active = await backofficeBotRepository.getActiveChannel();
+      if (!active) {
+        return new Output(false, [], ["Canal não configurado"], null);
+      }
+
+      const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
+
+      await backofficeEvoApiService.disconnectInstance(instanceName);
+
+      const channel = await backofficeBotRepository.upsertChannel({
+        status: "disconnected",
+        phoneNumber: null,
+      });
+
+      return new Output(
+        true,
+        ["WhatsApp da Bethânia desconectado. Conecte um novo número pelo QR Code."],
+        [],
+        { channel: toChannelDto(channel) }
+      );
+    } catch (error) {
+      console.error("[BackofficeBotChannelUseCase][disconnectChannel]", error);
+      return new Output(false, [], ["Erro ao desconectar canal WhatsApp"], null);
     }
   }
 

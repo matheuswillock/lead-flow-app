@@ -6,12 +6,32 @@ import {
   studioBotAuthLimits,
   verifyAuthCode,
 } from "@/lib/studio-bot/auth-code";
-import { normalizePhoneE164 } from "@/lib/studio-bot/phone";
+import { normalizePhoneE164, phoneDigitsEqual } from "@/lib/studio-bot/phone";
 
 const GENERIC_EMAIL_RESPONSE = {
   challengeId: null as string | null,
   expiresAt: null as string | null,
 };
+
+function resolveAssistantPhoneDigits(channelPhone?: string | null): string | null {
+  const candidates = [
+    channelPhone,
+    process.env.BACKOFFICE_BETHANIA_WHATSAPP_NUMBER,
+    process.env.NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    const digits = candidate.replace(/\D/g, "");
+    if (digits.length >= 10) {
+      return digits;
+    }
+  }
+
+  return null;
+}
 
 export class BackofficeBotAuthService {
   async requestCode(email: string, normalizedPhone: string) {
@@ -95,6 +115,26 @@ export class BackofficeBotAuthService {
       return { ok: false as const, error: "AUTH_INVALID_CODE" };
     }
 
+    // O WhatsApp que envia VINCULAR deve ser o mesmo número solicitado no challenge
+    // (channel_email) ou o telefone cadastrado no perfil (web_otp).
+    if (challenge.normalizedPhone) {
+      if (!phoneDigitsEqual(challenge.normalizedPhone, phone)) {
+        await backofficeBotRepository.incrementChallengeAttempt(challenge.id);
+        return { ok: false as const, error: "PHONE_MISMATCH" };
+      }
+    } else if (challenge.source === "web_otp" && challenge.profileId) {
+      const profilePhone = await backofficeBotRepository.resolveProfilePhone(challenge.profileId);
+      if (!profilePhone) {
+        return { ok: false as const, error: "PROFILE_PHONE_REQUIRED" };
+      }
+      if (!phoneDigitsEqual(profilePhone, phone)) {
+        await backofficeBotRepository.incrementChallengeAttempt(challenge.id);
+        return { ok: false as const, error: "PHONE_MISMATCH" };
+      }
+    } else {
+      return { ok: false as const, error: "PHONE_MISMATCH" };
+    }
+
     const profileId = challenge.profileId;
     if (!profileId) {
       return { ok: false as const, error: "PROFILE_NOT_FOUND" };
@@ -160,6 +200,11 @@ export class BackofficeBotAuthService {
       return { ok: false as const, error: "RATE_LIMIT" };
     }
 
+    const profilePhone = await backofficeBotRepository.resolveProfilePhone(profileId);
+    if (!profilePhone) {
+      return { ok: false as const, error: "PROFILE_PHONE_REQUIRED" };
+    }
+
     await backofficeBotRepository.expirePendingChallengesForProfile(profileId);
 
     const code = generateAuthCode();
@@ -171,6 +216,7 @@ export class BackofficeBotAuthService {
       codeHash,
       expiresAt,
       profileId,
+      normalizedPhone: profilePhone,
     });
 
     return {
@@ -179,16 +225,27 @@ export class BackofficeBotAuthService {
         challengeId: challenge.id,
         code,
         expiresAt: expiresAt.toISOString(),
+        expectedPhone: profilePhone,
       },
     };
   }
 
   async linkStatus(profileId: string) {
+    const channel = await backofficeBotRepository.getActiveChannel();
+    const botAvailable = Boolean(channel?.isActive && channel.status === "connected");
+    const botStatus = channel?.status ?? ("unavailable" as const);
+    const assistantPhone = resolveAssistantPhoneDigits(channel?.phoneNumber);
+
     const link = await backofficeBotRepository.findActiveUserLinkByProfile(profileId);
     if (!link) {
       return {
         ok: true as const,
-        result: { linked: false as const },
+        result: {
+          linked: false as const,
+          botAvailable,
+          botStatus,
+          assistantPhone,
+        },
       };
     }
 
@@ -199,6 +256,9 @@ export class BackofficeBotAuthService {
         normalizedPhone: link.normalizedPhone,
         linkedAt: link.linkedAt.toISOString(),
         userLinkId: link.id,
+        botAvailable,
+        botStatus,
+        assistantPhone,
       },
     };
   }

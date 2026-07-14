@@ -873,6 +873,7 @@ failed failed
     UserFunction functions 
     Boolean isMaster 
     Boolean hasPermanentSubscription 
+    Boolean hasUnlimitedUsers 
     Boolean multiskillEnabled 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
@@ -1100,6 +1101,7 @@ failed failed
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
     Boolean multiskillEnabled 
+    Boolean hasUnlimitedUsers 
     Json additional_users_data 
     Json additional_teams_data 
     DateTime createdAt 

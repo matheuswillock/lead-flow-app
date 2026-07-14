@@ -30,5 +30,7 @@ export interface IBackofficeBotChannelUseCase {
   testPing(): Promise<Output>;
   uploadChannelAvatar(file: File): Promise<Output>;
   reconnectChannel(): Promise<Output>;
+  refreshChannelConnection(): Promise<Output>;
+  disconnectChannel(): Promise<Output>;
   syncChannelProfile(): Promise<Output>;
 }

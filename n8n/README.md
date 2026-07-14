@@ -10,6 +10,10 @@ Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows de
 4. Evolution API com instância dedicada **`bethania`** (`EVO_BETHANIA_INSTANCE=bethania`).
 5. Arquivo `.env.n8n` (copie de `.env.n8n.example` ou deixe o `bun dev` criar).
 
+> **⚠️ n8n 2.x e `$env`:** a partir do n8n 2.0, `N8N_BLOCK_ENV_ACCESS_IN_NODE` é `true` por padrão e bloqueia `$env` em **expressões e Code nodes** — todos os workflows desta pasta dependem de `$env` e quebram com o default. O `.env.n8n` (local e VPS) precisa de `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`, além de `EVO_API_BASE_URL` e `EVO_API_KEY` para o `bethania-push-outbound`. Em Code nodes que usam `require('crypto')` (HMAC do `bethania-router`), use também `NODE_FUNCTION_ALLOW_BUILTIN=crypto` e `N8N_RUNNERS_ENABLED=false` (task runners do 2.x bloqueiam `crypto` mesmo com allow-builtin). A imagem está pinada em versão explícita nos compose files — nunca volte para `latest` (foi o que derrubou a produção em 2026-07; ver `BETHANIA_AUDIT.md`). Migração futura para n8n Credentials permitirá religar o bloqueio.
+>
+> **Dev local:** `LEAD_FLOW_API_BASE_URL=http://host.docker.internal:3000`, `N8N_WEBHOOK_BASE_URL=http://host.docker.internal:5678`, e o webhook da Evolution na instância `bethania` **deve** ser `http://host.docker.internal:5678/webhook/bethania-inbound` (não `http://n8n:5678/...` — Evolution e N8N estão em redes Docker diferentes). O `BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET` do `.env.n8n` **deve** ser idêntico ao do `.env` do Next.js.
+
 ## URLs importantes
 
 | Serviço | URL (host) | URL (container → host) |
@@ -27,17 +31,20 @@ Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows de
 
 | Arquivo | Propósito |
 |---------|-----------|
-| `workflows/bethania-verification-channel.json` | Caminho A — e-mail → código |
-| `workflows/bethania-verification-web.json` | Caminho B — `VINCULAR {OTP}` |
-| `workflows/bethania-menu-main.json` | Menu principal pós-auth |
-| `workflows/bethania-list-leads.json` | Listar leads |
-| `workflows/bethania-agenda-today.json` | Agenda de hoje |
-| `workflows/bethania-list-tasks.json` | Listar tarefas |
-| `workflows/bethania-add-note-confirm.json` | Confirmação add_note (write) |
-| `workflows/bethania-push-outbound.json` | Webhook outbound push (Fase 4) |
-| `workflows/bethania-router.json` | Roteador inbound (Evolution → N8N) |
+| `workflows/bethania-error-notifier.json` | Error Trigger → Slack Incoming Webhook |
+| `workflows/bethania-verification-channel.json` | Caminho A — e-mail → código (stub) |
+| `workflows/bethania-verification-web.json` | Caminho B — `VINCULAR {OTP}` (stub; verify ativo no inbound Next.js) |
+| `workflows/bethania-menu-main.json` | Menu principal pós-auth (stub; menu ativo no inbound Next.js) |
+| `workflows/bethania-list-leads.json` | Listar leads (stub) |
+| `workflows/bethania-agenda-today.json` | Agenda de hoje (stub) |
+| `workflows/bethania-list-tasks.json` | Listar tarefas (stub) |
+| `workflows/bethania-add-note-confirm.json` | Confirmação add_note (stub) |
+| `workflows/bethania-push-outbound.json` | Webhook outbound push (caminho ativo) |
+| `workflows/bethania-router.json` | Roteador inbound Evolution → API (caminho ativo) |
 
-4. Ative o workflow **bethania-router** após configurar credenciais e variáveis.
+4. Ative **bethania-error-notifier**, **bethania-router** e **bethania-push-outbound** após configurar variáveis (o `n8n:import:all` já faz isso).
+
+> **Arquitetura atual (Estágio 5):** a conversa (menu 1–5, verify `VINCULAR`) roda no **Corretor Studio** (`/api/webhooks/backoffice/studio-bot/inbound`). O N8N `bethania-router` é proxy Evolution→API; os JSONs `menu-main` / `list-*` / `add-note` / `verification-*` são stubs manuais até fase 2 (Credentials/HMAC).
 
 ## Evolution — instância `bethania`
 
@@ -53,8 +60,12 @@ Na Evolution API (stack `docker-compose.evolution.yml` — API + Redis; banco em
 Exemplo dev local:
 
 ```text
-http://host.docker.internal:5678/webhook/bethania-inbound
+http://n8n:5678/webhook/bethania-inbound
 ```
+
+(Evolution e N8N precisam compartilhar a rede `n8n-net` — o `docker-compose.evolution.yml` local já declara essa rede como `external`. Alternativa: `http://host.docker.internal:5678/webhook/bethania-inbound` com a porta do N8N publicada em `0.0.0.0:5678`.)
+
+> **Sintoma local:** Evolution loga `ECONNREFUSED 169.254.1.2:5678` e o `VINCULAR` “não faz nada” — a mensagem WhatsApp chega na Evolution, mas o webhook não alcança o N8N. Corrija a URL/rede acima e reenvie o código.
 
 3. O número de teste deve coincidir com `BACKOFFICE_BETHANIA_WHATSAPP_NUMBER` (E.164, ex.: `5511999999999`).
 
@@ -106,8 +117,41 @@ Base URL nos nós HTTP (container): `http://host.docker.internal:3000`
 | `BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET` | `leadflow-local-studio-bot-secret` |
 | `EVO_BETHANIA_INSTANCE` | `bethania` |
 | `BACKOFFICE_BETHANIA_WHATSAPP_NUMBER` | número E.164 de teste |
+| `BETHANIA_SLACK_WEBHOOK_URL` | URL do Incoming Webhook do Slack (alerta de falha) |
+| `N8N_BASE_URL` | `http://127.0.0.1:5678` (link nas mensagens de erro) |
 
 Base URL nos nós HTTP (container): definida por `LEAD_FLOW_API_BASE_URL` em `.env.n8n` (dev: `http://host.docker.internal:3000`; produção: `https://corretorstudio.com`).
+
+## Observabilidade — error notifier (Estágio 4)
+
+1. No Slack: **Apps → Incoming Webhooks → Add New Webhook to Workspace** → canal (ex.: `#bethania-alerts`) → copiar a URL.
+2. Preencher `BETHANIA_SLACK_WEBHOOK_URL` em `.env.n8n` e recriar o container N8N (`bun run n8n:down && bun run n8n:up` ou restart) para o env entrar no processo.
+3. Importar: `bun run n8n:import:all` (importa `bethania-error-notifier` primeiro e liga `settings.errorWorkflow` nos 9 workflows).
+4. **Teste de falha (dev):** em um workflow **ativo** (ex. `bethania-push-outbound`), temporariamente quebrar a URL da Evolution no Code node / env, ou adicionar um Code node `throw new Error('teste alerta Bethânia')` no caminho feliz, salvar, ativar e disparar (ping outbox / mensagem). O `bethania-error-notifier` deve postar no Slack.
+5. `bethania-push-outbound` usa `responseMode: lastNode` — falha de execução → HTTP ≠2xx → outbox marca `failed` (não `sent`).
+
+## Runbook de validação — caminho ativo (Estágio 3)
+
+| # | Item | Como validar (dev) | Critério / evidência |
+|---|---|---|---|
+| 1 | `bethania-router` | Mensagem WhatsApp → Evolution → N8N → inbound | Execução verde + resposta Bethânia |
+| 2 | Verify / vínculo | Account “Gerar código” → `VINCULAR` | Vínculo ativo + confirmação WA (inbound Next.js) |
+| 3 | Menu + `1`/`2`/`3` | Digitar `menu` e opções | Listas formatadas no WA (inbound Next.js) |
+| 4 | `bethania-push-outbound` | Outbox `test_ping` / dispatch | Execução verde; falha forçada → `failed` + Slack |
+| 5–9 | Stubs `menu-main` / `list-*` / `agenda` / `add-note` / `verification-channel` | Manual Trigger **ou** classificar stub | Smoke API adiado até fase 2 HMAC (`REPLACE_WITH_HMAC_SIGNATURE`) — não bloqueia aceite |
+
+Preencher IDs de execução locais na seção correspondente de `BETHANIA_SPEC.md` após cada teste.
+
+### Aplicar em produção VPS (requer autorização explícita do owner)
+
+1. Preencher `BETHANIA_SLACK_WEBHOOK_URL` no `.env.n8n` da VPS (`/opt/lead-flow-bot/.env.n8n`).
+2. Recriar/restart do container `n8n` para carregar o env.
+3. `bun run n8n:import:all` (ou procedimento em `deploy/hostinger/README.md`).
+4. Confirmar `errorWorkflow` nos 9 + `bethania-error-notifier` ativo.
+5. Repetir a matriz de validação em produção.
+6. Simular falha → mensagem no Slack.
+
+**Não executar esses passos sem autorização explícita.**
 
 ## Produção VPS (Hostinger)
 
@@ -164,3 +208,5 @@ Redeploy após alterar variáveis. Com `bun run ngrok:n8n` ativo, teste em `/bac
 | API inacessível do container | Usar `host.docker.internal:3000`, não `localhost` |
 | Evolution não dispara N8N | Conferir `N8N_WEBHOOK_BASE_URL` e path do webhook |
 | Router não responde | Workflow `bethania-router` ativo? Webhook path correto? |
+| Sem alerta no Slack | `BETHANIA_SLACK_WEBHOOK_URL` no env do container? `bethania-error-notifier` ativo? Falha foi em workflow **ativo** (error workflow não dispara em todos os modos manuais)? |
+| Outbox marca `sent` com push falho | Conferir `responseMode: lastNode` no `bethania-push-outbound` (não `onReceived`) |

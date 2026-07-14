@@ -24,12 +24,14 @@ const billingOwnerSelect = {
   subscriptionNextDueDate: true,
   subscriptionCycle: true,
   hasPermanentSubscription: true,
+  hasUnlimitedUsers: true,
   timezone: true,
 } as const;
 
 export interface IMemberProBillingRepository {
   findUserTypeAssignment(masterId: string): Promise<MemberProAssignmentRecord | null>;
   findBillingOwner(masterId: string): Promise<BillingOwnerProfile | null>;
+  clearUnlimitedUsersUnlessAnnualAdhesion(masterId: string): Promise<boolean>;
   findExpiredMemberProAssignments(now: Date): Promise<
     Array<{
       profileId: string;
@@ -66,6 +68,39 @@ export class MemberProBillingRepository implements IMemberProBillingRepository {
       where: { id: masterId },
       select: billingOwnerSelect,
     });
+  }
+
+  async clearUnlimitedUsersUnlessAnnualAdhesion(masterId: string): Promise<boolean> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: masterId },
+      select: { hasPermanentSubscription: true },
+    });
+
+    if (profile?.hasPermanentSubscription) {
+      return false;
+    }
+
+    const annualAdhesionCount = await prisma.backofficeAdhesion.count({
+      where: {
+        createdProfileId: masterId,
+        status: "paid",
+        cycle: "annual",
+      },
+    });
+
+    if (annualAdhesionCount > 0) {
+      await prisma.profile.update({
+        where: { id: masterId },
+        data: { hasUnlimitedUsers: true },
+      });
+      return false;
+    }
+
+    await prisma.profile.update({
+      where: { id: masterId },
+      data: { hasUnlimitedUsers: false },
+    });
+    return true;
   }
 
   async findExpiredMemberProAssignments(now: Date) {

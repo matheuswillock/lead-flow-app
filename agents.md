@@ -277,6 +277,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - Commit or push directly to `main` or `develop` branches under any circumstances. All changes **MUST** go through a feature, bugfix, or release branch and be merged via pull request.
 - Create implementation summary docs (`*_IMPLEMENTATION_SUMMARY.md`, `*_FIX_SUMMARY.md`, similar).
 - Use npm or yarn (project standard is Bun).
+- Use the `Bun.*` runtime global in `app/**` or `lib/**` (production runs on Node at Vercel; Bun is only the local script runner). Use portable APIs instead (e.g. `bcryptjs`, `node:crypto`). Enforced by `governance:check`.
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.
 - Create routes/folders/files with ambiguous or generic names that don't describe intent (e.g. `me`, `data`, `misc`, `temp`, `utils2`).
 - Use browser-native dialogs (`window.alert`, `window.confirm`, `window.prompt`, or global equivalents). Use shadcn `AlertDialog`/`Dialog` and `sonner` instead.

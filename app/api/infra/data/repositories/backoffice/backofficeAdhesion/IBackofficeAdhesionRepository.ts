@@ -62,6 +62,7 @@ export interface CreateBackofficeAdhesionInput {
   requestedMemberProAccessExpiresAt?: Date | null
   sponsorMasterId?: string | null
   multiskillEnabled?: boolean
+  hasUnlimitedUsers?: boolean
   additionalUsersData?: unknown[]
   additionalTeamsData?: unknown[]
 }
@@ -89,6 +90,7 @@ export interface UpdateBackofficeAdhesionInput {
   tokenPreview?: string
   tokenPlain?: string | null
   expiresAt?: Date
+  hasUnlimitedUsers?: boolean
 }
 
 export interface UpdateBackofficeAdhesionCheckoutInput {
@@ -142,6 +144,7 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   city?: string | null
   state?: string | null
   hasPermanentSubscription?: boolean
+  hasUnlimitedUsers?: boolean
   multiskillEnabled?: boolean
   sponsorMasterId?: string | null
 }

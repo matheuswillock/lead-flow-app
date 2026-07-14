@@ -74,14 +74,9 @@ export default function BoardHeader({
   } = useBoardContext();
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const { activeTeamId, activeRole } = useTeamContext();
   const { user } = useUser();
   const isManager = isManagerLikeRole(activeRole ?? undefined);
-  const canAddLead =
-    !activeFunctions.includes("CLOSER") ||
-    isTeamMaster ||
-    activeRole === "manager" ||
-    activeRole === "backoffice";
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
 
@@ -224,12 +219,10 @@ export default function BoardHeader({
         </div>
         <div className="flex items-center gap-2">
           {viewModeToggle}
-          {canAddLead && (
-            <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
-              <Plus className="mr-2 size-4" />
-              Adicionar novo lead
-            </Button>
-          )}
+          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
+            <Plus className="mr-2 size-4" />
+            Adicionar novo lead
+          </Button>
           <LeadImportButton onImportComplete={refreshLeads} />
           <Sheet>
             <TooltipProvider delayDuration={0}>

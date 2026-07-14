@@ -16,11 +16,13 @@ import { useTeamContext } from "./TeamContext"
 export interface OperationalAccessData {
   associadosQueue: boolean
   multiskillTransferOrigin: boolean
+  multiskillExternalTransfer: boolean
 }
 
 const DEFAULT_ACCESS: OperationalAccessData = {
   associadosQueue: false,
   multiskillTransferOrigin: false,
+  multiskillExternalTransfer: false,
 }
 
 interface OperationalAccessContextValue {
@@ -54,6 +56,7 @@ export function OperationalAccessProvider({
       ? {
           associadosQueue: initialAccess.associadosQueue,
           multiskillTransferOrigin: initialAccess.multiskillTransferOrigin,
+          multiskillExternalTransfer: initialAccess.multiskillExternalTransfer ?? false,
         }
       : DEFAULT_ACCESS
   )

@@ -204,17 +204,35 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
-    async existingByEmailOrPhone(email: string, phone: string): Promise<boolean> {
+    async existingByEmailOrPhone(
+        email: string,
+        phone: string,
+        excludeProfileId?: string
+    ): Promise<boolean> {
         try {
+            const orFilters: Array<{ email?: string; phone?: string }> = [];
+            if (email.trim()) {
+                orFilters.push({ email: email.trim() });
+            }
+            if (phone.trim()) {
+                orFilters.push({ phone: phone.trim() });
+            }
+            if (orFilters.length === 0) {
+                return false;
+            }
+
             const profile = await prisma.profile.findFirst({
-                where: { OR: [{ email }, { phone }] },
+                where: {
+                    OR: orFilters,
+                    ...(excludeProfileId ? { NOT: { id: excludeProfileId } } : {}),
+                },
+                select: { id: true },
             });
             return !!profile;
         } catch (error) {
             console.error("Error checking existing profile:", error);
             return false;
         }
-
     }
 
     async findByEmail(email: string): Promise<Profile | null> {

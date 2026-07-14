@@ -25,7 +25,6 @@ import {
   DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY,
 } from "../context/PipelineContext";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
-import { useTeamContext } from "@/app/context/TeamContext";
 
 const PIPELINE_TABLE_COLUMN_OPTIONS = [
   { key: "name", label: "Nome" },
@@ -124,13 +123,6 @@ export function PipelineContainer({
     setTableColumnOrder,
   } = usePipelineContext();
 
-  const { activeFunctions, activeRole, isTeamMaster } = useTeamContext();
-  const canAddLead =
-    !activeFunctions.includes("CLOSER") ||
-    isTeamMaster ||
-    activeRole === "manager" ||
-    activeRole === "backoffice";
-
   const sensors = useSensors(useSensor(PointerSensor));
 
   const orderedColumnOptions = (() => {
@@ -190,12 +182,10 @@ export function PipelineContainer({
         </div>
         <div className="flex items-center gap-2">
           {viewModeToggle}
-          {canAddLead && (
-            <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
-              <Plus className="mr-2 size-4" />
-              Adicionar novo lead
-            </Button>
-          )}
+          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
+            <Plus className="mr-2 size-4" />
+            Adicionar novo lead
+          </Button>
           <Sheet>
             <TooltipProvider delayDuration={0}>
               <Tooltip>

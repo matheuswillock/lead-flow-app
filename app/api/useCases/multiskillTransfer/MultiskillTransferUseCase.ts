@@ -10,6 +10,10 @@ import { multiskillTransferService } from "@/app/api/services/multiskillTransfer
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import type { TransferMultiskillLeadRequest } from "@/app/api/v1/leads/DTO/requestToTransferMultiskillLead";
 import { Output } from "@/lib/output";
+import {
+  isMultiskillOriginMaster,
+  resolveMultiskillOriginMasterId,
+} from "@/lib/multiskill/is-multiskill-origin-master";
 import type { IMultiskillTransferUseCase } from "./IMultiskillTransferUseCase";
 
 export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
@@ -19,6 +23,10 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
   ) {}
 
   private async assertMultiskillCaller(ctx: TeamAccess): Promise<{ originMasterId: string }> {
+    const originMasterId = await resolveMultiskillOriginMasterId();
+    if (!isMultiskillOriginMaster(ctx, originMasterId)) {
+      throw new Error("Acesso negado: conta não autorizada para transferência externa MultiSkill");
+    }
     await backofficeOperationalAccessService.assertMultiskillOriginTeam(ctx.teamId);
     return { originMasterId: ctx.managerId };
   }

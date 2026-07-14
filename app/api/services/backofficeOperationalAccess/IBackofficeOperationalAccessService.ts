@@ -16,6 +16,7 @@ export interface IBackofficeOperationalAccessService {
   resolveOperationalAccess(profileId: string, teamId: string | null): Promise<{
     associadosQueue: boolean;
     multiskillTransferOrigin: boolean;
+    multiskillExternalTransfer: boolean;
   }>;
   assertAssociadosQueueAccess(profileId: string): Promise<void>;
   assertMultiskillOriginTeam(teamId: string): Promise<void>;

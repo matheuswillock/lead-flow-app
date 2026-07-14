@@ -182,6 +182,7 @@ export interface IBackofficeBotRepository {
     type: string
   ): Promise<BackofficeBotNotificationPreference | null>;
   resolvePushPhoneForProfile(profileId: string): Promise<string | null>;
+  resolveProfilePhone(profileId: string): Promise<string | null>;
   findLastInboundAtByPhone(normalizedPhone: string): Promise<Date | null>;
   upsertNotificationPreference(
     profileId: string,

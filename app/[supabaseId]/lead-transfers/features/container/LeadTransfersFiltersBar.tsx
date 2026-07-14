@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
@@ -35,10 +36,13 @@ function toDateRange(from: string, to: string): DateRange | undefined {
   };
 }
 
+const MULTISKILL_FILTER_OPTIONS = [{ value: "multiskill", label: "MultiSkill" }];
+
 export function LeadTransfersFiltersBar() {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
+  const { access: operationalAccess } = useOperationalAccess();
   const { data, filters, setFilter, setDateRange, clearFilters } = useLeadTransfersContext();
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
@@ -95,6 +99,7 @@ export function LeadTransfersFiltersBar() {
   );
 
   const isFiltered = isLeadTransfersFiltersChanged(filters);
+  const showMultiskillFilter = operationalAccess.multiskillExternalTransfer;
 
   return (
     <LeadsFiltersLayout>
@@ -111,6 +116,15 @@ export function LeadTransfersFiltersBar() {
         selectedValues={filters.transferStatuses}
         onChange={(values) => setFilter("transferStatuses", values as typeof filters.transferStatuses)}
       />
+
+      {showMultiskillFilter ? (
+        <LeadsMultiFilter
+          title="MultiSkill"
+          options={MULTISKILL_FILTER_OPTIONS}
+          selectedValues={filters.multiskillOnly ? ["multiskill"] : []}
+          onChange={(values) => setFilter("multiskillOnly", values.includes("multiskill"))}
+        />
+      ) : null}
 
       {sdrOptions.length > 0 && (
         <LeadsMultiFilter

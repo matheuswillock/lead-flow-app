@@ -35,6 +35,7 @@ async function findActionByCheckoutId(checkoutId: string) {
           subscriptionNextDueDate: true,
           subscriptionCycle: true,
           hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
           timezone: true,
         },
       },
@@ -65,6 +66,7 @@ async function findActionById(id: string) {
           subscriptionNextDueDate: true,
           subscriptionCycle: true,
           hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
           timezone: true,
         },
       },
@@ -102,6 +104,7 @@ const toBillingOwnerProfile = (action: ResolvedPendingAction): BillingOwnerProfi
   subscriptionNextDueDate: action.master.subscriptionNextDueDate,
   subscriptionCycle: action.master.subscriptionCycle,
   hasPermanentSubscription: action.master.hasPermanentSubscription,
+  hasUnlimitedUsers: action.master.hasUnlimitedUsers,
   timezone: action.master.timezone,
 });
 
@@ -138,6 +141,7 @@ export class PendingActionUseCase {
             subscriptionNextDueDate: true,
             subscriptionCycle: true,
             hasPermanentSubscription: true,
+            hasUnlimitedUsers: true,
             timezone: true,
           },
         },

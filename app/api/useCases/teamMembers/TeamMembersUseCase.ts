@@ -7,6 +7,10 @@ import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBil
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import type { ITeamMembersRepository, TeamMembersListItem, TeamMembersTeam, TeamMembersProfileOption } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
+import { multiskillTransferService } from "@/app/api/services/multiskillTransfer/MultiskillTransferService";
+import { canListExternalMultiskillTargets } from "@/lib/multiskill/is-multiskill-origin-master";
+import { buildTransferTargetItems } from "@/lib/multiskill/build-transfer-target-items";
 
 type ListMembersFunction = Extract<UserFunction, "SDR" | "CLOSER">;
 
@@ -217,6 +221,62 @@ export class TeamMembersUseCase {
         error
       );
       return new Output(false, [], ["Erro interno ao listar membros do time destino"], null);
+    }
+  }
+
+  async listTransferTargetsWithCtx(
+    access: TeamAccess,
+    teamId: string,
+    input: { query?: string; page: number; pageSize: number }
+  ): Promise<Output> {
+    try {
+      if (teamId !== access.teamId) {
+        return new Output(false, [], ["Time de origem inválido para listar destinos"], null);
+      }
+
+      if (!access.isMaster && !access.canTransferAccountLeads) {
+        return new Output(
+          false,
+          [],
+          ["Acesso negado: delegação de transferência de leads é obrigatória."],
+          null
+        );
+      }
+
+      const page = Math.max(input.page, 1);
+      const pageSize = Math.min(100, Math.max(input.pageSize, 1));
+      const query = input.query?.trim() || undefined;
+
+      const canExternal = await canListExternalMultiskillTargets(
+        access,
+        teamId,
+        (id) => backofficeOperationalAccessService.hasMultiskillOriginTeam(id)
+      );
+
+      const [internalTargets, externalTargetsResult] = await Promise.all([
+        this.repository.findInternalTransferTargetsWithSearch(teamId, query),
+        canExternal
+          ? multiskillTransferService.listTransferTargets({
+              originMasterId: access.managerId,
+              query,
+              page: 1,
+              pageSize: 100,
+            })
+          : Promise.resolve(null),
+      ]);
+
+      const result = buildTransferTargetItems({
+        internalTargets,
+        externalTargets: externalTargetsResult?.items ?? null,
+        canExternalMultiskill: canExternal,
+        page,
+        pageSize,
+      });
+
+      return new Output(true, [], [], result);
+    } catch (error) {
+      console.error("[TeamMembersUseCase][listTransferTargetsWithCtx] Erro ao listar destinos:", error);
+      return new Output(false, [], ["Erro interno ao listar destinos de transferência"], null);
     }
   }
 

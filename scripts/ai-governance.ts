@@ -1121,6 +1121,50 @@ async function validateBrowserNativeDialogs(issues: string[]): Promise<void> {
   }
 }
 
+const BUN_GLOBAL_SCAN_DIRECTORIES = ["app", "lib"];
+const BUN_GLOBAL_REGEX = /(?<![\w.$])Bun\s*\./;
+
+async function validateBunGlobalUsage(issues: string[]): Promise<void> {
+  for (const rootDirectory of BUN_GLOBAL_SCAN_DIRECTORIES) {
+    const absoluteRoot = path.join(ROOT, rootDirectory);
+    const files = await collectFilesRecursively(
+      absoluteRoot,
+      (filename, absolutePath) => {
+        const extension = path.extname(absolutePath).toLowerCase();
+        if (extension !== ".ts" && extension !== ".tsx") {
+          return false;
+        }
+        return !filename.endsWith(".test.ts") && !filename.endsWith(".test.tsx");
+      },
+    );
+
+    for (const sourceFile of files) {
+      const relative = normalizeRelativePath(sourceFile);
+      const content = await fs.readFile(sourceFile, "utf8");
+      const lines = content.split(/\r?\n/);
+
+      for (let index = 0; index < lines.length; index++) {
+        const trimmed = lines[index].trim();
+        if (
+          trimmed.startsWith("//") ||
+          trimmed.startsWith("*") ||
+          trimmed.startsWith("/*")
+        ) {
+          continue;
+        }
+
+        if (BUN_GLOBAL_REGEX.test(lines[index])) {
+          issues.push(
+            `Uso proibido do global Bun em código de runtime: ${relative}:${
+              index + 1
+            }. Produção roda em Node (Vercel) — use APIs portáveis (ex.: bcryptjs, node:crypto).`,
+          );
+        }
+      }
+    }
+  }
+}
+
 function formatLegacyWarning(
   category: string,
   entries: string[],
@@ -1244,6 +1288,7 @@ async function checkGovernance(
   await validateFrontendFeatureStructure(config, issues, warnings);
   await validateNonTypeScriptFiles(config, issues, warnings);
   await validateBrowserNativeDialogs(issues);
+  await validateBunGlobalUsage(issues);
 
   if (warnings.length > 0) {
     console.warn("\n[governance:check] WARNINGS");

@@ -203,5 +203,9 @@ export interface IBackofficeAllUsersRepository {
 
   setHasPermanentSubscription(profileId: string, value: boolean): Promise<void>
 
+  setHasUnlimitedUsers(profileId: string, value: boolean): Promise<void>
+
+  clearHasUnlimitedUsersUnlessAnnualAdhesion(profileId: string): Promise<boolean>
+
   hasOpenProposalReviewsForAssociate(profileId: string): Promise<boolean>
 }

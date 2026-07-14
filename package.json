@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.145.0",
+  "version": "0.147.1",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -44,7 +44,7 @@
     "lint:check": "prettier --check .",
     "lint:fix": "prettier --write .",
     "lint:pt-br": "bun scripts/lint-pt-br.ts",
-    "test": "bun test app/api/useCases/leads/utils lib/email lib/cdp lib/web-push lib/proxy",
+    "test": "bun test app/api/useCases/leads/utils lib/email lib/cdp lib/web-push lib/proxy lib/studio-bot",
     "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts",
     "test:integration": "CDP_INTEGRATION_TEST=1 bun test lib/cdp/customer-data-platform.integration.test.ts",
     "format": "prettier --write .",
@@ -118,6 +118,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@types/web-push": "^3.6.4",
     "@vercel/analytics": "^1.6.1",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

@@ -92,6 +92,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           requestedMemberProAccessExpiresAt: data.requestedMemberProAccessExpiresAt ?? null,
           sponsorMasterId: data.sponsorMasterId ?? null,
           multiskillEnabled: data.multiskillEnabled ?? false,
+          hasUnlimitedUsers: data.hasUnlimitedUsers ?? false,
           additionalUsersData: (data.additionalUsersData ?? []) as Prisma.InputJsonValue,
           additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
         },
@@ -209,6 +210,9 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           : {}),
         ...(data.billingType !== undefined ? { billingType: data.billingType } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.hasUnlimitedUsers !== undefined
+          ? { hasUnlimitedUsers: data.hasUnlimitedUsers }
+          : {}),
         ...(data.tokenHash !== undefined ? { tokenHash: data.tokenHash } : {}),
         ...(data.tokenPreview !== undefined ? { tokenPreview: data.tokenPreview } : {}),
         ...(data.tokenPlain !== undefined ? ({ tokenPlain: data.tokenPlain } as object) : {}),
@@ -314,6 +318,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       city: data.city ?? undefined,
       state: data.state ?? undefined,
       hasPermanentSubscription: data.hasPermanentSubscription ?? false,
+      hasUnlimitedUsers: data.hasUnlimitedUsers ?? false,
       multiskillEnabled: data.multiskillEnabled ?? false,
       sponsorMasterId: data.sponsorMasterId ?? undefined,
     }

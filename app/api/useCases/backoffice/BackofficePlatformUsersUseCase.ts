@@ -35,7 +35,7 @@ function buildMasterNotificationEmail(params: {
     <!DOCTYPE html>
     <html lang="pt-BR">
       <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
         <table role="presentation" style="width:100%;border-collapse:collapse;">
           <tr>
             <td align="center" style="padding:24px;">
@@ -73,7 +73,7 @@ function buildAddedToTeamEmail(params: { userName: string; loginUrl: string }): 
     <!DOCTYPE html>
     <html lang="pt-BR">
       <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
         <table role="presentation" style="width:100%;border-collapse:collapse;">
           <tr>
             <td align="center" style="padding:24px;">
@@ -446,6 +446,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           status: master.subscriptionStatus,
         },
         userType: master.userType,
+        hasUnlimitedUsers: master.hasUnlimitedUsers || master.hasPermanentSubscription,
         multiskillEnabled: master.multiskillEnabled,
         isBanned: Boolean(activeBan),
         allTeams: master.allTeams,
@@ -741,7 +742,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           </head>
-          <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+          <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
             <table role="presentation" style="width:100%;border-collapse:collapse;">
               <tr>
                 <td align="center" style="padding:24px;">
@@ -834,6 +835,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      hasUnlimitedUsers?: boolean
       multiskillEnabled?: boolean
     }
   ): Promise<Output> {
@@ -850,9 +852,40 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         data = { ...data, state: data.state.toUpperCase().slice(0, 2) }
       }
 
+      const shouldSyncUnlimited =
+        data.hasUnlimitedUsers !== undefined || data.hasPermanentSubscription !== undefined
+      const previous = shouldSyncUnlimited
+        ? await this.platformUsersRepository.findMasterUserDetailsById(masterProfileId, {
+            page: 1,
+            pageSize: 5,
+          })
+        : null
+
       const updated = await this.platformUsersRepository.updateMasterUserProfile(masterProfileId, data)
       if (!updated) {
         return new Output(false, [], ["Usuário master não encontrado ou não foi possível atualizar"], null)
+      }
+
+      const nextUnlimited =
+        data.hasUnlimitedUsers !== undefined
+          ? data.hasUnlimitedUsers
+          : data.hasPermanentSubscription === true
+            ? true
+            : previous?.hasUnlimitedUsers
+      const previousUnlimited =
+        previous !== null
+          ? previous.hasUnlimitedUsers || previous.hasPermanentSubscription
+          : null
+
+      if (
+        previousUnlimited !== null &&
+        nextUnlimited !== undefined &&
+        previousUnlimited !== nextUnlimited
+      ) {
+        await memberProBillingUseCase.syncBillingAfterUsageChange(
+          masterProfileId,
+          "has_unlimited_users_toggle"
+        )
       }
 
       return new Output(true, ["Dados atualizados com sucesso"], [], { id: updated.id })

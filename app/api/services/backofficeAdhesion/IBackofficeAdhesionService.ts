@@ -33,6 +33,7 @@ export interface BackofficeAdhesionCreateInput {
   accessExpiresAt?: string | null
   sponsorMasterId?: string | null
   multiskillEnabled?: boolean
+  hasUnlimitedUsers?: boolean
   additionalUsers?: BackofficeAdhesionAdditionalUser[]
   additionalTeams?: BackofficeAdhesionAdditionalTeam[]
 }
@@ -50,6 +51,7 @@ export interface BackofficeAdhesionUpdateInput {
   activationMode?: "checkout" | "external_paid"
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
+  hasUnlimitedUsers?: boolean
 }
 
 export interface BackofficeAdhesionCheckoutInput {
@@ -102,6 +104,8 @@ export interface BackofficeAdhesionDTO {
   billingType: string | null
   asaasPaymentId: string | null
   productId: string | null
+  hasUnlimitedUsers?: boolean
+  multiskillEnabled?: boolean
 }
 
 export interface BackofficeAdhesionPublicDTO {
