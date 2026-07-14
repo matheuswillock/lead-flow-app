@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
+import { auditLogService } from "@/app/api/services/audit/AuditLogService";
 
 /**
  * UseCase para atualizar flag de assinatura permanente
@@ -81,6 +82,19 @@ export class UpdatePermanentSubscriptionUseCase {
           hasPermanentSubscription,
           ...(hasPermanentSubscription ? { hasUnlimitedUsers: true } : {}),
         },
+      });
+
+      await auditLogService.logAudit({
+        entityType: 'PROFILE',
+        entityId: targetProfile.id,
+        action: 'ROLE_CHANGE',
+        actorProfileId: requestingUserId,
+        before: { hasPermanentSubscription: targetProfile.hasPermanentSubscription },
+        after: {
+          hasPermanentSubscription: updatedProfile.hasPermanentSubscription,
+          hasUnlimitedUsers: updatedProfile.hasUnlimitedUsers,
+        },
+        metadata: null,
       });
 
       return new Output(
