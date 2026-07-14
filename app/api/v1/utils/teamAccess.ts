@@ -7,6 +7,7 @@ import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
 import { getAccountAccessStatus } from "@/lib/account/getAccountAccessStatus";
 import { ACCOUNT_MASTER_BANNED_MESSAGE } from "@/lib/account/isAccountMasterBanned";
+import { backofficeTermsAcceptanceRepository } from "@/app/api/infra/data/repositories/backoffice/termsAcceptance/BackofficeTermsAcceptanceRepository";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -161,6 +162,10 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       };
     }
 
+    if (!accountAccess.termsAcceptanceGranted) {
+      return { error: new Output(false, [], ["O aceite dos documentos é obrigatório para acessar esta conta."], null), status: 403 };
+    }
+
     return {
       access: {
         supabaseId,
@@ -203,6 +208,14 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
       status: 403,
     };
+  }
+
+  if (!accountAccess.termsAcceptanceGranted) {
+    return { error: new Output(false, [], ["O aceite dos documentos é obrigatório para acessar esta conta."], null), status: 403 };
+  }
+
+  if (accountMasterId === profile.id) {
+    await backofficeTermsAcceptanceRepository.markFirstPlatformAccess(profile.id);
   }
 
   const resolvedCanViewAllTeams =

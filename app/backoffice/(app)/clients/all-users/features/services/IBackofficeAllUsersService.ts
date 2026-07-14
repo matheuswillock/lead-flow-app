@@ -48,6 +48,9 @@ export interface IBackofficeAllUsersService {
     memberId: string,
     mode: "invite" | "reset_password"
   ): Promise<{ email: string }>
+  resendAcceptance(adhesionId: string): Promise<{ email: string }>
+  getAcceptanceDownload(profileId: string): Promise<{ signedUrl: string; expiresIn: number }>
+  retryAcceptanceProcessing(profileId: string): Promise<{ retried: number }>
 
   updateUserType(profileId: string, data: BackofficeAllUsersUpdateUserTypeInput): Promise<BackofficeAllUsersUserType>
 

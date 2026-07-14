@@ -620,6 +620,31 @@ MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
     
 
 
+        BackofficeLegalDocumentType {
+            terms terms
+privacy privacy
+contract contract
+        }
+    
+
+
+        BackofficeTermsAcceptanceOutboxType {
+            generate_evidence generate_evidence
+send_confirmation_email send_confirmation_email
+send_password_recovery send_password_recovery
+        }
+    
+
+
+        BackofficeTermsAcceptanceOutboxStatus {
+            pending pending
+processing processing
+completed completed
+failed failed
+        }
+    
+
+
         AuditEntityType {
             PROFILE PROFILE
 TEAM TEAM
@@ -1115,12 +1140,100 @@ failed failed
     DateTime canceledAt "❓"
     String createdProfileId "❓"
     String createdSupabaseId "❓"
+    Boolean termsAcceptanceRequired 
+    String acceptanceTokenHash "❓"
+    String acceptanceTokenPreview "❓"
+    DateTime acceptanceTokenIssuedAt "❓"
+    DateTime acceptanceTokenExpiresAt "❓"
+    Int acceptanceTokenAttempts 
+    DateTime firstPlatformAccessAt "❓"
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
     Boolean multiskillEnabled 
     Boolean hasUnlimitedUsers 
     Json additional_users_data 
     Json additional_teams_data 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_legal_documents" {
+    String id "🗝️"
+    BackofficeLegalDocumentType type 
+    String version 
+    String title 
+    Int schemaVersion 
+    Json content 
+    String contentHash 
+    DateTime publishedAt "❓"
+    String createdByBackofficeUserId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_legal_document_sets" {
+    String id "🗝️"
+    String version 
+    Int schemaVersion 
+    Boolean isActive 
+    DateTime publishedAt "❓"
+    String createdByBackofficeUserId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_terms_acceptances" {
+    String id "🗝️"
+    String protocol 
+    String ipAddress "❓"
+    String userAgent 
+    String locale "❓"
+    DateTime acceptedAt 
+    String companyLegalName 
+    String companyTradeName "❓"
+    String companyCnpj 
+    String representativeName 
+    String representativeCpf 
+    String representativeRole 
+    String representativeEmail 
+    String representativeWhatsapp 
+    String pdfStoragePath "❓"
+    String pdfSha256 "❓"
+    String pdfGeneratorVersion "❓"
+    DateTime pdfGeneratedAt "❓"
+    DateTime emailSentAt "❓"
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_terms_acceptance_documents" {
+    String id "🗝️"
+    BackofficeLegalDocumentType documentType 
+    String documentVersion 
+    String documentTitle 
+    Int documentSchemaVersion 
+    Json documentContent 
+    String documentContentHash 
+    DateTime documentPublishedAt 
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_terms_acceptance_outbox" {
+    String id "🗝️"
+    BackofficeTermsAcceptanceOutboxType type 
+    BackofficeTermsAcceptanceOutboxStatus status 
+    String idempotencyKey 
+    Json payload "❓"
+    Int attempts 
+    Int maxAttempts 
+    DateTime nextAttemptAt 
+    DateTime lockedAt "❓"
+    DateTime completedAt "❓"
+    String lastError "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2424,6 +2537,19 @@ failed failed
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
+    "backoffice_legal_documents" |o--|| "BackofficeLegalDocumentType" : "enum:type"
+    "backoffice_legal_document_sets" }o--|| backoffice_legal_documents : "termsDocument"
+    "backoffice_legal_document_sets" }o--|| backoffice_legal_documents : "privacyDocument"
+    "backoffice_legal_document_sets" }o--|| backoffice_legal_documents : "contractDocument"
+    "backoffice_terms_acceptances" |o--|| backoffice_adhesions : "adhesion"
+    "backoffice_terms_acceptances" }o--|o corretor_studio_profiles : "profile"
+    "backoffice_terms_acceptances" }o--|| backoffice_legal_document_sets : "documentSet"
+    "backoffice_terms_acceptance_documents" |o--|| "BackofficeLegalDocumentType" : "enum:documentType"
+    "backoffice_terms_acceptance_documents" }o--|| backoffice_terms_acceptances : "acceptance"
+    "backoffice_terms_acceptance_documents" }o--|| backoffice_legal_documents : "legalDocument"
+    "backoffice_terms_acceptance_outbox" |o--|| "BackofficeTermsAcceptanceOutboxType" : "enum:type"
+    "backoffice_terms_acceptance_outbox" |o--|| "BackofficeTermsAcceptanceOutboxStatus" : "enum:status"
+    "backoffice_terms_acceptance_outbox" }o--|| backoffice_terms_acceptances : "acceptance"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"

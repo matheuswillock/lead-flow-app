@@ -111,6 +111,7 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-email/ui": "^6.0.0",
+    "@react-pdf/renderer": "^4.5.1",
     "@sentry/nextjs": "10",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",

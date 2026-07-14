@@ -69,6 +69,18 @@ export interface BackofficeAllUsersTeamSummary {
 export interface BackofficeAllUsersDetail extends BackofficeAllUsersItem {
   googleEmail: string | null
   teams: BackofficeAllUsersTeamSummary[]
+  activationPipeline: BackofficeActivationPipeline | null
+}
+
+export type BackofficeActivationStepState = "completed" | "current" | "pending" | "blocked"
+export interface BackofficeActivationStep { key: string; label: string; state: BackofficeActivationStepState; occurredAt: string | null }
+export interface BackofficeActivationPipeline {
+  adhesionId: string
+  adhesionStatus: string
+  protocol: string | null
+  evidenceAvailable: boolean
+  hasProcessingFailure: boolean
+  steps: BackofficeActivationStep[]
 }
 
 export interface BackofficeAllUsersScheduleTarget {

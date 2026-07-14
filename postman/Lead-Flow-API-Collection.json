@@ -9472,6 +9472,96 @@
               }
             },
             {
+              "name": "GET Legal Documents",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "x-supabase-user-id", "value": "{{backofficeSupabaseId}}" }],
+                "url": { "raw": "{{baseUrl}}/api/v1/backoffice/legal-documents", "host": ["{{baseUrl}}"], "path": ["api", "v1", "backoffice", "legal-documents"] }
+              }
+            },
+            {
+              "name": "POST Legal Document Draft",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "x-supabase-user-id", "value": "{{backofficeSupabaseId}}" }],
+                "body": { "mode": "raw", "raw": "{\n  \"type\": \"terms\",\n  \"version\": \"1.0\",\n  \"title\": \"Termos de uso\",\n  \"schemaVersion\": 1,\n  \"content\": [{ \"kind\": \"paragraph\", \"text\": \"Conteúdo aprovado pelo jurídico.\" }]\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/backoffice/legal-documents", "host": ["{{baseUrl}}"], "path": ["api", "v1", "backoffice", "legal-documents"] }
+              }
+            },
+            {
+              "name": "POST Publish Legal Document Set",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "x-supabase-user-id", "value": "{{backofficeSupabaseId}}" }],
+                "body": { "mode": "raw", "raw": "{\n  \"version\": \"1.0\",\n  \"termsDocumentId\": \"{{termsDocumentId}}\",\n  \"privacyDocumentId\": \"{{privacyDocumentId}}\",\n  \"contractDocumentId\": \"{{contractDocumentId}}\"\n}" },
+                "url": { "raw": "{{baseUrl}}/api/v1/backoffice/legal-document-sets/publish", "host": ["{{baseUrl}}"], "path": ["api", "v1", "backoffice", "legal-document-sets", "publish"] }
+              }
+            },
+            {
+              "name": "GET Acceptance Evidence Download",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "x-supabase-user-id", "value": "{{backofficeSupabaseId}}" }],
+                "url": { "raw": "{{baseUrl}}/api/v1/backoffice/terms-acceptances/{{profileId}}/download", "host": ["{{baseUrl}}"], "path": ["api", "v1", "backoffice", "terms-acceptances", "{{profileId}}", "download"] }
+              }
+            },
+            {
+              "name": "GET Exchange Acceptance Token",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/acceptance/exchange?token={{acceptanceToken}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", "acceptance", "exchange"],
+                  "query": [{ "key": "token", "value": "{{acceptanceToken}}" }]
+                },
+                "description": "Troca o token da URL por cookie HttpOnly e redireciona para a página limpa."
+              }
+            },
+            {
+              "name": "GET Acceptance Documents",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/acceptance",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", "acceptance"]
+                },
+                "description": "Retorna o conjunto documental usando o cookie criado pelo exchange."
+              }
+            },
+            {
+              "name": "POST Submit Terms Acceptance",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"documentSetId\": \"{{documentSetId}}\",\n  \"displayedDocuments\": [\n    { \"legalDocumentId\": \"{{termsDocumentId}}\", \"contentHash\": \"{{termsHash}}\" },\n    { \"legalDocumentId\": \"{{privacyDocumentId}}\", \"contentHash\": \"{{privacyHash}}\" },\n    { \"legalDocumentId\": \"{{contractDocumentId}}\", \"contentHash\": \"{{contractHash}}\" }\n  ],\n  \"form\": {\n    \"companyLegalName\": \"Empresa Exemplo Ltda\",\n    \"companyTradeName\": \"Empresa Exemplo\",\n    \"companyCnpj\": \"12345678000190\",\n    \"representativeName\": \"Representante Exemplo\",\n    \"representativeCpf\": \"12345678901\",\n    \"representativeRole\": \"Sócio administrador\",\n    \"representativeEmail\": \"representante@example.com\",\n    \"representativeWhatsapp\": \"11999999999\",\n    \"declarationAccepted\": true\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/acceptance",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", "acceptance"]
+                },
+                "description": "Registra um único aceite e enfileira PDF, confirmação e recuperação de senha."
+              }
+            },
+            {
+              "name": "GET Acceptance Outbox Cron",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{cronSecret}}" }],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/acceptance/cron",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", "acceptance", "cron"]
+                }
+              }
+            },
+            {
               "name": "POST Public Adhesion Checkout",
               "request": {
                 "method": "POST",

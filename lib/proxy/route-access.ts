@@ -15,6 +15,7 @@ export const PUBLIC_PAGE_ROUTES = [
   "/recursos",
   "/prime",
   "/checkout-return",
+  "/primeiro-acesso/aceite",
   "/lead-form",
   "/agendamento",
   "/addon-checkout",
