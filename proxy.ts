@@ -9,7 +9,7 @@ import {
   requiresAuth,
   requiresManagerRole,
 } from "@/lib/proxy/route-access"
-import { resolveProfileRoleForProxy } from "@/lib/proxy/resolve-profile-role"
+import { resolveProfileRoleForProxy, resolveTermsAcceptanceForProxy } from "@/lib/proxy/resolve-profile-role"
 import { isBackofficeRole, isManagerLikeRole } from "@/lib/roles"
 import {
   nextWithSession,
@@ -120,6 +120,10 @@ export async function proxy(request: NextRequest) {
     if (requiresAuth(pathname)) {
       if (!user) {
         return redirectWithSession(response, new URL("/sign-in", request.url))
+      }
+
+      if (!(await resolveTermsAcceptanceForProxy(user.id))) {
+        return redirectWithSession(response, new URL("/primeiro-acesso/aceite?erro=aceite-pendente", request.url))
       }
 
       if (isLegacyTenantRoute(pathname)) {

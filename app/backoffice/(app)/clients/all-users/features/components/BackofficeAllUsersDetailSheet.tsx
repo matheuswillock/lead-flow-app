@@ -21,6 +21,7 @@ import { toast } from "sonner"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import { useBackofficeAllUsers } from "../context/BackofficeAllUsersContext"
 import { BanUserDialog } from "./BanUserDialog"
+import { BackofficeActivationPipeline } from "./BackofficeActivationPipeline"
 
 function getInitials(name: string | null, email: string) {
   const source = (name || email).trim()
@@ -71,7 +72,7 @@ export function BackofficeAllUsersDetailSheet() {
     openEmailDispatchesDialog,
     fetchUsers,
   } = useBackofficeAllUsers()
-  const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | null>(null)
+  const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | "acceptance" | "download" | "retry" | null>(null)
   const [banDialogOpen, setBanDialogOpen] = useState(false)
   const [isBanning, setIsBanning] = useState(false)
 
@@ -90,6 +91,46 @@ export function BackofficeAllUsersDetailSheet() {
     } catch (error) {
       console.error("[BackofficeAllUsersDetailSheet][handleSendAccessEmail]", error)
       toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.")
+    } finally {
+      setAccessAction(null)
+    }
+  }
+
+  async function handleResendAcceptance() {
+    if (!selectedDetail?.activationPipeline || accessAction) return
+    setAccessAction("acceptance")
+    try {
+      await service.resendAcceptance(selectedDetail.activationPipeline.adhesionId)
+      toast.success("Link de aceite reenviado")
+    } catch (actionError) {
+      toast.error(actionError instanceof Error ? actionError.message : "Erro ao reenviar o aceite")
+    } finally {
+      setAccessAction(null)
+    }
+  }
+
+  async function handleAcceptanceDownload() {
+    if (!selectedDetail || accessAction) return
+    setAccessAction("download")
+    try {
+      const result = await service.getAcceptanceDownload(selectedDetail.id)
+      window.open(result.signedUrl, "_blank", "noopener,noreferrer")
+    } catch (actionError) {
+      toast.error(actionError instanceof Error ? actionError.message : "Erro ao baixar o comprovante")
+    } finally {
+      setAccessAction(null)
+    }
+  }
+
+  async function handleAcceptanceRetry() {
+    if (!selectedDetail || accessAction) return
+    setAccessAction("retry")
+    try {
+      await service.retryAcceptanceProcessing(selectedDetail.id)
+      toast.success("Reprocessamento agendado")
+      await openUserSheet(selectedDetail.id)
+    } catch (actionError) {
+      toast.error(actionError instanceof Error ? actionError.message : "Erro ao reagendar o processamento")
     } finally {
       setAccessAction(null)
     }
@@ -153,6 +194,19 @@ export function BackofficeAllUsersDetailSheet() {
             </div>
 
             <Separator />
+
+            {selectedDetail.activationPipeline ? (
+              <>
+                <BackofficeActivationPipeline
+                  pipeline={selectedDetail.activationPipeline}
+                  isActing={accessAction !== null}
+                  onResend={() => void handleResendAcceptance()}
+                  onDownload={() => void handleAcceptanceDownload()}
+                  onRetry={() => void handleAcceptanceRetry()}
+                />
+                <Separator />
+              </>
+            ) : null}
 
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

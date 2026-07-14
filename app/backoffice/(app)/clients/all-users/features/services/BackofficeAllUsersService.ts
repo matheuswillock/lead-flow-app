@@ -94,6 +94,18 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     )
   }
 
+  async resendAcceptance(adhesionId: string): Promise<{ email: string }> {
+    return parseOutput(await fetch(`/api/v1/backoffice/adhesions/${adhesionId}/invite`, { method: "POST", cache: "no-store" }), "Erro ao reenviar o link de aceite")
+  }
+
+  async getAcceptanceDownload(profileId: string): Promise<{ signedUrl: string; expiresIn: number }> {
+    return parseOutput(await fetch(`/api/v1/backoffice/terms-acceptances/${profileId}/download`, { cache: "no-store" }), "Comprovante ainda não disponível")
+  }
+
+  async retryAcceptanceProcessing(profileId: string): Promise<{ retried: number }> {
+    return parseOutput(await fetch(`/api/v1/backoffice/terms-acceptances/${profileId}/retry`, { method: "POST", cache: "no-store" }), "Erro ao reagendar o processamento")
+  }
+
   async getSchedules(
     profileId: string,
     params?: {

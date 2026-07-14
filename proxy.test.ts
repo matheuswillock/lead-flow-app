@@ -43,6 +43,7 @@ function makeSession(user: ReturnType<typeof makeUser> | null) {
 describe("proxy", () => {
   let updateSessionSpy: ReturnType<typeof spyOn>
   let resolveProfileRoleSpy: ReturnType<typeof spyOn>
+  let resolveTermsAcceptanceSpy: ReturnType<typeof spyOn>
   let captureExceptionSpy: ReturnType<typeof spyOn>
   let validateAdhesionTokenSpy: ReturnType<typeof spyOn>
   let nextWithSessionSpy: ReturnType<typeof spyOn>
@@ -50,6 +51,7 @@ describe("proxy", () => {
   beforeEach(() => {
     updateSessionSpy = spyOn(authSessions, "updateSession")
     resolveProfileRoleSpy = spyOn(profileRole, "resolveProfileRoleForProxy")
+    resolveTermsAcceptanceSpy = spyOn(profileRole, "resolveTermsAcceptanceForProxy")
     captureExceptionSpy = spyOn(Sentry, "captureException").mockImplementation(() => "")
     validateAdhesionTokenSpy = spyOn(
       adhesionModule,
@@ -61,6 +63,7 @@ describe("proxy", () => {
 
     updateSessionSpy.mockResolvedValue(makeSession(null))
     resolveProfileRoleSpy.mockResolvedValue(null)
+    resolveTermsAcceptanceSpy.mockResolvedValue(true)
     validateAdhesionTokenSpy.mockResolvedValue({
       status: "valid",
       adhesionId: null,
@@ -72,6 +75,7 @@ describe("proxy", () => {
   afterEach(() => {
     updateSessionSpy.mockRestore()
     resolveProfileRoleSpy.mockRestore()
+    resolveTermsAcceptanceSpy.mockRestore()
     captureExceptionSpy.mockRestore()
     validateAdhesionTokenSpy.mockRestore()
     nextWithSessionSpy.mockRestore()
@@ -117,6 +121,16 @@ describe("proxy", () => {
 
     expect(response.status).toBe(307)
     expect(response.headers.get("location")).toBe(`${BASE_URL}/sign-in`)
+  })
+
+  it("redirects authenticated users with pending acceptance", async () => {
+    updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+    resolveTermsAcceptanceSpy.mockResolvedValue(false)
+
+    const response = await proxy(makeRequest(`/${USER_A}/crm`))
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get("location")).toBe(`${BASE_URL}/primeiro-acesso/aceite?erro=aceite-pendente`)
   })
 
   it("redirects tenant mismatch to the authenticated user tenant", async () => {

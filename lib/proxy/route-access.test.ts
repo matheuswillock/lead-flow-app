@@ -54,6 +54,10 @@ describe("isPublicPageRoute", () => {
     expect(isPublicPageRoute("/lead-form/some-id")).toBe(true)
   })
 
+  it("allows the public document acceptance page", () => {
+    expect(isPublicPageRoute("/primeiro-acesso/aceite")).toBe(true)
+  })
+
   it("does not treat sign-in as a generic public page", () => {
     expect(isPublicPageRoute("/sign-in")).toBe(false)
   })

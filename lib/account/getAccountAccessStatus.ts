@@ -4,10 +4,12 @@ import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache/cacheTags";
 import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned";
+import { backofficeTermsAcceptanceRepository } from "@/app/api/infra/data/repositories/backoffice/termsAcceptance/BackofficeTermsAcceptanceRepository";
 
 export type AccountAccessStatus = {
   subscriptionActive: boolean;
   banned: boolean;
+  termsAcceptanceGranted: boolean;
 };
 
 /**
@@ -23,10 +25,15 @@ export async function getAccountAccessStatus(
   cacheTag(cacheTags.accountAccessStatus(accountMasterId));
   cacheLife({ revalidate: 45 });
 
-  const [subscriptionActive, banned] = await Promise.all([
+  const [subscriptionActive, banned, adhesion] = await Promise.all([
     isAccountSubscriptionActive(accountMasterId),
     isAccountMasterBanned(accountMasterId),
+    backofficeTermsAcceptanceRepository.findAccessGate(accountMasterId),
   ]);
 
-  return { subscriptionActive, banned };
+  return {
+    subscriptionActive,
+    banned,
+    termsAcceptanceGranted: !adhesion?.termsAcceptanceRequired || Boolean(adhesion.termsAcceptance),
+  };
 }

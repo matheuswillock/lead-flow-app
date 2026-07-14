@@ -6,6 +6,7 @@ import {
 import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
 import { backofficeBannedUsersRepository } from "@/app/api/infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
 import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
+import { backofficeTermsAcceptanceRepository } from "@/app/api/infra/data/repositories/backoffice/termsAcceptance/BackofficeTermsAcceptanceRepository"
 import type {
   BackofficeAllUsersFiltersInput,
   BackofficeAllUsersListRecord,
@@ -222,7 +223,31 @@ export class BackofficeAllUsersUseCase {
         },
       ])
 
-      const activeBan = await backofficeBannedUsersRepository.findActiveByProfileId(profileId)
+      const [activeBan, adhesion] = await Promise.all([
+        backofficeBannedUsersRepository.findActiveByProfileId(profileId),
+        backofficeTermsAcceptanceRepository.findActivationPipeline(profileId),
+      ])
+
+      const terminalAdhesion = adhesion && ["overdue", "expired", "canceled"].includes(adhesion.status)
+      const activationDates = adhesion
+        ? [adhesion.createdAt, adhesion.paidAt, adhesion.termsAcceptance?.acceptedAt ?? null, adhesion.firstPlatformAccessAt]
+        : []
+      const activationLabels = ["Nova adesão", "Pago", "Aceite", "Primeiro acesso"] as const
+      const activationPipeline = adhesion
+        ? {
+            adhesionId: adhesion.id,
+            adhesionStatus: adhesion.status,
+            protocol: adhesion.termsAcceptance?.protocol ?? null,
+            evidenceAvailable: Boolean(adhesion.termsAcceptance?.pdfStoragePath),
+            hasProcessingFailure: Boolean(adhesion.termsAcceptance?.outbox.some((item) => item.status === "failed")),
+            steps: activationLabels.map((label, index) => {
+              const date = activationDates[index]
+              const previousComplete = activationDates.slice(0, index).every(Boolean)
+              const state = date ? "completed" : terminalAdhesion ? "blocked" : previousComplete ? "current" : "pending"
+              return { key: ["created", "paid", "accepted", "first_access"][index], label, state, occurredAt: date?.toISOString() ?? null }
+            }),
+          }
+        : null
 
       return new Output(true, [], [], {
         ...serializeListItem(detail, {
@@ -244,6 +269,7 @@ export class BackofficeAllUsersUseCase {
           masterId: team.masterId,
           masterFullName: team.masterFullName,
         })),
+        activationPipeline,
       })
     } catch (error) {
       console.error("[BackofficeAllUsersUseCase][getDetail]", error)

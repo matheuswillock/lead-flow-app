@@ -252,6 +252,13 @@ export interface BackofficeAdhesionCheckoutEmailData {
   expiresAt: Date;
 }
 
+export interface TermsAcceptanceRequestEmailData {
+  userName: string;
+  userEmail: string;
+  acceptanceUrl: string;
+  expiresAt: Date;
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -2206,6 +2213,27 @@ export class EmailService {
       html,
       text: `Olá, ${data.userName}.\n\nSeu link para finalizar a adesão está pronto: ${data.checkoutUrl}\n\nValidade: ${expiresAt}\n`,
       from: "Corretor Studio <no-reply@corretorstudio.com>",
+    })
+  }
+
+  async sendTermsAcceptanceRequestEmail(data: TermsAcceptanceRequestEmailData) {
+    const expiresAt = formatIntimezone(data.expiresAt, "dd/MM/yyyy 'às' HH:mm", DEFAULT_TZ)
+    const html = this.buildCheckoutLinkEmailHtml({
+      title: "Pagamento confirmado. Revise os documentos para liberar seu acesso.",
+      subtitle: "Aceite eletrônico · Corretor Studio",
+      recipientName: data.userName,
+      checkoutUrl: data.acceptanceUrl,
+      expiresAtLabel: "Validade do link",
+      expiresAtValue: expiresAt,
+      details: [{ label: "Próximo passo", value: "Aceitar os documentos" }],
+    })
+    return this.sendEmailUntracked({
+      to: [data.userEmail],
+      subject: "Pagamento confirmado — revise e aceite os documentos",
+      html,
+      text: `Olá, ${data.userName}.\n\nRevise e aceite os documentos para liberar seu primeiro acesso: ${data.acceptanceUrl}\n\nValidade: ${expiresAt}\n`,
+      from: "Corretor Studio <no-reply@corretorstudio.com>",
+      idempotencyKey: `terms-acceptance-request/${data.userEmail}/${data.expiresAt.toISOString()}`,
     })
   }
 

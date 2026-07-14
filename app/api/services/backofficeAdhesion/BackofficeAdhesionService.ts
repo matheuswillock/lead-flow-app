@@ -33,6 +33,8 @@ import type { IBackofficeSponsorAuthorizationRepository } from "@/app/api/infra/
 import { BackofficeSponsorAuthorizationRepository } from "@/app/api/infra/data/repositories/backofficeSponsorAuthorization/BackofficeSponsorAuthorizationRepository"
 import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import { backofficeTermsAcceptanceRepository } from "@/app/api/infra/data/repositories/backoffice/termsAcceptance/BackofficeTermsAcceptanceRepository"
+import { acceptanceTokenExpiry, acceptanceTokenPreview, generateAcceptanceToken, hashAcceptanceToken } from "@/lib/legal-documents/acceptance-token"
 import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
@@ -741,6 +743,19 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return { email: existing.email }
     }
 
+    const acceptance = await backofficeTermsAcceptanceRepository.findAcceptanceByAdhesion(existing.id)
+    if (existing.termsAcceptanceRequired && !acceptance) {
+      const link = await this.createAcceptanceToken(existing.id)
+      const emailService = createEmailService()
+      await emailService.sendTermsAcceptanceRequestEmail({
+        userName: existing.fullName,
+        userEmail: existing.email,
+        acceptanceUrl: getFullUrl(`/primeiro-acesso/aceite?token=${encodeURIComponent(link.token)}`),
+        expiresAt: link.expiresAt,
+      })
+      return { email: existing.email }
+    }
+
     await this.sendSetPasswordEmail(existing, "recovery")
     return { email: existing.email }
   }
@@ -1426,15 +1441,26 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionNextDueDate: subscriptionEndDate,
       })
 
+      const acceptanceLink = await this.createAcceptanceToken(adhesion.id)
+      const sendAcceptanceEmail = async () => {
+        const emailService = createEmailService()
+        await emailService.sendTermsAcceptanceRequestEmail({
+          userName: adhesion.fullName,
+          userEmail: adhesion.email!,
+          acceptanceUrl: getFullUrl(`/primeiro-acesso/aceite?token=${encodeURIComponent(acceptanceLink.token)}`),
+          expiresAt: acceptanceLink.expiresAt,
+        })
+      }
+
       if (options?.deferEmailDelivery) {
-        void this.sendSetPasswordEmail(adhesion, "invite", linkData).catch((emailError) => {
+        void sendAcceptanceEmail().catch((emailError) => {
           console.error(
-            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][deferred-email]",
+            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][deferred-acceptance-email]",
             { adhesionId: adhesion.id, error: emailError }
           )
         })
       } else {
-        await this.sendSetPasswordEmail(adhesion, "invite", linkData)
+        await sendAcceptanceEmail()
       }
     } catch (accountError) {
       await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
@@ -1582,6 +1608,18 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       endDate,
       adhesionId: adhesion.id,
     })
+  }
+
+  private async createAcceptanceToken(adhesionId: string): Promise<{ token: string; expiresAt: Date }> {
+    const token = generateAcceptanceToken()
+    const expiresAt = acceptanceTokenExpiry()
+    await backofficeTermsAcceptanceRepository.issueToken(adhesionId, {
+      hash: hashAcceptanceToken(token),
+      preview: acceptanceTokenPreview(token),
+      issuedAt: new Date(),
+      expiresAt,
+    })
+    return { token, expiresAt }
   }
 
   private async sendSetPasswordEmail(
