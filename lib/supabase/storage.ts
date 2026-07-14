@@ -55,8 +55,9 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
       "image/gif",
       // Outros
       "text/plain",
+      "text/csv",
     ],
-    description: "Anexos de leads (PDFs, DOCs, imagens)",
+    description: "Anexos de leads (PDFs, DOCs, CSV, imagens)",
   },
   [STORAGE_BUCKETS.PROFILE_ICONS]: {
     maxFileSize: 5 * 1024 * 1024, // 5MB
