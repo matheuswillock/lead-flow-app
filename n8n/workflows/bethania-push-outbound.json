@@ -14,10 +14,7 @@
       "name": "Outbound Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ],
+      "position": [0, 0],
       "webhookId": "bethania-outbound"
     },
     {
@@ -28,10 +25,7 @@
       "name": "Route Outbound Event",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        280,
-        0
-      ]
+      "position": [280, 0]
     },
     {
       "parameters": {
@@ -60,10 +54,7 @@
       "name": "Needs Evolution Call",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        520,
-        0
-      ]
+      "position": [520, 0]
     },
     {
       "parameters": {
@@ -91,45 +82,30 @@
       "name": "Evolution API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        760,
-        -80
-      ]
+      "position": [760, -80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    ok: true,\n    action: item.action ?? 'noop',\n    eventType: item.eventType ?? null,\n  },\n}];"
+      },
+      "id": "f1b2c3d4-0001-4000-8000-000000000005",
+      "name": "Ack Without Evolution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 80]
     }
   ],
   "connections": {
     "Outbound Webhook": {
-      "main": [
-        [
-          {
-            "node": "Route Outbound Event",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Route Outbound Event", "type": "main", "index": 0 }]]
     },
     "Route Outbound Event": {
-      "main": [
-        [
-          {
-            "node": "Needs Evolution Call",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Needs Evolution Call", "type": "main", "index": 0 }]]
     },
     "Needs Evolution Call": {
       "main": [
-        [
-          {
-            "node": "Evolution API",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
+        [{ "node": "Evolution API", "type": "main", "index": 0 }],
+        [{ "node": "Ack Without Evolution", "type": "main", "index": 0 }]
       ]
     }
   },
@@ -137,9 +113,5 @@
     "executionOrder": "v1",
     "errorWorkflow": "a1b2c3d4-err0-4000-8000-0000000000ef"
   },
-  "tags": [
-    {
-      "name": "bethania"
-    }
-  ]
+  "tags": [{ "name": "bethania" }]
 }

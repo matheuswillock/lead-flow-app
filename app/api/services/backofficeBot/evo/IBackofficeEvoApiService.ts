@@ -26,4 +26,8 @@ export interface IBackofficeEvoApiService {
     number: string;
     text: string;
   }): Promise<void>;
+  getBase64FromMediaMessage(params: {
+    instanceName: string;
+    messageKey: Record<string, unknown>;
+  }): Promise<{ base64: string; mimeType: string } | null>;
 }

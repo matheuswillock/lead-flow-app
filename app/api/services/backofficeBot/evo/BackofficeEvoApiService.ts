@@ -395,6 +395,37 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
       "sendTextMessage"
     );
   }
+
+  async getBase64FromMediaMessage(params: {
+    instanceName: string;
+    messageKey: Record<string, unknown>;
+  }): Promise<{ base64: string; mimeType: string } | null> {
+    const url = `${getBaseUrl()}/chat/getBase64FromMediaMessage/${encodeURIComponent(params.instanceName)}`;
+
+    try {
+      const data = await fetchEvo<{
+        base64?: string;
+        mimetype?: string;
+      }>(
+        url,
+        {
+          method: "POST",
+          headers: buildHeaders(getApiKey()),
+          body: JSON.stringify({ message: { key: params.messageKey } }),
+        },
+        "getBase64FromMediaMessage"
+      );
+
+      if (!data.base64) return null;
+      return {
+        base64: data.base64,
+        mimeType: data.mimetype ?? "application/octet-stream",
+      };
+    } catch (error) {
+      console.error("[BackofficeEvoApiService][getBase64FromMediaMessage]", error);
+      return null;
+    }
+  }
 }
 
 /** Evolution retorna base64 com ou sem prefixo data-URL. */
