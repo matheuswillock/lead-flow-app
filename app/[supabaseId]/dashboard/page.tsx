@@ -8,6 +8,7 @@ import { DashboardSkeleton } from "./features/container/components/DashboardSkel
 import { SectionCardsWithContext } from "./features/container/section-cards-with-context";
 import { UpcomingMeetings } from "./features/container/upcoming-meetings";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 
 // Carrega o gráfico (recharts, bundle pesado) fora do bundle inicial do dashboard.
 const ChartAreaInteractive = dynamic(
@@ -41,18 +42,18 @@ function DashboardContent() {
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center space-y-4">
-            <div className="text-red-600 text-lg font-medium">
+            <div className="text-destructive text-lg font-medium">
               Erro ao carregar dashboard
             </div>
-            <div className="text-gray-600">
+            <div className="text-muted-foreground">
               {error}
             </div>
-            <button 
+            <Button
+              type="button"
               onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
               Tentar novamente
-            </button>
+            </Button>
           </div>
         </div>
       </div>

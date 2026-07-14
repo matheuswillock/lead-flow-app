@@ -2,6 +2,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type { Prisma, UserRole, UserFunction } from "@prisma/client"
 import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
+import { isActiveMemberProAssignment } from "@/app/api/shared/billing/memberProBillingRules"
 import type {
   IBackofficePlatformUsersRepository,
   MasterPlatformUserBillingRecord,
@@ -594,6 +595,10 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         // Vitalício concede usuários ilimitados.
         if (data.hasPermanentSubscription === true) {
           updateData.hasUnlimitedUsers = true
+        } else if (data.hasUnlimitedUsers === undefined) {
+          // Sem grant explícito nesta requisição: recalcula com base em outras fontes
+          // (adesão anual paga, Member PRO ativo) em vez de manter a flag antiga.
+          updateData.hasUnlimitedUsers = await this.hasOtherUnlimitedUsersGrant(masterProfileId)
         }
       }
       if (data.hasUnlimitedUsers !== undefined) updateData.hasUnlimitedUsers = data.hasUnlimitedUsers
@@ -613,6 +618,57 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     } catch {
       return null
     }
+  }
+
+  private async hasOtherUnlimitedUsersGrant(masterProfileId: string): Promise<boolean> {
+    const [annualAdhesionCount, userTypeAssignment, profileSubscription] = await Promise.all([
+      prisma.backofficeAdhesion.count({
+        where: {
+          createdProfileId: masterProfileId,
+          status: "paid",
+          cycle: "annual",
+        },
+      }),
+      prisma.profileUserTypeAssignment.findUnique({
+        where: { profileId: masterProfileId },
+        select: {
+          accessExpiresAt: true,
+          userType: { select: { slug: true } },
+        },
+      }),
+      prisma.profileSubscription.findUnique({
+        where: { profileId: masterProfileId },
+        select: {
+          subscriptionCycle: true,
+          subscriptionStatus: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
+        },
+      }),
+    ])
+
+    if (annualAdhesionCount > 0) {
+      return true
+    }
+
+    if (isActiveMemberProAssignment(
+      userTypeAssignment
+        ? { slug: userTypeAssignment.userType.slug, accessExpiresAt: userTypeAssignment.accessExpiresAt }
+        : null
+    )) {
+      return true
+    }
+
+    // Mesma regra usada pelo backfill: assinatura anual ativa dentro da janela concede ilimitado.
+    const now = new Date()
+    const isYearlyCycle = profileSubscription?.subscriptionCycle === "YEARLY"
+    const isActiveSubscriptionStatus =
+      !profileSubscription?.subscriptionStatus || profileSubscription.subscriptionStatus === "active"
+    const isWithinSubscriptionWindow =
+      (!profileSubscription?.subscriptionStartDate || profileSubscription.subscriptionStartDate <= now) &&
+      (!profileSubscription?.subscriptionEndDate || profileSubscription.subscriptionEndDate >= now)
+
+    return isYearlyCycle && isActiveSubscriptionStatus && isWithinSubscriptionWindow
   }
 
   async findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null> {

@@ -47,6 +47,7 @@ import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { Textarea } from "@/components/ui/textarea";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -285,6 +286,7 @@ export default function LeadDialog({
   });
   const form = useLeadForm(leadCustomFieldDefinitions);
   const { hasAccess } = useFeatureAccess();
+  const { access: operationalAccess } = useOperationalAccess();
   const canTransferBetweenTeams =
     isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
   const canMergeLead =
@@ -294,7 +296,12 @@ export default function LeadDialog({
     () => (leadDetails?.transferTargets ?? []).map((target) => target.teamId),
     [leadDetails?.transferTargets]
   );
-  const hasTransferTargets = allowedTransferTargetIds.length > 0;
+  // MultiSkill origin teams may have no internal transfer route yet the external
+  // MultiSkill lookup still yields valid targets. multiskillExternalTransfer is a
+  // team-level flag, not a per-user one, so it must still respect transfer delegation.
+  const hasTransferTargets =
+    allowedTransferTargetIds.length > 0 ||
+    (canTransferBetweenTeams && operationalAccess.multiskillExternalTransfer);
   const isCloserOperator =
     activeFunctions.includes("CLOSER") &&
     !isTeamMaster &&
