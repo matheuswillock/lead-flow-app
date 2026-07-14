@@ -1,4 +1,4 @@
-import type { Attachment } from "resend";
+import type { SupportRequestAttachmentInput } from "@/app/api/useCases/support/ISupportRequestUseCase";
 
 export interface SupportRequestData {
   supportId: string;
@@ -6,7 +6,7 @@ export interface SupportRequestData {
   message: string;
   requesterName: string;
   requesterEmail: string;
-  attachments?: Attachment[];
+  attachments?: SupportRequestAttachmentInput[];
 }
 
 export interface ISupportRequestService {

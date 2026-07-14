@@ -46,7 +46,7 @@ function sortConversationsByLastMessage(items: WhatsAppConversation[]): WhatsApp
 
 // Preservam a identidade do array de estado quando um refetch devolve dados
 // equivalentes aos já renderizados: evita re-render em cascata dos bubbles e
-// re-download de mídia (<img> do proxy) quando nada mudou.
+// re-download de mídia renderizada pelo proxy quando nada mudou.
 function linkPreviewSignature(preview: WhatsAppMessage['linkPreview']): string {
   if (!preview) return ''
   return JSON.stringify(preview)

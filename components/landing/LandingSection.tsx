@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { LogIn, ArrowRight } from "lucide-react"
 import { motion } from "framer-motion"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
 export default function LandingSection() {
   return (
@@ -71,13 +72,12 @@ export default function LandingSection() {
               className="mt-8 flex justify-center"
             >
               <div className="text-center">
-                <Link
-                  href="#demo"
+                <DemoRequestDialogButton
                   className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2 landing-primary-cta"
                 >
-                  Agendar demonstração
+                  Solicitar demonstração
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
-                </Link>
+                </DemoRequestDialogButton>
               </div>
             </motion.div>
           </div>

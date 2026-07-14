@@ -190,7 +190,7 @@ function buildEmailShell(title: string, subtitle: string, body: string) {
 
 function buildTestBannerSnippet(originalRecipients: string[]) {
   return `
-    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 0 16px 20px;">
+    <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: 12px; margin: 0 16px 20px;">
       <p style="margin: 0; color: #92400e; font-weight: 600;">
         MODO TESTE
       </p>

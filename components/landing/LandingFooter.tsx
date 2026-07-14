@@ -1,86 +1,95 @@
-"use client"
-
 import Link from "next/link"
 import Image from "next/image"
-import { Heart } from "lucide-react"
+import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
-const footerLinks = {
-  recursos: {
-    title: "Recursos",
+type FooterHrefLink = {
+  label: string
+  href: string
+}
+
+type FooterDemoLink = {
+  label: string
+  action: "demo"
+}
+
+type FooterLink = FooterHrefLink | FooterDemoLink
+
+const footerLinks: {
+  empresa: { title: string; links: FooterLink[] }
+  suporte: { title: string; links: FooterHrefLink[] }
+} = {
+  empresa: {
+    title: "Empresa",
     links: [
-      { label: "CRM para Corretores", href: "/recursos/crm-corretores-saude" },
-      { label: "Pipeline Comercial", href: "/recursos/pipeline-planos-saude" },
-      { label: "Gestão de Equipe", href: "/recursos/gestao-equipe-comercial" },
-      { label: "CRM vs Planilha", href: "/recursos/crm-vs-planilha" },
-      { label: "Todos os Recursos", href: "/recursos" },
+      { label: "Plataforma", href: "/#crm" },
+      { label: "Como funciona", href: "/#como" },
+      { label: "Integrações", href: "/#integ" },
+      { label: "Solicitar demonstração", action: "demo" },
     ],
   },
-  legal: {
-    title: "Legal",
+  suporte: {
+    title: "Suporte",
     links: [
-      { label: "Política de Privacidade", href: "/privacy-policy" },
-      { label: "Termos de Uso", href: "/terms" },
-      { label: "Política de Cookies", href: "/cookies" },
+      { label: "Dúvidas", href: "/#faq" },
+      { label: "Entrar", href: "/sign-in" },
+      { label: "Política de cookies", href: "/cookies" },
     ],
   },
 }
 
+const currentYear = 2026
+
 export function LandingFooter() {
   return (
-    <footer className="relative border-t border-border">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-10 landing-footer-orb"
-      />
-
-      <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12">
-          {/* Brand */}
+    <footer className="landing-footer">
+      <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 lg:px-10">
+        <div className="grid gap-10 border-b border-landing-footer-line pb-12 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
             <Link href="/" className="flex items-center gap-2 mb-4">
               <Image
                 src="/corretor-studio-icon.svg"
                 alt="Corretor Studio"
-                width={32}
-                height={32}
-                className="h-8 w-8"
+                width={34}
+                height={34}
+                className="size-8 rounded-full"
               />
               <span className="text-lg font-bold tracking-tight">Corretor Studio</span>
             </Link>
-            <p className="text-sm text-muted-foreground mb-4 max-w-sm leading-relaxed">
-              CRM para corretores de saúde que precisam de mais clareza, mais velocidade e mais conversão.
-            </p>
-            <p className="text-sm text-muted-foreground inline-flex items-baseline gap-2">
-              <span>Made with</span>
-              <Heart className="w-4 h-4 text-primary pulsing-heart fill-primary flex-shrink-0 translate-y-[1px]" />
-              <span className="font-semibold text-primary">Willock&apos;s House</span>
+            <p className="max-w-sm text-sm leading-6 text-landing-footer-muted">
+              O sistema de vendas completo para corretores de planos de saúde e seguros.
             </p>
           </div>
 
           <div>
-            <h3 className="font-semibold mb-4 text-foreground">{footerLinks.recursos.title}</h3>
+            <h3 className="mb-4 font-display text-sm font-semibold text-landing-invert">{footerLinks.empresa.title}</h3>
             <ul className="flex flex-col gap-3">
-              {footerLinks.recursos.links.map((link) => (
+              {footerLinks.empresa.links.map((link) => (
                 <li key={link.label}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.label}
-                  </Link>
+                  {"href" in link ? (
+                    <Link
+                      href={link.href}
+                      className="text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <DemoRequestDialogButton className="text-left text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]">
+                      {link.label}
+                    </DemoRequestDialogButton>
+                  )}
                 </li>
               ))}
             </ul>
           </div>
 
           <div>
-            <h3 className="font-semibold mb-4 text-foreground">{footerLinks.legal.title}</h3>
+            <h3 className="mb-4 font-display text-sm font-semibold text-landing-invert">{footerLinks.suporte.title}</h3>
             <ul className="flex flex-col gap-3">
-              {footerLinks.legal.links.map((link) => (
+              {footerLinks.suporte.links.map((link) => (
                 <li key={link.label}>
                   <Link
                     href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
                   >
                     {link.label}
                   </Link>
@@ -90,17 +99,22 @@ export function LandingFooter() {
           </div>
         </div>
 
-        {/* Bottom */}
-        <div
-          className="pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4"
-        >
-          <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.
+        <div className="flex flex-col gap-4 pt-7 text-sm text-landing-footer-subtle md:flex-row md:items-center md:justify-between">
+          <p>
+            © {currentYear} Corretor Studio. Todos os direitos reservados.
           </p>
-          <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <span>🇧🇷 Feito no Brasil</span>
-            <span>•</span>
-            <span>🔒 Dados protegidos pela LGPD</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/privacy-policy" className="transition-colors hover:text-[var(--landing-invert)]">
+              Privacidade
+            </Link>
+            <span>·</span>
+            <Link href="/terms" className="transition-colors hover:text-[var(--landing-invert)]">
+              Termos
+            </Link>
+            <span>·</span>
+            <Link href="/cookies" className="transition-colors hover:text-[var(--landing-invert)]">
+              Cookies
+            </Link>
           </div>
         </div>
       </div>
