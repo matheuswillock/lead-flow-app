@@ -297,9 +297,11 @@ export default function LeadDialog({
     [leadDetails?.transferTargets]
   );
   // MultiSkill origin teams may have no internal transfer route yet the external
-  // MultiSkill lookup still yields valid targets, so gate on that access too.
+  // MultiSkill lookup still yields valid targets. multiskillExternalTransfer is a
+  // team-level flag, not a per-user one, so it must still respect transfer delegation.
   const hasTransferTargets =
-    allowedTransferTargetIds.length > 0 || operationalAccess.multiskillExternalTransfer;
+    allowedTransferTargetIds.length > 0 ||
+    (canTransferBetweenTeams && operationalAccess.multiskillExternalTransfer);
   const isCloserOperator =
     activeFunctions.includes("CLOSER") &&
     !isTeamMaster &&

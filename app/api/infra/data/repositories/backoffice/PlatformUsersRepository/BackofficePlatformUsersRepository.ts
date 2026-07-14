@@ -621,7 +621,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
   }
 
   private async hasOtherUnlimitedUsersGrant(masterProfileId: string): Promise<boolean> {
-    const [annualAdhesionCount, userTypeAssignment] = await Promise.all([
+    const [annualAdhesionCount, userTypeAssignment, profileSubscription] = await Promise.all([
       prisma.backofficeAdhesion.count({
         where: {
           createdProfileId: masterProfileId,
@@ -636,17 +636,39 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           userType: { select: { slug: true } },
         },
       }),
+      prisma.profileSubscription.findUnique({
+        where: { profileId: masterProfileId },
+        select: {
+          subscriptionCycle: true,
+          subscriptionStatus: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
+        },
+      }),
     ])
 
     if (annualAdhesionCount > 0) {
       return true
     }
 
-    return isActiveMemberProAssignment(
+    if (isActiveMemberProAssignment(
       userTypeAssignment
         ? { slug: userTypeAssignment.userType.slug, accessExpiresAt: userTypeAssignment.accessExpiresAt }
         : null
-    )
+    )) {
+      return true
+    }
+
+    // Mesma regra usada pelo backfill: assinatura anual ativa dentro da janela concede ilimitado.
+    const now = new Date()
+    const isYearlyCycle = profileSubscription?.subscriptionCycle === "YEARLY"
+    const isActiveSubscriptionStatus =
+      !profileSubscription?.subscriptionStatus || profileSubscription.subscriptionStatus === "active"
+    const isWithinSubscriptionWindow =
+      (!profileSubscription?.subscriptionStartDate || profileSubscription.subscriptionStartDate <= now) &&
+      (!profileSubscription?.subscriptionEndDate || profileSubscription.subscriptionEndDate >= now)
+
+    return isYearlyCycle && isActiveSubscriptionStatus && isWithinSubscriptionWindow
   }
 
   async findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null> {
