@@ -175,7 +175,20 @@ curl -X POST -H 'Content-type: application/json' \
 
 **Aceite:** digitar `1`/`2`/`3` (e `4`/`5` se MANAGER+) devolve lista formatada no WhatsApp com dados do time do usuário; `menu`/`voltar` sempre reabre o menu.
 
-**Fora de escopo (follow-up):** submenu de lead (detalhe/nota/reunião/tarefa — J3–J6); caminho A (e-mail no chat); aplicar Estágio 3/4 na VPS sem autorização.
+**Submenu de lead (completo, 2026-07-12):** após lista, digitar código → detalhe + submenu:
+
+| Opção | Fluxo |
+|---|---|
+| `1` | `lead_detail` (reabre detalhes) |
+| `2` | `awaiting_note_body` → `add_note` |
+| `3` | `lead_meeting_menu` → `1` agenda (`awaiting_meeting_datetime` → `schedule_meeting`) / `2` `cancel_meeting` |
+| `4` | `awaiting_task_title` → `create_task` |
+| `5` | `awaiting_document` → mídia image/document + `mediaKey` → Evolution `getBase64` → `upload_attachment` |
+| `6` | volta ao menu principal |
+
+**Router:** `bethania-router` envia `payload.mediaKey = data.key` para download de mídia no inbound.
+
+**Fora de escopo (follow-up):** caminho A (e-mail no chat); aplicar Estágio 3/4 na VPS sem autorização; reabrir lead a partir de push sem redigitar código.
 
 ---
 

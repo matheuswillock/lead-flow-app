@@ -99,6 +99,8 @@ export interface IBackofficeBotRepository {
   findPendingWebOtpChallenges(limit?: number): Promise<BackofficeBotAuthChallenge[]>;
 
   getActiveChannel(): Promise<BackofficeBotChannel | null>;
+  /** Canal singleton do backoffice (ignora isActive — permite reabilitar). */
+  findPrimaryChannel(): Promise<BackofficeBotChannel | null>;
   findChannelById(channelId: string): Promise<BackofficeBotChannel | null>;
   upsertChannel(data: {
     displayName?: string;

@@ -243,6 +243,11 @@ export function BethaniaConnectionCard({ supabaseId, teamId }: BethaniaConnectio
     return "Não vinculado";
   })();
 
+  // Bot desabilitado no backoffice: não mostrar opção de vincular em Conexões.
+  if (!isLoadingStatus && status !== null && !botAvailable && !linked) {
+    return null;
+  }
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">

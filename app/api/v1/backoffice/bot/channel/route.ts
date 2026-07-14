@@ -10,6 +10,7 @@ const upsertSchema = z.object({
   aboutText: z.string().max(139).nullable().optional(),
   n8nInboundUrl: z.string().url().nullable().optional(),
   status: z.enum(["pending", "connected", "disconnected", "error"]).optional(),
+  isActive: z.boolean().optional(),
 });
 
 const patchSchema = upsertSchema.partial();

@@ -3,9 +3,16 @@ import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backo
 import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
 import {
   formatActionReply,
+  formatDocumentPrompt,
+  formatLeadSubmenu,
+  formatMeetingDatetimePrompt,
+  formatMeetingMenu,
+  formatNotePrompt,
   formatPermissionDeniedMessage,
   formatSearchQueryPrompt,
+  formatTaskPrompt,
 } from "@/lib/studio-bot/format-bot-reply";
+import { parseMeetingDatetimeInput } from "@/lib/studio-bot/parse-meeting-datetime";
 import { normalizePhoneE164, parseVincularCode } from "@/lib/studio-bot/phone";
 import type { StudioBotInboundWebhookBody } from "@/lib/studio-bot/types";
 import { backofficeBotActionUseCase } from "./BackofficeBotActionUseCase";
@@ -30,6 +37,8 @@ const CHOICE_TO_ACTION: Record<string, string> = {
 };
 
 const MANAGER_ONLY_ACTIONS = new Set(["search_lead", "team_digest"]);
+
+const LEAD_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{1,31}$/;
 
 function normalizeCommandText(text: string): string {
   return text
@@ -88,10 +97,34 @@ function parseMenuChoice(text: string): string | null {
   return labelMap[normalized] ?? null;
 }
 
+function looksLikeLeadCode(text: string): boolean {
+  const trimmed = text.trim();
+  if (!LEAD_CODE_PATTERN.test(trimmed)) return false;
+  if (/^[1-6]$/.test(trimmed)) return false;
+  return true;
+}
+
+function defaultFileNameForMime(mimeType: string, mediaFileName?: string | null): string {
+  if (mediaFileName?.trim()) return mediaFileName.trim();
+  if (mimeType.startsWith("image/")) {
+    const ext = mimeType.split("/")[1]?.split(";")[0] || "jpg";
+    return `whatsapp-image.${ext}`;
+  }
+  if (mimeType.includes("pdf")) return "whatsapp-documento.pdf";
+  return "whatsapp-documento.bin";
+}
+
 function formatMainMenuMessage(title: string, items: Array<{ label: string }>): string {
   const lines = items.map((item, index) => `${index + 1} — ${item.label}`);
   return `${title}\nO que deseja fazer?\n\n${lines.join("\n")}`;
 }
+
+type OutboundBase = {
+  channelId: string;
+  channelDisplayName: string;
+  phone: string;
+  userLinkId: string;
+};
 
 export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInboundWebhookUseCase {
   async handleInbound(
@@ -104,7 +137,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
         return new Output(false, [], ["Telefone inválido"], { errorCode: "PHONE_INVALID" });
       }
 
-      const channel = await backofficeBotRepository.getActiveChannel();
+      const channel = await backofficeBotRepository.findPrimaryChannel();
       if (!channel) {
         return new Output(false, [], ["Canal não configurado"], { errorCode: "CHANNEL_NOT_CONFIGURED" });
       }
@@ -159,7 +192,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
         });
       }
 
-      const outboundBase = {
+      const outboundBase: OutboundBase = {
         channelId: channel.id,
         channelDisplayName: channel.displayName,
         phone,
@@ -190,6 +223,350 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
           action: "search_lead",
           params: { query: text },
           nextFlowStep: "list_shown",
+        });
+      }
+
+      if (session?.flowStep === "awaiting_note_body" && session.currentLeadId && text.length > 0) {
+        return this.runActionAndReply({
+          ...outboundBase,
+          messageId: message.id,
+          userLinkId: userLink.id,
+          teamId,
+          action: "add_note",
+          params: { leadId: session.currentLeadId, body: text },
+          nextFlowStep: "lead_submenu",
+          currentLeadId: session.currentLeadId,
+        });
+      }
+
+      if (session?.flowStep === "awaiting_task_title" && session.currentLeadId && text.length > 0) {
+        return this.runActionAndReply({
+          ...outboundBase,
+          messageId: message.id,
+          userLinkId: userLink.id,
+          teamId,
+          action: "create_task",
+          params: { leadId: session.currentLeadId, title: text, body: text },
+          nextFlowStep: "lead_submenu",
+          currentLeadId: session.currentLeadId,
+        });
+      }
+
+      if (session?.flowStep === "awaiting_meeting_datetime" && session.currentLeadId && text.length > 0) {
+        const parsed = parseMeetingDatetimeInput(text);
+        if (!parsed) {
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: `Formato inválido.\n\n${formatMeetingDatetimePrompt()}`,
+          });
+          return new Output(true, [], [], {
+            messageId: message.id,
+            linked: true,
+            flow: "awaiting_meeting_datetime_invalid",
+          });
+        }
+        return this.runActionAndReply({
+          ...outboundBase,
+          messageId: message.id,
+          userLinkId: userLink.id,
+          teamId,
+          action: "schedule_meeting",
+          params: {
+            leadId: session.currentLeadId,
+            date: parsed.isoDate,
+            ...(parsed.title ? { meetingTitle: parsed.title } : {}),
+            ...(parsed.meetingLink ? { meetingLink: parsed.meetingLink } : {}),
+          },
+          nextFlowStep: "lead_submenu",
+          currentLeadId: session.currentLeadId,
+        });
+      }
+
+      if (
+        session?.flowStep === "awaiting_document" &&
+        session.currentLeadId &&
+        (body.payload.messageType === "image" || body.payload.messageType === "document")
+      ) {
+        const mediaKey = body.payload.mediaKey;
+        if (!mediaKey || typeof mediaKey !== "object") {
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: `Não consegui baixar o arquivo. ${formatDocumentPrompt()}`,
+          });
+          return new Output(false, [], ["mediaKey ausente"], {
+            messageId: message.id,
+            flow: "awaiting_document_error",
+          });
+        }
+
+        const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
+        const media = await backofficeEvoApiService.getBase64FromMediaMessage({
+          instanceName,
+          messageKey: mediaKey,
+        });
+        if (!media?.base64) {
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: `Não consegui baixar o arquivo da Evolution. Tente novamente ou digite *menu*.`,
+          });
+          return new Output(false, [], ["Falha ao baixar mídia"], {
+            messageId: message.id,
+            flow: "awaiting_document_download_error",
+          });
+        }
+
+        const fileName = defaultFileNameForMime(media.mimeType, body.payload.mediaFileName);
+        const fileBase64 = media.base64.includes(",")
+          ? media.base64.slice(media.base64.indexOf(",") + 1)
+          : media.base64;
+        return this.runActionAndReply({
+          ...outboundBase,
+          messageId: message.id,
+          userLinkId: userLink.id,
+          teamId,
+          action: "upload_attachment",
+          params: {
+            leadId: session.currentLeadId,
+            fileBase64,
+            fileName,
+            mimeType: media.mimeType,
+          },
+          nextFlowStep: "lead_submenu",
+          currentLeadId: session.currentLeadId,
+        });
+      }
+
+      if (session?.flowStep === "awaiting_document" && session.currentLeadId && text.length > 0) {
+        await this.sendOutboundText({
+          ...outboundBase,
+          text: formatDocumentPrompt(),
+        });
+        return new Output(true, [], [], {
+          messageId: message.id,
+          linked: true,
+          flow: "awaiting_document_hint",
+        });
+      }
+
+      if (session?.flowStep === "lead_meeting_menu" && session.currentLeadId) {
+        const meetingChoice = normalizeCommandText(text);
+        if (meetingChoice === "1" || meetingChoice === "agendar" || meetingChoice === "agendar reuniao") {
+          if (!teamId) {
+            await this.sendOutboundText({
+              ...outboundBase,
+              text: "Não encontrei o time ativo. Digite *menu* e tente novamente.",
+            });
+            return new Output(false, [], ["Time ativo não encontrado"], {
+              messageId: message.id,
+              flow: "meeting_prompt_error",
+            });
+          }
+          await backofficeBotRepository.upsertSession({
+            userLinkId: userLink.id,
+            teamId,
+            currentLeadId: session.currentLeadId,
+            flowId: "lead_context",
+            flowStep: "awaiting_meeting_datetime",
+            expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+          });
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: formatMeetingDatetimePrompt(),
+          });
+          return new Output(true, [], [], {
+            messageId: message.id,
+            linked: true,
+            flow: "awaiting_meeting_datetime",
+          });
+        }
+        if (meetingChoice === "2" || meetingChoice === "cancelar reuniao") {
+          return this.runActionAndReply({
+            ...outboundBase,
+            messageId: message.id,
+            userLinkId: userLink.id,
+            teamId,
+            action: "cancel_meeting",
+            params: { leadId: session.currentLeadId },
+            nextFlowStep: "lead_submenu",
+            currentLeadId: session.currentLeadId,
+          });
+        }
+        if (meetingChoice === "6" || meetingChoice === "voltar") {
+          return this.openLeadById({
+            ...outboundBase,
+            messageId: message.id,
+            userLinkId: userLink.id,
+            teamId,
+            leadId: session.currentLeadId,
+          });
+        }
+        await this.sendOutboundText({
+          ...outboundBase,
+          text: formatMeetingMenu(),
+        });
+        return new Output(true, [], [], {
+          messageId: message.id,
+          linked: true,
+          flow: "lead_meeting_menu",
+        });
+      }
+
+      if (session?.flowStep === "lead_submenu" && session.currentLeadId) {
+        const submenuChoice = normalizeCommandText(text);
+        if (submenuChoice === "1" || submenuChoice === "detalhes" || submenuChoice === "ver detalhes") {
+          return this.openLeadById({
+            ...outboundBase,
+            messageId: message.id,
+            userLinkId: userLink.id,
+            teamId,
+            leadId: session.currentLeadId,
+          });
+        }
+        if (submenuChoice === "2" || submenuChoice === "nota" || submenuChoice === "adicionar nota") {
+          if (!teamId) {
+            await this.sendOutboundText({
+              ...outboundBase,
+              text: "Não encontrei o time ativo. Digite *menu* e tente novamente.",
+            });
+            return new Output(false, [], ["Time ativo não encontrado"], {
+              messageId: message.id,
+              flow: "note_prompt_error",
+            });
+          }
+          await backofficeBotRepository.upsertSession({
+            userLinkId: userLink.id,
+            teamId,
+            currentLeadId: session.currentLeadId,
+            flowId: "lead_context",
+            flowStep: "awaiting_note_body",
+            expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+          });
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: formatNotePrompt(),
+          });
+          return new Output(true, [], [], {
+            messageId: message.id,
+            linked: true,
+            flow: "awaiting_note_body",
+          });
+        }
+        if (submenuChoice === "3" || submenuChoice === "reuniao" || submenuChoice === "reunião") {
+          if (!teamId) {
+            await this.sendOutboundText({
+              ...outboundBase,
+              text: "Não encontrei o time ativo. Digite *menu* e tente novamente.",
+            });
+            return new Output(false, [], ["Time ativo não encontrado"], {
+              messageId: message.id,
+              flow: "meeting_menu_error",
+            });
+          }
+          await backofficeBotRepository.upsertSession({
+            userLinkId: userLink.id,
+            teamId,
+            currentLeadId: session.currentLeadId,
+            flowId: "lead_context",
+            flowStep: "lead_meeting_menu",
+            expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+          });
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: formatMeetingMenu(),
+          });
+          return new Output(true, [], [], {
+            messageId: message.id,
+            linked: true,
+            flow: "lead_meeting_menu",
+          });
+        }
+        if (submenuChoice === "4" || submenuChoice === "tarefa" || submenuChoice === "nova tarefa") {
+          if (!teamId) {
+            await this.sendOutboundText({
+              ...outboundBase,
+              text: "Não encontrei o time ativo. Digite *menu* e tente novamente.",
+            });
+            return new Output(false, [], ["Time ativo não encontrado"], {
+              messageId: message.id,
+              flow: "task_prompt_error",
+            });
+          }
+          await backofficeBotRepository.upsertSession({
+            userLinkId: userLink.id,
+            teamId,
+            currentLeadId: session.currentLeadId,
+            flowId: "lead_context",
+            flowStep: "awaiting_task_title",
+            expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+          });
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: formatTaskPrompt(),
+          });
+          return new Output(true, [], [], {
+            messageId: message.id,
+            linked: true,
+            flow: "awaiting_task_title",
+          });
+        }
+        if (submenuChoice === "5" || submenuChoice === "documento" || submenuChoice === "anexo") {
+          if (!teamId) {
+            await this.sendOutboundText({
+              ...outboundBase,
+              text: "Não encontrei o time ativo. Digite *menu* e tente novamente.",
+            });
+            return new Output(false, [], ["Time ativo não encontrado"], {
+              messageId: message.id,
+              flow: "document_prompt_error",
+            });
+          }
+          await backofficeBotRepository.upsertSession({
+            userLinkId: userLink.id,
+            teamId,
+            currentLeadId: session.currentLeadId,
+            flowId: "lead_context",
+            flowStep: "awaiting_document",
+            expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+          });
+          await this.sendOutboundText({
+            ...outboundBase,
+            text: formatDocumentPrompt(),
+          });
+          return new Output(true, [], [], {
+            messageId: message.id,
+            linked: true,
+            flow: "awaiting_document",
+          });
+        }
+        if (submenuChoice === "6") {
+          return this.openMainMenu({
+            ...outboundBase,
+            messageId: message.id,
+            userLinkId: userLink.id,
+            profileId: userLink.profileId,
+          });
+        }
+        if (looksLikeLeadCode(text)) {
+          return this.openLeadByCode({
+            ...outboundBase,
+            messageId: message.id,
+            userLinkId: userLink.id,
+            teamId,
+            leadCode: text.trim(),
+          });
+        }
+      }
+
+      if (
+        (session?.flowStep === "list_shown" || session?.flowStep === "awaiting_choice") &&
+        looksLikeLeadCode(text)
+      ) {
+        return this.openLeadByCode({
+          ...outboundBase,
+          messageId: message.id,
+          userLinkId: userLink.id,
+          teamId,
+          leadCode: text.trim(),
         });
       }
 
@@ -326,6 +703,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       await backofficeBotRepository.upsertSession({
         userLinkId: input.userLinkId,
         teamId: profile.activeTeamId,
+        currentLeadId: null,
         flowId: "menu_main",
         flowStep: "awaiting_choice",
         expiresAt: new Date(Date.now() + SESSION_TTL_MS),
@@ -340,6 +718,52 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
     });
   }
 
+  private async openLeadByCode(input: {
+    channelId: string;
+    channelDisplayName: string;
+    phone: string;
+    userLinkId: string;
+    messageId: string;
+    teamId: string | null;
+    leadCode: string;
+  }): Promise<Output> {
+    return this.runActionAndReply({
+      channelId: input.channelId,
+      channelDisplayName: input.channelDisplayName,
+      phone: input.phone,
+      userLinkId: input.userLinkId,
+      messageId: input.messageId,
+      teamId: input.teamId,
+      action: "lead_detail",
+      params: { leadCode: input.leadCode },
+      nextFlowStep: "lead_submenu",
+      captureLeadIdFromResult: true,
+    });
+  }
+
+  private async openLeadById(input: {
+    channelId: string;
+    channelDisplayName: string;
+    phone: string;
+    userLinkId: string;
+    messageId: string;
+    teamId: string | null;
+    leadId: string;
+  }): Promise<Output> {
+    return this.runActionAndReply({
+      channelId: input.channelId,
+      channelDisplayName: input.channelDisplayName,
+      phone: input.phone,
+      userLinkId: input.userLinkId,
+      messageId: input.messageId,
+      teamId: input.teamId,
+      action: "lead_detail",
+      params: { leadId: input.leadId },
+      nextFlowStep: "lead_submenu",
+      currentLeadId: input.leadId,
+    });
+  }
+
   private async runActionAndReply(input: {
     channelId: string;
     channelDisplayName: string;
@@ -350,6 +774,8 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
     action: string;
     params?: Record<string, unknown>;
     nextFlowStep: string;
+    currentLeadId?: string | null;
+    captureLeadIdFromResult?: boolean;
   }): Promise<Output> {
     if (!input.teamId) {
       await this.sendOutboundText({
@@ -370,12 +796,19 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       userLinkId: input.userLinkId,
       teamId: input.teamId,
       params: input.params,
-      flowId: "menu_main",
+      flowId: input.nextFlowStep === "lead_submenu" ? "lead_context" : "menu_main",
     });
 
-    const replyText = actionOutput.isValid
+    let replyText = actionOutput.isValid
       ? formatActionReply(input.action, actionOutput.result)
       : formatActionReply(input.action, null, actionOutput.errorMessages);
+
+    if (actionOutput.isValid && input.action === "lead_detail") {
+      const lead = (actionOutput.result as { lead?: Parameters<typeof formatLeadSubmenu>[0] })?.lead;
+      if (lead) {
+        replyText = formatActionReply("lead_detail", actionOutput.result);
+      }
+    }
 
     await this.sendOutboundText({
       channelId: input.channelId,
@@ -386,10 +819,17 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
     });
 
     if (actionOutput.isValid) {
+      let currentLeadId = input.currentLeadId ?? null;
+      if (input.captureLeadIdFromResult) {
+        const lead = (actionOutput.result as { lead?: { id?: string } } | null)?.lead;
+        currentLeadId = lead?.id ?? null;
+      }
+
       await backofficeBotRepository.upsertSession({
         userLinkId: input.userLinkId,
         teamId: input.teamId,
-        flowId: "menu_main",
+        currentLeadId,
+        flowId: currentLeadId ? "lead_context" : "menu_main",
         flowStep: input.nextFlowStep,
         expiresAt: new Date(Date.now() + SESSION_TTL_MS),
       });
