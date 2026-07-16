@@ -667,6 +667,15 @@ export class EmailCampaignUseCase {
           dispatchNumber,
           globalDefaults,
           templateVariables,
+          onChunkDispatched: async (chunkDispatched) => {
+            const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
+              const logId = logIdsByEmail.get(email)
+              return logId ? [{ logId, resendEmailId: resendId }] : []
+            })
+            if (sentEntries.length > 0) {
+              await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
+            }
+          },
         })
 
         sentCount = dispatchResult.sent
@@ -682,15 +691,6 @@ export class EmailCampaignUseCase {
           globalDefaults,
           templateVariables,
         })
-        await withConcurrencyLimit(
-          dispatchResult.dispatched,
-          EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
-          async ({ email, resendId }) => {
-            const logId = logIdsByEmail.get(email)
-            if (!logId) return
-            await teamEmailDispatchLogger.markTeamEmailLogSent(logId, resendId)
-          }
-        )
         await withConcurrencyLimit(
           recipientsList.filter((recipient) => !dispatchedEmails.has(recipient.email)),
           EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
@@ -1028,6 +1028,15 @@ export class EmailCampaignUseCase {
           dispatchNumber,
           globalDefaults: dispatchInput.globalDefaults,
           templateVariables: dispatchInput.templateVariables,
+          onChunkDispatched: async (chunkDispatched) => {
+            const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
+              const logId = logIdsByEmail.get(email)
+              return logId ? [{ logId, resendEmailId: resendId }] : []
+            })
+            if (sentEntries.length > 0) {
+              await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
+            }
+          },
         })
 
         sentCount = dispatchResult.sent
@@ -1043,15 +1052,6 @@ export class EmailCampaignUseCase {
           globalDefaults: dispatchInput.globalDefaults,
           templateVariables: dispatchInput.templateVariables,
         })
-        await withConcurrencyLimit(
-          dispatchResult.dispatched,
-          EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
-          async ({ email, resendId }) => {
-            const logId = logIdsByEmail.get(email)
-            if (!logId) return
-            await teamEmailDispatchLogger.markTeamEmailLogSent(logId, resendId)
-          }
-        )
         await withConcurrencyLimit(
           recipientsList.filter((recipient) => !dispatchedEmails.has(recipient.email)),
           EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,

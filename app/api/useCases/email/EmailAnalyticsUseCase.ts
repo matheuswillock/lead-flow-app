@@ -18,8 +18,8 @@ function buildRates(totals: {
 }) {
   return {
     deliverabilityRate: safeRate(totals.delivered, totals.sent),
-    openRate: safeRate(totals.opened, totals.delivered),
-    clickRate: safeRate(totals.clicked, totals.delivered),
+    openRate: safeRate(totals.opened, totals.sent),
+    clickRate: safeRate(totals.clicked, totals.sent),
     bounceRate: safeRate(totals.bounced, totals.sent),
     complainRate: safeRate(totals.complained, totals.sent),
   }

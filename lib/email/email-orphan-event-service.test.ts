@@ -4,6 +4,7 @@ import type { IResendEmailEnrichmentService } from "@/app/api/services/resend/Re
 const upsertMock = mock(async () => ({}))
 const findManyMock = mock(async () => [] as Array<Record<string, unknown>>)
 const updateMock = mock(async () => ({}))
+const emailLogFindUniqueMock = mock(async () => null)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -11,6 +12,9 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       upsert: upsertMock,
       findMany: findManyMock,
       update: updateMock,
+    },
+    emailLog: {
+      findUnique: emailLogFindUniqueMock,
     },
   },
 }))

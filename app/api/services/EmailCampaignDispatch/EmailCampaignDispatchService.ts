@@ -11,7 +11,7 @@ import {
 } from "@/lib/email/interpolate"
 import type { IEmailCampaignDispatchService, DispatchBatchResult } from "./IEmailCampaignDispatchService"
 
-const BATCH_SIZE = 50
+const BATCH_SIZE = 100
 
 /** Extrai IDs de e-mails da resposta do Resend batch (SDK v6). */
 export function parseResendBatchSendItems(
@@ -39,6 +39,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
+    onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
   }): Promise<DispatchBatchResult> {
     if (!resend) {
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
@@ -107,11 +108,13 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
               { campaignId: params.campaignId, chunkIndex, chunkSize: chunk.length }
             )
           }
+          const chunkDispatched: Array<{ email: string; resendId: string }> = []
           items.forEach((item, idx) => {
             const recipient = chunk[idx]
             if (!recipient) return
             if (item?.id) {
               result.dispatched.push({ email: recipient.email, resendId: item.id })
+              chunkDispatched.push({ email: recipient.email, resendId: item.id })
               result.sent++
             } else {
               result.failed++
@@ -119,6 +122,9 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           })
           if (items.length < chunk.length) {
             result.failed += chunk.length - items.length
+          }
+          if (chunkDispatched.length > 0) {
+            await params.onChunkDispatched?.(chunkDispatched)
           }
         }
       } catch (error) {
