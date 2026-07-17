@@ -26,7 +26,6 @@ export interface IBackofficeEmailContactRepository {
   ): Promise<ListBackofficeEmailContactsResult>
   listActiveByListId(listId: string): Promise<BackofficeEmailContact[]>
   findById(id: string): Promise<BackofficeEmailContact | null>
-  markUnsubscribed(id: string): Promise<BackofficeEmailContact>
   markUnsubscribedByEmailInAllLists(email: string): Promise<number>
   markBouncedByEmailInAllLists(email: string): Promise<number>
   markComplainedByEmailInAllLists(email: string): Promise<number>

@@ -142,7 +142,9 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
       replyTo: data.replyTo,
       createdByBackofficeUserId: backofficeUserId,
     })
-    return new Output(true, ["Campanha criada com sucesso"], [], created)
+
+    const final = await this.syncScheduledStatus(created)
+    return new Output(true, ["Campanha criada com sucesso"], [], final)
   }
 
   async update(id: string, data: UpsertBackofficeEmailCampaignData): Promise<Output> {
@@ -163,13 +165,19 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
       replyTo: data.replyTo,
     })
 
-    const shouldBeScheduled = Boolean(updated.resendTemplateId) && updated.status === "draft"
-    if (shouldBeScheduled) {
-      await this.campaignRepository.updateStatus(id, "scheduled")
-    }
-
-    const final = await this.campaignRepository.findById(id)
+    const final = await this.syncScheduledStatus(updated)
     return new Output(true, ["Campanha atualizada com sucesso"], [], final)
+  }
+
+  /** Promove draft -> scheduled assim que a campanha tem template configurado, para o cron de disparo poder encontrá-la. */
+  private async syncScheduledStatus(
+    campaign: BackofficeEmailCampaign
+  ): Promise<BackofficeEmailCampaign> {
+    const shouldBeScheduled = Boolean(campaign.resendTemplateId) && campaign.status === "draft"
+    if (!shouldBeScheduled) return campaign
+
+    await this.campaignRepository.updateStatus(campaign.id, "scheduled")
+    return (await this.campaignRepository.findById(campaign.id)) ?? campaign
   }
 
   async cancel(id: string): Promise<Output> {

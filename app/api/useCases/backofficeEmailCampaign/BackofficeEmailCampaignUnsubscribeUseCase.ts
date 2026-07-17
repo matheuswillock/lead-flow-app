@@ -42,7 +42,7 @@ export class BackofficeEmailCampaignUnsubscribeUseCase {
       return new Output(true, ["Você já estava descadastrado"], [], { alreadyUnsubscribed: true })
     }
 
-    await this.contactRepository.markUnsubscribed(contact.id)
+    await this.contactRepository.markUnsubscribedByEmailInAllLists(contact.email)
     return new Output(true, ["Descadastro realizado com sucesso"], [], { alreadyUnsubscribed: false })
   }
 }

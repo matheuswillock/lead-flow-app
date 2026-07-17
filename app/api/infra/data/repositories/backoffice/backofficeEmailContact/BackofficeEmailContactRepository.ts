@@ -58,13 +58,6 @@ export class BackofficeEmailContactRepository implements IBackofficeEmailContact
     return prisma.backofficeEmailContact.findUnique({ where: { id } })
   }
 
-  async markUnsubscribed(id: string): Promise<BackofficeEmailContact> {
-    return prisma.backofficeEmailContact.update({
-      where: { id },
-      data: { isUnsubscribed: true },
-    })
-  }
-
   async markUnsubscribedByEmailInAllLists(email: string): Promise<number> {
     const result = await prisma.backofficeEmailContact.updateMany({
       where: { email: email.trim().toLowerCase() },
