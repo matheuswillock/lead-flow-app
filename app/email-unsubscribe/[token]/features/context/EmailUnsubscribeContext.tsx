@@ -8,14 +8,22 @@ import {
   defaultEmailUnsubscribeService,
   loadEmailUnsubscribeInfo,
 } from "./EmailUnsubscribeHook"
-import type { EmailUnsubscribeState } from "./EmailUnsubscribeTypes"
+import type { EmailUnsubscribeScope, EmailUnsubscribeState } from "./EmailUnsubscribeTypes"
 import type { IEmailUnsubscribeService } from "../services/IEmailUnsubscribeService"
 
 type EmailUnsubscribeContextValue = EmailUnsubscribeState & {
+  setRemoveFromCampaign: (checked: boolean) => void
+  setRemoveFromAll: (checked: boolean) => void
   handleConfirm: () => Promise<void>
 }
 
 const EmailUnsubscribeContext = createContext<EmailUnsubscribeContextValue | null>(null)
+
+function resolveScope(removeFromCampaign: boolean, removeFromAll: boolean): EmailUnsubscribeScope | null {
+  if (removeFromAll) return "all"
+  if (removeFromCampaign) return "campaign"
+  return null
+}
 
 export function EmailUnsubscribeProvider({
   children,
@@ -46,11 +54,32 @@ export function EmailUnsubscribeProvider({
     })()
   }, [service, token])
 
+  const setRemoveFromCampaign = useCallback((checked: boolean) => {
+    setState((current) => ({ ...current, removeFromCampaign: checked }))
+  }, [])
+
+  const setRemoveFromAll = useCallback((checked: boolean) => {
+    setState((current) => ({
+      ...current,
+      removeFromAll: checked,
+      ...(checked ? { removeFromCampaign: true } : {}),
+    }))
+  }, [])
+
   const handleConfirm = useCallback(async () => {
     if (state.confirming || state.completed) return
+    const scope = resolveScope(state.removeFromCampaign, state.removeFromAll)
+    if (!scope) {
+      setState((current) => ({
+        ...current,
+        error: "Selecione ao menos uma preferência",
+      }))
+      return
+    }
+
     setState((current) => ({ ...current, confirming: true, error: null }))
     try {
-      const result = await confirmEmailUnsubscribe(service, token)
+      const result = await confirmEmailUnsubscribe(service, token, scope)
       setState((current) => ({
         ...current,
         confirming: false,
@@ -60,14 +89,23 @@ export function EmailUnsubscribeProvider({
     } finally {
       setState((current) => ({ ...current, confirming: false }))
     }
-  }, [service, state.completed, state.confirming, token])
+  }, [
+    service,
+    state.completed,
+    state.confirming,
+    state.removeFromAll,
+    state.removeFromCampaign,
+    token,
+  ])
 
   const value = useMemo(
     () => ({
       ...state,
+      setRemoveFromCampaign,
+      setRemoveFromAll,
       handleConfirm,
     }),
-    [handleConfirm, state]
+    [handleConfirm, setRemoveFromAll, setRemoveFromCampaign, state]
   )
 
   return <EmailUnsubscribeContext.Provider value={value}>{children}</EmailUnsubscribeContext.Provider>

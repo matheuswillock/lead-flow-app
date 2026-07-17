@@ -43,14 +43,24 @@ import type { Contact } from "../context/ContatosTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 
-function ContactStatusBadge({ contact }: { contact: Contact }) {
+function ContactStatusBadge({ contact, isBlocklist }: { contact: Contact; isBlocklist?: boolean }) {
+  if (isBlocklist || contact.isUnsubscribed) {
+    return <Badge variant="secondary">Bloqueado</Badge>
+  }
   if (contact.isComplained) return <Badge variant="destructive">Reclamação</Badge>
   if (contact.isBounced) return <Badge variant="destructive">Bounce</Badge>
-  if (contact.isUnsubscribed) return <Badge variant="secondary">Descadastrado</Badge>
   return <Badge className="border-semantic-success-border bg-semantic-success-surface text-semantic-success hover:bg-semantic-success-surface">Ativo</Badge>
 }
 
-function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfirm: () => Promise<void> }) {
+function DeleteContactDialog({
+  contact,
+  onConfirm,
+  readOnly,
+}: {
+  contact: Contact
+  onConfirm: () => Promise<void>
+  readOnly?: boolean
+}) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [viewOpen, setViewOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -84,14 +94,18 @@ function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfi
             <Eye className="mr-2 h-4 w-4" />
             Visualizar
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setDeleteOpen(true)}
-            className="text-destructive"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Deletar
-          </DropdownMenuItem>
+          {!readOnly ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDeleteOpen(true)}
+                className="text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Deletar
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -112,33 +126,35 @@ function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfi
             <div>
               <p className="text-muted-foreground">Status</p>
               <div className="pt-1">
-                <ContactStatusBadge contact={contact} />
+                <ContactStatusBadge contact={contact} isBlocklist={readOnly} />
               </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover contato?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O contato <strong>{contact.email}</strong> será removido desta lista.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirm}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? "Removendo..." : "Remover"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {!readOnly ? (
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remover contato?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O contato <strong>{contact.email}</strong> será removido desta lista.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirm}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? "Removendo..." : "Remover"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
     </>
   )
 }
@@ -147,6 +163,8 @@ export function ContactsTable() {
   const { tz } = useTimezone()
   const {
     contacts,
+    lists,
+    selectedListId,
     totalContacts: total,
     page,
     totalPages,
@@ -156,6 +174,9 @@ export function ContactsTable() {
     handlePageChange,
     handleDeleteContact,
   } = useContactsContext()
+
+  const selectedList = lists.find((list) => list.id === selectedListId) ?? null
+  const isBlocklist = Boolean(selectedList?.isBlocklist)
 
   return (
     <div className="space-y-3">
@@ -202,13 +223,16 @@ export function ContactsTable() {
                 <TableRow key={contact.id}>
                   <TableCell className="font-mono text-sm">{contact.email}</TableCell>
                   <TableCell className="text-sm">{contact.name ?? "—"}</TableCell>
-                  <TableCell><ContactStatusBadge contact={contact} /></TableCell>
+                  <TableCell>
+                    <ContactStatusBadge contact={contact} isBlocklist={isBlocklist} />
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {formatIntimezone(new Date(contact.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
                   <TableCell className="text-right">
                     <DeleteContactDialog
                       contact={contact}
+                      readOnly={isBlocklist}
                       onConfirm={() => handleDeleteContact(contact.id)}
                     />
                   </TableCell>

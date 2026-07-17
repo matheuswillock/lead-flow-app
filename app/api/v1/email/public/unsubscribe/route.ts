@@ -15,14 +15,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: UNSUBSCRIBE_RATE_LIMIT_MESSAGE }, { status: 429 })
     }
 
-    const body = (await request.json().catch(() => ({}))) as { token?: string }
+    const body = (await request.json().catch(() => ({}))) as {
+      token?: string
+      scope?: "campaign" | "all"
+    }
     const token = body.token ?? request.nextUrl.searchParams.get("token")
     if (!token) {
       return NextResponse.json({ error: "Token obrigatório" }, { status: 400 })
     }
 
+    const scope = body.scope ?? "campaign"
+    if (scope !== "campaign" && scope !== "all") {
+      return NextResponse.json({ error: "Escopo inválido" }, { status: 400 })
+    }
+
     const useCase = new EmailUnsubscribeUseCase()
-    const output = await useCase.unsubscribe(token)
+    const output = await useCase.unsubscribe(token, scope)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)

@@ -12,6 +12,7 @@ export type ContactList = {
   description: string | null
   totalContacts: number
   isSystemDefault: boolean
+  isBlocklist: boolean
   isArchived: boolean
   createdAt: string
   updatedAt: string

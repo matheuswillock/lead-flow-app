@@ -27,6 +27,7 @@ import {
   Bot,
   Database,
   Zap,
+  Mail,
 } from "lucide-react"
 
 import {
@@ -141,6 +142,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_TEMPLATES },
     { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CONTACTS },
     { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
+    { title: "Descadastro", url: `/${supabaseId}/email/descadastro`, icon: Mail, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_UNSUBSCRIBE },
     { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
   ];
 
