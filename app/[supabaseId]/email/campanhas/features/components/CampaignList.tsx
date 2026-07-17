@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { CalendarX, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -46,10 +47,12 @@ function CampaignActionsMenu({
   sendBlockReason,
   deletingId,
   cancelingId,
+  archivingId,
   openEdit,
   handleSend,
   handleCancel,
   handleDeleteDraft,
+  handleArchive,
   onOpenAnalytics,
 }: {
   campaign: Campaign
@@ -57,15 +60,18 @@ function CampaignActionsMenu({
   sendBlockReason?: string
   deletingId: string | null
   cancelingId: string | null
+  archivingId: string | null
   openEdit: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
+  handleArchive: (id: string) => Promise<void>
   onOpenAnalytics: (campaign: Campaign) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const canSendByStatus =
     campaign.status === "draft" ||
@@ -77,7 +83,8 @@ function CampaignActionsMenu({
     (!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined)
   const canEdit = campaign.status === "draft" || campaign.status === "scheduled"
   const canCancel = campaign.status === "scheduled"
-  const canDelete = campaign.status === "draft"
+  const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
+  const canArchive = ["sent", "failed"].includes(campaign.status)
 
   async function handleSendConfirm() {
     setSending(true)
@@ -97,6 +104,11 @@ function CampaignActionsMenu({
   async function handleDeleteConfirm() {
     await handleDeleteDraft(campaign.id)
     setDeleteConfirmOpen(false)
+  }
+
+  async function handleArchiveConfirm() {
+    await handleArchive(campaign.id)
+    setArchiveConfirmOpen(false)
   }
 
   return (
@@ -135,14 +147,25 @@ function CampaignActionsMenu({
             {cancelingId === campaign.id ? "Cancelando..." : "Cancelar agendamento"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setDeleteConfirmOpen(true)}
-            disabled={deletingId === campaign.id || !canDelete}
-            className="text-destructive"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
-          </DropdownMenuItem>
+          {canDelete && (
+            <DropdownMenuItem
+              onClick={() => setDeleteConfirmOpen(true)}
+              disabled={deletingId === campaign.id}
+              className="text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
+            </DropdownMenuItem>
+          )}
+          {canArchive && (
+            <DropdownMenuItem
+              onClick={() => setArchiveConfirmOpen(true)}
+              disabled={archivingId === campaign.id}
+            >
+              <Archive className="mr-2 h-4 w-4" />
+              {archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -202,7 +225,7 @@ function CampaignActionsMenu({
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir rascunho?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
             <AlertDialogDescription>
               A campanha <strong>"{campaign.name}"</strong> será removida permanentemente. Esta
               ação não pode ser desfeita.
@@ -218,7 +241,31 @@ function CampaignActionsMenu({
               disabled={deletingId === campaign.id}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingId === campaign.id ? "Excluindo..." : "Excluir rascunho"}
+              {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arquivar campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A campanha <strong>"{campaign.name}"</strong> será arquivada e não aparecerá mais na
+              lista. Os dados e métricas serão preservados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={archivingId === campaign.id}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleArchiveConfirm()
+              }}
+              disabled={archivingId === campaign.id}
+            >
+              {archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -238,15 +285,19 @@ export function CampaignList({
     campaigns,
     total,
     page,
+    pageSize,
     totalPages,
     loading,
     deletingId,
     cancelingId,
+    archivingId,
     sendingId,
     handleSend,
     handleCancel,
     handleDeleteDraft,
+    handleArchive,
     handlePageChange,
+    handlePageSizeChange,
     openWizard,
     openEdit,
     credits,
@@ -378,10 +429,12 @@ export function CampaignList({
                             sendBlockReason={getSendBlockReason(campaign)}
                             deletingId={deletingId}
                             cancelingId={cancelingId}
+                            archivingId={archivingId}
                             openEdit={openEdit}
                             handleSend={handleSend}
                             handleCancel={handleCancel}
                             handleDeleteDraft={handleDeleteDraft}
+                            handleArchive={handleArchive}
                             onOpenAnalytics={onOpenAnalytics}
                           />
                         )}
@@ -396,24 +449,62 @@ export function CampaignList({
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{total.toLocaleString("pt-BR")} campanha(s)</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <span>{total.toLocaleString("pt-BR")} campanha(s)</span>
+          <div className="flex items-center gap-2">
+            <span>Linhas por página</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => handlePageSizeChange(Number(v))}
+            >
+              <SelectTrigger className="h-7 w-16 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
           <Button
             variant="outline"
             size="sm"
+            className="h-7 w-7 p-0"
+            disabled={page <= 1 || loading}
+            onClick={() => handlePageChange(1)}
+          >
+            <ChevronFirst className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
             disabled={page <= 1 || loading}
             onClick={() => handlePageChange(page - 1)}
           >
-            Anterior
+            <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span>{page} / {totalPages || 1}</span>
+          <span className="px-2">Página {page} de {totalPages || 1}</span>
           <Button
             variant="outline"
             size="sm"
+            className="h-7 w-7 p-0"
             disabled={page >= totalPages || loading}
             onClick={() => handlePageChange(page + 1)}
           >
-            Próxima
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
+            disabled={page >= totalPages || loading}
+            onClick={() => handlePageChange(totalPages)}
+          >
+            <ChevronLast className="h-4 w-4" />
           </Button>
         </div>
       </div>

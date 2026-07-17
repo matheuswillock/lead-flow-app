@@ -12,7 +12,7 @@ const createSchema = z.object({
   scheduledAt: z.string().datetime().nullable().optional(),
 })
 
-const campaignStatusSchema = z.enum(["draft", "scheduled", "sending", "sent", "canceled", "failed"])
+const campaignStatusSchema = z.enum(["draft", "scheduled", "sending", "sent", "canceled", "failed", "archived"])
 
 function makeUseCase() {
   return new EmailCampaignUseCase()
@@ -35,13 +35,16 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), 20), 100)
     const statusParam = searchParams.get("status")
     const status = statusParam ? campaignStatusSchema.safeParse(statusParam) : null
+    const name = searchParams.get("name") ?? undefined
+    const createdAtFrom = searchParams.get("createdAtFrom") ?? undefined
+    const createdAtTo = searchParams.get("createdAtTo") ?? undefined
 
     if (statusParam && !status?.success) {
       return NextResponse.json(new Output(false, [], ["Status de campanha inválido"], null), { status: 400 })
     }
 
     const useCase = makeUseCase()
-    const output = await useCase.list(teamAccess.access, { status: status?.data, page, pageSize })
+    const output = await useCase.list(teamAccess.access, { status: status?.data, page, pageSize, name, createdAtFrom, createdAtTo })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

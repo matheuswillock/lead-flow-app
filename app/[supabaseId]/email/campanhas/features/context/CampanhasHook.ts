@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, useDeferredValue } from "react"
 import { toast } from "sonner"
 import { CampanhasService } from "../services/CampanhasService"
 import type { Campaign, CreditStatus, Template, ContactList, CdpSegmentOption } from "./CampanhasTypes"
@@ -9,15 +9,20 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { cdpService } from "@/app/[supabaseId]/cdp/features/services/CdpService"
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 const service = new CampanhasService()
 
 export type CampanhasActions = {
   handleSend: (id: string) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
+  handleArchive: (id: string) => Promise<void>
   handleStatusFilter: (status: string) => void
   handlePageChange: (page: number) => void
+  handlePageSizeChange: (size: number) => void
+  handleNameFilter: (value: string) => void
+  handleDateFilter: (from: string, to: string) => void
+  clearFilters: () => void
   openWizard: () => void
   closeWizard: () => void
   setWizardStep: (step: 1 | 2 | 3) => void
@@ -41,14 +46,19 @@ export type CampanhasHookReturn = {
   campaigns: Campaign[]
   total: number
   page: number
+  pageSize: number
   totalPages: number
   statusFilter: string
+  nameFilter: string
+  dateFrom: string
+  dateTo: string
   loading: boolean
   credits: CreditStatus | null
   loadingCredits: boolean
   sendingId: string | null
   cancelingId: string | null
   deletingId: string | null
+  archivingId: string | null
   wizardOpen: boolean
   wizardStep: 1 | 2 | 3
   wizardName: string
@@ -78,12 +88,18 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [statusFilter, setStatusFilter] = useState("")
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [nameFilter, setNameFilter] = useState("")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const deferredName = useDeferredValue(nameFilter)
   const [loading, setLoading] = useState(false)
   const [credits, setCredits] = useState<CreditStatus | null>(null)
   const [loadingCredits, setLoadingCredits] = useState(false)
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [archivingId, setArchivingId] = useState<string | null>(null)
 
   // Wizard
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -110,7 +126,14 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const fetchingRef = useRef(false)
   const lastCampaignsKeyRef = useRef("")
 
-  const fetchCampaigns = useCallback(async (nextPage: number, nextStatus: string) => {
+  const fetchCampaigns = useCallback(async (
+    nextPage: number,
+    nextStatus: string,
+    nextPageSize: number,
+    nextName: string,
+    nextDateFrom: string,
+    nextDateTo: string,
+  ) => {
     if (teamLoading) return
     if (!activeTeamId) {
       setCampaigns([])
@@ -119,13 +142,22 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setTotalPages(1)
       return
     }
-    const key = `${supabaseId}|${activeTeamId}|${nextPage}|${nextStatus}`
+    const key = `${supabaseId}|${activeTeamId}|${nextPage}|${nextStatus}|${nextPageSize}|${nextName}|${nextDateFrom}|${nextDateTo}`
     if (fetchingRef.current || lastCampaignsKeyRef.current === key) return
     fetchingRef.current = true
     setLoading(true)
-    console.info("[useCampanhas] fetchCampaigns", { nextPage, nextStatus })
+    console.info("[useCampanhas] fetchCampaigns", { nextPage, nextStatus, nextPageSize, nextName, nextDateFrom, nextDateTo })
     try {
-      const result = await service.list(supabaseId, activeTeamId, nextPage, PAGE_SIZE, nextStatus || undefined)
+      const result = await service.list(
+        supabaseId,
+        activeTeamId,
+        nextPage,
+        nextPageSize,
+        nextStatus || undefined,
+        nextName || undefined,
+        nextDateFrom || undefined,
+        nextDateTo || undefined,
+      )
       setCampaigns(result.campaigns)
       setTotal(result.total)
       setPage(result.page)
@@ -155,20 +187,47 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
   useEffect(() => {
     if (teamLoading) return
-    void fetchCampaigns(1, "")
+    void fetchCampaigns(1, statusFilter, pageSize, deferredName, dateFrom, dateTo)
     void fetchCredits()
-  }, [fetchCampaigns, fetchCredits, teamLoading])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchCampaigns, fetchCredits, teamLoading, deferredName])
 
   const handleStatusFilter = useCallback((status: string) => {
     setStatusFilter(status)
     setPage(1)
-    void fetchCampaigns(1, status)
-  }, [fetchCampaigns])
+    void fetchCampaigns(1, status, pageSize, nameFilter, dateFrom, dateTo)
+  }, [fetchCampaigns, pageSize, nameFilter, dateFrom, dateTo])
 
   const handlePageChange = useCallback((nextPage: number) => {
     setPage(nextPage)
-    void fetchCampaigns(nextPage, statusFilter)
-  }, [fetchCampaigns, statusFilter])
+    void fetchCampaigns(nextPage, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+  }, [fetchCampaigns, statusFilter, pageSize, nameFilter, dateFrom, dateTo])
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size)
+    setPage(1)
+    void fetchCampaigns(1, statusFilter, size, nameFilter, dateFrom, dateTo)
+  }, [fetchCampaigns, statusFilter, nameFilter, dateFrom, dateTo])
+
+  const handleNameFilter = useCallback((value: string) => {
+    setNameFilter(value)
+    setPage(1)
+  }, [])
+
+  const handleDateFilter = useCallback((from: string, to: string) => {
+    setDateFrom(from)
+    setDateTo(to)
+    setPage(1)
+    void fetchCampaigns(1, statusFilter, pageSize, nameFilter, from, to)
+  }, [fetchCampaigns, statusFilter, pageSize, nameFilter])
+
+  const clearFilters = useCallback(() => {
+    setNameFilter("")
+    setDateFrom("")
+    setDateTo("")
+    setPage(1)
+    void fetchCampaigns(1, statusFilter, pageSize, "", "", "")
+  }, [fetchCampaigns, statusFilter, pageSize])
 
   const handleSend = useCallback(async (id: string) => {
     if (!credits?.hasSubscription && !isCampaignsBetaAccess && !credits?.isBetaExempt) {
@@ -193,17 +252,17 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       if (editingCampaign?.id === id) {
         setEditingCampaign(null)
       }
-      void fetchCampaigns(page, statusFilter)
+      void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
       void fetchCredits()
     } catch (err) {
       console.error("[useCampanhas] handleSend error", err)
       const message = err instanceof Error ? err.message : "Erro ao disparar campanha"
       toast.error(message || "Erro ao disparar campanha")
-      void fetchCampaigns(page, statusFilter)
+      void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } finally {
       setSendingId(null)
     }
-  }, [activeTeamId, credits?.hasSubscription, credits?.isBetaExempt, editingCampaign?.id, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter, supabaseId])
+  }, [activeTeamId, credits?.hasSubscription, credits?.isBetaExempt, editingCampaign?.id, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
 
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)
@@ -211,14 +270,14 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     try {
       await service.cancel(supabaseId, activeTeamId, id)
       toast.success("Campanha cancelada")
-      void fetchCampaigns(page, statusFilter)
+      void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } catch (err) {
       console.error("[useCampanhas] handleCancel error", err)
       toast.error("Erro ao cancelar campanha")
     } finally {
       setCancelingId(null)
     }
-  }, [activeTeamId, fetchCampaigns, page, statusFilter, supabaseId])
+  }, [activeTeamId, fetchCampaigns, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
 
   const handleDeleteDraft = useCallback(async (id: string) => {
     setDeletingId(id)
@@ -233,6 +292,22 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       toast.error("Erro ao excluir rascunho")
     } finally {
       setDeletingId(null)
+    }
+  }, [activeTeamId, supabaseId])
+
+  const handleArchive = useCallback(async (id: string) => {
+    setArchivingId(id)
+    console.info("[useCampanhas] handleArchive", id)
+    try {
+      await service.archive(supabaseId, activeTeamId, id)
+      setCampaigns((prev) => prev.filter((c) => c.id !== id))
+      setTotal((prev) => Math.max(0, prev - 1))
+      toast.success("Campanha arquivada")
+    } catch (err) {
+      console.error("[useCampanhas] handleArchive error", err)
+      toast.error("Erro ao arquivar campanha")
+    } finally {
+      setArchivingId(null)
     }
   }, [activeTeamId, supabaseId])
 
@@ -291,7 +366,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       })
       toast.success("Campanha criada com sucesso")
       setWizardOpen(false)
-      void fetchCampaigns(1, statusFilter)
+      void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } catch (err) {
       console.error("[useCampanhas] handleCreateCampaign error", err)
       toast.error("Erro ao criar campanha")
@@ -308,6 +383,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardScheduledAt,
     fetchCampaigns,
     statusFilter,
+    pageSize,
+    nameFilter,
+    dateFrom,
+    dateTo,
     supabaseId,
   ])
 
@@ -381,14 +460,19 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     campaigns,
     total,
     page,
+    pageSize,
     totalPages,
     statusFilter,
+    nameFilter,
+    dateFrom,
+    dateTo,
     loading,
     credits,
     loadingCredits,
     sendingId,
     cancelingId,
     deletingId,
+    archivingId,
     wizardOpen,
     wizardStep,
     wizardName,
@@ -410,8 +494,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     handleSend,
     handleCancel,
     handleDeleteDraft,
+    handleArchive,
     handleStatusFilter,
     handlePageChange,
+    handlePageSizeChange,
+    handleNameFilter,
+    handleDateFilter,
+    clearFilters,
     openWizard,
     closeWizard,
     setWizardStep,
