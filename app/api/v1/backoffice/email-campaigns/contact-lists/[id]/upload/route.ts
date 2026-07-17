@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeEmailContactListUseCase } from "@/app/api/useCases/backofficeEmailContactList/BackofficeEmailContactListUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
@@ -24,7 +24,7 @@ export async function POST(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
-    const denied = requireMasterAccess(result.access)
+    const denied = requireManagerAccess(result.access)
     if (denied) return denied
 
     if (!result.access.backofficeUserId) {
