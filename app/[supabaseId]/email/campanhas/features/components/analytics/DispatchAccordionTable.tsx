@@ -165,7 +165,7 @@ export function DispatchAccordionTable({
                         </p>
                       </div>
                       <div className="flex flex-col gap-3">
-                        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
                           <p className="col-span-full text-xs font-medium text-muted-foreground">
                             Entrega
                           </p>
@@ -178,6 +178,7 @@ export function DispatchAccordionTable({
                             valueClassName={highBounceRate ? "text-destructive" : undefined}
                             showWarning={highBounceRate}
                           />
+                          <MetricCell label="Reclamações" value={dispatch.totalComplained} />
                         </div>
                         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                           <p className="col-span-full text-xs font-medium text-muted-foreground">

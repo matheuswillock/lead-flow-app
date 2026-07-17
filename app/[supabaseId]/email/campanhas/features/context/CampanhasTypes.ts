@@ -1,7 +1,7 @@
 export type Campaign = {
   id: string
   name: string
-  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'canceled' | 'failed'
+  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'canceled' | 'failed' | 'archived'
   scheduledAt: string | null
   sentAt: string | null
   totalRecipients: number
@@ -59,9 +59,14 @@ export type CampanhasState = {
   loading: boolean
   credits: CreditStatus | null
   loadingCredits: boolean
+  pageSize: number
+  nameFilter: string
+  dateFrom: string
+  dateTo: string
   sendingId: string | null
   cancelingId: string | null
   deletingId: string | null
+  archivingId: string | null
   // Wizard state
   wizardOpen: boolean
   wizardStep: 1 | 2 | 3

@@ -12907,7 +12907,7 @@
               "response": []
             },
             {
-              "name": "Excluir Rascunho",
+              "name": "Excluir Campanha",
               "request": {
                 "method": "DELETE",
                 "header": [],
@@ -12923,7 +12923,31 @@
                     "campaigns",
                     "{{campaignId}}"
                   ]
-                }
+                },
+                "description": "Exclui permanentemente campanhas com status draft, scheduled ou canceled."
+              },
+              "response": []
+            },
+            {
+              "name": "Arquivar Campanha",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/archive",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}",
+                    "archive"
+                  ]
+                },
+                "description": "Arquiva campanhas com status sent ou failed. Os dados e metricas sao preservados."
               },
               "response": []
             }

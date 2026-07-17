@@ -26,8 +26,19 @@ export type EmailAnalyticsDispatchRecord = {
   status: string
 }
 
+export type EmailAnalyticsLogFilter =
+  | "delivered"
+  | "opened"
+  | "clicked"
+  | "bounced"
+  | "complained"
+  | "failed"
+  | "delivery_delayed"
+  | "unsubscribed"
+  | "suppressed"
+
 export interface IEmailAnalyticsRepository {
-  countLogs(where: EmailAnalyticsLogWhere, filter?: "delivered" | "opened" | "clicked" | "bounced" | "complained"): Promise<number>
+  countLogs(where: EmailAnalyticsLogWhere, filter?: EmailAnalyticsLogFilter): Promise<number>
   listDispatches(options: {
     teamId: string
     campaignId: string
@@ -57,7 +68,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
 
   async countLogs(
     where: EmailAnalyticsLogWhere,
-    filter?: "delivered" | "opened" | "clicked" | "bounced" | "complained"
+    filter?: EmailAnalyticsLogFilter
   ): Promise<number> {
     const base = this.buildLogWhere(where)
     const timestampFilter =
@@ -71,7 +82,15 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
               ? { bouncedAt: { not: null as Date | null } }
               : filter === "complained"
                 ? { complainedAt: { not: null as Date | null } }
-                : {}
+                : filter === "failed"
+                  ? { status: "failed" as const }
+                  : filter === "suppressed"
+                    ? { status: "suppressed" as const }
+                    : filter === "delivery_delayed"
+                      ? { events: { some: { type: "delivery_delayed" as const } } }
+                      : filter === "unsubscribed"
+                        ? { events: { some: { type: "unsubscribed" as const } } }
+                        : {}
 
     return prisma.emailLog.count({
       where: { ...base, ...timestampFilter },

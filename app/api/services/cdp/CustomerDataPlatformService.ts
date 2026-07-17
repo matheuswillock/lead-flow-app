@@ -57,6 +57,7 @@ const EMAIL_EVENT_MAP: Record<EmailEventType, string> = {
   delivery_delayed: "email.delivery_delayed",
   unsubscribed: "email.unsubscribed",
   failed: "email.failed",
+  suppressed: "email.suppressed",
 }
 
 export type SyncCounters = {

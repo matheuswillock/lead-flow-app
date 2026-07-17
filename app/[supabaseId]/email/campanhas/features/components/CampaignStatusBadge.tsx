@@ -6,6 +6,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import {
   AlertCircle,
+  Archive,
   Ban,
   CheckCircle2,
   Clock,
@@ -49,6 +50,11 @@ const STATUS_CONFIG: Record<
     label: "Falhou",
     className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
     icon: AlertCircle,
+  },
+  archived: {
+    label: "Arquivado",
+    className: "border bg-transparent text-muted-foreground/60",
+    icon: Archive,
   },
 }
 

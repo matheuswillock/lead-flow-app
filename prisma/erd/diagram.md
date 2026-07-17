@@ -564,6 +564,7 @@ sending sending
 sent sent
 canceled canceled
 failed failed
+archived archived
         }
     
 
@@ -584,6 +585,7 @@ opened opened
 clicked clicked
 bounced bounced
 complained complained
+suppressed suppressed
 failed failed
         }
     
@@ -606,6 +608,7 @@ opened opened
 clicked clicked
 bounced bounced
 complained complained
+suppressed suppressed
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
