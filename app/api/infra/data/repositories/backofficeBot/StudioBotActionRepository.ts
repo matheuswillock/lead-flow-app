@@ -54,6 +54,33 @@ class StudioBotActionRepository {
     });
   }
 
+  async findLeadIdByCode(access: TeamAccess, leadCode: string): Promise<string | null> {
+    const code = leadCode.trim();
+    if (!code) return null;
+
+    const isManager = access.isMaster || isManagerLikeRole(access.teamMember.role);
+    const scopedWhere = isManager
+      ? { teamId: access.teamId }
+      : {
+          teamId: access.teamId,
+          OR: [
+            { assignedTo: access.profileId },
+            { createdBy: access.profileId },
+            { closerId: access.profileId },
+          ],
+        };
+
+    const lead = await prisma.lead.findFirst({
+      where: {
+        ...scopedWhere,
+        leadCode: { equals: code, mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+
+    return lead?.id ?? null;
+  }
+
   async findAgendaToday(access: TeamAccess) {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);

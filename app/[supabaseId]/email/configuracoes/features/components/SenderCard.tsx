@@ -96,7 +96,7 @@ function SenderForm({ initialValue, loading, submitLabel, onSubmit, onCancel }: 
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               disabled={loading}
-              placeholder="Ex: no-reply@corretorstudio.com"
+              placeholder="Ex: deliveryby@mail.suaempresa.com.br"
             />
           </FieldContent>
         </Field>
@@ -253,6 +253,7 @@ export function SenderCard() {
     handleUpdateSender,
     handleDeleteSender,
     handleSetDefaultSender,
+    domainName,
   } = useEmailSettingsContext()
   const [adding, setAdding] = useState(false)
 
@@ -261,11 +262,15 @@ export function SenderCard() {
     [defaultSenderId, senders]
   )
 
+  const fallbackFromHint = domainName
+    ? `deliveryby@${domainName}`
+    : "deliveryby@corretorstudio.com"
+
   return (
     <EmailSettingsSectionCard
       icon={Mail}
       title="Remetentes"
-      description="Gerencie os remetentes usados nas campanhas e mantenha um remetente padrão sincronizado com o envio."
+      description="Gerencie os remetentes usados nas campanhas. Sem remetente cadastrado, o sistema usa o endereço deliveryby do domínio (ou da plataforma)."
       contentClassName="flex flex-col gap-5"
     >
       {loading ? (
@@ -293,7 +298,10 @@ export function SenderCard() {
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-border bg-[color:var(--surface-1)] p-5 text-sm text-muted-foreground">
-              Nenhum remetente configurado. Adicione o primeiro remetente para liberar o envio com identidade própria.
+              Nenhum remetente configurado. Os disparos usarão{" "}
+              <span className="font-mono text-xs text-foreground">{fallbackFromHint}</span> até você
+              cadastrar um remetente próprio
+              {domainName ? " no domínio conectado" : ""}.
             </div>
           )}
 

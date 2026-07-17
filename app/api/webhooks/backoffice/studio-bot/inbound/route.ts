@@ -12,6 +12,7 @@ const schema = z.object({
     messageType: z.enum(["text", "image", "document", "audio", "video", "sticker", "location"]),
     contentText: z.string().nullable().optional(),
     mediaUrl: z.string().nullable().optional(),
+    mediaKey: z.record(z.string(), z.unknown()).nullable().optional(),
     caption: z.string().nullable().optional(),
     mediaFileName: z.string().nullable().optional(),
     linkPreview: z

@@ -201,6 +201,7 @@ export async function POST(
       leadAssignedTo: lead.assignedTo ?? null,
       leadAssigneeEmail: lead.assignee?.email ?? null,
       leadCurrentCloserId: lead.closerId ?? null,
+      leadMeetingLink: lead.meetingLink ?? null,
       leadCode: lead.leadCode ?? null,
       closerId: resolvedCloserId,
       teamId: teamAccess.access.teamId,

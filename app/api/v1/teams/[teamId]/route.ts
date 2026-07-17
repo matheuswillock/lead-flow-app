@@ -9,6 +9,7 @@ import {
   hasDelegatedTeamManagementAccess,
 } from "@/app/api/v1/utils/teamAccess";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
 
 const updateTeamSchema = z
   .object({
@@ -167,11 +168,21 @@ export async function PATCH(
         }
       }
 
-      return team;
+      return { before: existingTeam, after: team };
+    });
+
+    await auditLogWriter.logAudit({
+      entityType: "TEAM",
+      entityId: teamId,
+      action: "UPDATE",
+      actorProfileId: teamAccess.access.profileId,
+      before: updated.before,
+      after: updated.after,
+      metadata: { teamId },
     });
 
     return NextResponse.json(
-      new Output(true, ["Time atualizado com sucesso"], [], updated),
+      new Output(true, ["Time atualizado com sucesso"], [], updated.after),
       { status: 200 }
     );
   } catch (error) {
@@ -295,7 +306,22 @@ export async function DELETE(
       return NextResponse.json(new Output(false, [], ["Senha incorreta"], null), { status: 401 });
     }
 
+    const teamSnapshot = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, name: true, masterId: true, isDefault: true },
+    });
+
     await prisma.team.delete({ where: { id: teamId } });
+
+    await auditLogWriter.logAudit({
+      entityType: "TEAM",
+      entityId: teamId,
+      action: "DELETE",
+      actorProfileId: requester.id,
+      before: teamSnapshot,
+      after: null,
+      metadata: { teamId },
+    });
 
     await memberProBillingUseCase.syncBillingAfterUsageChange(
       billingOwner.id,

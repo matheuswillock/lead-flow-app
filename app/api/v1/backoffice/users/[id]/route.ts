@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
 import { noopMailboxProvisioningService } from "@/app/api/services/mailbox/NoopMailboxProvisioningService"
 import { BackofficeUserUseCase } from "@/app/api/useCases/backoffice/BackofficeUserUseCase"
@@ -17,7 +17,7 @@ export async function PATCH(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
-    const denied = requireMasterAccess(result.access)
+    const denied = requireManagerAccess(result.access)
     if (denied) return denied
 
     const { id } = await params
@@ -46,7 +46,7 @@ export async function DELETE(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
-    const denied = requireMasterAccess(result.access)
+    const denied = requireManagerAccess(result.access)
     if (denied) return denied
 
     const { id } = await params

@@ -3,7 +3,7 @@ export const SHARE_IMAGE_PATH = "/corretor-studio-share-v1.png"
 export const SHARE_IMAGE_ALT = "Corretor Studio — CRM e pipeline comercial para corretores de saúde"
 export const SHARE_IMAGE_WIDTH = 1200
 export const SHARE_IMAGE_HEIGHT = 630
-const DEFAULT_SITE_URL = "https://corretorstudio.com"
+const DEFAULT_SITE_URL = "https://www.corretorstudio.com"
 
 export function getMetadataBase(): URL | undefined {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL

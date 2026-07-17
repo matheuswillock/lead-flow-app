@@ -1,35 +1,18 @@
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { SupabaseStorageService, STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { AttachmentUploadResult } from "./DTOs/AttachmentUploadResult";
 import { DeleteAttachmentResult } from "./DTOs/DeleteAttachmentResult";
 import { ILeadAttachmentService } from "./ILeadAttachmentService";
 
+/**
+ * Upload/delete de anexos de lead via SupabaseStorageService (service-role).
+ * Necessário para webhooks do bot (sem cookies de sessão) e alinhado ao path autenticado.
+ */
 export class LeadAttachmentService implements ILeadAttachmentService {
-  private readonly BUCKET_NAME = "lead-attachments";
-  private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-  private readonly ALLOWED_TYPES = [
-    // Imagens
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-    "image/gif",
-    // PDFs
-    "application/pdf",
-    // Documentos
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    // Texto
-    "text/plain",
-    "text/csv",
-  ];
-
   /**
    * Faz upload de um attachment para o Supabase Storage
    * @param file - Arquivo
    * @param leadId - ID do lead
-   * @param uploadedBy - ID do usuário que está fazendo upload
+   * @param uploadedBy - ID do usuário que está fazendo upload (auditoria no use case)
    * @returns Resultado do upload
    */
   async uploadAttachment(
@@ -38,60 +21,28 @@ export class LeadAttachmentService implements ILeadAttachmentService {
     _uploadedBy: string
   ): Promise<AttachmentUploadResult> {
     try {
-      // Validações
-      const validation = this.validateFile(file);
-      if (!validation.isValid) {
-        return { success: false, error: validation.error };
+      const result = await SupabaseStorageService.uploadFile(
+        file,
+        STORAGE_BUCKETS.LEAD_ATTACHMENTS,
+        leadId,
+        file.name,
+        "attachment"
+      );
+
+      if (!result.success || !result.fileId || !result.publicUrl) {
+        return { success: false, error: result.error ?? "Upload failed" };
       }
-
-      const supabase = await createSupabaseServer();
-      if (!supabase) {
-        return { success: false, error: "Failed to initialize Supabase client" };
-      }
-
-      // Gerar nome único para o arquivo mantendo nome original
-      const timestamp = Date.now();
-      const randomStr = Math.random().toString(36).substring(2, 8);
-      const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const fileName = `${leadId}/${timestamp}-${randomStr}-${sanitizedFileName}`;
-
-      // Converter File para ArrayBuffer
-      const arrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-
-      // Upload para o Supabase Storage
-      const { data: uploadData, error } = await supabase.storage
-        .from(this.BUCKET_NAME)
-        .upload(fileName, uint8Array, {
-          contentType: file.type,
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (error) {
-        console.error("Error uploading file to Supabase Storage:", error);
-        return { success: false, error: `Upload failed: ${error.message}` };
-      }
-
-      if (!uploadData) {
-        return { success: false, error: "Upload succeeded but no data returned" };
-      }
-
-      // Obter URL pública
-      const { data: urlData } = supabase.storage
-        .from(this.BUCKET_NAME)
-        .getPublicUrl(fileName);
 
       return {
         success: true,
-        fileId: fileName,
-        publicUrl: urlData.publicUrl,
+        fileId: result.fileId,
+        publicUrl: result.publicUrl,
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
       };
     } catch (error) {
-      console.error("Unexpected error during file upload:", error);
+      console.error("[LeadAttachmentService] Unexpected error during upload:", error);
       return { success: false, error: "Unexpected error during upload" };
     }
   }
@@ -103,21 +54,9 @@ export class LeadAttachmentService implements ILeadAttachmentService {
    */
   async deleteAttachment(fileId: string): Promise<DeleteAttachmentResult> {
     try {
-      const supabase = await createSupabaseServer();
-      if (!supabase) {
-        return { success: false, error: "Failed to initialize Supabase client" };
-      }
-
-      const { error } = await supabase.storage.from(this.BUCKET_NAME).remove([fileId]);
-
-      if (error) {
-        console.error("Error deleting file from Supabase Storage:", error);
-        return { success: false, error: `Delete failed: ${error.message}` };
-      }
-
-      return { success: true };
+      return await SupabaseStorageService.deleteFile(fileId, STORAGE_BUCKETS.LEAD_ATTACHMENTS);
     } catch (error) {
-      console.error("Unexpected error during file deletion:", error);
+      console.error("[LeadAttachmentService] Unexpected error during deletion:", error);
       return { success: false, error: "Unexpected error during deletion" };
     }
   }
@@ -129,14 +68,9 @@ export class LeadAttachmentService implements ILeadAttachmentService {
    */
   async getAttachmentUrl(fileId: string): Promise<string | null> {
     try {
-      const supabase = await createSupabaseServer();
-      if (!supabase) return null;
-
-      const { data } = supabase.storage.from(this.BUCKET_NAME).getPublicUrl(fileId);
-
-      return data.publicUrl;
+      return SupabaseStorageService.getPublicUrl(fileId, STORAGE_BUCKETS.LEAD_ATTACHMENTS);
     } catch (error) {
-      console.error("Error getting attachment URL:", error);
+      console.error("[LeadAttachmentService] Error getting attachment URL:", error);
       return null;
     }
   }
@@ -148,52 +82,20 @@ export class LeadAttachmentService implements ILeadAttachmentService {
    */
   async listLeadAttachments(leadId: string): Promise<string[]> {
     try {
-      const supabase = await createSupabaseServer();
-      if (!supabase) return [];
+      const result = await SupabaseStorageService.listFiles(
+        leadId,
+        STORAGE_BUCKETS.LEAD_ATTACHMENTS
+      );
 
-      const { data, error } = await supabase.storage.from(this.BUCKET_NAME).list(leadId, {
-        limit: 100,
-        offset: 0,
-        sortBy: { column: "created_at", order: "desc" },
-      });
-
-      if (error || !data) {
-        console.error("Error listing lead attachments:", error);
+      if (!result.success || !result.files) {
         return [];
       }
 
-      return data.map((file) => `${leadId}/${file.name}`);
+      return result.files.map((file) => `${leadId}/${file.name}`);
     } catch (error) {
-      console.error("Unexpected error listing lead attachments:", error);
+      console.error("[LeadAttachmentService] Unexpected error listing attachments:", error);
       return [];
     }
-  }
-
-  /**
-   * Valida arquivo de upload
-   * @param file - Arquivo a ser validado
-   * @returns Resultado da validação
-   */
-  private validateFile(file: File): { isValid: boolean; error?: string } {
-    // Verificar tamanho
-    if (file.size > this.MAX_FILE_SIZE) {
-      return { isValid: false, error: "Arquivo muito grande. Tamanho máximo: 10MB" };
-    }
-
-    // Verificar tipo MIME
-    if (!this.ALLOWED_TYPES.includes(file.type)) {
-      return {
-        isValid: false,
-        error: "Tipo de arquivo não permitido. Aceitos: imagens, PDF, Word, Excel e texto",
-      };
-    }
-
-    // Verificar se o arquivo não está vazio
-    if (file.size === 0) {
-      return { isValid: false, error: "O arquivo está vazio" };
-    }
-
-    return { isValid: true };
   }
 }
 

@@ -641,6 +641,7 @@ sending sending
 sent sent
 canceled canceled
 failed failed
+archived archived
         }
     
 
@@ -661,6 +662,7 @@ opened opened
 clicked clicked
 bounced bounced
 complained complained
+suppressed suppressed
 failed failed
         }
     
@@ -683,6 +685,7 @@ opened opened
 clicked clicked
 bounced bounced
 complained complained
+suppressed suppressed
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
@@ -693,6 +696,23 @@ failed failed
         BackofficeOperationalCapability {
             ASSOCIADOS_QUEUE ASSOCIADOS_QUEUE
 MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
+        }
+    
+
+
+        AuditEntityType {
+            PROFILE PROFILE
+TEAM TEAM
+TEAM_MEMBER TEAM_MEMBER
+        }
+    
+
+
+        AuditAction {
+            CREATE CREATE
+UPDATE UPDATE
+DELETE DELETE
+ROLE_CHANGE ROLE_CHANGE
         }
     
 
@@ -1467,6 +1487,18 @@ failed failed
     String id "🗝️"
     String emoji 
     String emojiUnified 
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_audit_logs" {
+    String id "🗝️"
+    AuditEntityType entityType 
+    String entityId 
+    AuditAction action 
+    Json before "❓"
+    Json after "❓"
+    Json metadata "❓"
     DateTime createdAt 
     }
   
@@ -2651,6 +2683,9 @@ failed failed
     "corretor_studio_lead_activities" }o--|o corretor_studio_profiles : "author"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_lead_activities : "activity"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_audit_logs" |o--|| "AuditEntityType" : "enum:entityType"
+    "corretor_studio_audit_logs" |o--|| "AuditAction" : "enum:action"
+    "corretor_studio_audit_logs" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_tasks" |o--|| "TaskType" : "enum:taskType"
     "corretor_studio_tasks" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_tasks" }o--|| corretor_studio_profiles : "creator"

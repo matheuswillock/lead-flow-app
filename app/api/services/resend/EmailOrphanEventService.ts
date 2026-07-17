@@ -5,6 +5,9 @@ import {
   resendEmailEnrichmentService,
   type IResendEmailEnrichmentService,
 } from "@/app/api/services/resend/ResendEmailEnrichmentService"
+import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
+import { resendWebhookService } from "@/app/api/services/resend/ResendWebhookService"
+import { customerDataPlatformService } from "@/app/api/services/cdp/CustomerDataPlatformService"
 
 const BATCH_SIZE = 10
 const MAX_REQUESTS_PER_SECOND = 8
@@ -61,6 +64,44 @@ export class EmailOrphanEventService {
     let skipped = 0
 
     for (const event of pending) {
+      const existingLog = await emailLogRepository.findByResendEmailId(event.resendEmailId)
+      if (existingLog) {
+        const eventType = resendWebhookService.mapEventType(event.resendEventType)
+        if (eventType) {
+          await resendWebhookService.processEmailLogWebhook({
+            log: existingLog,
+            eventType,
+            occurredAt: event.occurredAt,
+            metadata: {},
+            resendEventType: event.resendEventType,
+            svixId: null,
+          })
+
+          // Mesmos side effects CDP do fluxo normal (ResendWebhookUseCase), para opens/clicks/bounces recuperados.
+          try {
+            await customerDataPlatformService.handleEmailWebhookEvent({
+              teamId: existingLog.teamId,
+              recipientEmail: existingLog.recipientEmail,
+              recipientName: existingLog.recipientName,
+              logId: existingLog.id,
+              campaignId: existingLog.campaignId,
+              eventType,
+              occurredAt: event.occurredAt,
+              metadata: {},
+            })
+          } catch (cdpError) {
+            console.error("[EmailOrphanEventService][cdp]", cdpError)
+          }
+        }
+        await prisma.emailOrphanEvent.update({
+          where: { id: event.id },
+          data: { status: "processed", processedAt: new Date(), attempts: { increment: 1 } },
+        })
+        processed += 1
+        await sleep(MIN_INTERVAL_MS)
+        continue
+      }
+
       let backoffMs = MIN_INTERVAL_MS
       let success = false
       let lastError: string | null = null

@@ -1,5 +1,6 @@
 import Link from "next/link"
 import Image from "next/image"
+import { Heart } from "lucide-react"
 import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
 type FooterHrefLink = {
@@ -100,9 +101,27 @@ export function LandingFooter() {
         </div>
 
         <div className="flex flex-col gap-4 pt-7 text-sm text-landing-footer-subtle md:flex-row md:items-center md:justify-between">
-          <p>
-            © {currentYear} Corretor Studio. Todos os direitos reservados.
-          </p>
+          <div className="flex flex-col gap-2">
+            <p>
+              © {currentYear} Corretor Studio. Todos os direitos reservados.
+            </p>
+            <p className="inline-flex flex-wrap items-center gap-1.5">
+              Developing with
+              <Heart
+                aria-hidden
+                className="size-3.5 fill-semantic-success text-semantic-success"
+              />
+              by{" "}
+              <a
+                href="https://willockshouse.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-landing-footer-muted underline-offset-4 transition-colors hover:text-[var(--landing-invert)] hover:underline"
+              >
+                Willocks House
+              </a>
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link href="/privacy-policy" className="transition-colors hover:text-[var(--landing-invert)]">
               Privacidade

@@ -16,6 +16,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: { id: logId, teamId: teamAccess.access.teamId },
       include: {
         campaign: { select: { id: true, name: true } },
+        dispatch: {
+          select: {
+            contactListName: true,
+            cdpSegmentSlug: true,
+          },
+        },
         events: {
           orderBy: { occurredAt: "asc" },
           select: {

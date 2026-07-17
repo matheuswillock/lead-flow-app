@@ -22,7 +22,12 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") ?? undefined
     const campaignId = searchParams.get("campaignId") ?? undefined
     const category = searchParams.get("category") ?? undefined
-    const status = searchParams.get("status") ?? undefined
+    const statusParams = searchParams
+      .getAll("status")
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim())
+      .filter(Boolean)
+    const uniqueStatuses = Array.from(new Set(statusParams))
     const from = searchParams.get("from") ?? undefined
     const to = searchParams.get("to") ?? undefined
 
@@ -31,12 +36,13 @@ export async function GET(request: NextRequest) {
       ...(search && {
         OR: [
           { recipientEmail: { contains: search, mode: "insensitive" as const } },
-          { subject: { contains: search, mode: "insensitive" as const } },
+          { recipientName: { contains: search, mode: "insensitive" as const } },
         ],
       }),
       ...(campaignId && { campaignId }),
       ...(category && { category: category as never }),
-      ...(status && { status: status as never }),
+      ...(uniqueStatuses.length === 1 && { status: uniqueStatuses[0] as never }),
+      ...(uniqueStatuses.length > 1 && { status: { in: uniqueStatuses as never[] } }),
       ...((from || to) && {
         sentAt: {
           ...(from && { gte: new Date(from) }),
@@ -62,7 +68,15 @@ export async function GET(request: NextRequest) {
           openedAt: true,
           clickedAt: true,
           bouncedAt: true,
+          campaignId: true,
+          dispatchId: true,
           campaign: { select: { id: true, name: true } },
+          dispatch: {
+            select: {
+              contactListName: true,
+              cdpSegmentSlug: true,
+            },
+          },
         },
         orderBy: { sentAt: "desc" },
         skip: (page - 1) * pageSize,

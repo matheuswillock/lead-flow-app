@@ -11,7 +11,7 @@ import {
 } from "@/lib/email/interpolate"
 import type { IEmailCampaignDispatchService, DispatchBatchResult } from "./IEmailCampaignDispatchService"
 
-const BATCH_SIZE = 50
+const BATCH_SIZE = 100
 
 /** Extrai IDs de e-mails da resposta do Resend batch (SDK v6). */
 export function parseResendBatchSendItems(
@@ -39,6 +39,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
+    onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
   }): Promise<DispatchBatchResult> {
     if (!resend) {
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
@@ -49,6 +50,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex]
+      // Callback de persistência fica fora do try/catch do Resend: falha de DB após
+      // aceite do chunk não pode ser engolida como "falha de batch" (sent sem resendEmailId).
+      let chunkDispatched: Array<{ email: string; resendId: string }> = []
+
       try {
         const batchPayload = chunk.map((recipient) => {
           const renderedHtml = interpolateEmailTemplate(
@@ -112,6 +117,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             if (!recipient) return
             if (item?.id) {
               result.dispatched.push({ email: recipient.email, resendId: item.id })
+              chunkDispatched.push({ email: recipient.email, resendId: item.id })
               result.sent++
             } else {
               result.failed++
@@ -124,6 +130,12 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       } catch (error) {
         console.error("[EmailCampaignDispatchService][dispatchBatch] Erro no batch:", error)
         result.failed += chunk.length
+        chunkDispatched = []
+        continue
+      }
+
+      if (chunkDispatched.length > 0) {
+        await params.onChunkDispatched?.(chunkDispatched)
       }
     }
 

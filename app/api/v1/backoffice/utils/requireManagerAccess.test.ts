@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import type { BackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 
 function makeAccess(isOperator: boolean): BackofficeAccess {
@@ -13,14 +13,14 @@ function makeAccess(isOperator: boolean): BackofficeAccess {
   }
 }
 
-describe("requireMasterAccess", () => {
+describe("requireManagerAccess", () => {
   it("retorna 403 para operator", () => {
-    const response = requireMasterAccess(makeAccess(true))
+    const response = requireManagerAccess(makeAccess(true))
     expect(response).not.toBeNull()
     expect(response?.status).toBe(403)
   })
 
-  it("permite master (não-operator)", () => {
-    expect(requireMasterAccess(makeAccess(false))).toBeNull()
+  it("permite manager (não-operator)", () => {
+    expect(requireManagerAccess(makeAccess(false))).toBeNull()
   })
 })

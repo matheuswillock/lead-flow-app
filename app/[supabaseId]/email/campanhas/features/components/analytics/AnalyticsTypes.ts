@@ -7,6 +7,10 @@ export type AnalyticsData = {
     clicked: number
     bounced: number
     complained: number
+    failed: number
+    deliveryDelayed: number
+    unsubscribed: number
+    suppressed: number
   }
   rates: {
     deliverabilityRate: number
