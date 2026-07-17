@@ -148,7 +148,7 @@ function CopyableCell({ value, label }: { value: string; label: string }) {
         onClick={() => void copyToClipboard(value, label)}
         aria-label={`Copiar ${label}`}
       >
-        <Copy className="size-3.5" />
+        <Copy />
       </Button>
     </div>
   )

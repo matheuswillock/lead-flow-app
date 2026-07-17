@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeWhatsAppInstanceUseCase } from "@/app/api/useCases/backofficeWhatsApp/BackofficeWhatsAppInstanceUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -33,7 +33,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const access = await getBackofficeAccess(request)
     if (access.error) return NextResponse.json(access.error, { status: access.status })
-    const denied = requireMasterAccess(access.access)
+    const denied = requireManagerAccess(access.access)
     if (denied) return denied
 
     const parsed = updateSchema.safeParse(await request.json())
