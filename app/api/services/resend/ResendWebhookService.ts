@@ -10,6 +10,7 @@ const EVENT_TYPE_MAP: Record<string, EmailEventType> = {
   "email.clicked": "clicked",
   "email.bounced": "bounced",
   "email.complained": "complained",
+  "email.suppressed": "suppressed",
   "email.delivery_delayed": "delivery_delayed",
   "email.unsubscribed": "unsubscribed",
   "email.failed": "failed",

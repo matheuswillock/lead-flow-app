@@ -18,7 +18,6 @@ import {
   FileText,
   BookUser,
   Send,
-  History,
   ArrowRightLeft,
   Handshake,
   BarChart3,
@@ -142,7 +141,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_TEMPLATES },
     { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CONTACTS },
     { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
-    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL_HISTORY },
     { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
   ];
 

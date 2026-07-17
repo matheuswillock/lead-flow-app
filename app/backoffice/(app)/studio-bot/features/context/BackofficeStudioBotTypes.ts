@@ -104,6 +104,7 @@ export interface BackofficeStudioBotChannelFormData {
   aboutText?: string | null
   n8nInboundUrl?: string | null
   status?: BackofficeBotChannelStatus
+  isActive?: boolean
 }
 
 export interface BackofficeStudioBotQrCode {

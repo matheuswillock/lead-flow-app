@@ -100,22 +100,22 @@ export function NewUserDialog({
               <div className="flex flex-col gap-2">
                 <Label>Tipo de usuário</Label>
                 <RadioGroup
-                  value={form.fullAccess ? "master" : "operator"}
-                  onValueChange={(value) => onChange("fullAccess", value === "master")}
+                  value={form.fullAccess ? "manager" : "operator"}
+                  onValueChange={(value) => onChange("fullAccess", value === "manager")}
                   disabled={isCreating}
                   className="flex flex-col gap-2"
                 >
                   <div className="flex items-start gap-3">
-                    <RadioGroupItem value="master" id="role-master" className="mt-0.5" />
+                    <RadioGroupItem value="manager" id="role-manager" className="mt-0.5" />
                     <div>
-                      <Label htmlFor="role-master" className="font-medium cursor-pointer">Master</Label>
+                      <Label htmlFor="role-manager" className="font-medium cursor-pointer">Manager</Label>
                       <p className="text-xs text-muted-foreground">Acesso total ao backoffice</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
                     <RadioGroupItem value="operator" id="role-operator" className="mt-0.5" />
                     <div>
-                      <Label htmlFor="role-operator" className="font-medium cursor-pointer">Operador</Label>
+                      <Label htmlFor="role-operator" className="font-medium cursor-pointer">Operator</Label>
                       <p className="text-xs text-muted-foreground">Apenas visualização</p>
                     </div>
                   </div>

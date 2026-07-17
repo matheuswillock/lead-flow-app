@@ -28,7 +28,7 @@ function buildPagination(page: number, pageSize: number, totalItems: number) {
   };
 }
 
-function toChannelDto(channel: Awaited<ReturnType<typeof backofficeBotRepository.getActiveChannel>>) {
+function toChannelDto(channel: Awaited<ReturnType<typeof backofficeBotRepository.findPrimaryChannel>>) {
   if (!channel) return null;
   return {
     id: channel.id,
@@ -63,7 +63,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
    * Alinha status/telefone do canal com a instância Evolution (fonte de verdade do número).
    */
   private async syncChannelFromEvolution(
-    channel: NonNullable<Awaited<ReturnType<typeof backofficeBotRepository.getActiveChannel>>>
+    channel: NonNullable<Awaited<ReturnType<typeof backofficeBotRepository.findPrimaryChannel>>>
   ) {
     const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
 
@@ -108,7 +108,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
 
   async getChannel(): Promise<Output> {
     try {
-      let channel = await backofficeBotRepository.getActiveChannel();
+      let channel = await backofficeBotRepository.findPrimaryChannel();
 
       if (channel) {
         channel = await this.syncChannelFromEvolution(channel);
@@ -126,10 +126,17 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
     aboutText?: string | null;
     n8nInboundUrl?: string | null;
     status?: BackofficeBotChannelStatus;
+    isActive?: boolean;
   }): Promise<Output> {
     try {
       const channel = await backofficeBotRepository.upsertChannel(data);
-      return new Output(true, ["Canal atualizado"], [], { channel: toChannelDto(channel) });
+      const successMessage =
+        data.isActive === false
+          ? "Bethânia desabilitada para usuários"
+          : data.isActive === true
+            ? "Bethânia habilitada para usuários"
+            : "Canal atualizado";
+      return new Output(true, [successMessage], [], { channel: toChannelDto(channel) });
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][upsertChannel]", error);
       return new Output(false, [], ["Erro ao salvar canal"], null);
@@ -141,7 +148,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
     aboutText?: string | null;
   }): Promise<Output> {
     try {
-      const active = await backofficeBotRepository.getActiveChannel();
+      const active = await backofficeBotRepository.findPrimaryChannel();
       if (!active) {
         return new Output(false, [], ["Canal não configurado"], null);
       }
@@ -292,7 +299,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
 
   async uploadChannelAvatar(file: File): Promise<Output> {
     try {
-      const active = await backofficeBotRepository.getActiveChannel();
+      const active = await backofficeBotRepository.findPrimaryChannel();
       if (!active) {
         return new Output(false, [], ["Canal não configurado"], null);
       }
@@ -337,7 +344,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
   async reconnectChannel(): Promise<Output> {
     try {
       const active =
-        (await backofficeBotRepository.getActiveChannel()) ??
+        (await backofficeBotRepository.findPrimaryChannel()) ??
         (await backofficeBotRepository.upsertChannel({}));
 
       if (!active.n8nInboundUrl) {
@@ -373,7 +380,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
 
   async refreshChannelConnection(): Promise<Output> {
     try {
-      const active = await backofficeBotRepository.getActiveChannel();
+      const active = await backofficeBotRepository.findPrimaryChannel();
       if (!active) {
         return new Output(false, [], ["Canal não configurado"], null);
       }
@@ -399,7 +406,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
 
   async disconnectChannel(): Promise<Output> {
     try {
-      const active = await backofficeBotRepository.getActiveChannel();
+      const active = await backofficeBotRepository.findPrimaryChannel();
       if (!active) {
         return new Output(false, [], ["Canal não configurado"], null);
       }
@@ -427,7 +434,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
 
   async syncChannelProfile(): Promise<Output> {
     try {
-      const active = await backofficeBotRepository.getActiveChannel();
+      const active = await backofficeBotRepository.findPrimaryChannel();
       if (!active) {
         return new Output(false, [], ["Canal não configurado"], null);
       }

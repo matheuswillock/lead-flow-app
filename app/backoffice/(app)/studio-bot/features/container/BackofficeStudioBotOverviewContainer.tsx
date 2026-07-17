@@ -1,9 +1,19 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect } from "react"
-import { Loader2, MessageSquare, Link2, ShieldCheck, Radio } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2, MessageSquare, Link2, ShieldCheck, Radio, Power, PowerOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useBackofficeStudioBot } from "../context/BackofficeStudioBotHook"
@@ -19,14 +29,31 @@ export function BackofficeStudioBotOverviewContainer() {
     loadChannel,
     testPing,
     loadUserLinks,
+    updateChannel,
     userLinksPagination,
     conversationsPagination,
   } = useBackofficeStudioBot()
+
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false)
+  const [isTogglingBot, setIsTogglingBot] = useState(false)
+  const isBotEnabled = channel?.isActive ?? false
 
   useEffect(() => {
     void loadChannel()
     void loadUserLinks()
   }, [loadChannel, loadUserLinks])
+
+  const handleToggleBotEnabled = async (nextEnabled: boolean) => {
+    setIsTogglingBot(true)
+    try {
+      const ok = await updateChannel({ isActive: nextEnabled })
+      if (ok && !nextEnabled) {
+        setDisableDialogOpen(false)
+      }
+    } finally {
+      setIsTogglingBot(false)
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 p-4">
@@ -58,6 +85,12 @@ export function BackofficeStudioBotOverviewContainer() {
                     <span className="text-sm text-muted-foreground">Canal não configurado</span>
                   )}
                 </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">Disponível em Conexões</span>
+                  <span className="text-sm font-medium">
+                    {channel ? (isBotEnabled ? "Habilitada" : "Desabilitada") : "—"}
+                  </span>
+                </div>
                 {channel?.phoneNumber ? (
                   <span className="text-sm text-muted-foreground">
                     {formatWhatsappPhoneDisplay(channel.phoneNumber) ?? channel.phoneNumber}
@@ -68,8 +101,71 @@ export function BackofficeStudioBotOverviewContainer() {
                 {channel?.displayName ? (
                   <span className="text-sm font-medium">{channel.displayName}</span>
                 ) : null}
+                {!isBotEnabled && channel ? (
+                  <p className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
+                    Card de vínculo oculto em Conexões. Novas vinculações bloqueadas.
+                  </p>
+                ) : null}
               </>
             )}
+            {canManage && channel ? (
+              isBotEnabled ? (
+                <AlertDialog open={disableDialogOpen} onOpenChange={setDisableDialogOpen}>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-foreground/20 text-destructive hover:border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      disabled={isTogglingBot}
+                    >
+                      {isTogglingBot ? (
+                        <Loader2 className="animate-spin" data-icon="inline-start" />
+                      ) : (
+                        <PowerOff data-icon="inline-start" />
+                      )}
+                      {isTogglingBot ? "Desabilitando..." : "Desabilitar para usuários"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="max-h-[90vh] flex flex-col border-destructive/40">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-destructive">
+                        Desabilitar a Bethânia para usuários?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        O card de vínculo some da aba Conexões do Corretor Studio e ninguém consegue
+                        gerar código `VINCULAR`. A conexão WhatsApp não é derrubada.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isTogglingBot}>Cancelar</AlertDialogCancel>
+                      <Button
+                        variant="destructive"
+                        disabled={isTogglingBot}
+                        onClick={() => void handleToggleBotEnabled(false)}
+                      >
+                        {isTogglingBot ? "Desabilitando..." : "Confirmar desabilitação"}
+                      </Button>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isTogglingBot}
+                  onClick={() => void handleToggleBotEnabled(true)}
+                >
+                  {isTogglingBot ? (
+                    <Loader2 className="animate-spin" data-icon="inline-start" />
+                  ) : (
+                    <Power data-icon="inline-start" />
+                  )}
+                  {isTogglingBot ? "Habilitando..." : "Habilitar para usuários"}
+                </Button>
+              )
+            ) : null}
             <Button variant="outline" size="sm" asChild>
               <Link href="/backoffice/studio-bot/canal">
                 <Radio data-icon="inline-start" />
@@ -128,7 +224,7 @@ export function BackofficeStudioBotOverviewContainer() {
               {isTestingPing ? "Testando..." : "Testar ping N8N"}
             </Button>
           ) : (
-            <span className="text-sm text-muted-foreground">Somente leitura para operadores.</span>
+            <span className="text-sm text-muted-foreground">Somente leitura para operators.</span>
           )}
           <Button variant="outline" size="sm" asChild>
             <Link href="/backoffice/studio-bot/verificacoes">

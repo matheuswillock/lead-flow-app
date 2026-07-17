@@ -2,6 +2,7 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import type { ITogglePermanentSubscriptionUseCase } from "./ITogglePermanentSubscriptionUseCase";
+import { auditLogService } from "@/app/api/services/audit/AuditLogService";
 
 export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubscriptionUseCase {
   /**
@@ -56,6 +57,19 @@ export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubsc
           hasPermanentSubscription: true,
           hasUnlimitedUsers: true,
         }
+      });
+
+      await auditLogService.logAudit({
+        entityType: 'PROFILE',
+        entityId: profile.id,
+        action: 'ROLE_CHANGE',
+        actorProfileId: null,
+        before: { hasPermanentSubscription: profile.hasPermanentSubscription },
+        after: {
+          hasPermanentSubscription: updatedProfile.hasPermanentSubscription,
+          hasUnlimitedUsers: updatedProfile.hasUnlimitedUsers,
+        },
+        metadata: null,
       });
 
       const action = enable ? 'ativada' : 'desativada';

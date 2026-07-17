@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeMemberAccessEmailUseCase } from "@/app/api/useCases/backoffice/BackofficeMemberAccessEmailUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -19,7 +19,7 @@ export async function POST(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
-    const denied = requireMasterAccess(accessResult.access)
+    const denied = requireManagerAccess(accessResult.access)
     if (denied) return denied
 
     const body = bodySchema.safeParse(await request.json().catch(() => ({})))

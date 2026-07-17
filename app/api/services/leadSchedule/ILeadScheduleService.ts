@@ -9,6 +9,8 @@ export interface CreateScheduleParams {
   leadAssignedTo: string | null;
   leadAssigneeEmail: string | null;
   leadCurrentCloserId: string | null;
+  /** Espelho do Meet no Lead — fallback ao preservar link na troca de closer. */
+  leadMeetingLink?: string | null;
   leadCode: string | null;
   closerId: string;
   teamId: string;

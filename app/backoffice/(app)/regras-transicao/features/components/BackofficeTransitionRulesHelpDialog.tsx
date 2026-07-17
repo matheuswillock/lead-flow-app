@@ -122,8 +122,8 @@ export function BackofficeTransitionRulesHelpDialog({
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold">Permissões</h3>
             <p className="text-sm text-muted-foreground">
-              Apenas usuários <span className="font-medium text-foreground">master</span>{" "}
-              (não-operadores) podem salvar alterações nesta tela. Operadores podem visualizar as
+              Apenas usuários <span className="font-medium text-foreground">Manager</span>{" "}
+              (não-operators) podem salvar alterações nesta tela. Operators podem visualizar as
               regras, mas não alterá-las.
             </p>
           </section>

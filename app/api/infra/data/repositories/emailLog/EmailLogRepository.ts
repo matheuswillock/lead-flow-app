@@ -53,7 +53,7 @@ export class EmailLogRepository implements IEmailLogRepository {
       : {}
 
     const statusPriority: string[] = [
-      "complained", "bounced", "failed", "clicked", "opened", "delivered", "sent", "queued",
+      "complained", "bounced", "suppressed", "failed", "clicked", "opened", "delivered", "sent", "queued",
     ]
     const currentStatusIdx = statusPriority.indexOf(log.status as EmailEventType)
     const newStatusIdx = statusPriority.indexOf(eventType)

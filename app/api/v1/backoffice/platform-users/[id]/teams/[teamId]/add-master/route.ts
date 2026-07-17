@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { invalidateTeamMembersCache } from "@/lib/cache/invalidation"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
-    const denied = requireMasterAccess(access.access)
+    const denied = requireManagerAccess(access.access)
     if (denied) return denied
 
     const { id, teamId } = await params

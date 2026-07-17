@@ -206,7 +206,7 @@ export function BackofficeUsersContainer() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={u.fullAccess ? "default" : "outline"}>
-                        {u.fullAccess ? "Master" : "Operador"}
+                        {u.fullAccess ? "Manager" : "Operator"}
                       </Badge>
                     </TableCell>
                     <TableCell>
