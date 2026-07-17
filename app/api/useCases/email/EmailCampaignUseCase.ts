@@ -98,11 +98,18 @@ export class EmailCampaignUseCase {
     return recipients.length
   }
 
-  async list(ctx: TeamContext, options: { status?: string; page: number; pageSize: number }): Promise<Output> {
+  async list(ctx: TeamContext, options: { status?: string; page: number; pageSize: number; name?: string; createdAtFrom?: string; createdAtTo?: string }): Promise<Output> {
     try {
       const where = {
         teamId: ctx.teamId,
         ...(options.status && { status: options.status as EmailCampaignStatus }),
+        ...(options.name && { name: { contains: options.name, mode: "insensitive" as const } }),
+        ...((options.createdAtFrom || options.createdAtTo) && {
+          createdAt: {
+            ...(options.createdAtFrom && { gte: new Date(options.createdAtFrom) }),
+            ...(options.createdAtTo && { lte: new Date(`${options.createdAtTo}T23:59:59.999Z`) }),
+          },
+        }),
       }
 
       const [campaigns, total] = await prisma.$transaction([
@@ -1153,19 +1160,41 @@ export class EmailCampaignUseCase {
   async deleteDraft(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: "draft" },
+        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "canceled"] } },
       })
 
       if (!existing) {
-        return new Output(false, [], ["Rascunho não encontrado"], null)
+        return new Output(false, [], ["Campanha não encontrada ou não pode ser excluída"], null)
       }
 
       await prisma.emailCampaign.delete({ where: { id } })
 
-      return new Output(true, ["Rascunho removido com sucesso"], [], null)
+      return new Output(true, ["Campanha removida com sucesso"], [], null)
     } catch (error) {
       console.error("[EmailCampaignUseCase][deleteDraft]", error)
-      return new Output(false, [], ["Erro ao remover rascunho"], null)
+      return new Output(false, [], ["Erro ao remover campanha"], null)
+    }
+  }
+
+  async archive(id: string, ctx: TeamContext): Promise<Output> {
+    try {
+      const existing = await prisma.emailCampaign.findFirst({
+        where: { id, teamId: ctx.teamId, status: { in: ["sent", "failed"] } },
+      })
+
+      if (!existing) {
+        return new Output(false, [], ["Campanha não encontrada ou não pode ser arquivada"], null)
+      }
+
+      await prisma.emailCampaign.update({
+        where: { id },
+        data: { status: "archived" },
+      })
+
+      return new Output(true, ["Campanha arquivada com sucesso"], [], null)
+    } catch (error) {
+      console.error("[EmailCampaignUseCase][archive]", error)
+      return new Output(false, [], ["Erro ao arquivar campanha"], null)
     }
   }
 }

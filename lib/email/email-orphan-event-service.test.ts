@@ -4,7 +4,18 @@ import type { IResendEmailEnrichmentService } from "@/app/api/services/resend/Re
 const upsertMock = mock(async () => ({}))
 const findManyMock = mock(async () => [] as Array<Record<string, unknown>>)
 const updateMock = mock(async () => ({}))
-const emailLogFindUniqueMock = mock(async () => null)
+const findByResendEmailIdMock = mock(async () => null as null | Record<string, unknown>)
+const processEmailLogWebhookMock = mock(async () => true)
+const mapEventTypeMock = mock((type: string) => {
+  const map: Record<string, string> = {
+    "email.opened": "opened",
+    "email.clicked": "clicked",
+    "email.bounced": "bounced",
+    "email.delivered": "delivered",
+  }
+  return map[type] ?? null
+})
+const handleEmailWebhookEventMock = mock(async () => {})
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -13,9 +24,25 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       findMany: findManyMock,
       update: updateMock,
     },
-    emailLog: {
-      findUnique: emailLogFindUniqueMock,
-    },
+  },
+}))
+
+mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
+  emailLogRepository: {
+    findByResendEmailId: findByResendEmailIdMock,
+  },
+}))
+
+mock.module("@/app/api/services/resend/ResendWebhookService", () => ({
+  resendWebhookService: {
+    mapEventType: mapEventTypeMock,
+    processEmailLogWebhook: processEmailLogWebhookMock,
+  },
+}))
+
+mock.module("@/app/api/services/cdp/CustomerDataPlatformService", () => ({
+  customerDataPlatformService: {
+    handleEmailWebhookEvent: handleEmailWebhookEventMock,
   },
 }))
 
@@ -67,6 +94,10 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
   beforeEach(() => {
     findManyMock.mockClear()
     updateMock.mockClear()
+    findByResendEmailIdMock.mockReset()
+    findByResendEmailIdMock.mockResolvedValue(null)
+    processEmailLogWebhookMock.mockClear()
+    handleEmailWebhookEventMock.mockClear()
   })
 
   it("processa órfão quando enrichment resolve logId", async () => {
@@ -77,6 +108,7 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
         occurredAt: new Date(),
         tagsHint: null,
         attempts: 0,
+        resendEventType: "email.delivered",
       },
     ])
 
@@ -92,6 +124,56 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     expect(updateMock).toHaveBeenCalled()
   })
 
+  it("repassa evento recuperado para webhook + CDP quando o log já existe", async () => {
+    const occurredAt = new Date("2026-07-17T12:00:00.000Z")
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-recovered",
+        resendEmailId: "re_race",
+        resendEventType: "email.opened",
+        occurredAt,
+        tagsHint: null,
+        attempts: 0,
+      },
+    ])
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-race",
+      teamId: "team-1",
+      status: "delivered",
+      recipientEmail: "lead@test.com",
+      recipientName: "Lead",
+      campaignId: "camp-1",
+      dispatchId: "disp-1",
+      deliveredAt: occurredAt,
+      openedAt: null,
+      clickedAt: null,
+      bouncedAt: null,
+      complainedAt: null,
+    })
+
+    const enrichment: IResendEmailEnrichmentService = {
+      fetchEmailMetadata: async () => null,
+      createOrphanTeamEmailLogFromResendEmail: async () => null,
+    }
+    const service = new EmailOrphanEventService(enrichment)
+
+    const result = await service.processPendingBatch()
+
+    expect(result.processed).toBe(1)
+    expect(processEmailLogWebhookMock).toHaveBeenCalledTimes(1)
+    expect(handleEmailWebhookEventMock).toHaveBeenCalledTimes(1)
+    expect(handleEmailWebhookEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamId: "team-1",
+        recipientEmail: "lead@test.com",
+        logId: "log-race",
+        campaignId: "camp-1",
+        eventType: "opened",
+        occurredAt,
+      })
+    )
+  })
+
   it("marca como skipped após esgotar tentativas sem team_id", async () => {
     findManyMock.mockResolvedValueOnce([
       {
@@ -100,6 +182,7 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
         occurredAt: new Date(),
         tagsHint: null,
         attempts: 4,
+        resendEventType: "email.delivered",
       },
     ])
 

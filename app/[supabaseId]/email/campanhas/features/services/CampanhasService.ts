@@ -1,11 +1,12 @@
 import type { Campaign, CreditStatus, Template, ContactList } from '../context/CampanhasTypes'
 
 export interface ICampanhasService {
-  list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
+  list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string, name?: string, createdAtFrom?: string, createdAtTo?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
   create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; cdpSegmentSlug?: string; scheduledAt?: string }): Promise<Campaign>
   send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{ sent: number; failed: number; total: number }>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
+  archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
@@ -21,9 +22,12 @@ export class CampanhasService implements ICampanhasService {
     }
   }
 
-  async list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string) {
+  async list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string, name?: string, createdAtFrom?: string, createdAtTo?: string) {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     if (status) params.set('status', status)
+    if (name) params.set('name', name)
+    if (createdAtFrom) params.set('createdAtFrom', createdAtFrom)
+    if (createdAtTo) params.set('createdAtTo', createdAtTo)
     const res = await fetch(`${this.baseUrl}/campaigns?${params}`, {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
@@ -86,6 +90,16 @@ export class CampanhasService implements ICampanhasService {
     })
     const json = await res.json().catch(() => null)
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+  }
+
+  async archive(supabaseId: string, teamId: string | null | undefined, id: string) {
+    const res = await fetch(`${this.baseUrl}/campaigns/${id}/archive`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
   }
 
   async getCreditStatus(supabaseId: string, teamId: string | null | undefined) {

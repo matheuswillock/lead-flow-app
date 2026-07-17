@@ -50,6 +50,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex]
+      // Callback de persistência fica fora do try/catch do Resend: falha de DB após
+      // aceite do chunk não pode ser engolida como "falha de batch" (sent sem resendEmailId).
+      let chunkDispatched: Array<{ email: string; resendId: string }> = []
+
       try {
         const batchPayload = chunk.map((recipient) => {
           const renderedHtml = interpolateEmailTemplate(
@@ -108,7 +112,6 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
               { campaignId: params.campaignId, chunkIndex, chunkSize: chunk.length }
             )
           }
-          const chunkDispatched: Array<{ email: string; resendId: string }> = []
           items.forEach((item, idx) => {
             const recipient = chunk[idx]
             if (!recipient) return
@@ -123,13 +126,16 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           if (items.length < chunk.length) {
             result.failed += chunk.length - items.length
           }
-          if (chunkDispatched.length > 0) {
-            await params.onChunkDispatched?.(chunkDispatched)
-          }
         }
       } catch (error) {
         console.error("[EmailCampaignDispatchService][dispatchBatch] Erro no batch:", error)
         result.failed += chunk.length
+        chunkDispatched = []
+        continue
+      }
+
+      if (chunkDispatched.length > 0) {
+        await params.onChunkDispatched?.(chunkDispatched)
       }
     }
 

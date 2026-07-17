@@ -180,4 +180,21 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.failed).toBe(0)
     expect(result.dispatched).toHaveLength(0)
   })
+
+  it("D9 — falha em onChunkDispatched propaga (não engole como falha de batch Resend)", async () => {
+    batchSendMock.mockResolvedValueOnce({
+      data: [{ id: "re_1" }, { id: "re_2" }, { id: "re_3" }],
+      error: null,
+    })
+
+    const onChunkDispatched = mock(async () => {
+      throw new Error("db write failed")
+    })
+
+    await expect(
+      service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
+    ).rejects.toThrow("db write failed")
+
+    expect(onChunkDispatched).toHaveBeenCalledTimes(1)
+  })
 })

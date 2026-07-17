@@ -42,13 +42,17 @@ export class EmailAnalyticsUseCase {
         campaignId: options.campaignId,
       }
 
-      const [total, delivered, opened, clicked, bounced, complained] = await Promise.all([
+      const [total, delivered, opened, clicked, bounced, complained, failed, deliveryDelayed, unsubscribed, suppressed] = await Promise.all([
         this.repository.countLogs(logWhere),
         this.repository.countLogs(logWhere, "delivered"),
         this.repository.countLogs(logWhere, "opened"),
         this.repository.countLogs(logWhere, "clicked"),
         this.repository.countLogs(logWhere, "bounced"),
         this.repository.countLogs(logWhere, "complained"),
+        this.repository.countLogs(logWhere, "failed"),
+        this.repository.countLogs(logWhere, "delivery_delayed"),
+        this.repository.countLogs(logWhere, "unsubscribed"),
+        this.repository.countLogs(logWhere, "suppressed"),
       ])
 
       const totals = {
@@ -58,6 +62,10 @@ export class EmailAnalyticsUseCase {
         clicked,
         bounced,
         complained,
+        failed,
+        deliveryDelayed,
+        unsubscribed,
+        suppressed,
       }
 
       const base = {

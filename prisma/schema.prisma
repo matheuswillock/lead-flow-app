@@ -566,6 +566,7 @@ enum EmailCampaignStatus {
   sent
   canceled
   failed
+  archived
 
   @@map("email_campaign_status")
 }
@@ -586,6 +587,7 @@ enum EmailLogStatus {
   clicked
   bounced
   complained
+  suppressed
   failed
 
   @@map("email_log_status")
@@ -608,6 +610,7 @@ enum EmailEventType {
   clicked
   bounced
   complained
+  suppressed
   delivery_delayed
   unsubscribed
   failed
