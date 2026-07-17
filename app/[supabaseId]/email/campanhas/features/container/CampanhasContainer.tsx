@@ -2,12 +2,15 @@
 
 import { useState } from "react"
 import dynamic from "next/dynamic"
-import { BarChart3, Send } from "lucide-react"
+import { BarChart3, Send, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter"
 import { useCampanhasContext } from "../context/CampanhasContext"
+import type { DateRange } from "react-day-picker"
+import { format } from "date-fns"
 import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
-import { CreditBalanceBar } from "../components/CreditBalanceBar"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
 import { CampaignEditDialog } from "../components/CampaignEditDialog"
@@ -33,8 +36,25 @@ const STATUS_TABS = [
 ]
 
 export function CampanhasContainer() {
-  const { statusFilter, handleStatusFilter, openWizard } = useCampanhasContext()
+  const { statusFilter, nameFilter, dateFrom, dateTo, handleStatusFilter, handleNameFilter, handleDateFilter, clearFilters, openWizard } = useCampanhasContext()
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
+
+  const dateRange: DateRange | undefined =
+    dateFrom || dateTo
+      ? {
+          from: dateFrom ? new Date(`${dateFrom}T00:00:00`) : undefined,
+          to: dateTo ? new Date(`${dateTo}T00:00:00`) : undefined,
+        }
+      : undefined
+
+  function handleDateRangeChange(range: DateRange | undefined) {
+    handleDateFilter(
+      range?.from ? format(range.from, "yyyy-MM-dd") : "",
+      range?.to ? format(range.to, "yyyy-MM-dd") : "",
+    )
+  }
+
+  const hasActiveFilters = nameFilter || dateFrom || dateTo
   const [analyticsCampaign, setAnalyticsCampaign] = useState<{
     id: string
     name: string
@@ -73,7 +93,6 @@ export function CampanhasContainer() {
         </div>
       </div>
 
-      <CreditBalanceBar />
       <CampaignDispatchProgressBanner />
 
       <Tabs
@@ -88,6 +107,26 @@ export function CampanhasContainer() {
           ))}
         </TabsList>
       </Tabs>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="h-8 w-64 text-sm"
+          placeholder="Filtrar por nome..."
+          value={nameFilter}
+          onChange={(e) => handleNameFilter(e.target.value)}
+        />
+        <LeadsDateFilter
+          title="Data de criação"
+          value={dateRange}
+          onChange={handleDateRangeChange}
+        />
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs" onClick={clearFilters}>
+            <X className="h-3 w-3" />
+            Limpar filtros
+          </Button>
+        )}
+      </div>
 
       <CampaignList onOpenAnalytics={openCampaignAnalytics} />
       <CampaignCreateWizard />

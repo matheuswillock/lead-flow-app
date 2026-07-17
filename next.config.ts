@@ -3,6 +3,13 @@ import type { NextConfig } from "next";
 import path from "node:path";
 import { validateEnv } from "./lib/env";
 import { getLeadFormEmbedHeaders } from "./lib/security/lead-form-embed-headers";
+import {
+  LIVE_FRAME_HEADER_SOURCES,
+  buildLockedSiteHeaderSource,
+  getLiveFrameSecurityHeaders,
+  getLockedSiteSecurityHeaders,
+  getWhatsAppSecurityHeaders,
+} from "./lib/security/site-frame-ancestors";
 
 // Validate environment variables at build time
 // Skip in CI — secrets are not injected during the build step
@@ -22,22 +29,6 @@ if (process.env.CI !== 'true') {
 } else {
   console.info('⏭️  [next.config] CI environment detected — skipping build-time env validation.\n');
 }
-
-const securityHeaders = [
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-  { key: "X-DNS-Prefetch-Control", value: "on" },
-]
-
-const whatsAppSecurityHeaders = [
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
-  { key: "X-DNS-Prefetch-Control", value: "on" },
-]
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -60,9 +51,23 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      // LiveFrame: allowlist externa só em rotas públicas embutíveis (matchers exclusivos).
+      ...LIVE_FRAME_HEADER_SOURCES.map((source) => ({
+        source,
+        headers: getLiveFrameSecurityHeaders(),
+      })),
       {
-        source: "/((?!lead-form).*)",
-        headers: securityHeaders,
+        source: "/prime/:path*",
+        headers: getLiveFrameSecurityHeaders(),
+      },
+      {
+        source: "/recursos/:path*",
+        headers: getLiveFrameSecurityHeaders(),
+      },
+      // Demais rotas (tenant, backoffice, auth, etc.): DENY / frame-ancestors 'none'.
+      {
+        source: buildLockedSiteHeaderSource(),
+        headers: getLockedSiteSecurityHeaders(),
       },
       {
         source: "/lead-form/:path*",
@@ -70,7 +75,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/:supabaseId/whatsapp/:path*",
-        headers: whatsAppSecurityHeaders,
+        headers: getWhatsAppSecurityHeaders(),
       },
     ]
   },

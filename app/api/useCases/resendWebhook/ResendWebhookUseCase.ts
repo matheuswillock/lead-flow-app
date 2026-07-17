@@ -22,6 +22,7 @@ const ORPHAN_BACKFILL_EVENTS = new Set([
   "email.opened",
   "email.clicked",
   "email.bounced",
+  "email.suppressed",
 ])
 const LOG_LOOKUP_RETRY_MS = 400
 
@@ -48,10 +49,7 @@ export class ResendWebhookUseCase {
 
     const resendEmailId = event.data?.email_id
     const eventType = this.webhookService.mapEventType(event.type)
-    const backofficeEventType =
-      event.type === "email.suppressed"
-        ? ("suppressed" as BackofficeEmailDispatchEventType)
-        : eventType
+    const backofficeEventType = eventType as unknown as BackofficeEmailDispatchEventType | null
 
     if (!resendEmailId) {
       console.info("[ResendWebhookUseCase] Evento ignorado:", event.type)
