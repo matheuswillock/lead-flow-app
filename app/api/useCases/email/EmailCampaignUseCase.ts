@@ -28,6 +28,7 @@ import {
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
+import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import {
   formatCampaignFromHeader,
@@ -526,6 +527,8 @@ export class EmailCampaignUseCase {
 
   async startManualDispatch(id: string, ctx: TeamContext): Promise<Output> {
     let previousStatus: EmailCampaignStatus | null = null
+    let reservedCredits = 0
+    let hasCampaignsBetaAccess = false
 
     try {
       const campaign = await prisma.emailCampaign.findFirst({
@@ -583,7 +586,7 @@ export class EmailCampaignUseCase {
 
       const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
-      const hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
+      hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
         profileId: ctx.profileId,
         managerId: ctx.managerId,
         isMaster: ctx.isMaster,
@@ -651,11 +654,11 @@ export class EmailCampaignUseCase {
       }
 
       const recipientsList = dispatchInput.recipients
-      const reservedCredits = recipientsList.length
+      const creditsToReserve = recipientsList.length
 
       const creditReservation = await this.reserveTeamCreditsForDispatch(
         ctx.teamId,
-        reservedCredits,
+        creditsToReserve,
         hasCampaignsBetaAccess
       )
       if (!creditReservation.ok) {
@@ -665,6 +668,7 @@ export class EmailCampaignUseCase {
         })
         return new Output(false, [], [creditReservation.message], null)
       }
+      reservedCredits = creditsToReserve
 
       const dispatchNumber = await this.getNextDispatchNumber(campaign.id)
       const dispatchRecord = await prisma.emailCampaignDispatch.create({
@@ -724,6 +728,17 @@ export class EmailCampaignUseCase {
       return new Output(true, ["Disparo iniciado em segundo plano"], [], job)
     } catch (error) {
       console.error("[EmailCampaignUseCase][startManualDispatch]", error)
+
+      if (reservedCredits > 0) {
+        await this.releaseUnusedTeamCredits(
+          ctx.teamId,
+          reservedCredits,
+          0,
+          hasCampaignsBetaAccess
+        ).catch((releaseError) => {
+          console.error("[EmailCampaignUseCase][startManualDispatch] falha ao liberar créditos", releaseError)
+        })
+      }
 
       await prisma.emailCampaign
         .update({
@@ -963,6 +978,9 @@ export class EmailCampaignUseCase {
         templateSubject: true,
         totalRecipients: true,
         triggeredBy: true,
+        contactListId: true,
+        cdpSegmentSlug: true,
+        templateId: true,
       },
       orderBy: { updatedAt: "asc" },
       take: maxDispatches,
@@ -1034,12 +1052,19 @@ export class EmailCampaignUseCase {
         })
         const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
 
-        const recipients: CampaignRecipient[] = queuedLogs.map((log) => ({
-          email: log.recipientEmail,
-          name: log.recipientName,
-          contactId: null,
-          customFields: null,
-        }))
+        const recipients = await this.rebuildRecipientsForOrphanResume({
+          teamId: dispatch.teamId,
+          contactListId: dispatch.contactListId,
+          queuedLogs,
+        })
+
+        const publishedTemplate = await this.resolvePublishedTemplate(
+          dispatch.templateId,
+          dispatch.teamId
+        )
+        const templateVariables = this.recipientService.parseTemplateVariables(
+          publishedTemplate?.variables ?? []
+        )
 
         const job: ManualDispatchJob = {
           campaignId: dispatch.campaignId,
@@ -1055,7 +1080,7 @@ export class EmailCampaignUseCase {
           from: formatCampaignFromHeader(fromResolved),
           replyTo: teamSettings?.replyTo ?? null,
           globalDefaults,
-          templateVariables: [],
+          templateVariables,
           logIdsByEmail: queuedLogs.map((log) => ({
             email: log.recipientEmail,
             logId: log.id,
@@ -1079,6 +1104,74 @@ export class EmailCampaignUseCase {
     }
 
     return resumed
+  }
+
+  /**
+   * Recarrega contactId/customFields (e enriquecimento CDP) para retomar disparos órfãos
+   * a partir dos logs queued — os logs não persistem personalização.
+   */
+  private async rebuildRecipientsForOrphanResume(params: {
+    teamId: string
+    contactListId: string | null
+    queuedLogs: Array<{ recipientEmail: string; recipientName: string | null }>
+  }): Promise<CampaignRecipient[]> {
+    const emails = params.queuedLogs.map((log) => log.recipientEmail.trim().toLowerCase())
+    const uniqueEmails = Array.from(new Set(emails))
+
+    const contacts = await prisma.emailContact.findMany({
+      where: {
+        email: { in: uniqueEmails, mode: "insensitive" },
+        ...(params.contactListId
+          ? { listId: params.contactListId }
+          : {
+              list: {
+                teamId: params.teamId,
+                isArchived: false,
+              },
+            }),
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        customFields: true,
+      },
+    })
+
+    const contactByEmail = new Map<
+      string,
+      { id: string; name: string | null; customFields: Record<string, unknown> | null }
+    >()
+    for (const contact of contacts) {
+      const key = contact.email.trim().toLowerCase()
+      if (!contactByEmail.has(key)) {
+        contactByEmail.set(key, {
+          id: contact.id,
+          name: contact.name,
+          customFields: contact.customFields as Record<string, unknown> | null,
+        })
+      }
+    }
+
+    const baseRecipients: CampaignRecipient[] = params.queuedLogs.map((log) => {
+      const key = log.recipientEmail.trim().toLowerCase()
+      const contact = contactByEmail.get(key)
+      return {
+        email: key,
+        name: contact?.name ?? log.recipientName,
+        contactId: contact?.id ?? null,
+        customFields: contact?.customFields ?? null,
+      }
+    })
+
+    const enriched = await enrichCampaignRecipientsWithCdp(params.teamId, baseRecipients)
+    return enriched.map((recipient) => ({
+      email: recipient.email,
+      name: recipient.name ?? null,
+      contactId: recipient.contactId ?? null,
+      customFields: recipient.customFields ?? null,
+    }))
   }
 
   private async markScheduledCampaignFailed(campaignId: string, errorMessage: string): Promise<void> {
