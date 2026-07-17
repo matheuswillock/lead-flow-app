@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react"
 import { useBackofficeIntegrations } from "../context/BackofficeIntegrationsHook"
 import { BackofficeMetaIntegrationCard } from "../components/BackofficeMetaIntegrationCard"
+import { BackofficeLeadQuickEntryIntegrationCard } from "../components/BackofficeLeadQuickEntryIntegrationCard"
 
 export function BackofficeIntegrationsContainer() {
   const { isLoading, error, metaConfig } = useBackofficeIntegrations()
@@ -33,6 +34,7 @@ export function BackofficeIntegrationsContainer() {
       {!showLoader && !error && (
         <div className="flex flex-col gap-4">
           <BackofficeMetaIntegrationCard />
+          <BackofficeLeadQuickEntryIntegrationCard />
         </div>
       )}
     </div>
