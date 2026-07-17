@@ -525,19 +525,22 @@ jobs:
 
   deploy-preview:
     name: Deploy Vercel (Preview) from develop
+    # Do not depend on migration-dry-run: that job is skipped when there are no
+    # pending migrations (the happy path), and a skipped dependency would
+    # auto-skip this job unless always()/!cancelled() is used. Gate on
+    # migration-check + has_pending instead.
     if: |
+      !cancelled() &&
       github.event_name == 'push' &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.build.result == 'success' &&
       needs.migration-check.result == 'success' &&
-      needs.migration-check.outputs.has_pending == 'false' &&
-      (needs.migration-dry-run.result == 'success' || needs.migration-dry-run.result == 'skipped')
+      needs.migration-check.outputs.has_pending == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
       - build
       - migration-check
-      - migration-dry-run
       - version-bump
     steps:
       - name: Checkout develop
@@ -813,6 +816,16 @@ jobs:
               core.setOutput('operation', 'skipped');
               core.setOutput('skip-reason', skipReason);
               core.setOutput('pr-url', '');
+              // Fail the job when release was expected but blocked by deploy (or other
+              // hard gates). Keep soft-skip (no code changes) as a non-failure so the
+              // badge stays green on empty develop pushes.
+              const isSoftSkip =
+                !hasCodeChanges ||
+                !versionBumped ||
+                bumpType === 'unchanged';
+              if (!isSoftSkip) {
+                core.setFailed(skipReason);
+              }
               return;
             }
 
