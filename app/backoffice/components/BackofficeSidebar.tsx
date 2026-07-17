@@ -23,6 +23,7 @@ import {
   LogOut,
   UserRound,
   FileText,
+  Megaphone,
 } from "lucide-react"
 import {
   Sidebar,
@@ -65,6 +66,7 @@ const navigationItems = [
   { title: "WhatsApp", url: "/backoffice/whatsapp", icon: MessageCircle },
   { title: "Bethânia", url: "/backoffice/studio-bot", icon: Bot },
   { title: "Templates de E-mail", url: "/backoffice/email-templates", icon: Mail },
+  { title: "Campanhas de E-mail", url: "/backoffice/emails/campanhas", icon: Megaphone },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
   { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },
@@ -126,7 +128,9 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 const isActive =
                   item.url === "/backoffice"
                     ? pathname === "/backoffice"
-                    : pathname.startsWith(item.url)
+                    : item.url === "/backoffice/emails/campanhas"
+                      ? pathname.startsWith("/backoffice/emails")
+                      : pathname.startsWith(item.url)
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive}>
@@ -206,6 +210,34 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             isActive={pathname.startsWith("/backoffice/features/beta")}
                           >
                             <Link href="/backoffice/features/beta">Grupo Beta</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    ) : null}
+                    {item.url === "/backoffice/emails/campanhas" ? (
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname === "/backoffice/emails/campanhas"}
+                          >
+                            <Link href="/backoffice/emails/campanhas">Campanhas</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/emails/contatos")}
+                          >
+                            <Link href="/backoffice/emails/contatos">Contatos</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/emails/analytics")}
+                          >
+                            <Link href="/backoffice/emails/analytics">Analytics</Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       </SidebarMenuSub>

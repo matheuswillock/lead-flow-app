@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   isAuthRedirectRoute,
+  isBackofficeAppRoute,
   isLegacyTenantRoute,
   isPublicPageRoute,
   isSensitiveRoute,
@@ -85,5 +86,22 @@ describe("tenant associados route", () => {
 describe("isSensitiveRoute", () => {
   it("marks backoffice routes as sensitive", () => {
     expect(isSensitiveRoute("/backoffice/clients")).toBe(true)
+  })
+})
+
+describe("isBackofficeAppRoute", () => {
+  it("matches /backoffice and its sub-routes", () => {
+    expect(isBackofficeAppRoute("/backoffice")).toBe(true)
+    expect(isBackofficeAppRoute("/backoffice/clients")).toBe(true)
+    expect(isBackofficeAppRoute("/backoffice/emails/campanhas")).toBe(true)
+  })
+
+  it("does not match sibling public routes that merely share the prefix string", () => {
+    expect(isBackofficeAppRoute("/backoffice-email-unsubscribe/some-token")).toBe(false)
+    expect(isBackofficeAppRoute("/backoffice-lead-form")).toBe(false)
+  })
+
+  it("keeps isSensitiveRoute consistent with the same exact-segment rule", () => {
+    expect(isSensitiveRoute("/backoffice-email-unsubscribe/some-token")).toBe(false)
   })
 })

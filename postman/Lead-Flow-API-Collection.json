@@ -6898,8 +6898,16 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "v1", "teams", "{{teamId}}", "automations"]
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "automations"
+                      ]
                     },
                     "description": "Lista regras de automação do time"
                   },
@@ -6918,8 +6926,16 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "v1", "teams", "{{teamId}}", "automations"]
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "automations"
+                      ]
                     },
                     "description": "Cria regra de automação",
                     "body": {
@@ -6942,8 +6958,17 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}"]
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "automations",
+                        "{{automationRuleId}}"
+                      ]
                     },
                     "description": "Atualiza regra de automação",
                     "body": {
@@ -6966,8 +6991,17 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}"]
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "automations",
+                        "{{automationRuleId}}"
+                      ]
                     },
                     "description": "Remove regra de automação"
                   },
@@ -6986,8 +7020,18 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}/toggle",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}", "toggle"]
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "automations",
+                        "{{automationRuleId}}",
+                        "toggle"
+                      ]
                     },
                     "description": "Habilita ou desabilita regra de automação",
                     "body": {
@@ -7010,11 +7054,27 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/automations/{{automationRuleId}}/runs?page=1&pageSize=20",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "v1", "teams", "{{teamId}}", "automations", "{{automationRuleId}}", "runs"],
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "automations",
+                        "{{automationRuleId}}",
+                        "runs"
+                      ],
                       "query": [
-                        { "key": "page", "value": "1" },
-                        { "key": "pageSize", "value": "20" }
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "pageSize",
+                          "value": "20"
+                        }
                       ]
                     },
                     "description": "Lista execuções de uma regra de automação"
@@ -7034,8 +7094,16 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/automations/cron/evaluate-idle",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "v1", "automations", "cron", "evaluate-idle"]
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "automations",
+                        "cron",
+                        "evaluate-idle"
+                      ]
                     },
                     "description": "Cron: avalia leads ociosos para automações"
                   },
@@ -10254,8 +10322,15 @@
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "authorized-sponsors"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "authorized-sponsors"
+                  ]
                 },
                 "description": "Lista patrocinadores autorizados (ativos e revogados) com contagem de contas patrocinadas. Exige master backoffice."
               }
@@ -10280,8 +10355,15 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "authorized-sponsors"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "authorized-sponsors"
+                  ]
                 },
                 "description": "Concede autorização de patrocinador a um master. Exige master backoffice."
               }
@@ -10298,8 +10380,16 @@
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/authorized-sponsors/:profileId",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "authorized-sponsors", ":profileId"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "authorized-sponsors",
+                    ":profileId"
+                  ],
                   "variable": [
                     {
                       "key": "profileId",
@@ -10327,8 +10417,15 @@
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/operational-access",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "operational-access"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "operational-access"
+                  ]
                 },
                 "description": "Lista grants de acessos operacionais (Associados + MultiSkill). Exige master backoffice."
               }
@@ -10353,8 +10450,15 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/operational-access",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "operational-access"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "operational-access"
+                  ]
                 },
                 "description": "Concede acesso à fila Associados para um master."
               }
@@ -10379,8 +10483,15 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/operational-access",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "operational-access"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "operational-access"
+                  ]
                 },
                 "description": "Autoriza conta para origem MultiSkill (cria time MultiSkill se necessário)."
               }
@@ -10397,8 +10508,16 @@
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/operational-access/:grantId",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "operational-access", ":grantId"],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "operational-access",
+                    ":grantId"
+                  ],
                   "variable": [
                     {
                       "key": "grantId",
@@ -11797,6 +11916,726 @@
                   ]
                 },
                 "description": "Lista times elegíveis sem instância provisionada."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Email Campaigns",
+          "item": [
+            {
+              "name": "Campanhas",
+              "item": [
+                {
+                  "name": "GET Listar Campanhas de E-mail (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns"
+                      ]
+                    },
+                    "description": "Lista todas as campanhas de e-mail do backoffice."
+                  }
+                },
+                {
+                  "name": "POST Criar Campanha de E-mail (Backoffice)",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns"
+                      ]
+                    },
+                    "description": "Cria uma nova campanha de e-mail no backoffice.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Live — 30/07/2026\",\n  \"contactListId\": \"{{backofficeEmailContactListId}}\",\n  \"scheduledAt\": \"2026-07-30T16:00:00.000Z\",\n  \"resendTemplateId\": \"template_id_do_resend\",\n  \"resendTemplateName\": \"Convite Live\"\n}"
+                    }
+                  }
+                },
+                {
+                  "name": "GET Buscar Campanha de E-mail por ID (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/{{backofficeEmailCampaignId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "{{backofficeEmailCampaignId}}"
+                      ]
+                    },
+                    "description": "Busca uma campanha de e-mail do backoffice por ID."
+                  }
+                },
+                {
+                  "name": "PATCH Atualizar Campanha de E-mail (Backoffice)",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/{{backofficeEmailCampaignId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "{{backofficeEmailCampaignId}}"
+                      ]
+                    },
+                    "description": "Atualiza campos de uma campanha em rascunho ou agendada.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Live — 30/07/2026 (atualizado)\"\n}"
+                    }
+                  }
+                },
+                {
+                  "name": "DELETE Cancelar Campanha de E-mail (Backoffice)",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/{{backofficeEmailCampaignId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "{{backofficeEmailCampaignId}}"
+                      ]
+                    },
+                    "description": "Cancela uma campanha em rascunho ou agendada."
+                  }
+                },
+                {
+                  "name": "POST Enviar Campanha Agora (Backoffice)",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/{{backofficeEmailCampaignId}}/send-now",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "{{backofficeEmailCampaignId}}",
+                        "send-now"
+                      ]
+                    },
+                    "description": "Dispara a campanha imediatamente, ignorando o agendamento."
+                  }
+                },
+                {
+                  "name": "GET Histórico de Disparos da Campanha (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/{{backofficeEmailCampaignId}}/dispatches",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "{{backofficeEmailCampaignId}}",
+                        "dispatches"
+                      ]
+                    },
+                    "description": "Lista o histórico de disparos de uma campanha."
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Contatos",
+              "item": [
+                {
+                  "name": "GET Listar Listas de Contatos (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists"
+                      ]
+                    },
+                    "description": "Lista as listas de contatos de e-mail do backoffice."
+                  }
+                },
+                {
+                  "name": "POST Criar Lista de Contatos (Backoffice)",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists"
+                      ]
+                    },
+                    "description": "Cria uma nova lista de contatos.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Clientes VIP\"\n}"
+                    }
+                  }
+                },
+                {
+                  "name": "GET Buscar Lista de Contatos por ID (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists/{{backofficeEmailContactListId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists",
+                        "{{backofficeEmailContactListId}}"
+                      ]
+                    },
+                    "description": "Busca uma lista de contatos por ID."
+                  }
+                },
+                {
+                  "name": "DELETE Arquivar Lista de Contatos (Backoffice)",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists/{{backofficeEmailContactListId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists",
+                        "{{backofficeEmailContactListId}}"
+                      ]
+                    },
+                    "description": "Arquiva uma lista de contatos (não pode ser a lista sistêmica)."
+                  }
+                },
+                {
+                  "name": "GET Listar Contatos da Lista (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists/{{backofficeEmailContactListId}}/contacts?page=1&pageSize=25",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists",
+                        "{{backofficeEmailContactListId}}",
+                        "contacts"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "pageSize",
+                          "value": "25"
+                        }
+                      ]
+                    },
+                    "description": "Lista os contatos de uma lista, paginado."
+                  }
+                },
+                {
+                  "name": "PATCH Atualizar Contato (Backoffice)",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists/{{backofficeEmailContactListId}}/contacts/{{backofficeEmailContactId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists",
+                        "{{backofficeEmailContactListId}}",
+                        "contacts",
+                        "{{backofficeEmailContactId}}"
+                      ]
+                    },
+                    "description": "Atualiza o nome de um contato.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Novo Nome\"\n}"
+                    }
+                  }
+                },
+                {
+                  "name": "DELETE Remover Contato (Backoffice)",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists/{{backofficeEmailContactListId}}/contacts/{{backofficeEmailContactId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists",
+                        "{{backofficeEmailContactListId}}",
+                        "contacts",
+                        "{{backofficeEmailContactId}}"
+                      ]
+                    },
+                    "description": "Remove um contato de uma lista."
+                  }
+                },
+                {
+                  "name": "POST Importar Contatos CSV/JSON (Backoffice)",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "file",
+                          "type": "file",
+                          "src": []
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/contact-lists/{{backofficeEmailContactListId}}/upload",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "contact-lists",
+                        "{{backofficeEmailContactListId}}",
+                        "upload"
+                      ]
+                    },
+                    "description": "Envia um arquivo CSV ou JSON para importação assíncrona de contatos."
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Analytics",
+              "item": [
+                {
+                  "name": "GET Analytics de Campanhas de E-mail (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/email-campaigns/analytics?from=2026-06-01T00:00:00.000Z&to=2026-07-01T00:00:00.000Z&campaignId={{backofficeEmailCampaignId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "email-campaigns",
+                        "analytics"
+                      ],
+                      "query": [
+                        {
+                          "key": "from",
+                          "value": "2026-06-01T00:00:00.000Z"
+                        },
+                        {
+                          "key": "to",
+                          "value": "2026-07-01T00:00:00.000Z"
+                        },
+                        {
+                          "key": "campaignId",
+                          "value": "{{backofficeEmailCampaignId}}"
+                        }
+                      ]
+                    },
+                    "description": "Métricas agregadas de entrega/abertura/clique/bounce das campanhas do backoffice, com filtro opcional por campanha."
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Cron",
+              "item": [
+                {
+                  "name": "GET Cron: Provisionar Campanha Live Semanal (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{cronSecret}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/cron/provision-live-campaign",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "cron",
+                        "provision-live-campaign"
+                      ]
+                    },
+                    "description": "Cron semanal (quinta 13h BRT) que cria a campanha Live da semana seguinte, se ainda não existir."
+                  }
+                },
+                {
+                  "name": "GET Cron: Disparar Campanhas de E-mail Agendadas (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{cronSecret}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/cron/dispatch-email-campaigns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "cron",
+                        "dispatch-email-campaigns"
+                      ]
+                    },
+                    "description": "Cron frequente que dispara campanhas agendadas e recupera disparos travados."
+                  }
+                },
+                {
+                  "name": "GET Cron: Processar Jobs de Importação de Contatos (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{cronSecret}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/cron/process-email-import-jobs",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "cron",
+                        "process-email-import-jobs"
+                      ]
+                    },
+                    "description": "Cron frequente que processa jobs pendentes de importação de contatos (CSV/JSON)."
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Público",
+              "item": [
+                {
+                  "name": "GET Info de Descadastro de Campanha (Backoffice)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/public/email-campaigns/unsubscribe/{{backofficeEmailUnsubscribeToken}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "public",
+                        "email-campaigns",
+                        "unsubscribe",
+                        "{{backofficeEmailUnsubscribeToken}}"
+                      ]
+                    },
+                    "description": "Rota pública. Retorna e-mail mascarado e status do descadastro a partir do token do rodapé do e-mail."
+                  }
+                },
+                {
+                  "name": "POST Confirmar Descadastro de Campanha (Backoffice)",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"token\": \"{{backofficeEmailUnsubscribeToken}}\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/public/email-campaigns/unsubscribe",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "public",
+                        "email-campaigns",
+                        "unsubscribe"
+                      ]
+                    },
+                    "description": "Rota pública. Confirma o descadastro de um contato de campanha."
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Lead Quick Entry",
+          "item": [
+            {
+              "name": "GET Campanha de Opt-in do Formulário Rápido (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/lead-form/opt-in-campaign",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "lead-form",
+                    "opt-in-campaign"
+                  ]
+                },
+                "description": "Rota autenticada. Retorna a campanha Live corrente para exibir o checkbox de opt-in, ou null."
+              }
+            },
+            {
+              "name": "POST Cadastro Rápido de Lead (Backoffice)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/lead-form",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "lead-form"
+                  ]
+                },
+                "description": "Rota autenticada (uso interno, ex.: 3CPlus). Cria um lead no CRM do backoffice e, opcionalmente, inscreve na campanha Live.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Lead via Cadastro Rápido\",\n  \"email\": \"lead@exemplo.com\",\n  \"phone\": \"11999999999\",\n  \"notes\": \"Contato durante ligação\",\n  \"subscribeToLiveCampaign\": true\n}"
+                }
               }
             }
           ]

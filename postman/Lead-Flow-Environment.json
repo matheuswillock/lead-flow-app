@@ -274,6 +274,34 @@
       "type": "default",
       "enabled": true,
       "description": "ID do profile a ser atribuído como responsável por uma conversa WhatsApp"
+    },
+    {
+      "key": "backofficeEmailCampaignId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma campanha de e-mail do backoffice"
+    },
+    {
+      "key": "backofficeEmailContactListId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma lista de contatos de e-mail do backoffice"
+    },
+    {
+      "key": "backofficeEmailContactId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um contato de e-mail do backoffice"
+    },
+    {
+      "key": "backofficeEmailUnsubscribeToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token de descadastro de campanha de e-mail do backoffice"
     }
   ],
   "_postman_variable_scope": "environment"
