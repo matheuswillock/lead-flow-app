@@ -73,6 +73,40 @@ jobs:
       - name: Proxy Tests
         run: bun run test:proxy
 
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install deps
+        run: bun install
+
+      - name: Run unit tests
+        run: bun run test
+
   migration-status:
     name: Migration Status
     if: github.event_name == 'push'
@@ -80,6 +114,7 @@ jobs:
     timeout-minutes: 5
     needs:
       - quality
+      - unit-tests
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -147,11 +182,13 @@ jobs:
     if: |
       always() &&
       needs.quality.result == 'success' &&
+      needs['unit-tests'].result == 'success' &&
       (needs['migration-status'].result == 'success' || needs['migration-status'].result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
       - quality
+      - unit-tests
       - migration-status
     steps:
       - name: Checkout
