@@ -4,7 +4,10 @@ import path from "node:path";
 import { validateEnv } from "./lib/env";
 import { getLeadFormEmbedHeaders } from "./lib/security/lead-form-embed-headers";
 import {
-  getSiteSecurityHeaders,
+  LIVE_FRAME_HEADER_SOURCES,
+  buildLockedSiteHeaderSource,
+  getLiveFrameSecurityHeaders,
+  getLockedSiteSecurityHeaders,
   getWhatsAppSecurityHeaders,
 } from "./lib/security/site-frame-ancestors";
 
@@ -48,9 +51,23 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      // LiveFrame: allowlist externa só em rotas públicas embutíveis (matchers exclusivos).
+      ...LIVE_FRAME_HEADER_SOURCES.map((source) => ({
+        source,
+        headers: getLiveFrameSecurityHeaders(),
+      })),
       {
-        source: "/((?!lead-form).*)",
-        headers: getSiteSecurityHeaders(),
+        source: "/prime/:path*",
+        headers: getLiveFrameSecurityHeaders(),
+      },
+      {
+        source: "/recursos/:path*",
+        headers: getLiveFrameSecurityHeaders(),
+      },
+      // Demais rotas (tenant, backoffice, auth, etc.): DENY / frame-ancestors 'none'.
+      {
+        source: buildLockedSiteHeaderSource(),
+        headers: getLockedSiteSecurityHeaders(),
       },
       {
         source: "/lead-form/:path*",
