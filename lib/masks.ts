@@ -13,8 +13,8 @@ export function maskPhone(value: string): string {
   // Remove tudo que não é número
   const numbers = value.replace(/\D/g, '');
   
-  // Limita a 11 dígitos
-  const limited = numbers.slice(0, 11);
+  // Mantém no máximo 11 dígitos a partir do DDD (remove DDI 55 quando presente)
+  const limited = numbers.length <= 11 ? numbers : numbers.slice(-11);
   
   // Aplica a máscara
   if (limited.length <= 10) {
@@ -178,12 +178,17 @@ export function sanitizeDocumentDigits(value: string): string {
   return value.replace(/\D/g, "").slice(0, 14)
 }
 
+/**
+ * Normaliza telefone de lead para armazenamento/UI: somente DDD + número (máx. 11).
+ * Remove DDI (ex.: 55) quando o valor vier como E.164 / webhook WhatsApp.
+ * Ex.: "55 11 99999-9999" | "5511999999999" → "11999999999"
+ */
 export function normalizeLeadPhoneDigits(value: string): string {
   if (!value) return "";
   const digits = value.replace(/\D/g, "");
   if (digits.length <= 11) return digits;
-  return digits.slice(0, 11);
-};
+  return digits.slice(-11);
+}
 
 /**
  * Retorna o documento formatado para RG/CPF (somente dígitos)
