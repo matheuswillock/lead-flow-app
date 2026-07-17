@@ -7,12 +7,14 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Copy,
   Globe,
   LoaderCircle,
   MoreHorizontal,
+  ShieldAlert,
   Trash2,
-  XCircle,
 } from "lucide-react"
+import { toast } from "sonner"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +46,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
-import type { ResendDomainStatus } from "../context/EmailSettingsTypes"
+import type { DomainRecord, ResendDomainStatus } from "../context/EmailSettingsTypes"
 import { DomainEventsTimeline } from "./DomainEventsTimeline"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 import { formatResendRegion } from "../utils/resend-region-labels"
@@ -76,7 +78,7 @@ function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
     },
     failed: {
       label: "Falhou",
-      icon: <XCircle className="size-3" />,
+      icon: <AlertCircle className="size-3" />,
       className: "border-destructive/30 bg-destructive/10 text-destructive",
     },
     temporary_failure: {
@@ -112,6 +114,46 @@ function TrackingBadge({ enabled, label }: { enabled: boolean; label: string }) 
   )
 }
 
+function purposeLabel(record: DomainRecord): string {
+  const purpose = record.record?.trim()
+  if (!purpose) return "—"
+  const labels: Record<string, string> = {
+    SPF: "SPF",
+    DKIM: "DKIM",
+    Tracking: "Tracking",
+    TrackingCAA: "Tracking CAA",
+    Receiving: "Recebimento",
+  }
+  return labels[purpose] ?? purpose
+}
+
+async function copyToClipboard(value: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(value)
+    toast.success(`${label} copiado`)
+  } catch {
+    toast.error("Não foi possível copiar")
+  }
+}
+
+function CopyableCell({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex max-w-xs items-start gap-2">
+      <span className="break-all font-mono text-xs text-foreground">{value}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7 shrink-0"
+        onClick={() => void copyToClipboard(value, label)}
+        aria-label={`Copiar ${label}`}
+      >
+        <Copy />
+      </Button>
+    </div>
+  )
+}
+
 export function CustomDomainCard() {
   const {
     loading,
@@ -142,6 +184,7 @@ export function CustomDomainCard() {
   }, [domainName, domainRecords.length, handleLoadDomainRecords])
 
   const isConnected = Boolean(domainName)
+  const verifyLabel = domainStatus === "verified" ? "Reverificar DNS" : "Verificar DNS"
 
   return (
     <EmailSettingsSectionCard
@@ -186,7 +229,7 @@ export function CustomDomainCard() {
                     onClick={() => void handleVerifyDomain()}
                   >
                     <Clock data-icon="inline-start" />
-                    Verificar DNS
+                    {verifyLabel}
                   </DropdownMenuItem>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -204,7 +247,8 @@ export function CustomDomainCard() {
                         <AlertDialogTitle>Deletar domínio</AlertDialogTitle>
                         <AlertDialogDescription>
                           Tem certeza que deseja remover o domínio <strong>{domainName}</strong>? Esta ação
-                          remove o domínio no Resend e os disparos voltarão ao domínio padrão.
+                          remove o domínio no Resend e os disparos voltarão a usar
+                          deliveryby@corretorstudio.com.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -252,60 +296,101 @@ export function CustomDomainCard() {
 
           <DomainEventsTimeline events={domainEvents} domainStatus={domainStatus} />
 
-          {domainStatus !== "verified" ? (
-            <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
-              <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-1">
                 <p className="font-[family-name:var(--font-poppins)] text-sm font-semibold text-foreground">
-                  Registros DNS necessários
+                  Registros DNS
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Configure os registros abaixo no seu provedor DNS e depois execute a verificação.
+                  Copie Nome e Valor e cadastre no host DNS do seu domínio. Os registros ficam sempre
+                  disponíveis, mesmo após a verificação.
                 </p>
               </div>
-
-              {loadingRecords ? (
-                <div className="flex flex-col gap-3">
-                  <Skeleton className="h-10 w-full rounded-xl" />
-                  <Skeleton className="h-10 w-full rounded-xl" />
-                </div>
-              ) : domainRecords.length > 0 ? (
-                <div className="overflow-x-auto rounded-2xl border border-border/60 bg-background/80">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Valor</TableHead>
-                        <TableHead>TTL</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {domainRecords.map((record, index) => (
-                        <TableRow key={`${record.type}-${record.name}-${index}`}>
-                          <TableCell className="font-mono text-xs">{record.type}</TableCell>
-                          <TableCell className="max-w-52 truncate font-mono text-xs">{record.name}</TableCell>
-                          <TableCell className="max-w-60 truncate font-mono text-xs">{record.value}</TableCell>
-                          <TableCell className="text-xs">{record.ttl}</TableCell>
-                          <TableCell>
-                            {record.status === "verified" ? (
-                              <CheckCircle2 className="size-4 text-semantic-success" />
-                            ) : (
-                              <Clock className="size-4 text-semantic-warning" />
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Nenhum registro retornado pelo Resend para este domínio.
-                </p>
-              )}
+              <Button
+                type="button"
+                onClick={() => void handleVerifyDomain()}
+                disabled={verifyingDomain || loadingRecords}
+              >
+                {verifyingDomain ? (
+                  <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <Clock data-icon="inline-start" />
+                )}
+                {verifyLabel}
+              </Button>
             </div>
-          ) : null}
+
+            <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-background/80 p-4 text-sm text-muted-foreground">
+              <p className="flex items-start gap-2">
+                <ShieldAlert className="mt-0.5 size-4 shrink-0 text-semantic-warning" />
+                Prefira um subdomínio (ex.: mail.suaempresa.com.br) para evitar conflito com MX do e-mail
+                corporativo.
+              </p>
+              <p>
+                Desative o proxy Cloudflare (nuvem laranja) nos registros CNAME/MX/TXT do Resend.
+              </p>
+              <p>
+                DMARC (opcional): adicione um TXT em <span className="font-mono text-xs">_dmarc</span> no
+                domínio raiz para reforçar a autenticidade — não é exigido pelo Resend para verificar o
+                domínio.
+              </p>
+            </div>
+
+            {loadingRecords ? (
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-10 w-full rounded-xl" />
+                <Skeleton className="h-10 w-full rounded-xl" />
+              </div>
+            ) : domainRecords.length > 0 ? (
+              <div className="overflow-x-auto rounded-2xl border border-border/60 bg-background/80">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Propósito</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead>Prioridade</TableHead>
+                      <TableHead>TTL</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {domainRecords.map((record, index) => (
+                      <TableRow key={`${record.type}-${record.name}-${index}`}>
+                        <TableCell className="text-xs font-medium">{purposeLabel(record)}</TableCell>
+                        <TableCell className="font-mono text-xs">{record.type}</TableCell>
+                        <TableCell>
+                          <CopyableCell value={record.name} label="Nome" />
+                        </TableCell>
+                        <TableCell>
+                          <CopyableCell value={record.value} label="Valor" />
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {record.priority !== undefined && record.priority !== null
+                            ? record.priority
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs">{record.ttl}</TableCell>
+                        <TableCell>
+                          {record.status === "verified" ? (
+                            <CheckCircle2 className="size-4 text-semantic-success" />
+                          ) : (
+                            <Clock className="size-4 text-semantic-warning" />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhum registro retornado pelo Resend para este domínio.
+              </p>
+            )}
+          </div>
         </>
       ) : (
         <div className="rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
@@ -338,8 +423,8 @@ export function CustomDomainCard() {
                   </Button>
                 </div>
                 <FieldDescription>
-                  Nenhum domínio conectado. Após a conexão, a tela exibirá os registros DNS exigidos pelo
-                  Resend.
+                  Prefira um subdomínio (ex.: mail.suaempresa.com.br). Após conectar, copie os registros
+                  DNS e configure no host do domínio.
                 </FieldDescription>
               </FieldContent>
             </Field>

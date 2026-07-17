@@ -33,12 +33,77 @@ mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () 
   },
 }))
 
-mock.module("@/app/api/services/resend/ResendWebhookService", () => ({
-  resendWebhookService: {
-    mapEventType: mapEventTypeMock,
-    processEmailLogWebhook: processEmailLogWebhookMock,
-  },
-}))
+mock.module("@/app/api/services/resend/ResendWebhookService", () => {
+  // Mantém a classe exportada para não poluir outros testes que importam ResendWebhookService.
+  const EVENT_TYPE_MAP: Record<string, string> = {
+    "email.sent": "sent",
+    "email.delivered": "delivered",
+    "email.opened": "opened",
+    "email.clicked": "clicked",
+    "email.bounced": "bounced",
+    "email.complained": "complained",
+    "email.suppressed": "suppressed",
+    "email.delivery_delayed": "delivery_delayed",
+    "email.unsubscribed": "unsubscribed",
+    "email.failed": "failed",
+  }
+
+  class ResendWebhookService {
+    constructor(
+      private readonly emailLogs: {
+        hasDuplicateEvent: (
+          logId: string,
+          eventType: string,
+          occurredAt: Date
+        ) => Promise<boolean>
+        applyWebhookEvent: (input: Record<string, unknown>) => Promise<void>
+      } = {
+        hasDuplicateEvent: async () => false,
+        applyWebhookEvent: async () => {},
+      }
+    ) {}
+
+    mapEventType(resendEventType: string) {
+      return EVENT_TYPE_MAP[resendEventType] ?? null
+    }
+
+    async processEmailLogWebhook(input: {
+      log: { id: string }
+      eventType: string
+      occurredAt: Date
+      metadata: Record<string, unknown>
+      resendEventType: string
+      svixId?: string | null
+    }) {
+      const eventMetadata = {
+        ...input.metadata,
+        ...(input.svixId ? { svixId: input.svixId } : {}),
+      }
+      const duplicate = await this.emailLogs.hasDuplicateEvent(
+        input.log.id,
+        input.eventType,
+        input.occurredAt
+      )
+      if (duplicate) return true
+      await this.emailLogs.applyWebhookEvent({
+        log: input.log,
+        eventType: input.eventType,
+        occurredAt: input.occurredAt,
+        metadata: eventMetadata,
+        eventId: crypto.randomUUID(),
+      })
+      return true
+    }
+  }
+
+  return {
+    ResendWebhookService,
+    resendWebhookService: {
+      mapEventType: mapEventTypeMock,
+      processEmailLogWebhook: processEmailLogWebhookMock,
+    },
+  }
+})
 
 mock.module("@/app/api/services/cdp/CustomerDataPlatformService", () => ({
   customerDataPlatformService: {

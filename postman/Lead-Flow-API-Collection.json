@@ -12782,7 +12782,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/email/campaigns?page=1&pageSize=20&status=",
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns?page=1&pageSize=20&status=draft,sent",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -12803,7 +12803,8 @@
                     },
                     {
                       "key": "status",
-                      "value": ""
+                      "value": "draft,sent",
+                      "description": "Um ou mais status separados por vírgula (ex: draft,sent,failed). Vazio = todos."
                     }
                   ]
                 }
@@ -12880,7 +12881,7 @@
                     "send"
                   ]
                 },
-                "description": "Dispara imediatamente. Deduz creditos."
+                "description": "Inicia o disparo em segundo plano (HTTP 202). Valida, trava status sending, reserva créditos e cria dispatch; o envio dos chunks roda via after(). Resposta: { campaignId, dispatchId, totalRecipients, status: \"sending\" }."
               },
               "response": []
             },

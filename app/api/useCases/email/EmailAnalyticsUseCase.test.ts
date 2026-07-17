@@ -28,7 +28,11 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         .mockResolvedValueOnce(400)     // opened
         .mockResolvedValueOnce(100)     // clicked
         .mockResolvedValueOnce(50)      // bounced
-        .mockResolvedValueOnce(5),      // complained
+        .mockResolvedValueOnce(5)       // complained
+        .mockResolvedValueOnce(0)       // failed
+        .mockResolvedValueOnce(0)       // delivery_delayed
+        .mockResolvedValueOnce(0)       // unsubscribed
+        .mockResolvedValueOnce(0),      // suppressed
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -48,7 +52,11 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         .mockResolvedValueOnce(400)
         .mockResolvedValueOnce(100)
         .mockResolvedValueOnce(50)
-        .mockResolvedValueOnce(5),
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -65,7 +73,11 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         .mockResolvedValueOnce(400)
         .mockResolvedValueOnce(100)
         .mockResolvedValueOnce(50)
-        .mockResolvedValueOnce(5),
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -95,6 +107,10 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         .mockResolvedValueOnce(1)   // opened
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0),
     })
     const uc = new EmailAnalyticsUseCase(repo)
@@ -120,6 +136,10 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
       .mockResolvedValueOnce(50)
       .mockResolvedValueOnce(10)
       .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
     const listDispatches = mock(async () => [
       {
         id: "disp-1",

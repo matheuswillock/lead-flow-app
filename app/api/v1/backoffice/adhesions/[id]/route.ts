@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -59,7 +59,7 @@ export async function PATCH(
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
-    const denied = requireMasterAccess(access.access)
+    const denied = requireManagerAccess(access.access)
     if (denied) return denied
 
     const body = await request.json().catch(() => null)
@@ -102,7 +102,7 @@ export async function DELETE(
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
-    const denied = requireMasterAccess(access.access)
+    const denied = requireManagerAccess(access.access)
     if (denied) return denied
 
     const { id } = await params

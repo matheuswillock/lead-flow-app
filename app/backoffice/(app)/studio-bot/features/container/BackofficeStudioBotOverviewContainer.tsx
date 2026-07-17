@@ -224,7 +224,7 @@ export function BackofficeStudioBotOverviewContainer() {
               {isTestingPing ? "Testando..." : "Testar ping N8N"}
             </Button>
           ) : (
-            <span className="text-sm text-muted-foreground">Somente leitura para operadores.</span>
+            <span className="text-sm text-muted-foreground">Somente leitura para operators.</span>
           )}
           <Button variant="outline" size="sm" asChild>
             <Link href="/backoffice/studio-bot/verificacoes">
