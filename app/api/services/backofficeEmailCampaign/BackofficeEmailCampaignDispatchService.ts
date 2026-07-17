@@ -62,7 +62,7 @@ export class BackofficeEmailCampaignDispatchService implements IBackofficeEmailC
             to: recipient.email,
             subject: params.subject,
             html,
-            headers: buildBackofficeListUnsubscribeHeaders(unsubscribeUrl),
+            headers: buildBackofficeListUnsubscribeHeaders(recipient.contactId, params.campaignId),
             tags: buildBackofficeCampaignResendTags({
               campaignId: params.campaignId,
               dispatchId: params.dispatchId,

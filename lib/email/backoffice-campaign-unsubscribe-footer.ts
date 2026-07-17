@@ -21,9 +21,24 @@ export function appendBackofficeCampaignUnsubscribeFooter(html: string, unsubscr
   return `${html}${footer}`
 }
 
-export function buildBackofficeListUnsubscribeHeaders(unsubscribeUrl: string): Record<string, string> {
+/**
+ * O link visível no corpo do e-mail aponta para a página de confirmação
+ * (`buildBackofficeCampaignUnsubscribeUrl`), mas o cabeçalho `List-Unsubscribe`
+ * usado pelo one-click unsubscribe (RFC 8058) precisa apontar direto para o
+ * endpoint POST — clientes de e-mail fazem o POST nessa mesma URL, e a página
+ * de confirmação não tem handler de POST.
+ */
+export function buildBackofficeListUnsubscribeHeaders(
+  contactId: string,
+  campaignId: string
+): Record<string, string> {
+  const token = generateBackofficeEmailUnsubscribeToken(contactId, campaignId)
+  const postUrl = getFullUrl(
+    `/api/v1/backoffice/public/email-campaigns/unsubscribe?token=${encodeURIComponent(token)}`
+  )
+
   return {
-    "List-Unsubscribe": `<${unsubscribeUrl}>`,
+    "List-Unsubscribe": `<${postUrl}>`,
     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
   }
 }

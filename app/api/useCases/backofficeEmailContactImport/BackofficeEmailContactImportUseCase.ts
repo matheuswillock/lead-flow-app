@@ -54,7 +54,7 @@ export class BackofficeEmailContactImportUseCase implements IBackofficeEmailCont
         }
 
         if (importedCount > 0) {
-          await this.listRepository.incrementTotalContacts(claimed.listId, importedCount)
+          await this.listRepository.recountTotalContacts(claimed.listId)
         }
 
         await this.importJobRepository.updateResult(claimed.id, {

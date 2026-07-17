@@ -55,6 +55,14 @@ export class BackofficeEmailContactListRepository implements IBackofficeEmailCon
       data: { totalContacts: { increment: delta } },
     })
   }
+
+  async recountTotalContacts(id: string): Promise<void> {
+    const totalContacts = await prisma.backofficeEmailContact.count({ where: { listId: id } })
+    await prisma.backofficeEmailContactList.update({
+      where: { id },
+      data: { totalContacts },
+    })
+  }
 }
 
 export const backofficeEmailContactListRepository = new BackofficeEmailContactListRepository()

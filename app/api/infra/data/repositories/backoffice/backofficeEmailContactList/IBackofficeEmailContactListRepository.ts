@@ -14,4 +14,6 @@ export interface IBackofficeEmailContactListRepository {
   getOrCreateSystemDefault(): Promise<BackofficeEmailContactList>
   archive(id: string): Promise<BackofficeEmailContactList>
   incrementTotalContacts(id: string, delta: number): Promise<void>
+  /** Recalcula totalContacts a partir da contagem real — evita drift quando upserts atualizam linhas existentes. */
+  recountTotalContacts(id: string): Promise<void>
 }
