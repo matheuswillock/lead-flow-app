@@ -150,6 +150,59 @@ jobs:
       - name: Run unit tests
         run: bun run test
 
+  build:
+    name: Build
+    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
+            ${{ runner.os }}-next-
+
+      - name: Install deps
+        run: bun install
+
+      - name: Generate Prisma Client
+        run: bun run prisma:generate
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 're_placeholder' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: bun run build
+
   quality-gate:
     name: Quality Gate
     if: ${{ always() && github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
@@ -158,6 +211,7 @@ jobs:
     needs:
       - quality
       - unit-tests
+      - build
     steps:
       - name: Enforce Quality Checks
         run: |
@@ -174,6 +228,11 @@ jobs:
           if [[ "${{ needs['unit-tests'].result }}" != "success" ]]; then
             echo "::error::Unit tests failed."
             echo "unit-tests=${{ needs['unit-tests'].result }}"
+            failed=1
+          fi
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "::error::Build failed."
+            echo "build=${{ needs.build.result }}"
             failed=1
           fi
           exit "$failed"
@@ -320,68 +379,6 @@ jobs:
           echo "> Review the output above and approve the **Migration Apply** job to proceed." >> "$GITHUB_STEP_SUMMARY"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-  build:
-    name: Build
-    if: |
-      github.event_name == 'push' &&
-      always() &&
-      (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
-      needs.migration-check.result == 'success' &&
-      needs.migration-check.outputs.has_pending == 'false' &&
-      (needs.migration-dry-run.result == 'success' || needs.migration-dry-run.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs:
-      - migration-check
-      - migration-dry-run
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Cache Next.js build
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
-          restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
-            ${{ runner.os }}-next-
-
-      - name: Install deps
-        run: bun install
-
-      - name: Generate Prisma Client
-        run: bun run prisma:generate
-
-      - name: Build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 're_placeholder' }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
-        run: bun run build
 
   version-bump:
     name: Auto Version Bump (develop)
@@ -531,11 +528,16 @@ jobs:
     if: |
       github.event_name == 'push' &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
-      needs.build.result == 'success'
+      needs.build.result == 'success' &&
+      needs.migration-check.result == 'success' &&
+      needs.migration-check.outputs.has_pending == 'false' &&
+      (needs.migration-dry-run.result == 'success' || needs.migration-dry-run.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
       - build
+      - migration-check
+      - migration-dry-run
       - version-bump
     steps:
       - name: Checkout develop
@@ -659,7 +661,7 @@ jobs:
               (deployPreviewResult === 'success' || deployPreviewResult === 'skipped');
             const resolveSkipReason = () => {
               if (qualityGateResult !== 'success') {
-                return 'Quality gate falhou. Corrija governance, lint, typecheck ou spellcheck em develop.';
+                return 'Quality gate falhou. Corrija governance, lint, typecheck, spellcheck ou build em develop.';
               }
               if (migrationCheckResult !== 'success') {
                 return 'Migration check falhou ou foi ignorado. Revise o job "Migration Check".';
