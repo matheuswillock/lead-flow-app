@@ -20,6 +20,7 @@ import type {
 } from "./IEmailCampaignRecipientService"
 import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
+import { findTeamBlocklistedEmails } from "@/lib/email/email-contact-blocklist"
 
 export class EmailCampaignRecipientService implements IEmailCampaignRecipientService {
   constructor(
@@ -87,7 +88,14 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     const baseRecipients = params.cdpSegmentSlug
       ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
       : await this.listActiveRecipients(params.teamId, params.contactListId!)
-    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, baseRecipients)
+    const blocklistedEmails = await findTeamBlocklistedEmails(params.teamId)
+    const eligibleRecipients =
+      blocklistedEmails.size > 0
+        ? baseRecipients.filter(
+            (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
+          )
+        : baseRecipients
+    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, eligibleRecipients)
     const globalDefaults = await this.getGlobalDefaults(params.teamId)
     const parsedVariables = this.parseTemplateVariables(params.template.variables)
     const timezone = resolveTimezone(params.masterTimezone)

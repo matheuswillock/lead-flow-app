@@ -14045,7 +14045,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"token\": \"{{unsubscribeToken}}\"\n}"
+                  "raw": "{\n  \"token\": \"{{unsubscribeToken}}\",\n  \"scope\": \"campaign\"\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/email/public/unsubscribe",
@@ -14060,7 +14060,7 @@
                     "unsubscribe"
                   ]
                 },
-                "description": "Rota pública — sem autenticação. Marca contato como descadastrado do time."
+                "description": "Rota pública — sem autenticação. scope=campaign remove da lista da campanha; scope=all move para blocklist do time."
               },
               "response": []
             }

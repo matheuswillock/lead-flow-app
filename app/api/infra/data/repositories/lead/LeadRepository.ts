@@ -2,6 +2,7 @@ import { ILeadRepository, type LeadCreateRepositoryInput, type LeadDuplicateCand
 import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
+import { normalizeLeadPhoneDigits } from "@/lib/masks";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
 // Statuses terminais não geram eventos de lead time no calendário.
@@ -219,11 +220,13 @@ export class LeadRepository implements ILeadRepository {
     normalizedPhone: string
   ): Promise<Pick<Lead, "id"> | null> {
     const digits = normalizedPhone.replace(/\D/g, "")
+    const leadPhone = normalizeLeadPhoneDigits(normalizedPhone)
     return prisma.lead.findFirst({
       where: {
         teamId,
         OR: [
           { phone: normalizedPhone },
+          ...(leadPhone ? [{ phone: leadPhone }] : []),
           ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
         ],
       },
@@ -241,6 +244,7 @@ export class LeadRepository implements ILeadRepository {
     conversationId: string;
   }): Promise<{ id: string; created: boolean }> {
     const digits = params.normalizedPhone.replace(/\D/g, "");
+    const leadPhone = normalizeLeadPhoneDigits(params.normalizedPhone);
 
     return prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.teamId} || ':' || ${params.normalizedPhone}))`;
@@ -250,6 +254,7 @@ export class LeadRepository implements ILeadRepository {
           teamId: params.teamId,
           OR: [
             { phone: params.normalizedPhone },
+            ...(leadPhone ? [{ phone: leadPhone }] : []),
             ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
           ],
         },
@@ -267,7 +272,7 @@ export class LeadRepository implements ILeadRepository {
           team: { connect: { id: params.teamId } },
           leadCode: params.leadCode,
           name: params.displayName,
-          phone: params.normalizedPhone,
+          phone: leadPhone || params.normalizedPhone,
           status: LeadStatus.new_opportunity,
           creator: { connect: { id: params.masterId } },
           updater: { connect: { id: params.masterId } },

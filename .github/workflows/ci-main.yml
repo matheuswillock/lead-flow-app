@@ -115,6 +115,7 @@ jobs:
     needs:
       - quality
       - unit-tests
+      - build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -179,17 +180,8 @@ jobs:
 
   build:
     name: Build
-    if: |
-      always() &&
-      needs.quality.result == 'success' &&
-      needs['unit-tests'].result == 'success' &&
-      (needs['migration-status'].result == 'success' || needs['migration-status'].result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs:
-      - quality
-      - unit-tests
-      - migration-status
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -231,8 +223,13 @@ jobs:
 
   deploy-production:
     name: Deploy Vercel (Production)
-    if: github.event_name == 'push'
-    needs: build
+    if: |
+      github.event_name == 'push' &&
+      needs.build.result == 'success' &&
+      needs['migration-status'].result == 'success'
+    needs:
+      - build
+      - migration-status
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

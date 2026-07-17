@@ -73,7 +73,11 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           let headers: Record<string, string> | undefined
 
           if (recipient.contactId) {
-            const unsubscribeUrl = buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId)
+            const unsubscribeUrl = buildCampaignUnsubscribeUrl(
+              recipient.contactId,
+              params.teamId,
+              params.campaignId
+            )
             htmlWithFooter = appendCampaignUnsubscribeFooter(renderedHtml, unsubscribeUrl)
             headers = buildListUnsubscribeHeaders(unsubscribeUrl)
           }

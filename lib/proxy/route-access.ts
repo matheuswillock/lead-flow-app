@@ -50,6 +50,7 @@ export const TENANT_ROUTE_PREFIXES = [
   "/email/campanhas",
   "/email/historico",
   "/email/configuracoes",
+  "/email/descadastro",
   "/email",
   "/account",
   "/board",

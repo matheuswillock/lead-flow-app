@@ -2529,6 +2529,7 @@ model EmailContactList {
   csvStoragePath String?  @db.Text
   totalContacts  Int      @default(0)
   isSystemDefault Boolean @default(false)
+  isBlocklist    Boolean  @default(false)
   isArchived     Boolean  @default(false)
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
@@ -2541,6 +2542,7 @@ model EmailContactList {
   importJobs EmailImportJob[]
 
   @@index([teamId, isArchived])
+  @@index([teamId, isBlocklist])
   @@index([createdBy])
   @@map("corretor_studio_email_contact_lists")
 }

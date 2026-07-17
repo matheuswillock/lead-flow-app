@@ -17,6 +17,7 @@ export const FEATURE_SLUGS = {
   EMAIL_HISTORY: "email-history",
   EMAIL_ANALYTICS: "email-analytics",
   EMAIL_SETTINGS: "email-settings",
+  EMAIL_UNSUBSCRIBE: "email-unsubscribe",
   CONFIGURATION: "integration",
   WHATSAPP: "whatsapp",
   WHATSAPP_SETTINGS: "whatsapp-settings",

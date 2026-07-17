@@ -1,6 +1,6 @@
 import type { IEmailUnsubscribeService } from "../services/IEmailUnsubscribeService"
 import { emailUnsubscribeService } from "../services/EmailUnsubscribeService"
-import type { EmailUnsubscribeState } from "./EmailUnsubscribeTypes"
+import type { EmailUnsubscribeScope, EmailUnsubscribeState } from "./EmailUnsubscribeTypes"
 
 export function createInitialEmailUnsubscribeState(token: string): EmailUnsubscribeState {
   return {
@@ -10,6 +10,8 @@ export function createInitialEmailUnsubscribeState(token: string): EmailUnsubscr
     info: null,
     completed: false,
     error: null,
+    removeFromCampaign: true,
+    removeFromAll: false,
   }
 }
 
@@ -23,7 +25,7 @@ export async function loadEmailUnsubscribeInfo(
   }
 
   const info = response.result as EmailUnsubscribeState["info"]
-  if (info?.alreadyUnsubscribed) {
+  if (info?.alreadyUnsubscribed || info?.alreadyBlocked) {
     return { info, error: null, completed: true }
   }
 
@@ -32,9 +34,10 @@ export async function loadEmailUnsubscribeInfo(
 
 export async function confirmEmailUnsubscribe(
   service: IEmailUnsubscribeService,
-  token: string
+  token: string,
+  scope: EmailUnsubscribeScope
 ): Promise<Pick<EmailUnsubscribeState, "completed" | "error">> {
-  const response = await service.unsubscribe(token)
+  const response = await service.unsubscribe(token, scope)
   if (!response.isValid) {
     return {
       completed: false,

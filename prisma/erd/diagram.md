@@ -1919,6 +1919,7 @@ failed failed
     String csvStoragePath "❓"
     Int totalContacts 
     Boolean isSystemDefault 
+    Boolean isBlocklist 
     Boolean isArchived 
     DateTime createdAt 
     DateTime updatedAt 

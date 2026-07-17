@@ -82,14 +82,20 @@ export function ContatosContainer() {
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-semibold">{selectedList?.name}</h2>
-                <div className="flex items-center gap-2">
-                  <ContactAddModal
-                    trigger={
-                      <Button size="sm" variant="outline">+ Adicionar contato</Button>
-                    }
-                  />
-                  <ContactImportButton />
-                </div>
+                {!selectedList?.isBlocklist ? (
+                  <div className="flex items-center gap-2">
+                    <ContactAddModal
+                      trigger={
+                        <Button size="sm" variant="outline">+ Adicionar contato</Button>
+                      }
+                    />
+                    <ContactImportButton />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Lista somente leitura — contatos entram via descadastro.
+                  </p>
+                )}
               </div>
               <ContactsTable />
             </>
