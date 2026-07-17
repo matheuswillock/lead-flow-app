@@ -7,6 +7,7 @@ import { useLeadCustomFieldDefinitions } from "@/hooks/useLeadCustomFieldDefinit
 import { buildLeadCustomFieldsSchema } from "@/lib/leadCustomFields/schema";
 import type { LeadFormWithCustomFields } from "@/hooks/useForms";
 import { isDraftLead } from "@/lib/lead-status";
+import { normalizeLeadPhoneDigits } from "@/lib/masks";
 import { resolveActivityAuthor as resolveActivityAuthorFromLib } from "@/lib/lead-activities/resolveActivityAuthor";
 import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
 import {
@@ -167,12 +168,6 @@ type LeadOriginBadge = {
   variant: "default" | "secondary" | "outline";
 };
 
-const normalizeLeadPhoneDigits = (phone: string): string => {
-  if (!phone) return "";
-  const numbers = phone.replace(/\D/g, "");
-  if (numbers.length <= 11) return numbers;
-  return numbers.slice(0, 11);
-};
 
 
 

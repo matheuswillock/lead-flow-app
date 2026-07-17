@@ -1,0 +1,26 @@
+import { describe, expect, it } from "bun:test"
+import { maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
+
+describe("normalizeLeadPhoneDigits", () => {
+  it("mantém DDD + número com até 11 dígitos", () => {
+    expect(normalizeLeadPhoneDigits("(11) 99999-9999")).toBe("11999999999")
+    expect(normalizeLeadPhoneDigits("1199999999")).toBe("1199999999")
+  })
+
+  it("remove DDI 55 e mantém a partir do DDD", () => {
+    expect(normalizeLeadPhoneDigits("55 11 99999-9999")).toBe("11999999999")
+    expect(normalizeLeadPhoneDigits("5511999999999")).toBe("11999999999")
+    expect(normalizeLeadPhoneDigits("+55 11 99999-9999")).toBe("11999999999")
+  })
+
+  it("retorna vazio para valor vazio", () => {
+    expect(normalizeLeadPhoneDigits("")).toBe("")
+  })
+})
+
+describe("maskPhone", () => {
+  it("mascara removendo DDI quando presente", () => {
+    expect(maskPhone("5511999999999")).toBe("(11) 99999-9999")
+    expect(maskPhone("55 11 99999-9999")).toBe("(11) 99999-9999")
+  })
+})
