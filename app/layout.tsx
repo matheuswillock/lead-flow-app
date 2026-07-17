@@ -19,12 +19,16 @@ import {
 const appTitle = "Corretor Studio"
 const appDescription = "Uma plataforma de gestão de leads para corretores de saúde"
 
-export const metadata: Metadata = { 
+export const metadata: Metadata = {
   metadataBase: getMetadataBase(),
-  title: appTitle, 
+  title: appTitle,
   description: appDescription,
   alternates: {
     canonical: getAbsoluteUrl("/"),
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
   openGraph: {
     title: appTitle,
@@ -49,8 +53,8 @@ export const metadata: Metadata = {
     images: [getAbsoluteUrl(SHARE_IMAGE_PATH)],
   },
   icons: {
-    icon: '/corretor-studio-icon.svg',
-  }
+    icon: "/corretor-studio-icon.svg",
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
