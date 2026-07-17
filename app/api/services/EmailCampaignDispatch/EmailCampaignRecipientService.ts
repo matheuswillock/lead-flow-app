@@ -4,6 +4,10 @@ import {
   findUnresolvedEmailTemplateTokens,
   type EmailTemplateVariableDefinition,
 } from "@/lib/email/interpolate"
+import {
+  formatCampaignFromHeader,
+  resolveCampaignFrom,
+} from "@/lib/email/resolve-campaign-from"
 import type { CampaignRecipientRecord } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import {
   EmailCampaignRecipientRepository,
@@ -75,10 +79,10 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
       fromName?: string | null
       fromEmail?: string | null
       replyTo?: string | null
+      resendDomainName?: string | null
     } | null
+    defaultSender?: { name: string; email: string } | null
     masterTimezone?: string | null
-    fallbackFromName: string
-    fallbackFromEmail: string
   }): Promise<CampaignDispatchInput> {
     const baseRecipients = params.cdpSegmentSlug
       ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
@@ -89,9 +93,13 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     const timezone = resolveTimezone(params.masterTimezone)
     const templateVariables = applyMasterTimezoneToTemplateVariables(parsedVariables, timezone)
 
-    const fromName = params.teamSettings?.fromName ?? params.fallbackFromName
-    const fromEmail = params.teamSettings?.fromEmail ?? params.fallbackFromEmail
-    const from = `${fromName} <${fromEmail}>`
+    const resolvedFrom = resolveCampaignFrom({
+      domainName: params.teamSettings?.resendDomainName,
+      defaultSender: params.defaultSender,
+      legacyFromName: params.teamSettings?.fromName,
+      legacyFromEmail: params.teamSettings?.fromEmail,
+    })
+    const from = formatCampaignFromHeader(resolvedFrom)
     const replyTo = params.teamSettings?.replyTo ?? null
 
     return {

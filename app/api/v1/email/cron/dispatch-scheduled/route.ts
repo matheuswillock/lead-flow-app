@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     const useCase = new EmailCampaignUseCase()
+    await useCase.resumeOrphanSendingDispatches({ now: new Date() })
     const result = await useCase.dispatchScheduledCampaigns()
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 500 })

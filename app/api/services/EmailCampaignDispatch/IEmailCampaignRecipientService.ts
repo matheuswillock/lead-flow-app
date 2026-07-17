@@ -30,10 +30,10 @@ export interface IEmailCampaignRecipientService {
       fromName?: string | null
       fromEmail?: string | null
       replyTo?: string | null
+      resendDomainName?: string | null
     } | null
+    defaultSender?: { name: string; email: string } | null
     masterTimezone?: string | null
-    fallbackFromName: string
-    fallbackFromEmail: string
   }): Promise<CampaignDispatchInput>
   findUnresolvedTokensForRecipients(params: {
     subject: string

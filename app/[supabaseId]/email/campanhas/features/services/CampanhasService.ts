@@ -1,15 +1,23 @@
-import type { Campaign, CreditStatus, Template, ContactList } from '../context/CampanhasTypes'
+import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, CampaignLogDetail } from '../context/CampanhasTypes'
 
 export interface ICampanhasService {
-  list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string, name?: string, createdAtFrom?: string, createdAtTo?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
+  list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string[], name?: string, createdAtFrom?: string, createdAtTo?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
   create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; cdpSegmentSlug?: string; scheduledAt?: string }): Promise<Campaign>
-  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{ sent: number; failed: number; total: number }>
+  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{
+    campaignId: string
+    dispatchId: string
+    totalRecipients: number
+    status: "sending"
+  }>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
+  update(supabaseId: string, teamId: string | null | undefined, id: string, data: { name?: string; templateId?: string; contactListId?: string; scheduledAt?: string | null }): Promise<Campaign>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
+  getCampaignLogs(supabaseId: string, teamId: string | null | undefined, campaignId: string, params: { page: number; pageSize: number; search?: string; status?: string[] }): Promise<{ logs: CampaignEmailLog[]; total: number; page: number; pageSize: number; totalPages: number }>
+  getCampaignLogDetail(supabaseId: string, teamId: string | null | undefined, logId: string): Promise<CampaignLogDetail>
 }
 
 export class CampanhasService implements ICampanhasService {
@@ -22,9 +30,9 @@ export class CampanhasService implements ICampanhasService {
     }
   }
 
-  async list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string, name?: string, createdAtFrom?: string, createdAtTo?: string) {
+  async list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string[], name?: string, createdAtFrom?: string, createdAtTo?: string) {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
-    if (status) params.set('status', status)
+    if (status && status.length > 0) params.set('status', status.join(','))
     if (name) params.set('name', name)
     if (createdAtFrom) params.set('createdAtFrom', createdAtFrom)
     if (createdAtTo) params.set('createdAtTo', createdAtTo)
@@ -56,9 +64,15 @@ export class CampanhasService implements ICampanhasService {
       headers: this.buildHeaders(supabaseId, teamId),
     })
     const json = await res.json().catch(() => null)
+    // 202 Accepted conta como sucesso (res.ok === true)
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json?.isValid) throw new Error(json?.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as { sent: number; failed: number; total: number }
+    return json.result as {
+      campaignId: string
+      dispatchId: string
+      totalRecipients: number
+      status: "sending"
+    }
   }
 
   async cancel(supabaseId: string, teamId: string | null | undefined, id: string) {
@@ -121,7 +135,6 @@ export class CampanhasService implements ICampanhasService {
     const json = await res.json().catch(() => null)
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    // Only the current published version can be used in new campaigns.
     return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published' && t.isCurrentPublished)
   }
 
@@ -134,5 +147,39 @@ export class CampanhasService implements ICampanhasService {
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return (json.result ?? []) as ContactList[]
+  }
+
+  async getCampaignLogs(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    campaignId: string,
+    params: { page: number; pageSize: number; search?: string; status?: string[] },
+  ) {
+    const query = new URLSearchParams({
+      page: String(params.page),
+      pageSize: String(params.pageSize),
+      campaignId,
+    })
+    if (params.search) query.set('search', params.search)
+    if (params.status && params.status.length > 0) query.set('status', params.status.join(','))
+    const res = await fetch(`${this.baseUrl}/logs?${query}`, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    return json.result as { logs: CampaignEmailLog[]; total: number; page: number; pageSize: number; totalPages: number }
+  }
+
+  async getCampaignLogDetail(supabaseId: string, teamId: string | null | undefined, logId: string) {
+    const res = await fetch(`${this.baseUrl}/logs/${logId}`, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    return json.result as CampaignLogDetail
   }
 }

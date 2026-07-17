@@ -10,12 +10,15 @@ export function CampaignDispatchProgressBanner() {
   const { sendingId, campaigns } = useCampanhasContext()
   const [progressValue, setProgressValue] = useState(12)
 
-  const sendingCampaign = sendingId
-    ? campaigns.find((campaign) => campaign.id === sendingId)
-    : null
+  const sendingCampaign =
+    (sendingId ? campaigns.find((campaign) => campaign.id === sendingId) : null) ??
+    campaigns.find((campaign) => campaign.status === "sending") ??
+    null
+
+  const isDispatching = Boolean(sendingCampaign)
 
   useEffect(() => {
-    if (!sendingId) {
+    if (!isDispatching) {
       setProgressValue(12)
       return
     }
@@ -28,9 +31,9 @@ export function CampaignDispatchProgressBanner() {
     }, 700)
 
     return () => window.clearInterval(intervalId)
-  }, [sendingId])
+  }, [isDispatching, sendingCampaign?.id])
 
-  if (!sendingId || !sendingCampaign) return null
+  if (!sendingCampaign) return null
 
   const recipients = sendingCampaign.totalRecipients.toLocaleString("pt-BR")
 
@@ -49,7 +52,8 @@ export function CampaignDispatchProgressBanner() {
               </p>
             </div>
             <p className="text-sm text-muted-foreground">
-              Enviando para {recipients} destinatário(s). Não feche esta página até concluir.
+              Enviando para {recipients} destinatário(s). Disparo em segundo plano. Você pode
+              navegar para outras páginas; o status será atualizado automaticamente.
             </p>
           </div>
         </div>

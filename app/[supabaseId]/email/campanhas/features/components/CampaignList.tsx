@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,7 @@ function CampaignActionsMenu({
   deletingId,
   cancelingId,
   archivingId,
+  openView,
   openEdit,
   handleSend,
   handleCancel,
@@ -61,6 +62,7 @@ function CampaignActionsMenu({
   deletingId: string | null
   cancelingId: string | null
   archivingId: string | null
+  openView: (campaign: Campaign) => void
   openEdit: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
   handleCancel: (id: string) => Promise<void>
@@ -81,7 +83,7 @@ function CampaignActionsMenu({
   const sendDisabledReason =
     sendBlockReason ??
     (!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined)
-  const canEdit = campaign.status === "draft" || campaign.status === "scheduled"
+  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(campaign.status)
   const canCancel = campaign.status === "scheduled"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
   const canArchive = ["sent", "failed"].includes(campaign.status)
@@ -123,6 +125,10 @@ function CampaignActionsMenu({
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Ações</DropdownMenuLabel>
 
+          <DropdownMenuItem onClick={() => openView(campaign)}>
+            <Eye className="mr-2 h-4 w-4" />
+            Visualizar
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setSendConfirmOpen(true)}
             disabled={!canSend}
@@ -299,6 +305,7 @@ export function CampaignList({
     handlePageChange,
     handlePageSizeChange,
     openWizard,
+    openView,
     openEdit,
     credits,
   } = useCampanhasContext()
@@ -430,6 +437,7 @@ export function CampaignList({
                             deletingId={deletingId}
                             cancelingId={cancelingId}
                             archivingId={archivingId}
+                            openView={openView}
                             openEdit={openEdit}
                             handleSend={handleSend}
                             handleCancel={handleCancel}

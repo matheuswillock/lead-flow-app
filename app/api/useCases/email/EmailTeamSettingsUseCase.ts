@@ -4,6 +4,14 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { assertResend } from "@/lib/email"
 import { mapResendDomainError } from "@/lib/email/map-resend-domain-error"
 import {
+  buildDeliveryFromEmail,
+  isEmailAllowedForTeamDomain,
+  isPlatformDefaultFromEmail,
+  PLATFORM_FROM_EMAIL,
+  PLATFORM_FROM_NAME,
+  resolveCampaignFrom,
+} from "@/lib/email/resolve-campaign-from"
+import {
   emailTeamDomainEventRepository,
 } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
@@ -60,8 +68,8 @@ const CLEAR_DOMAIN_DATA = {
 } as const
 
 const DEFAULTS = {
-  fromName: "Corretor Studio",
-  fromEmail: "no-reply@corretorstudio.com",
+  fromName: PLATFORM_FROM_NAME,
+  fromEmail: PLATFORM_FROM_EMAIL,
   replyTo: null,
   dispatchBlockedDates: null,
   dispatchTimeFrom: null,
@@ -111,6 +119,15 @@ function validateSenderInput(input: UpsertEmailSenderInput): string | null {
   return null
 }
 
+function validateSenderEmailForDomain(
+  email: string,
+  domainName: string | null | undefined
+): string | null {
+  if (!domainName?.trim()) return null
+  if (isEmailAllowedForTeamDomain(email, domainName)) return null
+  return `O e-mail do remetente deve usar o domínio cadastrado (@${domainName.trim().toLowerCase()})`
+}
+
 function normalizeSenderPayload(input: UpsertEmailSenderInput) {
   return {
     name: input.name.trim(),
@@ -154,10 +171,18 @@ export class EmailTeamSettingsUseCase {
     }> = []
   ) {
     const defaultSender = senders.find((sender) => sender.isDefault) ?? null
+    const resolvedFrom = resolveCampaignFrom({
+      domainName: settings?.resendDomainName,
+      defaultSender: defaultSender
+        ? { name: defaultSender.name, email: defaultSender.email }
+        : null,
+      legacyFromName: settings?.fromName,
+      legacyFromEmail: settings?.fromEmail,
+    })
 
     return {
-      fromName: settings?.fromName ?? DEFAULTS.fromName,
-      fromEmail: settings?.fromEmail ?? DEFAULTS.fromEmail,
+      fromName: resolvedFrom.fromName,
+      fromEmail: resolvedFrom.fromEmail,
       replyTo: settings?.replyTo ?? DEFAULTS.replyTo,
       dispatchBlockedDates:
         settings?.dispatchBlockedDates === null || settings?.dispatchBlockedDates === undefined
@@ -187,14 +212,29 @@ export class EmailTeamSettingsUseCase {
   private async syncLegacySenderFields(
     tx: Prisma.TransactionClient,
     teamId: string,
-    sender: { name: string; email: string; replyTo: string | null } | null
+    sender: { name: string; email: string; replyTo: string | null } | null,
+    domainName?: string | null
   ) {
+    const resolvedDomain =
+      domainName ??
+      (
+        await tx.emailTeamSettings.findUnique({
+          where: { teamId },
+          select: { resendDomainName: true },
+        })
+      )?.resendDomainName
+
+    const resolvedFrom = resolveCampaignFrom({
+      domainName: resolvedDomain,
+      defaultSender: sender,
+    })
+
     await tx.emailTeamSettings.upsert({
       where: { teamId },
       create: {
         teamId,
-        fromName: sender?.name ?? DEFAULTS.fromName,
-        fromEmail: sender?.email ?? DEFAULTS.fromEmail,
+        fromName: resolvedFrom.fromName,
+        fromEmail: resolvedFrom.fromEmail,
         replyTo: sender?.replyTo ?? DEFAULTS.replyTo,
         dispatchAllowedRoles: DEFAULTS.dispatchAllowedRoles,
         templateCreateRoles: DEFAULTS.templateCreateRoles,
@@ -203,8 +243,8 @@ export class EmailTeamSettingsUseCase {
         blockedDispatchDays: DEFAULTS.blockedDispatchDays,
       },
       update: {
-        fromName: sender?.name ?? DEFAULTS.fromName,
-        fromEmail: sender?.email ?? DEFAULTS.fromEmail,
+        fromName: resolvedFrom.fromName,
+        fromEmail: resolvedFrom.fromEmail,
         replyTo: sender?.replyTo ?? DEFAULTS.replyTo,
       },
     })
@@ -372,6 +412,13 @@ export class EmailTeamSettingsUseCase {
       const validationError = validateSenderInput(input)
       if (validationError) return new Output(false, [], [validationError], null)
 
+      const settings = await prisma.emailTeamSettings.findUnique({
+        where: { teamId: ctx.teamId },
+        select: { resendDomainName: true },
+      })
+      const domainError = validateSenderEmailForDomain(input.email, settings?.resendDomainName)
+      if (domainError) return new Output(false, [], [domainError], null)
+
       const sender = await prisma.$transaction(async (tx) => {
         const payload = normalizeSenderPayload(input)
         const senderCount = await tx.emailTeamSender.count({ where: { teamId: ctx.teamId } })
@@ -400,6 +447,13 @@ export class EmailTeamSettingsUseCase {
     try {
       const validationError = validateSenderInput(input)
       if (validationError) return new Output(false, [], [validationError], null)
+
+      const settings = await prisma.emailTeamSettings.findUnique({
+        where: { teamId: ctx.teamId },
+        select: { resendDomainName: true },
+      })
+      const domainError = validateSenderEmailForDomain(input.email, settings?.resendDomainName)
+      if (domainError) return new Output(false, [], [domainError], null)
 
       const sender = await prisma.$transaction(async (tx) => {
         const existing = await tx.emailTeamSender.findFirst({
@@ -521,6 +575,7 @@ export class EmailTeamSettingsUseCase {
       const { data, error } = await resend.domains.create({
         name: domainName.trim(),
         region: DEFAULT_DOMAIN_REGION,
+        customReturnPath: "bounce",
         openTracking: true,
         clickTracking: true,
       })
@@ -541,13 +596,15 @@ export class EmailTeamSettingsUseCase {
       })
 
       const connectedAt = new Date()
+      const senderCount = await prisma.emailTeamSender.count({ where: { teamId: ctx.teamId } })
+      const deliveryFromEmail = buildDeliveryFromEmail(data.name)
 
       await prisma.emailTeamSettings.upsert({
         where: { teamId: ctx.teamId },
         create: {
           teamId: ctx.teamId,
           fromName: DEFAULTS.fromName,
-          fromEmail: DEFAULTS.fromEmail,
+          fromEmail: senderCount === 0 ? deliveryFromEmail : DEFAULTS.fromEmail,
           resendDomainId: data.id,
           resendDomainName: data.name,
           resendDomainStatus: "pending",
@@ -569,6 +626,12 @@ export class EmailTeamSettingsUseCase {
           resendDomainConnectedAt: connectedAt,
           resendOpenTracking: true,
           resendClickTracking: true,
+          ...(senderCount === 0
+            ? {
+                fromEmail: deliveryFromEmail,
+                fromName: DEFAULTS.fromName,
+              }
+            : {}),
         },
       })
 
@@ -597,7 +660,11 @@ export class EmailTeamSettingsUseCase {
     try {
       const settings = await prisma.emailTeamSettings.findUnique({
         where: { teamId: ctx.teamId },
-        select: { resendDomainId: true, resendDomainName: true },
+        select: {
+          resendDomainId: true,
+          resendDomainName: true,
+          fromEmail: true,
+        },
       })
       if (!settings?.resendDomainId) {
         return new Output(false, [], ["Nenhum domínio conectado"], null)
@@ -627,9 +694,23 @@ export class EmailTeamSettingsUseCase {
         domainName: settings.resendDomainName,
       })
 
+      const domainDelivery = settings.resendDomainName
+        ? buildDeliveryFromEmail(settings.resendDomainName)
+        : null
+      const shouldResetFrom =
+        !settings.fromEmail ||
+        isPlatformDefaultFromEmail(settings.fromEmail) ||
+        (domainDelivery !== null &&
+          settings.fromEmail.trim().toLowerCase() === domainDelivery)
+
       await prisma.emailTeamSettings.update({
         where: { teamId: ctx.teamId },
-        data: { ...CLEAR_DOMAIN_DATA },
+        data: {
+          ...CLEAR_DOMAIN_DATA,
+          ...(shouldResetFrom
+            ? { fromEmail: PLATFORM_FROM_EMAIL, fromName: PLATFORM_FROM_NAME }
+            : {}),
+        },
       })
 
       return new Output(true, ["Domínio removido com sucesso"], [], null)
