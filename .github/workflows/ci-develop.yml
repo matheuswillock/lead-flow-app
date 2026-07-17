@@ -767,6 +767,28 @@ jobs:
               return [body.trimEnd(), '', nextSection].join('\n');
             };
 
+            // Soft-skip: no release expected (empty develop). Hard-skip: release was
+            // expected but blocked (deploy/migrations/build). Soft stays green; hard fails.
+            const isSoftSkip =
+              !hasCodeChanges ||
+              !versionBumped ||
+              bumpType === 'unchanged';
+            const rejectUnlessReleaseReady = (prUrl = '') => {
+              if (canCreateReleasePr) {
+                return false;
+              }
+              const skipReason = resolveSkipReason();
+              core.warning(skipReason);
+              core.info(`Release branch was not updated. Reason: ${skipReason}`);
+              core.setOutput('operation', 'skipped');
+              core.setOutput('skip-reason', skipReason);
+              core.setOutput('pr-url', prUrl);
+              if (!isSoftSkip) {
+                core.setFailed(skipReason);
+              }
+              return true;
+            };
+
             const prs = await github.rest.pulls.list({
               owner,
               repo,
@@ -783,6 +805,13 @@ jobs:
                 core.setOutput('operation', 'unchanged');
                 core.setOutput('skip-reason', 'Nenhuma alteracao de codigo em develop desde main.');
                 core.setOutput('pr-url', existingPr.html_url);
+                core.setOutput('pr-number', String(existingPr.number));
+                return;
+              }
+              // Hard gates must pass before retitling/updating an existing release PR
+              // (e.g. pending migrations skip deploy-preview; do not advertise a version
+              // that was never pushed to the release branch).
+              if (rejectUnlessReleaseReady(existingPr.html_url)) {
                 core.setOutput('pr-number', String(existingPr.number));
                 return;
               }
@@ -809,23 +838,7 @@ jobs:
               return;
             }
 
-            if (!canCreateReleasePr) {
-              const skipReason = resolveSkipReason();
-              core.warning(skipReason);
-              core.info(`Release branch was not updated. No release PR created. Reason: ${skipReason}`);
-              core.setOutput('operation', 'skipped');
-              core.setOutput('skip-reason', skipReason);
-              core.setOutput('pr-url', '');
-              // Fail the job when release was expected but blocked by deploy (or other
-              // hard gates). Keep soft-skip (no code changes) as a non-failure so the
-              // badge stays green on empty develop pushes.
-              const isSoftSkip =
-                !hasCodeChanges ||
-                !versionBumped ||
-                bumpType === 'unchanged';
-              if (!isSoftSkip) {
-                core.setFailed(skipReason);
-              }
+            if (rejectUnlessReleaseReady('')) {
               return;
             }
 
