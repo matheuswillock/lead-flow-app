@@ -1,6 +1,11 @@
 import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
+import {
+  backofficeEmailDomainErrorMessage,
+  isValidBackofficeEmail,
+  normalizeBackofficeEmail,
+} from "@/lib/backoffice/email-domain"
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository"
 import type { IMailboxProvisioningService } from "@/app/api/services/mailbox/IMailboxProvisioningService"
 import type { BackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
@@ -24,21 +29,6 @@ export interface UpdateBackofficeUserInput {
   isCloser?: boolean
 }
 
-const BACKOFFICE_EMAIL_DOMAIN = "@corretorstudio.com"
-
-function normalizeBackofficeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
-function isValidBackofficeEmail(email: string) {
-  const normalized = normalizeBackofficeEmail(email)
-  const prefix = normalized.endsWith(BACKOFFICE_EMAIL_DOMAIN)
-    ? normalized.slice(0, -BACKOFFICE_EMAIL_DOMAIN.length)
-    : ""
-
-  return /^[^\s@]+$/.test(prefix) && normalized === `${prefix}${BACKOFFICE_EMAIL_DOMAIN}`
-}
-
 function createSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -60,7 +50,7 @@ export class BackofficeUserUseCase {
       }
 
       if (!data.email || !isValidBackofficeEmail(data.email)) {
-        return new Output(false, [], ["E-mail deve pertencer ao domínio @corretorstudio.com"], null)
+        return new Output(false, [], [backofficeEmailDomainErrorMessage()], null)
       }
       if (!data.fullName || data.fullName.trim().length < 2) {
         return new Output(false, [], ["Nome completo deve ter pelo menos 2 caracteres"], null)
@@ -185,7 +175,7 @@ export class BackofficeUserUseCase {
 
       if (data.email !== undefined) {
         if (!isValidBackofficeEmail(data.email)) {
-          return new Output(false, [], ["E-mail deve pertencer ao domínio @corretorstudio.com"], null)
+          return new Output(false, [], [backofficeEmailDomainErrorMessage()], null)
         }
 
         const normalizedEmail = normalizeBackofficeEmail(data.email)

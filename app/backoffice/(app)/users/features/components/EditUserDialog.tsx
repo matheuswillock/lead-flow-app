@@ -111,7 +111,7 @@ export function EditUserDialog({
       return
     }
     if (!isBackofficeEmail(form.email)) {
-      setEmailError("Informe o prefixo do e-mail @corretorstudio.com")
+      setEmailError("Informe o prefixo do e-mail @corretorstudio.com.br")
       return
     }
 

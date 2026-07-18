@@ -5,6 +5,7 @@ import { loginFormSchema } from "@/lib/validations/validationForms"
 import { redirect } from "next/navigation"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isBackofficeRole } from "@/lib/roles"
+import { isValidBackofficeEmail } from "@/lib/backoffice/email-domain"
 
 export async function backofficeSignin(formData: FormData) {
   const parseData = Object.fromEntries(formData.entries())
@@ -18,6 +19,15 @@ export async function backofficeSignin(formData: FormData) {
   }
 
   const { email, password } = validationFields.data
+
+  if (!isValidBackofficeEmail(email)) {
+    return {
+      success: false,
+      errors: {
+        apiError: "Use um e-mail @corretorstudio.com.br do time interno.",
+      },
+    }
+  }
 
   const supabase = await createSupabaseServer()
   if (!supabase) {
@@ -36,14 +46,30 @@ export async function backofficeSignin(formData: FormData) {
     }
   }
 
-  // Verificar se o usuário tem role backoffice
+  const sessionEmail = data.user.email ?? email
+  if (!isValidBackofficeEmail(sessionEmail)) {
+    await supabase.auth.signOut()
+    return {
+      success: false,
+      errors: {
+        apiError: "Use um e-mail @corretorstudio.com.br do time interno.",
+      },
+    }
+  }
+
   const profile = await prisma.profile.findUnique({
     where: { supabaseId: data.user.id },
-    select: { role: true },
+    select: {
+      role: true,
+      backofficeUser: { select: { isActive: true } },
+    },
   })
 
-  if (!profile || !isBackofficeRole(profile.role)) {
-    // Fazer logout para não deixar sessão ativa de usuário não autorizado
+  if (
+    !profile ||
+    !isBackofficeRole(profile.role) ||
+    profile.backofficeUser?.isActive === false
+  ) {
     await supabase.auth.signOut()
     return {
       success: false,

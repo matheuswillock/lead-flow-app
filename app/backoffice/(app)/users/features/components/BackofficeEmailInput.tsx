@@ -2,8 +2,9 @@
 
 import { useRef, type ComponentProps } from "react"
 import { cn } from "@/lib/utils"
+import { BACKOFFICE_EMAIL_DOMAIN } from "@/lib/backoffice/email-domain"
 
-export const BACKOFFICE_EMAIL_DOMAIN = "@corretorstudio.com"
+export { BACKOFFICE_EMAIL_DOMAIN }
 
 export function sanitizeBackofficeEmailPrefix(value: string) {
   const normalized = value.trim().toLowerCase()
