@@ -308,11 +308,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
 
       let qrCode: { text: string; base64: string } | null = null;
       if (status !== "open") {
-        try {
-          qrCode = await this.getQrCode(params.instanceName);
-        } catch (qrError) {
-          console.error("[BackofficeEvoApiService][connectInstance] QR fetch failed", qrError);
-        }
+        qrCode = await this.getQrCode(params.instanceName);
       }
 
       const phoneNumber =

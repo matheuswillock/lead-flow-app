@@ -66,7 +66,8 @@ export interface CreateMessageInput {
   channelMessageId?: string | null;
   flowId?: string | null;
   errorCode?: string | null;
-  payload: BotMessagePayload;
+  /** Inbound WhatsApp payload or internal records (e.g. action idempotency cache). */
+  payload: BotMessagePayload | Prisma.InputJsonValue;
 }
 
 export interface CreateOutboxEventInput {

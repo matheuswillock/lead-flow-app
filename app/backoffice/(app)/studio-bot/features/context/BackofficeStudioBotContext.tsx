@@ -199,6 +199,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
 
   const reconnectChannel = useCallback(async () => {
     if (!canManage) return false
+    if (isReconnecting) return false
     setIsReconnecting(true)
     try {
       const output = await service.reconnectChannel()
@@ -221,7 +222,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
     } finally {
       setIsReconnecting(false)
     }
-  }, [canManage, service])
+  }, [canManage, isReconnecting, service])
 
   const disconnectChannel = useCallback(async () => {
     if (!canManage) return false

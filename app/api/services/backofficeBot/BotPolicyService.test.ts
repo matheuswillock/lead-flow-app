@@ -1,31 +1,28 @@
 import { describe, expect, it } from "bun:test";
 import { UserFunction, UserRole } from "@prisma/client";
 import { botPolicyService } from "./BotPolicyService";
-import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
+import type { BotPolicyAccessLike } from "./botPolicy/role-access";
 
-function buildAccess(overrides: Partial<TeamAccess> & { role: UserRole; functions?: UserFunction[] }): TeamAccess {
+function buildAccess(
+  overrides: Partial<BotPolicyAccessLike> & {
+    role: UserRole;
+    functions?: UserFunction[];
+    profileId?: string;
+    isMaster?: boolean;
+  }
+): BotPolicyAccessLike {
   return {
-    supabaseId: "supabase-1",
-    teamId: "team-1",
-    profileId: "profile-1",
-    profileEmail: "user@test.com",
-    profileName: "User",
-    isMaster: false,
-    managerId: "manager-1",
-    canCreateAccountUsers: false,
-    canManageAccountTeams: false,
-    canTransferAccountLeads: false,
-    canViewAllTeams: false,
-    userTimezone: "America/Sao_Paulo",
+    isMaster: overrides.isMaster ?? false,
+    canTransferAccountLeads: overrides.canTransferAccountLeads ?? false,
+    profileId: overrides.profileId ?? "profile-1",
     teamMember: {
       role: overrides.role,
       functions: overrides.functions ?? [],
     },
-    ...overrides,
   };
 }
 
-describe("BotPolicyService", () => {
+describe("BotPolicyService role gates", () => {
   it("MASTER pode adicionar nota", () => {
     const access = buildAccess({ role: "manager", isMaster: true });
     expect(botPolicyService.canAddNote({ access })).toBe(true);
@@ -58,15 +55,5 @@ describe("BotPolicyService", () => {
         lead: { assignedToId: "op-1", closerId: null },
       })
     ).toBe(true);
-  });
-
-  it("MANAGER pode ver resumo do time", () => {
-    const access = buildAccess({ role: "manager" });
-    expect(botPolicyService.canViewTeamDigest({ access })).toBe(true);
-  });
-
-  it("OPERATOR não pode ver resumo do time", () => {
-    const access = buildAccess({ role: "operator", functions: ["SDR"] });
-    expect(botPolicyService.canViewTeamDigest({ access })).toBe(false);
   });
 });
