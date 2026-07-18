@@ -154,6 +154,8 @@ export const envSchema = z.object({
   EVO_BETHANIA_INSTANCE: z.string().optional().describe('Evolution instance name for Bethânia'),
   BACKOFFICE_BETHANIA_WHATSAPP_NUMBER: z.string().optional().describe('Bethânia WhatsApp number E.164'),
   SUPABASE_BACKOFFICE_BOT_BUCKET: z.string().optional().describe('Storage bucket for Bethânia avatar'),
+  GROQ_API_KEY: z.string().optional().describe('Groq API key; required only when Bethânia AI is enabled'),
+  GROQ_API_BASE_URL: urlSchema.optional().describe('OpenAI-compatible Groq API base URL'),
 });
 
 // Infer the type from the schema

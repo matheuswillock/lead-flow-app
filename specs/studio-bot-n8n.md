@@ -1003,6 +1003,17 @@ sequenceDiagram
 
 ## Implementation Phases
 
+### Auditoria de implementação — 2026-07-17
+
+Itens confirmados no repositório: fundação `BackofficeBot*`, autenticação híbrida,
+webhooks HMAC/idempotentes, `BotPolicyService`, outbox/dispatcher, workflows N8N,
+touchpoint de conta e backoffice read-only. O checklist histórico abaixo permanece
+como plano de rollout; não deve ser lido como evidência de ausência desses itens.
+
+Gap confirmado para ativação operacional: aprovar os templates HSM no provedor e
+configurar os secrets/número dedicados por ambiente. Fora da janela de 24h, o app
+agora suprime eventos sem template aprovado antes de entregá-los ao N8N.
+
 ### Fase 0 — Fundação documental
 
 - [x] `specs/studio-bot-n8n.md`

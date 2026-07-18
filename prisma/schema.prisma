@@ -816,6 +816,7 @@ model Profile {
   backofficeBotAuthChallenges          BackofficeBotAuthChallenge[]
   backofficeBotNotificationPreferences BackofficeBotNotificationPreference[]
   backofficeBotEventOutbox             BackofficeBotEventOutbox[]
+  backofficeBotAiProposals             BackofficeBotAiProposal[]
   backofficeBansReceived               BackofficeBannedUser[] @relation("BackofficeBannedUserTarget")
   backofficeBansIssued                 BackofficeBannedUser[] @relation("BackofficeBannedUserIssuer")
   backofficeBansLifted                 BackofficeBannedUser[] @relation("BackofficeBannedUserLifter")
@@ -2063,6 +2064,7 @@ model Team {
   customerEvents        CustomerEvent[]
   customerChannelConsents CustomerChannelConsent[]
   backofficeBotSessions   BackofficeBotSession[]
+  backofficeBotAiProposals BackofficeBotAiProposal[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   operationalAccessGrants   BackofficeOperationalAccessGrant[]
@@ -3801,8 +3803,12 @@ model BackofficeBotUserLink {
 
   profile       Profile                     @relation(fields: [profileId], references: [id], onDelete: Cascade)
   authChallenge BackofficeBotAuthChallenge? @relation(fields: [authChallengeId], references: [id], onDelete: SetNull)
-  sessions      BackofficeBotSession[]
-  messages      BackofficeBotMessage[]
+  sessions       BackofficeBotSession[]
+  messages       BackofficeBotMessage[]
+  aiInteractions BackofficeBotAiInteraction[]
+  aiProposals    BackofficeBotAiProposal[]
+  aiFeedback     BackofficeBotAiFeedback[]
+  aiDailyUsage   BackofficeBotAiDailyUsage[]
 
   @@index([profileId])
   @@index([normalizedPhone, isActive])
@@ -3877,6 +3883,117 @@ model BackofficeBotEventOutbox {
   @@index([status, createdAt])
   @@index([profileId, createdAt(sort: Desc)])
   @@map("backoffice_bot_event_outbox")
+}
+
+model BackofficeBotAiConfiguration {
+  id                             Boolean  @id @default(true)
+  enabled                        Boolean  @default(false)
+  shadowMode                     Boolean  @default(true)
+  rolloutPercentage              Int      @default(0) @db.SmallInt
+  dailyUserLimit                 Int      @default(30)
+  dailyGlobalLimit               Int      @default(1000)
+  timeoutMs                      Int      @default(8000)
+  circuitBreakerFailureThreshold Int      @default(5)
+  circuitBreakerResetSeconds     Int      @default(60)
+  primaryModel                   String   @default("llama-3.3-70b-versatile") @db.Text
+  fallbackModel                  String?  @db.Text
+  createdAt                      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt                      DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("backoffice_bot_ai_configurations")
+}
+
+model BackofficeBotAiInteraction {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userLinkId    String?  @db.Uuid
+  flowId        String?  @db.Text
+  promptVersion String   @db.Text
+  intent        String?  @db.Text
+  mode          String   @db.Text
+  outcome       String   @db.Text
+  model         String?  @db.Text
+  latencyMs     Int?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  userLink  BackofficeBotUserLink?    @relation(fields: [userLinkId], references: [id], onDelete: SetNull)
+  attempts  BackofficeBotAiAttempt[]
+  proposals BackofficeBotAiProposal[]
+  feedback  BackofficeBotAiFeedback[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userLinkId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_ai_interactions")
+}
+
+model BackofficeBotAiAttempt {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  interactionId String   @db.Uuid
+  provider      String   @db.Text
+  model         String   @db.Text
+  attemptNumber Int      @db.SmallInt
+  outcome       String   @db.Text
+  latencyMs     Int?
+  errorCode     String?  @db.Text
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  interaction BackofficeBotAiInteraction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+
+  @@unique([interactionId, attemptNumber])
+  @@index([outcome, createdAt(sort: Desc)])
+  @@map("backoffice_bot_ai_attempts")
+}
+
+model BackofficeBotAiProposal {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userLinkId        String   @db.Uuid
+  teamId            String   @db.Uuid
+  interactionId     String?  @db.Uuid
+  kind              String   @db.Text
+  parametersCipher  String   @db.Text
+  entityType        String?  @db.Text
+  entityId          String?  @db.Uuid
+  assigneeProfileId String?  @db.Uuid
+  status            String   @default("pending") @db.Text
+  idempotencyKey    String   @unique @db.Text
+  expiresAt         DateTime @db.Timestamptz(6)
+  confirmedAt       DateTime? @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+
+  userLink       BackofficeBotUserLink       @relation(fields: [userLinkId], references: [id], onDelete: Cascade)
+  team           Team                         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  interaction    BackofficeBotAiInteraction? @relation(fields: [interactionId], references: [id], onDelete: SetNull)
+  assigneeProfile Profile?                    @relation(fields: [assigneeProfileId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+  @@map("backoffice_bot_ai_proposals")
+}
+
+model BackofficeBotAiFeedback {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  interactionId String   @db.Uuid
+  userLinkId    String?  @db.Uuid
+  value         String   @db.Text
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  interaction BackofficeBotAiInteraction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  userLink    BackofficeBotUserLink?      @relation(fields: [userLinkId], references: [id], onDelete: SetNull)
+
+  @@unique([interactionId, userLinkId])
+  @@map("backoffice_bot_ai_feedback")
+}
+
+model BackofficeBotAiDailyUsage {
+  date       DateTime @db.Date
+  userLinkId String   @db.Uuid
+  requests   Int      @default(0)
+  failures   Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  userLink BackofficeBotUserLink @relation(fields: [userLinkId], references: [id], onDelete: Cascade)
+
+  @@id([date, userLinkId])
+  @@map("backoffice_bot_ai_daily_usage")
 }
 
 model AsaasWebhookEvent {

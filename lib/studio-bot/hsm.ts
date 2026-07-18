@@ -11,3 +11,14 @@ export function isOutsideWhatsAppWindow(lastInboundAt: Date | null | undefined):
 
 export const STUDIO_BOT_HSM_TEMPLATE_AUTH = "bethania_auth_code";
 export const STUDIO_BOT_HSM_TEMPLATE_REMINDER = "bethania_meeting_reminder";
+
+/** Only templates approved in WhatsApp Manager may be used outside the 24h window. */
+export function resolveApprovedStudioBotHsmTemplate(eventType: string): string | null {
+  switch (eventType) {
+    case "meeting.reminder_30m":
+    case "meeting.reminder_5m":
+      return STUDIO_BOT_HSM_TEMPLATE_REMINDER;
+    default:
+      return null;
+  }
+}

@@ -2,7 +2,7 @@ import { getFullUrl } from "@/lib/utils/app-url";
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import { backofficeBotEventOutboxUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotEventOutboxUseCase";
 import type { StudioBotEventOutboxPayload } from "@/lib/studio-bot/types";
-import { isOutsideWhatsAppWindow } from "@/lib/studio-bot/hsm";
+import { isOutsideWhatsAppWindow, resolveApprovedStudioBotHsmTemplate } from "@/lib/studio-bot/hsm";
 import { mapEventTypeToPreferenceType } from "@/lib/studio-bot/notification-preference";
 import { isWithinQuietHours } from "@/lib/studio-bot/quiet-hours";
 import { isWithinPushRateLimit } from "@/lib/studio-bot/push-rate-limit";
@@ -65,6 +65,20 @@ export class StudioBotOutboxService {
 
       const lastInboundAt = await backofficeBotRepository.findLastInboundAtByPhone(normalizedPhone);
       const requiresHsm = isOutsideWhatsAppWindow(lastInboundAt);
+      const hsmTemplate = requiresHsm
+        ? resolveApprovedStudioBotHsmTemplate(input.eventType)
+        : null;
+
+      // A free-form push outside WhatsApp's 24h customer-care window is not
+      // allowed. Do not hand it to N8N where a fallback could accidentally send it.
+      if (requiresHsm && !hsmTemplate) {
+        console.warn("[StudioBotOutboxService] Push suprimido: template HSM não aprovado", {
+          eventType: input.eventType,
+          profileId: input.profileId,
+          reason: "missing_approved_hsm_template",
+        });
+        return;
+      }
 
       const payload: StudioBotEventOutboxPayload = {
         eventType: input.eventType,
@@ -77,6 +91,7 @@ export class StudioBotOutboxService {
         actionButtons: input.actionButtons ?? [],
         deepLink: input.deepLinkPath ? getFullUrl(input.deepLinkPath) : getFullUrl("/"),
         requiresHsm,
+        hsmTemplate,
         lastInboundAt: lastInboundAt?.toISOString() ?? null,
       };
 
