@@ -7,6 +7,7 @@ import {
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import type { IWhatsAppProvider } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
 import { evolutionWhatsAppProvider } from "@/app/api/services/whatsapp/provider/EvolutionWhatsAppProvider"
+import { createWhatsAppMediaSignedUrl } from "@/app/api/services/whatsapp/WhatsAppMediaStorage"
 
 interface GetMessageMediaInput {
   teamId: string
@@ -24,7 +25,7 @@ function extractMessageKey(rawPayload: unknown): Record<string, unknown> | null 
   return null
 }
 
-function extractOutboundMedia(
+function extractLegacyOutboundMedia(
   rawPayload: unknown
 ): { base64: string; mimeType?: string } | null {
   if (typeof rawPayload !== "object" || rawPayload === null) return null
@@ -51,11 +52,22 @@ class GetMessageMediaUseCase {
 
       await assertCanAccessConversation(input.access, message.conversationId)
 
-      const outboundMedia = extractOutboundMedia(message.rawPayload)
-      if (outboundMedia) {
+      if (message.storagePath) {
+        const signedUrl = await createWhatsAppMediaSignedUrl(message.storagePath)
+        if (signedUrl) {
+          return new Output(true, [], [], {
+            redirectUrl: signedUrl,
+            mimeType: message.mediaMimeType,
+            fileName: message.mediaFileName,
+          })
+        }
+      }
+
+      const legacyOutbound = extractLegacyOutboundMedia(message.rawPayload)
+      if (legacyOutbound) {
         return new Output(true, [], [], {
-          base64: outboundMedia.base64,
-          mimeType: outboundMedia.mimeType || message.mediaMimeType,
+          base64: legacyOutbound.base64,
+          mimeType: legacyOutbound.mimeType || message.mediaMimeType,
           fileName: message.mediaFileName,
         })
       }

@@ -837,6 +837,7 @@ model Profile {
   whatsappConversations         WhatsAppConversation[] @relation("WhatsAppConversationAssignee")
   whatsappConversationsCreated  WhatsAppConversation[] @relation("WhatsAppConversationCreator")
   whatsappMessagesSent          WhatsAppMessage[]      @relation("WhatsAppMessageSentBy")
+  whatsappAuditEvents           WhatsAppAuditEvent[]   @relation("WhatsAppAuditActor")
 
   proposalReviewsReviewed LeadProposalReview[]  @relation("LeadProposalReviewReviewer")
   requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
@@ -2059,6 +2060,7 @@ model Team {
   whatsappConversationTags WhatsAppConversationTag[]
   whatsappOutboundCommands WhatsAppOutboundCommand[]
   whatsappWebhookEvents WhatsAppWebhookEvent[]
+  whatsappAuditEvents   WhatsAppAuditEvent[]
 
   // CDP relations
   customerProfiles      CustomerProfile[]
@@ -3313,6 +3315,7 @@ model WhatsAppConversation {
   isArchived         Boolean   @default(false)
   handoffMode        WhatsAppHandoffMode @default(BOT)
   welcomeSentAt      DateTime? @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
 
@@ -3325,9 +3328,11 @@ model WhatsAppConversation {
   autoResponseLogs WhatsAppAutoResponseLog[]
   tagAssignments  WhatsAppConversationTagAssignment[]
   outboundCommands WhatsAppOutboundCommand[]
+  auditEvents     WhatsAppAuditEvent[]
 
   @@unique([configId, externalChatId])
   @@index([teamId, lastMessageAt(sort: Desc)])
+  @@index([deletedAt])
   @@index([teamId, isArchived, lastMessageAt(sort: Desc)])
   @@index([teamId, normalizedPhone])
   @@index([leadId])
@@ -3427,6 +3432,24 @@ model WhatsAppWebhookEvent {
   @@unique([configId, providerEventId])
   @@index([status, createdAt])
   @@map("whatsapp_webhook_events")
+}
+
+model WhatsAppAuditEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  teamId         String   @db.Uuid
+  conversationId String?  @db.Uuid
+  actorProfileId String?  @db.Uuid
+  action         String   @db.Text
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  team         Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  conversation WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  actorProfile Profile?              @relation("WhatsAppAuditActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([teamId, createdAt(sort: Desc)])
+  @@index([conversationId])
+  @@map("whatsapp_audit_events")
 }
 
 model WhatsAppUsageEvent {

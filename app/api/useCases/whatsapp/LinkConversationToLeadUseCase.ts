@@ -56,6 +56,14 @@ class LinkConversationToLeadUseCase {
         console.error("[LinkConversationToLeadUseCase][execute] Falha ao registrar atividade", activityError)
       }
 
+      await whatsAppRepository.createAuditEvent({
+        teamId: conversation.teamId,
+        conversationId: input.conversationId,
+        actorProfileId: input.access.profileId,
+        action: "conversation.link_lead",
+        metadata: { leadId: input.leadId },
+      })
+
       return new Output(true, ["Conversa vinculada ao lead com sucesso"], [], finalConversation)
     } catch (error) {
       if (error instanceof WhatsAppAccessDeniedError) {

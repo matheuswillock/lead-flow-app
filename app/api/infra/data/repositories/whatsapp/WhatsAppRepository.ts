@@ -64,6 +64,7 @@ const CONVERSATION_SELECT = {
   isArchived: true,
   handoffMode: true,
   welcomeSentAt: true,
+  deletedAt: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -97,6 +98,9 @@ const MESSAGE_SELECT = {
   mediaUrl: true,
   mediaMimeType: true,
   mediaFileName: true,
+  storagePath: true,
+  mediaSha256: true,
+  mediaSizeBytes: true,
   linkPreview: true,
   caption: true,
   senderDisplayName: true,
@@ -213,8 +217,8 @@ class WhatsAppRepository implements IWhatsAppRepository {
   }
 
   async findConversationById(conversationId: string): Promise<WhatsAppConversationSelect | null> {
-    return prisma.whatsAppConversation.findUnique({
-      where: { id: conversationId },
+    return prisma.whatsAppConversation.findFirst({
+      where: { id: conversationId, deletedAt: null },
       select: CONVERSATION_SELECT,
     })
   }
@@ -237,7 +241,16 @@ class WhatsAppRepository implements IWhatsAppRepository {
       select: CONVERSATION_SELECT,
     })
 
-    if (existing) return existing
+    if (existing) {
+      if (existing.deletedAt) {
+        return prisma.whatsAppConversation.update({
+          where: { id: existing.id },
+          data: { deletedAt: null, isArchived: false },
+          select: CONVERSATION_SELECT,
+        })
+      }
+      return existing
+    }
 
     try {
       return await prisma.whatsAppConversation.create({
@@ -286,6 +299,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
     const baseWhere: Prisma.WhatsAppConversationWhereInput = {
       teamId: params.teamId,
+      deletedAt: null,
       isArchived: params.isArchived ?? false,
       ...(params.leadId !== undefined ? { leadId: params.leadId } : {}),
       ...(params.assignedProfileId !== undefined
@@ -460,6 +474,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
     const where: Prisma.WhatsAppMessageWhereInput = {
       conversationId: params.conversationId,
+      deletedAt: null,
     }
 
     const [messages, total] = await prisma.$transaction([
@@ -641,8 +656,40 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
   }
 
+  async softDeleteConversation(id: string): Promise<void> {
+    const now = new Date()
+    await prisma.$transaction([
+      prisma.whatsAppConversation.update({
+        where: { id },
+        data: { deletedAt: now, isArchived: true },
+      }),
+      prisma.whatsAppMessage.updateMany({
+        where: { conversationId: id, deletedAt: null },
+        data: { deletedAt: now },
+      }),
+    ])
+  }
+
+  async createAuditEvent(input: {
+    teamId: string
+    conversationId?: string | null
+    actorProfileId?: string | null
+    action: string
+    metadata?: Prisma.InputJsonValue
+  }): Promise<void> {
+    await prisma.whatsAppAuditEvent.create({
+      data: {
+        teamId: input.teamId,
+        conversationId: input.conversationId ?? null,
+        actorProfileId: input.actorProfileId ?? null,
+        action: input.action,
+        metadata: input.metadata ?? {},
+      },
+    })
+  }
+
   async deleteConversation(id: string): Promise<void> {
-    await prisma.whatsAppConversation.delete({ where: { id } })
+    await this.softDeleteConversation(id)
   }
 
   async resetInboxForConfigChange(configId: string, teamId: string): Promise<void> {
@@ -846,7 +893,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
     teamId: string
   ): Promise<WhatsAppConversationSelect | null> {
     return prisma.whatsAppConversation.findFirst({
-      where: { id: conversationId, teamId },
+      where: { id: conversationId, teamId, deletedAt: null },
       select: CONVERSATION_SELECT,
     })
   }

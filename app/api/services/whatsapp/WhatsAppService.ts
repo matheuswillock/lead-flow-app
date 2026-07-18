@@ -19,6 +19,8 @@ import {
   toStoredNormalizedPhone,
 } from "./WhatsAppPhonePolicy"
 import { resolveContactNameUpdate, type ContactNameSource } from "@/lib/whatsapp/contact-name"
+import { uploadWhatsAppMedia } from "./WhatsAppMediaStorage"
+import { randomUUID } from "node:crypto"
 
 export const WHATSAPP_HISTORY_SYNC_DAYS = 30
 
@@ -494,6 +496,25 @@ class WhatsAppService implements IWhatsAppService {
 
     console.info("[WhatsAppService][sendMessage] Sending message to", recipientJid)
 
+    const messageId = randomUUID()
+    let storagePath: string | null = null
+    let mediaSha256: string | null = null
+    let mediaSizeBytes: number | null = null
+
+    if (input.media) {
+      const stored = await uploadWhatsAppMedia({
+        teamId: input.teamId,
+        conversationId: input.conversationId,
+        messageId,
+        base64: input.media.base64,
+        mimeType: input.media.mimeType,
+        fileName: input.media.fileName,
+      })
+      storagePath = stored.storagePath
+      mediaSha256 = stored.mediaSha256
+      mediaSizeBytes = stored.mediaSizeBytes
+    }
+
     const rawPayload: Prisma.InputJsonValue = input.media
       ? {
           key: (evoResult.messageKey ?? {
@@ -502,13 +523,16 @@ class WhatsAppService implements IWhatsAppService {
             id: evoResult.providerMessageId,
           }) as Prisma.InputJsonValue,
           outboundMedia: {
-            base64: input.media.base64,
             mimeType: input.media.mimeType,
+            storagePath,
+            mediaSha256,
+            mediaSizeBytes,
           },
         }
       : {}
 
     const message = await whatsAppRepository.createMessage({
+      id: messageId,
       conversation: { connect: { id: input.conversationId } },
       team: { connect: { id: input.teamId } },
       config: { connect: { id: config.id } },
@@ -524,6 +548,9 @@ class WhatsAppService implements IWhatsAppService {
       recipientPhone: normalizePhone(conversation.contactPhone),
       sentByProfile: { connect: { id: input.sentByProfileId } },
       sentAt: now,
+      storagePath,
+      mediaSha256,
+      mediaSizeBytes,
       rawPayload,
     })
 

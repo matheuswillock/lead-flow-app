@@ -663,12 +663,14 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   }, [loadConversations, activeTeamId])
 
   const selectConversation = useCallback(
-    (id: string) => {
+    (id: string | null) => {
       setSelectedConversationId(id)
       setMessages([])
       setTotalMessages(0)
       setMessagePage(1)
       lastRealtimeInsertMessageAtRef.current = null
+      if (!id) return
+
       void loadMessages(id, 1)
 
       // Lazy-load team members on first conversation open for operator name display
