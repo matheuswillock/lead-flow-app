@@ -87,3 +87,14 @@ export function parseVincularCode(text: string): string | null {
 
   return null;
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Detecta e-mail simples para o Caminho A (auth por canal). */
+export function looksLikeEmail(text: string): string | null {
+  const trimmed = text.trim().toLowerCase();
+  if (!EMAIL_RE.test(trimmed) || trimmed.length > 254) {
+    return null;
+  }
+  return trimmed;
+}
