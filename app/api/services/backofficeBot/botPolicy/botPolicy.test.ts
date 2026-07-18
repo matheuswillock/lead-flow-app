@@ -58,21 +58,22 @@ describe("botPolicy sanitizeInboundMessage", () => {
 });
 
 describe("botPolicy idempotency", () => {
-  it("buildActionIdempotencyKey é estável para os mesmos params", () => {
-    const a = buildActionIdempotencyKey({
+  it("usa a chave de entrega para deduplicar uma ação", () => {
+    const key = buildActionIdempotencyKey({
       userLinkId: "link-1",
       action: "add_note",
       teamId: "team-1",
-      canonicalParams: { leadId: "l1", body: "oi" },
+      channelMessageId: "delivery-1",
     });
-    const b = buildActionIdempotencyKey({
+    expect(key).toBe("bot-action:delivery-1:add_note");
+  });
+
+  it("não deduplica ações sem uma chave por entrega", () => {
+    expect(buildActionIdempotencyKey({
       userLinkId: "link-1",
       action: "add_note",
       teamId: "team-1",
-      canonicalParams: { body: "oi", leadId: "l1" },
-    });
-    expect(a).toBe(b);
-    expect(a.startsWith("bot-action:")).toBe(true);
+    })).toBeNull();
   });
 
   it("buildInboundIdempotencyKey preserva channelMessageId", () => {

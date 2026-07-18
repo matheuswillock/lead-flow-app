@@ -121,10 +121,11 @@ export class BackofficeBotActionUseCase implements IBackofficeBotActionUseCase {
           userLinkId: input.userLinkId,
           action,
           teamId: access.teamId,
-          canonicalParams: params,
           channelMessageId,
         });
-        const existing = await backofficeBotRepository.findMessageByChannelMessageId(actionIdemKey);
+        const existing = actionIdemKey
+          ? await backofficeBotRepository.findMessageByChannelMessageId(actionIdemKey)
+          : null;
         const cached = readCachedActionOutput(existing?.payload);
         if (cached) {
           return new Output(

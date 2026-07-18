@@ -150,9 +150,8 @@ export class BotPolicyService {
     userLinkId: string;
     action: string;
     teamId: string;
-    canonicalParams: unknown;
     channelMessageId?: string | null;
-  }): string {
+  }): string | null {
     return buildActionIdempotencyKey(input);
   }
 
