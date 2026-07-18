@@ -37,7 +37,7 @@ export interface IBackofficeEmailCampaignRepository {
   create(data: CreateBackofficeEmailCampaignInput): Promise<BackofficeEmailCampaign>
   findMany(): Promise<BackofficeEmailCampaign[]>
   findById(id: string): Promise<BackofficeEmailCampaign | null>
-  findUpcomingLiveCampaign(): Promise<BackofficeEmailCampaign | null>
+  findUpcomingLiveCampaign(now?: Date): Promise<BackofficeEmailCampaign | null>
   findDueForDispatch(now: Date): Promise<BackofficeEmailCampaign[]>
   update(id: string, data: UpdateBackofficeEmailCampaignInput): Promise<BackofficeEmailCampaign>
   claimForDispatch(id: string): Promise<boolean>

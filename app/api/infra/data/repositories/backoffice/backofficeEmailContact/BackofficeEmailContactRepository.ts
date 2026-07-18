@@ -26,7 +26,8 @@ export class BackofficeEmailContactRepository implements IBackofficeEmailContact
         ...(data.backofficeLeadId !== undefined
           ? { backofficeLeadId: data.backofficeLeadId }
           : {}),
-        isUnsubscribed: false,
+        // Preserve opt-out across re-import/edit; only clear on explicit opt-in.
+        ...(data.resubscribe === true ? { isUnsubscribed: false } : {}),
       },
     })
   }

@@ -284,6 +284,7 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
         email: lead.email,
         name: lead.name,
         backofficeLeadId: lead.id,
+        resubscribe: true,
       })
       return new Output(true, ["Lead inscrito na campanha Live"], [], contact)
     } catch (error) {
