@@ -16225,6 +16225,41 @@
               ]
             }
           }
+        },
+        {
+          "name": "GET Backoffice Bot Host Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/logs?service=n8n&tail=200",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "logs"
+              ],
+              "query": [
+                {
+                  "key": "service",
+                  "value": "n8n",
+                  "description": "n8n | api (Evolution)"
+                },
+                {
+                  "key": "tail",
+                  "value": "200",
+                  "description": "1–1000"
+                }
+              ]
+            },
+            "description": "MASTER: obtém logs docker do N8N ou Evolution via agente studio-bot-ops na VPS."
+          },
+          "response": []
         }
       ]
     }
