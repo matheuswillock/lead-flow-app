@@ -62,8 +62,10 @@ const emailCampaignUpdateMock = mock(async () => ({}))
 const emailTemplateFindFirstMock = mock(async () => null as unknown)
 const emailCampaignDispatchAggregateMock = mock(async () => ({ _max: { dispatchNumber: 0 } }))
 const emailCampaignDispatchCreateMock = mock(async () => ({ id: "dispatch-1" }))
+const emailCampaignDispatchFindFirstMock = mock(async () => ({ id: "dispatch-1" }))
 const emailCampaignDispatchUpdateMock = mock(async () => ({}))
 const emailCampaignDispatchUpdateManyMock = mock(async () => ({ count: 0 }))
+const emailTeamSenderFindFirstMock = mock(async () => null as { name: string; email: string } | null)
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -78,8 +80,12 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     emailCampaignDispatch: {
       aggregate: emailCampaignDispatchAggregateMock,
       create: emailCampaignDispatchCreateMock,
+      findFirst: emailCampaignDispatchFindFirstMock,
       update: emailCampaignDispatchUpdateMock,
       updateMany: emailCampaignDispatchUpdateManyMock,
+    },
+    emailTeamSender: {
+      findFirst: emailTeamSenderFindFirstMock,
     },
     $transaction: transactionMock,
   },
@@ -202,8 +208,10 @@ const allMocks = [
   emailTemplateFindFirstMock,
   emailCampaignDispatchAggregateMock,
   emailCampaignDispatchCreateMock,
+  emailCampaignDispatchFindFirstMock,
   emailCampaignDispatchUpdateMock,
   emailCampaignDispatchUpdateManyMock,
+  emailTeamSenderFindFirstMock,
   transactionMock,
   reserveCreditsMock,
   releaseCreditsMock,
@@ -234,7 +242,9 @@ describe("EmailCampaignUseCase.send", () => {
       _max: { dispatchNumber: 0 },
     }))
     emailCampaignDispatchCreateMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({ id: "dispatch-1" }))
     emailCampaignDispatchUpdateMock.mockImplementation(async () => ({}))
+    emailTeamSenderFindFirstMock.mockImplementation(async () => null)
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})

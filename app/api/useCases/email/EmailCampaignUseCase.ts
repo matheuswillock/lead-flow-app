@@ -5,10 +5,16 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService"
+import type {
+  CampaignRecipient,
+} from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignRecipientService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import { emailCampaignLeadActivityService } from "@/app/api/services/email/EmailCampaignLeadActivityService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
-import { interpolateEmailTemplate } from "@/lib/email/interpolate"
+import {
+  interpolateEmailTemplate,
+  type EmailTemplateVariableDefinition,
+} from "@/lib/email/interpolate"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
@@ -22,13 +28,18 @@ import {
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
+import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
+import {
+  formatCampaignFromHeader,
+  resolveCampaignFrom,
+} from "@/lib/email/resolve-campaign-from"
 
-const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
-const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretorstudio.com"
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
+const ORPHAN_RESUME_MIN_AGE_MS = 2 * 60 * 1000
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
+const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
 
 export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_HTML: "Template sem HTML. Edite o template antes de disparar",
@@ -46,6 +57,26 @@ export interface CreateCampaignInput {
   contactListId?: string
   cdpSegmentSlug?: string
   scheduledAt?: string | null
+}
+
+export type ManualDispatchJob = {
+  campaignId: string
+  dispatchId: string
+  dispatchNumber: number
+  teamId: string
+  previousStatus: EmailCampaignStatus
+  reservedCredits: number
+  hasCampaignsBetaAccess: boolean
+  recipients: CampaignRecipient[]
+  subject: string
+  html: string
+  from: string
+  replyTo: string | null
+  globalDefaults: Record<string, string>
+  templateVariables: EmailTemplateVariableDefinition[]
+  logIdsByEmail: Array<{ email: string; logId: string }>
+  totalRecipients: number
+  status: "sending"
 }
 
 export class EmailCampaignUseCase {
@@ -98,11 +129,17 @@ export class EmailCampaignUseCase {
     return recipients.length
   }
 
-  async list(ctx: TeamContext, options: { status?: string; page: number; pageSize: number; name?: string; createdAtFrom?: string; createdAtTo?: string }): Promise<Output> {
+  async list(ctx: TeamContext, options: { status?: string | string[]; page: number; pageSize: number; name?: string; createdAtFrom?: string; createdAtTo?: string }): Promise<Output> {
     try {
+      const statuses = Array.isArray(options.status)
+        ? options.status
+        : options.status
+          ? [options.status]
+          : []
       const where = {
         teamId: ctx.teamId,
-        ...(options.status && { status: options.status as EmailCampaignStatus }),
+        ...(statuses.length === 1 && { status: statuses[0] as EmailCampaignStatus }),
+        ...(statuses.length > 1 && { status: { in: statuses as EmailCampaignStatus[] } }),
         ...(options.name && { name: { contains: options.name, mode: "insensitive" as const } }),
         ...((options.createdAtFrom || options.createdAtTo) && {
           createdAt: {
@@ -324,8 +361,9 @@ export class EmailCampaignUseCase {
 
   async update(id: string, data: Partial<CreateCampaignInput>, ctx: TeamContext): Promise<Output> {
     try {
+      const editableStatuses = ["draft", "scheduled", "sent", "failed"] as const
       const existing = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
+        where: { id, teamId: ctx.teamId, status: { in: [...editableStatuses] } },
       })
 
       if (!existing) {
@@ -336,14 +374,16 @@ export class EmailCampaignUseCase {
         if (!campaign) {
           return new Output(false, [], ["Campanha não encontrada"], null)
         }
-        if (campaign.status === "sent") {
-          return new Output(false, [], ["Campanha já enviada não pode ser editada"], null)
-        }
         if (campaign.status === "sending") {
           return new Output(false, [], ["Campanha em envio não pode ser editada"], null)
         }
+        if (campaign.status === "archived") {
+          return new Output(false, [], ["Campanha arquivada não pode ser editada"], null)
+        }
         return new Output(false, [], ["Campanha não pode ser editada no status atual"], null)
       }
+
+      const canChangeSchedule = existing.status === "draft" || existing.status === "scheduled"
 
       if (data.templateId !== undefined) {
         const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
@@ -382,7 +422,7 @@ export class EmailCampaignUseCase {
             ? { cdpSegmentSlug: null }
             : {}),
           ...(totalRecipients !== undefined && { totalRecipients }),
-          ...(data.scheduledAt !== undefined && {
+          ...(canChangeSchedule && data.scheduledAt !== undefined && {
             scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
             status: data.scheduledAt ? "scheduled" : "draft",
           }),
@@ -396,7 +436,7 @@ export class EmailCampaignUseCase {
 
       return new Output(true, ["Campanha atualizada com sucesso"], [], {
         ...campaign,
-        totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
+        totalRecipients: ["draft", "scheduled", "sending", "sent", "failed"].includes(campaign.status)
           ? resolvedRecipientCount
           : campaign.totalRecipients,
       })
@@ -485,9 +525,10 @@ export class EmailCampaignUseCase {
     }
   }
 
-  async send(id: string, ctx: TeamContext): Promise<Output> {
+  async startManualDispatch(id: string, ctx: TeamContext): Promise<Output> {
     let previousStatus: EmailCampaignStatus | null = null
-    let dispatchRecordId: string | null = null
+    let reservedCredits = 0
+    let hasCampaignsBetaAccess = false
 
     try {
       const campaign = await prisma.emailCampaign.findFirst({
@@ -525,7 +566,6 @@ export class EmailCampaignUseCase {
         )
       }
 
-      // Enforce dispatch window restrictions from team settings
       if (teamSettings) {
         type BlockedEntry = { date?: string; from?: string; to?: string }
         const blockedDates = ((teamSettings.dispatchBlockedDates as BlockedEntry[]) ?? [])
@@ -546,12 +586,19 @@ export class EmailCampaignUseCase {
 
       const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
-      const hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
+      hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
         profileId: ctx.profileId,
         managerId: ctx.managerId,
         isMaster: ctx.isMaster,
         teamId: ctx.teamId,
       })
+
+      const defaultSender = await prisma.emailTeamSender
+        .findFirst({
+          where: { teamId: ctx.teamId, isDefault: true },
+          select: { name: true, email: true },
+        })
+        .catch(() => null)
 
       const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
         teamId: ctx.teamId,
@@ -563,9 +610,8 @@ export class EmailCampaignUseCase {
           variables: publishedTemplate.variables,
         },
         teamSettings,
+        defaultSender,
         masterTimezone: campaign.team.master.timezone,
-        fallbackFromName: FALLBACK_FROM_NAME,
-        fallbackFromEmail: FALLBACK_FROM_EMAIL,
       })
 
       if (dispatchInput.recipients.length === 0) {
@@ -600,7 +646,7 @@ export class EmailCampaignUseCase {
 
       const lockResult = await prisma.emailCampaign.updateMany({
         where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "sent"] } },
-        data: { status: "sending" },
+        data: { status: "sending", errorMessage: null },
       })
 
       if (lockResult.count === 0) {
@@ -608,11 +654,11 @@ export class EmailCampaignUseCase {
       }
 
       const recipientsList = dispatchInput.recipients
-      const reservedCredits = recipientsList.length
+      const creditsToReserve = recipientsList.length
 
       const creditReservation = await this.reserveTeamCreditsForDispatch(
         ctx.teamId,
-        reservedCredits,
+        creditsToReserve,
         hasCampaignsBetaAccess
       )
       if (!creditReservation.ok) {
@@ -622,6 +668,7 @@ export class EmailCampaignUseCase {
         })
         return new Output(false, [], [creditReservation.message], null)
       }
+      reservedCredits = creditsToReserve
 
       const dispatchNumber = await this.getNextDispatchNumber(campaign.id)
       const dispatchRecord = await prisma.emailCampaignDispatch.create({
@@ -643,37 +690,108 @@ export class EmailCampaignUseCase {
           status: "sending",
         },
       })
-      dispatchRecordId = dispatchRecord.id
 
-      const { globalDefaults, templateVariables, from, replyTo } = dispatchInput
-      let sentCount = 0
+      const { globalDefaults, templateVariables } = dispatchInput
+      const logInputs = recipientsList.map((recipient) => ({
+        teamId: ctx.teamId,
+        campaignId: campaign.id,
+        dispatchId: dispatchRecord.id,
+        recipientEmail: recipient.email,
+        recipientName: recipient.name,
+        subject: interpolateEmailTemplate(dispatchInput.subject, recipient, globalDefaults, templateVariables),
+        category: "campaign" as const,
+        sourceType: "campaign",
+        sourceId: campaign.id,
+      }))
+      const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
+
+      const job: ManualDispatchJob = {
+        campaignId: campaign.id,
+        dispatchId: dispatchRecord.id,
+        dispatchNumber,
+        teamId: ctx.teamId,
+        previousStatus: previousStatus ?? "draft",
+        reservedCredits,
+        hasCampaignsBetaAccess,
+        recipients: recipientsList,
+        subject: dispatchInput.subject,
+        html: dispatchInput.html,
+        from: dispatchInput.from,
+        replyTo: dispatchInput.replyTo,
+        globalDefaults,
+        templateVariables,
+        logIdsByEmail: createdLogs.map(({ email, logId }) => ({ email, logId })),
+        totalRecipients: recipientsList.length,
+        status: "sending",
+      }
+
+      return new Output(true, ["Disparo iniciado em segundo plano"], [], job)
+    } catch (error) {
+      console.error("[EmailCampaignUseCase][startManualDispatch]", error)
+
+      if (reservedCredits > 0) {
+        await this.releaseUnusedTeamCredits(
+          ctx.teamId,
+          reservedCredits,
+          0,
+          hasCampaignsBetaAccess
+        ).catch((releaseError) => {
+          console.error("[EmailCampaignUseCase][startManualDispatch] falha ao liberar créditos", releaseError)
+        })
+      }
+
+      await prisma.emailCampaign
+        .update({
+          where: { id },
+          data: {
+            status:
+              previousStatus && ["draft", "scheduled", "sent"].includes(previousStatus)
+                ? previousStatus
+                : "failed",
+            errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
+          },
+        })
+        .catch(() => null)
+
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return new Output(false, [], ["Conflito de numeração de disparo. Tente novamente."], null)
+      }
+
+      return new Output(false, [], ["Erro ao disparar campanha"], null)
+    }
+  }
+
+  async completeManualDispatch(job: ManualDispatchJob): Promise<Output> {
+    const logIdsByEmail = new Map(job.logIdsByEmail.map(({ email, logId }) => [email, logId]))
+    let sentCount = 0
+
+    try {
+      const stillSending = await prisma.emailCampaignDispatch.findFirst({
+        where: { id: job.dispatchId, teamId: job.teamId, status: "sending" },
+        select: { id: true },
+      })
+      if (!stillSending) {
+        console.info("[EmailCampaignUseCase][completeManualDispatch] dispatch já finalizado", {
+          dispatchId: job.dispatchId,
+        })
+        return new Output(true, ["Disparo já finalizado"], [], {
+          campaignId: job.campaignId,
+          dispatchId: job.dispatchId,
+        })
+      }
 
       try {
-        const logInputs = recipientsList.map((recipient) => ({
-          teamId: ctx.teamId,
-          campaignId: campaign.id,
-          dispatchId: dispatchRecord.id,
-          recipientEmail: recipient.email,
-          recipientName: recipient.name,
-          subject: interpolateEmailTemplate(dispatchInput.subject, recipient, globalDefaults, templateVariables),
-          category: "campaign" as const,
-          sourceType: "campaign",
-          sourceId: campaign.id,
-        }))
-        const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
-        const logIdsByEmail = new Map(createdLogs.map(({ email, logId }) => [email, logId]))
-
         const dispatchResult = await this.dispatchService.dispatchBatch({
-          from,
-          replyTo,
-          recipients: recipientsList,
-          subject: dispatchInput.subject,
-          html: dispatchInput.html,
-          campaignId: campaign.id,
-          teamId: ctx.teamId,
-          dispatchNumber,
-          globalDefaults,
-          templateVariables,
+          from: job.from,
+          replyTo: job.replyTo,
+          recipients: job.recipients,
+          subject: job.subject,
+          html: job.html,
+          campaignId: job.campaignId,
+          teamId: job.teamId,
+          dispatchNumber: job.dispatchNumber,
+          globalDefaults: job.globalDefaults,
+          templateVariables: job.templateVariables,
           onChunkDispatched: async (chunkDispatched) => {
             const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
               const logId = logIdsByEmail.get(email)
@@ -689,17 +807,17 @@ export class EmailCampaignUseCase {
 
         const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
         this.recordDispatchLeadActivities({
-          teamId: ctx.teamId,
-          campaignId: campaign.id,
-          dispatchId: dispatchRecord.id,
-          recipients: recipientsList,
+          teamId: job.teamId,
+          campaignId: job.campaignId,
+          dispatchId: job.dispatchId,
+          recipients: job.recipients,
           dispatchedEmails,
-          subject: dispatchInput.subject,
-          globalDefaults,
-          templateVariables,
+          subject: job.subject,
+          globalDefaults: job.globalDefaults,
+          templateVariables: job.templateVariables,
         })
         await withConcurrencyLimit(
-          recipientsList.filter((recipient) => !dispatchedEmails.has(recipient.email)),
+          job.recipients.filter((recipient) => !dispatchedEmails.has(recipient.email)),
           EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
           async (recipient) => {
             const logId = logIdsByEmail.get(recipient.email)
@@ -712,20 +830,20 @@ export class EmailCampaignUseCase {
 
         await prisma.$transaction([
           prisma.emailCampaignDispatch.update({
-            where: { id: dispatchRecord.id },
+            where: { id: job.dispatchId },
             data: {
-              totalSent: dispatchResult.sent,
+              totalSent: { increment: dispatchResult.sent },
               status: terminal.dispatchStatus,
               errorMessage: terminal.errorMessage,
             },
           }),
           prisma.emailCampaign.update({
-            where: { id },
+            where: { id: job.campaignId },
             data: {
               status: terminal.campaignStatus,
               sentAt: terminal.campaignStatus === "sent" ? new Date() : undefined,
               errorMessage: terminal.errorMessage,
-              totalRecipients: recipientsList.length,
+              totalRecipients: job.totalRecipients,
               totalSent: { increment: dispatchResult.sent },
               dispatchCount: { increment: 1 },
             },
@@ -740,69 +858,67 @@ export class EmailCampaignUseCase {
             {
               sent: dispatchResult.sent,
               failed: dispatchResult.failed,
-              total: recipientsList.length,
-              dispatchId: dispatchRecord.id,
-              dispatchNumber,
+              total: job.recipients.length,
+              dispatchId: job.dispatchId,
+              dispatchNumber: job.dispatchNumber,
             }
           )
         }
 
         return new Output(
           true,
-          [`Campanha disparada para ${recipientsList.length} destinatário(s)`],
+          [`Campanha disparada para ${job.recipients.length} destinatário(s)`],
           dispatchResult.failed > 0 ? [`${dispatchResult.failed} e-mails falharam`] : [],
           {
             sent: dispatchResult.sent,
             failed: dispatchResult.failed,
-            total: recipientsList.length,
-            dispatchId: dispatchRecord.id,
-            dispatchNumber,
+            total: job.recipients.length,
+            dispatchId: job.dispatchId,
+            dispatchNumber: job.dispatchNumber,
           }
         )
       } finally {
         await this.releaseUnusedTeamCredits(
-          ctx.teamId,
-          reservedCredits,
+          job.teamId,
+          job.reservedCredits,
           sentCount,
-          hasCampaignsBetaAccess
+          job.hasCampaignsBetaAccess
         )
       }
     } catch (error) {
-      console.error("[EmailCampaignUseCase][send]", error)
+      console.error("[EmailCampaignUseCase][completeManualDispatch]", error)
 
-      if (dispatchRecordId) {
-        await prisma.emailCampaignDispatch
-          .update({
-            where: { id: dispatchRecordId },
-            data: {
-              status: "failed",
-              errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
-            },
-          })
-          .catch(() => null)
-      }
-
-      const restoreStatus: EmailCampaignStatus =
-        previousStatus && ["draft", "scheduled", "sent"].includes(previousStatus)
-          ? previousStatus
-          : "failed"
-
-      await prisma.emailCampaign
+      await prisma.emailCampaignDispatch
         .update({
-          where: { id },
+          where: { id: job.dispatchId },
           data: {
-            status: restoreStatus,
+            status: "failed",
             errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
           },
         })
         .catch(() => null)
 
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        return new Output(false, [], ["Conflito de numeração de disparo. Tente novamente."], null)
-      }
+      await prisma.emailCampaign
+        .update({
+          where: { id: job.campaignId },
+          data: {
+            status: "failed",
+            errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
+          },
+        })
+        .catch(() => null)
 
       return new Output(false, [], ["Erro ao disparar campanha"], null)
     }
+  }
+
+  /** Compat: executa start + complete de forma síncrona (testes / callers legados). */
+  async send(id: string, ctx: TeamContext): Promise<Output> {
+    const started = await this.startManualDispatch(id, ctx)
+    if (!started.isValid || !started.result) {
+      return started
+    }
+    return this.completeManualDispatch(started.result as ManualDispatchJob)
   }
 
   async recoverStuckSendingCampaigns(now = new Date()): Promise<number> {
@@ -832,6 +948,230 @@ export class EmailCampaignUseCase {
     }
 
     return campaigns.count
+  }
+
+  /**
+   * Retoma dispatches manuais órfãos (ex.: after() cortado) que ainda têm logs queued
+   * e não atingiram o timeout de stuck.
+   */
+  async resumeOrphanSendingDispatches(options?: {
+    maxDispatches?: number
+    now?: Date
+  }): Promise<number> {
+    const now = options?.now ?? new Date()
+    const maxDispatches = options?.maxDispatches ?? DEFAULT_ORPHAN_RESUME_BATCH_SIZE
+    const stuckThreshold = new Date(now.getTime() - STUCK_SENDING_THRESHOLD_MS)
+    const minAge = new Date(now.getTime() - ORPHAN_RESUME_MIN_AGE_MS)
+
+    const orphanDispatches = await prisma.emailCampaignDispatch.findMany({
+      where: {
+        status: "sending",
+        updatedAt: { lt: minAge, gte: stuckThreshold },
+        campaign: { status: "sending" },
+      },
+      select: {
+        id: true,
+        campaignId: true,
+        teamId: true,
+        dispatchNumber: true,
+        templateHtml: true,
+        templateSubject: true,
+        totalRecipients: true,
+        triggeredBy: true,
+        contactListId: true,
+        cdpSegmentSlug: true,
+        templateId: true,
+      },
+      orderBy: { updatedAt: "asc" },
+      take: maxDispatches,
+    })
+
+    let resumed = 0
+    for (const dispatch of orphanDispatches) {
+      try {
+        const queuedLogs = await prisma.emailLog.findMany({
+          where: { dispatchId: dispatch.id, status: "queued" },
+          select: {
+            id: true,
+            recipientEmail: true,
+            recipientName: true,
+          },
+        })
+
+        if (queuedLogs.length === 0) {
+          const sentCount = await prisma.emailLog.count({
+            where: {
+              dispatchId: dispatch.id,
+              status: { in: ["sent", "delivered", "opened", "clicked"] },
+            },
+          })
+          const terminal = resolveCampaignStatusAfterDispatch(sentCount)
+          await prisma.$transaction([
+            prisma.emailCampaignDispatch.update({
+              where: { id: dispatch.id },
+              data: {
+                totalSent: sentCount,
+                status: terminal.dispatchStatus,
+                errorMessage: terminal.errorMessage,
+              },
+            }),
+            prisma.emailCampaign.update({
+              where: { id: dispatch.campaignId },
+              data: {
+                status: terminal.campaignStatus,
+                sentAt: terminal.campaignStatus === "sent" ? now : undefined,
+                errorMessage: terminal.errorMessage,
+              },
+            }),
+          ])
+          resumed += 1
+          continue
+        }
+
+        let teamSettings = null
+        try {
+          teamSettings = await prisma.emailTeamSettings.findUnique({
+            where: { teamId: dispatch.teamId },
+          })
+        } catch {
+          teamSettings = null
+        }
+
+        const defaultSender = await prisma.emailTeamSender
+          .findFirst({
+            where: { teamId: dispatch.teamId, isDefault: true },
+            select: { name: true, email: true },
+          })
+          .catch(() => null)
+
+        const fromResolved = resolveCampaignFrom({
+          domainName: teamSettings?.resendDomainName,
+          legacyFromName: teamSettings?.fromName,
+          legacyFromEmail: teamSettings?.fromEmail,
+          defaultSender,
+        })
+        const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
+
+        const recipients = await this.rebuildRecipientsForOrphanResume({
+          teamId: dispatch.teamId,
+          contactListId: dispatch.contactListId,
+          queuedLogs,
+        })
+
+        const publishedTemplate = await this.resolvePublishedTemplate(
+          dispatch.templateId,
+          dispatch.teamId
+        )
+        const templateVariables = this.recipientService.parseTemplateVariables(
+          publishedTemplate?.variables ?? []
+        )
+
+        const job: ManualDispatchJob = {
+          campaignId: dispatch.campaignId,
+          dispatchId: dispatch.id,
+          dispatchNumber: dispatch.dispatchNumber,
+          teamId: dispatch.teamId,
+          previousStatus: "sent",
+          reservedCredits: 0,
+          hasCampaignsBetaAccess: true,
+          recipients,
+          subject: dispatch.templateSubject,
+          html: dispatch.templateHtml,
+          from: formatCampaignFromHeader(fromResolved),
+          replyTo: teamSettings?.replyTo ?? null,
+          globalDefaults,
+          templateVariables,
+          logIdsByEmail: queuedLogs.map((log) => ({
+            email: log.recipientEmail,
+            logId: log.id,
+          })),
+          totalRecipients: dispatch.totalRecipients,
+          status: "sending",
+        }
+
+        console.info("[EmailCampaignUseCase][resumeOrphanSendingDispatches] retomando", {
+          dispatchId: dispatch.id,
+          queued: queuedLogs.length,
+        })
+        await this.completeManualDispatch(job)
+        resumed += 1
+      } catch (error) {
+        console.error("[EmailCampaignUseCase][resumeOrphanSendingDispatches]", {
+          dispatchId: dispatch.id,
+          error,
+        })
+      }
+    }
+
+    return resumed
+  }
+
+  /**
+   * Recarrega contactId/customFields (e enriquecimento CDP) para retomar disparos órfãos
+   * a partir dos logs queued — os logs não persistem personalização.
+   */
+  private async rebuildRecipientsForOrphanResume(params: {
+    teamId: string
+    contactListId: string | null
+    queuedLogs: Array<{ recipientEmail: string; recipientName: string | null }>
+  }): Promise<CampaignRecipient[]> {
+    const emails = params.queuedLogs.map((log) => log.recipientEmail.trim().toLowerCase())
+    const uniqueEmails = Array.from(new Set(emails))
+
+    const contacts = await prisma.emailContact.findMany({
+      where: {
+        email: { in: uniqueEmails, mode: "insensitive" },
+        ...(params.contactListId
+          ? { listId: params.contactListId }
+          : {
+              list: {
+                teamId: params.teamId,
+                isArchived: false,
+              },
+            }),
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        customFields: true,
+      },
+    })
+
+    const contactByEmail = new Map<
+      string,
+      { id: string; name: string | null; customFields: Record<string, unknown> | null }
+    >()
+    for (const contact of contacts) {
+      const key = contact.email.trim().toLowerCase()
+      if (!contactByEmail.has(key)) {
+        contactByEmail.set(key, {
+          id: contact.id,
+          name: contact.name,
+          customFields: contact.customFields as Record<string, unknown> | null,
+        })
+      }
+    }
+
+    const baseRecipients: CampaignRecipient[] = params.queuedLogs.map((log) => {
+      const key = log.recipientEmail.trim().toLowerCase()
+      const contact = contactByEmail.get(key)
+      return {
+        email: key,
+        name: contact?.name ?? log.recipientName,
+        contactId: contact?.id ?? null,
+        customFields: contact?.customFields ?? null,
+      }
+    })
+
+    const enriched = await enrichCampaignRecipientsWithCdp(params.teamId, baseRecipients)
+    return enriched.map((recipient) => ({
+      email: recipient.email,
+      name: recipient.name ?? null,
+      contactId: recipient.contactId ?? null,
+      customFields: recipient.customFields ?? null,
+    }))
   }
 
   private async markScheduledCampaignFailed(campaignId: string, errorMessage: string): Promise<void> {
@@ -887,6 +1227,7 @@ export class EmailCampaignUseCase {
               fromName: true,
               fromEmail: true,
               replyTo: true,
+              resendDomainName: true,
             },
           })
           .catch(() => null)
@@ -924,6 +1265,13 @@ export class EmailCampaignUseCase {
 
         const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
+        const defaultSender = await prisma.emailTeamSender
+          .findFirst({
+            where: { teamId: campaign.teamId, isDefault: true },
+            select: { name: true, email: true },
+          })
+          .catch(() => null)
+
         const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
           teamId: campaign.teamId,
           contactListId: campaign.contactListId,
@@ -934,9 +1282,8 @@ export class EmailCampaignUseCase {
             variables: publishedTemplate.variables,
           },
           teamSettings,
+          defaultSender,
           masterTimezone: campaign.team.master.timezone,
-          fallbackFromName: FALLBACK_FROM_NAME,
-          fallbackFromEmail: FALLBACK_FROM_EMAIL,
         })
 
         if (dispatchInput.recipients.length === 0) {

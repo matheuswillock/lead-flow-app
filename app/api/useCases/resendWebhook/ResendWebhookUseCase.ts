@@ -2,6 +2,7 @@ import type { BackofficeEmailDispatchEventType } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { backofficeEmailDispatchUseCase } from "@/app/api/useCases/backofficeEmailDispatch/BackofficeEmailDispatchUseCase"
+import { backofficeEmailCampaignUseCase } from "@/app/api/useCases/backofficeEmailCampaign/BackofficeEmailCampaignUseCase"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import { isBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
 import {
@@ -145,6 +146,28 @@ export class ResendWebhookUseCase {
         return new Output(true, ["Evento de dispatch processado"], [], {
           handled: true,
           target: "backoffice_dispatch",
+        })
+      }
+    }
+
+    if (eventType) {
+      const campaignResult = await backofficeEmailCampaignUseCase.applyResendWebhookEvent({
+        resendEmailId,
+        eventType,
+        occurredAt,
+        metadata: {
+          ...metadata,
+          ...(svixId ? { svixId } : {}),
+        },
+      })
+
+      if (campaignResult.result.handled) {
+        console.info(
+          `[ResendWebhookUseCase] Evento ${event.type} processado para campanha (log ${resendEmailId})`
+        )
+        return new Output(true, ["Evento de campanha processado"], [], {
+          handled: true,
+          target: "backoffice_email_campaign",
         })
       }
     }

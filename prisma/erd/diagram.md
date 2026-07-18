@@ -321,6 +321,83 @@ failed failed
     
 
 
+        backoffice_email_campaign_status {
+            draft draft
+scheduled scheduled
+sending sending
+sent sent
+canceled canceled
+failed failed
+        }
+    
+
+
+        backoffice_email_campaign_type {
+            live_weekly live_weekly
+        }
+    
+
+
+        backoffice_email_campaign_dispatch_status {
+            sending sending
+completed completed
+failed failed
+        }
+    
+
+
+        backoffice_email_log_status {
+            queued queued
+sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+failed failed
+        }
+    
+
+
+        backoffice_email_event_type {
+            sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+delivery_delayed delivery_delayed
+unsubscribed unsubscribed
+failed failed
+        }
+    
+
+
+        backoffice_email_orphan_event_status {
+            pending pending
+processed processed
+failed failed
+skipped skipped
+        }
+    
+
+
+        backoffice_email_import_job_status {
+            pending pending
+processing processing
+completed completed
+failed failed
+        }
+    
+
+
+        backoffice_email_import_source_format {
+            csv csv
+json json
+        }
+    
+
+
         backoffice_product_type {
             PLAN PLAN
 ADDON ADDON
@@ -1229,6 +1306,133 @@ failed failed
     }
   
 
+  "backoffice_email_contact_lists" {
+    String id "🗝️"
+    String name 
+    Boolean isSystemDefault 
+    Boolean isArchived 
+    Int totalContacts 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_contacts" {
+    String id "🗝️"
+    String email 
+    String name "❓"
+    Json customFields "❓"
+    Boolean isUnsubscribed 
+    Boolean isBounced 
+    Boolean isComplained 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_import_jobs" {
+    String id "🗝️"
+    BackofficeEmailImportSourceFormat sourceFormat 
+    String rawContent 
+    BackofficeEmailImportJobStatus status 
+    Int totalRows 
+    Int processedRows 
+    Int importedCount 
+    Int skippedCount 
+    Int errorCount 
+    String errorMessage "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_campaigns" {
+    String id "🗝️"
+    String name 
+    BackofficeEmailCampaignType type 
+    BackofficeEmailCampaignStatus status 
+    String resendTemplateId "❓"
+    String resendTemplateName "❓"
+    String fromName "❓"
+    String fromEmail "❓"
+    String replyTo "❓"
+    DateTime scheduledAt 
+    DateTime sentAt "❓"
+    Int totalRecipients 
+    Int totalSent 
+    Int totalDelivered 
+    Int totalOpened 
+    Int totalClicked 
+    Int totalBounced 
+    Int totalComplained 
+    Int dispatchCount 
+    String errorMessage "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_campaign_dispatches" {
+    String id "🗝️"
+    Int dispatchNumber 
+    String templateSubjectSnapshot 
+    String templateHtmlSnapshot 
+    String resendTemplateIdSnapshot "❓"
+    BackofficeEmailCampaignDispatchStatus status 
+    Int totalRecipients 
+    Int totalSent 
+    Int totalDelivered 
+    Int totalOpened 
+    Int totalClicked 
+    Int totalBounced 
+    Int totalComplained 
+    String triggeredByBackofficeUserId "❓"
+    String errorMessage "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_logs" {
+    String id "🗝️"
+    String recipientEmail 
+    String resendEmailId "❓"
+    BackofficeEmailLogStatus status 
+    DateTime sentAt "❓"
+    DateTime deliveredAt "❓"
+    DateTime openedAt "❓"
+    DateTime clickedAt "❓"
+    DateTime bouncedAt "❓"
+    DateTime complainedAt "❓"
+    String errorMessage "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_events" {
+    String id "🗝️"
+    BackofficeEmailEventType type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_email_orphan_events" {
+    String id "🗝️"
+    String resendEmailId 
+    String resendEventType 
+    DateTime occurredAt 
+    Json tagsHint "❓"
+    BackofficeEmailOrphanEventStatus status 
+    Int attempts 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_leads" {
     String id "🗝️"
     String leadCode 
@@ -1715,6 +1919,7 @@ failed failed
     String csvStoragePath "❓"
     Int totalContacts 
     Boolean isSystemDefault 
+    Boolean isBlocklist 
     Boolean isArchived 
     DateTime createdAt 
     DateTime updatedAt 
@@ -2444,6 +2649,26 @@ failed failed
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookTokenExpiryMode" : "enum:expiryMode"
     "backoffice_webhook_tokens" }o--|| backoffice_users : "generatedBy"
     "backoffice_webhook_request_logs" |o--|| "BackofficeWebhookSource" : "enum:source"
+    "backoffice_email_contact_lists" }o--|o backoffice_users : "createdBy"
+    "backoffice_email_contacts" }o--|| backoffice_email_contact_lists : "list"
+    "backoffice_email_contacts" }o--|o backoffice_leads : "lead"
+    "backoffice_email_import_jobs" |o--|| "BackofficeEmailImportSourceFormat" : "enum:sourceFormat"
+    "backoffice_email_import_jobs" |o--|| "BackofficeEmailImportJobStatus" : "enum:status"
+    "backoffice_email_import_jobs" }o--|| backoffice_email_contact_lists : "list"
+    "backoffice_email_import_jobs" }o--|| backoffice_users : "createdBy"
+    "backoffice_email_campaigns" |o--|| "BackofficeEmailCampaignType" : "enum:type"
+    "backoffice_email_campaigns" |o--|| "BackofficeEmailCampaignStatus" : "enum:status"
+    "backoffice_email_campaigns" }o--|| backoffice_email_contact_lists : "contactList"
+    "backoffice_email_campaigns" }o--|o backoffice_users : "createdBy"
+    "backoffice_email_campaign_dispatches" |o--|| "BackofficeEmailCampaignDispatchStatus" : "enum:status"
+    "backoffice_email_campaign_dispatches" }o--|| backoffice_email_campaigns : "campaign"
+    "backoffice_email_logs" |o--|| "BackofficeEmailLogStatus" : "enum:status"
+    "backoffice_email_logs" }o--|| backoffice_email_campaigns : "campaign"
+    "backoffice_email_logs" }o--|| backoffice_email_campaign_dispatches : "dispatch"
+    "backoffice_email_logs" }o--|| backoffice_email_contacts : "contact"
+    "backoffice_email_events" |o--|| "BackofficeEmailEventType" : "enum:type"
+    "backoffice_email_events" }o--|| backoffice_email_logs : "log"
+    "backoffice_email_orphan_events" |o--|| "BackofficeEmailOrphanEventStatus" : "enum:status"
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:status"
     "corretor_studio_leads" |o--|o "MeetingHeald" : "enum:meetingHeald"
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:followUpSourceStatus"

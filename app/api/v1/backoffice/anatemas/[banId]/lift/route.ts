@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeAnathemasUseCase } from "@/app/api/useCases/backoffice/BackofficeAnathemasUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
@@ -15,7 +15,7 @@ export async function POST(
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
 
-    const denied = requireMasterAccess(accessResult.access)
+    const denied = requireManagerAccess(accessResult.access)
     if (denied) return denied
 
     const { banId } = await params

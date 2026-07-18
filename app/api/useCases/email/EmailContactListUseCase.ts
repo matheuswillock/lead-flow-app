@@ -3,6 +3,10 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailContactListService } from "@/app/api/services/EmailContactList/EmailContactListService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import {
+  EMAIL_BLOCKLIST_NAME,
+  ensureTeamEmailBlocklist,
+} from "@/lib/email/email-contact-blocklist"
 
 export interface CreateContactListInput {
   name: string
@@ -110,6 +114,10 @@ export class EmailContactListUseCase {
   async list(ctx: TeamContext): Promise<Output> {
     try {
       const defaultList = await this.ensureDefaultList(ctx)
+      const blocklist = await ensureTeamEmailBlocklist({
+        teamId: ctx.teamId,
+        createdBy: ctx.profileId,
+      })
       const lists = await prisma.emailContactList.findMany({
         where: { teamId: ctx.teamId, isArchived: false },
         select: {
@@ -118,6 +126,7 @@ export class EmailContactListUseCase {
           description: true,
           totalContacts: true,
           isSystemDefault: true,
+          isBlocklist: true,
           createdAt: true,
           updatedAt: true,
           creator: { select: { id: true, fullName: true, email: true } },
@@ -126,7 +135,9 @@ export class EmailContactListUseCase {
       })
 
       const teamContacts = await prisma.emailContact.findMany({
-        where: { list: { teamId: ctx.teamId, isArchived: false } },
+        where: {
+          list: { teamId: ctx.teamId, isArchived: false, isBlocklist: false },
+        },
         select: { email: true },
       })
 
@@ -136,7 +147,7 @@ export class EmailContactListUseCase {
         where: {
           isUnsubscribed: false,
           isBounced: false,
-          list: { teamId: ctx.teamId, isArchived: false },
+          list: { teamId: ctx.teamId, isArchived: false, isBlocklist: false },
         },
         select: { email: true },
       })
@@ -146,7 +157,11 @@ export class EmailContactListUseCase {
       ).size
 
       const regularListIds = lists
-        .filter((list) => !(list.id === defaultList.id || list.isSystemDefault))
+        .filter(
+          (list) =>
+            !(list.id === defaultList.id || list.isSystemDefault) &&
+            !(list.id === blocklist.id || list.isBlocklist)
+        )
         .map((list) => list.id)
 
       const activeCountsByListId = new Map<string, number>()
@@ -216,19 +231,31 @@ export class EmailContactListUseCase {
       const normalizedLists = lists
         .map((list) => {
           const isDefault = list.id === defaultList.id || list.isSystemDefault
+          const isBlocklist = list.id === blocklist.id || list.isBlocklist
           return {
             ...list,
-            name: isDefault ? DEFAULT_LIST_NAME : list.name,
-            description: isDefault ? list.description : list.description,
+            name: isDefault ? DEFAULT_LIST_NAME : isBlocklist ? EMAIL_BLOCKLIST_NAME : list.name,
+            description: list.description,
             totalContacts: isDefault ? totalDefaultContacts : list.totalContacts,
             activeContacts: isDefault
               ? activeDefaultContacts
-              : (activeCountsByListId.get(list.id) ?? 0),
+              : isBlocklist
+                ? list.totalContacts
+                : (activeCountsByListId.get(list.id) ?? 0),
             isSystemDefault: isDefault,
-            activeImport: activeImportByListId.get(list.id) ?? null,
+            isBlocklist,
+            activeImport: isBlocklist ? null : (activeImportByListId.get(list.id) ?? null),
           }
         })
-        .sort((a, b) => Number(b.isSystemDefault) - Number(a.isSystemDefault))
+        .sort((a, b) => {
+          if (a.isSystemDefault !== b.isSystemDefault) {
+            return Number(b.isSystemDefault) - Number(a.isSystemDefault)
+          }
+          if (a.isBlocklist !== b.isBlocklist) {
+            return Number(b.isBlocklist) - Number(a.isBlocklist)
+          }
+          return 0
+        })
 
       return new Output(true, [], [], normalizedLists)
     } catch (error) {
@@ -306,6 +333,10 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["A lista padrão não pode ser alterada"], null)
       }
 
+      if (existing.isBlocklist) {
+        return new Output(false, [], ["A lista de bloqueados não pode ser alterada"], null)
+      }
+
       const list = await prisma.emailContactList.update({
         where: { id },
         data: {
@@ -335,6 +366,10 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["A lista padrão não pode ser excluída"], null)
       }
 
+      if (existing.isBlocklist) {
+        return new Output(false, [], ["A lista de bloqueados não pode ser excluída"], null)
+      }
+
       const campaignCount = await prisma.emailCampaign.count({
         where: { contactListId: id, teamId: ctx.teamId },
       })
@@ -360,6 +395,10 @@ export class EmailContactListUseCase {
 
       if (!existing) {
         return new Output(false, [], ["Lista não encontrada"], null)
+      }
+
+      if (existing.isBlocklist) {
+        return new Output(false, [], ["Não é possível adicionar contatos à lista de bloqueados"], null)
       }
 
       const normalizedEmail = this.normalizeEmail(email)
@@ -429,6 +468,10 @@ export class EmailContactListUseCase {
 
       if (!existing) {
         return new Output(false, [], ["Lista não encontrada"], null)
+      }
+
+      if (existing.isBlocklist) {
+        return new Output(false, [], ["Não é possível importar contatos para a lista de bloqueados"], null)
       }
 
       const issues: Array<{ line?: number; email?: string; name?: string; reason: string }> = []
@@ -668,6 +711,10 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Lista não encontrada"], null)
       }
 
+      if (list.isBlocklist) {
+        return new Output(false, [], ["Contatos bloqueados não podem ser removidos"], null)
+      }
+
       const contact = await prisma.emailContact.findFirst({
         where: { id: contactId, listId },
       })
@@ -680,7 +727,7 @@ export class EmailContactListUseCase {
         const affectedContacts = await prisma.emailContact.findMany({
           where: {
             email: contact.email,
-            list: { teamId: ctx.teamId, isArchived: false },
+            list: { teamId: ctx.teamId, isArchived: false, isBlocklist: false },
           },
           select: { listId: true },
         })
@@ -690,7 +737,7 @@ export class EmailContactListUseCase {
         await prisma.emailContact.deleteMany({
           where: {
             email: contact.email,
-            list: { teamId: ctx.teamId, isArchived: false },
+            list: { teamId: ctx.teamId, isArchived: false, isBlocklist: false },
           },
         })
 

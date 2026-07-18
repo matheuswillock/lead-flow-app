@@ -44,6 +44,18 @@
     {
       "path": "/api/v1/billing/cron/member-pro-expiration",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/v1/backoffice/cron/provision-live-campaign",
+      "schedule": "0 16 * * 4"
+    },
+    {
+      "path": "/api/v1/backoffice/cron/dispatch-email-campaigns",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/backoffice/cron/process-email-import-jobs",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

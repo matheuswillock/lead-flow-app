@@ -1,8 +1,12 @@
 import { getFullUrl } from "@/lib/utils/app-url"
 import { generateEmailUnsubscribeToken } from "@/lib/email/unsubscribe-token"
 
-export function buildCampaignUnsubscribeUrl(contactId: string, teamId: string): string {
-  const token = generateEmailUnsubscribeToken(contactId, teamId)
+export function buildCampaignUnsubscribeUrl(
+  contactId: string,
+  teamId: string,
+  campaignId?: string | null
+): string {
+  const token = generateEmailUnsubscribeToken(contactId, teamId, campaignId)
   return getFullUrl(`/email-unsubscribe/${token}`)
 }
 

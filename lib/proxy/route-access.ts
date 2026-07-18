@@ -50,6 +50,7 @@ export const TENANT_ROUTE_PREFIXES = [
   "/email/campanhas",
   "/email/historico",
   "/email/configuracoes",
+  "/email/descadastro",
   "/email",
   "/account",
   "/board",
@@ -105,6 +106,15 @@ export function requiresAuth(pathname: string): boolean {
   return isLegacyTenantRoute(pathname) || isTenantAppRoute(pathname)
 }
 
+/**
+ * Match exato de segmento para `/backoffice` — evita que rotas irmãs como
+ * `/backoffice-email-unsubscribe` ou `/backoffice-lead-form` sejam tratadas
+ * como parte do app autenticado do backoffice por um `startsWith` ingênuo.
+ */
+export function isBackofficeAppRoute(pathname: string): boolean {
+  return pathname === "/backoffice" || pathname.startsWith("/backoffice/")
+}
+
 function resolveAppRoutePath(pathname: string): string {
   const tenant = parseTenantPath(pathname)
   if (tenant) return tenant.routePath
@@ -119,5 +129,5 @@ export function requiresManagerRole(pathname: string): boolean {
 }
 
 export function isSensitiveRoute(pathname: string): boolean {
-  return requiresAuth(pathname) || pathname.startsWith("/backoffice")
+  return requiresAuth(pathname) || isBackofficeAppRoute(pathname)
 }

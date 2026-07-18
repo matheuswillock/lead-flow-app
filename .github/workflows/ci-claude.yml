@@ -121,8 +121,8 @@ jobs:
             echo "passed=false" >> "$GITHUB_OUTPUT"
           fi
 
-  quality-gate:
-    name: Quality Gate
+  unit-tests:
+    name: Unit Tests
     if: >-
       ${{
         startsWith(github.ref, 'refs/heads/claude/') &&
@@ -132,21 +132,36 @@ jobs:
         )
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
-    needs:
-      - quality
+    timeout-minutes: 10
     steps:
-      - name: Enforce Quality Checks
-        run: |
-          if [[ "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
-            echo "::error::One or more quality checks failed."
-            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
-            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
-            echo "lint=${{ needs.quality.outputs.lint }}"
-            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
-            echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
-            exit 1
-          fi
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install deps
+        run: bun install
+
+      - name: Run unit tests
+        run: bun run test
 
   build:
     name: Build
@@ -160,8 +175,6 @@ jobs:
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs:
-      - quality-gate
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -209,6 +222,48 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bun run build
+
+  quality-gate:
+    name: Quality Gate
+    if: >-
+      ${{
+        always() &&
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - quality
+      - unit-tests
+      - build
+    steps:
+      - name: Enforce Quality Checks
+        run: |
+          failed=0
+          if [[ "${{ needs.quality.result }}" != "success" || "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
+            echo "::error::One or more quality checks failed."
+            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
+            echo "lint=${{ needs.quality.outputs.lint }}"
+            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
+            echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
+            failed=1
+          fi
+          if [[ "${{ needs['unit-tests'].result }}" != "success" ]]; then
+            echo "::error::Unit tests failed."
+            echo "unit-tests=${{ needs['unit-tests'].result }}"
+            failed=1
+          fi
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "::error::Build failed."
+            echo "build=${{ needs.build.result }}"
+            failed=1
+          fi
+          exit "$failed"
 
   auto-pr-to-develop:
     name: Open PR to develop

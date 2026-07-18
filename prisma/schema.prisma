@@ -321,6 +321,83 @@ enum BackofficeEmailDispatchEventType {
   @@map("backoffice_email_dispatch_event_type")
 }
 
+enum BackofficeEmailCampaignStatus {
+  draft
+  scheduled
+  sending
+  sent
+  canceled
+  failed
+
+  @@map("backoffice_email_campaign_status")
+}
+
+enum BackofficeEmailCampaignType {
+  live_weekly
+
+  @@map("backoffice_email_campaign_type")
+}
+
+enum BackofficeEmailCampaignDispatchStatus {
+  sending
+  completed
+  failed
+
+  @@map("backoffice_email_campaign_dispatch_status")
+}
+
+enum BackofficeEmailLogStatus {
+  queued
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  failed
+
+  @@map("backoffice_email_log_status")
+}
+
+enum BackofficeEmailEventType {
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  delivery_delayed
+  unsubscribed
+  failed
+
+  @@map("backoffice_email_event_type")
+}
+
+enum BackofficeEmailOrphanEventStatus {
+  pending
+  processed
+  failed
+  skipped
+
+  @@map("backoffice_email_orphan_event_status")
+}
+
+enum BackofficeEmailImportJobStatus {
+  pending
+  processing
+  completed
+  failed
+
+  @@map("backoffice_email_import_job_status")
+}
+
+enum BackofficeEmailImportSourceFormat {
+  csv
+  json
+
+  @@map("backoffice_email_import_source_format")
+}
+
 enum BackofficeProductType {
   PLAN
   ADDON
@@ -831,6 +908,9 @@ model BackofficeUser {
   sdrAdhesions           BackofficeAdhesion[]     @relation("BackofficeAdhesionSdr")
   closerAdhesions        BackofficeAdhesion[]     @relation("BackofficeAdhesionCloser")
   createdAdhesions       BackofficeAdhesion[]     @relation("BackofficeAdhesionCreator")
+  emailCampaignsCreated  BackofficeEmailCampaign[]     @relation("BackofficeEmailCampaignCreator")
+  emailContactListsCreated BackofficeEmailContactList[] @relation("BackofficeEmailContactListCreator")
+  emailImportJobsCreated BackofficeEmailImportJob[]    @relation("BackofficeEmailImportJobCreator")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
@@ -1063,6 +1143,7 @@ model BackofficeLead {
   closerBackofficeUser BackofficeUser?          @relation("BackofficeLeadCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_closer_backoffice_user_id_fkey")
   schedules            BackofficeLeadSchedule[]
   adhesion             BackofficeAdhesion?
+  emailContacts        BackofficeEmailContact[] @relation("BackofficeEmailContactLead")
 
   @@index([status], map: "backoffice_leads_status_idx")
   @@index([origin], map: "backoffice_leads_origin_idx")
@@ -1289,6 +1370,202 @@ model BackofficeWebhookRequestLog {
   @@index([source, createdAt(sort: Desc)], map: "backoffice_webhook_request_logs_source_created_at_idx")
   @@index([statusCode], map: "backoffice_webhook_request_logs_status_code_idx")
   @@map("backoffice_webhook_request_logs")
+}
+
+// -----------------------------
+// BACKOFFICE EMAIL CAMPAIGNS MODULE (public.backoffice_email_*)
+// - isolated marketing/campaign engine, separate from BackofficeEmailDispatch (transactional)
+// - templates are managed directly in Resend (no local versioning table)
+// -----------------------------
+
+model BackofficeEmailContactList {
+  id                        String    @id @default(uuid()) @db.Uuid
+  name                      String    @db.Text
+  isSystemDefault           Boolean   @default(false) @map("isSystemDefault")
+  isArchived                Boolean   @default(false) @map("isArchived")
+  totalContacts             Int       @default(0) @map("totalContacts")
+  createdByBackofficeUserId String?   @map("createdByBackofficeUserId") @db.Uuid
+  createdAt                 DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                 DateTime  @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  createdBy   BackofficeUser?             @relation("BackofficeEmailContactListCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  contacts    BackofficeEmailContact[]
+  importJobs  BackofficeEmailImportJob[]
+  campaigns   BackofficeEmailCampaign[]
+
+  @@index([isSystemDefault], map: "backoffice_email_contact_lists_is_system_default_idx")
+  @@index([isArchived], map: "backoffice_email_contact_lists_is_archived_idx")
+  @@map("backoffice_email_contact_lists")
+}
+
+model BackofficeEmailContact {
+  id               String    @id @default(uuid()) @db.Uuid
+  listId           String    @map("listId") @db.Uuid
+  email            String    @db.Text
+  name             String?   @db.Text
+  customFields     Json?     @map("customFields")
+  isUnsubscribed   Boolean   @default(false) @map("isUnsubscribed")
+  isBounced        Boolean   @default(false) @map("isBounced")
+  isComplained     Boolean   @default(false) @map("isComplained")
+  backofficeLeadId String?   @map("backofficeLeadId") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  list             BackofficeEmailContactList  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  lead             BackofficeLead?             @relation("BackofficeEmailContactLead", fields: [backofficeLeadId], references: [id], onDelete: SetNull)
+  logs             BackofficeEmailLog[]
+
+  @@unique([listId, email], map: "backoffice_email_contacts_list_email_key")
+  @@index([listId, isUnsubscribed], map: "backoffice_email_contacts_list_unsubscribed_idx")
+  @@index([backofficeLeadId], map: "backoffice_email_contacts_backoffice_lead_id_idx")
+  @@map("backoffice_email_contacts")
+}
+
+model BackofficeEmailImportJob {
+  id                        String                            @id @default(uuid()) @db.Uuid
+  listId                    String                            @map("listId") @db.Uuid
+  sourceFormat              BackofficeEmailImportSourceFormat  @map("sourceFormat")
+  rawContent                String                             @map("rawContent") @db.Text
+  status                    BackofficeEmailImportJobStatus     @default(pending)
+  totalRows                 Int                                @default(0) @map("totalRows")
+  processedRows              Int                               @default(0) @map("processedRows")
+  importedCount             Int                                @default(0) @map("importedCount")
+  skippedCount              Int                                @default(0) @map("skippedCount")
+  errorCount                Int                                @default(0) @map("errorCount")
+  errorMessage              String?                            @map("errorMessage") @db.Text
+  createdByBackofficeUserId String                             @map("createdByBackofficeUserId") @db.Uuid
+  createdAt                 DateTime                           @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                 DateTime                           @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  list      BackofficeEmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  createdBy BackofficeUser             @relation("BackofficeEmailImportJobCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: Restrict)
+
+  @@index([listId, status], map: "backoffice_email_import_jobs_list_status_idx")
+  @@map("backoffice_email_import_jobs")
+}
+
+model BackofficeEmailCampaign {
+  id                        String                         @id @default(uuid()) @db.Uuid
+  name                      String                         @db.Text
+  type                      BackofficeEmailCampaignType    @default(live_weekly)
+  status                    BackofficeEmailCampaignStatus  @default(draft)
+  resendTemplateId          String?                        @map("resendTemplateId") @db.Text
+  resendTemplateName        String?                        @map("resendTemplateName") @db.Text
+  contactListId             String                         @map("contactListId") @db.Uuid
+  fromName                  String?                        @map("fromName") @db.Text
+  fromEmail                 String?                        @map("fromEmail") @db.Text
+  replyTo                   String?                        @map("replyTo") @db.Text
+  scheduledAt               DateTime                       @map("scheduledAt") @db.Timestamptz(6)
+  sentAt                    DateTime?                      @map("sentAt") @db.Timestamptz(6)
+  totalRecipients           Int                            @default(0) @map("totalRecipients")
+  totalSent                 Int                            @default(0) @map("totalSent")
+  totalDelivered            Int                            @default(0) @map("totalDelivered")
+  totalOpened               Int                            @default(0) @map("totalOpened")
+  totalClicked              Int                            @default(0) @map("totalClicked")
+  totalBounced              Int                            @default(0) @map("totalBounced")
+  totalComplained           Int                            @default(0) @map("totalComplained")
+  dispatchCount             Int                            @default(0) @map("dispatchCount")
+  errorMessage              String?                        @map("errorMessage") @db.Text
+  createdByBackofficeUserId String?                        @map("createdByBackofficeUserId") @db.Uuid
+  createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  contactList BackofficeEmailContactList         @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  createdBy   BackofficeUser?                    @relation("BackofficeEmailCampaignCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  dispatches  BackofficeEmailCampaignDispatch[]
+  logs        BackofficeEmailLog[]
+
+  @@unique([type, scheduledAt], map: "backoffice_email_campaigns_type_scheduled_at_key")
+  @@index([status], map: "backoffice_email_campaigns_status_idx")
+  @@index([type, status], map: "backoffice_email_campaigns_type_status_idx")
+  @@map("backoffice_email_campaigns")
+}
+
+model BackofficeEmailCampaignDispatch {
+  id                          String                                  @id @default(uuid()) @db.Uuid
+  campaignId                  String                                  @map("campaignId") @db.Uuid
+  dispatchNumber               Int                                    @map("dispatchNumber")
+  templateSubjectSnapshot      String                                 @map("templateSubjectSnapshot") @db.Text
+  templateHtmlSnapshot         String                                 @map("templateHtmlSnapshot") @db.Text
+  resendTemplateIdSnapshot     String?                                @map("resendTemplateIdSnapshot") @db.Text
+  status                       BackofficeEmailCampaignDispatchStatus  @default(sending)
+  totalRecipients              Int                                    @default(0) @map("totalRecipients")
+  totalSent                    Int                                    @default(0) @map("totalSent")
+  totalDelivered               Int                                    @default(0) @map("totalDelivered")
+  totalOpened                  Int                                    @default(0) @map("totalOpened")
+  totalClicked                 Int                                    @default(0) @map("totalClicked")
+  totalBounced                 Int                                    @default(0) @map("totalBounced")
+  totalComplained              Int                                    @default(0) @map("totalComplained")
+  triggeredByBackofficeUserId  String?                                @map("triggeredByBackofficeUserId") @db.Uuid
+  errorMessage                 String?                                @map("errorMessage") @db.Text
+  createdAt                    DateTime                               @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                    DateTime                               @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  campaign BackofficeEmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  logs     BackofficeEmailLog[]
+
+  @@unique([campaignId, dispatchNumber], map: "backoffice_email_campaign_dispatches_campaign_dispatch_key")
+  @@index([campaignId, createdAt(sort: Desc)], map: "backoffice_email_campaign_dispatches_campaign_created_idx")
+  @@map("backoffice_email_campaign_dispatches")
+}
+
+model BackofficeEmailLog {
+  id             String                     @id @default(uuid()) @db.Uuid
+  campaignId     String                     @map("campaignId") @db.Uuid
+  dispatchId     String                     @map("dispatchId") @db.Uuid
+  contactId      String                     @map("contactId") @db.Uuid
+  recipientEmail String                     @map("recipientEmail") @db.Text
+  resendEmailId  String?                    @unique @map("resendEmailId") @db.Text
+  status         BackofficeEmailLogStatus   @default(queued)
+  sentAt         DateTime?                  @map("sentAt") @db.Timestamptz(6)
+  deliveredAt    DateTime?                  @map("deliveredAt") @db.Timestamptz(6)
+  openedAt       DateTime?                  @map("openedAt") @db.Timestamptz(6)
+  clickedAt      DateTime?                  @map("clickedAt") @db.Timestamptz(6)
+  bouncedAt      DateTime?                  @map("bouncedAt") @db.Timestamptz(6)
+  complainedAt   DateTime?                  @map("complainedAt") @db.Timestamptz(6)
+  errorMessage   String?                    @map("errorMessage") @db.Text
+  createdAt      DateTime                   @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt      DateTime                   @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  campaign BackofficeEmailCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  dispatch BackofficeEmailCampaignDispatch  @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  contact  BackofficeEmailContact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  events   BackofficeEmailEvent[]
+
+  @@index([campaignId, dispatchId], map: "backoffice_email_logs_campaign_dispatch_idx")
+  @@index([contactId], map: "backoffice_email_logs_contact_id_idx")
+  @@map("backoffice_email_logs")
+}
+
+model BackofficeEmailEvent {
+  id         String                     @id @default(uuid()) @db.Uuid
+  logId      String                     @map("logId") @db.Uuid
+  type       BackofficeEmailEventType
+  occurredAt DateTime                   @map("occurredAt") @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime                   @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  log BackofficeEmailLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+  @@unique([logId, type, occurredAt], map: "backoffice_email_events_log_type_occurred_key")
+  @@index([logId, occurredAt(sort: Desc)], map: "backoffice_email_events_log_occurred_idx")
+  @@map("backoffice_email_events")
+}
+
+model BackofficeEmailOrphanEvent {
+  id              String                            @id @default(uuid()) @db.Uuid
+  resendEmailId   String                            @unique @map("resendEmailId") @db.Text
+  resendEventType String                            @map("resendEventType") @db.Text
+  occurredAt      DateTime                          @map("occurredAt") @db.Timestamptz(6)
+  tagsHint        Json?                             @map("tagsHint")
+  status          BackofficeEmailOrphanEventStatus  @default(pending)
+  attempts        Int                               @default(0)
+  lastError       String?                           @map("lastError") @db.Text
+  createdAt       DateTime                          @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt       DateTime                          @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  @@index([status], map: "backoffice_email_orphan_events_status_idx")
+  @@map("backoffice_email_orphan_events")
 }
 
 // -----------------------------
@@ -2252,6 +2529,7 @@ model EmailContactList {
   csvStoragePath String?  @db.Text
   totalContacts  Int      @default(0)
   isSystemDefault Boolean @default(false)
+  isBlocklist    Boolean  @default(false)
   isArchived     Boolean  @default(false)
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
@@ -2264,6 +2542,7 @@ model EmailContactList {
   importJobs EmailImportJob[]
 
   @@index([teamId, isArchived])
+  @@index([teamId, isBlocklist])
   @@index([createdBy])
   @@map("corretor_studio_email_contact_lists")
 }
@@ -2714,7 +2993,7 @@ model EmailTeamSettings {
   id        String   @id @default(uuid()) @db.Uuid
   teamId    String   @unique @db.Uuid
   fromName  String   @default("Corretor Studio") @db.Text
-  fromEmail String   @default("no-reply@corretorstudio.com") @db.Text
+  fromEmail String   @default("deliveryby@corretorstudio.com") @db.Text
   replyTo   String?  @db.Text
 
   dispatchBlockedDates     Json?

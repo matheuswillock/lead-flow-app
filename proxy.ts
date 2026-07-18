@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import * as Sentry from "@sentry/nextjs"
 import {
   isAuthRedirectRoute,
+  isBackofficeAppRoute,
   isPublicPageRoute,
   isSensitiveRoute,
   isLegacyTenantRoute,
@@ -85,7 +86,7 @@ export async function proxy(request: NextRequest) {
       return response
     }
 
-    if (pathname.startsWith("/backoffice")) {
+    if (isBackofficeAppRoute(pathname)) {
       if (!user) {
         return redirectWithSession(response, new URL("/backoffice/sign-in", request.url))
       }
@@ -172,7 +173,7 @@ export async function proxy(request: NextRequest) {
         )
       }
 
-      if (pathname.startsWith("/backoffice")) {
+      if (isBackofficeAppRoute(pathname)) {
         return NextResponse.redirect(new URL("/backoffice/sign-in", request.url))
       }
 

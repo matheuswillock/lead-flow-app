@@ -10,6 +10,7 @@ export type ResendDomainStatus =
   | "temporary_failure"
 
 export type DomainRecord = {
+  record?: string
   type: string
   name: string
   value: string

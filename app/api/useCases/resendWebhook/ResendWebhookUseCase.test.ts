@@ -5,6 +5,7 @@ const findByResendEmailIdMock = mock(async () => null as Awaited<ReturnType<type
 const queueOrphanEventMock = mock(async () => {})
 const processEmailLogWebhookMock = mock(async () => true)
 const applyResendWebhookEventMock = mock(async () => new (await import("@/lib/output")).Output(true, [], [], { handled: false }))
+const applyBackofficeCampaignWebhookEventMock = mock(async () => new (await import("@/lib/output")).Output(true, [], [], { handled: false }))
 
 mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
   emailLogRepository: {
@@ -21,6 +22,12 @@ mock.module("@/app/api/services/resend/EmailOrphanEventService", () => ({
 mock.module("@/app/api/useCases/backofficeEmailDispatch/BackofficeEmailDispatchUseCase", () => ({
   backofficeEmailDispatchUseCase: {
     applyResendWebhookEvent: applyResendWebhookEventMock,
+  },
+}))
+
+mock.module("@/app/api/useCases/backofficeEmailCampaign/BackofficeEmailCampaignUseCase", () => ({
+  backofficeEmailCampaignUseCase: {
+    applyResendWebhookEvent: applyBackofficeCampaignWebhookEventMock,
   },
 }))
 
@@ -106,5 +113,26 @@ describe("ResendWebhookUseCase", () => {
     expect(queueOrphanEventMock).not.toHaveBeenCalled()
     expect(processEmailLogWebhookMock).toHaveBeenCalled()
     expect((output.result as { handled: boolean }).handled).toBe(true)
+  })
+
+  it("cai para o motor de campanhas do backoffice quando produto e dispatch transacional não encontram o log", async () => {
+    findByResendEmailIdMock.mockResolvedValueOnce(null)
+    applyResendWebhookEventMock.mockResolvedValueOnce(
+      new (await import("@/lib/output")).Output(true, [], [], { handled: false })
+    )
+    applyBackofficeCampaignWebhookEventMock.mockResolvedValueOnce(
+      new (await import("@/lib/output")).Output(true, [], [], { handled: true })
+    )
+
+    const useCase = new ResendWebhookUseCase(createWebhookService())
+    const output = await useCase.handle({
+      event: {
+        type: "email.delivered",
+        data: { email_id: "re_campaign_log", created_at: new Date().toISOString() },
+      },
+    })
+
+    expect(applyBackofficeCampaignWebhookEventMock).toHaveBeenCalled()
+    expect(output.result).toEqual({ handled: true, target: "backoffice_email_campaign" })
   })
 })

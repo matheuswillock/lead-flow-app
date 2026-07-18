@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess";
-import { requireMasterAccess } from "@/app/api/v1/backoffice/utils/requireMasterAccess";
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess";
 import { backofficeLeadStatusTransitionRuleUseCase } from "@/app/api/useCases/backofficeLeadStatusTransitionRule/BackofficeLeadStatusTransitionRuleUseCase";
 import { LEAD_TRANSITION_FIELD_KEYS } from "@/lib/leadStatusTransitionFields";
 import type { LeadTransitionFieldKey } from "@/lib/leadStatusTransitionFields";
@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
   try {
     const access = await getBackofficeAccess(request);
     if (access.error) return NextResponse.json(access.error, { status: access.status });
-    const denied = requireMasterAccess(access.access);
+    const denied = requireManagerAccess(access.access);
     if (denied) return denied;
 
     const body = await request.json().catch(() => null);

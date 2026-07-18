@@ -20,6 +20,21 @@ export function buildBackofficeResendTags(input: {
   return tags
 }
 
+export function buildBackofficeCampaignResendTags(input: {
+  campaignId: string
+  dispatchId: string
+  contactId: string
+}): Array<{ name: string; value: string }> {
+  return [
+    { name: "module", value: "backoffice" },
+    { name: "category", value: "campaign" },
+    { name: "source_type", value: "backoffice_email_campaign" },
+    { name: "source_id", value: input.campaignId },
+    { name: "dispatch_id", value: input.dispatchId },
+    { name: "contact_id", value: input.contactId },
+  ]
+}
+
 export function isBackofficeResendTags(
   tags?: Record<string, string> | Array<{ name: string; value: string }> | null
 ): boolean {

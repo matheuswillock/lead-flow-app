@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { ActivityType, InviteDispatchStatus, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
-import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
+import {
+  cancelCalendarEvent,
+  upsertCalendarEvent,
+} from "@/app/api/services/googleCalendar/GoogleCalendarService";
 import { emailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
@@ -13,6 +16,7 @@ import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { getScheduleShareExpiry } from "@/lib/schedule-share";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
+import { resolveCloserCalendarTransfer } from "./resolveCloserCalendarTransfer";
 import type { Attachment } from "resend";
 import { formatIntimezone, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
@@ -185,6 +189,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       leadAssignedTo,
       leadAssigneeEmail,
       leadCurrentCloserId,
+      leadMeetingLink,
       leadCode,
       closerId,
       teamId,
@@ -311,6 +316,15 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
     const normalizedMeetingLink = validatedMeetingLink.normalized;
 
+    const calendarTransfer = resolveCloserCalendarTransfer({
+      closerId,
+      leadCurrentCloserId,
+      existingGoogleEventId: existingSchedule?.googleEventId,
+      existingMeetingLink: existingSchedule?.meetingLink,
+      leadMeetingLink,
+      requestMeetingLink: normalizedMeetingLink,
+    });
+
     let schedulerLabel = "Usuário";
     try {
       const schedulerProfile = await prisma.profile.findUnique({
@@ -362,11 +376,77 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingDate,
           meetingTitle: resolvedMeetingTitle,
           notes: meetingNotes,
-          meetingLink: normalizedMeetingLink,
+          meetingLink: calendarTransfer.meetingLinkForUpsert,
           extraGuests,
           attendeeEmails: googleRecipients,
-          existingEventId: existingSchedule?.googleEventId ?? null,
+          existingEventId: calendarTransfer.existingEventIdForUpsert,
         });
+
+        // Cancel the previous closer's event only after the new one succeeds,
+        // so a failed upsert does not leave the lead without a calendar invite.
+        if (
+          calendarTransfer.shouldTransferCalendarOwnership &&
+          calendarTransfer.previousCloserId &&
+          calendarTransfer.previousEventId
+        ) {
+          try {
+            const previousCloserProfile = await prisma.profile.findUnique({
+              where: { id: calendarTransfer.previousCloserId },
+              include: {
+                googleConnection: {
+                  select: {
+                    accessToken: true,
+                    refreshToken: true,
+                    tokenExpiresAt: true,
+                    revokedAt: true,
+                    googleEmail: true,
+                  },
+                },
+              },
+            });
+
+            if (
+              previousCloserProfile &&
+              isGoogleConnectionActive(previousCloserProfile.googleConnection)
+            ) {
+              await cancelCalendarEvent({
+                organizer: previousCloserProfile,
+                eventId: calendarTransfer.previousEventId,
+                calendarId: existingSchedule?.googleCalendarId ?? "primary",
+              });
+              console.info(`${LOG_PREFIX} Evento cancelado no Calendar do closer anterior`, {
+                leadId,
+                previousCloserId: calendarTransfer.previousCloserId,
+                previousEventId: calendarTransfer.previousEventId,
+                newCloserId: closerId,
+                newEventId: calendarResult.eventId,
+              });
+            } else {
+              console.warn(
+                `${LOG_PREFIX} Closer anterior sem Google conectado; evento antigo pode ficar órfão`,
+                {
+                  leadId,
+                  previousCloserId: calendarTransfer.previousCloserId,
+                  previousEventId: calendarTransfer.previousEventId,
+                }
+              );
+            }
+          } catch (cancelPreviousError) {
+            console.warn(
+              `${LOG_PREFIX} Falha ao cancelar evento no Calendar do closer anterior após criar o novo`,
+              {
+                leadId,
+                previousCloserId: calendarTransfer.previousCloserId,
+                previousEventId: calendarTransfer.previousEventId,
+                newEventId: calendarResult.eventId,
+                error:
+                  cancelPreviousError instanceof Error
+                    ? cancelPreviousError.message
+                    : String(cancelPreviousError),
+              }
+            );
+          }
+        }
 
         inviteDispatchStatus = "sent_google";
         inviteDispatchProvider = "google";
@@ -477,7 +557,10 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
 
     const resolvedMeetingLink = isOnlineMeeting
-      ? normalizedMeetingLink?.trim() || calendarResult?.meetLink || null
+      ? calendarTransfer.meetingLinkForUpsert ||
+        normalizedMeetingLink?.trim() ||
+        calendarResult?.meetLink ||
+        null
       : null;
 
     if (isOnlineMeeting && !resolvedMeetingLink?.trim()) {

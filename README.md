@@ -1,5 +1,7 @@
 # Lead Flow App (Corretor Studio)
 
+[![CI (develop -> version -> preview -> PR main)](https://github.com/matheuswillock/lead-flow-app/actions/workflows/ci-develop.yml/badge.svg)](https://github.com/matheuswillock/lead-flow-app/actions/workflows/ci-develop.yml)
+
 Sistema de gestao de leads para corretores de planos de saude, com operacao em Kanban, pipeline de vendas, gerenciamento de equipe e fluxo de assinaturas/pagamentos.
 
 ## O que e o projeto

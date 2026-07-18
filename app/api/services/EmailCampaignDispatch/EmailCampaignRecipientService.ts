@@ -4,6 +4,10 @@ import {
   findUnresolvedEmailTemplateTokens,
   type EmailTemplateVariableDefinition,
 } from "@/lib/email/interpolate"
+import {
+  formatCampaignFromHeader,
+  resolveCampaignFrom,
+} from "@/lib/email/resolve-campaign-from"
 import type { CampaignRecipientRecord } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import {
   EmailCampaignRecipientRepository,
@@ -16,6 +20,7 @@ import type {
 } from "./IEmailCampaignRecipientService"
 import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
 import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
+import { findTeamBlocklistedEmails } from "@/lib/email/email-contact-blocklist"
 
 export class EmailCampaignRecipientService implements IEmailCampaignRecipientService {
   constructor(
@@ -75,23 +80,34 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
       fromName?: string | null
       fromEmail?: string | null
       replyTo?: string | null
+      resendDomainName?: string | null
     } | null
+    defaultSender?: { name: string; email: string } | null
     masterTimezone?: string | null
-    fallbackFromName: string
-    fallbackFromEmail: string
   }): Promise<CampaignDispatchInput> {
     const baseRecipients = params.cdpSegmentSlug
       ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
       : await this.listActiveRecipients(params.teamId, params.contactListId!)
-    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, baseRecipients)
+    const blocklistedEmails = await findTeamBlocklistedEmails(params.teamId)
+    const eligibleRecipients =
+      blocklistedEmails.size > 0
+        ? baseRecipients.filter(
+            (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
+          )
+        : baseRecipients
+    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, eligibleRecipients)
     const globalDefaults = await this.getGlobalDefaults(params.teamId)
     const parsedVariables = this.parseTemplateVariables(params.template.variables)
     const timezone = resolveTimezone(params.masterTimezone)
     const templateVariables = applyMasterTimezoneToTemplateVariables(parsedVariables, timezone)
 
-    const fromName = params.teamSettings?.fromName ?? params.fallbackFromName
-    const fromEmail = params.teamSettings?.fromEmail ?? params.fallbackFromEmail
-    const from = `${fromName} <${fromEmail}>`
+    const resolvedFrom = resolveCampaignFrom({
+      domainName: params.teamSettings?.resendDomainName,
+      defaultSender: params.defaultSender,
+      legacyFromName: params.teamSettings?.fromName,
+      legacyFromEmail: params.teamSettings?.fromEmail,
+    })
+    const from = formatCampaignFromHeader(resolvedFrom)
     const replyTo = params.teamSettings?.replyTo ?? null
 
     return {

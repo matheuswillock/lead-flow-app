@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.150.0",
+  "version": "0.151.1",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -44,8 +44,8 @@
     "lint:check": "prettier --check .",
     "lint:fix": "prettier --write .",
     "lint:pt-br": "bun scripts/lint-pt-br.ts",
-    "test": "bun test app/api/useCases/leads/utils lib/email lib/cdp lib/web-push lib/proxy lib/studio-bot app/api/services/EmailCampaignDispatch app/api/services/resend app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
-    "test:email": "bun test lib/email app/api/services/EmailCampaignDispatch app/api/services/resend app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
+    "test": "bun test app/api/useCases/leads/utils app/api/services/resend lib/email lib/cdp lib/web-push lib/proxy lib/studio-bot app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/leadSchedule app/api/useCases/email",
+    "test:email": "bun test app/api/services/resend lib/email app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
     "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts",
     "test:integration": "CDP_INTEGRATION_TEST=1 bun test lib/cdp/customer-data-platform.integration.test.ts",
     "format": "prettier --write .",
