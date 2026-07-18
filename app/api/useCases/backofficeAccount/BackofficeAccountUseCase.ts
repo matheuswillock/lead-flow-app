@@ -1,6 +1,11 @@
 import { Output } from "@/lib/output"
 import type { BackofficeUser, Profile } from "@prisma/client"
 import { isValidTimezone } from "@/lib/dates"
+import {
+  backofficeEmailDomainErrorMessage,
+  isValidBackofficeEmail,
+  normalizeBackofficeEmail as normalizeBackofficeEmailValue,
+} from "@/lib/backoffice/email-domain"
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository"
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
 import { validateUpdatePasswordRequest } from "@/app/api/v1/profiles/DTO/requestToUpdatePassword"
@@ -17,24 +22,14 @@ import type { IBackofficeGoogleConnectionResolverService } from "../../services/
 import { BackofficeGoogleConnectionResolverService } from "../../services/Backoffice/backofficeGoogleConnection/BackofficeGoogleConnectionResolverService"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 
-const BACKOFFICE_EMAIL_DOMAIN = "@corretorstudio.com"
-
 function trimString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined
   return value.trim()
 }
 
 function normalizeBackofficeEmail(value: unknown): string | undefined {
-  const email = trimString(value)?.toLowerCase()
-  return email || undefined
-}
-
-function isValidBackofficeEmail(value: string): boolean {
-  const prefix = value.endsWith(BACKOFFICE_EMAIL_DOMAIN)
-    ? value.slice(0, -BACKOFFICE_EMAIL_DOMAIN.length)
-    : ""
-
-  return /^[^\s@]+$/.test(prefix) && value === `${prefix}${BACKOFFICE_EMAIL_DOMAIN}`
+  const email = trimString(value)
+  return email ? normalizeBackofficeEmailValue(email) : undefined
 }
 
 function mapAccount(
@@ -129,7 +124,7 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
       const email = data.email !== undefined ? normalizeBackofficeEmail(data.email) : undefined
       if (data.email !== undefined) {
         if (!email || !isValidBackofficeEmail(email)) {
-          return new Output(false, [], ["E-mail deve pertencer ao domínio @corretorstudio.com"], null)
+          return new Output(false, [], [backofficeEmailDomainErrorMessage()], null)
         }
 
         if (email !== user.email) {

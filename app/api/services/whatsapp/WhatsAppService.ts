@@ -40,6 +40,7 @@ function toConfigOutput(config: WhatsAppConfigSelect): ConfigOutput {
     instanceName: config.instanceName,
     phoneNumber: config.phoneNumber,
     normalizedPhone: config.normalizedPhone,
+    lastConnectedNormalizedPhone: config.lastConnectedNormalizedPhone,
     primaryConfigId: config.primaryConfigId,
     qrCodeImageUrl: config.qrCodeImageUrl
       ? toQrCodeImageUrl(config.qrCodeImageUrl)

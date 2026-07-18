@@ -14,7 +14,11 @@ export type BackofficeAdhesionStatusKey =
   | "expired"
   | "canceled"
 
-export type BackofficeLeadOriginKey = "manual" | "webhook_meta"
+export type BackofficeLeadOriginKey =
+  | "manual"
+  | "webhook_meta"
+  | "landing_page"
+  | "public_form"
 
 export interface BackofficeCrmUserOption {
   id: string

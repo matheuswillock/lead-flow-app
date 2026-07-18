@@ -3,6 +3,7 @@ import type {
   IBackofficeEvoApiService,
 } from "./IBackofficeEvoApiService";
 import { phoneDigitsFromOwnerJid } from "@/lib/studio-bot/phone";
+import { resolveEvoApiConfig } from "@/lib/studio-bot/resolve-host-secrets";
 
 /**
  * Cliente Evolution API dedicado ao módulo backoffice (Bethânia).
@@ -10,16 +11,8 @@ import { phoneDigitsFromOwnerJid } from "@/lib/studio-bot/phone";
  * de módulo (agents.md) — backoffice não deve importar services de produto.
  */
 
-function getBaseUrl(): string {
-  const envUrl = process.env.EVO_API_BASE_URL;
-  if (!envUrl) throw new Error("[BackofficeEvoApiService] EVO_API_BASE_URL is not set");
-  return envUrl.replace(/\/$/, "");
-}
-
-function getApiKey(): string {
-  const key = process.env.EVO_API_KEY;
-  if (!key) throw new Error("[BackofficeEvoApiService] EVO_API_KEY is not set");
-  return key;
+async function resolveCredentials(): Promise<{ baseUrl: string; apiKey: string }> {
+  return resolveEvoApiConfig();
 }
 
 function buildHeaders(apiKey: string): HeadersInit {
@@ -147,7 +140,8 @@ function extractPhoneFromFetchItem(item: EvoFetchInstanceItem | null | undefined
 
 export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   private async createInstance(params: { instanceName: string; webhookUrl: string }) {
-    const url = `${getBaseUrl()}/instance/create`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/instance/create`;
 
     console.info("[BackofficeEvoApiService][createInstance] Creating instance", params.instanceName);
 
@@ -155,7 +149,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
       url,
       {
         method: "POST",
-        headers: buildHeaders(getApiKey()),
+        headers: buildHeaders(credentials.apiKey),
         body: JSON.stringify({
           instanceName: params.instanceName,
           qrcode: true,
@@ -180,7 +174,8 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   }
 
   private async setWebhook(params: { instanceName: string; webhookUrl: string }): Promise<void> {
-    const url = `${getBaseUrl()}/webhook/set/${encodeURIComponent(params.instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/webhook/set/${encodeURIComponent(params.instanceName)}`;
 
     console.info("[BackofficeEvoApiService][setWebhook] Updating webhook for", params.instanceName);
 
@@ -188,7 +183,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
       url,
       {
         method: "POST",
-        headers: buildHeaders(getApiKey()),
+        headers: buildHeaders(credentials.apiKey),
         body: JSON.stringify({ webhook: buildWebhookPayload(params.webhookUrl) }),
       },
       "setWebhook"
@@ -196,11 +191,12 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   }
 
   private async getConnectionState(instanceName: string): Promise<"open" | "close" | "connecting"> {
-    const url = `${getBaseUrl()}/instance/connectionState/${encodeURIComponent(instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/instance/connectionState/${encodeURIComponent(instanceName)}`;
 
     const data = await fetchEvoWithRetry<EvoConnectionStateResponse>(
       url,
-      { method: "GET", headers: buildHeaders(getApiKey()) },
+      { method: "GET", headers: buildHeaders(credentials.apiKey) },
       "getConnectionState"
     );
 
@@ -214,11 +210,12 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   }
 
   async getInstancePhoneNumber(instanceName: string): Promise<string | null> {
-    const url = `${getBaseUrl()}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
 
     const data = await fetchEvoWithRetry<EvoFetchInstancesResponse>(
       url,
-      { method: "GET", headers: buildHeaders(getApiKey()) },
+      { method: "GET", headers: buildHeaders(credentials.apiKey) },
       "getInstancePhoneNumber"
     );
 
@@ -233,11 +230,12 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   }
 
   private async fetchInstance(instanceName: string): Promise<{ instanceName: string } | null> {
-    const url = `${getBaseUrl()}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
 
     const data = await fetchEvoWithRetry<EvoFetchInstancesResponse>(
       url,
-      { method: "GET", headers: buildHeaders(getApiKey()) },
+      { method: "GET", headers: buildHeaders(credentials.apiKey) },
       "fetchInstance"
     );
 
@@ -255,11 +253,12 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   }
 
   private async getQrCode(instanceName: string): Promise<{ text: string; base64: string }> {
-    const url = `${getBaseUrl()}/instance/connect/${encodeURIComponent(instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/instance/connect/${encodeURIComponent(instanceName)}`;
 
     const data = await fetchEvoWithRetry<EvoQrCodeResponse>(
       url,
-      { method: "GET", headers: buildHeaders(getApiKey()) },
+      { method: "GET", headers: buildHeaders(credentials.apiKey) },
       "getQrCode"
     );
 
@@ -308,11 +307,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
 
       let qrCode: { text: string; base64: string } | null = null;
       if (status !== "open") {
-        try {
-          qrCode = await this.getQrCode(params.instanceName);
-        } catch (qrError) {
-          console.error("[BackofficeEvoApiService][connectInstance] QR fetch failed", qrError);
-        }
+        qrCode = await this.getQrCode(params.instanceName);
       }
 
       const phoneNumber =
@@ -325,7 +320,8 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
   }
 
   async disconnectInstance(instanceName: string): Promise<void> {
-    const url = `${getBaseUrl()}/instance/logout/${encodeURIComponent(instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/instance/logout/${encodeURIComponent(instanceName)}`;
 
     console.info("[BackofficeEvoApiService][disconnectInstance] Logging out", instanceName);
 
@@ -334,7 +330,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
         url,
         {
           method: "DELETE",
-          headers: buildHeaders(getApiKey()),
+          headers: buildHeaders(credentials.apiKey),
         },
         "disconnectInstance"
       );
@@ -372,7 +368,8 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
       );
     }
 
-    const url = `${getBaseUrl()}/message/sendText/${encodeURIComponent(params.instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/message/sendText/${encodeURIComponent(params.instanceName)}`;
 
     console.info(
       "[BackofficeEvoApiService][sendTextMessage] Sending to",
@@ -385,7 +382,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
       url,
       {
         method: "POST",
-        headers: buildHeaders(getApiKey()),
+        headers: buildHeaders(credentials.apiKey),
         body: JSON.stringify({
           number: digits,
           text: params.text,
@@ -400,7 +397,8 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
     instanceName: string;
     messageKey: Record<string, unknown>;
   }): Promise<{ base64: string; mimeType: string } | null> {
-    const url = `${getBaseUrl()}/chat/getBase64FromMediaMessage/${encodeURIComponent(params.instanceName)}`;
+    const credentials = await resolveCredentials();
+    const url = `${credentials.baseUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(params.instanceName)}`;
 
     try {
       const data = await fetchEvo<{
@@ -410,7 +408,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
         url,
         {
           method: "POST",
-          headers: buildHeaders(getApiKey()),
+          headers: buildHeaders(credentials.apiKey),
           body: JSON.stringify({ message: { key: params.messageKey } }),
         },
         "getBase64FromMediaMessage"

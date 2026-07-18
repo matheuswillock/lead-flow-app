@@ -43,4 +43,14 @@ describe("resolveDisplayName", () => {
       })
     ).toBe("Maria")
   })
+
+  it("não usa Contato como fallback", () => {
+    expect(
+      resolveDisplayName({
+        contactName: null,
+        contactPhone: "",
+        externalChatId: "123@lid",
+      })
+    ).toBe("Número não disponível")
+  })
 })

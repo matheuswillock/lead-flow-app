@@ -26,7 +26,7 @@ const APP_USERS: SeedUser[] = [
 
 const BACKOFFICE_USERS = [
   {
-    email: "matheuswillock@corretorstudio.com",
+    email: "matheuswillock@corretorstudio.com.br",
     password: seedPassword,
     fullAccess: true,
   },

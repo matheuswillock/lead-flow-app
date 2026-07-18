@@ -173,6 +173,7 @@ export function BackofficeStudioBotCanalContainer() {
                 </div>
               ) : null}
               {canManage ? (
+                <>
                 <div className="flex flex-col gap-2">
                   {channel ? (
                     isBotEnabled ? (
@@ -315,6 +316,11 @@ export function BackofficeStudioBotCanalContainer() {
                     {isSyncingProfile ? "Sincronizando..." : "Sincronizar perfil no WhatsApp"}
                   </Button>
                 </div>
+                <p className="text-muted-foreground text-sm">
+                  Se a conexão falhar, aguarde e tente uma vez. Persistindo, limpe a instância
+                  bethania na Evolution (ver runbook em n8n/README) e reconecte.
+                </p>
+                </>
               ) : null}
             </CardContent>
           </Card>

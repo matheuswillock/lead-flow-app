@@ -11,6 +11,7 @@ const disallowedPaths = [
   "/operator-confirmed",
   "/pix-confirmed",
   "/lead-form/",
+  "/backoffice-lead-form",
   "/dashboard",
   "/account",
   "/crm",

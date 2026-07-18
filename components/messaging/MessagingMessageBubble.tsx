@@ -13,6 +13,13 @@ import { format, parseISO } from "date-fns"
 import { useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
+import {
+  Message,
+  MessageContent,
+  MessageFooter,
+  MessageHeader,
+} from "@/components/ui/message"
 import { cn } from "@/lib/utils"
 import { MessagingFormattedText } from "./formatMessagingText"
 import type { MessagingContactLookup, MessagingLinkPreview, MessagingMessage } from "./types"
@@ -45,13 +52,13 @@ function hashSenderColor(name: string): (typeof SENDER_NAME_COLORS)[number] {
 function StatusIndicator({ status }: { status: string }) {
   const normalized = status.toUpperCase()
   if (normalized === "PENDING") {
-    return <Clock className="size-3 text-primary-foreground/70" aria-label="Enviando" />
+    return <Clock className="size-3 text-muted-foreground" aria-label="Enviando" />
   }
   if (normalized === "SENT") {
-    return <Check className="size-3 text-primary-foreground/70" aria-label="Enviada" />
+    return <Check className="size-3 text-muted-foreground" aria-label="Enviada" />
   }
   if (normalized === "DELIVERED") {
-    return <CheckCheck className="size-3 text-primary-foreground/70" aria-label="Entregue" />
+    return <CheckCheck className="size-3 text-muted-foreground" aria-label="Entregue" />
   }
   if (normalized === "READ") {
     return <CheckCheck className="size-3 text-semantic-info" aria-label="Lida" />
@@ -183,157 +190,146 @@ export function MessagingMessageBubble({
 
   if (!hasRenderableContent) return null
 
-  const bubbleVariant = isOutbound ? "outbound" : "inbound"
+  const formatVariant = isOutbound ? "outbound" : "inbound"
+  const align = isOutbound ? "end" : "start"
+  const bubbleVariant = isOutbound ? "default" : "secondary"
 
   return (
     <>
-      <div className={cn("flex w-full", isOutbound ? "justify-end" : "justify-start")}>
-        <div
-          className={cn(
-            "flex min-w-0 max-w-[70%] flex-col gap-0.5 overflow-hidden",
-            isOutbound ? "items-end" : "items-start"
-          )}
-        >
-          {showOperatorName && operatorDisplayName ? (
-            <span className="px-1 text-xs text-muted-foreground">{operatorDisplayName}</span>
-          ) : null}
-          <div
-            className={cn(
-              "flex w-full min-w-0 flex-col gap-1 overflow-hidden rounded-lg px-3 py-2",
-              isOutbound
-                ? "rounded-br-sm bg-primary text-primary-foreground"
-                : "rounded-bl-sm bg-muted text-foreground"
-            )}
-          >
-            {showSenderName && message.senderDisplayName ? (
-              <span
-                className={cn(
-                  "text-xs font-semibold",
-                  hashSenderColor(message.senderDisplayName)
-                )}
-              >
-                {message.senderDisplayName}
-              </span>
-            ) : null}
-
-            {isOutbound && message.isAutoResponse ? (
-              <Badge variant="secondary" className="self-start text-[10px]">
-                Automática
-              </Badge>
-            ) : null}
-
-            {type === "IMAGE" && resolvedMediaUrl ? (
-              <button
-                type="button"
-                className="overflow-hidden rounded-md"
-                onClick={() => setLightboxOpen(true)}
-              >
-                <img
-                  src={resolvedMediaUrl}
-                  alt={message.caption ?? "Imagem"}
-                  className="max-h-64 w-full object-cover"
-                  loading="lazy"
-                />
-              </button>
-            ) : null}
-
-            {type === "DOCUMENT" && resolvedMediaUrl ? (
-              <div
-                className={cn(
-                  "flex items-center gap-2 rounded-md border p-2",
-                  isOutbound ? "border-primary-foreground/20" : "border-border"
-                )}
-              >
-                <FileText className="size-8 shrink-0 opacity-80" />
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-sm font-medium">
-                    {message.mediaFileName ?? "Documento"}
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(isOutbound && "text-primary-foreground hover:text-primary-foreground")}
-                  asChild
-                >
-                  <a href={resolvedMediaUrl} target="_blank" rel="noopener noreferrer" download>
-                    <Download />
-                  </a>
-                </Button>
-              </div>
-            ) : null}
-
-            {(type === "AUDIO" || type === "PTT") && resolvedMediaUrl ? (
-              renderAudio ? (
-                renderAudio(resolvedMediaUrl, bubbleVariant)
-              ) : (
-                <audio src={resolvedMediaUrl} controls className="max-w-full" preload="metadata" />
-              )
-            ) : null}
-
-            {type === "VIDEO" && resolvedMediaUrl ? (
-              <video
-                src={resolvedMediaUrl}
-                controls
-                className="max-h-64 w-full rounded-md"
-                preload="metadata"
-              />
-            ) : null}
-
-            {hasText ? (
-              <MessagingFormattedText
-                text={message.contentText ?? ""}
-                variant={bubbleVariant}
-                contactLookup={contactLookup}
-              />
-            ) : null}
-
-            {message.linkPreview ? (
-              <MessagingLinkPreviewCard preview={message.linkPreview} variant={bubbleVariant} />
-            ) : null}
-
-            {message.caption && type !== "TEXT" ? (
-              <MessagingFormattedText
-                text={message.caption}
-                variant={bubbleVariant}
-                contactLookup={contactLookup}
-              />
-            ) : null}
-
-            <div
-              className={cn(
-                "flex items-center gap-1",
-                isOutbound ? "justify-end" : "justify-start"
-              )}
-            >
-              {time ? (
+      <Message align={align} className="max-w-full">
+        <MessageContent className="max-w-[80%]">
+          {(showOperatorName && operatorDisplayName) ||
+          (showSenderName && message.senderDisplayName) ? (
+            <MessageHeader>
+              {showOperatorName && operatorDisplayName ? (
+                <span className="text-xs text-muted-foreground">{operatorDisplayName}</span>
+              ) : null}
+              {showSenderName && message.senderDisplayName ? (
                 <span
                   className={cn(
-                    "text-xs",
-                    isOutbound ? "text-primary-foreground/70" : "text-muted-foreground"
+                    "text-xs font-semibold",
+                    hashSenderColor(message.senderDisplayName)
                   )}
                 >
-                  {time}
+                  {message.senderDisplayName}
                 </span>
               ) : null}
-              {isOutbound && message.status ? <StatusIndicator status={message.status} /> : null}
-            </div>
+            </MessageHeader>
+          ) : null}
 
+          <Bubble variant={bubbleVariant} align={align} className="max-w-full">
+            <BubbleContent className="flex w-full max-w-full flex-col gap-1">
+              {isOutbound && message.isAutoResponse ? (
+                <Badge variant="secondary" className="self-start text-[10px]">
+                  Automática
+                </Badge>
+              ) : null}
+
+              {type === "IMAGE" && resolvedMediaUrl ? (
+                <button
+                  type="button"
+                  className="overflow-hidden rounded-md"
+                  onClick={() => setLightboxOpen(true)}
+                >
+                  <img
+                    src={resolvedMediaUrl}
+                    alt={message.caption ?? "Imagem"}
+                    className="max-h-64 w-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              ) : null}
+
+              {type === "DOCUMENT" && resolvedMediaUrl ? (
+                <div
+                  className={cn(
+                    "flex items-center gap-2 rounded-md border p-2",
+                    isOutbound ? "border-primary-foreground/20" : "border-border"
+                  )}
+                >
+                  <FileText className="size-8 shrink-0 opacity-80" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-sm font-medium">
+                      {message.mediaFileName ?? "Documento"}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      isOutbound && "text-primary-foreground hover:text-primary-foreground"
+                    )}
+                    asChild
+                  >
+                    <a href={resolvedMediaUrl} target="_blank" rel="noopener noreferrer" download>
+                      <Download />
+                    </a>
+                  </Button>
+                </div>
+              ) : null}
+
+              {(type === "AUDIO" || type === "PTT") && resolvedMediaUrl ? (
+                renderAudio ? (
+                  renderAudio(resolvedMediaUrl, formatVariant)
+                ) : (
+                  <audio src={resolvedMediaUrl} controls className="max-w-full" preload="metadata" />
+                )
+              ) : null}
+
+              {type === "VIDEO" && resolvedMediaUrl ? (
+                <video
+                  src={resolvedMediaUrl}
+                  controls
+                  className="max-h-64 w-full rounded-md"
+                  preload="metadata"
+                />
+              ) : null}
+
+              {hasText ? (
+                <MessagingFormattedText
+                  text={message.contentText ?? ""}
+                  variant={formatVariant}
+                  contactLookup={contactLookup}
+                />
+              ) : null}
+
+              {message.linkPreview ? (
+                <MessagingLinkPreviewCard preview={message.linkPreview} variant={formatVariant} />
+              ) : null}
+
+              {message.caption && type !== "TEXT" ? (
+                <MessagingFormattedText
+                  text={message.caption}
+                  variant={formatVariant}
+                  contactLookup={contactLookup}
+                />
+              ) : null}
+            </BubbleContent>
+          </Bubble>
+
+          <MessageFooter
+            className={cn(
+              "gap-1 px-1",
+              isOutbound ? "text-muted-foreground" : "text-muted-foreground"
+            )}
+          >
+            {time ? <span className="text-xs">{time}</span> : null}
+            {isOutbound && message.status ? <StatusIndicator status={message.status} /> : null}
             {isFailed && onResend ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-auto self-end px-1.5 py-0.5 text-xs text-destructive hover:text-destructive"
+                className="h-auto px-1.5 py-0.5 text-xs text-destructive hover:text-destructive"
                 onClick={() => onResend(message.id)}
               >
                 Reenviar
               </Button>
             ) : null}
-          </div>
-        </div>
-      </div>
+          </MessageFooter>
+        </MessageContent>
+      </Message>
 
       {lightboxOpen && resolvedMediaUrl ? (
         <button

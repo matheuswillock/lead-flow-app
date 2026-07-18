@@ -117,6 +117,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     teamId: string,
     supabaseId: string,
     conversationId: string,
+    clientMessageId: string,
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[]
@@ -129,7 +130,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
             caption: media.caption ?? (text.trim() || undefined),
           },
         }
-      : { conversationId, contentText: text }
+      : { conversationId, clientMessageId, contentText: text }
+    if (media) body.clientMessageId = clientMessageId
     if (mentionedJids && mentionedJids.length > 0) {
       body.mentionedJids = mentionedJids
     }

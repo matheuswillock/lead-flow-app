@@ -73,7 +73,7 @@ export function BackofficeUsersContainer() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validateEmail(form.email)) {
-      setEmailError("Informe o prefixo do e-mail @corretorstudio.com")
+      setEmailError("Informe o prefixo do e-mail @corretorstudio.com.br")
       return
     }
 

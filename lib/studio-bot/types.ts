@@ -50,5 +50,7 @@ export type StudioBotEventOutboxPayload = {
   actionButtons: Array<{ id: string; label: string; payload: object }>;
   deepLink: string;
   requiresHsm?: boolean;
+  hsmTemplate?: string | null;
+  suppressionReason?: "missing_approved_hsm_template";
   lastInboundAt?: string | null;
 };

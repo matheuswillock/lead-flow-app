@@ -12639,6 +12639,40 @@
               }
             }
           ]
+        },
+        {
+          "name": "Backoffice Public Lead Form",
+          "item": [
+            {
+              "name": "POST Formulário Público de Lead (Backoffice)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Lead Público\",\n  \"email\": \"lead@example.com\",\n  \"phone\": \"11999999999\",\n  \"cpfCnpj\": \"\",\n  \"notes\": \"Interesse via formulário público\",\n  \"qualificationLeadOrganization\": \"\",\n  \"qualificationAvgUsers\": \"\",\n  \"qualificationProfileFit\": \"\",\n  \"utmSource\": \"integracoes\",\n  \"utmMedium\": \"form\",\n  \"utmCampaign\": \"backoffice-public\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-lead-form",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-lead-form"
+                  ]
+                },
+                "description": "Rota pública (sem autenticação). Cria BackofficeLead com origin=public_form."
+              }
+            }
+          ]
         }
       ]
     },
@@ -16191,6 +16225,41 @@
               ]
             }
           }
+        },
+        {
+          "name": "GET Backoffice Bot Host Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/logs?service=n8n&tail=200",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "logs"
+              ],
+              "query": [
+                {
+                  "key": "service",
+                  "value": "n8n",
+                  "description": "n8n | api (Evolution)"
+                },
+                {
+                  "key": "tail",
+                  "value": "200",
+                  "description": "1–1000"
+                }
+              ]
+            },
+            "description": "MASTER: obtém logs docker do N8N ou Evolution via agente studio-bot-ops na VPS."
+          },
+          "response": []
         }
       ]
     }

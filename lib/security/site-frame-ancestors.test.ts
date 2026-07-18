@@ -59,6 +59,7 @@ describe("site frame ancestors", () => {
 
     const lockedSource = buildLockedSiteHeaderSource();
     expect(lockedSource).toContain("lead-form");
+    expect(lockedSource).toContain("backoffice-lead-form");
     expect(lockedSource).toContain("prime");
     expect(lockedSource).toContain("recursos");
     expect(lockedSource).toContain("whatsapp");
