@@ -11,6 +11,8 @@ import type {
   WhatsAppConversationSelect,
   WhatsAppConversationWithTagsSelect,
   WhatsAppMessageSelect,
+  WhatsAppOutboundCommandRecord,
+  WhatsAppWebhookOutboxEvent,
 } from "./IWhatsAppRepository"
 
 const CONFIG_SELECT = {
@@ -21,6 +23,7 @@ const CONFIG_SELECT = {
   instanceId: true,
   phoneNumber: true,
   normalizedPhone: true,
+  lastConnectedNormalizedPhone: true,
   primaryConfigId: true,
   displayName: true,
   status: true,
@@ -510,6 +513,79 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return result.count
   }
 
+  async findOutboundCommand(teamId: string, clientMessageId: string): Promise<WhatsAppOutboundCommandRecord | null> {
+    const [command] = await prisma.$queryRaw<WhatsAppOutboundCommandRecord[]>`
+      select "conversationId", "messageId", status::text as status
+      from whatsapp_outbound_commands
+      where "teamId" = ${teamId}::uuid and "clientMessageId" = ${clientMessageId}
+    `
+    return command ?? null
+  }
+
+  async createOutboundCommand(input: { teamId: string; conversationId: string; clientMessageId: string }): Promise<boolean> {
+    const created = await prisma.$executeRaw`
+      insert into whatsapp_outbound_commands (id, "teamId", "conversationId", "clientMessageId", status, "attemptCount", "createdAt", "updatedAt")
+      values (gen_random_uuid(), ${input.teamId}::uuid, ${input.conversationId}::uuid, ${input.clientMessageId}, 'PENDING', 1, now(), now())
+      on conflict ("teamId", "clientMessageId") do nothing
+    `
+    return created === 1
+  }
+
+  async completeOutboundCommand(input: { teamId: string; clientMessageId: string; messageId: string }): Promise<void> {
+    await prisma.$executeRaw`
+      update whatsapp_outbound_commands
+      set status = 'SENT', "messageId" = ${input.messageId}::uuid, "lastError" = null, "updatedAt" = now()
+      where "teamId" = ${input.teamId}::uuid and "clientMessageId" = ${input.clientMessageId}
+    `
+  }
+
+  async failOutboundCommand(input: { teamId: string; clientMessageId: string; status: "UNKNOWN" | "FAILED"; error: string }): Promise<void> {
+    await prisma.$executeRaw`
+      update whatsapp_outbound_commands
+      set status = ${input.status}::"WhatsAppOutboundCommandStatus", "lastError" = ${input.error.slice(0, 500)}, "updatedAt" = now()
+      where "teamId" = ${input.teamId}::uuid and "clientMessageId" = ${input.clientMessageId} and status = 'PENDING'
+    `
+  }
+
+  async persistWebhookEvent(input: { configId: string; teamId: string; providerEventId: string; eventType: string; payload: Prisma.InputJsonValue }): Promise<string> {
+    const eventId = crypto.randomUUID()
+    const [event] = await prisma.$queryRaw<Array<{ id: string }>>`
+      insert into whatsapp_webhook_events (id, "configId", "teamId", "providerEventId", "eventType", payload, status, "createdAt", "updatedAt")
+      values (${eventId}::uuid, ${input.configId}::uuid, ${input.teamId}::uuid, ${input.providerEventId}, ${input.eventType}, ${input.payload}, 'PENDING', now(), now())
+      on conflict ("configId", "providerEventId") do update set "updatedAt" = now()
+      returning id
+    `
+    return event!.id
+  }
+
+  async claimWebhookEvent(eventId: string): Promise<WhatsAppWebhookOutboxEvent | null> {
+    const [event] = await prisma.$queryRaw<WhatsAppWebhookOutboxEvent[]>`
+      update whatsapp_webhook_events
+      set status = 'PROCESSING', "attemptCount" = "attemptCount" + 1, "updatedAt" = now()
+      where id = ${eventId}::uuid and status = 'PENDING'
+      returning id, "teamId", "configId", payload, "attemptCount"
+    `
+    return event ?? null
+  }
+
+  async completeWebhookEvent(input: { eventId: string; status: "PROCESSED" | "PENDING" | "DEAD_LETTER"; error?: string }): Promise<void> {
+    await prisma.$executeRaw`
+      update whatsapp_webhook_events
+      set status = ${input.status}::"WhatsAppWebhookEventStatus",
+        "processedAt" = ${input.status === "PROCESSED" ? new Date() : null},
+        "lastError" = ${input.error?.slice(0, 500) ?? null},
+        "updatedAt" = now()
+      where id = ${input.eventId}::uuid
+    `
+  }
+
+  async listPendingWebhookEventIds(limit: number): Promise<string[]> {
+    const events = await prisma.$queryRaw<Array<{ id: string }>>`
+      select id from whatsapp_webhook_events where status = 'PENDING' order by "createdAt" asc limit ${Math.min(limit, 100)}
+    `
+    return events.map((event) => event.id)
+  }
+
   async createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }> {
     return prisma.whatsAppUsageEvent.create({
       data,
@@ -567,6 +643,24 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
   async deleteConversation(id: string): Promise<void> {
     await prisma.whatsAppConversation.delete({ where: { id } })
+  }
+
+  async resetInboxForConfigChange(configId: string, teamId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.whatsAppConversation.deleteMany({ where: { configId } })
+      await tx.teamWhatsAppContact.deleteMany({ where: { teamId } })
+      await tx.teamWhatsAppConfig.update({
+        where: { id: configId },
+        data: {
+          historySyncStatus: "IDLE",
+          historySyncStartedAt: null,
+          historySyncCompletedAt: null,
+          historySyncError: null,
+          lastSyncAt: null,
+        },
+      })
+    })
+    console.info("[WhatsAppRepository][resetInboxForConfigChange]", { configId, teamId })
   }
 
   async findTeamMasterContext(
@@ -672,6 +766,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         instanceId: true,
         phoneNumber: true,
         normalizedPhone: true,
+        lastConnectedNormalizedPhone: true,
         primaryConfigId: true,
         displayName: true,
         status: true,

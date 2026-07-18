@@ -25,17 +25,42 @@ export class BackofficeBotContextUseCase implements IBackofficeBotContextUseCase
         return new Output(false, [], ["Perfil não encontrado"], null);
       }
 
-      const teamId = input.teamId ?? profile.activeTeamId;
-      if (!teamId) {
+      const session = await backofficeBotRepository.findActiveSession(link.id);
+      const candidateTeamId = session?.teamId ?? profile.activeTeamId;
+      if (!candidateTeamId) {
         return new Output(false, [], ["Time ativo não encontrado"], null);
       }
 
-      const teamMember = await backofficeBotRepository.findTeamMemberForBot(teamId, profile.id);
-      if (!teamMember && !profile.isMaster) {
-        return new Output(false, [], ["Acesso negado para este time"], { errorCode: "PERMISSION_DENIED" });
+      const teamMember = await backofficeBotRepository.findTeamMemberForBot(
+        candidateTeamId,
+        profile.id
+      );
+      const isTeamMember = Boolean(teamMember) || profile.isMaster;
+
+      const scope = botPolicyService.assertTeamScope({
+        sessionTeamId: session?.teamId ?? null,
+        activeTeamId: profile.activeTeamId,
+        requestedTeamId: input.teamId,
+        isTeamMember,
+      });
+      if (!scope.ok) {
+        return new Output(false, [], ["Acesso negado para este time"], {
+          errorCode: "TEAM_SCOPE_VIOLATION",
+        });
       }
 
-      const session = await backofficeBotRepository.findActiveSession(link.id);
+      const teamId = scope.teamId;
+      const scopedMember =
+        teamId === candidateTeamId
+          ? teamMember
+          : await backofficeBotRepository.findTeamMemberForBot(teamId, profile.id);
+
+      if (!scopedMember && !profile.isMaster) {
+        return new Output(false, [], ["Acesso negado para este time"], {
+          errorCode: "PERMISSION_DENIED",
+        });
+      }
+
       const team = await backofficeBotRepository.findTeamName(teamId);
 
       const access = {
@@ -51,7 +76,7 @@ export class BackofficeBotContextUseCase implements IBackofficeBotContextUseCase
         canTransferAccountLeads: false,
         canViewAllTeams: false,
         userTimezone: "America/Sao_Paulo",
-        teamMember: teamMember ?? { role: "manager" as const, functions: [] },
+        teamMember: scopedMember ?? { role: "manager" as const, functions: [] },
       };
 
       const menuItems = [...BASE_MENU];

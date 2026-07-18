@@ -1,7 +1,6 @@
 import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { processEvoWebhookUseCase } from "@/app/api/useCases/whatsapp/ProcessEvoWebhookUseCase"
 import { isValidEvoWebhookPayload } from "@/lib/whatsapp/webhook-signature"
 import {
   deriveWebhookHeaderSecret,
@@ -14,6 +13,9 @@ import {
   recordWhatsAppWebhookProcessingFailure,
   recordWhatsAppWebhookProcessingSuccess,
 } from "@/lib/whatsapp/whatsapp-webhook-failure-alert"
+import { sanitizeWhatsAppWebhookPayload } from "@/lib/whatsapp/sanitize-webhook-payload"
+import { processWhatsAppWebhookOutboxUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppWebhookOutboxUseCase"
+import { Prisma } from "@prisma/client"
 
 export const maxDuration = 60
 
@@ -66,11 +68,15 @@ export async function POST(
   const { eventType, providerMessageId } = describeEvent(rawEvent)
 
   try {
-    const output = await processEvoWebhookUseCase.execute({
-      teamId: config.teamId,
+    const eventId = crypto.randomUUID()
+    const persistedEventId = await whatsAppRepository.persistWebhookEvent({
       configId: config.id,
-      rawEvent,
+      teamId: config.teamId,
+      providerEventId: providerMessageId || `event:${eventType}:${eventId}`,
+      eventType,
+      payload: sanitizeWhatsAppWebhookPayload(rawEvent) as Prisma.InputJsonValue,
     })
+    const output = await processWhatsAppWebhookOutboxUseCase.process(persistedEventId)
 
     if (!output.isValid) {
       const retryable = output.result?.retryable !== false

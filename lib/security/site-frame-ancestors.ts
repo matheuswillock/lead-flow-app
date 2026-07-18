@@ -78,13 +78,15 @@ export function getWhatsAppSecurityHeaders(): Header[] {
 
 /**
  * Matcher do catch-all DENY: qualquer path com ≥1 segmento, exceto LiveFrame,
- * lead-form e rotas WhatsApp (que têm headers próprios).
+ * lead-form, backoffice-lead-form e rotas WhatsApp (que têm headers próprios).
  * A raiz `/` fica só no matcher LiveFrame (`.+` não casa path vazio).
  */
 export function buildLockedSiteHeaderSource(): string {
-  const excludedPrefixes = ["lead-form", ...LIVE_FRAME_HEADER_SOURCES.filter((s) => s !== "/")].map(
-    (source) => source.replace(/^\//, ""),
-  );
-  const prefixExclusion = excludedPrefixes.map((prefix) => `${prefix}(?:/|$)`).join("|");
-  return `/((?!${prefixExclusion}|[^/]+/whatsapp(?:/|$)).+)`;
+  const excludedPrefixes = [
+    "lead-form",
+    "backoffice-lead-form",
+    ...LIVE_FRAME_HEADER_SOURCES.filter((s) => s !== "/"),
+  ].map((source) => source.replace(/^\//, ""))
+  const prefixExclusion = excludedPrefixes.map((prefix) => `${prefix}(?:/|$)`).join("|")
+  return `/((?!${prefixExclusion}|[^/]+/whatsapp(?:/|$)).+)`
 }

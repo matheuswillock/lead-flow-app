@@ -55,6 +55,10 @@ describe("isPublicPageRoute", () => {
     expect(isPublicPageRoute("/lead-form/some-id")).toBe(true)
   })
 
+  it("allows backoffice public lead form path", () => {
+    expect(isPublicPageRoute("/backoffice-lead-form")).toBe(true)
+  })
+
   it("does not treat sign-in as a generic public page", () => {
     expect(isPublicPageRoute("/sign-in")).toBe(false)
   })

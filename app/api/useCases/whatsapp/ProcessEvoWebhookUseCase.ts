@@ -37,6 +37,7 @@ import {
   resolveContactNameUpdate,
   type ContactNameSource,
 } from "@/lib/whatsapp/contact-name"
+import { shouldWipeInboxOnPhoneChange } from "@/lib/whatsapp/should-wipe-inbox-on-phone-change"
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
@@ -545,6 +546,7 @@ class ProcessEvoWebhookUseCase {
 
     let status: WhatsAppConnectionStatus
     const extraFields: Prisma.TeamWhatsAppConfigUpdateInput = {}
+    let phoneChangedWipe = false
 
     if (state === "open") {
       status = "CONNECTED"
@@ -559,6 +561,7 @@ class ProcessEvoWebhookUseCase {
         extraFields.phoneNumber = phoneNumber
         const normalizedPhone = toStoredNormalizedPhone(phoneNumber)
         extraFields.normalizedPhone = normalizedPhone
+        extraFields.lastConnectedNormalizedPhone = normalizedPhone
 
         if (config && !config.primaryConfigId) {
           try {
@@ -576,6 +579,24 @@ class ProcessEvoWebhookUseCase {
             console.error("[ProcessEvoWebhookUseCase][handleConnectionUpdate] Phone policy rejected", error)
             return
           }
+
+          if (
+            shouldWipeInboxOnPhoneChange(config.lastConnectedNormalizedPhone, normalizedPhone)
+          ) {
+            phoneChangedWipe = true
+            console.info("[ProcessEvoWebhookUseCase][handleConnectionUpdate] Phone changed — wiping inbox", {
+              configId,
+              previous: config.lastConnectedNormalizedPhone,
+              next: normalizedPhone,
+            })
+            await this.repository.resetInboxForConfigChange(config.id, config.teamId)
+            const mirrors = await this.repository.findMirroredConfigs(configId)
+            await Promise.all(
+              mirrors.map((mirror) =>
+                this.repository.resetInboxForConfigChange(mirror.id, mirror.teamId)
+              )
+            )
+          }
         }
       }
     } else if (state === "close") {
@@ -583,6 +604,7 @@ class ProcessEvoWebhookUseCase {
       extraFields.lastDisconnectedAt = now
       extraFields.phoneNumber = null
       extraFields.normalizedPhone = null
+      // lastConnectedNormalizedPhone is intentionally preserved across disconnect
     } else {
       status = "QR_READY"
     }
@@ -606,6 +628,8 @@ class ProcessEvoWebhookUseCase {
                 qrCodeImageUrl: null,
                 phoneNumber: extraFields.phoneNumber ?? undefined,
                 normalizedPhone: extraFields.normalizedPhone ?? undefined,
+                lastConnectedNormalizedPhone:
+                  extraFields.lastConnectedNormalizedPhone ?? undefined,
               }
             : state === "close"
               ? {
@@ -621,7 +645,7 @@ class ProcessEvoWebhookUseCase {
       }
     }
 
-    if (state === "open" && config && config.historySyncStatus !== "COMPLETED") {
+    if (state === "open" && config && (phoneChangedWipe || config.historySyncStatus !== "COMPLETED")) {
       void syncWhatsAppHistoryUseCase.execute({ teamId: config.teamId }).catch((error) => {
         console.error("[ProcessEvoWebhookUseCase][handleConnectionUpdate] History sync failed", error)
       })

@@ -21,6 +21,7 @@ export interface IBackofficeBotActionUseCase {
       teamId?: string | null;
       params?: Record<string, unknown>;
       flowId?: string | null;
+      channelMessageId?: string | null;
     }
   ): Promise<Output>;
 }

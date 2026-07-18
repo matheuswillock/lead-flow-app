@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
+import { botPolicyService } from "@/app/api/services/backofficeBot/BotPolicyService";
 import {
   formatActionReply,
   formatDocumentPrompt,
@@ -142,7 +143,10 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
         return new Output(false, [], ["Canal não configurado"], { errorCode: "CHANNEL_NOT_CONFIGURED" });
       }
 
-      const messageId = body.channelMessageId ?? idempotencyKey ?? null;
+      const messageIdRaw = body.channelMessageId ?? idempotencyKey ?? null;
+      const messageId = messageIdRaw
+        ? botPolicyService.buildInboundIdempotencyKey(messageIdRaw)
+        : null;
       if (messageId) {
         const existing = await backofficeBotRepository.findMessageByChannelMessageId(messageId);
         if (existing) {
@@ -154,6 +158,31 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       }
 
       const userLink = await backofficeBotRepository.findActiveUserLinkByPhone(phone);
+
+      const sanitized = botPolicyService.sanitizeInboundMessage(body.payload.contentText ?? "");
+      if (!sanitized.ok) {
+        const rejectedMessage = await backofficeBotRepository.createMessage({
+          channelId: channel.id,
+          userLinkId: userLink?.id ?? null,
+          direction: "inbound",
+          channelMessageId: messageId,
+          errorCode: "INBOUND_REJECTED_INJECTION",
+          payload: body.payload,
+        });
+        await this.sendOutboundText({
+          channelId: channel.id,
+          channelDisplayName: channel.displayName,
+          phone,
+          userLinkId: userLink?.id ?? null,
+          text: botPolicyService.getInboundRejectedUserMessage(),
+        });
+        return new Output(true, [], [], {
+          messageId: rejectedMessage.id,
+          flow: "inbound_rejected_injection",
+          errorCode: "INBOUND_REJECTED_INJECTION",
+        });
+      }
+
       const message = await backofficeBotRepository.createMessage({
         channelId: channel.id,
         userLinkId: userLink?.id ?? null,
@@ -166,7 +195,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
         await backofficeBotRepository.touchUserLinkInteraction(userLink.id);
       }
 
-      const text = body.payload.contentText?.trim() ?? "";
+      const text = sanitized.text;
       const vincularCode = parseVincularCode(text);
       if (vincularCode) {
         const verifyOutput = await backofficeBotAuthUseCase.verifyCode(phone, vincularCode);
@@ -797,6 +826,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       teamId: input.teamId,
       params: input.params,
       flowId: input.nextFlowStep === "lead_submenu" ? "lead_context" : "menu_main",
+      channelMessageId: input.messageId,
     });
 
     let replyText = actionOutput.isValid

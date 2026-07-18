@@ -16,6 +16,7 @@ export const PUBLIC_PAGE_ROUTES = [
   "/prime",
   "/checkout-return",
   "/lead-form",
+  "/backoffice-lead-form",
   "/agendamento",
   "/addon-checkout",
   "/sentry-example-page",

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { Loader2, MessageSquare, Link2, ShieldCheck, Radio, Power, PowerOff } from "lucide-react"
+import { Loader2, MessageSquare, Link2, ShieldCheck, Radio, Power, PowerOff, ServerCog, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -230,6 +230,18 @@ export function BackofficeStudioBotOverviewContainer() {
             <Link href="/backoffice/studio-bot/verificacoes">
               <ShieldCheck data-icon="inline-start" />
               Auditoria de verificações
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/backoffice/studio-bot/ops">
+              <ServerCog data-icon="inline-start" />
+              Ops / Host
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/backoffice/studio-bot/ops?tab=logs">
+              <ScrollText data-icon="inline-start" />
+              Ver logs
             </Link>
           </Button>
         </CardContent>

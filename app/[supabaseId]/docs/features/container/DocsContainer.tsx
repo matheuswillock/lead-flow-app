@@ -52,9 +52,10 @@ export function DocsContainer() {
       availableChapters.find((chapter) => chapter.id === DEFAULT_CHAPTER_ID)?.id ??
       availableChapters[0].id
 
-    const syncFromHash = () => {
+    const syncFromLocation = () => {
+      const chapterId = new URLSearchParams(window.location.search).get("chapter")
       const hash = window.location.hash.replace("#", "")
-      const matchedChapter = availableChapters.find((chapter) => chapter.id === hash)
+      const matchedChapter = availableChapters.find((chapter) => chapter.id === chapterId || chapter.id === hash)
 
       setActiveChapterId(matchedChapter?.id ?? defaultChapterId)
 
@@ -69,10 +70,14 @@ export function DocsContainer() {
       })
     }
 
-    syncFromHash()
-    window.addEventListener("hashchange", syncFromHash)
+    syncFromLocation()
+    window.addEventListener("hashchange", syncFromLocation)
+    window.addEventListener("popstate", syncFromLocation)
 
-    return () => window.removeEventListener("hashchange", syncFromHash)
+    return () => {
+      window.removeEventListener("hashchange", syncFromLocation)
+      window.removeEventListener("popstate", syncFromLocation)
+    }
   }, [chapters])
 
   function handleSelectChapter(chapterId: string) {
@@ -90,6 +95,7 @@ export function DocsContainer() {
     setIsMobileNavOpen(false)
 
     const url = new URL(window.location.href)
+    url.searchParams.set("chapter", chapterId)
     url.hash = chapterId
     window.history.replaceState(null, "", url.toString())
 

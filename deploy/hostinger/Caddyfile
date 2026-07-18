@@ -4,6 +4,7 @@
 # Pré-requisitos DNS (registros A → IP da VPS):
 #   evo.corretorstudio.com
 #   n8n.corretorstudio.com
+#   ops.corretorstudio.com
 
 evo.corretorstudio.com {
 	reverse_proxy 127.0.0.1:8080
@@ -11,4 +12,8 @@ evo.corretorstudio.com {
 
 n8n.corretorstudio.com {
 	reverse_proxy 127.0.0.1:5678
+}
+
+ops.corretorstudio.com {
+	reverse_proxy 127.0.0.1:9090
 }

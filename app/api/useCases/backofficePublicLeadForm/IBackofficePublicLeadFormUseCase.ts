@@ -1,0 +1,23 @@
+import type { Output } from "@/lib/output"
+
+export interface CreatePublicBackofficeLeadFormInput {
+  name: string
+  email?: string | null
+  phone?: string | null
+  cpfCnpj?: string | null
+  notes?: string | null
+  qualificationLeadOrganization?: string | null
+  qualificationAvgUsers?: string | null
+  qualificationProfileFit?: string | null
+  utmSource?: string | null
+  utmMedium?: string | null
+  utmCampaign?: string | null
+  utmContent?: string | null
+  utmTerm?: string | null
+  landingUrl?: string | null
+  referrer?: string | null
+}
+
+export interface IBackofficePublicLeadFormUseCase {
+  create(input: CreatePublicBackofficeLeadFormInput): Promise<Output>
+}
