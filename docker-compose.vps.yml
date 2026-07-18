@@ -101,6 +101,36 @@ services:
       timeout: 5s
       retries: 10
 
+  studio-bot-ops:
+    container_name: studio_bot_ops
+    build:
+      context: ./deploy/hostinger/studio-bot-ops
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    environment:
+      OPS_AGENT_HOST: "0.0.0.0"
+      OPS_AGENT_PORT: "9090"
+      OPS_DEPLOY_DIR: /opt/lead-flow-bot
+      OPS_COMPOSE_FILE: /opt/lead-flow-bot/docker-compose.vps.yml
+      OPS_AGENT_TOKEN: ${OPS_AGENT_TOKEN}
+    volumes:
+      - /opt/lead-flow-bot:/opt/lead-flow-bot
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - studio-bot-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:9090/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
 volumes:
   evolution_instances:
   evolution_redis:

@@ -175,6 +175,7 @@ const FEATURES: Array<{
   { slug: "cdp", name: "CDP", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, inheritParentSettings: false, sortOrder: 180, productSlug: "cdp" },
 
   { slug: "studio-bot", name: "Bethânia", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 185, productSlug: "crm" },
+  { slug: "studio-bot-ops", name: "Ops / Host", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 186, parentSlug: "studio-bot", productSlug: "crm" },
 
   // ── Integração guarda-chuva ───────────────────────────────────────────────
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
@@ -393,6 +394,10 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "BACKOFFICE", accessLevel: "FULL" },
   ]),
   "studio-bot": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+  ]),
+  "studio-bot-ops": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
   ]),

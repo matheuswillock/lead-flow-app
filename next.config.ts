@@ -74,6 +74,14 @@ const nextConfig: NextConfig = {
         headers: getLeadFormEmbedHeaders(),
       },
       {
+        source: "/backoffice-lead-form",
+        headers: getLeadFormEmbedHeaders(),
+      },
+      {
+        source: "/backoffice-lead-form/:path*",
+        headers: getLeadFormEmbedHeaders(),
+      },
+      {
         source: "/:supabaseId/whatsapp/:path*",
         headers: getWhatsAppSecurityHeaders(),
       },

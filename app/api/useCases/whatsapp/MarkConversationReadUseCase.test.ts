@@ -77,6 +77,7 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
     instanceId: "inst-1",
     phoneNumber: null,
     normalizedPhone: null,
+    lastConnectedNormalizedPhone: null,
     primaryConfigId: null,
     displayName: null,
     status: "CONNECTED",

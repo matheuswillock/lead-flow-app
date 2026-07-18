@@ -2,6 +2,8 @@
 
 Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows desta pasta são exports versionados para importação na UI do N8N.
 
+> **Produção (VPS):** variáveis e reimport de workflows preferencialmente pelo painel **Bethânia → Ops / Host** (`deploy/hostinger/README.md` — seção Painel Ops). Evite editar `.env.n8n` na VPS manualmente após o agente estar ativo.
+
 ## Pré-requisitos
 
 1. Docker Desktop em execução.
@@ -210,3 +212,35 @@ Redeploy após alterar variáveis. Com `bun run ngrok:n8n` ativo, teste em `/bac
 | Router não responde | Workflow `bethania-router` ativo? Webhook path correto? |
 | Sem alerta no Slack | `BETHANIA_SLACK_WEBHOOK_URL` no env do container? `bethania-error-notifier` ativo? Falha foi em workflow **ativo** (error workflow não dispara em todos os modos manuais)? |
 | Outbox marca `sent` com push falho | Conferir `responseMode: lastNode` no `bethania-push-outbound` (não `onReceived`) |
+| QR não aparece / reconnect 400 FK | Ver [Runbook Evolution — instância `bethania`](#runbook-evolution--instância-bethania) |
+
+## Runbook Evolution — instância `bethania`
+
+Use quando o backoffice falhar ao gerar QR (`createInstance` 400 com `Webhook_instanceId_fkey`), retornar 404 `instance does not exist`, ou o QR não aparecer após várias tentativas.
+
+**Pré-checks de env (app / Evolution / N8N):**
+
+- `EVO_API_BASE_URL`, `EVO_API_KEY`
+- `EVO_BETHANIA_INSTANCE` (default `bethania`)
+- `n8nInboundUrl` do canal no backoffice alcançável pela Evolution → N8N → `POST /api/webhooks/backoffice/studio-bot/inbound`
+
+**Passos (operador no host Evolution — sem SQL remoto sem autorização explícita):**
+
+1. Conferir estado via API:
+   - `GET {EVO_API_BASE_URL}/instance/fetchInstances?instanceName=bethania`
+   - `GET {EVO_API_BASE_URL}/instance/connectionState/bethania`
+2. Se 404 ou estado inconsistente (webhook órfão / FK): apagar a instância **antes** de reconectar no backoffice:
+   - `DELETE {EVO_API_BASE_URL}/instance/delete/bethania` (path conforme a versão instalada)
+   - **Atenção:** `logout` sozinho **não** remove linhas de Instance/Webhook — use delete.
+3. Se o DB da Evolution estiver acessível: procurar `Webhook` com `instanceId` inexistente e `IntegrationSession` ligados a `bethania`; remover residual; só então reconectar.
+4. Validar que as migrations/schema da Evolution estão aplicadas (a FK `Webhook_instanceId_fkey` exige Instance existente antes do Webhook).
+5. No Corretor Studio (`/backoffice/studio-bot` → Canal): clicar **Conectar** **uma vez**; aguardar o QR; não spammar reconnect.
+6. Se reconnect retornar 200 sem QR: aguardar ~5s e usar **Trocar WhatsApp** / reconectar **uma** vez de novo.
+
+**Quando o QR não aparece (fluxo curto):**
+
+| Sintoma | Ação |
+|---------|------|
+| 404 instance does not exist | Delete `bethania` → reconnect uma vez |
+| 400 `Webhook_instanceId_fkey` / Foreign key | Mesmo: limpar órfãos / delete → reconnect uma vez |
+| 200 sem QR | Esperar 5s → Trocar WhatsApp / reconnect uma vez (não 10 cliques) |

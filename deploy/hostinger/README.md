@@ -28,6 +28,7 @@ No painel DNS da Hostinger:
 |------|------|-------|
 | A | `evo` | IP da VPS |
 | A | `n8n` | IP da VPS |
+| A | `ops` | IP da VPS |
 
 Aguarde propagação (5–30 min). Teste: `ping evo.corretorstudio.com`
 
@@ -71,6 +72,29 @@ scp -r docker-compose.vps.yml n8n deploy root@IP_DA_VPS:/opt/lead-flow-app/
 ```
 
 Depois execute o bootstrap como na opção A.
+
+## Painel Ops (agente VPS)
+
+Após o bootstrap, a operação diária (env N8N/Evolution, restart, import de workflows, sync de versão) deve ser feita pelo backoffice em **Bethânia → Ops / Host** (`/backoffice/studio-bot/ops`), não por SSH.
+
+### Bootstrap one-shot do agente
+
+1. DNS `ops.corretorstudio.com` → IP da VPS; Caddy com bloco `ops` (ver `Caddyfile`).
+2. No backoffice, **Gerar token do agente** e copiar o valor.
+3. Na VPS, em `/opt/lead-flow-bot/.env` (ou export no compose): `OPS_AGENT_TOKEN=<token>`.
+4. Copiar `deploy/hostinger/studio-bot-ops` para `/opt/lead-flow-bot/studio-bot-ops` (ou `bun run host:pack` + sync).
+5. `docker compose -f docker-compose.vps.yml up -d --build studio-bot-ops`
+6. Em Vercel Production: `BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN=<mesmo token>`
+7. No painel Ops: `agentBaseUrl=https://ops.corretorstudio.com` → Salvar → Health.
+
+### Sync de versão do host
+
+```bash
+bun run host:pack
+# Upload do .tar.gz no painel Ops → Sync host version
+```
+
+O agente materializa `.env.n8n` / `.env.evolution`, recria containers e pode reimportar workflows. O HMAC CS↔N8N passa a preferir o secret do canal no Postgres (rotacionável sem redeploy Vercel).
 
 ## Fase 5 — Evolution (instância Bethânia)
 

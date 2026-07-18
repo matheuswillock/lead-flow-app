@@ -9,19 +9,19 @@ const prisma = new PrismaClient()
 
 const BACKOFFICE_USERS = [
   {
-    email: "matheuswillock@corretorstudio.com",
+    email: "matheuswillock@corretorstudio.com.br",
     password: "Backoffice@2025",
     fullName: "Matheus Willock",
     fullAccess: true,
   },
   {
-    email: "brunomarcelino@corretorstudio.com",
+    email: "brunomarcelino@corretorstudio.com.br",
     password: "Backoffice@2025",
     fullName: "Bruno Marcelino",
     fullAccess: true,
   },
   {
-    email: "nathielewillock@corretorstudio.com",
+    email: "nathielewillock@corretorstudio.com.br",
     password: "Backoffice@2025",
     fullName: "Nathiele Willock",
     fullAccess: true,

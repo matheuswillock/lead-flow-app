@@ -140,15 +140,36 @@ function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
 }
 
 function getOriginLabel(origin: BackofficeLeadItem["origin"]): string {
-  if (origin === "webhook_meta") return "Webhook Meta"
-  return "Manual"
+  switch (origin) {
+    case "webhook_meta":
+      return "Webhook Meta"
+    case "landing_page":
+      return "Landing page"
+    case "public_form":
+      return "Formulário público"
+    case "manual":
+      return "Manual"
+    default: {
+      const _exhaustive: never = origin
+      return _exhaustive
+    }
+  }
 }
 
 function getOriginBadgeClass(origin: BackofficeLeadItem["origin"]): string {
-  if (origin === "webhook_meta") {
-    return "border-primary/30 bg-primary/10 text-primary"
+  switch (origin) {
+    case "webhook_meta":
+      return "border-primary/30 bg-primary/10 text-primary"
+    case "landing_page":
+    case "public_form":
+      return "border-primary/20 bg-primary/5 text-primary"
+    case "manual":
+      return "border-border bg-muted text-muted-foreground"
+    default: {
+      const _exhaustive: never = origin
+      return _exhaustive
+    }
   }
-  return "border-border bg-muted text-muted-foreground"
 }
 
 function SortableHeader({
@@ -479,7 +500,9 @@ export function BackofficeCrmTable() {
         accessorKey: "phone",
         meta: { label: "Telefone" },
         header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
-        cell: ({ row }) => maskPhone(row.original.phone ?? "") || "-",
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap">{maskPhone(row.original.phone ?? "") || "-"}</span>
+        ),
       },
       {
         accessorKey: "cpfCnpj",

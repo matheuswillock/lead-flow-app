@@ -7,6 +7,7 @@ import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { AlertCircle } from "lucide-react";
 import { ConnectingDots } from "@/components/ui/connecting-dots";
 import { isBackofficeRole } from "@/lib/roles";
+import { isValidBackofficeEmail } from "@/lib/backoffice/email-domain";
 
 type Status = "connecting" | "error";
 
@@ -166,10 +167,13 @@ function AuthCallbackContent() {
       const refreshToken = session.provider_refresh_token;
       const supabaseId = session.user.id;
       const next = searchParams.get("next") || connectContext?.next || "/crm";
+      const isBackofficeSignInFlow =
+        next === "/backoffice" || connectContext?.source === "backoffice-sign-in";
       const isBackofficeAccountConnectFlow =
         next === "/backoffice/account" || connectContext?.source === "backoffice-account";
       const isAccountReconnectFlow =
         !isBackofficeAccountConnectFlow &&
+        !isBackofficeSignInFlow &&
         (next === "/account" || connectContext?.source === "account");
 
       if (
@@ -201,7 +205,51 @@ function AuthCallbackContent() {
         email: googleEmail,
       };
 
-      const isLoginFlow = !isAccountReconnectFlow && !isBackofficeAccountConnectFlow;
+      const isLoginFlow =
+        !isAccountReconnectFlow &&
+        !isBackofficeAccountConnectFlow &&
+        !isBackofficeSignInFlow;
+
+      if (isBackofficeSignInFlow) {
+        const sessionEmail = (googleEmail || session.user.email || "").toLowerCase();
+
+        if (!isValidBackofficeEmail(sessionEmail)) {
+          sessionStorage.removeItem("googleConnectContext");
+          await supabase.auth.signOut();
+          setError("Use uma conta Google @corretorstudio.com.br do time interno.");
+          setTimeout(() => router.replace("/backoffice/sign-in"), 2500);
+          return;
+        }
+
+        const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
+          cache: "no-store",
+        });
+
+        if (!profileResponse.ok) {
+          sessionStorage.removeItem("googleConnectContext");
+          await supabase.auth.signOut();
+          setError("Acesso negado. Esta área é restrita ao time interno.");
+          setTimeout(() => router.replace("/backoffice/sign-in"), 2500);
+          return;
+        }
+
+        const profilePayload = (await profileResponse.json()) as {
+          result?: { role?: string };
+        };
+        const profileRole = profilePayload.result?.role;
+
+        if (!isBackofficeRole(profileRole)) {
+          sessionStorage.removeItem("googleConnectContext");
+          await supabase.auth.signOut();
+          setError("Acesso negado. Esta área é restrita ao time interno.");
+          setTimeout(() => router.replace("/backoffice/sign-in"), 2500);
+          return;
+        }
+
+        sessionStorage.removeItem("googleConnectContext");
+        router.replace("/backoffice");
+        return;
+      }
 
       if (isLoginFlow) {
         if (providerToken) {

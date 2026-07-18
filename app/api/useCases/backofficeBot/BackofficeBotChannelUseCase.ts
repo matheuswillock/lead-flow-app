@@ -10,6 +10,7 @@ import {
   backofficeEvoApiService,
   toBackofficeQrCodeImageUrl,
 } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
+import { mapEvoChannelError } from "@/app/api/services/backofficeBot/evo/mapEvoChannelError";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { IBackofficeBotChannelUseCase } from "./IBackofficeBotChannelUseCase";
 
@@ -374,7 +375,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
       });
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][reconnectChannel]", error);
-      return new Output(false, [], ["Erro ao reconectar canal"], null);
+      return new Output(false, [], [mapEvoChannelError(error, "reconnect")], null);
     }
   }
 
@@ -400,7 +401,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
       });
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][refreshChannelConnection]", error);
-      return new Output(false, [], ["Erro ao atualizar status da conexão"], null);
+      return new Output(false, [], [mapEvoChannelError(error, "refresh")], null);
     }
   }
 
@@ -428,7 +429,7 @@ export class BackofficeBotChannelUseCase implements IBackofficeBotChannelUseCase
       );
     } catch (error) {
       console.error("[BackofficeBotChannelUseCase][disconnectChannel]", error);
-      return new Output(false, [], ["Erro ao desconectar canal WhatsApp"], null);
+      return new Output(false, [], [mapEvoChannelError(error, "disconnect")], null);
     }
   }
 

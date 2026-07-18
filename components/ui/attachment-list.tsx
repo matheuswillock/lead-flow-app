@@ -2,6 +2,16 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Attachment as AttachmentCard,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "@/components/ui/attachment";
 import { Upload, X, FileIcon, Image as ImageIcon, File as FileTextIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -9,7 +19,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Input } from "./input";
 
-export interface Attachment {
+export interface LeadAttachmentItem {
   id: string;
   fileName: string;
   fileUrl: string;
@@ -22,6 +32,9 @@ export interface Attachment {
     email: string;
   };
 }
+
+/** @deprecated Use LeadAttachmentItem — mantido para compatibilidade. */
+export type Attachment = LeadAttachmentItem;
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB — espelha o backend
 const ALLOWED_TYPES = [
@@ -50,7 +63,7 @@ interface AttachmentListProps {
    * de montagem. Útil quando o pai já carregou os dados via endpoint agregado.
    * O componente ainda fará re-fetch após uploads/deletes.
    */
-  initialAttachments?: Attachment[];
+  initialAttachments?: LeadAttachmentItem[];
   /** Supabase user ID — enviado como x-supabase-user-id nas requisições. */
   supabaseId?: string;
   /** Team ID ativo — enviado como x-team-id nas requisições. */
@@ -58,14 +71,18 @@ interface AttachmentListProps {
 }
 
 const ATTACHMENTS_CACHE_TTL_MS = 60 * 1000;
-const attachmentsCacheByLeadId = new Map<string, { attachments: Attachment[]; timestamp: number }>();
-const attachmentsInFlightByLeadId = new Map<string, Promise<Attachment[]>>();
+const attachmentsCacheByLeadId = new Map<string, { attachments: LeadAttachmentItem[]; timestamp: number }>();
+const attachmentsInFlightByLeadId = new Map<string, Promise<LeadAttachmentItem[]>>();
 
-function writeAttachmentsCache(leadId: string, attachments: Attachment[]) {
+function writeAttachmentsCache(leadId: string, attachments: LeadAttachmentItem[]) {
   attachmentsCacheByLeadId.set(leadId, { attachments, timestamp: Date.now() });
 }
 
-async function loadAttachmentsWithDedupe(leadId: string, force = false, headers?: Record<string, string>): Promise<Attachment[]> {
+async function loadAttachmentsWithDedupe(
+  leadId: string,
+  force = false,
+  headers?: Record<string, string>
+): Promise<LeadAttachmentItem[]> {
   if (!force) {
     const cached = attachmentsCacheByLeadId.get(leadId);
     if (cached && Date.now() - cached.timestamp <= ATTACHMENTS_CACHE_TTL_MS) {
@@ -78,14 +95,15 @@ async function loadAttachmentsWithDedupe(leadId: string, force = false, headers?
     return await existingRequest;
   }
 
-  const requestPromise = (async (): Promise<Attachment[]> => {
+  const requestPromise = (async (): Promise<LeadAttachmentItem[]> => {
     const response = await fetch(`/api/v1/leads/${leadId}/attachments`, {
       headers: headers ?? {},
     });
     const result = await response.json();
-    const nextAttachments = result.isValid && Array.isArray(result.result)
-      ? (result.result as Attachment[])
-      : [];
+    const nextAttachments =
+      result.isValid && Array.isArray(result.result)
+        ? (result.result as LeadAttachmentItem[])
+        : [];
     writeAttachmentsCache(leadId, nextAttachments);
     return nextAttachments;
   })();
@@ -94,14 +112,23 @@ async function loadAttachmentsWithDedupe(leadId: string, force = false, headers?
     leadId,
     requestPromise.finally(() => {
       attachmentsInFlightByLeadId.delete(leadId);
-    }),
+    })
   );
 
   return await requestPromise;
 }
 
-export function AttachmentList({ leadId, leadName, className, onUploadStateChange, onLoadingChange, initialAttachments, supabaseId, teamId }: AttachmentListProps) {
-  const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments ?? []);
+export function AttachmentList({
+  leadId,
+  leadName,
+  className,
+  onUploadStateChange,
+  onLoadingChange,
+  initialAttachments,
+  supabaseId,
+  teamId,
+}: AttachmentListProps) {
+  const [attachments, setAttachments] = useState<LeadAttachmentItem[]>(initialAttachments ?? []);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -122,21 +149,21 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     return Object.keys(h).length > 0 ? h : undefined;
   }, [supabaseId, teamId]);
 
-  const fetchAttachments = useCallback(async (force = false) => {
-    setIsLoading(true);
-    try {
-      const nextAttachments = await loadAttachmentsWithDedupe(leadId, force, authHeaders);
-      setAttachments(nextAttachments);
-    } catch (error) {
-      console.error("Erro ao buscar attachments:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [leadId, authHeaders]);
+  const fetchAttachments = useCallback(
+    async (force = false) => {
+      setIsLoading(true);
+      try {
+        const nextAttachments = await loadAttachmentsWithDedupe(leadId, force, authHeaders);
+        setAttachments(nextAttachments);
+      } catch (error) {
+        console.error("Erro ao buscar attachments:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [leadId, authHeaders]
+  );
 
-  // Buscar attachments ao montar o componente.
-  // Se initialAttachments foi fornecido, pula o fetch inicial e atualiza
-  // o cache para que uploads/deletes subsequentes partam do estado correto.
   useEffect(() => {
     if (initialAttachments !== undefined) {
       setAttachments(initialAttachments);
@@ -219,7 +246,6 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
         }
       }
 
-      // Atualizar lista após uploads
       attachmentsCacheByLeadId.delete(leadId);
       await fetchAttachments(true);
     } catch (error) {
@@ -244,14 +270,14 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
 
       const result = await response.json();
 
-        if (result.isValid) {
-          const deletedAttachment = attachments.find((att) => att.id === attachmentId);
-          const nextAttachments = attachments.filter((att) => att.id !== attachmentId);
-          setAttachments(nextAttachments);
-          writeAttachmentsCache(leadId, nextAttachments);
-          
-          const leadInfo = leadName ? ` do lead ${leadName}` : "";
-          toast.success(`Arquivo deletado com sucesso${leadInfo}`, {
+      if (result.isValid) {
+        const deletedAttachment = attachments.find((att) => att.id === attachmentId);
+        const nextAttachments = attachments.filter((att) => att.id !== attachmentId);
+        setAttachments(nextAttachments);
+        writeAttachmentsCache(leadId, nextAttachments);
+
+        const leadInfo = leadName ? ` do lead ${leadName}` : "";
+        toast.success(`Arquivo deletado com sucesso${leadInfo}`, {
           description: deletedAttachment?.fileName || "Arquivo removido",
         });
       } else {
@@ -273,17 +299,17 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
 
   const getFileIcon = (fileType: string) => {
     if (fileType.startsWith("image/")) {
-      return <ImageIcon className="h-4 w-4" />;
+      return <ImageIcon />;
     }
     if (fileType === "application/pdf") {
-      return <FileTextIcon className="h-4 w-4 text-red-500" />;
+      return <FileTextIcon className="text-destructive" />;
     }
-    return <FileIcon className="h-4 w-4" />;
+    return <FileIcon />;
   };
 
   return (
-    <div className={cn("space-y-4", className)}>
-      <div className="flex items-center justify-between">
+    <div className={cn("flex flex-col gap-4", className)}>
+      <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">Arquivos Anexados</h3>
         <Button
           type="button"
@@ -294,12 +320,12 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
         >
           {isUploading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="animate-spin" data-icon="inline-start" />
               Enviando...
             </>
           ) : (
             <>
-              <Upload className="mr-2 h-4 w-4" />
+              <Upload data-icon="inline-start" />
               Upload
             </>
           )}
@@ -316,55 +342,64 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
 
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       ) : attachments.length === 0 && !isUploading ? (
-        <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-md">
+        <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
           Nenhum arquivo anexado
         </div>
       ) : (
-        <div className="space-y-2">
-          {isUploading && (
-            <div className="flex items-center gap-3 p-3 border border-dashed rounded-md animate-pulse">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
-              <span className="text-sm text-muted-foreground">Enviando arquivo...</span>
-            </div>
-          )}
-          {attachments.map((attachment) => (
-            <div
-              key={attachment.id}
-              className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <div className="mt-1">{getFileIcon(attachment.fileType)}</div>
-                <div className="flex-1 min-w-0">
-                  <a
-                    href={attachment.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium hover:underline truncate block"
-                  >
-                    {attachment.fileName}
-                  </a>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {formatFileSize(attachment.fileSize)} • {attachment.uploader.fullName} •{" "}
-                    {format(new Date(attachment.uploadedAt), "dd/MM/yyyy 'às' HH:mm", {
+        <div className="flex flex-col gap-2">
+          {isUploading ? (
+            <AttachmentCard state="uploading">
+              <AttachmentMedia>
+                <Loader2 className="animate-spin" />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>Enviando arquivo...</AttachmentTitle>
+                <AttachmentDescription>Aguarde o upload terminar</AttachmentDescription>
+              </AttachmentContent>
+            </AttachmentCard>
+          ) : null}
+          {attachments.map((item) => {
+            const isImage = item.fileType.startsWith("image/");
+            return (
+              <AttachmentCard key={item.id} state="done">
+                <AttachmentMedia variant={isImage ? "image" : "icon"}>
+                  {isImage ? (
+                    <img src={item.fileUrl} alt={item.fileName} />
+                  ) : (
+                    getFileIcon(item.fileType)
+                  )}
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{item.fileName}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {formatFileSize(item.fileSize)} · {item.uploader.fullName} ·{" "}
+                    {format(new Date(item.uploadedAt), "dd/MM/yyyy 'às' HH:mm", {
                       locale: ptBR,
                     })}
-                  </div>
-                </div>
-              </div>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                onClick={() => handleDeleteAttachment(attachment.id)}
-                className="shrink-0 ml-2"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction
+                    aria-label={`Remover ${item.fileName}`}
+                    onClick={() => void handleDeleteAttachment(item.id)}
+                  >
+                    <X />
+                  </AttachmentAction>
+                </AttachmentActions>
+                <AttachmentTrigger asChild>
+                  <a
+                    href={item.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Abrir ${item.fileName}`}
+                  />
+                </AttachmentTrigger>
+              </AttachmentCard>
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,35 +1,51 @@
 import type { UserFunction, UserRole } from "@prisma/client";
-import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
+import {
+  isAllowedBotAction,
+  READ_ACTIONS,
+  resolvePolicyAction,
+  WRITE_ACTIONS,
+  type BotPolicyAction,
+} from "./botPolicy/allowlist";
+import {
+  buildActionIdempotencyKey,
+  buildInboundIdempotencyKey,
+} from "./botPolicy/idempotency";
 import {
   hasLeadAccess,
   hasLeadActivityAccess,
-  isManagerOrMaster,
-} from "@/app/api/v1/utils/teamAccess";
+  isManagerOrMasterAccess,
+  type BotPolicyAccessLike,
+} from "./botPolicy/role-access";
+import {
+  INBOUND_REJECTED_USER_MESSAGE,
+  sanitizeInboundMessage,
+  type SanitizeInboundResult,
+} from "./botPolicy/sanitize-inbound";
+import {
+  assertTeamScope,
+  type TeamScopeInput,
+  type TeamScopeResult,
+} from "./botPolicy/team-scope";
 
-export type BotPolicyAction =
-  | "view_lead_list"
-  | "view_lead_detail"
-  | "add_note"
-  | "upload_attachment"
-  | "schedule_meeting"
-  | "cancel_meeting"
-  | "create_task"
-  | "view_team_digest"
-  | "transfer_lead";
+export type { BotPolicyAction };
 
 export type BotPolicyContext = {
-  access: TeamAccess;
+  access: BotPolicyAccessLike;
   lead?: {
     assignedToId?: string | null;
     closerId?: string | null;
   };
 };
 
+/**
+ * Bot Policy Service / Guard Rails — single lib for what Bethânia may read/write,
+ * team isolation, inbound sanitization, and idempotency helpers.
+ */
 export class BotPolicyService {
   canViewLeadList(ctx: BotPolicyContext): boolean {
     const { access } = ctx;
     if (access.isMaster) return true;
-    if (isManagerOrMaster(access)) return true;
+    if (isManagerOrMasterAccess(access)) return true;
     return hasLeadAccess(access.teamMember);
   }
 
@@ -39,7 +55,7 @@ export class BotPolicyService {
 
   canAddNote(ctx: BotPolicyContext): boolean {
     const { access } = ctx;
-    if (access.isMaster || isManagerOrMaster(access)) return true;
+    if (access.isMaster || isManagerOrMasterAccess(access)) return true;
     return hasLeadActivityAccess(access.teamMember);
   }
 
@@ -49,7 +65,7 @@ export class BotPolicyService {
 
   canScheduleMeeting(ctx: BotPolicyContext): boolean {
     const { access, lead } = ctx;
-    if (access.isMaster || isManagerOrMaster(access)) return true;
+    if (access.isMaster || isManagerOrMasterAccess(access)) return true;
     if (!lead) return false;
     return lead.assignedToId === access.profileId || lead.closerId === access.profileId;
   }
@@ -63,7 +79,7 @@ export class BotPolicyService {
   }
 
   canViewTeamDigest(ctx: BotPolicyContext): boolean {
-    return ctx.access.isMaster || isManagerOrMaster(ctx.access);
+    return ctx.access.isMaster || isManagerOrMasterAccess(ctx.access);
   }
 
   canTransferLead(ctx: BotPolicyContext): boolean {
@@ -98,6 +114,47 @@ export class BotPolicyService {
     }
   }
 
+  isAllowedAction(action: string): boolean {
+    return isAllowedBotAction(action);
+  }
+
+  resolvePolicyAction(action: string): BotPolicyAction | null {
+    return resolvePolicyAction(action);
+  }
+
+  isReadAction(action: string): boolean {
+    return READ_ACTIONS.has(action);
+  }
+
+  isWriteAction(action: string): boolean {
+    return WRITE_ACTIONS.has(action);
+  }
+
+  assertTeamScope(input: TeamScopeInput): TeamScopeResult {
+    return assertTeamScope(input);
+  }
+
+  sanitizeInboundMessage(text: string): SanitizeInboundResult {
+    return sanitizeInboundMessage(text);
+  }
+
+  getInboundRejectedUserMessage(): string {
+    return INBOUND_REJECTED_USER_MESSAGE;
+  }
+
+  buildInboundIdempotencyKey(channelMessageId: string): string {
+    return buildInboundIdempotencyKey(channelMessageId);
+  }
+
+  buildActionIdempotencyKey(input: {
+    userLinkId: string;
+    action: string;
+    teamId: string;
+    channelMessageId?: string | null;
+  }): string | null {
+    return buildActionIdempotencyKey(input);
+  }
+
   getRoleSummary(teamMember: { role: UserRole; functions: UserFunction[] }) {
     return {
       role: teamMember.role,
@@ -109,3 +166,5 @@ export class BotPolicyService {
 }
 
 export const botPolicyService = new BotPolicyService();
+
+export type { TeamScopeInput, TeamScopeResult, SanitizeInboundResult };

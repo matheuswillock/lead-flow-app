@@ -36,10 +36,11 @@ const statusLabels: Record<BackofficeLeadStatus, string> = {
   finalized: "Finalizado",
 }
 
-const originLabels: Record<BackofficeLeadOrigin, string> = {
+const originLabels: Record<BackofficeLeadOrigin | "public_form", string> = {
   manual: "Manual",
   webhook_meta: "Webhook Meta",
   landing_page: "Landing page",
+  public_form: "Formulário público",
 }
 
 function escapeSlackMrkdwn(value: string) {

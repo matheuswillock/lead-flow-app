@@ -9,13 +9,10 @@
  */
 export function maskPhone(value: string): string {
   if (!value) return '';
-  
-  // Remove tudo que não é número
-  const numbers = value.replace(/\D/g, '');
-  
-  // Mantém no máximo 11 dígitos a partir do DDD (remove DDI 55 quando presente)
-  const limited = numbers.length <= 11 ? numbers : numbers.slice(-11);
-  
+
+  const limited = normalizeLeadPhoneDigits(value);
+  if (!limited) return '';
+
   // Aplica a máscara
   if (limited.length <= 10) {
     // Formato: (11) 9999-9999
@@ -180,12 +177,19 @@ export function sanitizeDocumentDigits(value: string): string {
 
 /**
  * Normaliza telefone de lead para armazenamento/UI: somente DDD + número (máx. 11).
- * Remove DDI (ex.: 55) quando o valor vier como E.164 / webhook WhatsApp.
+ * Remove DDI 55 explicitamente em E.164 BR de 12 (fixo) ou 13 (móvel) dígitos.
  * Ex.: "55 11 99999-9999" | "5511999999999" → "11999999999"
+ * Ex.: "+55 11 3333-4444" → "1133334444" (não usa slice(-11), que geraria "51133334444")
  */
 export function normalizeLeadPhoneDigits(value: string): string {
   if (!value) return "";
-  const digits = value.replace(/\D/g, "");
+  let digits = value.replace(/\D/g, "");
+  if (
+    (digits.length === 12 || digits.length === 13) &&
+    digits.startsWith("55")
+  ) {
+    digits = digits.slice(2);
+  }
   if (digits.length <= 11) return digits;
   return digits.slice(-11);
 }

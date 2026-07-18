@@ -18,10 +18,9 @@ export function getConversationDisplayName(input: {
   const kind = getChatKind(input.externalChatId)
   if (input.contactName?.trim()) return input.contactName.trim()
   if (kind === 'group') return 'Grupo'
-  if (kind === 'lid') return 'Contato'
   const formatted = formatDisplayPhone(input.contactPhone)
   if (formatted && !formatted.includes('@')) return formatted
-  return 'Contato'
+  return 'Número não disponível'
 }
 
 export function getConversationSubtitle(input: {
@@ -30,7 +29,7 @@ export function getConversationSubtitle(input: {
 }): string | null {
   const kind = getChatKind(input.externalChatId)
   if (kind === 'group') return 'Grupo'
-  if (kind === 'lid') return 'Contato vinculado'
+  if (kind === 'lid') return null
   if (kind === 'individual') {
     const formatted = formatDisplayPhone(input.contactPhone)
     return formatted || null
