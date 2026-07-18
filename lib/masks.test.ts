@@ -11,6 +11,7 @@ describe("normalizeLeadPhoneDigits", () => {
     expect(normalizeLeadPhoneDigits("55 11 99999-9999")).toBe("11999999999")
     expect(normalizeLeadPhoneDigits("5511999999999")).toBe("11999999999")
     expect(normalizeLeadPhoneDigits("+55 11 99999-9999")).toBe("11999999999")
+    expect(normalizeLeadPhoneDigits("5521973960888")).toBe("21973960888")
   })
 
   it("retorna vazio para valor vazio", () => {
@@ -22,5 +23,6 @@ describe("maskPhone", () => {
   it("mascara removendo DDI quando presente", () => {
     expect(maskPhone("5511999999999")).toBe("(11) 99999-9999")
     expect(maskPhone("55 11 99999-9999")).toBe("(11) 99999-9999")
+    expect(maskPhone("5521973960888")).toBe("(21) 97396-0888")
   })
 })
