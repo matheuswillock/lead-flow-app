@@ -21,7 +21,7 @@ import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import { isCdpSegmentSlug } from "@/lib/cdp/segment-config"
 import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
 import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
-import { formatIntimezone, resolveTimezone } from "@/lib/dates"
+import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
 import {
   checkDispatchWindow,
   resolveCampaignStatusAfterDispatch,
@@ -34,6 +34,13 @@ import {
   formatCampaignFromHeader,
   resolveCampaignFrom,
 } from "@/lib/email/resolve-campaign-from"
+import { wouldExceedDailyEmailCap } from "@/lib/email/campaign-daily-dispatch-guard"
+import {
+  buildSubCampaignScheduledAts,
+  chunkContactIdsForSubCampaigns,
+  requiresSubCampaignSplit,
+} from "@/lib/email/campaign-sub-campaigns"
+import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
@@ -57,6 +64,7 @@ export interface CreateCampaignInput {
   contactListId?: string
   cdpSegmentSlug?: string
   scheduledAt?: string | null
+  scheduleIntervalDays?: number | null
 }
 
 export type ManualDispatchJob = {
@@ -138,6 +146,7 @@ export class EmailCampaignUseCase {
           : []
       const where = {
         teamId: ctx.teamId,
+        parentCampaignId: null,
         ...(statuses.length === 1 && { status: statuses[0] as EmailCampaignStatus }),
         ...(statuses.length > 1 && { status: { in: statuses as EmailCampaignStatus[] } }),
         ...(options.name && { name: { contains: options.name, mode: "insensitive" as const } }),
@@ -171,6 +180,7 @@ export class EmailCampaignUseCase {
             contactListId: true,
             cdpSegmentSlug: true,
             errorMessage: true,
+            _count: { select: { subCampaigns: true } },
           },
           orderBy: { createdAt: "desc" },
           skip: (options.page - 1) * options.pageSize,
@@ -200,10 +210,38 @@ export class EmailCampaignUseCase {
         }),
       ])
 
+      const parentIdsWithSubs = campaigns
+        .filter((campaign) => campaign._count.subCampaigns > 0)
+        .map((campaign) => campaign.id)
+
+      const childAggregates =
+        parentIdsWithSubs.length > 0
+          ? await prisma.emailCampaign.groupBy({
+              by: ["parentCampaignId"],
+              where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
+              _sum: {
+                totalSent: true,
+                totalDelivered: true,
+                totalOpened: true,
+                totalClicked: true,
+                totalBounced: true,
+                dispatchCount: true,
+              },
+            })
+          : []
+
+      const aggregatesByParent = new Map(
+        childAggregates.map((row) => [row.parentCampaignId as string, row._sum])
+      )
+
       const dynamicRecipientCounts = new Map(
         await Promise.all(
           campaigns
-            .filter((campaign) => ["draft", "scheduled", "sending"].includes(campaign.status))
+            .filter(
+              (campaign) =>
+                campaign._count.subCampaigns === 0 &&
+                ["draft", "scheduled", "sending"].includes(campaign.status)
+            )
             .map(async (campaign) => {
               const count = await this.countActiveRecipients(ctx.teamId, {
                 contactListId: campaign.contactListId,
@@ -219,26 +257,32 @@ export class EmailCampaignUseCase {
       const contactListsById = new Map(contactLists.map((contactList) => [contactList.id, contactList]))
 
       return new Output(true, [], [], {
-        campaigns: campaigns.map((campaign) => ({
-          id: campaign.id,
-          name: campaign.name,
-          status: campaign.status,
-          scheduledAt: campaign.scheduledAt,
-          sentAt: campaign.sentAt,
-          totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
-          totalSent: campaign.totalSent,
-          totalDelivered: campaign.totalDelivered,
-          totalOpened: campaign.totalOpened,
-          totalClicked: campaign.totalClicked,
-          totalBounced: campaign.totalBounced,
-          dispatchCount: campaign.dispatchCount,
-          createdAt: campaign.createdAt,
-          creator: creatorsById.get(campaign.createdBy) ?? null,
-          template: templatesById.get(campaign.templateId) ?? null,
-          contactList: campaign.contactListId ? contactListsById.get(campaign.contactListId) ?? null : null,
-          cdpSegmentSlug: campaign.cdpSegmentSlug,
-          errorMessage: campaign.errorMessage,
-        })),
+        campaigns: campaigns.map((campaign) => {
+          const childSum = aggregatesByParent.get(campaign.id)
+          const subCampaignCount = campaign._count.subCampaigns
+          return {
+            id: campaign.id,
+            name: campaign.name,
+            status: campaign.status,
+            scheduledAt: campaign.scheduledAt,
+            sentAt: campaign.sentAt,
+            totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
+            totalSent: childSum?.totalSent ?? campaign.totalSent,
+            totalDelivered: childSum?.totalDelivered ?? campaign.totalDelivered,
+            totalOpened: childSum?.totalOpened ?? campaign.totalOpened,
+            totalClicked: childSum?.totalClicked ?? campaign.totalClicked,
+            totalBounced: childSum?.totalBounced ?? campaign.totalBounced,
+            dispatchCount: childSum?.dispatchCount ?? campaign.dispatchCount,
+            createdAt: campaign.createdAt,
+            creator: creatorsById.get(campaign.createdBy) ?? null,
+            template: templatesById.get(campaign.templateId) ?? null,
+            contactList: campaign.contactListId ? contactListsById.get(campaign.contactListId) ?? null : null,
+            cdpSegmentSlug: campaign.cdpSegmentSlug,
+            errorMessage: campaign.errorMessage,
+            subCampaignCount,
+            isParentCampaign: subCampaignCount > 0,
+          }
+        }),
         total,
         page: options.page,
         pageSize: options.pageSize,
@@ -257,6 +301,24 @@ export class EmailCampaignUseCase {
         include: {
           template: { select: { id: true, name: true, subject: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
+          subCampaigns: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              scheduledAt: true,
+              sentAt: true,
+              totalRecipients: true,
+              totalSent: true,
+              totalDelivered: true,
+              totalOpened: true,
+              totalClicked: true,
+              totalBounced: true,
+              subCampaignIndex: true,
+              errorMessage: true,
+            },
+            orderBy: { subCampaignIndex: "asc" },
+          },
         },
       })
 
@@ -264,16 +326,43 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada"], null)
       }
 
-      const activeRecipientCount = await this.countActiveRecipients(ctx.teamId, {
-        contactListId: campaign.contactListId,
-        cdpSegmentSlug: campaign.cdpSegmentSlug,
-      })
+      const isParent = campaign.subCampaigns.length > 0
+      const hasAudienceSnapshot = campaign.audienceContactIds.length > 0
+      const activeRecipientCount =
+        isParent || hasAudienceSnapshot
+          ? campaign.totalRecipients
+          : await this.countActiveRecipients(ctx.teamId, {
+              contactListId: campaign.contactListId,
+              cdpSegmentSlug: campaign.cdpSegmentSlug,
+            })
+
+      const childTotals = isParent
+        ? campaign.subCampaigns.reduce(
+            (acc, child) => ({
+              totalSent: acc.totalSent + child.totalSent,
+              totalDelivered: acc.totalDelivered + child.totalDelivered,
+              totalOpened: acc.totalOpened + child.totalOpened,
+              totalClicked: acc.totalClicked + child.totalClicked,
+              totalBounced: acc.totalBounced + child.totalBounced,
+            }),
+            {
+              totalSent: 0,
+              totalDelivered: 0,
+              totalOpened: 0,
+              totalClicked: 0,
+              totalBounced: 0,
+            }
+          )
+        : null
 
       return new Output(true, [], [], {
         ...campaign,
         totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
           ? activeRecipientCount
           : campaign.totalRecipients,
+        ...(childTotals ?? {}),
+        subCampaignCount: campaign.subCampaigns.length,
+        isParentCampaign: isParent,
       })
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)
@@ -332,27 +421,135 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Data de agendamento deve ser no futuro"], null)
       }
 
-      const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
-        contactListId: data.contactListId,
-        cdpSegmentSlug: data.cdpSegmentSlug,
+      const trimmedName = data.name.trim()
+
+      if (data.cdpSegmentSlug || !data.contactListId) {
+        const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
+          contactListId: data.contactListId,
+          cdpSegmentSlug: data.cdpSegmentSlug,
+        })
+        const campaign = await prisma.emailCampaign.create({
+          data: {
+            id: randomUUID(),
+            teamId: ctx.teamId,
+            createdBy: ctx.profileId,
+            name: trimmedName,
+            templateId: data.templateId,
+            contactListId: data.contactListId ?? null,
+            cdpSegmentSlug: data.cdpSegmentSlug ?? null,
+            status: scheduledAt ? "scheduled" : "draft",
+            scheduledAt,
+            totalRecipients,
+          },
+        })
+        return new Output(true, ["Campanha criada com sucesso"], [], campaign)
+      }
+
+      const recipients = await this.recipientService.listActiveRecipients(ctx.teamId, data.contactListId)
+      const contactIds = recipients
+        .map((recipient) => recipient.contactId)
+        .filter((contactId): contactId is string => Boolean(contactId))
+      const totalRecipients = contactIds.length
+
+      if (!requiresSubCampaignSplit(totalRecipients)) {
+        const campaign = await prisma.emailCampaign.create({
+          data: {
+            id: randomUUID(),
+            teamId: ctx.teamId,
+            createdBy: ctx.profileId,
+            name: trimmedName,
+            templateId: data.templateId,
+            contactListId: data.contactListId,
+            status: scheduledAt ? "scheduled" : "draft",
+            scheduledAt,
+            totalRecipients,
+          },
+        })
+        return new Output(true, ["Campanha criada com sucesso"], [], campaign)
+      }
+
+      if (!scheduledAt) {
+        return new Output(
+          false,
+          [],
+          [
+            `Listas com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} contatos exigem agendamento com intervalo em dias`,
+          ],
+          null
+        )
+      }
+
+      const scheduleIntervalDays = data.scheduleIntervalDays ?? null
+      if (
+        scheduleIntervalDays == null ||
+        !Number.isInteger(scheduleIntervalDays) ||
+        scheduleIntervalDays < 1
+      ) {
+        return new Output(
+          false,
+          [],
+          ["Informe o intervalo em dias (mínimo 1) entre as sub-campanhas"],
+          null
+        )
+      }
+
+      const chunks = chunkContactIdsForSubCampaigns(contactIds)
+      const scheduledAts = buildSubCampaignScheduledAts(
+        scheduledAt,
+        chunks.length,
+        scheduleIntervalDays
+      )
+      const parentId = randomUUID()
+
+      const result = await prisma.$transaction(async (tx) => {
+        const parent = await tx.emailCampaign.create({
+          data: {
+            id: parentId,
+            teamId: ctx.teamId,
+            createdBy: ctx.profileId,
+            name: trimmedName,
+            templateId: data.templateId,
+            contactListId: data.contactListId,
+            status: "scheduled",
+            scheduledAt: null,
+            totalRecipients,
+          },
+        })
+
+        const subCampaigns = []
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i]
+          const child = await tx.emailCampaign.create({
+            data: {
+              id: randomUUID(),
+              teamId: ctx.teamId,
+              createdBy: ctx.profileId,
+              name: `${trimmedName} (parte ${chunk.index}/${chunks.length})`,
+              templateId: data.templateId,
+              contactListId: data.contactListId,
+              parentCampaignId: parentId,
+              subCampaignIndex: chunk.index,
+              audienceContactIds: chunk.contactIds,
+              status: "scheduled",
+              scheduledAt: scheduledAts[i],
+              totalRecipients: chunk.size,
+            },
+            select: {
+              id: true,
+              name: true,
+              subCampaignIndex: true,
+              scheduledAt: true,
+              totalRecipients: true,
+              status: true,
+            },
+          })
+          subCampaigns.push(child)
+        }
+
+        return { ...parent, subCampaigns, subCampaignCount: subCampaigns.length, isParentCampaign: true }
       })
 
-      const campaign = await prisma.emailCampaign.create({
-        data: {
-          id: randomUUID(),
-          teamId: ctx.teamId,
-          createdBy: ctx.profileId,
-          name: data.name.trim(),
-          templateId: data.templateId,
-          contactListId: data.contactListId ?? null,
-          cdpSegmentSlug: data.cdpSegmentSlug ?? null,
-          status: scheduledAt ? "scheduled" : "draft",
-          scheduledAt,
-          totalRecipients,
-        },
-      })
-
-      return new Output(true, ["Campanha criada com sucesso"], [], campaign)
+      return new Output(true, ["Campanha criada com sub-campanhas"], [], result)
     } catch (error) {
       console.error("[EmailCampaignUseCase][create]", error)
       return new Output(false, [], ["Erro ao criar campanha"], null)
@@ -384,6 +581,17 @@ export class EmailCampaignUseCase {
       }
 
       const canChangeSchedule = existing.status === "draft" || existing.status === "scheduled"
+      const isParentCampaign =
+        (await prisma.emailCampaign.count({ where: { parentCampaignId: id, teamId: ctx.teamId } })) > 0
+
+      if (isParentCampaign && data.scheduledAt !== undefined) {
+        return new Output(
+          false,
+          [],
+          ["Campanha-pai não possui agendamento próprio. Edite as sub-campanhas"],
+          null
+        )
+      }
 
       if (data.templateId !== undefined) {
         const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
@@ -399,6 +607,14 @@ export class EmailCampaignUseCase {
 
       let totalRecipients: number | undefined
       if (data.contactListId !== undefined || data.cdpSegmentSlug !== undefined) {
+        if (existing.audienceContactIds.length > 0 || isParentCampaign) {
+          return new Output(
+            false,
+            [],
+            ["Audiência de sub-campanha não pode ser alterada após a criação"],
+            null
+          )
+        }
         const nextContactListId = data.contactListId !== undefined ? data.contactListId : existing.contactListId
         const nextSegmentSlug =
           data.cdpSegmentSlug !== undefined ? data.cdpSegmentSlug : existing.cdpSegmentSlug
@@ -406,6 +622,32 @@ export class EmailCampaignUseCase {
           contactListId: nextContactListId,
           cdpSegmentSlug: nextSegmentSlug,
         })
+      }
+
+      if (
+        canChangeSchedule &&
+        data.scheduledAt !== undefined &&
+        data.scheduledAt &&
+        existing.parentCampaignId
+      ) {
+        const nextScheduledAt = new Date(data.scheduledAt)
+        const siblingConflict = await this.hasSiblingDailyCapConflict({
+          teamId: ctx.teamId,
+          parentCampaignId: existing.parentCampaignId,
+          campaignId: id,
+          scheduledAt: nextScheduledAt,
+          totalRecipients: existing.totalRecipients,
+        })
+        if (siblingConflict) {
+          return new Output(
+            false,
+            [],
+            [
+              `O agendamento ultrapassa o limite de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} e-mails por dia com outras sub-campanhas`,
+            ],
+            null
+          )
+        }
       }
 
       const campaign = await prisma.emailCampaign.update({
@@ -600,10 +842,23 @@ export class EmailCampaignUseCase {
         })
         .catch(() => null)
 
+      const parentChildCount = await prisma.emailCampaign.count({
+        where: { parentCampaignId: campaign.id, teamId: ctx.teamId },
+      })
+      if (parentChildCount > 0) {
+        return new Output(
+          false,
+          [],
+          ["Campanha-pai não pode ser disparada diretamente. As sub-campanhas seguem o agendamento"],
+          null
+        )
+      }
+
       const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
         teamId: ctx.teamId,
         contactListId: campaign.contactListId,
         cdpSegmentSlug: campaign.cdpSegmentSlug,
+        audienceContactIds: campaign.audienceContactIds,
         template: {
           subject: publishedTemplate.subject,
           html: templateHtml,
@@ -622,6 +877,25 @@ export class EmailCampaignUseCase {
             campaign.cdpSegmentSlug
               ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_CDP
               : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST,
+          ],
+          null
+        )
+      }
+
+      const ownerTz = resolveTimezone(campaign.team.master.timezone)
+      const dailyCap = await wouldExceedDailyEmailCap({
+        teamId: ctx.teamId,
+        timezone: ownerTz,
+        now: new Date(),
+        additionalRecipients: dispatchInput.recipients.length,
+        excludeCampaignId: campaign.id,
+      })
+      if (dailyCap.exceeded) {
+        return new Output(
+          false,
+          [],
+          [
+            `Limite diário de ${dailyCap.limit} e-mails atingido (${dailyCap.used} já usados). Tente amanhã ou reduza o lote`,
           ],
           null
         )
@@ -1176,10 +1450,14 @@ export class EmailCampaignUseCase {
 
   private async markScheduledCampaignFailed(campaignId: string, errorMessage: string): Promise<void> {
     console.error(`[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaignId} motivo=${errorMessage}`)
-    await prisma.emailCampaign.update({
+    const updated = await prisma.emailCampaign.update({
       where: { id: campaignId },
       data: { status: "failed", errorMessage },
+      select: { parentCampaignId: true },
     })
+    if (updated.parentCampaignId) {
+      await this.refreshParentCampaignStatus(updated.parentCampaignId)
+    }
   }
 
   async dispatchScheduledCampaigns(options?: { maxCampaigns?: number; now?: Date }): Promise<Output> {
@@ -1192,6 +1470,7 @@ export class EmailCampaignUseCase {
       where: {
         status: "scheduled",
         scheduledAt: { lte: now },
+        subCampaigns: { none: {} },
       },
       include: {
         template: true,
@@ -1276,6 +1555,7 @@ export class EmailCampaignUseCase {
           teamId: campaign.teamId,
           contactListId: campaign.contactListId,
           cdpSegmentSlug: campaign.cdpSegmentSlug,
+          audienceContactIds: campaign.audienceContactIds,
           template: {
             subject: publishedTemplate.subject,
             html: templateHtml,
@@ -1291,6 +1571,24 @@ export class EmailCampaignUseCase {
             ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_CDP
             : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST
           await this.markScheduledCampaignFailed(campaign.id, noRecipientsMessage)
+          continue
+        }
+
+        const dailyCap = await wouldExceedDailyEmailCap({
+          teamId: campaign.teamId,
+          timezone: ownerTz,
+          now,
+          additionalRecipients: dispatchInput.recipients.length,
+          excludeCampaignId: campaign.id,
+        })
+        if (dailyCap.exceeded) {
+          await prisma.emailCampaign.update({
+            where: { id: campaign.id },
+            data: { status: "scheduled" },
+          })
+          console.info(
+            `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: limite diário ${dailyCap.used}/${dailyCap.limit}`
+          )
           continue
         }
 
@@ -1453,6 +1751,10 @@ export class EmailCampaignUseCase {
             `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} motivo=${terminal.errorMessage ?? EMAIL_CAMPAIGN_FAILURE_MESSAGES.RESEND_ZERO}`
           )
         }
+
+        if (campaign.parentCampaignId) {
+          await this.refreshParentCampaignStatus(campaign.parentCampaignId)
+        }
         } finally {
           await this.releaseUnusedTeamCredits(
             campaign.teamId,
@@ -1464,6 +1766,9 @@ export class EmailCampaignUseCase {
       } catch (campaignError) {
         console.error(`[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id}`, campaignError)
         await this.markScheduledCampaignFailed(campaign.id, EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL)
+        if (campaign.parentCampaignId) {
+          await this.refreshParentCampaignStatus(campaign.parentCampaignId)
+        }
       }
     }
 
@@ -1482,20 +1787,135 @@ export class EmailCampaignUseCase {
     return new Output(true, [`${dispatched} campanhas disparadas`], [], { dispatched, orphanResult })
   }
 
+  private async hasSiblingDailyCapConflict(params: {
+    teamId: string
+    parentCampaignId: string
+    campaignId: string
+    scheduledAt: Date
+    totalRecipients: number
+  }): Promise<boolean> {
+    const team = await prisma.team.findFirst({
+      where: { id: params.teamId },
+      select: { master: { select: { timezone: true } } },
+    })
+    const timezone = resolveTimezone(team?.master.timezone)
+    const dayKey = formatLocalDateValue(params.scheduledAt, timezone)
+
+    const siblings = await prisma.emailCampaign.findMany({
+      where: {
+        parentCampaignId: params.parentCampaignId,
+        teamId: params.teamId,
+        id: { not: params.campaignId },
+        status: { in: ["draft", "scheduled", "sending", "sent"] },
+        scheduledAt: { not: null },
+      },
+      select: { scheduledAt: true, totalRecipients: true },
+    })
+
+    let dayTotal = params.totalRecipients
+    for (const sibling of siblings) {
+      if (!sibling.scheduledAt) continue
+      if (formatLocalDateValue(sibling.scheduledAt, timezone) !== dayKey) continue
+      dayTotal += sibling.totalRecipients
+    }
+
+    return dayTotal > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+  }
+
+  private async refreshParentCampaignStatus(parentCampaignId: string): Promise<void> {
+    const children = await prisma.emailCampaign.findMany({
+      where: { parentCampaignId },
+      select: { status: true, totalSent: true, totalDelivered: true, totalOpened: true, totalClicked: true, totalBounced: true, dispatchCount: true, sentAt: true },
+    })
+    if (children.length === 0) return
+
+    const statuses = new Set(children.map((child) => child.status))
+    let parentStatus: EmailCampaignStatus = "scheduled"
+    if (statuses.has("sending")) {
+      parentStatus = "sending"
+    } else if (statuses.has("scheduled") || statuses.has("draft")) {
+      parentStatus = "scheduled"
+    } else if ([...statuses].every((status) => status === "canceled")) {
+      parentStatus = "canceled"
+    } else if (statuses.has("failed") && !statuses.has("sent")) {
+      parentStatus = "failed"
+    } else if (statuses.has("sent") || statuses.has("failed") || statuses.has("canceled")) {
+      parentStatus = "sent"
+    }
+
+    const totals = children.reduce(
+      (acc, child) => ({
+        totalSent: acc.totalSent + child.totalSent,
+        totalDelivered: acc.totalDelivered + child.totalDelivered,
+        totalOpened: acc.totalOpened + child.totalOpened,
+        totalClicked: acc.totalClicked + child.totalClicked,
+        totalBounced: acc.totalBounced + child.totalBounced,
+        dispatchCount: acc.dispatchCount + child.dispatchCount,
+      }),
+      {
+        totalSent: 0,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 0,
+      }
+    )
+
+    const lastSentAt = children
+      .map((child) => child.sentAt)
+      .filter((value): value is Date => Boolean(value))
+      .sort((a, b) => b.getTime() - a.getTime())[0]
+
+    await prisma.emailCampaign.update({
+      where: { id: parentCampaignId },
+      data: {
+        status: parentStatus,
+        ...totals,
+        ...(parentStatus === "sent" && lastSentAt ? { sentAt: lastSentAt } : {}),
+      },
+    })
+  }
+
   async cancel(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: "scheduled" },
+        select: {
+          id: true,
+          parentCampaignId: true,
+          _count: { select: { subCampaigns: true } },
+        },
       })
 
       if (!existing) {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser cancelada"], null)
       }
 
-      await prisma.emailCampaign.update({
-        where: { id },
-        data: { status: "canceled" },
-      })
+      if (existing._count.subCampaigns > 0) {
+        await prisma.$transaction([
+          prisma.emailCampaign.updateMany({
+            where: {
+              parentCampaignId: id,
+              teamId: ctx.teamId,
+              status: "scheduled",
+            },
+            data: { status: "canceled" },
+          }),
+          prisma.emailCampaign.update({
+            where: { id },
+            data: { status: "canceled" },
+          }),
+        ])
+      } else {
+        await prisma.emailCampaign.update({
+          where: { id },
+          data: { status: "canceled" },
+        })
+        if (existing.parentCampaignId) {
+          await this.refreshParentCampaignStatus(existing.parentCampaignId)
+        }
+      }
 
       return new Output(true, ["Campanha cancelada com sucesso"], [], null)
     } catch (error) {

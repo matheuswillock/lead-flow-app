@@ -55,7 +55,12 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
       return this.dedupeRecipients(recipients)
     }
 
-    return this.repository.findActiveRecipientsForList(contactListId)
+    return this.dedupeRecipients(await this.repository.findActiveRecipientsForList(contactListId))
+  }
+
+  async listActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipient[]> {
+    if (contactIds.length === 0) return []
+    return this.dedupeRecipients(await this.repository.findActiveRecipientsByIds(contactIds))
   }
 
   async getGlobalDefaults(teamId: string): Promise<Record<string, string>> {
@@ -75,6 +80,7 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     teamId: string
     contactListId?: string | null
     cdpSegmentSlug?: string | null
+    audienceContactIds?: string[] | null
     template: { subject: string; html: string; variables: unknown }
     teamSettings: {
       fromName?: string | null
@@ -85,9 +91,13 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     defaultSender?: { name: string; email: string } | null
     masterTimezone?: string | null
   }): Promise<CampaignDispatchInput> {
-    const baseRecipients = params.cdpSegmentSlug
-      ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
-      : await this.listActiveRecipients(params.teamId, params.contactListId!)
+    const audienceIds = params.audienceContactIds?.filter(Boolean) ?? []
+    const baseRecipients =
+      audienceIds.length > 0
+        ? await this.listActiveRecipientsByIds(audienceIds)
+        : params.cdpSegmentSlug
+          ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
+          : await this.listActiveRecipients(params.teamId, params.contactListId!)
     const blocklistedEmails = await findTeamBlocklistedEmails(params.teamId)
     const eligibleRecipients =
       blocklistedEmails.size > 0

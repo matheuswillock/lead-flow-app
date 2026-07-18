@@ -1962,6 +1962,8 @@ failed failed
     String id "🗝️"
     String name 
     String cdpSegmentSlug "❓"
+    Int subCampaignIndex "❓"
+    String audienceContactIds 
     EmailCampaignStatus status 
     DateTime scheduledAt "❓"
     DateTime sentAt "❓"
@@ -2794,6 +2796,7 @@ failed failed
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_campaigns" |o--|o corretor_studio_email_campaigns : "parentCampaign"
     "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignDispatchStatus" : "enum:status"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_campaigns : "campaign"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_teams : "team"

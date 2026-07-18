@@ -45,6 +45,7 @@ export type CampanhasActions = {
   setWizardRecipientSource: (v: "contact_list" | "cdp_segment") => void
   setWizardCdpSegmentSlug: (v: string) => void
   setWizardScheduledAt: (v: Date | undefined) => void
+  setWizardScheduleIntervalDays: (v: number) => void
   handleCreateCampaign: () => Promise<void>
   openView: (campaign: Campaign) => void
   openEdit: (campaign: Campaign) => void
@@ -82,6 +83,7 @@ export type CampanhasHookReturn = {
   wizardRecipientSource: "contact_list" | "cdp_segment"
   wizardCdpSegmentSlug: string
   wizardScheduledAt: Date | undefined
+  wizardScheduleIntervalDays: number
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
@@ -125,6 +127,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "cdp_segment">("contact_list")
   const [wizardCdpSegmentSlug, setWizardCdpSegmentSlug] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
+  const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
   const [wizardCreating, setWizardCreating] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
@@ -459,6 +462,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardRecipientSource("contact_list")
     setWizardCdpSegmentSlug("")
     setWizardScheduledAt(undefined)
+    setWizardScheduleIntervalDays(1)
     setWizardOpen(true)
     try {
       const [tmpl, lists] = await Promise.all([
@@ -497,19 +501,29 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardCreating(true)
     console.info("[useCampanhas] handleCreateCampaign")
     try {
-      await service.create(supabaseId, activeTeamId, {
+      const created = await service.create(supabaseId, activeTeamId, {
         name: wizardName.trim(),
         templateId: wizardTemplateId,
         ...(hasContactList ? { contactListId: wizardContactListId } : {}),
         ...(hasCdpSegment ? { cdpSegmentSlug: wizardCdpSegmentSlug } : {}),
         scheduledAt: wizardScheduledAt?.toISOString(),
+        ...(hasContactList && wizardScheduleIntervalDays >= 1
+          ? { scheduleIntervalDays: wizardScheduleIntervalDays }
+          : {}),
       })
-      toast.success("Campanha criada com sucesso")
+      const subCount = created.subCampaignCount ?? created.subCampaigns?.length ?? 0
+      toast.success(
+        subCount > 0
+          ? `Campanha criada com ${subCount} sub-campanhas`
+          : "Campanha criada com sucesso"
+      )
       setWizardOpen(false)
+      lastCampaignsKeyRef.current = ""
       void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } catch (err) {
       console.error("[useCampanhas] handleCreateCampaign error", err)
-      toast.error("Erro ao criar campanha")
+      const message = err instanceof Error ? err.message : "Erro ao criar campanha"
+      toast.error(message)
     } finally {
       setWizardCreating(false)
     }
@@ -521,6 +535,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardContactListId,
     wizardCdpSegmentSlug,
     wizardScheduledAt,
+    wizardScheduleIntervalDays,
     fetchCampaigns,
     statusFilter,
     pageSize,
@@ -555,7 +570,16 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setSheetTab("campaign")
     hydrateEditForm(campaign)
     void loadEditOptions()
-  }, [hydrateEditForm, loadEditOptions])
+    void service
+      .getById(supabaseId, activeTeamId, campaign.id)
+      .then((detailed) => {
+        setDetailCampaign(detailed)
+        hydrateEditForm(detailed)
+      })
+      .catch((err) => {
+        console.error("[useCampanhas] openView getById error", err)
+      })
+  }, [activeTeamId, hydrateEditForm, loadEditOptions, supabaseId])
 
   const openEdit = useCallback((campaign: Campaign) => {
     if (!EDITABLE_STATUSES.has(campaign.status)) {
@@ -566,7 +590,16 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setSheetTab("campaign")
     hydrateEditForm(campaign)
     void loadEditOptions()
-  }, [hydrateEditForm, loadEditOptions])
+    void service
+      .getById(supabaseId, activeTeamId, campaign.id)
+      .then((detailed) => {
+        setDetailCampaign(detailed)
+        hydrateEditForm(detailed)
+      })
+      .catch((err) => {
+        console.error("[useCampanhas] openEdit getById error", err)
+      })
+  }, [activeTeamId, hydrateEditForm, loadEditOptions, supabaseId])
 
   const closeDetail = useCallback(() => {
     if (editSaving) return
@@ -661,6 +694,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardRecipientSource,
     wizardCdpSegmentSlug,
     wizardScheduledAt,
+    wizardScheduleIntervalDays,
     wizardCreating,
     templates,
     contactLists,
@@ -691,6 +725,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardRecipientSource,
     setWizardCdpSegmentSlug,
     setWizardScheduledAt,
+    setWizardScheduleIntervalDays,
     handleCreateCampaign,
     openView,
     openEdit,

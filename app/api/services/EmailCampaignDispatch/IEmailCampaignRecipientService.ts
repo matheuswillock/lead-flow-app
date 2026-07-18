@@ -19,12 +19,14 @@ export type CampaignDispatchInput = {
 
 export interface IEmailCampaignRecipientService {
   listActiveRecipients(teamId: string, contactListId: string): Promise<CampaignRecipient[]>
+  listActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipient[]>
   getGlobalDefaults(teamId: string): Promise<Record<string, string>>
   parseTemplateVariables(variables: unknown): EmailTemplateVariableDefinition[]
   buildCampaignDispatchInput(params: {
     teamId: string
     contactListId?: string | null
     cdpSegmentSlug?: string | null
+    audienceContactIds?: string[] | null
     template: { subject: string; html: string; variables: unknown }
     teamSettings: {
       fromName?: string | null

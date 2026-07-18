@@ -57,12 +57,14 @@ mock.module("@/lib/email/team-email-dispatch-logger", () => ({
 // --- Prisma ---
 const emailCampaignFindFirstMock = mock(async () => makeCampaign())
 const emailCampaignFindManyMock = mock(async () => [])
+const emailCampaignCountMock = mock(async () => 0)
 const emailCampaignUpdateManyMock = mock(async () => ({ count: 1 }))
 const emailCampaignUpdateMock = mock(async () => ({}))
 const emailTemplateFindFirstMock = mock(async () => null as unknown)
 const emailCampaignDispatchAggregateMock = mock(async () => ({ _max: { dispatchNumber: 0 } }))
 const emailCampaignDispatchCreateMock = mock(async () => ({ id: "dispatch-1" }))
 const emailCampaignDispatchFindFirstMock = mock(async () => ({ id: "dispatch-1" }))
+const emailCampaignDispatchFindManyMock = mock(async () => [])
 const emailCampaignDispatchUpdateMock = mock(async () => ({}))
 const emailCampaignDispatchUpdateManyMock = mock(async () => ({ count: 0 }))
 const emailTeamSenderFindFirstMock = mock(async () => null as { name: string; email: string } | null)
@@ -72,6 +74,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     emailCampaign: {
       findFirst: emailCampaignFindFirstMock,
       findMany: emailCampaignFindManyMock,
+      count: emailCampaignCountMock,
       updateMany: emailCampaignUpdateManyMock,
       update: emailCampaignUpdateMock,
     },
@@ -81,6 +84,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       aggregate: emailCampaignDispatchAggregateMock,
       create: emailCampaignDispatchCreateMock,
       findFirst: emailCampaignDispatchFindFirstMock,
+      findMany: emailCampaignDispatchFindManyMock,
       update: emailCampaignDispatchUpdateMock,
       updateMany: emailCampaignDispatchUpdateManyMock,
     },
@@ -160,6 +164,8 @@ function makeCampaign(overrides: Record<string, unknown> = {}) {
     templateId: "tpl-ref-1",
     contactListId: "list-1",
     cdpSegmentSlug: null,
+    parentCampaignId: null,
+    audienceContactIds: [] as string[],
     contactList: { id: "list-1", name: "Lista Test", totalContacts: 10 },
     team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
     ...overrides,
