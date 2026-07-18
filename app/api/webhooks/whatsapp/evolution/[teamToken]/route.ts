@@ -1,7 +1,6 @@
 import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { processEvoWebhookUseCase } from "@/app/api/useCases/whatsapp/ProcessEvoWebhookUseCase"
 import { isValidEvoWebhookPayload } from "@/lib/whatsapp/webhook-signature"
 import {
   deriveWebhookHeaderSecret,
@@ -14,6 +13,10 @@ import {
   recordWhatsAppWebhookProcessingFailure,
   recordWhatsAppWebhookProcessingSuccess,
 } from "@/lib/whatsapp/whatsapp-webhook-failure-alert"
+import { prisma } from "@/app/api/infra/data/prisma"
+import { sanitizeWhatsAppWebhookPayload } from "@/lib/whatsapp/sanitize-webhook-payload"
+import { processWhatsAppWebhookOutboxUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppWebhookOutboxUseCase"
+import { Prisma } from "@prisma/client"
 
 export const maxDuration = 60
 
@@ -66,11 +69,15 @@ export async function POST(
   const { eventType, providerMessageId } = describeEvent(rawEvent)
 
   try {
-    const output = await processEvoWebhookUseCase.execute({
-      teamId: config.teamId,
-      configId: config.id,
-      rawEvent,
-    })
+    const eventId = crypto.randomUUID()
+    const durableProviderEventId = providerMessageId || `event:${eventType}:${eventId}`
+    const persisted = await prisma.$queryRaw<Array<{ id: string }>>`
+      insert into whatsapp_webhook_events (id, "configId", "teamId", "providerEventId", "eventType", payload, status, "createdAt", "updatedAt")
+      values (${eventId}::uuid, ${config.id}::uuid, ${config.teamId}::uuid, ${durableProviderEventId}, ${eventType}, ${sanitizeWhatsAppWebhookPayload(rawEvent) as Prisma.InputJsonValue}, 'PENDING', now(), now())
+      on conflict ("configId", "providerEventId") do update set "updatedAt" = now()
+      returning id
+    `
+    const output = await processWhatsAppWebhookOutboxUseCase.process(persisted[0]!.id)
 
     if (!output.isValid) {
       const retryable = output.result?.retryable !== false

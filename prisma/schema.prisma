@@ -2053,6 +2053,8 @@ model Team {
   whatsappUsageEvents   WhatsAppUsageEvent[]
   whatsappContacts      TeamWhatsAppContact[]
   whatsappConversationTags WhatsAppConversationTag[]
+  whatsappOutboundCommands WhatsAppOutboundCommand[]
+  whatsappWebhookEvents WhatsAppWebhookEvent[]
 
   // CDP relations
   customerProfiles      CustomerProfile[]
@@ -3154,6 +3156,20 @@ enum WhatsAppMessageStatus {
   RECEIVED
 }
 
+enum WhatsAppOutboundCommandStatus {
+  PENDING
+  SENT
+  UNKNOWN
+  FAILED
+}
+
+enum WhatsAppWebhookEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  DEAD_LETTER
+}
+
 enum WhatsAppUsageEventType {
   OUTBOUND_MESSAGE
   INBOUND_MESSAGE
@@ -3256,6 +3272,7 @@ model TeamWhatsAppConfig {
   usageEvents   WhatsAppUsageEvent[]
   messages      WhatsAppMessage[]
   autoResponseRules WhatsAppAutoResponseRule[]
+  webhookEvents WhatsAppWebhookEvent[]
 
   @@index([normalizedPhone])
   @@index([primaryConfigId])
@@ -3296,6 +3313,7 @@ model WhatsAppConversation {
   messages        WhatsAppMessage[]
   autoResponseLogs WhatsAppAutoResponseLog[]
   tagAssignments  WhatsAppConversationTagAssignment[]
+  outboundCommands WhatsAppOutboundCommand[]
 
   @@unique([configId, externalChatId])
   @@index([teamId, lastMessageAt(sort: Desc)])
@@ -3335,6 +3353,11 @@ model WhatsAppMessage {
   isAutoResponse    Boolean                  @default(false)
   autoResponseRuleId String?                 @db.Uuid
   rawPayload        Json
+  storagePath       String?                  @db.Text
+  mediaSha256       String?                  @db.Text
+  mediaSizeBytes    Int?
+  mediaDurationMs   Int?
+  deletedAt         DateTime?                @db.Timestamptz(6)
   createdAt         DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt         DateTime                 @updatedAt @db.Timestamptz(6)
 
@@ -3349,7 +3372,50 @@ model WhatsAppMessage {
   @@unique([teamId, providerEventId])
   @@index([conversationId, createdAt(sort: Asc)])
   @@index([sentByProfileId])
+  @@index([deletedAt])
   @@map("whatsapp_messages")
+}
+
+model WhatsAppOutboundCommand {
+  id              String                        @id @default(uuid()) @db.Uuid
+  teamId          String                        @db.Uuid
+  conversationId  String                        @db.Uuid
+  clientMessageId String                        @db.Text
+  messageId       String?                       @db.Uuid
+  status          WhatsAppOutboundCommandStatus @default(PENDING)
+  attemptCount    Int                           @default(0)
+  lastError       String?                       @db.Text
+  createdAt       DateTime                      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                      @updatedAt @db.Timestamptz(6)
+
+  team         Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, clientMessageId])
+  @@index([status, updatedAt])
+  @@map("whatsapp_outbound_commands")
+}
+
+model WhatsAppWebhookEvent {
+  id            String                     @id @default(uuid()) @db.Uuid
+  configId      String                     @db.Uuid
+  teamId        String                     @db.Uuid
+  providerEventId String?                  @db.Text
+  eventType     String                     @db.Text
+  payload       Json
+  status        WhatsAppWebhookEventStatus @default(PENDING)
+  attemptCount  Int                        @default(0)
+  lastError     String?                    @db.Text
+  processedAt   DateTime?                  @db.Timestamptz(6)
+  createdAt     DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime                   @updatedAt @db.Timestamptz(6)
+
+  config TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  team   Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, providerEventId])
+  @@index([status, createdAt])
+  @@map("whatsapp_webhook_events")
 }
 
 model WhatsAppUsageEvent {

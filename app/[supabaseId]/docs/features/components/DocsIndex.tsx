@@ -26,6 +26,10 @@ const DOCS_SECTIONS = [
     title: "Gestao & Config",
     chapterIds: ["equipe", "times", "integracoes", "assinatura"],
   },
+  {
+    title: "WhatsApp",
+    chapterIds: ["whatsapp-inbox", "whatsapp-regras", "whatsapp-auto-respostas", "whatsapp-permissoes", "whatsapp-privacidade"],
+  },
   { title: "Ajuda", chapterIds: ["faq"] },
 ] as const
 
@@ -48,6 +52,11 @@ const SIDEBAR_LABELS: Record<string, string> = {
   times: "Times",
   integracoes: "Integracoes",
   assinatura: "Assinatura",
+  "whatsapp-inbox": "Inbox e conexão",
+  "whatsapp-regras": "Regras de atendimento",
+  "whatsapp-auto-respostas": "Auto-respostas",
+  "whatsapp-permissoes": "Permissões e solução",
+  "whatsapp-privacidade": "Privacidade e limites",
   faq: "Perguntas Frequentes",
 }
 

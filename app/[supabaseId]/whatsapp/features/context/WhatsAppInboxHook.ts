@@ -812,6 +812,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           activeTeamId,
           supabaseId,
           conversationId,
+          crypto.randomUUID(),
           text,
           media,
           mentionedJids

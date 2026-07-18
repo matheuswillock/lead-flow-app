@@ -19,12 +19,14 @@ const mediaSchema = z.object({
 const sendMessageSchema = z.union([
   z.object({
     conversationId: conversationIdSchema,
+    clientMessageId: z.string().uuid("clientMessageId inválido"),
     contentText: z.string().max(4096).optional(),
     mentionedJids: z.array(z.string().min(1)).optional(),
     media: mediaSchema,
   }),
   z.object({
     conversationId: conversationIdSchema,
+    clientMessageId: z.string().uuid("clientMessageId inválido"),
     contentText: z.string().min(1, "Mensagem não pode ser vazia").max(4096),
     mentionedJids: z.array(z.string().min(1)).optional(),
   }),
@@ -130,6 +132,7 @@ export async function POST(
 
     const output = await sendMessageUseCase.execute({
       conversationId: parsed.data.conversationId,
+      clientMessageId: parsed.data.clientMessageId,
       teamId,
       sentByProfileId: accessResult.access.profileId,
       access: accessResult.access,

@@ -24,6 +24,7 @@ export interface IWhatsAppInboxService {
     teamId: string,
     supabaseId: string,
     conversationId: string,
+    clientMessageId: string,
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[]
