@@ -13,7 +13,7 @@ create index if not exists whatsapp_messages_deleted_at_idx on public.whatsapp_m
 
 create table if not exists public.whatsapp_outbound_commands (
   id uuid primary key default gen_random_uuid(),
-  "teamId" uuid not null references public.teams(id) on delete cascade,
+  "teamId" uuid not null references "public"."corretor_studio_teams"("id") on delete cascade,
   "conversationId" uuid not null references public.whatsapp_conversations(id) on delete cascade,
   "clientMessageId" text not null,
   "messageId" uuid,
@@ -29,7 +29,7 @@ create index if not exists whatsapp_outbound_commands_status_updated_at_idx on p
 create table if not exists public.whatsapp_webhook_events (
   id uuid primary key default gen_random_uuid(),
   "configId" uuid not null references public.team_whatsapp_configs(id) on delete cascade,
-  "teamId" uuid not null references public.teams(id) on delete cascade,
+  "teamId" uuid not null references "public"."corretor_studio_teams"("id") on delete cascade,
   "providerEventId" text,
   "eventType" text not null,
   payload jsonb not null,
