@@ -367,68 +367,6 @@ export class LeadScheduleService implements ILeadScheduleService {
         );
       }
 
-      if (
-        calendarTransfer.shouldTransferCalendarOwnership &&
-        calendarTransfer.previousCloserId &&
-        calendarTransfer.previousEventId
-      ) {
-        try {
-          const previousCloserProfile = await prisma.profile.findUnique({
-            where: { id: calendarTransfer.previousCloserId },
-            include: {
-              googleConnection: {
-                select: {
-                  accessToken: true,
-                  refreshToken: true,
-                  tokenExpiresAt: true,
-                  revokedAt: true,
-                  googleEmail: true,
-                },
-              },
-            },
-          });
-
-          if (
-            previousCloserProfile &&
-            isGoogleConnectionActive(previousCloserProfile.googleConnection)
-          ) {
-            await cancelCalendarEvent({
-              organizer: previousCloserProfile,
-              eventId: calendarTransfer.previousEventId,
-              calendarId: existingSchedule?.googleCalendarId ?? "primary",
-            });
-            console.info(`${LOG_PREFIX} Evento cancelado no Calendar do closer anterior`, {
-              leadId,
-              previousCloserId: calendarTransfer.previousCloserId,
-              previousEventId: calendarTransfer.previousEventId,
-              newCloserId: closerId,
-            });
-          } else {
-            console.warn(
-              `${LOG_PREFIX} Closer anterior sem Google conectado; evento antigo pode ficar órfão`,
-              {
-                leadId,
-                previousCloserId: calendarTransfer.previousCloserId,
-                previousEventId: calendarTransfer.previousEventId,
-              }
-            );
-          }
-        } catch (cancelPreviousError) {
-          console.warn(
-            `${LOG_PREFIX} Falha ao cancelar evento no Calendar do closer anterior; seguindo com criação no novo closer`,
-            {
-              leadId,
-              previousCloserId: calendarTransfer.previousCloserId,
-              previousEventId: calendarTransfer.previousEventId,
-              error:
-                cancelPreviousError instanceof Error
-                  ? cancelPreviousError.message
-                  : String(cancelPreviousError),
-            }
-          );
-        }
-      }
-
       try {
         calendarResult = await upsertCalendarEvent({
           organizer: closerProfile,
@@ -443,6 +381,72 @@ export class LeadScheduleService implements ILeadScheduleService {
           attendeeEmails: googleRecipients,
           existingEventId: calendarTransfer.existingEventIdForUpsert,
         });
+
+        // Cancel the previous closer's event only after the new one succeeds,
+        // so a failed upsert does not leave the lead without a calendar invite.
+        if (
+          calendarTransfer.shouldTransferCalendarOwnership &&
+          calendarTransfer.previousCloserId &&
+          calendarTransfer.previousEventId
+        ) {
+          try {
+            const previousCloserProfile = await prisma.profile.findUnique({
+              where: { id: calendarTransfer.previousCloserId },
+              include: {
+                googleConnection: {
+                  select: {
+                    accessToken: true,
+                    refreshToken: true,
+                    tokenExpiresAt: true,
+                    revokedAt: true,
+                    googleEmail: true,
+                  },
+                },
+              },
+            });
+
+            if (
+              previousCloserProfile &&
+              isGoogleConnectionActive(previousCloserProfile.googleConnection)
+            ) {
+              await cancelCalendarEvent({
+                organizer: previousCloserProfile,
+                eventId: calendarTransfer.previousEventId,
+                calendarId: existingSchedule?.googleCalendarId ?? "primary",
+              });
+              console.info(`${LOG_PREFIX} Evento cancelado no Calendar do closer anterior`, {
+                leadId,
+                previousCloserId: calendarTransfer.previousCloserId,
+                previousEventId: calendarTransfer.previousEventId,
+                newCloserId: closerId,
+                newEventId: calendarResult.eventId,
+              });
+            } else {
+              console.warn(
+                `${LOG_PREFIX} Closer anterior sem Google conectado; evento antigo pode ficar órfão`,
+                {
+                  leadId,
+                  previousCloserId: calendarTransfer.previousCloserId,
+                  previousEventId: calendarTransfer.previousEventId,
+                }
+              );
+            }
+          } catch (cancelPreviousError) {
+            console.warn(
+              `${LOG_PREFIX} Falha ao cancelar evento no Calendar do closer anterior após criar o novo`,
+              {
+                leadId,
+                previousCloserId: calendarTransfer.previousCloserId,
+                previousEventId: calendarTransfer.previousEventId,
+                newEventId: calendarResult.eventId,
+                error:
+                  cancelPreviousError instanceof Error
+                    ? cancelPreviousError.message
+                    : String(cancelPreviousError),
+              }
+            );
+          }
+        }
 
         inviteDispatchStatus = "sent_google";
         inviteDispatchProvider = "google";

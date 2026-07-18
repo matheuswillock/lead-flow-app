@@ -6,6 +6,8 @@ export interface UpsertBackofficeEmailContactInput {
   name?: string | null
   customFields?: Record<string, unknown> | null
   backofficeLeadId?: string | null
+  /** Explicit opt-in only. Import/edit must not clear a prior unsubscribe. */
+  resubscribe?: boolean
 }
 
 export interface ListBackofficeEmailContactsParams {

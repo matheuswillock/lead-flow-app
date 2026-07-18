@@ -42,11 +42,14 @@ export class BackofficeEmailCampaignRepository implements IBackofficeEmailCampai
     return prisma.backofficeEmailCampaign.findUnique({ where: { id } })
   }
 
-  async findUpcomingLiveCampaign(): Promise<BackofficeEmailCampaign | null> {
+  async findUpcomingLiveCampaign(now: Date = new Date()): Promise<BackofficeEmailCampaign | null> {
+    // Ignore stale draft/scheduled Live campaigns from past Thursdays so the
+    // weekly provision cron and quick-entry opt-ins always target a future Live.
     return prisma.backofficeEmailCampaign.findFirst({
       where: {
         type: BackofficeEmailCampaignType.live_weekly,
         status: { in: [BackofficeEmailCampaignStatus.draft, BackofficeEmailCampaignStatus.scheduled] },
+        scheduledAt: { gte: now },
       },
       orderBy: { scheduledAt: "asc" },
     })
