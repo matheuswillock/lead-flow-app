@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma"
+import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
 
 export type EmailAnalyticsLogWhere = {
   teamId: string
@@ -58,11 +59,18 @@ export interface IEmailAnalyticsRepository {
 }
 
 export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
-  private buildLogWhere(options: EmailAnalyticsLogWhere) {
+  private async resolveCampaignFilter(teamId: string, campaignId?: string) {
+    if (!campaignId) return undefined
+    const campaignIds = await resolveCampaignIdsIncludingSubs(teamId, campaignId)
+    return campaignIds.length === 1 ? campaignIds[0] : { in: campaignIds }
+  }
+
+  private async buildLogWhere(options: EmailAnalyticsLogWhere) {
+    const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
     return {
       teamId: options.teamId,
       sentAt: { gte: options.from, lte: options.to },
-      ...(options.campaignId && { campaignId: options.campaignId }),
+      ...(campaignFilter && { campaignId: campaignFilter }),
     }
   }
 
@@ -70,7 +78,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     where: EmailAnalyticsLogWhere,
     filter?: EmailAnalyticsLogFilter
   ): Promise<number> {
-    const base = this.buildLogWhere(where)
+    const base = await this.buildLogWhere(where)
     const timestampFilter =
       filter === "delivered"
         ? { deliveredAt: { not: null as Date | null } }
@@ -103,10 +111,11 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     from: Date
     to: Date
   }) {
+    const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
     return prisma.emailCampaignDispatch.findMany({
       where: {
         teamId: options.teamId,
-        campaignId: options.campaignId,
+        ...(campaignFilter && { campaignId: campaignFilter }),
         dispatchedAt: { gte: options.from, lte: options.to },
       },
       select: {
@@ -137,10 +146,11 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     campaignId: string
     dispatchId: string
   }) {
+    const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
     return prisma.emailCampaignDispatch.findFirst({
       where: {
         id: options.dispatchId,
-        campaignId: options.campaignId,
+        ...(campaignFilter && { campaignId: campaignFilter }),
         teamId: options.teamId,
       },
       select: {

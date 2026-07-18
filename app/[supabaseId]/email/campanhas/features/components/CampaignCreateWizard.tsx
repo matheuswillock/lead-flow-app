@@ -289,14 +289,33 @@ export function CampaignCreateWizard() {
                   {fieldErrorMessage(step2Issues, "cdpSegmentSlug") ? (
                     <FieldError>{fieldErrorMessage(step2Issues, "cdpSegmentSlug")}</FieldError>
                   ) : null}
+                  {wizardRecipientSource === "cdp_segment" &&
+                  recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB ? (
+                    <FieldError>
+                      Segmentos CDP com mais de {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")}{" "}
+                      destinatários não são suportados. Use uma lista de contatos ou reduza o segmento.
+                    </FieldError>
+                  ) : null}
                 </Field>
               )}
 
               <div className="flex justify-between">
-                <Button variant="outline" onClick={() => setWizardStep(1)} disabled={wizardCreating}>
+                <Button
+                  variant="outline"
+                  onClick={() => setWizardStep(1)}
+                  disabled={wizardCreating}
+                >
                   ← Voltar
                 </Button>
-                <Button onClick={() => setWizardStep(3)} disabled={!step2Parse.success || wizardCreating}>
+                <Button
+                  onClick={() => setWizardStep(3)}
+                  disabled={
+                    !step2Parse.success ||
+                    wizardCreating ||
+                    (wizardRecipientSource === "cdp_segment" &&
+                      recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB)
+                  }
+                >
                   Próximo →
                 </Button>
               </div>

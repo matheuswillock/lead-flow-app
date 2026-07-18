@@ -428,6 +428,16 @@ export class EmailCampaignUseCase {
           contactListId: data.contactListId,
           cdpSegmentSlug: data.cdpSegmentSlug,
         })
+        if (requiresSubCampaignSplit(totalRecipients)) {
+          return new Output(
+            false,
+            [],
+            [
+              `Segmentos CDP com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+            ],
+            null
+          )
+        }
         const campaign = await prisma.emailCampaign.create({
           data: {
             id: randomUUID(),
@@ -622,6 +632,16 @@ export class EmailCampaignUseCase {
           contactListId: nextContactListId,
           cdpSegmentSlug: nextSegmentSlug,
         })
+        if (nextSegmentSlug && requiresSubCampaignSplit(totalRecipients)) {
+          return new Output(
+            false,
+            [],
+            [
+              `Segmentos CDP com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+            ],
+            null
+          )
+        }
       }
 
       if (
@@ -888,7 +908,6 @@ export class EmailCampaignUseCase {
         timezone: ownerTz,
         now: new Date(),
         additionalRecipients: dispatchInput.recipients.length,
-        excludeCampaignId: campaign.id,
       })
       if (dailyCap.exceeded) {
         return new Output(
@@ -1579,7 +1598,6 @@ export class EmailCampaignUseCase {
           timezone: ownerTz,
           now,
           additionalRecipients: dispatchInput.recipients.length,
-          excludeCampaignId: campaign.id,
         })
         if (dailyCap.exceeded) {
           await prisma.emailCampaign.update({

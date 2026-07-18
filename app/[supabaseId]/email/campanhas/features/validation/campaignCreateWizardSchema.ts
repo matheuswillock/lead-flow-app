@@ -39,6 +39,9 @@ export function buildCampaignCreateWizardSubmitSchema(params: {
   const needsSplit =
     params.recipientSource === "contact_list" &&
     params.recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+  const cdpExceedsLimit =
+    params.recipientSource === "cdp_segment" &&
+    params.recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 
   return z
     .object({
@@ -63,6 +66,14 @@ export function buildCampaignCreateWizardSubmitSchema(params: {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: "Selecione um segmento CDP",
+          path: ["cdpSegmentSlug"],
+        })
+      }
+
+      if (cdpExceedsLimit) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Segmentos CDP com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos ou reduza o segmento`,
           path: ["cdpSegmentSlug"],
         })
       }

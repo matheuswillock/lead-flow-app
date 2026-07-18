@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
 
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
@@ -31,6 +32,10 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get("from") ?? undefined
     const to = searchParams.get("to") ?? undefined
 
+    const campaignIds = campaignId
+      ? await resolveCampaignIdsIncludingSubs(teamAccess.access.teamId, campaignId)
+      : null
+
     const where = {
       teamId: teamAccess.access.teamId,
       ...(search && {
@@ -39,7 +44,9 @@ export async function GET(request: NextRequest) {
           { recipientName: { contains: search, mode: "insensitive" as const } },
         ],
       }),
-      ...(campaignId && { campaignId }),
+      ...(campaignIds && {
+        campaignId: campaignIds.length === 1 ? campaignIds[0] : { in: campaignIds },
+      }),
       ...(category && { category: category as never }),
       ...(uniqueStatuses.length === 1 && { status: uniqueStatuses[0] as never }),
       ...(uniqueStatuses.length > 1 && { status: { in: uniqueStatuses as never[] } }),
