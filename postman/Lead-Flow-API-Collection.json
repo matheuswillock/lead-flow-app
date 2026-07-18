@@ -13667,10 +13667,10 @@
                     "campaigns"
                   ]
                 },
-                "description": "scheduledAt opcional (ISO 8601). Se vazio = disparo manual.",
+                "description": "scheduledAt opcional (ISO 8601). Se vazio = disparo manual. Para listas com mais de 2000 contatos, scheduledAt e scheduleIntervalDays (>=1) são obrigatórios — cria campanha-pai + sub-campanhas de até 2000 (1/dia no pico).",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListId\": \"{{contactListId}}\",\n  \"scheduledAt\": \"\"\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListId\": \"{{contactListId}}\",\n  \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n  \"scheduleIntervalDays\": 1\n}",
                   "options": {
                     "raw": {
                       "language": "json"

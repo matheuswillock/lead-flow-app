@@ -21,6 +21,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { CampaignStatusBadge } from "./CampaignStatusBadge"
 import { CampaignLogsTab } from "./CampaignLogsTab"
 import { useCampanhasContext } from "../context/CampanhasContext"
@@ -63,11 +72,16 @@ export function CampaignDetailSheet() {
     handleUpdateCampaign,
   } = useCampanhasContext()
 
+  const isParentCampaign = Boolean(
+    detailCampaign?.isParentCampaign || (detailCampaign?.subCampaignCount ?? 0) > 0
+  )
   const canEdit =
     detailCampaign &&
+    !isParentCampaign &&
     ["draft", "scheduled", "sent", "failed"].includes(detailCampaign.status)
   const canSchedule =
     detailCampaign &&
+    !isParentCampaign &&
     (detailCampaign.status === "draft" || detailCampaign.status === "scheduled")
 
   return (
@@ -80,8 +94,14 @@ export function CampaignDetailSheet() {
       <SheetContent className="flex w-full flex-col gap-0 sm:max-w-2xl">
         <SheetHeader className="gap-1 border-b pb-4">
           <SheetTitle className="pr-8">{detailCampaign?.name ?? "Campanha"}</SheetTitle>
-          <SheetDescription className="flex items-center gap-2">
+          <SheetDescription className="flex flex-wrap items-center gap-2">
             {detailCampaign ? <CampaignStatusBadge status={detailCampaign.status} /> : null}
+            {isParentCampaign ? (
+              <Badge variant="secondary">
+                {detailCampaign?.subCampaignCount ?? detailCampaign?.subCampaigns?.length ?? 0}{" "}
+                sub-campanhas
+              </Badge>
+            ) : null}
             <span>Campanha atual e logs de disparo.</span>
           </SheetDescription>
         </SheetHeader>
@@ -132,6 +152,44 @@ export function CampaignDetailSheet() {
                   <div className="mb-4 flex flex-col gap-1 text-sm">
                     <span className="text-muted-foreground">Mensagem de erro</span>
                     <span className="text-destructive">{detailCampaign.errorMessage}</span>
+                  </div>
+                ) : null}
+
+                {isParentCampaign && detailCampaign.subCampaigns && detailCampaign.subCampaigns.length > 0 ? (
+                  <div className="mb-4 flex flex-col gap-2">
+                    <p className="text-sm font-medium">Sub-campanhas</p>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Parte</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Agendamento</TableHead>
+                            <TableHead className="text-right">Destinatários</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {detailCampaign.subCampaigns.map((sub) => (
+                            <TableRow key={sub.id}>
+                              <TableCell className="font-medium">
+                                {sub.subCampaignIndex ?? "—"}
+                              </TableCell>
+                              <TableCell>
+                                <CampaignStatusBadge status={sub.status} scheduledAt={sub.scheduledAt} />
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {sub.scheduledAt
+                                  ? formatIntimezone(new Date(sub.scheduledAt), "dd/MM/yyyy HH:mm", tz)
+                                  : "—"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {sub.totalRecipients.toLocaleString("pt-BR")}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 ) : null}
 
@@ -229,7 +287,9 @@ export function CampaignDetailSheet() {
                       <span className="font-medium">{audienceLabel(detailCampaign)}</span>
                     </div>
                     <p className="col-span-full text-sm text-muted-foreground">
-                      Esta campanha não pode ser editada no status atual.
+                      {isParentCampaign
+                        ? "Campanha-pai é somente leitura. As sub-campanhas seguem o agendamento criado no dia 0."
+                        : "Esta campanha não pode ser editada no status atual."}
                     </p>
                   </div>
                 )}

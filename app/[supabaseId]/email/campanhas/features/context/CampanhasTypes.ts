@@ -1,7 +1,32 @@
+export type CampaignStatus =
+  | "draft"
+  | "scheduled"
+  | "sending"
+  | "sent"
+  | "canceled"
+  | "failed"
+  | "archived"
+
+export type SubCampaignSummary = {
+  id: string
+  name: string
+  status: CampaignStatus
+  scheduledAt: string | null
+  sentAt: string | null
+  totalRecipients: number
+  totalSent: number
+  totalDelivered: number
+  totalOpened: number
+  totalClicked: number
+  totalBounced: number
+  subCampaignIndex: number | null
+  errorMessage?: string | null
+}
+
 export type Campaign = {
   id: string
   name: string
-  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'canceled' | 'failed' | 'archived'
+  status: CampaignStatus
   scheduledAt: string | null
   sentAt: string | null
   totalRecipients: number
@@ -17,6 +42,9 @@ export type Campaign = {
   contactList: { id: string; name: string } | null
   cdpSegmentSlug?: string | null
   errorMessage?: string | null
+  subCampaignCount?: number
+  isParentCampaign?: boolean
+  subCampaigns?: SubCampaignSummary[]
 }
 
 export type CreditStatus = {
@@ -117,6 +145,7 @@ export type CampanhasState = {
   wizardRecipientSource: "contact_list" | "cdp_segment"
   wizardCdpSegmentSlug: string
   wizardScheduledAt: Date | undefined
+  wizardScheduleIntervalDays: number
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]

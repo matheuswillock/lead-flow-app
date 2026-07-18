@@ -77,7 +77,7 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
         isComplained: false,
         ...(blocklistedEmails.length > 0 ? { email: { notIn: blocklistedEmails } } : {}),
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: recipientSelect,
     })
 
@@ -87,6 +87,34 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
       name: recipient.name,
       customFields: recipient.customFields as Record<string, unknown> | null,
     }))
+  }
+
+  async findActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipientRecord[]> {
+    if (contactIds.length === 0) return []
+
+    const recipients = await prisma.emailContact.findMany({
+      where: {
+        id: { in: contactIds },
+        isUnsubscribed: false,
+        isBounced: false,
+        isComplained: false,
+      },
+      select: recipientSelect,
+    })
+
+    const byId = new Map(recipients.map((recipient) => [recipient.id, recipient]))
+    const ordered: CampaignRecipientRecord[] = []
+    for (const contactId of contactIds) {
+      const recipient = byId.get(contactId)
+      if (!recipient) continue
+      ordered.push({
+        contactId: recipient.id,
+        email: recipient.email,
+        name: recipient.name,
+        customFields: recipient.customFields as Record<string, unknown> | null,
+      })
+    }
+    return ordered
   }
 
   async findGlobalVariableDefaults(teamId: string): Promise<Record<string, string>> {
