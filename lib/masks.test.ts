@@ -14,6 +14,11 @@ describe("normalizeLeadPhoneDigits", () => {
     expect(normalizeLeadPhoneDigits("5521973960888")).toBe("21973960888")
   })
 
+  it("remove DDI 55 de fixo E.164 com 12 dígitos", () => {
+    expect(normalizeLeadPhoneDigits("+55 11 3333-4444")).toBe("1133334444")
+    expect(normalizeLeadPhoneDigits("551133334444")).toBe("1133334444")
+  })
+
   it("retorna vazio para valor vazio", () => {
     expect(normalizeLeadPhoneDigits("")).toBe("")
   })
@@ -24,5 +29,6 @@ describe("maskPhone", () => {
     expect(maskPhone("5511999999999")).toBe("(11) 99999-9999")
     expect(maskPhone("55 11 99999-9999")).toBe("(11) 99999-9999")
     expect(maskPhone("5521973960888")).toBe("(21) 97396-0888")
+    expect(maskPhone("+55 11 3333-4444")).toBe("(11) 3333-4444")
   })
 })
