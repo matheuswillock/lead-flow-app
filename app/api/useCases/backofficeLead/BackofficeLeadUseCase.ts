@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { BackofficeLeadOrigin, BackofficeLeadStatus } from "@prisma/client"
+import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { Output } from "@/lib/output"
 import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
 import {
@@ -67,7 +68,7 @@ function normalizePhone(value: unknown): NormalizedText {
   const raw = trimOrNull(value)
   if (!raw) return { isValid: true, value: null }
 
-  const digits = raw.replace(/\D/g, "").slice(0, 11)
+  const digits = normalizeLeadPhoneDigits(raw)
   if (!/^\d{10,11}$/.test(digits)) {
     return {
       isValid: false,

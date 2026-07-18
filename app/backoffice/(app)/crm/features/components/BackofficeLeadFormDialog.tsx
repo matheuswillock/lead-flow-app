@@ -48,24 +48,10 @@ import {
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
-import { formatDocumentInput } from "@/lib/masks"
+import { formatDocumentInput, maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
 
 const NO_SELECTION_VALUE = "__none__"
 const DEFAULT_STATUS: BackofficeLeadStatusKey = "new_opportunity"
-
-function sanitizePhoneDigits(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 11)
-}
-
-function formatPhoneInput(value: string): string {
-  const digits = sanitizePhoneDigits(value)
-  if (digits.length <= 2) return digits
-  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
-  if (digits.length <= 10) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
-  }
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
-}
 
 function isValidCpf(value: string): boolean {
   const cpf = value.replace(/\D/g, "")
@@ -121,7 +107,7 @@ const leadFormSchema = z
       .refine(
         (value) => {
           if (!value) return true
-          return /^\d{10,11}$/.test(sanitizePhoneDigits(value))
+          return /^\d{10,11}$/.test(normalizeLeadPhoneDigits(value))
         },
         { message: "Telefone deve conter 10 ou 11 dígitos." },
       ),
@@ -213,7 +199,7 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
   return {
     name: lead.name,
     email: lead.email ?? "",
-    phone: formatPhoneInput(lead.phone ?? ""),
+    phone: maskPhone(normalizeLeadPhoneDigits(lead.phone ?? "")),
     cpfCnpj: formatDocumentInput(lead.cpfCnpj ?? ""),
     notes: lead.notes ?? "",
     status: lead.status,
@@ -371,7 +357,7 @@ export function BackofficeLeadFormDialog() {
       const basePayload = {
         name: values.name.trim(),
         email: nullIfEmpty(values.email),
-        phone: nullIfEmpty(sanitizePhoneDigits(values.phone)),
+        phone: nullIfEmpty(normalizeLeadPhoneDigits(values.phone)),
         cpfCnpj: nullIfEmpty(formatDocumentInput(values.cpfCnpj)),
         notes: nullIfEmpty(values.notes),
         sdrBackofficeUserId: nullIfEmpty(values.sdrBackofficeUserId),
@@ -521,7 +507,9 @@ export function BackofficeLeadFormDialog() {
                                 {...field}
                                 placeholder="(00) 00000-0000"
                                 onChange={(event) =>
-                                  field.onChange(formatPhoneInput(event.target.value))
+                                  field.onChange(
+                                    maskPhone(normalizeLeadPhoneDigits(event.target.value)),
+                                  )
                                 }
                                 disabled={isSubmitting}
                               />

@@ -500,7 +500,9 @@ export function BackofficeCrmTable() {
         accessorKey: "phone",
         meta: { label: "Telefone" },
         header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
-        cell: ({ row }) => maskPhone(row.original.phone ?? "") || "-",
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap">{maskPhone(row.original.phone ?? "") || "-"}</span>
+        ),
       },
       {
         accessorKey: "cpfCnpj",

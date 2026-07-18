@@ -1,4 +1,5 @@
 import { BackofficeLeadOrigin, BackofficeLeadStatus, Prisma } from "@prisma/client"
+import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { Output } from "@/lib/output"
 import { backofficeLeadSlackNotificationService } from "@/app/api/services/backofficeLeadSlack/BackofficeLeadSlackNotificationService"
 import { getFullUrl } from "@/lib/utils/app-url"
@@ -101,12 +102,15 @@ function parseDirectMetaLeadPayload(payload: unknown): LeadPayloadParseResult {
     return { isValid: false, errorMessage: "Campo metadata deve ser um objeto" }
   }
 
+  const rawPhone = normalizeTextValue(record.phone)
+  const normalizedPhone = rawPhone ? normalizeLeadPhoneDigits(rawPhone) : null
+
   return {
     isValid: true,
     lead: {
       name,
       email: normalizeTextValue(record.email),
-      phone: normalizeTextValue(record.phone),
+      phone: normalizedPhone || null,
       notes: normalizeTextValue(record.notes),
       sourceExternalId: normalizeTextValue(record.external_id),
       qualificationLeadOrganization: normalizeTextValue(record.qualification_lead_organization ?? record.como_voce_organiza_seus_leads_e_carteira),
