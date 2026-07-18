@@ -5,12 +5,31 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
-const createSchema = z.object({
-  name: z.string().min(1, "Nome é obrigatório"),
-  templateId: z.string().uuid("templateId inválido"),
-  contactListId: z.string().uuid("contactListId inválido"),
-  scheduledAt: z.string().datetime().nullable().optional(),
-})
+const createSchema = z
+  .object({
+    name: z.string().min(1, "Nome é obrigatório"),
+    templateId: z.string().uuid("templateId inválido"),
+    contactListId: z.string().uuid("contactListId inválido").optional(),
+    cdpSegmentSlug: z.string().min(1).optional(),
+    scheduledAt: z.string().datetime().nullable().optional(),
+    scheduleIntervalDays: z.number().int().min(1).optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.contactListId && !data.cdpSegmentSlug) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Informe contactListId ou cdpSegmentSlug",
+        path: ["contactListId"],
+      })
+    }
+    if (data.contactListId && data.cdpSegmentSlug) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Use apenas contactListId ou cdpSegmentSlug",
+        path: ["contactListId"],
+      })
+    }
+  })
 
 const campaignStatusSchema = z.enum(["draft", "scheduled", "sending", "sent", "canceled", "failed", "archived"])
 
