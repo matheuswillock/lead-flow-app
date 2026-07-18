@@ -6,6 +6,7 @@ export type CreateCampaignData = {
   contactListId?: string
   cdpSegmentSlug?: string
   scheduledAt?: string
+  scheduleIntervalDays?: number
 }
 
 export type UpdateCampaignData = {
@@ -34,6 +35,7 @@ export type SendResult = {
 export interface ICampanhasService {
   list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string[], name?: string, createdAtFrom?: string, createdAtTo?: string): Promise<ListCampaignsResult>
   create(supabaseId: string, teamId: string | null | undefined, data: CreateCampaignData): Promise<Campaign>
+  getById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Campaign>
   update(supabaseId: string, teamId: string | null | undefined, id: string, data: UpdateCampaignData): Promise<Campaign>
   send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<SendResult>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>

@@ -75,14 +75,20 @@ function CampaignActionsMenu({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
+  const isParentCampaign = Boolean(campaign.isParentCampaign || (campaign.subCampaignCount ?? 0) > 0)
   const canSendByStatus =
-    campaign.status === "draft" ||
-    campaign.status === "scheduled" ||
-    campaign.status === "sent"
+    !isParentCampaign &&
+    (campaign.status === "draft" ||
+      campaign.status === "scheduled" ||
+      campaign.status === "sent")
   const canSend = canSendCampaign && canSendByStatus
   const sendDisabledReason =
     sendBlockReason ??
-    (!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined)
+    (isParentCampaign
+      ? "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
+      : !canSendCampaign
+        ? "Ative um plano em Assinaturas para disparar campanhas"
+        : undefined)
   const canEdit = ["draft", "scheduled", "sent", "failed"].includes(campaign.status)
   const canCancel = campaign.status === "scheduled"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
@@ -378,7 +384,14 @@ export function CampaignList({
                 return (
                   <TableRow key={campaign.id}>
                     <TableCell className="align-middle text-center font-medium">
-                      {campaign.name}
+                      <div className="flex flex-col items-center gap-1">
+                        <span>{campaign.name}</span>
+                        {(campaign.subCampaignCount ?? 0) > 0 ? (
+                          <Badge variant="secondary">
+                            {campaign.subCampaignCount} sub-campanhas
+                          </Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm text-muted-foreground">
                       {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}

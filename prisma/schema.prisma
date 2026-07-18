@@ -2602,38 +2602,44 @@ model EmailContact {
 }
 
 model EmailCampaign {
-  id              String              @id @default(uuid()) @db.Uuid
-  teamId          String              @db.Uuid
-  createdBy       String              @db.Uuid
-  name            String              @db.Text
-  templateId      String              @db.Uuid
-  contactListId   String?             @db.Uuid
-  cdpSegmentSlug  String?             @db.Text
-  status          EmailCampaignStatus @default(draft)
-  scheduledAt     DateTime?           @db.Timestamptz(6)
-  sentAt          DateTime?           @db.Timestamptz(6)
-  totalRecipients Int                 @default(0)
-  totalSent       Int                 @default(0)
-  totalDelivered  Int                 @default(0)
-  totalOpened     Int                 @default(0)
-  totalClicked    Int                 @default(0)
-  totalBounced    Int                 @default(0)
-  dispatchCount   Int                 @default(0)
-  totalComplained Int                 @default(0)
-  errorMessage    String?             @db.Text
-  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+  id                 String              @id @default(uuid()) @db.Uuid
+  teamId             String              @db.Uuid
+  createdBy          String              @db.Uuid
+  name               String              @db.Text
+  templateId         String              @db.Uuid
+  contactListId      String?             @db.Uuid
+  cdpSegmentSlug     String?             @db.Text
+  parentCampaignId   String?             @db.Uuid
+  subCampaignIndex   Int?
+  audienceContactIds String[]            @default([]) @db.Uuid
+  status             EmailCampaignStatus @default(draft)
+  scheduledAt        DateTime?           @db.Timestamptz(6)
+  sentAt             DateTime?           @db.Timestamptz(6)
+  totalRecipients    Int                 @default(0)
+  totalSent          Int                 @default(0)
+  totalDelivered     Int                 @default(0)
+  totalOpened        Int                 @default(0)
+  totalClicked       Int                 @default(0)
+  totalBounced       Int                 @default(0)
+  dispatchCount      Int                 @default(0)
+  totalComplained    Int                 @default(0)
+  errorMessage       String?             @db.Text
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(6)
 
-  team        Team             @relation("TeamEmailCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
-  creator     Profile          @relation("EmailCampaignCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  template    EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  contactList EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: Restrict)
-  logs        EmailLog[]
-  dispatches  EmailCampaignDispatch[]
+  team           Team             @relation("TeamEmailCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
+  creator        Profile          @relation("EmailCampaignCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  template       EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  contactList    EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  parentCampaign EmailCampaign?   @relation("EmailCampaignSubCampaigns", fields: [parentCampaignId], references: [id], onDelete: Cascade)
+  subCampaigns   EmailCampaign[]  @relation("EmailCampaignSubCampaigns")
+  logs           EmailLog[]
+  dispatches     EmailCampaignDispatch[]
 
   @@index([teamId, status])
   @@index([teamId, scheduledAt])
   @@index([createdBy])
+  @@index([parentCampaignId])
   @@map("corretor_studio_email_campaigns")
 }
 
