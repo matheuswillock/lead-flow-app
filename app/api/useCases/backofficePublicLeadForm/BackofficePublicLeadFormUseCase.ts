@@ -79,7 +79,7 @@ export class BackofficePublicLeadFormUseCase implements IBackofficePublicLeadFor
         cpfCnpj: nullIfEmpty(input.cpfCnpj),
         notes: buildTrackingNotes(input),
         status: BackofficeLeadStatus.new_opportunity,
-        origin: BackofficeLeadOrigin.public_form,
+        origin: "public_form" as unknown as BackofficeLeadOrigin,
         sourceExternalId,
         createdByProfileId: null,
         qualificationLeadOrganization: nullIfEmpty(input.qualificationLeadOrganization),

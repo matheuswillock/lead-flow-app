@@ -7,8 +7,7 @@ import {
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppService } from "@/app/api/services/whatsapp/WhatsAppService"
 import { isWithinSendRateLimit } from "@/lib/whatsapp/send-rate-limit"
-import { prisma } from "@/app/api/infra/data/prisma"
-import { Prisma } from "@prisma/client"
+import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 
 type SendMessageUseCaseInput = SendMessageInput & { access: TeamAccess; clientMessageId: string }
 
@@ -24,10 +23,7 @@ class SendMessageUseCase {
     try {
       await assertCanAccessConversation(input.access, input.conversationId)
 
-      const existing = await prisma.$queryRaw<Array<{ conversationId: string; messageId: string | null; status: "PENDING" | "SENT" | "UNKNOWN" | "FAILED" }>>`
-        select "conversationId", "messageId", status::text as status
-        from whatsapp_outbound_commands where "teamId" = ${input.teamId}::uuid and "clientMessageId" = ${input.clientMessageId}
-      `.then((rows) => rows[0])
+      const existing = await whatsAppRepository.findOutboundCommand(input.teamId, input.clientMessageId)
       if (existing) {
         if (existing.conversationId !== input.conversationId) {
           return new Output(false, [], ["clientMessageId já pertence a outra conversa"], null)
@@ -43,16 +39,13 @@ class SendMessageUseCase {
         }
       }
 
-      try {
-        await prisma.$executeRaw`
-          insert into whatsapp_outbound_commands (id, "teamId", "conversationId", "clientMessageId", status, "attemptCount", "createdAt", "updatedAt")
-          values (gen_random_uuid(), ${input.teamId}::uuid, ${input.conversationId}::uuid, ${input.clientMessageId}, 'PENDING', 1, now(), now())
-        `
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          return new Output(false, [], ["Envio já está em processamento."], null)
-        }
-        throw error
+      const commandCreated = await whatsAppRepository.createOutboundCommand({
+        teamId: input.teamId,
+        conversationId: input.conversationId,
+        clientMessageId: input.clientMessageId,
+      })
+      if (!commandCreated) {
+        return new Output(false, [], ["Envio já está em processamento."], null)
       }
 
       const usage = await this.service.getUsageSummary(input.teamId)
@@ -65,20 +58,23 @@ class SendMessageUseCase {
       }
 
       const result = await this.service.sendMessage(input)
-      await prisma.$executeRaw`
-        update whatsapp_outbound_commands set status = 'SENT', "messageId" = ${result.messageId}::uuid, "lastError" = null, "updatedAt" = now()
-        where "teamId" = ${input.teamId}::uuid and "clientMessageId" = ${input.clientMessageId}
-      `
+      await whatsAppRepository.completeOutboundCommand({
+        teamId: input.teamId,
+        clientMessageId: input.clientMessageId,
+        messageId: result.messageId,
+      })
       return new Output(true, ["Mensagem enviada com sucesso"], [], { ...result, status: "SENT" })
     } catch (error) {
       if (error instanceof WhatsAppAccessDeniedError) {
         return new Output(false, [], [error.message], null)
       }
       const status = isUncertainDeliveryError(error) ? "UNKNOWN" : "FAILED"
-      await prisma.$executeRaw`
-        update whatsapp_outbound_commands set status = ${status}::"WhatsAppOutboundCommandStatus", "lastError" = ${error instanceof Error ? error.message.slice(0, 500) : "Erro desconhecido"}, "updatedAt" = now()
-        where "teamId" = ${input.teamId}::uuid and "clientMessageId" = ${input.clientMessageId} and status = 'PENDING'
-      `.catch((commandError: unknown) => console.error("[SendMessageUseCase] Falha ao atualizar comando", commandError))
+      await whatsAppRepository.failOutboundCommand({
+        teamId: input.teamId,
+        clientMessageId: input.clientMessageId,
+        status,
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      }).catch((commandError: unknown) => console.error("[SendMessageUseCase] Falha ao atualizar comando", commandError))
       console.error("[SendMessageUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao enviar mensagem"
       return new Output(false, [], [message], null)

@@ -16,11 +16,11 @@ afterEach(() => {
 describe("BethaniaAiGateway", () => {
   test("classifies non-JSON model content as invalid_json", async () => {
     process.env.GROQ_API_KEY = "test-key";
-    globalThis.fetch = async () =>
+    globalThis.fetch = (async () =>
       new Response(JSON.stringify({ choices: [{ message: { content: "not JSON" } }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      });
+      })) as unknown as typeof fetch;
 
     const result = await new BethaniaAiGateway().generate({
       model: "test-model",

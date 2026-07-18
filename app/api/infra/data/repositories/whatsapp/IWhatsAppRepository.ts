@@ -97,6 +97,23 @@ export interface WhatsAppInboundReadReceiptCandidate {
   rawPayload: Prisma.JsonValue
 }
 
+export type WhatsAppOutboundCommandStatus = "PENDING" | "SENT" | "UNKNOWN" | "FAILED"
+export type WhatsAppWebhookEventStatus = "PENDING" | "PROCESSING" | "PROCESSED" | "DEAD_LETTER"
+
+export interface WhatsAppOutboundCommandRecord {
+  conversationId: string
+  messageId: string | null
+  status: WhatsAppOutboundCommandStatus
+}
+
+export interface WhatsAppWebhookOutboxEvent {
+  id: string
+  teamId: string
+  configId: string
+  payload: Prisma.JsonValue
+  attemptCount: number
+}
+
 export interface IWhatsAppRepository {
   // Config
   findConfigByTeamId(teamId: string): Promise<WhatsAppConfigSelect | null>
@@ -211,6 +228,16 @@ export interface IWhatsAppRepository {
   ): Promise<WhatsAppInboundReadReceiptCandidate[]>
 
   bulkSetInboundBrokerReadAt(messageIds: string[], readAt: Date): Promise<number>
+
+  // Durable delivery and webhook outbox
+  findOutboundCommand(teamId: string, clientMessageId: string): Promise<WhatsAppOutboundCommandRecord | null>
+  createOutboundCommand(input: { teamId: string; conversationId: string; clientMessageId: string }): Promise<boolean>
+  completeOutboundCommand(input: { teamId: string; clientMessageId: string; messageId: string }): Promise<void>
+  failOutboundCommand(input: { teamId: string; clientMessageId: string; status: "UNKNOWN" | "FAILED"; error: string }): Promise<void>
+  persistWebhookEvent(input: { configId: string; teamId: string; providerEventId: string; eventType: string; payload: Prisma.InputJsonValue }): Promise<string>
+  claimWebhookEvent(eventId: string): Promise<WhatsAppWebhookOutboxEvent | null>
+  completeWebhookEvent(input: { eventId: string; status: "PROCESSED" | "PENDING" | "DEAD_LETTER"; error?: string }): Promise<void>
+  listPendingWebhookEventIds(limit: number): Promise<string[]>
 
   // Usage
   createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }>

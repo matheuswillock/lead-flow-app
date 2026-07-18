@@ -13,7 +13,6 @@ import {
   recordWhatsAppWebhookProcessingFailure,
   recordWhatsAppWebhookProcessingSuccess,
 } from "@/lib/whatsapp/whatsapp-webhook-failure-alert"
-import { prisma } from "@/app/api/infra/data/prisma"
 import { sanitizeWhatsAppWebhookPayload } from "@/lib/whatsapp/sanitize-webhook-payload"
 import { processWhatsAppWebhookOutboxUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppWebhookOutboxUseCase"
 import { Prisma } from "@prisma/client"
@@ -70,14 +69,14 @@ export async function POST(
 
   try {
     const eventId = crypto.randomUUID()
-    const durableProviderEventId = providerMessageId || `event:${eventType}:${eventId}`
-    const persisted = await prisma.$queryRaw<Array<{ id: string }>>`
-      insert into whatsapp_webhook_events (id, "configId", "teamId", "providerEventId", "eventType", payload, status, "createdAt", "updatedAt")
-      values (${eventId}::uuid, ${config.id}::uuid, ${config.teamId}::uuid, ${durableProviderEventId}, ${eventType}, ${sanitizeWhatsAppWebhookPayload(rawEvent) as Prisma.InputJsonValue}, 'PENDING', now(), now())
-      on conflict ("configId", "providerEventId") do update set "updatedAt" = now()
-      returning id
-    `
-    const output = await processWhatsAppWebhookOutboxUseCase.process(persisted[0]!.id)
+    const persistedEventId = await whatsAppRepository.persistWebhookEvent({
+      configId: config.id,
+      teamId: config.teamId,
+      providerEventId: providerMessageId || `event:${eventType}:${eventId}`,
+      eventType,
+      payload: sanitizeWhatsAppWebhookPayload(rawEvent) as Prisma.InputJsonValue,
+    })
+    const output = await processWhatsAppWebhookOutboxUseCase.process(persistedEventId)
 
     if (!output.isValid) {
       const retryable = output.result?.retryable !== false
