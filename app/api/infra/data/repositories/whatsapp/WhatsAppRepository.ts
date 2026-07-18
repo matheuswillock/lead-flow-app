@@ -23,6 +23,7 @@ const CONFIG_SELECT = {
   instanceId: true,
   phoneNumber: true,
   normalizedPhone: true,
+  lastConnectedNormalizedPhone: true,
   primaryConfigId: true,
   displayName: true,
   status: true,
@@ -644,6 +645,24 @@ class WhatsAppRepository implements IWhatsAppRepository {
     await prisma.whatsAppConversation.delete({ where: { id } })
   }
 
+  async resetInboxForConfigChange(configId: string, teamId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.whatsAppConversation.deleteMany({ where: { configId } })
+      await tx.teamWhatsAppContact.deleteMany({ where: { teamId } })
+      await tx.teamWhatsAppConfig.update({
+        where: { id: configId },
+        data: {
+          historySyncStatus: "IDLE",
+          historySyncStartedAt: null,
+          historySyncCompletedAt: null,
+          historySyncError: null,
+          lastSyncAt: null,
+        },
+      })
+    })
+    console.info("[WhatsAppRepository][resetInboxForConfigChange]", { configId, teamId })
+  }
+
   async findTeamMasterContext(
     teamId: string
   ): Promise<{ masterId: string; timezone: string | null } | null> {
@@ -747,6 +766,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         instanceId: true,
         phoneNumber: true,
         normalizedPhone: true,
+        lastConnectedNormalizedPhone: true,
         primaryConfigId: true,
         displayName: true,
         status: true,

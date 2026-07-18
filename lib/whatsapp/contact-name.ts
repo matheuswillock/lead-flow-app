@@ -44,8 +44,8 @@ export function resolveDisplayName(input: {
   if (input.contactName?.trim()) return input.contactName.trim()
   const externalChatId = input.externalChatId ?? ""
   if (externalChatId.endsWith("@g.us")) return "Grupo"
-  if (externalChatId.endsWith("@lid")) return "Contato"
+  if (externalChatId.endsWith("@lid")) return "Número não disponível"
   const formatted = formatDisplayPhone(input.contactPhone)
   if (formatted && !formatted.includes("@")) return formatted
-  return "Contato"
+  return "Número não disponível"
 }

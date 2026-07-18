@@ -95,6 +95,8 @@ export type WhatsAppHistorySyncStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAIL
 export interface WhatsAppConfig {
   status: WhatsAppConnectionStatus
   phoneNumber: string | null
+  normalizedPhone?: string | null
+  lastConnectedNormalizedPhone?: string | null
   instanceName: string
   historySyncStatus?: WhatsAppHistorySyncStatus
   historySyncStartedAt?: string | null

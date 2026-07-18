@@ -1,13 +1,20 @@
 "use client"
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Loader2, Phone, RefreshCw, UserSquare2, Wifi, WifiOff } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from '@/components/ui/message-scroller'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { AssignmentControl } from './AssignmentControl'
@@ -55,12 +62,7 @@ export function MessagePanel() {
   } = useWhatsAppInboxContext()
 
   const [leadSheetOpen, setLeadSheetOpen] = useState(false)
-  const scrollBottomRef = useRef<HTMLDivElement>(null)
   const isConnected = config?.status === 'CONNECTED'
-
-  useEffect(() => {
-    scrollBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
 
   if (!selectedConversation) {
     return (
@@ -86,8 +88,7 @@ export function MessagePanel() {
   const initials = getInitials(selectedConversation.contactName, selectedConversation.contactPhone)
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3">
         <Avatar className="size-9">
           {selectedConversation.contactAvatarUrl ? (
@@ -164,7 +165,6 @@ export function MessagePanel() {
 
       <Separator />
 
-      {/* Messages */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           aria-hidden
@@ -178,50 +178,64 @@ export function MessagePanel() {
           aria-hidden
           className="pointer-events-none absolute inset-0 hidden bg-[url('/whatsapp/chat-background-dark.png')] bg-[length:400px] bg-repeat opacity-[0.14] dark:block"
         />
-        <ScrollArea className="h-full flex-1 [&>[data-radix-scroll-area-viewport]>div]:min-h-full">
-          <div className="relative z-10 flex flex-col gap-2 px-4 py-4">
-          {isLoadingMessages ? (
-            <MessageBubbleSkeleton />
-          ) : messages.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-muted-foreground">Nenhuma mensagem nesta conversa</p>
-            </div>
-          ) : (
-            <>
-              {hasMoreMessages && (
-                <div className="flex justify-center pb-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={loadOlderMessages}
-                    disabled={isLoadingOlderMessages}
-                    className="text-xs"
-                  >
-                    {isLoadingOlderMessages ? (
-                      <Loader2 className="animate-spin" data-icon="inline-start" />
+        <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+          <MessageScroller className="relative z-10 flex-1">
+            <MessageScrollerViewport preserveScrollOnPrepend>
+              <MessageScrollerContent>
+                {isLoadingMessages ? (
+                  <MessageScrollerItem messageId="loading">
+                    <MessageBubbleSkeleton />
+                  </MessageScrollerItem>
+                ) : messages.length === 0 ? (
+                  <MessageScrollerItem messageId="empty">
+                    <div className="py-8 text-center">
+                      <p className="text-sm text-muted-foreground">Nenhuma mensagem nesta conversa</p>
+                    </div>
+                  </MessageScrollerItem>
+                ) : (
+                  <>
+                    {hasMoreMessages ? (
+                      <MessageScrollerItem messageId="load-older">
+                        <div className="flex justify-center pb-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={loadOlderMessages}
+                            disabled={isLoadingOlderMessages}
+                            className="text-xs"
+                          >
+                            {isLoadingOlderMessages ? (
+                              <Loader2 className="animate-spin" data-icon="inline-start" />
+                            ) : null}
+                            {isLoadingOlderMessages ? 'Carregando...' : 'Carregar mensagens anteriores'}
+                          </Button>
+                        </div>
+                      </MessageScrollerItem>
                     ) : null}
-                    {isLoadingOlderMessages ? 'Carregando...' : 'Carregar mensagens anteriores'}
-                  </Button>
-                </div>
-              )}
-              {messages.map((message, index) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  previousMessage={index > 0 ? messages[index - 1]! : null}
-                />
-              ))}
-            </>
-          )}
-          <div ref={scrollBottomRef} />
-          </div>
-        </ScrollArea>
+                    {messages.map((message, index) => (
+                      <MessageScrollerItem
+                        key={message.id}
+                        messageId={message.id}
+                        scrollAnchor={message.direction === 'OUTBOUND'}
+                      >
+                        <MessageBubble
+                          message={message}
+                          previousMessage={index > 0 ? messages[index - 1]! : null}
+                        />
+                      </MessageScrollerItem>
+                    ))}
+                  </>
+                )}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton />
+          </MessageScroller>
+        </MessageScrollerProvider>
       </div>
 
       <Separator />
 
-      {/* Composer */}
       <div className="p-4">
         <MessageComposer disabled={!isConnected} />
       </div>

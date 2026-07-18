@@ -8,6 +8,7 @@ export interface WhatsAppConfigSelect {
   instanceId: string | null
   phoneNumber: string | null
   normalizedPhone: string | null
+  lastConnectedNormalizedPhone: string | null
   primaryConfigId: string | null
   displayName: string | null
   status: string
@@ -130,6 +131,12 @@ export interface IWhatsAppRepository {
    * eliminando a corrida leitura-depois-escrita do guard em memória.
    */
   claimHistorySyncSlot(configId: string): Promise<boolean>
+
+  /**
+   * Remove conversas/mensagens/contatos do time e reseta o history sync
+   * quando um número diferente assume a mesma config (após disconnect + novo QR).
+   */
+  resetInboxForConfigChange(configId: string, teamId: string): Promise<void>
 
   incrementWebhookConsecutiveFailures(configId: string): Promise<{
     webhookConsecutiveFailures: number

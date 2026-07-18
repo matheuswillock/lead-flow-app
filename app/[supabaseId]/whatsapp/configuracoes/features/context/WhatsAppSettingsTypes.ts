@@ -9,6 +9,7 @@ export interface WhatsAppConfig {
   instanceName: string
   phoneNumber: string | null
   normalizedPhone?: string | null
+  lastConnectedNormalizedPhone?: string | null
   primaryConfigId?: string | null
   qrCodeImageUrl: string | null
   qrCodeText: string | null

@@ -185,6 +185,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const currentConfigKeyRef = useRef<string | null>(null)
   const inFlightConfigKeyRef = useRef<string | null>(null)
   const lastSuccessConfigKeyRef = useRef<string | null>(null)
+  const lastConnectedPhoneRef = useRef<string | null>(null)
 
   const currentConvsKeyRef = useRef<string | null>(null)
   const inFlightConvsKeyRef = useRef<string | null>(null)
@@ -588,6 +589,31 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   useEffect(() => {
     void loadConfig()
   }, [loadConfig])
+
+  useEffect(() => {
+    const nextPhone = config?.lastConnectedNormalizedPhone ?? null
+    const previousPhone = lastConnectedPhoneRef.current
+
+    if (
+      previousPhone &&
+      nextPhone &&
+      previousPhone !== nextPhone
+    ) {
+      setConversations([])
+      setSelectedConversationId(null)
+      setMessages([])
+      setTotalConversations(0)
+      setTotalMessages(0)
+      setContacts([])
+      setPage(1)
+      toast.info('Número alterado. Conversas anteriores foram removidas.')
+      void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
+    }
+
+    if (nextPhone) {
+      lastConnectedPhoneRef.current = nextPhone
+    }
+  }, [config?.lastConnectedNormalizedPhone, loadConversations])
 
   useEffect(() => {
     const onConfigChanged = () => {
