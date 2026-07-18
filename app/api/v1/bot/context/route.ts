@@ -2,11 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Output } from "@/lib/output";
 import { backofficeBotContextUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotContextUseCase";
 import { verifyStudioBotSignature } from "@/lib/studio-bot/hmac";
+import { resolveStudioBotWebhookSecretAsync } from "@/lib/studio-bot/resolve-host-secrets";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 export async function GET(request: NextRequest) {
   try {
-    const secret = process.env.BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET?.trim();
+    const secret = await resolveStudioBotWebhookSecretAsync();
     if (!secret) {
       return NextResponse.json(
         new Output(false, [], ["Webhook secret não configurado"], null),

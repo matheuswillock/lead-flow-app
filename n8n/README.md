@@ -2,6 +2,8 @@
 
 Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows desta pasta são exports versionados para importação na UI do N8N.
 
+> **Produção (VPS):** variáveis e reimport de workflows preferencialmente pelo painel **Bethânia → Ops / Host** (`deploy/hostinger/README.md` — seção Painel Ops). Evite editar `.env.n8n` na VPS manualmente após o agente estar ativo.
+
 ## Pré-requisitos
 
 1. Docker Desktop em execução.

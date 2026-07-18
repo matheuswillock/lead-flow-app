@@ -39,6 +39,7 @@ yarn-error.log*
 .env*
 !.env.example
 !.env.evolution.example
+!.env.ops.example
 
 # vercel
 .vercel
@@ -53,3 +54,4 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+deploy/hostinger/host-pack/dist/

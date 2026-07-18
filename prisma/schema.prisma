@@ -817,6 +817,7 @@ model Profile {
   backofficeBotNotificationPreferences BackofficeBotNotificationPreference[]
   backofficeBotEventOutbox             BackofficeBotEventOutbox[]
   backofficeBotAiProposals             BackofficeBotAiProposal[]
+  backofficeBotHostOpsJobs             BackofficeBotHostOpsJob[]
   backofficeBansReceived               BackofficeBannedUser[] @relation("BackofficeBannedUserTarget")
   backofficeBansIssued                 BackofficeBannedUser[] @relation("BackofficeBannedUserIssuer")
   backofficeBansLifted                 BackofficeBannedUser[] @relation("BackofficeBannedUserLifter")
@@ -3249,6 +3250,7 @@ model TeamWhatsAppConfig {
   instanceId         String?                  @db.Text
   phoneNumber        String?                  @db.Text
   normalizedPhone    String?                  @db.Text
+  lastConnectedNormalizedPhone String?        @db.Text
   primaryConfigId    String?                  @db.Uuid
   displayName        String?                  @db.Text
   status             WhatsAppConnectionStatus @default(PENDING)
@@ -4014,4 +4016,69 @@ model AsaasWebhookEvent {
 
   @@index([status, receivedAt(sort: Desc)], map: "asaas_webhook_events_status_received_at_idx")
   @@map("asaas_webhook_events")
+}
+
+enum BackofficeBotHostOpsJobType {
+  APPLY_ENV
+  RESTART_SERVICE
+  IMPORT_WORKFLOWS
+  SYNC_HOST
+  HEALTH
+
+  @@map("backoffice_bot_host_ops_job_type")
+}
+
+enum BackofficeBotHostOpsJobStatus {
+  queued
+  running
+  succeeded
+  failed
+
+  @@map("backoffice_bot_host_ops_job_status")
+}
+
+enum BackofficeBotHostApplyStatus {
+  never
+  succeeded
+  failed
+
+  @@map("backoffice_bot_host_apply_status")
+}
+
+/// Singleton lógico de configuração do host Bethânia (N8N + Evolution na VPS).
+model BackofficeBotHostSettings {
+  id                     String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentBaseUrl           String?                      @db.Text
+  agentTokenHash         String?                      @db.Text
+  n8nEnvEncrypted        String?                      @db.Text
+  evolutionEnvEncrypted  String?                      @db.Text
+  desiredHostVersion     String?                      @db.Text
+  appliedHostVersion     String?                      @db.Text
+  lastAppliedAt          DateTime?                    @db.Timestamptz(6)
+  lastApplyStatus        BackofficeBotHostApplyStatus @default(never)
+  lastApplyError         String?                      @db.Text
+  createdAt              DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime                     @updatedAt @db.Timestamptz(6)
+
+  @@map("backoffice_bot_host_settings")
+}
+
+model BackofficeBotHostOpsJob {
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type                 BackofficeBotHostOpsJobType
+  status               BackofficeBotHostOpsJobStatus @default(queued)
+  payload              Json?
+  result               Json?
+  errorMessage         String?                      @db.Text
+  requestedByProfileId String                       @db.Uuid
+  startedAt            DateTime?                    @db.Timestamptz(6)
+  finishedAt           DateTime?                    @db.Timestamptz(6)
+  createdAt            DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime                     @updatedAt @db.Timestamptz(6)
+
+  requestedBy Profile @relation(fields: [requestedByProfileId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([requestedByProfileId, createdAt(sort: Desc)])
+  @@map("backoffice_bot_host_ops_jobs")
 }

@@ -150,6 +150,10 @@ export const envSchema = z.object({
   N8N_WEBHOOK_BASE_URL: urlSchema.optional().describe('N8N webhook URL for containers'),
   BACKOFFICE_N8N_OUTBOUND_URL: urlSchema.optional().describe('CS to N8N outbound webhook URL'),
   BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET: z.string().optional().describe('HMAC secret N8N ↔ CS'),
+  BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN: z
+    .string()
+    .optional()
+    .describe('Bearer token do agente studio-bot-ops na VPS'),
   N8N_BETHANIA_INBOUND_PATH: z.string().optional().describe('N8N inbound workflow path'),
   EVO_BETHANIA_INSTANCE: z.string().optional().describe('Evolution instance name for Bethânia'),
   BACKOFFICE_BETHANIA_WHATSAPP_NUMBER: z.string().optional().describe('Bethânia WhatsApp number E.164'),

@@ -787,6 +787,24 @@ RECEIVED RECEIVED
     
 
 
+        WhatsAppOutboundCommandStatus {
+            PENDING PENDING
+SENT SENT
+UNKNOWN UNKNOWN
+FAILED FAILED
+        }
+    
+
+
+        WhatsAppWebhookEventStatus {
+            PENDING PENDING
+PROCESSING PROCESSING
+PROCESSED PROCESSED
+DEAD_LETTER DEAD_LETTER
+        }
+    
+
+
         WhatsAppUsageEventType {
             OUTBOUND_MESSAGE OUTBOUND_MESSAGE
 INBOUND_MESSAGE INBOUND_MESSAGE
@@ -948,6 +966,33 @@ outbound outbound
         backoffice_bot_event_outbox_status {
             pending pending
 sent sent
+failed failed
+        }
+    
+
+
+        backoffice_bot_host_ops_job_type {
+            APPLY_ENV APPLY_ENV
+RESTART_SERVICE RESTART_SERVICE
+IMPORT_WORKFLOWS IMPORT_WORKFLOWS
+SYNC_HOST SYNC_HOST
+HEALTH HEALTH
+        }
+    
+
+
+        backoffice_bot_host_ops_job_status {
+            queued queued
+running running
+succeeded succeeded
+failed failed
+        }
+    
+
+
+        backoffice_bot_host_apply_status {
+            never never
+succeeded succeeded
 failed failed
         }
     
@@ -2293,6 +2338,7 @@ failed failed
     String instanceId "❓"
     String phoneNumber "❓"
     String normalizedPhone "❓"
+    String lastConnectedNormalizedPhone "❓"
     String displayName "❓"
     WhatsAppConnectionStatus status 
     String qrCodeText "❓"
@@ -2357,6 +2403,37 @@ failed failed
     DateTime failedAt "❓"
     Boolean isAutoResponse 
     Json rawPayload 
+    String storagePath "❓"
+    String mediaSha256 "❓"
+    Int mediaSizeBytes "❓"
+    Int mediaDurationMs "❓"
+    DateTime deletedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_outbound_commands" {
+    String id "🗝️"
+    String clientMessageId 
+    String messageId "❓"
+    WhatsAppOutboundCommandStatus status 
+    Int attemptCount 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_webhook_events" {
+    String id "🗝️"
+    String providerEventId "❓"
+    String eventType 
+    Json payload 
+    WhatsAppWebhookEventStatus status 
+    Int attemptCount 
+    String lastError "❓"
+    DateTime processedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2575,6 +2652,78 @@ failed failed
     }
   
 
+  "backoffice_bot_ai_configurations" {
+    Boolean id "🗝️"
+    Boolean enabled 
+    Boolean shadowMode 
+    Int rolloutPercentage 
+    Int dailyUserLimit 
+    Int dailyGlobalLimit 
+    Int timeoutMs 
+    Int circuitBreakerFailureThreshold 
+    Int circuitBreakerResetSeconds 
+    String primaryModel 
+    String fallbackModel "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_ai_interactions" {
+    String id "🗝️"
+    String flowId "❓"
+    String promptVersion 
+    String intent "❓"
+    String mode 
+    String outcome 
+    String model "❓"
+    Int latencyMs "❓"
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_bot_ai_attempts" {
+    String id "🗝️"
+    String provider 
+    String model 
+    Int attemptNumber 
+    String outcome 
+    Int latencyMs "❓"
+    String errorCode "❓"
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_bot_ai_proposals" {
+    String id "🗝️"
+    String kind 
+    String parametersCipher 
+    String entityType "❓"
+    String entityId "❓"
+    String status 
+    String idempotencyKey 
+    DateTime expiresAt 
+    DateTime confirmedAt "❓"
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_bot_ai_feedback" {
+    String id "🗝️"
+    String value 
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_bot_ai_daily_usage" {
+    DateTime date "🗝️"
+    Int requests 
+    Int failures 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "asaas_webhook_events" {
     String id "🗝️"
     String eventType "❓"
@@ -2583,6 +2732,36 @@ failed failed
     String errorMessage "❓"
     DateTime receivedAt 
     DateTime processedAt "❓"
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_host_settings" {
+    String id "🗝️"
+    String agentBaseUrl "❓"
+    String agentTokenHash "❓"
+    String n8nEnvEncrypted "❓"
+    String evolutionEnvEncrypted "❓"
+    String desiredHostVersion "❓"
+    String appliedHostVersion "❓"
+    DateTime lastAppliedAt "❓"
+    BackofficeBotHostApplyStatus lastApplyStatus 
+    String lastApplyError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_bot_host_ops_jobs" {
+    String id "🗝️"
+    BackofficeBotHostOpsJobType type 
+    BackofficeBotHostOpsJobStatus status 
+    Json payload "❓"
+    Json result "❓"
+    String errorMessage "❓"
+    DateTime startedAt "❓"
+    DateTime finishedAt "❓"
+    DateTime createdAt 
     DateTime updatedAt 
     }
   
@@ -2880,6 +3059,12 @@ failed failed
     "whatsapp_messages" }o--|o corretor_studio_leads : "lead"
     "whatsapp_messages" }o--|o corretor_studio_profiles : "sentByProfile"
     "whatsapp_messages" }o--|o whatsapp_auto_response_rules : "autoResponseRule"
+    "whatsapp_outbound_commands" |o--|| "WhatsAppOutboundCommandStatus" : "enum:status"
+    "whatsapp_outbound_commands" }o--|| corretor_studio_teams : "team"
+    "whatsapp_outbound_commands" }o--|| whatsapp_conversations : "conversation"
+    "whatsapp_webhook_events" |o--|| "WhatsAppWebhookEventStatus" : "enum:status"
+    "whatsapp_webhook_events" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_webhook_events" }o--|| corretor_studio_teams : "team"
     "whatsapp_usage_events" |o--|| "WhatsAppProvider" : "enum:provider"
     "whatsapp_usage_events" |o--|| "WhatsAppUsageEventType" : "enum:eventType"
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
@@ -2924,5 +3109,18 @@ failed failed
     "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
     "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
     "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_ai_interactions" }o--|o backoffice_bot_user_links : "userLink"
+    "backoffice_bot_ai_attempts" }o--|| backoffice_bot_ai_interactions : "interaction"
+    "backoffice_bot_ai_proposals" }o--|| backoffice_bot_user_links : "userLink"
+    "backoffice_bot_ai_proposals" }o--|| corretor_studio_teams : "team"
+    "backoffice_bot_ai_proposals" }o--|o backoffice_bot_ai_interactions : "interaction"
+    "backoffice_bot_ai_proposals" }o--|o corretor_studio_profiles : "assigneeProfile"
+    "backoffice_bot_ai_feedback" }o--|| backoffice_bot_ai_interactions : "interaction"
+    "backoffice_bot_ai_feedback" }o--|o backoffice_bot_user_links : "userLink"
+    "backoffice_bot_ai_daily_usage" }o--|| backoffice_bot_user_links : "userLink"
     "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
+    "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
+    "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
+    "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"
+    "backoffice_bot_host_ops_jobs" }o--|| corretor_studio_profiles : "requestedBy"
 ```
