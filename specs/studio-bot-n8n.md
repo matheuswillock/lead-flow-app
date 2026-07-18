@@ -1112,3 +1112,379 @@ sequenceDiagram
 
 > **Q:** Quem edita avatar e nome exibidos na conversa?
 > **A:** Identidade **editável** é da Bethânia (`BackofficeBotChannel`: avatar, `displayName`, `aboutText`). Perfil do corretor (`Profile`) é **somente leitura** na thread — edição em Minha conta do produto.
+
+---
+
+# Evolução v2 — IA, telemetria e operação assistida
+
+Esta seção substitui o non-goal “LLM / NLU / interpretação de texto livre” somente **após a Fase 0 desta evolução estar concluída**. Os menus, comandos, autenticação, permissões, idempotência e ações determinísticas das fases anteriores continuam obrigatórios e são o fallback permanente.
+
+## Objetivo v2
+
+Permitir que a Bethânia entenda linguagem natural, conduza esclarecimentos curtos e responda de modo fluido, sem conceder autonomia sobre CRM. A IA interpreta e redige; o backend continua sendo a única autoridade para autenticação, acesso a dados e mutações.
+
+Exemplos:
+
+- “Quais reuniões tenho hoje?” → `agenda_today`.
+- “Procura a Ana Paula do plano empresarial” → `search_lead`.
+- “Crie uma tarefa para ligar para ela amanhã” → proposta de `create_task`, confirmação explícita e execução pelo backend.
+- “Como vinculo meu calendário?” → resposta apenas com conteúdo publicado na base de conhecimento.
+
+## Decisões obrigatórias
+
+| Tema | Decisão |
+|---|---|
+| Provedor inicial | Groq Cloud, API OpenAI-compatible |
+| Modelo primário | `openai/gpt-oss-20b` |
+| Fallback | `llama-3.1-8b-instant` |
+| Local da inferência | Backend Next.js, nunca N8N |
+| Saída | JSON Schema estrito no primário; Zod obrigatório em qualquer provider |
+| Escritas | proposta persistida + confirmação `CONFIRMAR` + nova validação de política |
+| Dados | contexto mínimo; não enviar segredo, token, e-mail, telefone, CNPJ, valores ou histórico integral |
+| Privacidade | Zero Data Retention ativado no Groq antes do tráfego real |
+| Telemetria | persistida desde a primeira chamada, inclusive erros e fallback |
+| Fallback operacional | menu e fluxos v1 continuam quando IA, quota ou provider falharem |
+
+O modelo primário é escolhido porque suporta Structured Outputs estritos. Limites e disponibilidade de modelos são variáveis externas e devem ser revalidados no console da Groq antes de cada promoção de ambiente. Referências: [Groq rate limits](https://console.groq.com/docs/rate-limits), [Structured Outputs](https://console.groq.com/docs/structured-outputs) e [Data Controls](https://console.groq.com/docs/your-data).
+
+**Não usar Gemini API no plano gratuito com mensagens reais de CRM.** Os termos desse plano autorizam uso do conteúdo para melhoria de produtos; portanto, ele não atende ao requisito de minimização de dados desta feature.
+
+## Arquitetura v2
+
+```mermaid
+sequenceDiagram
+  participant U as Usuário
+  participant N as Evolution/N8N
+  participant W as Webhook Bethânia
+  participant D as Roteador determinístico
+  participant A as IA no backend
+  participant P as Política/Ações
+  participant M as Telemetria IA
+
+  U->>N: mensagem WhatsApp
+  N->>W: payload normalizado + idempotency key
+  W->>D: autentica, sanitiza e resolve sessão
+  D->>D: tenta comandos e fluxo atual
+  alt não resolvido e elegível
+    D->>A: intenção fechada + contexto mínimo
+    A->>M: interaction/attempt/tokens/latência
+    A-->>D: JSON validado
+  end
+  D->>P: valida allowlist, dados e permissões
+  P-->>D: resultado estruturado
+  D->>N: resposta
+  N-->>U: mensagem
+```
+
+### Ordem obrigatória de roteamento
+
+1. Validar HMAC, idempotência, telefone e vínculo.
+2. Processar autenticação, `VINCULAR`, `MENU`, `AJUDA`, `VOLTAR` e `CANCELAR` sem IA.
+3. Processar sessão e subfluxos determinísticos existentes.
+4. Se há proposta pendente, aceitar somente `CONFIRMAR` ou `CANCELAR`.
+5. Apenas então classificar texto elegível com IA.
+6. Validar a saída com Zod, allowlist e entidades reais no backend.
+7. Executar leitura ou criar proposta de escrita; nunca escrever diretamente a partir da saída do modelo.
+8. Persistir telemetria em `finally`, inclusive timeout, `429`, JSON inválido e circuit breaker.
+
+N8N preserva a normalização e entrega do canal. Ele não recebe chave do provider, não escolhe permissões e não chama ações com base em texto gerado.
+
+## Data model v2
+
+Todas as entidades são isoladas no módulo de backoffice e usam o prefixo `BackofficeBotAi`. A única relação externa permitida é `Profile`; `teamIdSnapshot` é UUID sem FK apenas para análise histórica.
+
+### Enums Prisma
+
+```prisma
+enum BackofficeBotAiProvider { groq ollama @@map("backoffice_bot_ai_provider") }
+
+enum BackofficeBotAiCapability {
+  intent_classification response_composition clarification knowledge_answer
+  transcription summarization evaluation embedding
+  @@map("backoffice_bot_ai_capability")
+}
+
+enum BackofficeBotAiInteractionStatus {
+  shadowed resolved clarification_needed proposal_created confirmed executed
+  cancelled rejected fallback failed
+  @@map("backoffice_bot_ai_interaction_status")
+}
+
+enum BackofficeBotAiAttemptStatus {
+  success validation_error rate_limited timeout provider_error circuit_open skipped
+  @@map("backoffice_bot_ai_attempt_status")
+}
+
+enum BackofficeBotAiActionProposalStatus {
+  pending confirmed executed cancelled expired rejected failed
+  @@map("backoffice_bot_ai_action_proposal_status")
+}
+
+enum BackofficeBotAiFeedbackType {
+  helpful unhelpful corrected confirmed cancelled
+  @@map("backoffice_bot_ai_feedback_type")
+}
+```
+
+### Tabelas
+
+| Entidade | Campos obrigatórios | Finalidade |
+|---|---|---|
+| `BackofficeBotAiConfiguration` | `isEnabled`, `shadowMode`, `rolloutPercentage`, provider/model primário e fallback, thresholds, limites, timeout, retenção, `updatedByProfileId` | singleton, kill switch e operação |
+| `BackofficeBotAiInteraction` | `inboundMessageId` unique, `userLinkId`, `profileId`, `sessionId`, `teamIdSnapshot`, capacidade, status, intenção, confiança, versão de prompt, flags de shadow/fallback, hashes, códigos | uma decisão lógica por mensagem elegível |
+| `BackofficeBotAiInferenceAttempt` | interaction, sequence, provider, model, capability, status, tokens, custo, latência, HTTP status, erro seguro, versão de schema | uma chamada externa, retry ou fallback |
+| `BackofficeBotAiActionProposal` | interaction, usuário, ação, resumo, parâmetros cifrados, expiração, mensagem de confirmação unique, idempotency key unique, resultado | escrita assistida, auditável e idempotente |
+| `BackofficeBotAiFeedback` | interaction, tipo, intenção/entidades corrigidas, origem, autor | sinais para qualidade e avaliações |
+| `BackofficeBotAiDailyUsage` | dia UTC, provider, modelo, capability, contadores, tokens, custo, P50/P95, usuários únicos, erros e fallback | dashboard eficiente e retenção longa |
+
+`BackofficeBotAiInferenceAttempt` deve registrar `inputTokens`, `outputTokens`, `totalTokens`, `cachedInputTokens`, `reasoningTokens`, `audioInputSeconds`, `estimatedCostUsd`, `providerReportedCostUsd`, `billingMode`, `latencyMs`, `timeToFirstTokenMs`, `providerRequestId`, `finishReason`, `requestSchemaVersion` e `responseSchemaVersion` quando disponíveis.
+
+Índices mínimos: `createdAt DESC`, `(provider, model, createdAt DESC)`, `(status, createdAt DESC)`, `(interactionId, sequence)`, `(profileId, createdAt DESC)` e `(userLinkId, createdAt DESC)`.
+
+`BackofficeBotMessage` recebe a relação inversa de interactions. `BackofficeBotUserLink` e `Profile` recebem somente as relações de IA necessárias para auditoria. Não criar FK para `Lead`, `Team`, `Task`, `LeadsSchedule` ou `LeadActivity`.
+
+### Segurança de dados
+
+- Não armazenar prompt, resposta crua, telefone, e-mail, código OTP, base64 ou segredo nas tabelas de IA.
+- Usar `inputHash` e `outputHash` para auditoria. A conversa existente continua sendo a fonte do texto, sujeita à sua política atual.
+- `paramsCiphertext` da proposal usa a chave de integração existente e um `encryptionKeyVersion`; `paramsSummary` contém somente informação redigida para a UI.
+- Apagar parâmetros cifrados 30 dias após a proposal ser fechada; interactions e attempts ficam 365 dias; rollups agregados ficam indefinidamente.
+- Aplicar scrub antes de `console.error`/Sentry: `phone`, `email`, `code`, `authorization`, `apiKey`, `fileBase64`, `prompt` e `response`.
+
+### Migration e RLS
+
+1. Atualizar `prisma/schema.prisma` e gerar `bun run db:migrate:from-prisma -- studio-bot-ai-telemetry`.
+2. Gerar `bun run db:migrate:new studio-bot-ai-rls-rollup` para RLS, grants, função/índices manuais e retenção.
+3. Habilitar RLS em todas as tabelas `backoffice_bot_ai_*`, revogar acesso de `anon` e `authenticated` e não criar policy pública.
+4. Declarar grants explicitamente: projetos Supabase atuais podem não expor tabelas novas ao Data API automaticamente.
+5. Validar localmente com `bun run db:migrate:reset:local`; não aplicar ao remoto sem autorização explícita.
+
+## Contrato de intenção
+
+Na primeira ativação, somente as intenções de leitura abaixo são permitidas:
+
+```text
+show_menu | list_leads | agenda_today | list_tasks | search_lead | team_digest | open_lead | unknown
+```
+
+Fase de escrita: `add_note`, `create_task`, `schedule_meeting`, `cancel_meeting` e `upload_attachment`.
+
+```ts
+const BethaniaIntentSchema = z.object({
+  intent: z.enum([
+    "show_menu", "list_leads", "agenda_today", "list_tasks", "search_lead",
+    "team_digest", "open_lead", "add_note", "create_task", "schedule_meeting",
+    "cancel_meeting", "upload_attachment", "unknown",
+  ]),
+  confidence: z.number().min(0).max(1),
+  entities: z.object({
+    searchQuery: z.string().max(160).optional(),
+    leadReference: z.string().max(80).optional(),
+    noteBody: z.string().max(2000).optional(),
+    taskTitle: z.string().max(180).optional(),
+    dateExpression: z.string().max(80).optional(),
+    isoDate: z.string().date().optional(),
+    time: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/).optional(),
+  }).strict(),
+  needsClarification: z.boolean(),
+  clarificationField: z.enum(["lead", "date", "time", "task_title", "note", "none"]),
+}).strict()
+```
+
+O modelo não recebe ferramentas nem executa funções. O backend recebe JSON, valida o schema, valida a entidade no banco, revalida `BotPolicyService` e só então chama os use cases atuais. `isoDate` e horário sempre passam pelo parser e timezone da plataforma; não são confiados por terem vindo da IA.
+
+Prompts ficam versionados em `lib/studio-bot/ai/prompts/`; cada interaction salva `promptKey` e `promptVersion`, mas não o prompt completo. O contexto permitido é mensagem sanitizada, passo de sessão, data/hora local e lista fechada de capacidades. Histórico máximo: três interações redigidas na Fase 2.
+
+## Serviços, UseCases, rotas e UI
+
+```text
+app/api/services/backofficeBot/ai/
+  IBethaniaAiProvider.ts
+  GroqBethaniaAiProvider.ts
+  BethaniaAiGatewayService.ts
+  BethaniaAiTelemetryService.ts
+  BethaniaAiIntentService.ts
+  BethaniaAiResponseService.ts                 # fase 2
+  BethaniaAiProposalService.ts                 # fase 3
+  BethaniaAiKnowledgeService.ts                # fase 4
+  OllamaBethaniaEmbeddingProvider.ts           # fase 5
+  BethaniaAiEvaluationService.ts               # fase 6
+
+app/api/useCases/backofficeBotAi/
+  IBackofficeBotAiMetricsUseCase.ts
+  BackofficeBotAiMetricsUseCase.ts
+  IBackofficeBotAiConfigurationUseCase.ts
+  BackofficeBotAiConfigurationUseCase.ts
+  IBackofficeBotAiRollupUseCase.ts
+  BackofficeBotAiRollupUseCase.ts
+
+app/api/infra/data/repositories/backofficeBotAi/
+  IBackofficeBotAiRepository.ts
+  BackofficeBotAiRepository.ts
+
+app/api/v1/backoffice/bot/ai/
+  metrics/route.ts
+  metrics/timeseries/route.ts
+  usage/route.ts
+  users/route.ts
+  interactions/[id]/route.ts
+  configuration/route.ts
+  provider/test/route.ts
+  export/route.ts
+```
+
+`BackofficeBotInboundWebhookUseCase` chama o roteador de IA somente depois da máquina de estados atual. O roteador não importa Prisma, route ou N8N. A persistência fica no repository dedicado.
+
+Endpoints obrigatórios:
+
+| Endpoint | Acesso | Resultado |
+|---|---|---|
+| `GET /api/v1/backoffice/bot/ai/metrics` | backoffice | cards, funil e métricas do período |
+| `GET /api/v1/backoffice/bot/ai/metrics/timeseries` | backoffice | série diária por dimensão |
+| `GET /api/v1/backoffice/bot/ai/usage` | backoffice | attempts paginados e filtráveis |
+| `GET /api/v1/backoffice/bot/ai/users` | backoffice | usuários agregados por uso/tokens |
+| `GET /api/v1/backoffice/bot/ai/interactions/:id` | backoffice | decisão, attempts, proposal e feedback, sem conteúdo cru |
+| `GET/PATCH /api/v1/backoffice/bot/ai/configuration` | leitura/full access | rollout, limites e modelos |
+| `POST /api/v1/backoffice/bot/ai/provider/test` | full access | teste sintético sem PII |
+| `GET /api/v1/backoffice/bot/ai/export` | full access | CSV auditável, máximo 31 dias |
+| `GET /api/v1/notifications/cron/studio-bot-ai-rollup` | cron secret | rollup, retenção e alertas |
+
+As rotas usam `getBackofficeAccess()` e `Output`. Operadores podem consultar métricas e auditoria; configuração, exportação e teste requerem `fullAccess`. Validar filtros com Zod: `from`, `to`, `timezone`, `provider`, `model`, `capability`, `status`, `intent`, `profileId`, `userLinkId`, `page` e `pageSize`; limitar detalhe a 365 dias e página a 100.
+
+Nova tela: `app/backoffice/(app)/studio-bot/ia/`, com `features/context`, `features/services`, `features/container` e componentes locais. Abas: **Visão geral**, **Uso**, **Usuários**, **Qualidade**, **Auditoria** e **Configuração**. A visão geral mostra mensagens elegíveis, calls, resoluções, fallback, erro, P50/P95, tokens e custo. Usuários mostra nome, e-mail, vínculo, chamadas, tokens, custo, sucesso e último uso. A auditoria oferece detalhe em Sheet redigido. Configuração mostra kill switch, shadow mode, rollout, modelos, limites e teste do provider.
+
+Antes de construir UI, seguir `corretor-studio-design`, shadcn e `design-system-guard`; usar Cards, Tabs, Table, Select, DatePicker, Sheet, Badge, Skeleton e Recharts com tokens do design system.
+
+## Configuração externa
+
+### Groq
+
+1. Criar organização/projeto separados para dev, preview e produção.
+2. Ativar **Zero Data Retention** em Data Controls antes de criar a chave de produção.
+3. Criar uma chave por ambiente; nunca reutilizar chave pessoal.
+4. Guardar chave apenas em Vercel Environment Variables e `.env.local`; N8N não recebe chave.
+5. Registrar owner, ambiente e data de rotação no inventário de segredos.
+6. Validar com `POST /api/v1/backoffice/bot/ai/provider/test` usando payload sintético antes de habilitar rollout.
+
+### Ambiente
+
+```dotenv
+# Servidor; nunca NEXT_PUBLIC_
+BACKOFFICE_BETHANIA_AI_ENABLED=false
+BACKOFFICE_BETHANIA_AI_PROVIDER=groq
+BACKOFFICE_BETHANIA_AI_MODEL=openai/gpt-oss-20b
+BACKOFFICE_BETHANIA_AI_FALLBACK_MODEL=llama-3.1-8b-instant
+BACKOFFICE_GROQ_API_KEY=
+BACKOFFICE_BETHANIA_AI_BASE_URL=https://api.groq.com/openai/v1
+BACKOFFICE_BETHANIA_AI_TIMEOUT_MS=8000
+BACKOFFICE_BETHANIA_AI_MAX_OUTPUT_TOKENS=350
+BACKOFFICE_BETHANIA_AI_MAX_INPUT_CHARACTERS=2400
+BACKOFFICE_BETHANIA_AI_CONFIDENCE_THRESHOLD=0.78
+BACKOFFICE_BETHANIA_AI_DAILY_REQUEST_LIMIT=900
+BACKOFFICE_BETHANIA_AI_PER_USER_DAILY_REQUEST_LIMIT=60
+BACKOFFICE_BETHANIA_AI_RETENTION_DAYS=365
+BACKOFFICE_BETHANIA_AI_ROLLUP_CRON_SECRET=
+
+# Fase 5: apenas rede privada/VPS
+BACKOFFICE_BETHANIA_OLLAMA_BASE_URL=http://ollama:11434
+BACKOFFICE_BETHANIA_EMBEDDING_MODEL=qwen3-embedding:0.6b
+```
+
+Adicionar em `.env.example` e `lib/env/validation.ts`. A chave Groq é obrigatória somente se a IA estiver habilitada e o provider selecionado for Groq. Alertar no Sentry para erro recorrente, P95 acima de 8 s, circuit breaker aberto e 80%/95% de quota diária.
+
+## Fases de implementação v2
+
+### Fase 0 — Fundação, telemetria e controle operacional
+
+**Obrigatória antes de qualquer tráfego de usuário.**
+
+- Criar enums/modelos, migrations, RLS, grants explícitos, repository e cron de rollup/retenção.
+- Implementar configuração singleton, kill switch, shadow mode, rollout hash estável, rate limit e circuit breaker.
+- Implementar gateway Groq, mas permitir somente teste sintético; nenhuma mensagem real é encaminhada.
+- Implementar `BethaniaAiTelemetryService`, endpoints, Postman e tela de métricas com estado “IA não ativada”.
+- Cada teste persiste interaction e attempt com usuário nulo de sistema, provider, modelo, status, tokens, custo e latência.
+
+Aceite: `isEnabled=false` impede rede externa; configuração/exportação por operator retornam 403; dashboard filtra e detalha sem conteúdo cru; quota/chave inválida não causam 500.
+
+### Fase 1 — NLU em sombra e leituras naturais
+
+- Implementar schema, prompt versionado, `BethaniaAiIntentService` e fallback.
+- Rodar em shadow mode: classifica e mede, mas não altera resposta.
+- Montar conjunto de 200 frases anonimizadas e comparar intenção esperada.
+- Promover 0% → 5% → 25% → 50% → 100%, usando hash de `userLinkId`.
+- Habilitar somente `show_menu`, leads, agenda, tarefas, busca, digest, abrir lead e `unknown`.
+
+Promoção: ≥92% de intenção correta, ≥99% JSON válido, fallback <5% por sete dias, zero ação fora da allowlist e nenhum PII em log de erro.
+
+### Fase 2 — Conversa e esclarecimento
+
+- `BethaniaAiResponseService` redige somente a partir de resultados já retornados pelo backend.
+- Uma pergunta de esclarecimento por vez: lead, data, horário, título ou nota.
+- Histórico máximo de três interações redigidas; globais sempre vencem IA.
+- Adicionar feedback WhatsApp `ÚTIL`/`NÃO ÚTIL` em `BackofficeBotAiFeedback`.
+
+Aceite: `MENU`, `CANCELAR` e feedback negativo encerram o subfluxo; nenhuma resposta contém dado que o backend não retornou.
+
+### Fase 3 — Escritas com confirmação forte
+
+- Implementar `BackofficeBotAiActionProposal` e `BethaniaAiProposalService`.
+- Converter intenção em DTO validado, cifrar parâmetros e gerar mensagem de confirmação com lead/ação/dados.
+- Aceitar exclusivamente `CONFIRMAR`/`CANCELAR`; expirar em 10 min.
+- Ao confirmar, revalidar vínculo, permissão, lead, disponibilidade e idempotência antes de chamar o use case atual.
+- Métricas de proposal, confirmação, cancelamento, execução e falha entram na aba Qualidade.
+
+Aceite: zero escrita sem confirmação; confirmação repetida não duplica operação; mudança de permissão entre proposal e confirmação bloqueia a execução.
+
+### Fase 4 — Base de conhecimento confiável
+
+- Criar diretório versionado `docs/bethania-knowledge/` com Markdown publicado e frontmatter `title`, `slug`, `audience`, `updatedAt`, `deepLink`.
+- Criar `BackofficeBotAiKnowledgeDocument` e `BackofficeBotAiKnowledgeChunk`, `tsvector` e GIN em migration manual.
+- Criar comando Bun de ingestão idempotente que lê somente este diretório, divide chunks e atualiza por hash.
+- Busca lexical Postgres primeiro; IA recebe no máximo cinco chunks e obrigatoriamente cita `deepLink`.
+- Sem evidência, responder que não encontrou e apontar suporte; não inventar procedimento.
+
+Aceite: conteúdo fora do diretório não é indexado; cada resposta tem fonte ou fallback seguro; alteração reindexa somente o documento alterado.
+
+### Fase 5 — Busca semântica e áudio
+
+- Subir Ollama em VPS privada/Tailscale; nunca publicar a porta 11434.
+- Instalar `qwen3-embedding:0.6b`, habilitar `pgvector`, `vector(1024)` e HNSW.
+- Implementar busca híbrida FTS + similaridade, com fallback integral para FTS quando Ollama falhar.
+- Adicionar transcrição de áudio com `whisper-large-v3-turbo` da Groq; registrar segundos de áudio e aplicar o mesmo roteador/idempotência.
+
+Aceite: embeddings não saem da rede privada; falha do Ollama não bloqueia bot; áudio não duplica ação.
+
+### Fase 6 — Qualidade contínua e operação proativa
+
+- Dataset anonimizado em `tests/fixtures/studio-bot-ai/` e `BethaniaAiEvaluationService` em CI manual/cron.
+- Avaliar intenção, entidades, schema, latência, tokens e regressão de prompt/modelo.
+- A/B por `promptVersion`/modelo até 10%, sticky por vínculo, com dashboard comparativo.
+- Resumos e notificações proativas somente para preferências existentes e dados retornados por backend.
+- Personalização limitada a timezone, papel, time ativo e concisão; nunca inferir atributo sensível.
+
+Aceite: promoção exige relatório e aprovação `fullAccess`; dataset não contém e-mail, telefone, CNPJ, nota nem anexo real.
+
+## Testes, rollout e rollback
+
+Unitários: schemas, redator, rollout, quota, circuit breaker, normalização de usage, `429`, timeout, JSON inválido, fallback, cifra/decifra, expiração/idempotência da proposal e prompt injection.
+
+Integração: webhook → classificação → telemetria; matriz MASTER/MANAGER/OPERATOR; endpoints de métricas/paginação/autorização; cron idempotente; confirmação revalidando permissões.
+
+E2E/manual: 200 frases anonimizadas, provider indisponível, quota excedida, chave inválida, proposal repetida, dashboard, exportação e vínculo com conversa.
+
+Validação em cada fase:
+
+```bash
+bun run typecheck
+bun run lint
+bun run governance:check
+bun run lint:pt-br
+bun run design:check # quando houver UI
+bun test lib/studio-bot app/api/services/backofficeBot app/api/useCases/backofficeBot
+```
+
+Atualizar `postman/Lead-Flow-API-Collection.json` a cada endpoint.
+
+Metas iniciais: intenção correta ≥92%, JSON válido ≥99%, P95 ≤8 s, fallback <5%, resolução de leituras sem menu ≥75% após 30 dias, zero escrita sem confirmação, zero execução duplicada e 100% dos attempts com modelo/status/tokens quando o provider os retornar.
+
+Rollback, nesta ordem: `isEnabled=false`; `shadowMode=true`; `rolloutPercentage=0`; desabilitar modelo/fallback pela configuração; remover chave do ambiente em incidente de privacidade. Nenhum rollback depende de remover migration ou desligar os fluxos determinísticos v1.
