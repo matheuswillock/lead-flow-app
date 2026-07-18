@@ -40,6 +40,7 @@ const originLabels: Record<BackofficeLeadOrigin, string> = {
   manual: "Manual",
   webhook_meta: "Webhook Meta",
   landing_page: "Landing page",
+  public_form: "Formulário público",
 }
 
 function escapeSlackMrkdwn(value: string) {

@@ -123,6 +123,7 @@ enum BackofficeLeadOrigin {
   manual
   webhook_meta
   landing_page
+  public_form
 
   @@map("backoffice_lead_origin")
 }
