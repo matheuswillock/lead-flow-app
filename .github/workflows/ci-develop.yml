@@ -525,19 +525,22 @@ jobs:
 
   deploy-preview:
     name: Deploy Vercel (Preview) from develop
+    # Do not depend on migration-dry-run: that job is skipped when there are no
+    # pending migrations (the happy path), and a skipped dependency would
+    # auto-skip this job unless always()/!cancelled() is used. Gate on
+    # migration-check + has_pending instead.
     if: |
+      !cancelled() &&
       github.event_name == 'push' &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.build.result == 'success' &&
       needs.migration-check.result == 'success' &&
-      needs.migration-check.outputs.has_pending == 'false' &&
-      (needs.migration-dry-run.result == 'success' || needs.migration-dry-run.result == 'skipped')
+      needs.migration-check.outputs.has_pending == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
       - build
       - migration-check
-      - migration-dry-run
       - version-bump
     steps:
       - name: Checkout develop
@@ -764,6 +767,28 @@ jobs:
               return [body.trimEnd(), '', nextSection].join('\n');
             };
 
+            // Soft-skip: no release expected (empty develop). Hard-skip: release was
+            // expected but blocked (deploy/migrations/build). Soft stays green; hard fails.
+            const isSoftSkip =
+              !hasCodeChanges ||
+              !versionBumped ||
+              bumpType === 'unchanged';
+            const rejectUnlessReleaseReady = (prUrl = '') => {
+              if (canCreateReleasePr) {
+                return false;
+              }
+              const skipReason = resolveSkipReason();
+              core.warning(skipReason);
+              core.info(`Release branch was not updated. Reason: ${skipReason}`);
+              core.setOutput('operation', 'skipped');
+              core.setOutput('skip-reason', skipReason);
+              core.setOutput('pr-url', prUrl);
+              if (!isSoftSkip) {
+                core.setFailed(skipReason);
+              }
+              return true;
+            };
+
             const prs = await github.rest.pulls.list({
               owner,
               repo,
@@ -780,6 +805,13 @@ jobs:
                 core.setOutput('operation', 'unchanged');
                 core.setOutput('skip-reason', 'Nenhuma alteracao de codigo em develop desde main.');
                 core.setOutput('pr-url', existingPr.html_url);
+                core.setOutput('pr-number', String(existingPr.number));
+                return;
+              }
+              // Hard gates must pass before retitling/updating an existing release PR
+              // (e.g. pending migrations skip deploy-preview; do not advertise a version
+              // that was never pushed to the release branch).
+              if (rejectUnlessReleaseReady(existingPr.html_url)) {
                 core.setOutput('pr-number', String(existingPr.number));
                 return;
               }
@@ -806,13 +838,7 @@ jobs:
               return;
             }
 
-            if (!canCreateReleasePr) {
-              const skipReason = resolveSkipReason();
-              core.warning(skipReason);
-              core.info(`Release branch was not updated. No release PR created. Reason: ${skipReason}`);
-              core.setOutput('operation', 'skipped');
-              core.setOutput('skip-reason', skipReason);
-              core.setOutput('pr-url', '');
+            if (rejectUnlessReleaseReady('')) {
               return;
             }
 
