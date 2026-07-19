@@ -2446,6 +2446,7 @@ failed failed
     Boolean isArchived 
     WhatsAppHandoffMode handoffMode 
     DateTime welcomeSentAt "❓"
+    DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2506,6 +2507,14 @@ failed failed
     DateTime processedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "whatsapp_audit_events" {
+    String id "🗝️"
+    String action 
+    Json metadata 
+    DateTime createdAt 
     }
   
 
@@ -3171,6 +3180,9 @@ failed failed
     "whatsapp_webhook_events" |o--|| "WhatsAppWebhookEventStatus" : "enum:status"
     "whatsapp_webhook_events" }o--|| team_whatsapp_configs : "config"
     "whatsapp_webhook_events" }o--|| corretor_studio_teams : "team"
+    "whatsapp_audit_events" }o--|| corretor_studio_teams : "team"
+    "whatsapp_audit_events" }o--|o whatsapp_conversations : "conversation"
+    "whatsapp_audit_events" }o--|o corretor_studio_profiles : "actorProfile"
     "whatsapp_usage_events" |o--|| "WhatsAppProvider" : "enum:provider"
     "whatsapp_usage_events" |o--|| "WhatsAppUsageEventType" : "enum:eventType"
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
