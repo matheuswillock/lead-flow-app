@@ -25,6 +25,14 @@ class SetConversationHandoffUseCase {
         handoffMode: input.mode,
       })
 
+      await whatsAppRepository.createAuditEvent({
+        teamId: input.teamId,
+        conversationId: input.conversationId,
+        actorProfileId: input.access.profileId,
+        action: "conversation.handoff",
+        metadata: { mode: input.mode },
+      })
+
       const message =
         input.mode === "BOT"
           ? "Conversa devolvida ao bot com sucesso"

@@ -16260,6 +16260,218 @@
             "description": "MASTER: obtém logs docker do N8N ou Evolution via agente studio-bot-ops na VPS."
           },
           "response": []
+        },
+        {
+          "name": "GET Backoffice Bot Host Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "settings"]
+            },
+            "description": "MASTER: configurações do agente Ops (URL, env mascarado)."
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH Backoffice Bot Host Settings",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentBaseUrl\": \"https://ops.corretorstudio.com\",\n  \"n8nEnv\": {\n    \"LEAD_FLOW_API_BASE_URL\": \"https://app.corretorstudio.com\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "settings"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Rotate Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/rotate-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "rotate-token"]
+            },
+            "description": "MASTER: gera novo OPS_AGENT_TOKEN (plain só nesta resposta)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Backoffice Bot Host Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "jobs"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Health",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Apply Env",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/apply",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "apply"]
+            },
+            "description": "MASTER: materializa .env.n8n/.env.evolution na VPS e recria containers."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Restart",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target\": \"n8n\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/restart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "restart"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Workflows Import",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/workflows/import",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "workflows", "import"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Sync",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "sync"]
+            },
+            "description": "MASTER: unpack host-pack + pull/up na VPS."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Backoffice Bot AI Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "ai", "metrics"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET Backoffice Bot AI Configuration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/configuration",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "ai", "configuration"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH Backoffice Bot AI Configuration",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": false,\n  \"shadowMode\": true,\n  \"rolloutPercentage\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/configuration",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "ai", "configuration"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot AI Provider Test",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/provider/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "ai", "provider", "test"]
+            },
+            "description": "MASTER: teste sintético Groq (persiste interaction+attempt)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Backoffice Bot AI Usage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/usage?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "ai", "usage"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET Backoffice Bot AI Export",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "ai", "export"]
+            }
+          },
+          "response": []
         }
       ]
     }

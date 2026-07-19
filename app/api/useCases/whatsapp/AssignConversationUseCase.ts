@@ -67,6 +67,14 @@ class AssignConversationUseCase {
         handoffMode: "HUMAN",
       })
 
+      await whatsAppRepository.createAuditEvent({
+        teamId: input.access.teamId,
+        conversationId: input.conversationId,
+        actorProfileId: input.callerProfileId,
+        action: "conversation.assign",
+        metadata: { assigneeProfileId: input.assigneeProfileId },
+      })
+
       return new Output(true, ["Responsável atribuído com sucesso"], [], updated)
     } catch (error) {
       if (error instanceof WhatsAppAccessDeniedError) {

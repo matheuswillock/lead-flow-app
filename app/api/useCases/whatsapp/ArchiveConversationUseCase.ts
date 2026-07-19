@@ -24,6 +24,12 @@ class ArchiveConversationUseCase {
       await whatsAppRepository.updateConversation(input.conversationId, {
         isArchived: input.archived,
       })
+      await whatsAppRepository.createAuditEvent({
+        teamId: input.teamId,
+        conversationId: input.conversationId,
+        actorProfileId: input.access.profileId,
+        action: input.archived ? "conversation.archive" : "conversation.unarchive",
+      })
       const label = input.archived ? "arquivada" : "desarquivada"
       return new Output(true, [`Conversa ${label} com sucesso`], [], null)
     } catch (error) {

@@ -29,6 +29,8 @@ const STUDIO_BOT_SECTION_LABELS: Record<string, string> = {
   conversas: 'Conversas',
   vinculacoes: 'Vinculações',
   verificacoes: 'Verificações',
+  ops: 'Ops / Host',
+  ia: 'IA',
 }
 
 export function SiteHeader() {

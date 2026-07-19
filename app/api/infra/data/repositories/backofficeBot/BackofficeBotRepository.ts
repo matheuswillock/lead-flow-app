@@ -37,7 +37,7 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
   async findProfileByEmail(email: string) {
     return prisma.profile.findFirst({
       where: { email: { equals: email.trim(), mode: "insensitive" } },
-      select: { id: true, activeTeamId: true, email: true },
+      select: { id: true, activeTeamId: true, email: true, fullName: true },
     });
   }
 

@@ -14,15 +14,24 @@ import {
   formatTaskPrompt,
 } from "@/lib/studio-bot/format-bot-reply";
 import { parseMeetingDatetimeInput } from "@/lib/studio-bot/parse-meeting-datetime";
-import { normalizePhoneE164, parseVincularCode } from "@/lib/studio-bot/phone";
+import { normalizePhoneE164, parseVincularCode, looksLikeEmail } from "@/lib/studio-bot/phone";
 import type { StudioBotInboundWebhookBody } from "@/lib/studio-bot/types";
 import { backofficeBotActionUseCase } from "./BackofficeBotActionUseCase";
 import { backofficeBotAuthUseCase } from "./BackofficeBotAuthUseCase";
 import { backofficeBotContextUseCase } from "./BackofficeBotContextUseCase";
 import type { IBackofficeBotInboundWebhookUseCase } from "./IBackofficeBotInboundWebhookUseCase";
 
-const AUTH_REQUIRED_MESSAGE =
-  "Para usar a Bethânia, vincule seu WhatsApp em *Minha conta → Conexões* no Corretor Studio e envie `VINCULAR` + o código.";
+const AUTH_GREETING_MESSAGE =
+  "Olá! Eu sou a *Bethânia*, assistente do Corretor Studio. Antes de continuarmos, preciso confirmar sua identidade.\n\nQual é o e-mail que você usa para acessar a plataforma?\n\n_Alternativa:_ em *Minha conta → Conexões* gere um código e envie `VINCULAR` + o código aqui.";
+
+const AUTH_CODE_SENT_MESSAGE =
+  "Se o e-mail estiver cadastrado, enviei um código na *barra de notificações* do Corretor Studio e por e-mail.\n\nCole o código de 6 dígitos aqui (ou envie `VINCULAR` + código).";
+
+const AUTH_AWAITING_CODE_MESSAGE =
+  "Estou aguardando o código de verificação. Cole os 6 dígitos aqui, ou envie `VINCULAR` + código.\n\nSe preferir, informe novamente o e-mail da plataforma.";
+
+const AUTH_INVALID_EMAIL_MESSAGE =
+  "Não reconheci um e-mail válido. Envie o e-mail que você usa no Corretor Studio (exemplo: nome@empresa.com).";
 
 const UNKNOWN_COMMAND_MESSAGE =
   "Não entendi esse comando. Digite *menu* para ver as opções disponíveis.";
@@ -199,6 +208,47 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       const vincularCode = parseVincularCode(text);
       if (vincularCode) {
         const verifyOutput = await backofficeBotAuthUseCase.verifyCode(phone, vincularCode);
+        if (!verifyOutput.isValid) {
+          const errorText =
+            verifyOutput.errorMessages[0] ??
+            "Código inválido ou expirado. Solicite um novo código ou informe seu e-mail novamente.";
+          await this.sendOutboundText({
+            channelId: channel.id,
+            channelDisplayName: channel.displayName,
+            phone,
+            userLinkId: userLink?.id ?? null,
+            text: errorText,
+          });
+          return new Output(true, [], verifyOutput.errorMessages, {
+            messageId: message.id,
+            auth: verifyOutput.result,
+            flow: "verify_code_failed",
+            errorCode:
+              typeof verifyOutput.result === "object" &&
+              verifyOutput.result &&
+              "errorCode" in verifyOutput.result
+                ? (verifyOutput.result as { errorCode?: string }).errorCode
+                : "AUTH_INVALID_CODE",
+          });
+        }
+
+        const authResult = verifyOutput.result as {
+          userLinkId?: string;
+          profileId?: string;
+        } | null;
+        const linkedUserId = authResult?.userLinkId ?? userLink?.id;
+        const linkedProfileId = authResult?.profileId ?? userLink?.profileId;
+        if (linkedUserId && linkedProfileId) {
+          return this.openMainMenu({
+            channelId: channel.id,
+            channelDisplayName: channel.displayName,
+            phone,
+            userLinkId: linkedUserId,
+            profileId: linkedProfileId,
+            messageId: message.id,
+          });
+        }
+
         return new Output(verifyOutput.isValid, verifyOutput.successMessages, verifyOutput.errorMessages, {
           messageId: message.id,
           auth: verifyOutput.result,
@@ -207,17 +257,12 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       }
 
       if (!userLink) {
-        await this.sendOutboundText({
+        return this.handleUnlinkedInbound({
           channelId: channel.id,
           channelDisplayName: channel.displayName,
           phone,
-          userLinkId: null,
-          text: AUTH_REQUIRED_MESSAGE,
-        });
-        return new Output(true, [], [], {
           messageId: message.id,
-          linked: false,
-          flow: "auth_required",
+          text,
         });
       }
 
@@ -687,6 +732,102 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       console.error("[BackofficeBotInboundWebhookUseCase][handleInbound]", error);
       return new Output(false, [], ["Erro ao processar mensagem inbound"], null);
     }
+  }
+
+  private async handleUnlinkedInbound(input: {
+    channelId: string;
+    channelDisplayName: string;
+    phone: string;
+    messageId: string;
+    text: string;
+  }): Promise<Output> {
+    const email = looksLikeEmail(input.text);
+    if (email) {
+      const requestOutput = await backofficeBotAuthUseCase.requestCode(email, input.phone);
+      if (!requestOutput.isValid) {
+        const errorText =
+          requestOutput.errorMessages[0] ??
+          "Não foi possível gerar o código agora. Tente novamente em instantes.";
+        await this.sendOutboundText({
+          channelId: input.channelId,
+          channelDisplayName: input.channelDisplayName,
+          phone: input.phone,
+          userLinkId: null,
+          text: errorText,
+        });
+        return new Output(true, [], requestOutput.errorMessages, {
+          messageId: input.messageId,
+          linked: false,
+          flow: "auth_request_code_failed",
+        });
+      }
+
+      await this.sendOutboundText({
+        channelId: input.channelId,
+        channelDisplayName: input.channelDisplayName,
+        phone: input.phone,
+        userLinkId: null,
+        text: AUTH_CODE_SENT_MESSAGE,
+      });
+      return new Output(true, [], [], {
+        messageId: input.messageId,
+        linked: false,
+        flow: "auth_code_sent",
+        auth: requestOutput.result,
+      });
+    }
+
+    const statusOutput = await backofficeBotAuthUseCase.getAuthStatus(input.phone);
+    const pendingChallenge =
+      statusOutput.isValid &&
+      statusOutput.result &&
+      typeof statusOutput.result === "object" &&
+      "pendingChallenge" in statusOutput.result
+        ? (statusOutput.result as { pendingChallenge?: unknown }).pendingChallenge
+        : null;
+
+    if (pendingChallenge && input.text.trim().length > 0) {
+      await this.sendOutboundText({
+        channelId: input.channelId,
+        channelDisplayName: input.channelDisplayName,
+        phone: input.phone,
+        userLinkId: null,
+        text: AUTH_AWAITING_CODE_MESSAGE,
+      });
+      return new Output(true, [], [], {
+        messageId: input.messageId,
+        linked: false,
+        flow: "auth_awaiting_code",
+      });
+    }
+
+    if (input.text.trim().length > 0 && input.text.includes("@")) {
+      await this.sendOutboundText({
+        channelId: input.channelId,
+        channelDisplayName: input.channelDisplayName,
+        phone: input.phone,
+        userLinkId: null,
+        text: AUTH_INVALID_EMAIL_MESSAGE,
+      });
+      return new Output(true, [], [], {
+        messageId: input.messageId,
+        linked: false,
+        flow: "auth_invalid_email",
+      });
+    }
+
+    await this.sendOutboundText({
+      channelId: input.channelId,
+      channelDisplayName: input.channelDisplayName,
+      phone: input.phone,
+      userLinkId: null,
+      text: AUTH_GREETING_MESSAGE,
+    });
+    return new Output(true, [], [], {
+      messageId: input.messageId,
+      linked: false,
+      flow: "auth_greeting",
+    });
   }
 
   private async openMainMenu(input: {
