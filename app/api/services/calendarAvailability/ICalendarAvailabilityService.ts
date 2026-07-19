@@ -2,12 +2,14 @@ export type CalendarAvailabilityResult = {
   availableTimes: string[];
   source: "google" | "internal";
   perCloser: Record<string, string[]>;
+  days: Record<string, string[]>;
 };
 
 export type GetCalendarAvailabilityInput = {
   teamId: string;
   requestedCloserIds: string[];
   date: string;
+  days?: number;
   excludeLeadId?: string;
   userTimezone?: string;
 };

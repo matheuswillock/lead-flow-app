@@ -3857,10 +3857,10 @@
                         "availability"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/calendar/availability/route.ts",
+                    "description": "Disponibilidade de horários por closer. Aceita `days` (1-60, default 1) para carregar um range a partir de `date`; a resposta inclui `days` (mapa dateKey -> horários), além de `availableTimes`/`perCloser` referentes ao dia `date`.",
                     "body": {
                       "mode": "raw",
-                      "raw": "{}"
+                      "raw": "{\n  \"closerId\": \"{{closerId}}\",\n  \"date\": \"2026-07-20\",\n  \"days\": 30,\n  \"excludeLeadId\": \"{{leadId}}\"\n}"
                     }
                   },
                   "response": []

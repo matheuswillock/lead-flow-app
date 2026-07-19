@@ -1,4 +1,4 @@
-import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates"
+import { DEFAULT_TZ, formatLocalDateValue, getBusyMinutesRangeInDay, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates"
 import type { IBackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/IBackofficeLeadScheduleRepository"
 import type { IBackofficeGoogleCalendarService } from "../backofficeGoogleCalendar/IBackofficeGoogleCalendarService"
 import type { IBackofficeGoogleConnectionResolverService } from "../backofficeGoogleConnection/IBackofficeGoogleConnectionResolverService"
@@ -101,14 +101,15 @@ export class BackofficeCalendarAvailabilityService
             const startDate = new Date(interval.start)
             const endDate = new Date(interval.end)
             if (endDate <= now) return false
-            if (endDate <= dayStart || startDate >= dayEnd) return false
 
-            const startClamp = startDate < dayStart ? dayStart : startDate
-            const endClamp = endDate > dayEnd ? dayEnd : endDate
-            const busyStart = getMinutesInTz(startClamp, timezone)
-            const busyEnd = getMinutesInTz(endClamp, timezone)
+            const busyRange = getBusyMinutesRangeInDay(
+              { start: startDate, end: endDate },
+              { start: dayStart, end: dayEnd },
+              timezone
+            )
+            if (!busyRange) return false
 
-            return slotStart < busyEnd && slotEnd > busyStart
+            return slotStart < busyRange.endMinutes && slotEnd > busyRange.startMinutes
           })
         })
         .map(formatTimeSlot)
