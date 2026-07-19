@@ -10,7 +10,7 @@ import { healthPlanService } from "../../services/healthPlans/HealthPlanService"
 import type { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import type { PublicLeadFormRequest } from "../../v1/integrations/lead-form/DTO/requestPublicLeadForm";
 import type { IPublicLeadFormUseCase, PublicLeadFormOriginContext } from "./IPublicLeadFormUseCase";
-import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
+import { DEFAULT_TZ, formatLocalDateValue, getBusyMinutesRangeInDay, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { getPreScheduleSlotsPayload } from "../../services/preSchedule/PreScheduleSlotService";
 import { leadCustomFieldService } from "../../services/leadCustomField/LeadCustomFieldService";
@@ -595,16 +595,16 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
             const startDate = new Date(interval.start);
             const endDate = new Date(interval.end);
 
-            if (endDate <= dayStart || startDate >= dayEnd) {
+            const busyRange = getBusyMinutesRangeInDay(
+              { start: startDate, end: endDate },
+              { start: dayStart, end: dayEnd },
+              timezone
+            );
+            if (!busyRange) {
               return false;
             }
 
-            const startClamp = startDate < dayStart ? dayStart : startDate;
-            const endClamp = endDate > dayEnd ? dayEnd : endDate;
-            const busyStart = getMinutesInTz(startClamp, timezone);
-            const busyEnd = getMinutesInTz(endClamp, timezone);
-
-            return slotStart < busyEnd && slotEnd > busyStart;
+            return slotStart < busyRange.endMinutes && slotEnd > busyRange.startMinutes;
           });
         })
         .map(formatTimeSlot);

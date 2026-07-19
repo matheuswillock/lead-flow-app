@@ -15,6 +15,7 @@ export {
   differenceInDaysInTz,
   getMinutesInTz,
   getDayRangeInTz,
+  getBusyMinutesRangeInDay,
 } from "./core"
 
 export { formatIntimezone, formatRelativeIntimezone, formatDateTime } from "./formatters"
