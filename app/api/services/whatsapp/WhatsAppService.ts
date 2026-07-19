@@ -454,6 +454,11 @@ class WhatsAppService implements IWhatsAppService {
     let caption: string | undefined
     let preview: string
 
+    const messageId = randomUUID()
+    let storagePath: string | null = null
+    let mediaSha256: string | null = null
+    let mediaSizeBytes: number | null = null
+
     if (input.media) {
       messageType =
         input.media.mediatype === "image"
@@ -467,6 +472,19 @@ class WhatsAppService implements IWhatsAppService {
       mediaFileName = input.media.fileName
       caption = input.media.caption
       preview = input.media.caption ?? `[${messageType === "IMAGE" ? "Imagem" : messageType === "DOCUMENT" ? "Documento" : messageType === "AUDIO" ? "Áudio" : "Vídeo"}]`
+
+      // Persist to storage before Evolution send to avoid duplicate delivery on storage failure.
+      const stored = await uploadWhatsAppMedia({
+        teamId: input.teamId,
+        conversationId: input.conversationId,
+        messageId,
+        base64: input.media.base64,
+        mimeType: input.media.mimeType,
+        fileName: input.media.fileName,
+      })
+      storagePath = stored.storagePath
+      mediaSha256 = stored.mediaSha256
+      mediaSizeBytes = stored.mediaSizeBytes
 
       evoResult = await this.provider.sendMedia({
         instanceName: effectiveConfig.instanceName,
@@ -495,25 +513,6 @@ class WhatsAppService implements IWhatsAppService {
     }
 
     console.info("[WhatsAppService][sendMessage] Sending message to", recipientJid)
-
-    const messageId = randomUUID()
-    let storagePath: string | null = null
-    let mediaSha256: string | null = null
-    let mediaSizeBytes: number | null = null
-
-    if (input.media) {
-      const stored = await uploadWhatsAppMedia({
-        teamId: input.teamId,
-        conversationId: input.conversationId,
-        messageId,
-        base64: input.media.base64,
-        mimeType: input.media.mimeType,
-        fileName: input.media.fileName,
-      })
-      storagePath = stored.storagePath
-      mediaSha256 = stored.mediaSha256
-      mediaSizeBytes = stored.mediaSizeBytes
-    }
 
     const rawPayload: Prisma.InputJsonValue = input.media
       ? {

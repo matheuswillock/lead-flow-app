@@ -10,6 +10,13 @@ function parseDateRange(from?: string | null, to?: string | null) {
   return { from: start, to: end };
 }
 
+function serializeBigIntToken(value: bigint | number | null | undefined): number {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  const asNumber = Number(value);
+  return Number.isSafeInteger(asNumber) ? asNumber : Number(value.toString());
+}
+
 export class BackofficeBotAiConfigurationUseCase {
   async get() {
     try {
@@ -88,7 +95,11 @@ export class BackofficeBotAiMetricsUseCase {
           failures,
           attemptsByStatus,
         },
-        timeseries,
+        timeseries: timeseries.map((row) => ({
+          ...row,
+          inputTokens: serializeBigIntToken(row.inputTokens),
+          outputTokens: serializeBigIntToken(row.outputTokens),
+        })),
         aiActive: configuration.enabled,
         message: configuration.enabled
           ? null
@@ -300,8 +311,14 @@ export class BackofficeBotAiRollupUseCase {
   async run() {
     try {
       const configuration = await backofficeBotAiRepository.getConfiguration();
-      const to = new Date();
-      const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+      // Complete UTC calendar days only — upsert replaces the day bucket, so a rolling
+      // 24h window would permanently drop the uncovered hours of each partial day.
+      const now = new Date();
+      const todayStartUtc = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+      );
+      const from = new Date(todayStartUtc.getTime() - 24 * 60 * 60 * 1000);
+      const to = new Date(todayStartUtc.getTime() - 1);
       const attempts = await backofficeBotAiRepository.listAttempts({
         from,
         to,

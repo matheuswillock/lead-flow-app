@@ -23,6 +23,11 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const MAX_BYTES = 16 * 1024 * 1024
 
+/** MediaRecorder often sends `audio/webm;codecs=opus` — allowlist matches the type before `;`. */
+export function normalizeMimeType(mimeType: string): string {
+  return mimeType.split(";")[0]?.trim().toLowerCase() || mimeType.trim().toLowerCase()
+}
+
 function extensionFromMime(mimeType: string, fileName?: string): string {
   const fromName = fileName?.split(".").pop()?.toLowerCase()
   if (fromName && fromName.length <= 8) return fromName
@@ -49,7 +54,8 @@ export async function uploadWhatsAppMedia(input: {
   mimeType: string
   fileName?: string
 }): Promise<{ storagePath: string; mediaSha256: string; mediaSizeBytes: number }> {
-  if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
+  const mimeType = normalizeMimeType(input.mimeType)
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
     throw new Error(`Tipo de mídia não permitido: ${input.mimeType}`)
   }
 
@@ -62,7 +68,7 @@ export async function uploadWhatsAppMedia(input: {
   }
 
   const mediaSha256 = createHash("sha256").update(buffer).digest("hex")
-  const ext = extensionFromMime(input.mimeType, input.fileName)
+  const ext = extensionFromMime(mimeType, input.fileName)
   const storagePath = `${input.teamId}/${input.conversationId}/${input.messageId}.${ext}`
   const bucket = STORAGE_BUCKETS.WHATSAPP_MEDIA
 
@@ -72,7 +78,7 @@ export async function uploadWhatsAppMedia(input: {
   }
 
   const { error } = await supabase.storage.from(bucket).upload(storagePath, buffer, {
-    contentType: input.mimeType,
+    contentType: mimeType,
     upsert: true,
   })
   if (error) {
