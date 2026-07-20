@@ -8,7 +8,7 @@ import type {
   CreditStatus,
   Template,
   ContactList,
-  CdpSegmentOption,
+  RadarSegmentOption,
   CampaignSheetTab,
 } from "./CampanhasTypes"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
@@ -43,7 +43,7 @@ export type CampanhasActions = {
   setWizardTemplateId: (v: string) => void
   setWizardContactListId: (v: string) => void
   setWizardRecipientSource: (v: "contact_list" | "cdp_segment") => void
-  setWizardCdpSegmentSlug: (v: string) => void
+  setWizardRadarSegmentSlug: (v: string) => void
   setWizardScheduledAt: (v: Date | undefined) => void
   setWizardScheduleIntervalDays: (v: number) => void
   handleCreateCampaign: () => Promise<void>
@@ -82,13 +82,13 @@ export type CampanhasHookReturn = {
   wizardTemplateId: string
   wizardContactListId: string
   wizardRecipientSource: "contact_list" | "cdp_segment"
-  wizardCdpSegmentSlug: string
+  wizardRadarSegmentSlug: string
   wizardScheduledAt: Date | undefined
   wizardScheduleIntervalDays: number
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
-  cdpSegments: CdpSegmentOption[]
+  radarSegments: RadarSegmentOption[]
   detailCampaign: Campaign | null
   sheetTab: CampaignSheetTab
   editName: string
@@ -126,13 +126,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardTemplateId, setWizardTemplateId] = useState("")
   const [wizardContactListId, setWizardContactListId] = useState("")
   const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "cdp_segment">("contact_list")
-  const [wizardCdpSegmentSlug, setWizardCdpSegmentSlug] = useState("")
+  const [wizardRadarSegmentSlug, setWizardRadarSegmentSlug] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
   const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
   const [wizardCreating, setWizardCreating] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
-  const [cdpSegments, setCdpSegments] = useState<CdpSegmentOption[]>([])
+  const [radarSegments, setCdpSegments] = useState<RadarSegmentOption[]>([])
 
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null)
   const [sheetTab, setSheetTab] = useState<CampaignSheetTab>("campaign")
@@ -541,7 +541,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardTemplateId("")
     setWizardContactListId("")
     setWizardRecipientSource("contact_list")
-    setWizardCdpSegmentSlug("")
+    setWizardRadarSegmentSlug("")
     setWizardScheduledAt(undefined)
     setWizardScheduleIntervalDays(1)
     setWizardOpen(true)
@@ -555,7 +555,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       try {
         if (activeTeamId) {
           const segmentsRes = await cdpService.listSegments(supabaseId, activeTeamId)
-          setCdpSegments(segmentsRes.segments as CdpSegmentOption[])
+          setCdpSegments(segmentsRes.segments as RadarSegmentOption[])
         } else {
           setCdpSegments([])
         }
@@ -574,8 +574,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
   const handleCreateCampaign = useCallback(async () => {
     const hasContactList = wizardRecipientSource === "contact_list" && wizardContactListId
-    const hasCdpSegment = wizardRecipientSource === "cdp_segment" && wizardCdpSegmentSlug
-    if (!wizardName.trim() || !wizardTemplateId || (!hasContactList && !hasCdpSegment)) {
+    const hasRadarSegment = wizardRecipientSource === "cdp_segment" && wizardRadarSegmentSlug
+    if (!wizardName.trim() || !wizardTemplateId || (!hasContactList && !hasRadarSegment)) {
       toast.error("Preencha o nome, template e origem dos destinatários")
       return
     }
@@ -586,7 +586,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         name: wizardName.trim(),
         templateId: wizardTemplateId,
         ...(hasContactList ? { contactListId: wizardContactListId } : {}),
-        ...(hasCdpSegment ? { cdpSegmentSlug: wizardCdpSegmentSlug } : {}),
+        ...(hasRadarSegment ? { radarSegmentSlug: wizardRadarSegmentSlug } : {}),
         scheduledAt: wizardScheduledAt?.toISOString(),
         ...(hasContactList && wizardScheduleIntervalDays >= 1
           ? { scheduleIntervalDays: wizardScheduleIntervalDays }
@@ -614,7 +614,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardTemplateId,
     wizardRecipientSource,
     wizardContactListId,
-    wizardCdpSegmentSlug,
+    wizardRadarSegmentSlug,
     wizardScheduledAt,
     wizardScheduleIntervalDays,
     fetchCampaigns,
@@ -794,13 +794,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardTemplateId,
     wizardContactListId,
     wizardRecipientSource,
-    wizardCdpSegmentSlug,
+    wizardRadarSegmentSlug,
     wizardScheduledAt,
     wizardScheduleIntervalDays,
     wizardCreating,
     templates,
     contactLists,
-    cdpSegments,
+    radarSegments,
     detailCampaign,
     sheetTab,
     editName,
@@ -825,7 +825,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardTemplateId,
     setWizardContactListId,
     setWizardRecipientSource,
-    setWizardCdpSegmentSlug,
+    setWizardRadarSegmentSlug,
     setWizardScheduledAt,
     setWizardScheduleIntervalDays,
     handleCreateCampaign,

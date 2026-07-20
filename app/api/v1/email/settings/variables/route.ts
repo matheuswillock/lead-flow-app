@@ -13,7 +13,7 @@ const variableSchema = z.object({
   description: z.string().max(280).nullable().optional(),
   isActive: z.boolean().optional(),
   valueSource: z.enum(["STATIC", "CDP"]).optional(),
-  cdpFieldKey: z.string().max(120).nullable().optional(),
+  radarFieldKey: z.string().max(120).nullable().optional(),
 })
 
 function makeUseCase() {

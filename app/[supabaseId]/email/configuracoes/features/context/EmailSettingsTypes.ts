@@ -64,7 +64,7 @@ export type EmailGlobalVariable = {
   description: string | null
   isActive: boolean
   valueSource: EmailVariableValueSource
-  cdpFieldKey: string | null
+  radarFieldKey: string | null
 }
 
 export type EmailSettings = {

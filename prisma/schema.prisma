@@ -2071,12 +2071,12 @@ model Team {
   whatsappAuditEvents   WhatsAppAuditEvent[]
   whatsappSendRateLimitWindows WhatsAppSendRateLimitWindow[]
 
-  // CDP relations
-  customerProfiles      CustomerProfile[]
-  customerIdentities    CustomerIdentity[]
-  customerSourceLinks   CustomerSourceLink[]
-  customerEvents        CustomerEvent[]
-  customerChannelConsents CustomerChannelConsent[]
+  // Radar relations
+  radarProfiles      RadarProfile[]
+  radarIdentities    RadarIdentity[]
+  radarSourceLinks   RadarSourceLink[]
+  radarEvents        RadarEvent[]
+  radarChannelConsents RadarChannelConsent[]
   backofficeBotSessions   BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
@@ -2621,7 +2621,7 @@ model EmailCampaign {
   name               String              @db.Text
   templateId         String              @db.Uuid
   contactListId      String?             @db.Uuid
-  cdpSegmentSlug     String?             @db.Text
+  radarSegmentSlug   String?             @db.Text
   parentCampaignId   String?             @db.Uuid
   subCampaignIndex   Int?
   audienceContactIds String[]            @default([]) @db.Uuid
@@ -2668,7 +2668,7 @@ model EmailCampaignDispatch {
   templateHtml          String                      @db.Text
   contactListId         String?                     @db.Uuid
   contactListName       String?                     @db.Text
-  cdpSegmentSlug        String?                     @db.Text
+  radarSegmentSlug      String?                     @db.Text
   dispatchedAt          DateTime                    @default(now()) @db.Timestamptz(6)
   triggeredBy           String                      @db.Uuid
   totalRecipients       Int                         @default(0)
@@ -3084,7 +3084,7 @@ model EmailTeamVariable {
   description  String?                  @db.Text
   isActive     Boolean                  @default(true)
   valueSource  EmailVariableValueSource @default(STATIC)
-  cdpFieldKey  String?                  @db.Text
+  radarFieldKey String?                  @db.Text
   createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime                 @updatedAt @db.Timestamptz(6)
 
@@ -3576,10 +3576,10 @@ model WhatsAppConversationTagAssignment {
 }
 
 // ==============================
-// CDP (Customer Data Platform)
+// RADAR
 // ==============================
 
-enum CustomerIdentityType {
+enum RadarIdentityType {
   phone
   email
   document
@@ -3591,7 +3591,7 @@ enum CustomerIdentityType {
   @@map("radar_identity_type")
 }
 
-enum CustomerSourceType {
+enum RadarSourceType {
   crm_lead
   portfolio
   email_contact
@@ -3601,14 +3601,14 @@ enum CustomerSourceType {
   @@map("radar_source_type")
 }
 
-enum CustomerChannel {
+enum RadarChannel {
   email
   whatsapp
 
   @@map("radar_channel")
 }
 
-enum CustomerConsentStatus {
+enum RadarConsentStatus {
   allowed
   blocked
   unknown
@@ -3616,7 +3616,7 @@ enum CustomerConsentStatus {
   @@map("radar_consent_status")
 }
 
-enum CustomerConsentReason {
+enum RadarConsentReason {
   manual
   imported
   unsubscribe
@@ -3635,7 +3635,7 @@ enum EmailVariableValueSource {
   @@map("email_variable_value_source")
 }
 
-model CustomerProfile {
+model RadarProfile {
   id                       String    @id @default(uuid()) @db.Uuid
   teamId                   String    @db.Uuid
   normalizedName           String    @db.Text
@@ -3651,11 +3651,11 @@ model CustomerProfile {
   createdAt                DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt                DateTime  @updatedAt @db.Timestamptz(6)
 
-  team       Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  identities CustomerIdentity[]
-  sourceLinks CustomerSourceLink[]
-  events     CustomerEvent[]
-  consents   CustomerChannelConsent[]
+  team       Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  identities RadarIdentity[]
+  sourceLinks RadarSourceLink[]
+  events     RadarEvent[]
+  consents   RadarChannelConsent[]
 
   @@unique([teamId, normalizedPhone, normalizedName])
   @@index([teamId, normalizedPrimaryEmail])
@@ -3664,45 +3664,45 @@ model CustomerProfile {
   @@map("corretor_studio_radar_profiles")
 }
 
-model CustomerIdentity {
-  id              String               @id @default(uuid()) @db.Uuid
-  profileId       String               @db.Uuid
-  teamId          String               @db.Uuid
-  type            CustomerIdentityType
-  value           String?              @db.Text
-  normalizedValue String               @db.Text
-  source          String               @db.Text
-  isPrimary       Boolean              @default(false)
-  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime             @updatedAt @db.Timestamptz(6)
+model RadarIdentity {
+  id              String            @id @default(uuid()) @db.Uuid
+  profileId       String            @db.Uuid
+  teamId          String            @db.Uuid
+  type            RadarIdentityType
+  value           String?           @db.Text
+  normalizedValue String            @db.Text
+  source          String            @db.Text
+  isPrimary       Boolean           @default(false)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(6)
 
-  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  profile RadarProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, type, normalizedValue])
   @@index([profileId, type])
   @@map("corretor_studio_radar_identities")
 }
 
-model CustomerSourceLink {
-  id             String             @id @default(uuid()) @db.Uuid
-  profileId      String             @db.Uuid
-  teamId         String             @db.Uuid
-  sourceType     CustomerSourceType
-  sourceId       String             @db.Text
+model RadarSourceLink {
+  id             String          @id @default(uuid()) @db.Uuid
+  profileId      String          @db.Uuid
+  teamId         String          @db.Uuid
+  sourceType     RadarSourceType
+  sourceId       String          @db.Text
   sourceMetadata Json?
-  firstLinkedAt  DateTime           @default(now()) @db.Timestamptz(6)
-  lastSyncedAt   DateTime           @default(now()) @db.Timestamptz(6)
+  firstLinkedAt  DateTime        @default(now()) @db.Timestamptz(6)
+  lastSyncedAt   DateTime        @default(now()) @db.Timestamptz(6)
 
-  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  profile RadarProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, sourceType, sourceId])
   @@index([profileId, sourceType])
   @@map("corretor_studio_radar_source_links")
 }
 
-model CustomerEvent {
+model RadarEvent {
   id         String   @id @default(uuid()) @db.Uuid
   profileId  String   @db.Uuid
   teamId     String   @db.Uuid
@@ -3713,8 +3713,8 @@ model CustomerEvent {
   metadata   Json?
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
 
-  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  profile RadarProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, sourceType, sourceId, eventType, occurredAt])
   @@index([teamId, eventType, occurredAt(sort: Desc)])
@@ -3722,20 +3722,20 @@ model CustomerEvent {
   @@map("corretor_studio_radar_events")
 }
 
-model CustomerChannelConsent {
-  id         String                @id @default(uuid()) @db.Uuid
-  profileId  String                @db.Uuid
-  teamId     String                @db.Uuid
-  channel    CustomerChannel
-  status     CustomerConsentStatus @default(unknown)
-  reason     CustomerConsentReason?
-  sourceType String?               @db.Text
-  sourceId   String?               @db.Text
-  updatedAt  DateTime              @updatedAt @db.Timestamptz(6)
-  createdAt  DateTime              @default(now()) @db.Timestamptz(6)
+model RadarChannelConsent {
+  id         String              @id @default(uuid()) @db.Uuid
+  profileId  String              @db.Uuid
+  teamId     String              @db.Uuid
+  channel    RadarChannel
+  status     RadarConsentStatus  @default(unknown)
+  reason     RadarConsentReason?
+  sourceType String?             @db.Text
+  sourceId   String?             @db.Text
+  updatedAt  DateTime            @updatedAt @db.Timestamptz(6)
+  createdAt  DateTime            @default(now()) @db.Timestamptz(6)
 
-  profile CustomerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  team    Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  profile RadarProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team    Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, channel])
   @@index([teamId, channel, status])

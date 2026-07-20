@@ -2,8 +2,8 @@ import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
-import { customerDataPlatformService } from "@/app/api/services/cdp/CustomerDataPlatformService"
-import { isValidCdpFieldKey } from "@/lib/cdp/field-catalog"
+import { radarService } from "@/app/api/services/radar/RadarService"
+import { isValidRadarFieldKey } from "@/lib/radar/field-catalog"
 
 export type EmailVariableType = "string" | "number"
 export type EmailVariableValueSource = "STATIC" | "CDP"
@@ -15,7 +15,7 @@ export interface UpsertEmailVariableInput {
   description?: string | null
   isActive?: boolean
   valueSource?: EmailVariableValueSource
-  cdpFieldKey?: string | null
+  radarFieldKey?: string | null
 }
 
 const variableSelect = {
@@ -26,7 +26,7 @@ const variableSelect = {
   description: true,
   isActive: true,
   valueSource: true,
-  cdpFieldKey: true,
+  radarFieldKey: true,
 } satisfies Prisma.EmailTeamVariableSelect
 
 const KEY_RE = /^[a-zA-Z0-9_]+$/
@@ -49,24 +49,24 @@ function validateInput(input: UpsertEmailVariableInput): string | null {
   }
 
   if (valueSource === "CDP") {
-    if (!input.cdpFieldKey?.trim()) {
+    if (!input.radarFieldKey?.trim()) {
       return "Selecione um campo da CDP para variáveis com origem CDP"
     }
-    if (!isValidCdpFieldKey(input.cdpFieldKey)) {
+    if (!isValidRadarFieldKey(input.radarFieldKey)) {
       return "Campo da CDP inválido"
     }
   }
 
-  if (valueSource === "STATIC" && input.cdpFieldKey) {
+  if (valueSource === "STATIC" && input.radarFieldKey) {
     return "Campos da CDP só são permitidos quando a origem é CDP"
   }
 
   return null
 }
 
-async function refreshCdpProfileData(ctx: TeamContext) {
+async function refreshRadarProfileData(ctx: TeamContext) {
   try {
-    await customerDataPlatformService.syncProfileDataForTeam({
+    await radarService.syncProfileDataForTeam({
       teamId: ctx.teamId,
       ctx: {
         profileId: ctx.profileId,
@@ -78,7 +78,7 @@ async function refreshCdpProfileData(ctx: TeamContext) {
       },
     })
   } catch (error) {
-    console.error("[EmailTeamVariablesUseCase][refreshCdpProfileData]", error)
+    console.error("[EmailTeamVariablesUseCase][refreshRadarProfileData]", error)
   }
 }
 
@@ -146,13 +146,13 @@ export class EmailTeamVariablesUseCase {
           description: input.description?.trim() ? input.description.trim() : null,
           isActive: input.isActive ?? true,
           valueSource,
-          cdpFieldKey: valueSource === "CDP" ? input.cdpFieldKey?.trim() ?? null : null,
+          radarFieldKey: valueSource === "CDP" ? input.radarFieldKey?.trim() ?? null : null,
         },
         select: variableSelect,
       })
 
       if (valueSource === "CDP") {
-        await refreshCdpProfileData(ctx)
+        await refreshRadarProfileData(ctx)
       }
 
       return new Output(true, ["Variável global criada com sucesso"], [], variable)
@@ -194,12 +194,12 @@ export class EmailTeamVariablesUseCase {
           description: input.description?.trim() ? input.description.trim() : null,
           ...(input.isActive !== undefined && { isActive: input.isActive }),
           valueSource,
-          cdpFieldKey: valueSource === "CDP" ? input.cdpFieldKey?.trim() ?? null : null,
+          radarFieldKey: valueSource === "CDP" ? input.radarFieldKey?.trim() ?? null : null,
         },
         select: variableSelect,
       })
 
-      await refreshCdpProfileData(ctx)
+      await refreshRadarProfileData(ctx)
 
       return new Output(true, ["Variável global atualizada com sucesso"], [], variable)
     } catch (error) {
@@ -221,7 +221,7 @@ export class EmailTeamVariablesUseCase {
       await prisma.emailTeamVariable.delete({ where: { id: variableId } })
 
       if (existing.valueSource === "CDP") {
-        await refreshCdpProfileData(ctx)
+        await refreshRadarProfileData(ctx)
       }
 
       return new Output(true, ["Variável global removida com sucesso"], [], null)

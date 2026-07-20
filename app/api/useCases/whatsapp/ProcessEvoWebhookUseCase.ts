@@ -23,7 +23,7 @@ import {
   toStoredNormalizedPhone,
 } from "@/app/api/services/whatsapp/WhatsAppPhonePolicy"
 import { syncWhatsAppHistoryUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsAppHistoryUseCase"
-import { syncWhatsappMessageToCdpUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsappMessageToCdpUseCase"
+import { syncWhatsappMessageToRadarUseCase } from "@/app/api/useCases/whatsapp/SyncWhatsappMessageToRadarUseCase"
 import { processWhatsAppInboundAutoResponseUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppInboundAutoResponseUseCase"
 import {
   shouldRecordConversationReopened,
@@ -323,14 +323,14 @@ class ProcessEvoWebhookUseCase {
       try {
         const refreshedConversation = await this.repository.findConversationById(conversation.id)
         if (refreshedConversation) {
-          await syncWhatsappMessageToCdpUseCase.execute({
+          await syncWhatsappMessageToRadarUseCase.execute({
             teamId: routed.teamId,
             message: createdMessage,
             conversation: refreshedConversation,
           })
         }
-      } catch (cdpError) {
-        console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] CDP sync failed", cdpError)
+      } catch (radarError) {
+        console.error("[ProcessEvoWebhookUseCase][handleMessagesUpsert] Radar sync failed", radarError)
       }
 
       if (!fromMe) {

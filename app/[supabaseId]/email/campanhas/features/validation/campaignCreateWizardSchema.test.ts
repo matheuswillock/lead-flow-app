@@ -68,7 +68,7 @@ describe("campaignCreateWizardSubmitSchema", () => {
       name: "Campanha CDP",
       templateId: "11111111-1111-4111-8111-111111111111",
       recipientSource: "cdp_segment",
-      cdpSegmentSlug: "email_marketable",
+      radarSegmentSlug: "email_marketable",
     })
     expect(result.success).toBe(false)
   })
@@ -82,7 +82,7 @@ describe("campaignCreateWizardSubmitSchema", () => {
       name: "Campanha CDP",
       templateId: "11111111-1111-4111-8111-111111111111",
       recipientSource: "cdp_segment",
-      cdpSegmentSlug: "email_marketable",
+      radarSegmentSlug: "email_marketable",
     })
     expect(result.success).toBe(true)
   })

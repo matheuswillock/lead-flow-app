@@ -210,16 +210,16 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
   const [valueSource, setValueSource] = useState<EmailVariableValueSource>(
     initialValue?.valueSource ?? "STATIC"
   )
-  const [cdpFieldKey, setCdpFieldKey] = useState(initialValue?.cdpFieldKey ?? "")
+  const [radarFieldKey, setCdpFieldKey] = useState(initialValue?.radarFieldKey ?? "")
   const [defaultValue, setDefaultValue] = useState(initialValue?.defaultValue ?? "")
   const [description, setDescription] = useState(initialValue?.description ?? "")
 
   const isDisabled =
     loading ||
     !key.trim() ||
-    (valueSource === "CDP" && !cdpFieldKey.trim())
+    (valueSource === "CDP" && !radarFieldKey.trim())
 
-  const selectedFieldLabel = fields.find((field) => field.key === cdpFieldKey)?.label
+  const selectedFieldLabel = fields.find((field) => field.key === radarFieldKey)?.label
 
   return (
     <form
@@ -230,7 +230,7 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
           key: sanitizeKey(key),
           type,
           valueSource,
-          cdpFieldKey: valueSource === "CDP" ? cdpFieldKey : null,
+          radarFieldKey: valueSource === "CDP" ? radarFieldKey : null,
           defaultValue: defaultValue.trim() ? defaultValue : null,
           description: description.trim() ? description : null,
         })
@@ -297,7 +297,7 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
           <Field>
             <FieldLabel htmlFor="variable-cdp-field">Campo da CDP</FieldLabel>
             <FieldContent>
-              <Select value={cdpFieldKey || "__none"} onValueChange={(value) => setCdpFieldKey(value === "__none" ? "" : value)}>
+              <Select value={radarFieldKey || "__none"} onValueChange={(value) => setCdpFieldKey(value === "__none" ? "" : value)}>
                 <SelectTrigger id="variable-cdp-field" className="w-full" disabled={loading}>
                   <SelectValue placeholder="Selecione o campo" />
                 </SelectTrigger>
@@ -399,8 +399,8 @@ function VariableRow({
               <Badge variant="outline">Estático</Badge>
             )}
           </div>
-          {variable.valueSource === "CDP" && variable.cdpFieldKey ? (
-            <p className="text-xs text-muted-foreground">Campo CDP: {variable.cdpFieldKey}</p>
+          {variable.valueSource === "CDP" && variable.radarFieldKey ? (
+            <p className="text-xs text-muted-foreground">Campo CDP: {variable.radarFieldKey}</p>
           ) : null}
           {variable.description ? (
             <p className="truncate text-sm text-muted-foreground">{variable.description}</p>
@@ -452,7 +452,7 @@ function VariableRow({
             key: variable.key,
             type: variable.type,
             valueSource: variable.valueSource,
-            cdpFieldKey: variable.cdpFieldKey,
+            radarFieldKey: variable.radarFieldKey,
             defaultValue: variable.defaultValue,
             description: variable.description,
           }}

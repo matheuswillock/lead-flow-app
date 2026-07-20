@@ -120,7 +120,7 @@ mock.module("@/lib/email/email-rbac", () => ({
   canDispatchEmail: () => true,
 }))
 mock.module("@/lib/cdp/list-segment-recipients", () => ({
-  listCdpSegmentEmailRecipients: mock(async () => []),
+  listRadarSegmentEmailRecipients: mock(async () => []),
 }))
 
 // =============================================================================
@@ -163,7 +163,7 @@ function makeCampaign(overrides: Record<string, unknown> = {}) {
     status: "draft",
     templateId: "tpl-ref-1",
     contactListId: "list-1",
-    cdpSegmentSlug: null,
+    radarSegmentSlug: null,
     parentCampaignId: null,
     audienceContactIds: [] as string[],
     contactList: { id: "list-1", name: "Lista Test", totalContacts: 10 },

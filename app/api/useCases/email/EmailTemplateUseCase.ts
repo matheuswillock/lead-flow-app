@@ -6,7 +6,7 @@ import { isManagerLikeRole } from "@/lib/roles"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { canCreateEmailTemplate } from "@/lib/email/email-rbac"
 import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
-import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
+import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { buildResendTrackingTags, mergeResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
@@ -561,7 +561,7 @@ export class EmailTemplateUseCase {
           return acc
         }, {}),
       }
-      const [enrichedRecipient] = await enrichCampaignRecipientsWithCdp(ctx.teamId, [baseRecipient])
+      const [enrichedRecipient] = await enrichCampaignRecipientsWithRadar(ctx.teamId, [baseRecipient])
       const recipient = enrichedRecipient ?? baseRecipient
       const defaultsUseCase = new EmailTeamVariablesUseCase()
       const defaultsOutput = await defaultsUseCase.getDefaultsMap(ctx)

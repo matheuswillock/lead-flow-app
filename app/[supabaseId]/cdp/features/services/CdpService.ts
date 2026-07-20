@@ -15,7 +15,7 @@ async function parseOutput<T>(res: Response): Promise<T> {
 }
 
 export class CdpService implements ICdpService {
-  private readonly baseUrl = "/api/v1/cdp"
+  private readonly baseUrl = "/api/v1/radar"
 
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
     return {

@@ -42,7 +42,7 @@ type GlobalVariable = {
   description: string | null;
   defaultValue: string | null;
   valueSource?: "STATIC" | "CDP";
-  cdpFieldKey?: string | null;
+  radarFieldKey?: string | null;
 };
 
 function sanitizeKey(value: string) {
@@ -282,7 +282,7 @@ export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
                 label={v.key}
                 hint={
                   v.valueSource === "CDP"
-                    ? `CDP: ${v.cdpFieldKey ?? "campo não configurado"}`
+                    ? `CDP: ${v.radarFieldKey ?? "campo não configurado"}`
                     : v.description ?? undefined
                 }
               />

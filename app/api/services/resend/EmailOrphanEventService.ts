@@ -7,7 +7,7 @@ import {
 } from "@/app/api/services/resend/ResendEmailEnrichmentService"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { resendWebhookService } from "@/app/api/services/resend/ResendWebhookService"
-import { customerDataPlatformService } from "@/app/api/services/cdp/CustomerDataPlatformService"
+import { radarService } from "@/app/api/services/radar/RadarService"
 
 const BATCH_SIZE = 10
 const MAX_REQUESTS_PER_SECOND = 8
@@ -77,9 +77,9 @@ export class EmailOrphanEventService {
             svixId: null,
           })
 
-          // Mesmos side effects CDP do fluxo normal (ResendWebhookUseCase), para opens/clicks/bounces recuperados.
+          // Mesmos side effects Radar do fluxo normal (ResendWebhookUseCase), para opens/clicks/bounces recuperados.
           try {
-            await customerDataPlatformService.handleEmailWebhookEvent({
+            await radarService.handleEmailWebhookEvent({
               teamId: existingLog.teamId,
               recipientEmail: existingLog.recipientEmail,
               recipientName: existingLog.recipientName,
@@ -89,8 +89,8 @@ export class EmailOrphanEventService {
               occurredAt: event.occurredAt,
               metadata: {},
             })
-          } catch (cdpError) {
-            console.error("[EmailOrphanEventService][cdp]", cdpError)
+          } catch (radarError) {
+            console.error("[EmailOrphanEventService][radar]", radarError)
           }
         }
         await prisma.emailOrphanEvent.update({
