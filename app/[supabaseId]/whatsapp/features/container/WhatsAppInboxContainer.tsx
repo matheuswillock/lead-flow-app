@@ -1,6 +1,8 @@
 "use client"
 
-import { Loader2 } from 'lucide-react'
+import Link from 'next/link'
+import { BookOpen, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useWhatsAppInboxContext } from '../context/WhatsAppInboxContext'
 import { MessagingInboxLayout } from '@/components/messaging/MessagingInboxLayout'
@@ -45,6 +47,14 @@ export function WhatsAppInboxContainer({ supabaseId }: WhatsAppInboxContainerPro
           <AlertDescription>Sincronizando conversas dos últimos 30 dias…</AlertDescription>
         </Alert>
       ) : null}
+      <div className="flex justify-end">
+        <Button asChild variant="ghost" size="sm" className="gap-2 self-end">
+          <Link href={`/${supabaseId}/docs?chapter=whatsapp-inbox`}>
+            <BookOpen className="size-4" />
+            Ajuda do Inbox
+          </Link>
+        </Button>
+      </div>
       <MessagingInboxLayout
         showPanel={Boolean(selectedConversationId)}
         list={<ConversationList />}

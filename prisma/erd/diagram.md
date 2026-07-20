@@ -2498,6 +2498,7 @@ failed failed
     WhatsAppOutboundCommandStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime reconciledAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2511,6 +2512,8 @@ failed failed
     WhatsAppWebhookEventStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime nextAttemptAt "❓"
+    DateTime processingStartedAt "❓"
     DateTime processedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -2539,6 +2542,14 @@ failed failed
     Int quantity 
     Json rawPayload "❓"
     DateTime createdAt 
+    }
+  
+
+  "whatsapp_send_rate_limit_windows" {
+    DateTime windowStart "🗝️"
+    Int count 
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -3207,6 +3218,7 @@ failed failed
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_usage_events" }o--|| corretor_studio_teams : "team"
     "whatsapp_usage_events" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_send_rate_limit_windows" }o--|| corretor_studio_teams : "team"
     "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseRuleType" : "enum:type"
     "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseMatchMode" : "enum:matchMode"
     "whatsapp_auto_response_rules" }o--|| team_whatsapp_configs : "config"
