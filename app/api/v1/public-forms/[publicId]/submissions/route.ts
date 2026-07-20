@@ -12,7 +12,7 @@ export async function POST(
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
-  const rate = consumePublicFormRateLimit(
+  const rate = await consumePublicFormRateLimit(
     `submission:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 10, windowMs: 10 * 60_000 },
   )

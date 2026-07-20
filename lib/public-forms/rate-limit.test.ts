@@ -8,13 +8,13 @@ import {
 describe("rate limit de formulários públicos", () => {
   beforeEach(resetPublicFormRateLimitsForTests)
 
-  it("bloqueia após o limite da janela", () => {
-    expect(consumePublicFormRateLimit("form:a", { limit: 1, windowMs: 60_000 }).allowed).toBe(
-      true,
-    )
-    expect(consumePublicFormRateLimit("form:a", { limit: 1, windowMs: 60_000 }).allowed).toBe(
-      false,
-    )
+  it("bloqueia após o limite da janela", async () => {
+    expect(
+      (await consumePublicFormRateLimit("form:a", { limit: 1, windowMs: 60_000 })).allowed,
+    ).toBe(true)
+    expect(
+      (await consumePublicFormRateLimit("form:a", { limit: 1, windowMs: 60_000 })).allowed,
+    ).toBe(false)
   })
 
   it("usa apenas o primeiro endereço encaminhado como fingerprint efêmero", () => {

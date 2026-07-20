@@ -4,8 +4,11 @@ import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepos
 import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService"
 import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadScheduleService"
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase"
+import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase"
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase"
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
+import { formatLocalDateValue, formatLocalTimeValue, DEFAULT_TZ } from "@/lib/dates"
+import { isGoogleConnectionActive } from "@/lib/google/connection"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { Output } from "@/lib/output"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
@@ -67,18 +70,16 @@ export class PublicFormSubmissionUseCase {
 
     const { snapshot } = current
     const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
-    const answerMap = new Map(input.answers.map((answer) => [answer.questionId, answer.value]))
+    // Ignore answers for questions that became hidden after conditional navigation.
+    const visibleAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
+    const answerMap = new Map(visibleAnswers.map((answer) => [answer.questionId, answer.value]))
     const errors = snapshot.questions.flatMap((question) => {
       if (!visible.has(question.id)) return []
       const error = validateAnswer(question, answerMap.get(question.id))
       return error ? [`${question.title}: ${error}`] : []
     })
-    if (input.answers.some((answer) => !visible.has(answer.questionId))) {
-      errors.push("Foram enviadas respostas para perguntas ocultas")
-    }
     if (errors.length > 0) return new Output(false, [], errors, null)
 
-    const visibleAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
     const score = calculatePublicFormScore(snapshot, visibleAnswers)
     const band = snapshot.scoreBands.find(
       (item) => score >= item.minScore && score <= item.maxScore,
@@ -220,6 +221,38 @@ export class PublicFormSubmissionUseCase {
         ) {
           throw new Error("Closer indisponível para este formulário")
         }
+
+        const timezone = form.team.master.timezone || DEFAULT_TZ
+        const startsAt = new Date(input.scheduling.startsAt)
+        if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now() - 60_000) {
+          throw new Error("Horário de agendamento inválido ou já passou")
+        }
+
+        const dateKey = formatLocalDateValue(startsAt, timezone)
+        const timeKey = formatLocalTimeValue(startsAt, timezone)
+        const availabilityOutput = await publicLeadFormUseCase.getCloserAvailability(
+          form.teamId,
+          input.scheduling.closerId,
+          dateKey,
+          undefined,
+          snapshot.meetingDurationMinutes,
+        )
+        if (!availabilityOutput.isValid) {
+          throw new Error(availabilityOutput.errorMessages.join("; ") || "Horário indisponível")
+        }
+        const availableTimes =
+          (availabilityOutput.result as { availableTimes?: string[] } | null)?.availableTimes ?? []
+        if (!availableTimes.includes(timeKey)) {
+          throw new Error("O horário selecionado não está mais disponível")
+        }
+
+        const closerProfile = await publicFormsRepository.findCloserGoogleConnection(
+          input.scheduling.closerId,
+        )
+        const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection)
+        // Public forms cannot collect a manual Meet link; fall back to call when Google is offline.
+        const meetingType = canUseGoogleCalendar ? "online" : "call"
+
         const scheduleOutput = await leadScheduleService.createSchedule({
           leadId: lead.id,
           leadName: lead.name,
@@ -235,6 +268,8 @@ export class PublicFormSubmissionUseCase {
           meetingDate: input.scheduling.startsAt,
           meetingTitle: `Reunião — ${lead.name}`,
           meetingNotes: snapshot.schedulingMessage ?? undefined,
+          meetingType,
+          durationMinutes: snapshot.meetingDurationMinutes,
           createdByProfileId: form.team.master.id,
           transitionStatusToScheduled: true,
           authorAsStudio: true,

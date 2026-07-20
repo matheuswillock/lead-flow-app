@@ -123,6 +123,13 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
       if (!next.has(questionId)) track("question_skipped", questionId)
     }
     previousVisibleIds.current = visibleIds
+    setAnswers((current) => {
+      const pruned: Record<string, unknown> = {}
+      for (const [questionId, value] of Object.entries(current)) {
+        if (next.has(questionId)) pruned[questionId] = value
+      }
+      return pruned
+    })
     setIndex((current) => Math.min(current, Math.max(0, visibleIds.length - 1)))
   }, [started, track, visibleIds])
 

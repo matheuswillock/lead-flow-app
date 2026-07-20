@@ -122,7 +122,7 @@ export type PublicFormSubmissionContext = {
   teamId: string
   assignedSdrId: string | null
   assignedSdr: { email: string | null } | null
-  team: { master: { id: string; supabaseId: string | null } }
+  team: { master: { id: string; supabaseId: string | null; timezone: string | null } }
 }
 
 export type PublicFormCompleteSubmissionInput = {
@@ -244,6 +244,14 @@ export interface IPublicFormsRepository {
     origin: Prisma.InputJsonValue
   }): Promise<PublicFormSubmission>
   findFormSubmissionContext(formId: string): Promise<PublicFormSubmissionContext>
+  findCloserGoogleConnection(closerId: string): Promise<{
+    googleConnection: {
+      accessToken: string | null
+      refreshToken: string | null
+      tokenExpiresAt: Date | null
+      revokedAt: Date | null
+    } | null
+  } | null>
   findLeadCandidates(
     teamId: string,
     email: string,

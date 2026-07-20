@@ -2996,6 +2996,14 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_public_form_rate_limits" {
+    String key "🗝️"
+    Int count 
+    DateTime resetAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_public_forms" {
     String id "🗝️"
     String name 

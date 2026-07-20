@@ -32,7 +32,13 @@ export async function GET(
       status: 404,
     })
   }
-  const output = await publicLeadFormUseCase.getCloserAvailability(current.teamId, closerId, date)
+  const output = await publicLeadFormUseCase.getCloserAvailability(
+    current.teamId,
+    closerId,
+    date,
+    undefined,
+    current.snapshot.meetingDurationMinutes,
+  )
   if (!output.isValid) return NextResponse.json(output, { status: 400 })
   const result = output.result as { availableTimes?: string[]; source?: string }
   return NextResponse.json(

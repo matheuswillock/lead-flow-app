@@ -1,4 +1,5 @@
 import { ActivityType, Prisma } from "@prisma/client"
+import { randomUUID } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
 import {
@@ -21,10 +22,33 @@ async function replaceDraftRelations(
   formId: string,
   input: PublicFormDraftInput,
 ) {
+  // Rules must drop first so question upserts/deletes are not blocked by FKs.
   await tx.publicFormRule.deleteMany({ where: { formId } })
-  await tx.publicFormQuestion.deleteMany({ where: { formId } })
   await tx.publicFormScoreBand.deleteMany({ where: { formId } })
   await tx.publicFormEligibleCloser.deleteMany({ where: { formId } })
+
+  const incomingQuestionIds = input.questions
+    .map((question) => question.id)
+    .filter((id): id is string => Boolean(id))
+  await tx.publicFormQuestion.deleteMany({
+    where: {
+      formId,
+      ...(incomingQuestionIds.length > 0 ? { id: { notIn: incomingQuestionIds } } : {}),
+    },
+  })
+
+  // Avoid unique(formId, position) collisions while reordering existing rows.
+  const existingQuestions = await tx.publicFormQuestion.findMany({
+    where: { formId },
+    select: { id: true },
+    orderBy: { position: "asc" },
+  })
+  for (const [index, question] of existingQuestions.entries()) {
+    await tx.publicFormQuestion.update({
+      where: { id: question.id },
+      data: { position: 100_000 + index },
+    })
+  }
 
   if (input.eligibleCloserIds.length > 0) {
     await tx.publicFormEligibleCloser.createMany({
@@ -33,9 +57,12 @@ async function replaceDraftRelations(
   }
 
   for (const [position, question] of input.questions.entries()) {
-    await tx.publicFormQuestion.create({
-      data: {
-        id: question.id,
+    const questionId = question.id ?? randomUUID()
+    await tx.publicFormOption.deleteMany({ where: { questionId } })
+    await tx.publicFormQuestion.upsert({
+      where: { id: questionId },
+      create: {
+        id: questionId,
         formId,
         type: question.type,
         title: question.title,
@@ -46,17 +73,32 @@ async function replaceDraftRelations(
         config: json(question.config ?? {}),
         mappingTarget: question.mappingTarget,
         mappingKey: question.mappingKey,
-        options: {
-          create: question.options.map((option, optionPosition) => ({
-            id: option.id,
-            label: option.label,
-            value: option.value,
-            score: option.score,
-            position: optionPosition,
-          })),
-        },
+      },
+      update: {
+        formId,
+        type: question.type,
+        title: question.title,
+        description: question.description,
+        placeholder: question.placeholder,
+        required: question.required,
+        position,
+        config: json(question.config ?? {}),
+        mappingTarget: question.mappingTarget,
+        mappingKey: question.mappingKey,
       },
     })
+    if (question.options.length > 0) {
+      await tx.publicFormOption.createMany({
+        data: question.options.map((option, optionPosition) => ({
+          id: option.id ?? randomUUID(),
+          questionId,
+          label: option.label,
+          value: option.value,
+          score: option.score,
+          position: optionPosition,
+        })),
+      })
+    }
   }
 
   if (input.rules.length > 0) {
@@ -458,7 +500,23 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         teamId: true,
         assignedSdrId: true,
         assignedSdr: { select: { email: true } },
-        team: { select: { master: { select: { id: true, supabaseId: true } } } },
+        team: { select: { master: { select: { id: true, supabaseId: true, timezone: true } } } },
+      },
+    })
+  }
+
+  findCloserGoogleConnection(closerId: string) {
+    return prisma.profile.findUnique({
+      where: { id: closerId },
+      select: {
+        googleConnection: {
+          select: {
+            accessToken: true,
+            refreshToken: true,
+            tokenExpiresAt: true,
+            revokedAt: true,
+          },
+        },
       },
     })
   }

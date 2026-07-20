@@ -4330,6 +4330,16 @@ model PublicFormSettings {
   @@map("corretor_studio_public_form_settings")
 }
 
+model PublicFormRateLimit {
+  key       String   @id @db.Text
+  count     Int      @default(0)
+  resetAt   DateTime @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([resetAt])
+  @@map("corretor_studio_public_form_rate_limits")
+}
+
 model PublicForm {
   id                     String                     @id @default(uuid()) @db.Uuid
   teamId                 String                     @db.Uuid
