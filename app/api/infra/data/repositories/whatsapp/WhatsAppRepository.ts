@@ -576,19 +576,33 @@ class WhatsAppRepository implements IWhatsAppRepository {
   async claimWebhookEvent(eventId: string): Promise<WhatsAppWebhookOutboxEvent | null> {
     const [event] = await prisma.$queryRaw<WhatsAppWebhookOutboxEvent[]>`
       update whatsapp_webhook_events
-      set status = 'PROCESSING', "attemptCount" = "attemptCount" + 1, "updatedAt" = now()
+      set status = 'PROCESSING',
+        "attemptCount" = "attemptCount" + 1,
+        "processingStartedAt" = now(),
+        "nextAttemptAt" = null,
+        "updatedAt" = now()
       where id = ${eventId}::uuid
-        and (status = 'PENDING' or (status = 'PROCESSING' and "updatedAt" < now() - interval '5 minutes'))
+        and (
+          (status = 'PENDING' and ("nextAttemptAt" is null or "nextAttemptAt" <= now()))
+          or (status = 'PROCESSING' and coalesce("processingStartedAt", "updatedAt") < now() - interval '5 minutes')
+        )
       returning id, "teamId", "configId", payload, "attemptCount"
     `
     return event ?? null
   }
 
-  async completeWebhookEvent(input: { eventId: string; status: "PROCESSED" | "PENDING" | "DEAD_LETTER"; error?: string }): Promise<void> {
+  async completeWebhookEvent(input: {
+    eventId: string
+    status: "PROCESSED" | "PENDING" | "DEAD_LETTER"
+    error?: string
+    nextAttemptAt?: Date | null
+  }): Promise<void> {
     await prisma.$executeRaw`
       update whatsapp_webhook_events
       set status = ${input.status}::"WhatsAppWebhookEventStatus",
         "processedAt" = ${input.status === "PROCESSED" ? new Date() : null},
+        "processingStartedAt" = null,
+        "nextAttemptAt" = ${input.nextAttemptAt ?? null},
         "lastError" = ${input.error?.slice(0, 500) ?? null},
         "updatedAt" = now()
       where id = ${input.eventId}::uuid
@@ -598,11 +612,39 @@ class WhatsAppRepository implements IWhatsAppRepository {
   async listPendingWebhookEventIds(limit: number): Promise<string[]> {
     const events = await prisma.$queryRaw<Array<{ id: string }>>`
       select id from whatsapp_webhook_events
-      where status = 'PENDING'
-        or (status = 'PROCESSING' and "updatedAt" < now() - interval '5 minutes')
+      where (status = 'PENDING' and ("nextAttemptAt" is null or "nextAttemptAt" <= now()))
+        or (status = 'PROCESSING' and coalesce("processingStartedAt", "updatedAt") < now() - interval '5 minutes')
       order by "createdAt" asc limit ${Math.min(limit, 100)}
     `
     return events.map((event) => event.id)
+  }
+
+  async requeueDeadLetterEvent(input: { eventId: string; teamId: string; actorProfileId: string }): Promise<boolean> {
+    const updated = await prisma.$executeRaw`
+      update whatsapp_webhook_events
+      set status = 'PENDING', "attemptCount" = 0, "lastError" = null,
+        "nextAttemptAt" = now(), "processingStartedAt" = null, "updatedAt" = now()
+      where id = ${input.eventId}::uuid and "teamId" = ${input.teamId}::uuid and status = 'DEAD_LETTER'
+    `
+    if (updated !== 1) return false
+    await this.createAuditEvent({
+      teamId: input.teamId,
+      actorProfileId: input.actorProfileId,
+      action: "webhook.dead_letter.requeue",
+      metadata: { eventId: input.eventId },
+    })
+    return true
+  }
+
+  async reconcileStaleOutboundCommands(olderThan: Date): Promise<number> {
+    const updated = await prisma.$executeRaw`
+      update whatsapp_outbound_commands
+      set status = 'UNKNOWN',
+        "lastError" = 'Envio sem confirmação do provedor; confirme no histórico antes de reenviar.',
+        "reconciledAt" = now(), "updatedAt" = now()
+      where status = 'PENDING' and "createdAt" < ${olderThan}
+    `
+    return updated
   }
 
   async createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }> {

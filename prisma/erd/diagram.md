@@ -2498,6 +2498,7 @@ failed failed
     WhatsAppOutboundCommandStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime reconciledAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2511,6 +2512,8 @@ failed failed
     WhatsAppWebhookEventStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime nextAttemptAt "❓"
+    DateTime processingStartedAt "❓"
     DateTime processedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 

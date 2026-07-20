@@ -247,8 +247,15 @@ export interface IWhatsAppRepository {
   failOutboundCommand(input: { teamId: string; clientMessageId: string; status: "UNKNOWN" | "FAILED"; error: string }): Promise<void>
   persistWebhookEvent(input: { configId: string; teamId: string; providerEventId: string; eventType: string; payload: Prisma.InputJsonValue }): Promise<string>
   claimWebhookEvent(eventId: string): Promise<WhatsAppWebhookOutboxEvent | null>
-  completeWebhookEvent(input: { eventId: string; status: "PROCESSED" | "PENDING" | "DEAD_LETTER"; error?: string }): Promise<void>
+  completeWebhookEvent(input: {
+    eventId: string
+    status: "PROCESSED" | "PENDING" | "DEAD_LETTER"
+    error?: string
+    nextAttemptAt?: Date | null
+  }): Promise<void>
   listPendingWebhookEventIds(limit: number): Promise<string[]>
+  requeueDeadLetterEvent(input: { eventId: string; teamId: string; actorProfileId: string }): Promise<boolean>
+  reconcileStaleOutboundCommands(olderThan: Date): Promise<number>
 
   // Usage
   createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }>
