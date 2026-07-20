@@ -84,6 +84,9 @@ export interface ListConversationsFilters {
 }
 
 export interface IBackofficeBotRepository {
+  findProfileBotAccessBySupabaseId(
+    supabaseId: string
+  ): Promise<{ id: string; activeTeamId: string | null } | null>;
   findProfileActiveTeam(profileId: string): Promise<{ id: string; activeTeamId: string | null } | null>;
   findProfileByEmail(
     email: string

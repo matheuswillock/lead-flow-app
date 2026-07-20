@@ -39,6 +39,13 @@ function buildConversationSearchWhere(
 }
 
 class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
+  async findProfileBotAccessBySupabaseId(supabaseId: string) {
+    return prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true, activeTeamId: true },
+    });
+  }
+
   async findProfileByEmail(email: string) {
     return prisma.profile.findFirst({
       where: { email: { equals: email.trim(), mode: "insensitive" } },
