@@ -31,6 +31,59 @@ export async function GET(
   }
 }
 
+export async function PATCH(
+  request: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string; invoiceId: string }>
+  }
+) {
+  try {
+    const result = await getBackofficeAccess(request)
+    if (result.error) {
+      return NextResponse.json(result.error, { status: result.status })
+    }
+
+    const body = await request.json()
+    const value = typeof body?.value === "number" ? body.value : Number(body?.value)
+    const dueDate = typeof body?.dueDate === "string" ? body.dueDate.trim() : ""
+
+    if (!Number.isFinite(value) || value <= 0) {
+      return NextResponse.json(
+        new Output(false, [], ["Informe um valor válido maior que zero"], null),
+        { status: 400 }
+      )
+    }
+
+    if (!dueDate) {
+      return NextResponse.json(
+        new Output(false, [], ["Informe a data de vencimento"], null),
+        { status: 400 }
+      )
+    }
+
+    const { id, invoiceId } = await params
+    const useCase = new BackofficePlatformUsersUseCase(new BackofficePlatformUsersRepository())
+    const output = await useCase.updateMasterUserInvoice(id, invoiceId, { value, dueDate })
+
+    if (output.isValid) {
+      return NextResponse.json(output, { status: 200 })
+    }
+
+    const notFound = output.errorMessages.some((message) =>
+      message.toLowerCase().includes("não encontrada") ||
+      message.toLowerCase().includes("não encontrado")
+    )
+
+    return NextResponse.json(output, { status: notFound ? 404 : 400 })
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
+    console.error("[BackofficePlatformUserInvoiceByIdRoute][PATCH]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}
+
 export async function POST(
   request: NextRequest,
   {

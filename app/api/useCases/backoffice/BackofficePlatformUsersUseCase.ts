@@ -682,6 +682,106 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     }
   }
 
+  async updateMasterUserInvoice(
+    masterProfileId: string,
+    invoiceId: string,
+    data: { value: number; dueDate: string }
+  ): Promise<Output> {
+    try {
+      if (!invoiceId || invoiceId.trim().length === 0) {
+        return new Output(false, [], ["ID da fatura é obrigatório"], null)
+      }
+
+      if (!Number.isFinite(data.value) || data.value <= 0) {
+        return new Output(false, [], ["Informe um valor válido maior que zero"], null)
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data.dueDate)) {
+        return new Output(false, [], ["Data de vencimento inválida"], null)
+      }
+
+      const dueDateParsed = new Date(`${data.dueDate}T00:00:00.000Z`)
+      if (Number.isNaN(dueDateParsed.getTime())) {
+        return new Output(false, [], ["Data de vencimento inválida"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      if (!master.asaasCustomerId) {
+        return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
+      }
+
+      const currentPayment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "GET",
+      })) as AsaasPaymentItem
+
+      if (!currentPayment?.id) {
+        return new Output(false, [], ["Fatura não encontrada"], null)
+      }
+
+      if (currentPayment.customer && currentPayment.customer !== master.asaasCustomerId) {
+        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
+      }
+
+      if (currentPayment.deleted) {
+        return new Output(false, [], ["Não é possível editar uma cobrança removida"], null)
+      }
+
+      const statusGroup = getStatusGroup(currentPayment.status)
+      if (statusGroup !== "upcoming" && statusGroup !== "overdue") {
+        return new Output(
+          false,
+          [],
+          ["Só é possível editar faturas a vencer ou vencidas"],
+          null
+        )
+      }
+
+      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          value: data.value,
+          dueDate: data.dueDate,
+        }),
+      })) as AsaasPaymentItem
+
+      if (!payment?.id) {
+        return new Output(false, [], ["Não foi possível atualizar a cobrança no Asaas"], null)
+      }
+
+      return new Output(true, ["Cobrança atualizada com sucesso"], [], {
+        id: payment.id,
+        customerName: master.fullName ?? master.email,
+        status: payment.status ?? "PENDING",
+        statusGroup: getStatusGroup(payment.status),
+        value: normalizeAsaasValue(payment.value),
+        netValue: normalizeAsaasValue(payment.netValue),
+        originalValue: normalizeAsaasValue(payment.originalValue),
+        interestValue: normalizeAsaasValue(payment.interestValue),
+        billingType: payment.billingType ?? "UNDEFINED",
+        description: payment.description ?? "Descrição não informada",
+        dateCreated: payment.dateCreated ?? null,
+        dueDate: payment.dueDate ?? null,
+        paymentDate: payment.clientPaymentDate ?? payment.paymentDate ?? null,
+        confirmedDate: payment.confirmedDate ?? null,
+        invoiceNumber: payment.invoiceNumber ?? null,
+        installmentNumber: payment.installmentNumber ?? null,
+        externalReference: payment.externalReference ?? null,
+        invoiceUrl: payment.invoiceUrl ?? null,
+        bankSlipUrl: payment.bankSlipUrl ?? null,
+        transactionReceiptUrl:
+          payment.transactionReceiptUrl ?? payment.pixTransaction?.transactionReceiptUrl ?? null,
+        deleted: Boolean(payment.deleted),
+      })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][updateMasterUserInvoice]", error)
+      return new Output(false, [], ["Erro ao atualizar a cobrança"], null)
+    }
+  }
+
   async notifyMasterUserInvoiceStatusEmail(
     masterProfileId: string,
     invoiceId: string

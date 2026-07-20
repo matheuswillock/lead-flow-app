@@ -60,6 +60,7 @@ export interface BackofficeClientDetails {
   userType: {
     slug: "common" | "member_pro"
     isExpired: boolean
+    accessExpiresAt: string | null
   }
   hasUnlimitedUsers: boolean
   multiskillEnabled: boolean
