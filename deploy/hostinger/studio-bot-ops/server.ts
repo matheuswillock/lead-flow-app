@@ -35,6 +35,34 @@ const N8N_ALLOW = new Set([
 ]);
 
 const EVO_ALLOW = new Set(["AUTHENTICATION_API_KEY", "CONFIG_SESSION_PHONE_VERSION"]);
+const ACTIVE_BETHANIA_WORKFLOWS = new Set([
+  "bethania-router",
+  "bethania-push-outbound",
+  "bethania-error-notifier",
+]);
+const STUB_BETHANIA_WORKFLOWS = new Set([
+  "bethania-verification-channel",
+  "bethania-verification-web",
+  "bethania-menu-main",
+  "bethania-list-leads",
+  "bethania-agenda-today",
+  "bethania-list-tasks",
+  "bethania-add-note-confirm",
+]);
+const REQUIRED_N8N_ENV = [
+  "LEAD_FLOW_API_BASE_URL",
+  "N8N_WEBHOOK_BASE_URL",
+  "BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET",
+  "EVO_API_BASE_URL",
+  "EVO_API_KEY",
+  "EVO_BETHANIA_INSTANCE",
+  "BACKOFFICE_BETHANIA_WHATSAPP_NUMBER",
+  "N8N_BLOCK_ENV_ACCESS_IN_NODE",
+  "NODE_FUNCTION_ALLOW_BUILTIN",
+  "N8N_RUNNERS_ENABLED",
+  "BETHANIA_SLACK_WEBHOOK_URL",
+];
+const REQUIRED_EVO_ENV = ["AUTHENTICATION_API_KEY"];
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -148,24 +176,118 @@ async function listWorkflows() {
       .split("\n")
       .filter(Boolean)
       .map((line) => {
-        const [id, name] = line.split("|");
-        return { id: id?.trim() || "", name: name?.trim() || line, active: true };
+        const [id, name, activeRaw] = line.split("|").map((part) => part?.trim() || "");
+        const activeText = String(activeRaw || "").toLowerCase();
+        const active =
+          activeText === "true" ||
+          activeText === "active" ||
+          activeText === "activated" ||
+          activeText === "yes"
+            ? true
+            : activeText === "false" ||
+                activeText === "inactive" ||
+                activeText === "deactivated" ||
+                activeText === "no"
+              ? false
+              : null;
+        return { id: id || "", name: name || line, active };
       });
   } catch {
     return [];
   }
 }
 
+function isConfiguredSecret(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  if (text.includes("...") || text.includes("XXXXXXXX") || text.includes("SUBSTITUA_")) return false;
+  return true;
+}
+
+async function readEnvFromDeploy(filename) {
+  try {
+    return parseEnvFile(await fs.readFile(path.join(DEPLOY_DIR, filename), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function buildBethaniaProductionCheck({ containers, workflows, n8nEnv, evoEnv }) {
+  const workflowByName = new Map(workflows.map((workflow) => [workflow.name, workflow]));
+  const env = {
+    n8n: REQUIRED_N8N_ENV.map((key) => ({
+      key,
+      configured: isConfiguredSecret(n8nEnv[key]),
+    })),
+    evolution: REQUIRED_EVO_ENV.map((key) => ({
+      key,
+      configured: isConfiguredSecret(evoEnv[key]),
+    })),
+  };
+  const workflowState = [
+    ...Array.from(ACTIVE_BETHANIA_WORKFLOWS).map((name) => {
+      const workflow = workflowByName.get(name);
+      return {
+        name,
+        expected: "active",
+        actual: workflow?.active ?? "missing",
+        ok: workflow?.active === true,
+      };
+    }),
+    ...Array.from(STUB_BETHANIA_WORKFLOWS).map((name) => {
+      const workflow = workflowByName.get(name);
+      return {
+        name,
+        expected: "inactive",
+        actual: workflow?.active ?? "missing",
+        ok: workflow?.active === false,
+      };
+    }),
+  ];
+  const n8nContainer = containers.find((container) => container.name === "n8n");
+  const imagePinned = Boolean(n8nContainer?.image?.includes("n8nio/n8n:2.28.5"));
+  const envOk =
+    env.n8n.every((item) => item.configured) &&
+    env.evolution.every((item) => item.configured);
+  const workflowsOk = workflowState.every((item) => item.ok);
+
+  return {
+    ok: envOk && workflowsOk && imagePinned,
+    env,
+    workflows: workflowState,
+    containers: {
+      n8nImage: n8nContainer?.image ?? null,
+      imagePinned,
+    },
+    productionEvidenceRequired: [
+      "QR da instância bethania escaneado e status connected no backoffice/Evolution",
+      "Webhook Evolution da instância bethania apontando para http://n8n:5678/webhook/bethania-inbound",
+      "Teste Account -> Gerar código -> VINCULAR -> confirmação WhatsApp executado em produção",
+      "Falha forçada em workflow ativo gerando Slack e outbox failed",
+      "Overview do n8n sem falhas sistêmicas no caminho feliz por 24h após deploy",
+      "Templates HSM bethania_meeting_reminder e bethania_auth_code aprovados no WhatsApp Manager",
+    ],
+  };
+}
+
 async function handleHealth(_req, res) {
   const containers = await listContainers();
   const workflows = await listWorkflows();
+  const n8nEnv = await readEnvFromDeploy(".env.n8n");
+  const evoEnv = await readEnvFromDeploy(".env.evolution");
   let hostVersion = null;
   try {
     hostVersion = (await fs.readFile(HOST_VERSION_FILE, "utf8")).trim();
   } catch {
     hostVersion = null;
   }
-  return json(res, 200, { ok: true, containers, workflows, hostVersion });
+  const bethaniaProductionCheck = buildBethaniaProductionCheck({
+    containers,
+    workflows,
+    n8nEnv,
+    evoEnv,
+  });
+  return json(res, 200, { ok: true, containers, workflows, hostVersion, bethaniaProductionCheck });
 }
 
 async function handleApplyEnv(body, res) {
@@ -230,26 +352,50 @@ async function handleImportWorkflows(_body, res) {
     "bethania-push-outbound",
     "bethania-error-notifier",
   ]);
+  const stubNames = new Set([
+    "bethania-verification-channel",
+    "bethania-verification-web",
+    "bethania-menu-main",
+    "bethania-list-leads",
+    "bethania-agenda-today",
+    "bethania-list-tasks",
+    "bethania-add-note-confirm",
+  ]);
   for (const line of stdout.trim().split("\n")) {
     if (!line.includes("|")) continue;
     const [id, name] = line.split("|").map((s) => s.trim());
-    if (!activeNames.has(name)) continue;
-    try {
-      await execFileAsync("docker", ["exec", "n8n", "n8n", "publish:workflow", `--id=${id}`]);
-    } catch {
-      // ignore publish errors on stubs
+    if (activeNames.has(name)) {
+      try {
+        await execFileAsync("docker", ["exec", "n8n", "n8n", "publish:workflow", `--id=${id}`]);
+      } catch {
+        // best effort
+      }
+      try {
+        await execFileAsync("docker", [
+          "exec",
+          "n8n",
+          "n8n",
+          "update:workflow",
+          `--id=${id}`,
+          "--active=true",
+        ]);
+      } catch {
+        // n8n 2.x deprecation — best effort
+      }
     }
-    try {
-      await execFileAsync("docker", [
-        "exec",
-        "n8n",
-        "n8n",
-        "update:workflow",
-        `--id=${id}`,
-        "--active=true",
-      ]);
-    } catch {
-      // n8n 2.x deprecation — best effort
+    if (stubNames.has(name)) {
+      try {
+        await execFileAsync("docker", [
+          "exec",
+          "n8n",
+          "n8n",
+          "update:workflow",
+          `--id=${id}`,
+          "--active=false",
+        ]);
+      } catch {
+        // n8n 2.x deprecation — best effort
+      }
     }
   }
   await compose("restart", "n8n");
