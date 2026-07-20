@@ -43,11 +43,14 @@ export class BethaniaAiGatewayService {
       return { ok: false, errorCode: "ai_disabled", latencyMs: 0 };
     }
 
-    const globalRequests = await backofficeBotAiRepository.countAttemptsToday();
+    const [globalRequests, userRequests] = await Promise.all([
+      backofficeBotAiRepository.countAttemptsToday(),
+      backofficeBotAiRepository.countAttemptsTodayForUser(input.userLinkId),
+    ]);
     const allowed = mayCallBethaniaAi(
       toGateConfig(configuration),
       input.userLinkId,
-      { userRequests: 0, globalRequests },
+      { userRequests, globalRequests },
       false
     );
     if (!input.force && !allowed) {
