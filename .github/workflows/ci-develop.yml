@@ -297,10 +297,10 @@ jobs:
       base_version: ${{ steps.bump.outputs.base_version }}
       has_code_changes: ${{ steps.bump.outputs.has_code_changes }}
     steps:
-      - name: Checkout develop
+      - name: Checkout validated commit
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -441,10 +441,10 @@ jobs:
       - migration-check
       - version-bump
     steps:
-      - name: Checkout develop
+      - name: Checkout validated commit
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -484,10 +484,10 @@ jobs:
       - deploy-preview
       - version-bump
     steps:
-      - name: Checkout develop (latest)
+      - name: Checkout validated commit
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -504,7 +504,7 @@ jobs:
       - name: Reset release branch to develop and apply version bump
         if: ${{ needs['build'].result == 'success' && needs['version-bump'].outputs.bumped == 'true' && needs['migration-check'].outputs.has_pending == 'false' && needs['deploy-preview'].result == 'success' }}
         run: |
-          git checkout -B release/develop-to-main origin/develop
+          git checkout -B release/develop-to-main ${{ github.sha }}
           VERSION="${{ needs['version-bump'].outputs.new_version }}"
           if [ -n "$VERSION" ]; then
             node -e "
