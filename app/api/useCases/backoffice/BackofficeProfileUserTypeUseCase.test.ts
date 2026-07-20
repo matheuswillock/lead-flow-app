@@ -84,4 +84,37 @@ describe("BackofficeProfileUserTypeUseCase.convert", () => {
     expect(output.isValid).toBe(false)
     expect(output.errorMessages).toContain("A conta não pode ser patrocinada por ela mesma")
   })
+
+  it("não revoga plano vitalício ao converter para Member PRO", async () => {
+    const permanentCallsLog: boolean[] = []
+    const useCase = new BackofficeProfileUserTypeUseCase(
+      createRepositoryMock({
+        upsertUserTypeAssignment: async () => ({
+          slug: "member_pro",
+          label: "Member PRO",
+          accessExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          isExpired: false,
+        }),
+        setHasPermanentSubscription: async (_id, value) => {
+          permanentCallsLog.push(value)
+        },
+        setHasUnlimitedUsers: async () => undefined,
+        clearHasUnlimitedUsersUnlessAnnualAdhesion: async () => false,
+      }),
+      new ProfileAsaasCustomerSyncUseCase(),
+      createSponsorServiceMock()
+    )
+
+    const accessExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    const output = await useCase.convert("profile-1", "admin-1", {
+      userType: "member_pro",
+      accessExpiresAt,
+    })
+
+    // Sync Asaas pode falhar sem DB; o contrato crítico é não tocar no vitalício.
+    expect(permanentCallsLog).toEqual([])
+    if (output.isValid) {
+      expect(output.successMessages[0]).toContain("Member PRO")
+    }
+  })
 })
