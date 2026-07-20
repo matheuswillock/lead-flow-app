@@ -86,7 +86,7 @@ describe("BackofficeProfileUserTypeUseCase.convert", () => {
   })
 
   it("não revoga plano vitalício ao converter para Member PRO", async () => {
-    let permanentCalls: boolean[] = []
+    const permanentCallsLog: boolean[] = []
     const useCase = new BackofficeProfileUserTypeUseCase(
       createRepositoryMock({
         upsertUserTypeAssignment: async () => ({
@@ -96,7 +96,7 @@ describe("BackofficeProfileUserTypeUseCase.convert", () => {
           isExpired: false,
         }),
         setHasPermanentSubscription: async (_id, value) => {
-          permanentCalls.push(value)
+          permanentCallsLog.push(value)
         },
         setHasUnlimitedUsers: async () => undefined,
         clearHasUnlimitedUsersUnlessAnnualAdhesion: async () => false,
@@ -112,7 +112,7 @@ describe("BackofficeProfileUserTypeUseCase.convert", () => {
     })
 
     // Sync Asaas pode falhar sem DB; o contrato crítico é não tocar no vitalício.
-    expect(permanentCalls).toEqual([])
+    expect(permanentCallsLog).toEqual([])
     if (output.isValid) {
       expect(output.successMessages[0]).toContain("Member PRO")
     }
