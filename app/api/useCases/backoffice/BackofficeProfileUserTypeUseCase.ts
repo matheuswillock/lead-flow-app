@@ -133,14 +133,19 @@ export class BackofficeProfileUserTypeUseCase {
 
       if (input.userType === "common") {
         const memberProContext = await memberProBillingUseCase.getMemberProContext(profileId)
+        const previousSlug = memberProContext.slug
         const userType = await this.repository.upsertUserTypeAssignment(profileId, {
           userType: "common",
           accessExpiresAt: null,
           assignedByProfileId,
         })
 
-        await this.repository.setHasPermanentSubscription(profileId, false)
-        if (memberProContext.slug === "member_pro") {
+        // Guest/Associado usam permanent de forma acoplada ao tipo; Member PRO não.
+        if (previousSlug === "guest" || previousSlug === "associate") {
+          await this.repository.setHasPermanentSubscription(profileId, false)
+        }
+
+        if (previousSlug === "member_pro") {
           await this.repository.clearHasUnlimitedUsersUnlessAnnualAdhesion(profileId)
           await memberProBillingUseCase.syncBillingAfterUsageChange(
             profileId,
@@ -174,7 +179,7 @@ export class BackofficeProfileUserTypeUseCase {
         assignedByProfileId,
       })
 
-      await this.repository.setHasPermanentSubscription(profileId, false)
+      // Member PRO é independente do plano vitalício — não revogar hasPermanentSubscription.
       await this.repository.setHasUnlimitedUsers(profileId, true)
       await memberProBillingUseCase.syncBillingAfterUsageChange(
         profileId,
