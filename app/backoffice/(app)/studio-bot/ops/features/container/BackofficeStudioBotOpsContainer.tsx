@@ -270,6 +270,46 @@ export function BackofficeStudioBotOpsContainer() {
                     <p className="font-medium">Health: {health.ok ? "ok" : "falha"}</p>
                     {health.hostVersion ? <p>Versão: {health.hostVersion}</p> : null}
                     {health.error ? <p className="text-destructive">{health.error}</p> : null}
+                    {health.bethaniaProductionCheck ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Bethânia produção</span>
+                          <Badge
+                            variant={health.bethaniaProductionCheck.ok ? "default" : "destructive"}
+                          >
+                            {health.bethaniaProductionCheck.ok ? "ok" : "pendente"}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground">Env N8N</p>
+                            <ul className="mt-1 space-y-1">
+                              {health.bethaniaProductionCheck.env.n8n.map((item) => (
+                                <li key={item.key} className="flex items-center justify-between gap-3">
+                                  <span className="font-mono text-xs">{item.key}</span>
+                                  <Badge variant={item.configured ? "outline" : "destructive"}>
+                                    {item.configured ? "set" : "missing"}
+                                  </Badge>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground">Workflows</p>
+                            <ul className="mt-1 space-y-1">
+                              {health.bethaniaProductionCheck.workflows.map((item) => (
+                                <li key={item.name} className="flex items-center justify-between gap-3">
+                                  <span className="font-mono text-xs">{item.name}</span>
+                                  <Badge variant={item.ok ? "outline" : "destructive"}>
+                                    {item.ok ? item.expected : String(item.actual)}
+                                  </Badge>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                     {health.containers?.length ? (
                       <ul className="mt-2 flex flex-col gap-1">
                         {health.containers.map((c) => (
