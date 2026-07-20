@@ -249,6 +249,7 @@ export interface IWhatsAppRepository {
   claimWebhookEvent(eventId: string): Promise<WhatsAppWebhookOutboxEvent | null>
   completeWebhookEvent(input: {
     eventId: string
+    expectedAttemptCount: number
     status: "PROCESSED" | "PENDING" | "DEAD_LETTER"
     error?: string
     nextAttemptAt?: Date | null

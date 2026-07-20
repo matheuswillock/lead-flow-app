@@ -27,6 +27,7 @@ class ProcessWhatsAppWebhookOutboxUseCase {
       : null
     await whatsAppRepository.completeWebhookEvent({
       eventId: event.id,
+      expectedAttemptCount: event.attemptCount,
       status: nextStatus,
       error: output.isValid ? undefined : output.errorMessages.join(" "),
       nextAttemptAt,

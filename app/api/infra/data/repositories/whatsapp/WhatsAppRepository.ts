@@ -593,6 +593,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
   async completeWebhookEvent(input: {
     eventId: string
+    expectedAttemptCount: number
     status: "PROCESSED" | "PENDING" | "DEAD_LETTER"
     error?: string
     nextAttemptAt?: Date | null
@@ -606,6 +607,8 @@ class WhatsAppRepository implements IWhatsAppRepository {
         "lastError" = ${input.error?.slice(0, 500) ?? null},
         "updatedAt" = now()
       where id = ${input.eventId}::uuid
+        and status = 'PROCESSING'
+        and "attemptCount" = ${input.expectedAttemptCount}
     `
   }
 
