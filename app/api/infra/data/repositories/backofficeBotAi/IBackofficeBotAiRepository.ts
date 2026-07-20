@@ -58,6 +58,7 @@ export interface IBackofficeBotAiRepository {
   createInteraction(input: CreateInteractionInput): Promise<BackofficeBotAiInteraction>;
   createAttempt(input: CreateAttemptInput): Promise<BackofficeBotAiAttempt>;
   countAttemptsToday(): Promise<number>;
+  countAttemptsTodayForUser(userLinkId: string): Promise<number>;
   countInteractions(from: Date, to: Date): Promise<number>;
   countAttemptsByStatus(from: Date, to: Date): Promise<Array<{ status: BackofficeBotAiAttemptStatus; _count: number }>>;
   listAttempts(input: {
