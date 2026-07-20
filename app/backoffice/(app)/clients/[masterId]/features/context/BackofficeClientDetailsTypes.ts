@@ -68,6 +68,10 @@ export interface BackofficeClientDetails {
 
 export interface BackofficeClientInvoice {
   id: string
+  invoiceIdDisplay: string
+  invoiceName: string
+  invoiceKind: "subscription" | "addon_user" | "addon_team" | "other"
+  source: "asaas" | "pending_action"
   status: string
   statusGroup: "paid" | "overdue" | "upcoming" | "other"
   value: number
@@ -79,6 +83,8 @@ export interface BackofficeClientInvoice {
   invoiceUrl: string | null
   bankSlipUrl: string | null
   invoiceNumber: string | null
+  checkoutUrl: string | null
+  pendingActionId: string | null
 }
 
 export interface BackofficeClientInvoicesResult {

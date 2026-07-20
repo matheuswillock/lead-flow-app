@@ -8,9 +8,16 @@ import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import type { Prisma, UserFunction, UserRole } from "@prisma/client";
 import { buildAddedToTeamEmail } from "@/lib/emails/buildAddedToTeamEmail";
 import { getAppUrl } from "@/lib/utils/app-url";
+
+type ApplyPendingActionOptions = {
+  skipSubscriptionSync?: boolean;
+  paymentStatus?: string;
+  waivedReason?: string;
+};
 
 async function findActionByCheckoutId(checkoutId: string) {
   return prisma.pendingAction.findFirst({
@@ -177,7 +184,63 @@ export class PendingActionUseCase {
     return this.applyResolvedPendingAction(action, paymentId);
   }
 
-  private async applyResolvedPendingAction(action: ResolvedPendingAction, paymentId?: string): Promise<Output> {
+
+  /**
+   * Aplica PendingAction add_user sem cobrança Asaas e sem sync de assinatura.
+   * Uso: backfill para masters com usuários ilimitados / Member PRO.
+   */
+  async forceApplyPendingActionWithoutCharge(
+    pendingActionId: string,
+    options: { reason: string }
+  ): Promise<Output> {
+    const action = await findActionById(pendingActionId);
+    if (!action) {
+      return new Output(false, [], ["Ação pendente não encontrada"], null);
+    }
+
+    if (action.status === "applied") {
+      return new Output(true, ["Ação já aplicada"], [], action);
+    }
+
+    if (action.status !== "pending") {
+      return new Output(false, [], [`Ação não está pendente (status=${action.status})`], null);
+    }
+
+    if (action.actionType !== "add_user") {
+      return new Output(
+        false,
+        [],
+        [`Tipo de ação não suportado no backfill sem cobrança: ${action.actionType}`],
+        null
+      );
+    }
+
+    const bypass = await memberProBillingUseCase.shouldBypassIncrementalCharge(action.masterId);
+    if (!bypass) {
+      return new Output(
+        false,
+        [],
+        ["Master não elegível a bypass de cobrança (sem usuários ilimitados / Member PRO ativo)"],
+        null
+      );
+    }
+
+    console.info(
+      `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Aplicando ${pendingActionId} reason=${options.reason}`
+    );
+
+    return this.applyResolvedPendingAction(action, undefined, {
+      skipSubscriptionSync: true,
+      paymentStatus: "WAIVED",
+      waivedReason: options.reason,
+    });
+  }
+
+  private async applyResolvedPendingAction(
+    action: ResolvedPendingAction,
+    paymentId?: string,
+    options?: ApplyPendingActionOptions
+  ): Promise<Output> {
     if (action.status === "applied") {
       return new Output(true, ["Ação já aplicada"], [], action);
     }
@@ -185,6 +248,8 @@ export class PendingActionUseCase {
     if (action.status === "canceled") {
       return new Output(false, [], ["Ação cancelada"], null);
     }
+
+    const paymentStatus = options?.paymentStatus ?? "CONFIRMED";
 
     try {
       const appliedResult = await prisma.$transaction(async (tx) => {
@@ -197,7 +262,10 @@ export class PendingActionUseCase {
         }
 
         if (action.actionType === "add_user") {
-          return this.applyAddUser(tx, action, paymentId);
+          return this.applyAddUser(tx, action, paymentId, {
+            paymentStatus,
+            waivedReason: options?.waivedReason,
+          });
         }
 
         if (action.actionType === "transfer_team") {
@@ -220,7 +288,11 @@ export class PendingActionUseCase {
       }
 
       const targetRecurringTotal = Number((action.payload as PendingActionPayload)?.targetRecurringTotal ?? 0);
-      if (!Number.isNaN(targetRecurringTotal) && targetRecurringTotal > 0) {
+      if (
+        !options?.skipSubscriptionSync &&
+        !Number.isNaN(targetRecurringTotal) &&
+        targetRecurringTotal > 0
+      ) {
         try {
           await incrementalBillingService.syncRecurringSubscription({
             master: toBillingOwnerProfile(action),
@@ -233,7 +305,7 @@ export class PendingActionUseCase {
             data: {
               payload: {
                 ...(action.payload as PendingActionPayload),
-                paymentStatus: "CONFIRMED",
+                paymentStatus,
                 subscriptionSyncStatus: "updated",
                 subscriptionUpdatedAt: new Date().toISOString(),
               },
@@ -246,7 +318,7 @@ export class PendingActionUseCase {
             data: {
               payload: {
                 ...(action.payload as PendingActionPayload),
-                paymentStatus: "CONFIRMED",
+                paymentStatus,
                 subscriptionSyncStatus: "failed",
               },
             },
@@ -410,7 +482,8 @@ export class PendingActionUseCase {
   private async applyAddUser(
     tx: Prisma.TransactionClient,
     action: ResolvedPendingAction,
-    paymentId?: string
+    paymentId?: string,
+    applyOptions?: { paymentStatus?: string; waivedReason?: string }
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
     const teamId = action.teamId || payload.teamId;
@@ -418,6 +491,7 @@ export class PendingActionUseCase {
     const name = payload.name as string | undefined;
     const role = (payload.role || "operator") as UserRole;
     const functions = (payload.functions as UserFunction[] | undefined) ?? [];
+    const paymentStatus = applyOptions?.paymentStatus ?? "CONFIRMED";
 
     if (!teamId || !email || !name) {
       throw new Error("Dados insuficientes para criar usuário");
@@ -511,7 +585,13 @@ export class PendingActionUseCase {
         teamId,
         payload: {
           ...payload,
-          paymentStatus: "CONFIRMED",
+          paymentStatus,
+          ...(applyOptions?.waivedReason
+            ? {
+                waivedReason: applyOptions.waivedReason,
+                waivedAt: new Date().toISOString(),
+              }
+            : {}),
         },
       },
     });
