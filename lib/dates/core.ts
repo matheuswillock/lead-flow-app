@@ -112,3 +112,22 @@ export function getDayRangeInTz(dateKey: string, tz: string): { start: Date; end
   const end = addDaysInTz(start, 1, tz)
   return { start, end }
 }
+
+/**
+ * Projects a busy interval onto a single day window and returns the occupied
+ * range in local minutes [startMinutes, endMinutes). Returns null when the
+ * interval does not intersect the day. When the interval reaches (or crosses)
+ * the end of the day, endMinutes is 1440 — never converted via getMinutesInTz,
+ * which would collapse midnight of the next day to 0 and make the busy window
+ * zero-width.
+ */
+export function getBusyMinutesRangeInDay(
+  interval: { start: Date; end: Date },
+  day: { start: Date; end: Date },
+  tz: string
+): { startMinutes: number; endMinutes: number } | null {
+  if (interval.end <= day.start || interval.start >= day.end) return null
+  const startMinutes = interval.start <= day.start ? 0 : getMinutesInTz(interval.start, tz)
+  const endMinutes = interval.end >= day.end ? 24 * 60 : getMinutesInTz(interval.end, tz)
+  return { startMinutes, endMinutes }
+}
