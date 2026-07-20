@@ -1,0 +1,27 @@
+name: Setup Bun + Dependencies
+description: Bun pinado, cache do store e instalacao deterministica de dependencias
+inputs:
+  install:
+    description: Rodar bun install --frozen-lockfile
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.3.14
+
+    - name: Cache Bun store
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bun-
+
+    - name: Install deps
+      if: inputs.install == 'true'
+      shell: bash
+      run: bun install --frozen-lockfile
