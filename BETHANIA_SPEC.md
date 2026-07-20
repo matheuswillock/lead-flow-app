@@ -16,10 +16,11 @@
 ## Non-goals
 
 - Refatorar os 9 workflows para usar n8n Credentials em vez de env vars (fase 2 — registrado como follow-up).
-- Retry/backoff completo do outbox (proposto como estágio opcional; o mínimo aqui é parar de marcar `sent` para execução que falhou).
 - Recuperar o backlog de eventos outbox já marcados `sent` que nunca foram entregues (pushes informativos; perda documentada e aceita).
-- Qualquer mudança de UI no card da Bethânia além de mensagem de erro.
+- Qualquer mudança de UI no card da Bethânia além de mensagem de erro (correlação `ref:` no toast — feito 2026-07-20).
 - Reimplementar a máquina de estados conversacional (menu 1–5, busca) nos stubs N8N `bethania-menu-main` / `list-*` nesta fase — a orquestração fica no inbound Next.js.
+
+> **Atualização 2026-07-20:** retry/backoff do outbox + monitor de taxa de falha do cron foram implementados (deixaram de ser non-goal / follow-up aberto).
 
 ---
 
@@ -107,9 +108,12 @@ Runbook espelhado em `n8n/README.md` (seção “Runbook de validação”).
 
 1. **Error workflow:** `n8n/workflows/bethania-error-notifier.json` — Error Trigger → Code → HTTP POST Slack Incoming Webhook (`$env.BETHANIA_SLACK_WEBHOOK_URL`). ID estável `a1b2c3d4-err0-4000-8000-0000000000ef`. Os 9 workflows `bethania-*` têm `settings.errorWorkflow` apontando para esse ID. Import via `bun run n8n:import:all`.
 2. **Fechar o buraco do `onReceived`:** `bethania-push-outbound` com `responseMode: lastNode`. `BackofficeBotEventOutboxUseCase.dispatchPending` faz `console.error` com contagem/`eventId`s quando há falhas.
-3. *(Opcional, follow-up)* Retry de eventos `failed` no outbox com `attemptCount` + backoff, e alerta (Sentry cron monitor no `studio-bot-outbox`) quando a taxa de falha do dispatch passar de 10% em 1h.
+3. **Retry/backoff do outbox + monitor de taxa de falha** — ✅ IMPLEMENTADO no repo (2026-07-20):
+   - Colunas `attemptCount`, `nextAttemptAt`, `lastError` em `backoffice_bot_event_outbox`.
+   - `dispatchPending` reprocessa `pending`/`failed` com `attemptCount < 5` e `nextAttemptAt <= now` (backoff 1m → 5m → 15m → 1h → 6h).
+   - Cron `studio-bot-outbox`: se `failed/dispatched >= 10%` e `dispatched >= 5`, `console.error` estruturado + `Sentry.captureMessage` (tag `studio-bot-outbox`).
 
-**Aceite (dev):** forçar erro em workflow ativo dispara Slack (com `BETHANIA_SLACK_WEBHOOK_URL` preenchida); evento outbox de execução falhada fica `failed`, não `sent`.
+**Aceite (dev):** forçar erro em workflow ativo dispara Slack (com `BETHANIA_SLACK_WEBHOOK_URL` preenchida); evento outbox de execução falhada fica `failed`, não `sent`; falhas retentam até o teto de attempts.
 
 #### TODO — configurar Incoming Webhook no Slack (owner)
 
@@ -192,11 +196,15 @@ curl -X POST -H 'Content-type: application/json' \
 
 ### Checklist owner (produção — não executar sem autorização)
 
+Runbook operacional completo: `deploy/hostinger/README.md` → seção **Runbook produção Bethânia**.
+
+- [ ] Secrets alinhados (painel Ops / Host): HMAC, Ops agent token, Slack webhook, número Bethânia (Vercel + `.env.n8n`)
 - [ ] QR + número Bethânia em produção (`BACKOFFICE_BETHANIA_WHATSAPP_NUMBER` + `NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER`)
-- [ ] Webhook Evolution → N8N `bethania-inbound`
+- [ ] Webhook Evolution → N8N `bethania-inbound` → canal `connected`
 - [ ] `BETHANIA_SLACK_WEBHOOK_URL` (dev + VPS) + restart n8n
 - [ ] Preferir painel **Bethânia → Ops / Host** para apply env, restart e import de workflows
-- [ ] Templates HSM aprovados no WhatsApp Manager (`bethania_meeting_reminder`, etc.)
+- [ ] Workflows ativos só: `bethania-router`, `bethania-push-outbound`, `bethania-error-notifier` (stubs desativados)
+- [ ] Templates HSM aprovados no WhatsApp Manager (`bethania_meeting_reminder`, `bethania_auth_code`)
 - [ ] Matriz Estágio 3 em produção + 24h sem falhas no overview n8n
 
 ---
@@ -224,7 +232,7 @@ curl -X POST -H 'Content-type: application/json' \
 ## Follow-ups (fora desta correção)
 
 1. Fase 2: migrar segredos dos workflows para n8n Credentials e eliminar `$env` (permite religar o bloqueio).
-2. Retry/backoff do outbox + monitor de taxa de falha.
-3. Mensagem de erro do card Bethânia com código de correlação (hoje: toast genérico).
+2. ~~Retry/backoff do outbox + monitor de taxa de falha.~~ ✅ Feito (2026-07-20).
+3. ~~Mensagem de erro do card Bethânia com código de correlação.~~ ✅ Feito (2026-07-20) — toast `Erro ao gerar código (ref: {correlationId})` + `errorCode` no `Output.result`.
 4. Processo de upgrade do n8n: changelog review antes de subir versão (nunca `latest`).
 5. **TODO Slack:** criar Incoming Webhook e preencher `BETHANIA_SLACK_WEBHOOK_URL` (dev + VPS) — ver Estágio 4 → “TODO — configurar Incoming Webhook no Slack”.

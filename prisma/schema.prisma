@@ -3907,12 +3907,16 @@ model BackofficeBotEventOutbox {
   payload        Json
   status         BackofficeBotEventOutboxStatus @default(pending)
   idempotencyKey String                         @unique @db.Text
+  attemptCount   Int                            @default(0)
+  nextAttemptAt  DateTime?                      @db.Timestamptz(6)
+  lastError      String?                        @db.Text
   createdAt      DateTime                       @default(now()) @db.Timestamptz(6)
   sentAt         DateTime?                      @db.Timestamptz(6)
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
+  @@index([status, nextAttemptAt, attemptCount, createdAt], map: "backoffice_bot_event_outbox_retry_idx")
   @@index([profileId, createdAt(sort: Desc)])
   @@map("backoffice_bot_event_outbox")
 }

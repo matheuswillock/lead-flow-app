@@ -7,6 +7,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { normalizePhoneE164 } from "@/lib/studio-bot/phone";
+import { STUDIO_BOT_OUTBOX_MAX_ATTEMPTS } from "@/lib/studio-bot/outbox-retry";
 import type {
   CreateAuthChallengeInput,
   CreateMessageInput,
@@ -655,8 +656,13 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
   }
 
   async listPendingOutboxEvents(limit: number) {
+    const now = new Date();
     return prisma.backofficeBotEventOutbox.findMany({
-      where: { status: "pending" },
+      where: {
+        status: { in: ["pending", "failed"] },
+        attemptCount: { lt: STUDIO_BOT_OUTBOX_MAX_ATTEMPTS },
+        OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+      },
       orderBy: { createdAt: "asc" },
       take: limit,
     });
@@ -665,11 +671,22 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
   async updateOutboxEventStatus(
     id: string,
     status: BackofficeBotEventOutboxStatus,
-    sentAt?: Date
+    options?: {
+      sentAt?: Date | null;
+      attemptCount?: number;
+      nextAttemptAt?: Date | null;
+      lastError?: string | null;
+    }
   ) {
     return prisma.backofficeBotEventOutbox.update({
       where: { id },
-      data: { status, sentAt: sentAt ?? null },
+      data: {
+        status,
+        ...(options?.sentAt !== undefined ? { sentAt: options.sentAt } : {}),
+        ...(options?.attemptCount !== undefined ? { attemptCount: options.attemptCount } : {}),
+        ...(options?.nextAttemptAt !== undefined ? { nextAttemptAt: options.nextAttemptAt } : {}),
+        ...(options?.lastError !== undefined ? { lastError: options.lastError } : {}),
+      },
     });
   }
 

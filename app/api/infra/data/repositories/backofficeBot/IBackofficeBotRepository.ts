@@ -202,7 +202,12 @@ export interface IBackofficeBotRepository {
   updateOutboxEventStatus(
     id: string,
     status: BackofficeBotEventOutboxStatus,
-    sentAt?: Date
+    options?: {
+      sentAt?: Date | null;
+      attemptCount?: number;
+      nextAttemptAt?: Date | null;
+      lastError?: string | null;
+    }
   ): Promise<BackofficeBotEventOutbox>;
   countSentOutboxEventsForProfileSince(profileId: string, since: Date): Promise<number>;
 }

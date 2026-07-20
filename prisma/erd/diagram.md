@@ -2726,6 +2726,9 @@ failed failed
     Json payload 
     BackofficeBotEventOutboxStatus status 
     String idempotencyKey 
+    Int attemptCount 
+    DateTime nextAttemptAt "❓"
+    String lastError "❓"
     DateTime createdAt 
     DateTime sentAt "❓"
     }

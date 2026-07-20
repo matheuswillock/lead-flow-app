@@ -6,6 +6,7 @@ import { notificationService } from "@/app/api/services/notifications/Notificati
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import { buildBethaniaAuthCodeEmail } from "@/lib/emails/buildBethaniaAuthCodeEmail";
 import { getEmailService } from "@/lib/services/EmailService";
+import { buildBethaniaLinkErrorResult } from "@/lib/studio-bot/bethania-link-errors";
 import type { IBackofficeBotAuthUseCase } from "./IBackofficeBotAuthUseCase";
 
 const LINK_CONFIRMED_WHATSAPP_MESSAGE =
@@ -125,15 +126,26 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
     try {
       const result = await backofficeBotAuthService.verifyCode(normalizedPhone, code);
       if (!result.ok) {
-        return new Output(false, [], [mapAuthError(result.error)], { errorCode: result.error });
+        const linkError = buildBethaniaLinkErrorResult(result.error);
+        console.error("[BackofficeBotAuthUseCase][verifyCode]", {
+          correlationId: linkError.correlationId,
+          errorCode: linkError.errorCode,
+          serviceError: result.error,
+        });
+        return new Output(false, [], [mapAuthError(result.error)], linkError);
       }
 
       await this.notifyLinkConfirmed(normalizedPhone, result.result.userLinkId);
 
       return new Output(true, ["Vínculo confirmado"], [], result.result);
     } catch (error) {
-      console.error("[BackofficeBotAuthUseCase][verifyCode]", error);
-      return new Output(false, [], ["Erro ao verificar código"], null);
+      const linkError = buildBethaniaLinkErrorResult(null, { isInternal: true });
+      console.error("[BackofficeBotAuthUseCase][verifyCode]", {
+        correlationId: linkError.correlationId,
+        errorCode: linkError.errorCode,
+        error,
+      });
+      return new Output(false, [], ["Erro ao verificar código"], linkError);
     }
   }
 
@@ -174,12 +186,25 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
     try {
       const result = await backofficeBotAuthService.linkInitiate(profileId);
       if (!result.ok) {
-        return new Output(false, [], [mapAuthError(result.error)], null);
+        const linkError = buildBethaniaLinkErrorResult(result.error);
+        console.error("[BackofficeBotAuthUseCase][linkInitiate]", {
+          correlationId: linkError.correlationId,
+          errorCode: linkError.errorCode,
+          serviceError: result.error,
+          profileId,
+        });
+        return new Output(false, [], [mapAuthError(result.error)], linkError);
       }
       return new Output(true, [], [], result.result);
     } catch (error) {
-      console.error("[BackofficeBotAuthUseCase][linkInitiate]", error);
-      return new Output(false, [], ["Erro ao iniciar vínculo"], null);
+      const linkError = buildBethaniaLinkErrorResult(null, { isInternal: true });
+      console.error("[BackofficeBotAuthUseCase][linkInitiate]", {
+        correlationId: linkError.correlationId,
+        errorCode: linkError.errorCode,
+        profileId,
+        error,
+      });
+      return new Output(false, [], ["Erro ao iniciar vínculo"], linkError);
     }
   }
 
