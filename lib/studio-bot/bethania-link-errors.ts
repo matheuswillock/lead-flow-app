@@ -1,0 +1,59 @@
+import { randomUUID } from "node:crypto";
+
+/** Códigos estáveis para suporte / toast de correlação (SPEC follow-up #3). */
+export const BETHANIA_LINK_ERROR_CODES = {
+  RATE_LIMIT: "BETHANIA_LINK_RATE_LIMIT",
+  INTERNAL: "BETHANIA_LINK_INTERNAL",
+  PHONE_REQUIRED: "BETHANIA_LINK_PHONE_REQUIRED",
+  BOT_UNAVAILABLE: "BETHANIA_LINK_BOT_UNAVAILABLE",
+  PROFILE_NOT_FOUND: "BETHANIA_LINK_PROFILE_NOT_FOUND",
+  TEAM_NOT_FOUND: "BETHANIA_LINK_TEAM_NOT_FOUND",
+  PHONE_ALREADY_LINKED: "BETHANIA_LINK_PHONE_ALREADY_LINKED",
+  AUTH_EXPIRED_OTP: "BETHANIA_LINK_AUTH_EXPIRED_OTP",
+  AUTH_INVALID_CODE: "BETHANIA_LINK_AUTH_INVALID_CODE",
+  PHONE_INVALID: "BETHANIA_LINK_PHONE_INVALID",
+  PHONE_MISMATCH: "BETHANIA_LINK_PHONE_MISMATCH",
+  NOT_LINKED: "BETHANIA_LINK_NOT_LINKED",
+  GENERIC: "BETHANIA_LINK_GENERIC",
+} as const;
+
+export type BethaniaLinkErrorCode =
+  (typeof BETHANIA_LINK_ERROR_CODES)[keyof typeof BETHANIA_LINK_ERROR_CODES];
+
+const SERVICE_ERROR_TO_CODE: Record<string, BethaniaLinkErrorCode> = {
+  RATE_LIMIT: BETHANIA_LINK_ERROR_CODES.RATE_LIMIT,
+  PROFILE_PHONE_REQUIRED: BETHANIA_LINK_ERROR_CODES.PHONE_REQUIRED,
+  BOT_UNAVAILABLE: BETHANIA_LINK_ERROR_CODES.BOT_UNAVAILABLE,
+  PROFILE_NOT_FOUND: BETHANIA_LINK_ERROR_CODES.PROFILE_NOT_FOUND,
+  TEAM_NOT_FOUND: BETHANIA_LINK_ERROR_CODES.TEAM_NOT_FOUND,
+  PHONE_ALREADY_LINKED: BETHANIA_LINK_ERROR_CODES.PHONE_ALREADY_LINKED,
+  AUTH_EXPIRED_OTP: BETHANIA_LINK_ERROR_CODES.AUTH_EXPIRED_OTP,
+  AUTH_INVALID_CODE: BETHANIA_LINK_ERROR_CODES.AUTH_INVALID_CODE,
+  PHONE_INVALID: BETHANIA_LINK_ERROR_CODES.PHONE_INVALID,
+  PHONE_MISMATCH: BETHANIA_LINK_ERROR_CODES.PHONE_MISMATCH,
+  NOT_LINKED: BETHANIA_LINK_ERROR_CODES.NOT_LINKED,
+};
+
+export function createBethaniaCorrelationId(): string {
+  return randomUUID().replace(/-/g, "").slice(0, 12);
+}
+
+export function mapServiceErrorToBethaniaLinkCode(serviceError: string): BethaniaLinkErrorCode {
+  return SERVICE_ERROR_TO_CODE[serviceError] ?? BETHANIA_LINK_ERROR_CODES.GENERIC;
+}
+
+export function buildBethaniaLinkErrorResult(
+  serviceError: string | null,
+  options?: { correlationId?: string; isInternal?: boolean }
+): {
+  errorCode: BethaniaLinkErrorCode;
+  correlationId: string;
+} {
+  const correlationId = options?.correlationId ?? createBethaniaCorrelationId();
+  const errorCode = options?.isInternal
+    ? BETHANIA_LINK_ERROR_CODES.INTERNAL
+    : serviceError
+      ? mapServiceErrorToBethaniaLinkCode(serviceError)
+      : BETHANIA_LINK_ERROR_CODES.INTERNAL;
+  return { errorCode, correlationId };
+}

@@ -971,6 +971,13 @@ failed failed
     
 
 
+        backoffice_bot_outbound_delivery_status {
+            processing processing
+completed completed
+        }
+    
+
+
         backoffice_bot_ai_provider {
             groq groq
 ollama ollama
@@ -2491,6 +2498,7 @@ failed failed
     WhatsAppOutboundCommandStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime reconciledAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2504,6 +2512,8 @@ failed failed
     WhatsAppWebhookEventStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime nextAttemptAt "❓"
+    DateTime processingStartedAt "❓"
     DateTime processedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -2532,6 +2542,14 @@ failed failed
     Int quantity 
     Json rawPayload "❓"
     DateTime createdAt 
+    }
+  
+
+  "whatsapp_send_rate_limit_windows" {
+    DateTime windowStart "🗝️"
+    Int count 
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -2726,8 +2744,20 @@ failed failed
     Json payload 
     BackofficeBotEventOutboxStatus status 
     String idempotencyKey 
+    Int attemptCount 
+    DateTime nextAttemptAt "❓"
+    String lastError "❓"
     DateTime createdAt 
     DateTime sentAt "❓"
+    }
+  
+
+  "backoffice_bot_outbound_delivery" {
+    String id "🗝️"
+    String idempotencyKey 
+    BackofficeBotOutboundDeliveryStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -3188,6 +3218,7 @@ failed failed
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_usage_events" }o--|| corretor_studio_teams : "team"
     "whatsapp_usage_events" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_send_rate_limit_windows" }o--|| corretor_studio_teams : "team"
     "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseRuleType" : "enum:type"
     "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseMatchMode" : "enum:matchMode"
     "whatsapp_auto_response_rules" }o--|| team_whatsapp_configs : "config"
@@ -3227,6 +3258,7 @@ failed failed
     "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
     "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
     "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_outbound_delivery" |o--|| "BackofficeBotOutboundDeliveryStatus" : "enum:status"
     "backoffice_bot_ai_configurations" |o--|| "BackofficeBotAiProvider" : "enum:primaryProvider"
     "backoffice_bot_ai_configurations" }o--|o corretor_studio_profiles : "updatedByProfile"
     "backoffice_bot_ai_interactions" |o--|| "BackofficeBotAiCapability" : "enum:capability"

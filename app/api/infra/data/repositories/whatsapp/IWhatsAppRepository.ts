@@ -247,8 +247,16 @@ export interface IWhatsAppRepository {
   failOutboundCommand(input: { teamId: string; clientMessageId: string; status: "UNKNOWN" | "FAILED"; error: string }): Promise<void>
   persistWebhookEvent(input: { configId: string; teamId: string; providerEventId: string; eventType: string; payload: Prisma.InputJsonValue }): Promise<string>
   claimWebhookEvent(eventId: string): Promise<WhatsAppWebhookOutboxEvent | null>
-  completeWebhookEvent(input: { eventId: string; status: "PROCESSED" | "PENDING" | "DEAD_LETTER"; error?: string }): Promise<void>
+  completeWebhookEvent(input: {
+    eventId: string
+    expectedAttemptCount: number
+    status: "PROCESSED" | "PENDING" | "DEAD_LETTER"
+    error?: string
+    nextAttemptAt?: Date | null
+  }): Promise<void>
   listPendingWebhookEventIds(limit: number): Promise<string[]>
+  requeueDeadLetterEvent(input: { eventId: string; teamId: string; actorProfileId: string }): Promise<boolean>
+  reconcileStaleOutboundCommands(olderThan: Date): Promise<number>
 
   // Usage
   createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }>
@@ -266,6 +274,13 @@ export interface IWhatsAppRepository {
   listConversationsForTeam(teamId: string): Promise<WhatsAppConversationSelect[]>
 
   softDeleteConversation(id: string): Promise<void>
+  softDeleteConversationWithAudit(input: {
+    conversationId: string
+    teamId: string
+    actorProfileId?: string | null
+    action: string
+    metadata?: Prisma.InputJsonValue
+  }): Promise<void>
   deleteConversation(id: string): Promise<void>
   createAuditEvent(input: {
     teamId: string

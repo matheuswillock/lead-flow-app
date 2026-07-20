@@ -26,6 +26,8 @@ export type SubCampaignSummary = {
 export type Campaign = {
   id: string
   name: string
+  parentCampaignId?: string | null
+  audienceContactIds?: string[]
   status: CampaignStatus
   scheduledAt: string | null
   sentAt: string | null

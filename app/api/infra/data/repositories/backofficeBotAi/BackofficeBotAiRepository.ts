@@ -83,6 +83,17 @@ export class BackofficeBotAiRepository implements IBackofficeBotAiRepository {
     });
   }
 
+  async countAttemptsTodayForUser(userLinkId: string) {
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    return prisma.backofficeBotAiAttempt.count({
+      where: {
+        createdAt: { gte: start },
+        interaction: { userLinkId },
+      },
+    });
+  }
+
   async countInteractions(from: Date, to: Date) {
     return prisma.backofficeBotAiInteraction.count({
       where: { createdAt: { gte: from, lte: to } },

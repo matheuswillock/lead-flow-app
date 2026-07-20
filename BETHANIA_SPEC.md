@@ -16,10 +16,11 @@
 ## Non-goals
 
 - Refatorar os 9 workflows para usar n8n Credentials em vez de env vars (fase 2 — registrado como follow-up).
-- Retry/backoff completo do outbox (proposto como estágio opcional; o mínimo aqui é parar de marcar `sent` para execução que falhou).
 - Recuperar o backlog de eventos outbox já marcados `sent` que nunca foram entregues (pushes informativos; perda documentada e aceita).
-- Qualquer mudança de UI no card da Bethânia além de mensagem de erro.
+- Qualquer mudança de UI no card da Bethânia além de mensagem de erro (correlação `ref:` no toast — feito 2026-07-20).
 - Reimplementar a máquina de estados conversacional (menu 1–5, busca) nos stubs N8N `bethania-menu-main` / `list-*` nesta fase — a orquestração fica no inbound Next.js.
+
+> **Atualização 2026-07-20:** retry/backoff do outbox + monitor de taxa de falha do cron foram implementados (deixaram de ser non-goal / follow-up aberto).
 
 ---
 
@@ -51,7 +52,7 @@ Inspeção via SSH confirmou: n8n 2.28.5 (`latest`, recriado há 8 dias), `N8N_B
 
 1. Adicionar `bcryptjs` (`bun add bcryptjs`).
 2. Em `lib/studio-bot/auth-code.ts`: `hashAuthCode`/`verifyAuthCode` passam a usar `bcryptjs` (cost 10, como hoje). Assinaturas inalteradas — nenhum call site muda.
-3. **Testes obrigatórios (governança):** unit tests para `auth-code.ts` (hash→verify roundtrip, verify contra hash bcrypt pré-gerado, rejeição de código errado) e para `BackofficeBotAuthUseCase.linkInitiate`/`verifyCode` (caminho feliz + RATE_LIMIT + erro).
+3. **Testes obrigatórios (governança):** unit tests para `auth-code.ts` (hash→verify roundtrip, verify contra hash bcrypt pré-gerado, rejeição de código errado) e para `BackofficeBotAuthUseCase.linkInitiate`/`verifyCode` (caminho feliz + RATE_LIMIT + erro) — ✅ cobertos em `app/api/useCases/backofficeBot/BackofficeBotAuthUseCase.test.ts` em 2026-07-20.
 4. Guard-rail: adicionar checagem no `governance:check` (ou lint rule) proibindo o global `Bun.` em `app/**` e `lib/**` (permitido apenas em `scripts/**`).
 5. Validação: `bun run typecheck`, `bun run lint`, `bun run governance:check`, `bun run lint:pt-br` + **verificação sob Node** (`next build && next start` com Node, clicar "Gerar código" localmente) — é exatamente o gap dev/prod que deixou o bug passar.
 
@@ -107,9 +108,12 @@ Runbook espelhado em `n8n/README.md` (seção “Runbook de validação”).
 
 1. **Error workflow:** `n8n/workflows/bethania-error-notifier.json` — Error Trigger → Code → HTTP POST Slack Incoming Webhook (`$env.BETHANIA_SLACK_WEBHOOK_URL`). ID estável `a1b2c3d4-err0-4000-8000-0000000000ef`. Os 9 workflows `bethania-*` têm `settings.errorWorkflow` apontando para esse ID. Import via `bun run n8n:import:all`.
 2. **Fechar o buraco do `onReceived`:** `bethania-push-outbound` com `responseMode: lastNode`. `BackofficeBotEventOutboxUseCase.dispatchPending` faz `console.error` com contagem/`eventId`s quando há falhas.
-3. *(Opcional, follow-up)* Retry de eventos `failed` no outbox com `attemptCount` + backoff, e alerta (Sentry cron monitor no `studio-bot-outbox`) quando a taxa de falha do dispatch passar de 10% em 1h.
+3. **Retry/backoff do outbox + monitor de taxa de falha** — ✅ IMPLEMENTADO no repo (2026-07-20):
+   - Colunas `attemptCount`, `nextAttemptAt`, `lastError` em `backoffice_bot_event_outbox`.
+   - `dispatchPending` reprocessa `pending`/`failed` com `attemptCount < 5` e `nextAttemptAt <= now` (backoff 1m → 5m → 15m → 1h → 6h).
+   - Cron `studio-bot-outbox`: se `failed/dispatched >= 10%` e `dispatched >= 5`, `console.error` estruturado + `Sentry.captureMessage` (tag `studio-bot-outbox`).
 
-**Aceite (dev):** forçar erro em workflow ativo dispara Slack (com `BETHANIA_SLACK_WEBHOOK_URL` preenchida); evento outbox de execução falhada fica `failed`, não `sent`.
+**Aceite (dev):** forçar erro em workflow ativo dispara Slack (com `BETHANIA_SLACK_WEBHOOK_URL` preenchida); evento outbox de execução falhada fica `failed`, não `sent`; falhas retentam até o teto de attempts.
 
 #### TODO — configurar Incoming Webhook no Slack (owner)
 
@@ -150,6 +154,8 @@ curl -X POST -H 'Content-type: application/json' \
 3. `bun run n8n:import:all`.
 4. Confirmar notifier ativo + `errorWorkflow` nos 9.
 5. Repetir matriz Estágio 3 em produção; simular falha → Slack.
+
+> **Guardrail implementado em 2026-07-20:** o agente Ops (`deploy/hostinger/studio-bot-ops`) agora expõe `bethaniaProductionCheck` no `POST /api/v1/backoffice/bot/host/health` / `GET /v1/health` do agente. O check valida, sem expor segredo: envs obrigatórias, imagem `n8nio/n8n:2.28.5`, workflows ativos (`router`, `push-outbound`, `error-notifier`) e stubs inativos. Ele não substitui QR/e2e/Slack/24h, mas bloqueia checklist verde com host incompleto.
 
 ### Estágio 5 — Máquina de estados conversacional (menu) — ✅ IMPLEMENTADO em 2026-07-10 (dev)
 
@@ -192,11 +198,16 @@ curl -X POST -H 'Content-type: application/json' \
 
 ### Checklist owner (produção — não executar sem autorização)
 
+Runbook operacional completo: `deploy/hostinger/README.md` → seção **Runbook produção Bethânia**.
+
+- [ ] Secrets alinhados (painel Ops / Host): HMAC, Ops agent token, Slack webhook, número Bethânia (Vercel + `.env.n8n`)
 - [ ] QR + número Bethânia em produção (`BACKOFFICE_BETHANIA_WHATSAPP_NUMBER` + `NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER`)
-- [ ] Webhook Evolution → N8N `bethania-inbound`
+- [ ] Webhook Evolution → N8N `bethania-inbound` → canal `connected`
 - [ ] `BETHANIA_SLACK_WEBHOOK_URL` (dev + VPS) + restart n8n
 - [ ] Preferir painel **Bethânia → Ops / Host** para apply env, restart e import de workflows
-- [ ] Templates HSM aprovados no WhatsApp Manager (`bethania_meeting_reminder`, etc.)
+- [ ] Ops / Host → Health retorna `bethaniaProductionCheck.ok=true`
+- [ ] Workflows ativos só: `bethania-router`, `bethania-push-outbound`, `bethania-error-notifier` (stubs desativados)
+- [ ] Templates HSM aprovados no WhatsApp Manager (`bethania_meeting_reminder`, `bethania_auth_code`)
 - [ ] Matriz Estágio 3 em produção + 24h sem falhas no overview n8n
 
 ---
@@ -204,12 +215,12 @@ curl -X POST -H 'Content-type: application/json' \
 ## Critérios de aceite globais
 
 - [ ] Overview do n8n sem falhas de execução no caminho feliz por 24h após o deploy.
-- [x] "Gerar código" funciona em produção (Vercel/Node) e o e2e `VINCULAR` conclui o vínculo. *(Estágio 1 implementado; e2e validado em **dev local** 2026-07-10 — produção aguarda deploy)*
+- [ ] "Gerar código" funciona em produção (Vercel/Node) e o e2e `VINCULAR` conclui o vínculo. *(Estágio 1 implementado; e2e validado em **dev local** 2026-07-10 — produção precisa de validação explícita após QR/env/deploy)*
 - [x] Imagem do n8n pinada em versão explícita nos dois compose files.
 - [x] `EVO_API_BASE_URL`/`EVO_API_KEY` presentes no env da instância. *(VPS + espelho local)*
-- [x] Error workflow ativo nos 9 workflows; falha simulada gera alerta. *(repo/dev — `bethania-error-notifier` + Slack; VPS pendente autorização; webhook Slack precisa estar preenchido no env para o teste e2e)*
+- [x] Error workflow versionado nos 9 workflows; import automatizado ativa `router`/`push-outbound`/`error-notifier` e desativa stubs. *(repo/dev — `bethania-error-notifier` + Slack; VPS precisa de `bethaniaProductionCheck.ok=true` e teste e2e de falha)*
 - [x] Execuções de teste do caminho ativo documentadas (Estágio 3 Y). *(stubs 5–9 classificados; smoke HMAC adiado fase 2; VPS pendente autorização)*
-- [x] Testes de `auth-code`/UseCase verdes; `typecheck`, `lint`, `governance:check` verdes.
+- [x] Testes de `auth-code`/UseCase verdes; `typecheck`, `lint`, `governance:check` verdes. *(UseCase coberto em `BackofficeBotAuthUseCase.test.ts`; rodar validação completa antes do merge/deploy)*
 - [x] Menu 1–5 responde no WhatsApp (dev) com dados reais do time (Estágio 5).
 
 ## Riscos e mitigações
@@ -223,8 +234,9 @@ curl -X POST -H 'Content-type: application/json' \
 
 ## Follow-ups (fora desta correção)
 
-1. Fase 2: migrar segredos dos workflows para n8n Credentials e eliminar `$env` (permite religar o bloqueio).
-2. Retry/backoff do outbox + monitor de taxa de falha.
-3. Mensagem de erro do card Bethânia com código de correlação (hoje: toast genérico).
+1. Fase 2: migrar segredos dos workflows para n8n Credentials e eliminar `$env` (permite religar o bloqueio). **Status 2026-07-20:** ainda pendente porque os workflows ativos usam Code nodes para HMAC/Slack/Evolution; a migração segura exige redesenhar esses nodes para credentials/HTTP Request e revalidar e2e em produção.
+2. ~~Retry/backoff do outbox + monitor de taxa de falha.~~ ✅ Feito (2026-07-20).
+3. ~~Mensagem de erro do card Bethânia com código de correlação.~~ ✅ Feito (2026-07-20) — toast `Erro ao gerar código (ref: {correlationId})` + `errorCode` no `Output.result`.
 4. Processo de upgrade do n8n: changelog review antes de subir versão (nunca `latest`).
 5. **TODO Slack:** criar Incoming Webhook e preencher `BETHANIA_SLACK_WEBHOOK_URL` (dev + VPS) — ver Estágio 4 → “TODO — configurar Incoming Webhook no Slack”.
+6. Guardrail de upgrade n8n: antes de alterar a imagem pinada, abrir PR com changelog review, import dry-run, `bethaniaProductionCheck.ok=true` pós-upgrade e 24h sem falha sistêmica.

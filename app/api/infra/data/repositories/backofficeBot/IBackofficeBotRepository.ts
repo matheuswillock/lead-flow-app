@@ -84,6 +84,9 @@ export interface ListConversationsFilters {
 }
 
 export interface IBackofficeBotRepository {
+  findProfileBotAccessBySupabaseId(
+    supabaseId: string
+  ): Promise<{ id: string; activeTeamId: string | null } | null>;
   findProfileActiveTeam(profileId: string): Promise<{ id: string; activeTeamId: string | null } | null>;
   findProfileByEmail(
     email: string
@@ -202,7 +205,16 @@ export interface IBackofficeBotRepository {
   updateOutboxEventStatus(
     id: string,
     status: BackofficeBotEventOutboxStatus,
-    sentAt?: Date
+    options?: {
+      sentAt?: Date | null;
+      attemptCount?: number;
+      nextAttemptAt?: Date | null;
+      lastError?: string | null;
+    }
   ): Promise<BackofficeBotEventOutbox>;
   countSentOutboxEventsForProfileSince(profileId: string, since: Date): Promise<number>;
+
+  claimOutboundDelivery(idempotencyKey: string): Promise<"acquired" | "completed" | "busy">;
+  completeOutboundDelivery(idempotencyKey: string): Promise<void>;
+  releaseOutboundDelivery(idempotencyKey: string): Promise<void>;
 }

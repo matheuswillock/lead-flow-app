@@ -11,8 +11,8 @@ export function generateAuthCode(): string {
   return String(code);
 }
 
-// bcryptjs (JS puro) em vez de Bun.password: produção roda na Vercel sob Node,
-// onde o global Bun não existe.
+// bcryptjs (JS puro) em vez da API de senha do Bun: produção roda na Vercel
+// sob Node, onde o global do runtime Bun não existe.
 export async function hashAuthCode(code: string): Promise<string> {
   return bcrypt.hash(code, BCRYPT_COST);
 }

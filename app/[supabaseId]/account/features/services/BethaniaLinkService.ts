@@ -60,7 +60,15 @@ class BethaniaLinkService implements IBethaniaLinkService {
 
     const output = await this.parseOutput(response);
     if (!response.ok || !output.isValid || !output.result) {
-      throw new Error(output.errorMessages?.join(", ") || "Erro ao gerar código de vínculo");
+      const result = output.result as { correlationId?: string; errorCode?: string } | null;
+      const correlationId =
+        typeof result?.correlationId === "string" && result.correlationId.length > 0
+          ? result.correlationId
+          : null;
+      const baseMessage = output.errorMessages?.join(", ") || "Erro ao gerar código de vínculo";
+      throw new Error(
+        correlationId ? `Erro ao gerar código (ref: ${correlationId})` : baseMessage
+      );
     }
 
     return output.result as BethaniaLinkInitiateResult;

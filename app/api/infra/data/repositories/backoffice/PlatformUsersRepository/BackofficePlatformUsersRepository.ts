@@ -25,7 +25,11 @@ function mapMasterUserType(
     accessExpiresAt !== null &&
     new Date(accessExpiresAt).getTime() <= Date.now()
 
-  return { slug, isExpired }
+  return {
+    slug,
+    isExpired,
+    accessExpiresAt: accessExpiresAt ? accessExpiresAt.toISOString() : null,
+  }
 }
 
 export class BackofficePlatformUsersRepository implements IBackofficePlatformUsersRepository {

@@ -2061,6 +2061,7 @@ model Team {
   whatsappOutboundCommands WhatsAppOutboundCommand[]
   whatsappWebhookEvents WhatsAppWebhookEvent[]
   whatsappAuditEvents   WhatsAppAuditEvent[]
+  whatsappSendRateLimitWindows WhatsAppSendRateLimitWindow[]
 
   // CDP relations
   customerProfiles      CustomerProfile[]
@@ -3401,6 +3402,7 @@ model WhatsAppOutboundCommand {
   status          WhatsAppOutboundCommandStatus @default(PENDING)
   attemptCount    Int                           @default(0)
   lastError       String?                       @db.Text
+  reconciledAt    DateTime?                     @db.Timestamptz(6)
   createdAt       DateTime                      @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime                      @updatedAt @db.Timestamptz(6)
 
@@ -3422,6 +3424,8 @@ model WhatsAppWebhookEvent {
   status        WhatsAppWebhookEventStatus @default(PENDING)
   attemptCount  Int                        @default(0)
   lastError     String?                    @db.Text
+  nextAttemptAt DateTime?                  @db.Timestamptz(6)
+  processingStartedAt DateTime?            @db.Timestamptz(6)
   processedAt   DateTime?                  @db.Timestamptz(6)
   createdAt     DateTime                   @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime                   @updatedAt @db.Timestamptz(6)
@@ -3430,7 +3434,7 @@ model WhatsAppWebhookEvent {
   team   Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([configId, providerEventId])
-  @@index([status, createdAt])
+  @@index([status, nextAttemptAt, createdAt], map: "whatsapp_webhook_events_retry_idx")
   @@map("whatsapp_webhook_events")
 }
 
@@ -3477,6 +3481,19 @@ model WhatsAppUsageEvent {
   @@index([configId, periodKey])
   @@index([teamId, eventType, createdAt(sort: Desc)])
   @@map("whatsapp_usage_events")
+}
+
+model WhatsAppSendRateLimitWindow {
+  teamId      String   @db.Uuid
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, windowStart])
+  @@map("whatsapp_send_rate_limit_windows")
 }
 
 model WhatsAppAutoResponseRule {
@@ -3907,14 +3924,37 @@ model BackofficeBotEventOutbox {
   payload        Json
   status         BackofficeBotEventOutboxStatus @default(pending)
   idempotencyKey String                         @unique @db.Text
+  attemptCount   Int                            @default(0)
+  nextAttemptAt  DateTime?                      @db.Timestamptz(6)
+  lastError      String?                        @db.Text
   createdAt      DateTime                       @default(now()) @db.Timestamptz(6)
   sentAt         DateTime?                      @db.Timestamptz(6)
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
+  @@index([status, nextAttemptAt, attemptCount, createdAt], map: "backoffice_bot_event_outbox_retry_idx")
   @@index([profileId, createdAt(sort: Desc)])
   @@map("backoffice_bot_event_outbox")
+}
+
+enum BackofficeBotOutboundDeliveryStatus {
+  processing
+  completed
+
+  @@map("backoffice_bot_outbound_delivery_status")
+}
+
+/// Claim atômico por idempotencyKey antes do dispatch N8N/Evolution (evita WA duplicado no retry).
+model BackofficeBotOutboundDelivery {
+  id             String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idempotencyKey String                              @unique @db.Text
+  status         BackofficeBotOutboundDeliveryStatus @default(processing)
+  createdAt      DateTime                            @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                            @updatedAt @db.Timestamptz(6)
+
+  @@index([status, updatedAt], map: "backoffice_bot_outbound_delivery_status_updated_idx")
+  @@map("backoffice_bot_outbound_delivery")
 }
 
 enum BackofficeBotAiProvider {

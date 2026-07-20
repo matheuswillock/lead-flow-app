@@ -96,6 +96,59 @@ bun run host:pack
 
 O agente materializa `.env.n8n` / `.env.evolution`, recria containers e pode reimportar workflows. O HMAC CS↔N8N passa a preferir o secret do canal no Postgres (rotacionável sem redeploy Vercel).
 
+## Runbook produção Bethânia (requer autorização explícita do owner)
+
+**Não executar VPS/remoto sem autorização.** Preferir o painel **Bethânia → Ops / Host** como fonte da verdade.
+
+### 1. Secrets alinhados
+
+| Segredo | Onde |
+|---|---|
+| `BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET` | Vercel Production ↔ Host Settings / `.env.n8n` (idêntico) |
+| `BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN` / `OPS_AGENT_TOKEN` | Vercel ↔ VPS agente |
+| `BETHANIA_SLACK_WEBHOOK_URL` | `.env.n8n` (Incoming Webhook Slack) |
+| `BACKOFFICE_BETHANIA_WHATSAPP_NUMBER` + `NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER` | Vercel + env bot |
+
+Após salvar/aplicar env pelo painel, rode **Ops / Host → Health**. O payload deve trazer `bethaniaProductionCheck.ok=true`; esse check valida envs obrigatórias, imagem pinada e estado esperado dos workflows sem revelar valores de segredo.
+
+### 2. Canal WhatsApp
+
+1. Backoffice → Canal Bethânia → QR / status `connected`
+2. Evolution webhook → `…/webhook/bethania-inbound`
+3. Número público bate com as envs acima
+
+### 3. Workflows
+
+Via Ops “Reimportar workflows” (ou `bun run n8n:import:all` com auth):
+
+- **Ativos:** `bethania-router`, `bethania-push-outbound`, `bethania-error-notifier`
+- **Inativos:** stubs `menu-main` / `list-*` / `verification-*` / `add-note`
+- Evidência: **Ops / Host → Health** com `bethaniaProductionCheck.workflows[*].ok=true`
+
+### 4. Matriz e2e (Estágio 3 em prod)
+
+1. Mensagem WA → router → inbound 200
+2. Account → Gerar código → `VINCULAR` (toast com `ref:` em falha)
+3. Menu `1`/`2`/`3` no WhatsApp
+4. Push outbox happy path; forçar falha → Slack + outbox `failed` (retry automático no cron)
+5. Aceite 24h: overview N8N sem falha sistêmica no caminho feliz
+
+Registrar evidências na PR/deploy note: timestamp, usuário/telefone de teste, execution IDs do N8N, job ID do Ops health, mensagem Slack de falha forçada e horário inicial/final da janela de 24h.
+
+### 5. HSM Meta
+
+Aprovar no WhatsApp Manager os templates em `lib/studio-bot/hsm.ts` (`bethania_meeting_reminder`, `bethania_auth_code`). Validar push fora da janela 24h não some sem template.
+
+## Upgrade n8n — política obrigatória
+
+O n8n fica pinado em `docker.io/n8nio/n8n:2.28.5`. Para subir versão:
+
+1. Abrir PR específico com a nova tag explícita (nunca `latest`).
+2. Anexar changelog review da versão alvo, com foco em `$env`, task runners, Code nodes, webhooks e CLI `import/update/publish`.
+3. Rodar import local (`bun run n8n:import:all`) e confirmar stubs inativos.
+4. Aplicar em produção via Ops / Host, rodar Health e exigir `bethaniaProductionCheck.ok=true`.
+5. Repetir matriz e2e e iniciar janela de 24h sem falha sistêmica no overview.
+
 ## Fase 5 — Evolution (instância Bethânia)
 
 1. Acesse `https://evo.corretorstudio.com/manager`
