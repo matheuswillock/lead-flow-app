@@ -28,15 +28,18 @@ import { Separator } from "@/components/ui/separator"
 import { maskPhone, maskCEP, unmask, formatDocumentInput } from "@/lib/masks"
 import type { BackofficeClientDetails } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
+import {
+  MEMBER_PRO_DAY_MS,
+  MEMBER_PRO_MAX_DAYS,
+  MEMBER_PRO_MIN_DAYS,
+  remainingAccessDays,
+  suggestedMemberProAccessDays,
+} from "../utils/memberProAccessUtils"
 
 const FUNCTIONS = [
   { value: "SDR", label: "SDR", description: "Qualifica leads e organiza o funil." },
   { value: "CLOSER", label: "Closer", description: "Conduz reuniões e fechamento." },
 ] as const
-
-const MEMBER_PRO_MIN_DAYS = 1
-const MEMBER_PRO_MAX_DAYS = 365
-const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
 
 type EditableUserType = "common" | "member_pro"
 
@@ -54,20 +57,6 @@ interface FormState {
   functions: string[]
   userType: EditableUserType
   memberProAccessDays: string
-}
-
-function remainingAccessDays(accessExpiresAt: string | null): number | null {
-  if (!accessExpiresAt) return null
-  const ms = new Date(accessExpiresAt).getTime() - Date.now()
-  if (!Number.isFinite(ms) || ms <= 0) return null
-  return Math.min(
-    MEMBER_PRO_MAX_DAYS,
-    Math.max(MEMBER_PRO_MIN_DAYS, Math.ceil(ms / MEMBER_PRO_DAY_MS))
-  )
-}
-
-function suggestedMemberProAccessDays(accessExpiresAt: string | null): number {
-  return remainingAccessDays(accessExpiresAt) ?? MEMBER_PRO_MAX_DAYS
 }
 
 function initForm(details: BackofficeClientDetails): FormState {
