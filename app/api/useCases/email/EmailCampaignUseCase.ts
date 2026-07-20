@@ -47,6 +47,8 @@ const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
 const ORPHAN_RESUME_MIN_AGE_MS = 2 * 60 * 1000
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
 const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
+const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed"] as const
+const MANUAL_DISPATCH_STATUS_SET = new Set<EmailCampaignStatus>(MANUAL_DISPATCH_STATUSES)
 
 export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_HTML: "Template sem HTML. Edite o template antes de disparar",
@@ -787,6 +789,16 @@ export class EmailCampaignUseCase {
     }
   }
 
+  private async refreshParentCampaignStatusForChild(campaignId: string): Promise<void> {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: campaignId },
+      select: { parentCampaignId: true },
+    })
+    if (campaign?.parentCampaignId) {
+      await this.refreshParentCampaignStatus(campaign.parentCampaignId)
+    }
+  }
+
   async startManualDispatch(id: string, ctx: TeamContext): Promise<Output> {
     let previousStatus: EmailCampaignStatus | null = null
     let reservedCredits = 0
@@ -794,7 +806,7 @@ export class EmailCampaignUseCase {
 
     try {
       const campaign = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "sent"] } },
+        where: { id, teamId: ctx.teamId, status: { in: [...MANUAL_DISPATCH_STATUSES] } },
         include: {
           contactList: { select: { id: true, name: true, totalContacts: true } },
           team: { select: { master: { select: { id: true, timezone: true } } } },
@@ -938,7 +950,7 @@ export class EmailCampaignUseCase {
       }
 
       const lockResult = await prisma.emailCampaign.updateMany({
-        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "sent"] } },
+        where: { id, teamId: ctx.teamId, status: { in: [...MANUAL_DISPATCH_STATUSES] } },
         data: { status: "sending", errorMessage: null },
       })
 
@@ -1038,7 +1050,7 @@ export class EmailCampaignUseCase {
           where: { id },
           data: {
             status:
-              previousStatus && ["draft", "scheduled", "sent"].includes(previousStatus)
+              previousStatus && MANUAL_DISPATCH_STATUS_SET.has(previousStatus)
                 ? previousStatus
                 : "failed",
             errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
@@ -1121,7 +1133,7 @@ export class EmailCampaignUseCase {
 
         const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent)
 
-        await prisma.$transaction([
+        const [, updatedCampaign] = await prisma.$transaction([
           prisma.emailCampaignDispatch.update({
             where: { id: job.dispatchId },
             data: {
@@ -1140,8 +1152,15 @@ export class EmailCampaignUseCase {
               totalSent: { increment: dispatchResult.sent },
               dispatchCount: { increment: 1 },
             },
+            select: { parentCampaignId: true },
           }),
         ])
+
+        if (updatedCampaign.parentCampaignId) {
+          await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch((refreshError) => {
+            console.error("[EmailCampaignUseCase][completeManualDispatch][refreshParent]", refreshError)
+          })
+        }
 
         if (terminal.campaignStatus === "failed") {
           return new Output(
@@ -1200,6 +1219,8 @@ export class EmailCampaignUseCase {
           },
         })
         .catch(() => null)
+
+      await this.refreshParentCampaignStatusForChild(job.campaignId).catch(() => null)
 
       return new Output(false, [], ["Erro ao disparar campanha"], null)
     }
