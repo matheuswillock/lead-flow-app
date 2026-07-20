@@ -19,6 +19,7 @@ export interface CreateScheduleParams {
   meetingNotes?: string;
   meetingLink?: string;
   meetingType?: "online" | "call" | "whatsapp" | null;
+  durationMinutes?: number;
   extraGuests?: string[];
   createdByProfileId: string;
   transitionStatusToScheduled?: boolean;

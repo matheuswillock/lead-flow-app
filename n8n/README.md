@@ -155,9 +155,11 @@ Preencher IDs de execução locais na seção correspondente de `BETHANIA_SPEC.m
 1. Preencher `BETHANIA_SLACK_WEBHOOK_URL` no `.env.n8n` da VPS (`/opt/lead-flow-bot/.env.n8n`).
 2. Recriar/restart do container `n8n` para carregar o env.
 3. `bun run n8n:import:all` (ou procedimento em `deploy/hostinger/README.md`).
-4. Confirmar `errorWorkflow` nos 9 + `bethania-error-notifier` ativo.
-5. Repetir a matriz de validação em produção.
-6. Simular falha → mensagem no Slack.
+4. Rodar **Bethânia → Ops / Host → Health** e confirmar `bethaniaProductionCheck.ok=true`.
+5. Confirmar `errorWorkflow` nos 9 + `bethania-error-notifier` ativo.
+6. Repetir a matriz de validação em produção.
+7. Simular falha → mensagem no Slack.
+8. Registrar janela de 24h sem falha sistêmica no overview do n8n.
 
 **Não executar esses passos sem autorização explícita.**
 

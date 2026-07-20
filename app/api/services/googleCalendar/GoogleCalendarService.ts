@@ -73,9 +73,9 @@ function getOAuthCredentials() {
   return { clientId, clientSecret };
 }
 
-function getEventEnd(start: Date) {
+function getEventEnd(start: Date, durationMinutes = 30) {
   const end = new Date(start);
-  end.setMinutes(end.getMinutes() + 30);
+  end.setMinutes(end.getMinutes() + durationMinutes);
   return end;
 }
 
@@ -394,6 +394,7 @@ export async function upsertCalendarEvent({
   extraGuests,
   attendeeEmails,
   existingEventId,
+  durationMinutes,
 }: {
   organizer: CorretorStudioOrganizer | LegacyOrganizerInput;
   lead: Lead;
@@ -406,6 +407,7 @@ export async function upsertCalendarEvent({
   extraGuests?: string[];
   attendeeEmails?: string[];
   existingEventId?: string | null;
+  durationMinutes?: number;
 }): Promise<CalendarEventResult> {
   const accessToken = await getValidAccessToken(organizer);
   const resolvedOrganizer = await resolveOrganizerConnection(organizer)
@@ -413,7 +415,11 @@ export async function upsertCalendarEvent({
 
   const calendarId = "primary";
   const requestId = `lead${lead.id.replace(/-/g, "")}`;
-  const endTime = getEventEnd(meetingDate);
+  const resolvedDuration =
+    Number.isFinite(durationMinutes) && (durationMinutes as number) >= 5 && (durationMinutes as number) <= 480
+      ? Math.floor(durationMinutes as number)
+      : 30;
+  const endTime = getEventEnd(meetingDate, resolvedDuration);
   const normalizedAttendeeEmails = (attendeeEmails && attendeeEmails.length > 0
     ? attendeeEmails
     : [
