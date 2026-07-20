@@ -6,7 +6,7 @@ import { radarService } from "@/app/api/services/radar/RadarService"
 import { isValidRadarFieldKey } from "@/lib/radar/field-catalog"
 
 export type EmailVariableType = "string" | "number"
-export type EmailVariableValueSource = "STATIC" | "CDP"
+export type EmailVariableValueSource = "STATIC" | "RADAR"
 
 export interface UpsertEmailVariableInput {
   key: string
@@ -44,21 +44,21 @@ function validateInput(input: UpsertEmailVariableInput): string | null {
   }
 
   const valueSource = input.valueSource ?? "STATIC"
-  if (valueSource !== "STATIC" && valueSource !== "CDP") {
-    return "Origem inválida. Use 'STATIC' ou 'CDP'"
+  if (valueSource !== "STATIC" && valueSource !== "RADAR") {
+    return "Origem inválida. Use 'STATIC' ou 'RADAR'"
   }
 
-  if (valueSource === "CDP") {
+  if (valueSource === "RADAR") {
     if (!input.radarFieldKey?.trim()) {
-      return "Selecione um campo da CDP para variáveis com origem CDP"
+      return "Selecione um campo do Radar para variáveis com origem Radar"
     }
     if (!isValidRadarFieldKey(input.radarFieldKey)) {
-      return "Campo da CDP inválido"
+      return "Campo do Radar inválido"
     }
   }
 
   if (valueSource === "STATIC" && input.radarFieldKey) {
-    return "Campos da CDP só são permitidos quando a origem é CDP"
+    return "Campos do Radar só são permitidos quando a origem é Radar"
   }
 
   return null
@@ -146,12 +146,12 @@ export class EmailTeamVariablesUseCase {
           description: input.description?.trim() ? input.description.trim() : null,
           isActive: input.isActive ?? true,
           valueSource,
-          radarFieldKey: valueSource === "CDP" ? input.radarFieldKey?.trim() ?? null : null,
+          radarFieldKey: valueSource === "RADAR" ? input.radarFieldKey?.trim() ?? null : null,
         },
         select: variableSelect,
       })
 
-      if (valueSource === "CDP") {
+      if (valueSource === "RADAR") {
         await refreshRadarProfileData(ctx)
       }
 
@@ -194,7 +194,7 @@ export class EmailTeamVariablesUseCase {
           description: input.description?.trim() ? input.description.trim() : null,
           ...(input.isActive !== undefined && { isActive: input.isActive }),
           valueSource,
-          radarFieldKey: valueSource === "CDP" ? input.radarFieldKey?.trim() ?? null : null,
+          radarFieldKey: valueSource === "RADAR" ? input.radarFieldKey?.trim() ?? null : null,
         },
         select: variableSelect,
       })
@@ -220,7 +220,7 @@ export class EmailTeamVariablesUseCase {
 
       await prisma.emailTeamVariable.delete({ where: { id: variableId } })
 
-      if (existing.valueSource === "CDP") {
+      if (existing.valueSource === "RADAR") {
         await refreshRadarProfileData(ctx)
       }
 

@@ -3630,7 +3630,7 @@ enum RadarConsentReason {
 
 enum EmailVariableValueSource {
   STATIC
-  CDP
+  RADAR
 
   @@map("email_variable_value_source")
 }

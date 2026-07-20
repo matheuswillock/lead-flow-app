@@ -913,7 +913,7 @@ missing_identity missing_identity
 
         email_variable_value_source {
             STATIC STATIC
-CDP CDP
+RADAR RADAR
         }
     
 

@@ -547,7 +547,7 @@ export class RadarRepository {
 
   async listRadarEmailVariables(teamId: string) {
     return prisma.emailTeamVariable.findMany({
-      where: { teamId, isActive: true, valueSource: "CDP" },
+      where: { teamId, isActive: true, valueSource: "RADAR" },
       select: { key: true, radarFieldKey: true, defaultValue: true },
     })
   }
@@ -642,7 +642,7 @@ export class RadarRepository {
 
   async findRadarVariableFallbacks(teamId: string) {
     return prisma.emailTeamVariable.findMany({
-      where: { teamId, isActive: true, valueSource: "CDP", defaultValue: { not: null } },
+      where: { teamId, isActive: true, valueSource: "RADAR", defaultValue: { not: null } },
       select: { key: true, defaultValue: true },
     })
   }

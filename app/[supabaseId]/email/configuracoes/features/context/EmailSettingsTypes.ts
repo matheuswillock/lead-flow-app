@@ -54,7 +54,7 @@ export type EmailSender = {
 }
 
 export type EmailVariableType = "string" | "number"
-export type EmailVariableValueSource = "STATIC" | "CDP"
+export type EmailVariableValueSource = "STATIC" | "RADAR"
 
 export type EmailGlobalVariable = {
   id: string
