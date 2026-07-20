@@ -10,6 +10,7 @@
 | 2026-07-20 | V2.2 | Em implementação | Retry agendado com backoff, concorrência limitada a 10, `UNKNOWN` para comando sem confirmação, reprocessamento auditado de dead-letter. | A Evolution continua sendo a fonte de confirmação; `UNKNOWN` não é reenviado automaticamente. |
 | 2026-07-20 | V2.2 | Pendente | Purge de mídia/mensagens após 90 dias e limpeza de payload legado. | Depende de cron dedicado e validação de storage local antes de ativação. |
 | 2026-07-20 | V2.3–V2.5 | Pendente | Filas, explicabilidade, documentação contextual, painel, alertas e rollout. | Nenhum item pendente é anunciado como disponível na documentação do produto. |
+| 2026-07-20 | V2.4 | Concluída parcialmente | Links contextuais do Inbox, Configurações e Auto-respostas para capítulos diretos; revisão de conteúdo que prometia simulação e purge ainda indisponíveis. | FAQ de filas, `UNKNOWN` e microfone será ampliado junto às respectivas entregas funcionais. |
 
 ### Contratos adicionados em V2.2
 
