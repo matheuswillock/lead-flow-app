@@ -971,6 +971,83 @@ failed failed
     
 
 
+        backoffice_bot_outbound_delivery_status {
+            processing processing
+completed completed
+        }
+    
+
+
+        backoffice_bot_ai_provider {
+            groq groq
+ollama ollama
+        }
+    
+
+
+        backoffice_bot_ai_capability {
+            intent_classification intent_classification
+response_composition response_composition
+clarification clarification
+knowledge_answer knowledge_answer
+transcription transcription
+summarization summarization
+evaluation evaluation
+embedding embedding
+provider_test provider_test
+        }
+    
+
+
+        backoffice_bot_ai_interaction_status {
+            shadowed shadowed
+resolved resolved
+clarification_needed clarification_needed
+proposal_created proposal_created
+confirmed confirmed
+executed executed
+cancelled cancelled
+rejected rejected
+fallback fallback
+failed failed
+        }
+    
+
+
+        backoffice_bot_ai_attempt_status {
+            success success
+validation_error validation_error
+rate_limited rate_limited
+timeout timeout
+provider_error provider_error
+circuit_open circuit_open
+skipped skipped
+        }
+    
+
+
+        backoffice_bot_ai_action_proposal_status {
+            pending pending
+confirmed confirmed
+executed executed
+cancelled cancelled
+expired expired
+rejected rejected
+failed failed
+        }
+    
+
+
+        backoffice_bot_ai_feedback_type {
+            helpful helpful
+unhelpful unhelpful
+corrected corrected
+confirmed confirmed
+cancelled cancelled
+        }
+    
+
+
         backoffice_bot_host_ops_job_type {
             APPLY_ENV APPLY_ENV
 RESTART_SERVICE RESTART_SERVICE
@@ -2376,6 +2453,7 @@ failed failed
     Boolean isArchived 
     WhatsAppHandoffMode handoffMode 
     DateTime welcomeSentAt "❓"
+    DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2436,6 +2514,14 @@ failed failed
     DateTime processedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "whatsapp_audit_events" {
+    String id "🗝️"
+    String action 
+    Json metadata 
+    DateTime createdAt 
     }
   
 
@@ -2647,8 +2733,20 @@ failed failed
     Json payload 
     BackofficeBotEventOutboxStatus status 
     String idempotencyKey 
+    Int attemptCount 
+    DateTime nextAttemptAt "❓"
+    String lastError "❓"
     DateTime createdAt 
     DateTime sentAt "❓"
+    }
+  
+
+  "backoffice_bot_outbound_delivery" {
+    String id "🗝️"
+    String idempotencyKey 
+    BackofficeBotOutboundDeliveryStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -2657,13 +2755,16 @@ failed failed
     Boolean enabled 
     Boolean shadowMode 
     Int rolloutPercentage 
+    BackofficeBotAiProvider primaryProvider 
+    String primaryModel 
+    String fallbackModel "❓"
+    Float confidenceThreshold 
     Int dailyUserLimit 
     Int dailyGlobalLimit 
     Int timeoutMs 
     Int circuitBreakerFailureThreshold 
     Int circuitBreakerResetSeconds 
-    String primaryModel 
-    String fallbackModel "❓"
+    Int retentionDays 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2671,12 +2772,19 @@ failed failed
 
   "backoffice_bot_ai_interactions" {
     String id "🗝️"
-    String flowId "❓"
-    String promptVersion 
+    String sessionId "❓"
+    String teamIdSnapshot "❓"
+    BackofficeBotAiCapability capability 
+    BackofficeBotAiInteractionStatus status 
     String intent "❓"
-    String mode 
-    String outcome 
-    String model "❓"
+    Float confidence "❓"
+    String promptKey "❓"
+    String promptVersion 
+    Boolean isShadow 
+    Boolean usedFallback 
+    String inputHash "❓"
+    String outputHash "❓"
+    String errorCode "❓"
     Int latencyMs "❓"
     DateTime createdAt 
     }
@@ -2684,41 +2792,67 @@ failed failed
 
   "backoffice_bot_ai_attempts" {
     String id "🗝️"
-    String provider 
+    Int sequence 
+    BackofficeBotAiProvider provider 
     String model 
-    Int attemptNumber 
-    String outcome 
+    BackofficeBotAiCapability capability 
+    BackofficeBotAiAttemptStatus status 
+    Int inputTokens "❓"
+    Int outputTokens "❓"
+    Int totalTokens "❓"
+    Float estimatedCostUsd "❓"
     Int latencyMs "❓"
+    Int httpStatus "❓"
     String errorCode "❓"
+    String providerRequestId "❓"
+    String requestSchemaVersion "❓"
+    String responseSchemaVersion "❓"
     DateTime createdAt 
     }
   
 
   "backoffice_bot_ai_proposals" {
     String id "🗝️"
-    String kind 
-    String parametersCipher 
-    String entityType "❓"
-    String entityId "❓"
-    String status 
+    String teamIdSnapshot "❓"
+    String action 
+    String paramsSummary 
+    String paramsCiphertext 
+    String encryptionKeyVersion 
+    String confirmationMessage "❓"
+    BackofficeBotAiActionProposalStatus status 
     String idempotencyKey 
     DateTime expiresAt 
     DateTime confirmedAt "❓"
+    DateTime executedAt "❓"
+    String resultCode "❓"
     DateTime createdAt 
     }
   
 
   "backoffice_bot_ai_feedback" {
     String id "🗝️"
-    String value 
+    BackofficeBotAiFeedbackType type 
+    String correctedIntent "❓"
+    String origin 
     DateTime createdAt 
     }
   
 
   "backoffice_bot_ai_daily_usage" {
-    DateTime date "🗝️"
+    DateTime day "🗝️"
+    BackofficeBotAiProvider provider "🗝️"
+    String model "🗝️"
+    BackofficeBotAiCapability capability "🗝️"
     Int requests 
+    Int successes 
     Int failures 
+    Int fallbacks 
+    BigInt inputTokens 
+    BigInt outputTokens 
+    Float estimatedCostUsd 
+    Int uniqueUsers 
+    Int latencyP50Ms "❓"
+    Int latencyP95Ms "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3065,6 +3199,9 @@ failed failed
     "whatsapp_webhook_events" |o--|| "WhatsAppWebhookEventStatus" : "enum:status"
     "whatsapp_webhook_events" }o--|| team_whatsapp_configs : "config"
     "whatsapp_webhook_events" }o--|| corretor_studio_teams : "team"
+    "whatsapp_audit_events" }o--|| corretor_studio_teams : "team"
+    "whatsapp_audit_events" }o--|o whatsapp_conversations : "conversation"
+    "whatsapp_audit_events" }o--|o corretor_studio_profiles : "actorProfile"
     "whatsapp_usage_events" |o--|| "WhatsAppProvider" : "enum:provider"
     "whatsapp_usage_events" |o--|| "WhatsAppUsageEventType" : "enum:eventType"
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
@@ -3109,15 +3246,27 @@ failed failed
     "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
     "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
     "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_outbound_delivery" |o--|| "BackofficeBotOutboundDeliveryStatus" : "enum:status"
+    "backoffice_bot_ai_configurations" |o--|| "BackofficeBotAiProvider" : "enum:primaryProvider"
+    "backoffice_bot_ai_configurations" }o--|o corretor_studio_profiles : "updatedByProfile"
+    "backoffice_bot_ai_interactions" |o--|| "BackofficeBotAiCapability" : "enum:capability"
+    "backoffice_bot_ai_interactions" |o--|| "BackofficeBotAiInteractionStatus" : "enum:status"
+    "backoffice_bot_ai_interactions" }o--|o backoffice_bot_messages : "inboundMessage"
     "backoffice_bot_ai_interactions" }o--|o backoffice_bot_user_links : "userLink"
+    "backoffice_bot_ai_interactions" }o--|o corretor_studio_profiles : "profile"
+    "backoffice_bot_ai_attempts" |o--|| "BackofficeBotAiProvider" : "enum:provider"
+    "backoffice_bot_ai_attempts" |o--|| "BackofficeBotAiCapability" : "enum:capability"
+    "backoffice_bot_ai_attempts" |o--|| "BackofficeBotAiAttemptStatus" : "enum:status"
     "backoffice_bot_ai_attempts" }o--|| backoffice_bot_ai_interactions : "interaction"
+    "backoffice_bot_ai_proposals" |o--|| "BackofficeBotAiActionProposalStatus" : "enum:status"
     "backoffice_bot_ai_proposals" }o--|| backoffice_bot_user_links : "userLink"
-    "backoffice_bot_ai_proposals" }o--|| corretor_studio_teams : "team"
+    "backoffice_bot_ai_proposals" }o--|o corretor_studio_profiles : "profile"
     "backoffice_bot_ai_proposals" }o--|o backoffice_bot_ai_interactions : "interaction"
-    "backoffice_bot_ai_proposals" }o--|o corretor_studio_profiles : "assigneeProfile"
+    "backoffice_bot_ai_feedback" |o--|| "BackofficeBotAiFeedbackType" : "enum:type"
     "backoffice_bot_ai_feedback" }o--|| backoffice_bot_ai_interactions : "interaction"
     "backoffice_bot_ai_feedback" }o--|o backoffice_bot_user_links : "userLink"
-    "backoffice_bot_ai_daily_usage" }o--|| backoffice_bot_user_links : "userLink"
+    "backoffice_bot_ai_daily_usage" |o--|| "BackofficeBotAiProvider" : "enum:provider"
+    "backoffice_bot_ai_daily_usage" |o--|| "BackofficeBotAiCapability" : "enum:capability"
     "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
     "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"

@@ -76,6 +76,8 @@ export class BackofficeBotAuthService {
         challengeId: challenge.id,
         expiresAt: expiresAt.toISOString(),
         profileId: profile.id,
+        profileEmail: profile.email,
+        profileFullName: profile.fullName,
         code,
         activeTeamId: profile.activeTeamId,
       },

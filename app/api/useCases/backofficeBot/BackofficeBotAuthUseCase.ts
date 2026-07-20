@@ -1,11 +1,19 @@
+import { NotificationType } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { backofficeBotAuthService } from "@/app/api/services/backofficeBot/BackofficeBotAuthService";
 import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
+import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
+import { buildBethaniaAuthCodeEmail } from "@/lib/emails/buildBethaniaAuthCodeEmail";
+import { getEmailService } from "@/lib/services/EmailService";
+import { buildBethaniaLinkErrorResult } from "@/lib/studio-bot/bethania-link-errors";
 import type { IBackofficeBotAuthUseCase } from "./IBackofficeBotAuthUseCase";
 
 const LINK_CONFIRMED_WHATSAPP_MESSAGE =
   "✅ Vinculação concluída com sucesso!\n\nSeu WhatsApp está conectado à Bethânia no Corretor Studio. Digite *menu* para ver o que posso fazer por você.";
+
+const CHANNEL_AUTH_CODE_NOTIFICATION =
+  "Seu código de verificação da Bethânia: **{code}**. Válido por 10 minutos. Informe na conversa com a Bethânia.";
 
 function mapAuthError(error: string): string {
   switch (error) {
@@ -44,11 +52,73 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
         return new Output(false, [], [mapAuthError(result.error)], null);
       }
 
-      const { challengeId, expiresAt } = result.result;
-      return new Output(true, [], [], { challengeId, expiresAt });
+      if ("code" in result.result && result.result.code && result.result.profileId && result.result.challengeId) {
+        await this.deliverChannelAuthCode({
+          code: result.result.code,
+          challengeId: result.result.challengeId,
+          expiresAt: result.result.expiresAt ?? new Date().toISOString(),
+          profileId: result.result.profileId,
+          profileEmail: result.result.profileEmail ?? email,
+          profileFullName: result.result.profileFullName ?? null,
+          activeTeamId: result.result.activeTeamId ?? null,
+        });
+      }
+
+      return new Output(true, [], [], {
+        challengeId: result.result.challengeId,
+        expiresAt: result.result.expiresAt,
+      });
     } catch (error) {
       console.error("[BackofficeBotAuthUseCase][requestCode]", error);
       return new Output(false, [], ["Erro ao solicitar código"], null);
+    }
+  }
+
+  private async deliverChannelAuthCode(input: {
+    code: string;
+    challengeId: string;
+    expiresAt: string;
+    profileId: string;
+    profileEmail: string;
+    profileFullName: string | null;
+    activeTeamId: string | null;
+  }): Promise<void> {
+    const message = CHANNEL_AUTH_CODE_NOTIFICATION.replace("{code}", input.code);
+
+    if (input.activeTeamId) {
+      try {
+        await notificationService.createSystemNotification({
+          recipientProfileId: input.profileId,
+          teamId: input.activeTeamId,
+          type: NotificationType.BETHANIA_AUTH_CODE,
+          message,
+          metadata: {
+            challengeId: input.challengeId,
+            source: "channel_email",
+            expiresAt: input.expiresAt,
+          },
+        });
+      } catch (error) {
+        console.error("[BackofficeBotAuthUseCase][deliverChannelAuthCode][notification]", error);
+      }
+    } else {
+      console.info(
+        "[BackofficeBotAuthUseCase][deliverChannelAuthCode] Sem time ativo — notificação in-app omitida",
+        input.profileId
+      );
+    }
+
+    try {
+      const emailService = getEmailService();
+      const userName = input.profileFullName?.trim() || input.profileEmail;
+      await emailService.sendEmailUntracked({
+        to: [input.profileEmail],
+        subject: "Bethânia — seu código de verificação",
+        html: buildBethaniaAuthCodeEmail({ userName, code: input.code }),
+        idempotencyKey: `bethania-auth-code:${input.challengeId}`,
+      });
+    } catch (error) {
+      console.error("[BackofficeBotAuthUseCase][deliverChannelAuthCode][email]", error);
     }
   }
 
@@ -56,15 +126,26 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
     try {
       const result = await backofficeBotAuthService.verifyCode(normalizedPhone, code);
       if (!result.ok) {
-        return new Output(false, [], [mapAuthError(result.error)], { errorCode: result.error });
+        const linkError = buildBethaniaLinkErrorResult(result.error);
+        console.error("[BackofficeBotAuthUseCase][verifyCode]", {
+          correlationId: linkError.correlationId,
+          errorCode: linkError.errorCode,
+          serviceError: result.error,
+        });
+        return new Output(false, [], [mapAuthError(result.error)], linkError);
       }
 
       await this.notifyLinkConfirmed(normalizedPhone, result.result.userLinkId);
 
       return new Output(true, ["Vínculo confirmado"], [], result.result);
     } catch (error) {
-      console.error("[BackofficeBotAuthUseCase][verifyCode]", error);
-      return new Output(false, [], ["Erro ao verificar código"], null);
+      const linkError = buildBethaniaLinkErrorResult(null, { isInternal: true });
+      console.error("[BackofficeBotAuthUseCase][verifyCode]", {
+        correlationId: linkError.correlationId,
+        errorCode: linkError.errorCode,
+        error,
+      });
+      return new Output(false, [], ["Erro ao verificar código"], linkError);
     }
   }
 
@@ -105,12 +186,25 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
     try {
       const result = await backofficeBotAuthService.linkInitiate(profileId);
       if (!result.ok) {
-        return new Output(false, [], [mapAuthError(result.error)], null);
+        const linkError = buildBethaniaLinkErrorResult(result.error);
+        console.error("[BackofficeBotAuthUseCase][linkInitiate]", {
+          correlationId: linkError.correlationId,
+          errorCode: linkError.errorCode,
+          serviceError: result.error,
+          profileId,
+        });
+        return new Output(false, [], [mapAuthError(result.error)], linkError);
       }
       return new Output(true, [], [], result.result);
     } catch (error) {
-      console.error("[BackofficeBotAuthUseCase][linkInitiate]", error);
-      return new Output(false, [], ["Erro ao iniciar vínculo"], null);
+      const linkError = buildBethaniaLinkErrorResult(null, { isInternal: true });
+      console.error("[BackofficeBotAuthUseCase][linkInitiate]", {
+        correlationId: linkError.correlationId,
+        errorCode: linkError.errorCode,
+        profileId,
+        error,
+      });
+      return new Output(false, [], ["Erro ao iniciar vínculo"], linkError);
     }
   }
 

@@ -40,6 +40,10 @@ yarn-error.log*
 !.env.example
 !.env.evolution.example
 !.env.ops.example
+!.env.n8n.example
+!.env.*.example
+!deploy/hostinger/.env.*.example
+!deploy/hostinger/.env.*.production.example
 
 # vercel
 .vercel

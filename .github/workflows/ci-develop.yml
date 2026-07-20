@@ -8,9 +8,12 @@ on:
       - "package.json"
   workflow_dispatch:
 
+# cancel-in-progress: false — um run de develop precisa terminar atômico
+# (version bump + push da release branch + PR); cancelar no meio deixava a
+# release inconsistente. Pushes consecutivos enfileiram (GitHub mantém 1 pendente).
 concurrency:
   group: ci-develop-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   actions: read
@@ -34,33 +37,14 @@ jobs:
       lint: ${{ steps['quality-result'].outputs.lint }}
       typecheck: ${{ steps['quality-result'].outputs.typecheck }}
       proxy-tests: ${{ steps['quality-result'].outputs['proxy-tests'] }}
+      unit-tests: ${{ steps['quality-result'].outputs['unit-tests'] }}
       quality-passed: ${{ steps['quality-result'].outputs.passed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Governance Sync
         id: governance-sync
@@ -93,6 +77,11 @@ jobs:
         continue-on-error: true
         run: bun run test:proxy
 
+      - name: Unit Tests
+        id: unit-tests
+        continue-on-error: true
+        run: bun run test
+
       - name: Spellcheck PT-BR
         id: spellcheck-pt-br
         continue-on-error: true
@@ -107,48 +96,14 @@ jobs:
           echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
           echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
           echo "proxy-tests=${{ steps['proxy-tests'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "unit-tests=${{ steps['unit-tests'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['unit-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
             echo "passed=true" >> "$GITHUB_OUTPUT"
           else
             echo "passed=false" >> "$GITHUB_OUTPUT"
           fi
-
-  unit-tests:
-    name: Unit Tests
-    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install
-
-      - name: Run unit tests
-        run: bun run test
 
   build:
     name: Build
@@ -164,32 +119,16 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Cache Next.js build
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
-            ${{ runner.os }}-next-
-
-      - name: Install deps
-        run: bun install
 
       - name: Generate Prisma Client
         run: bun run prisma:generate
@@ -210,7 +149,6 @@ jobs:
     timeout-minutes: 2
     needs:
       - quality
-      - unit-tests
       - build
     steps:
       - name: Enforce Quality Checks
@@ -223,11 +161,7 @@ jobs:
             echo "lint=${{ needs.quality.outputs.lint }}"
             echo "typecheck=${{ needs.quality.outputs.typecheck }}"
             echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
-            failed=1
-          fi
-          if [[ "${{ needs['unit-tests'].result }}" != "success" ]]; then
-            echo "::error::Unit tests failed."
-            echo "unit-tests=${{ needs['unit-tests'].result }}"
+            echo "unit-tests=${{ needs.quality.outputs['unit-tests'] }}"
             failed=1
           fi
           if [[ "${{ needs.build.result }}" != "success" ]]; then
@@ -253,28 +187,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install
+          version: 2.109.1
 
       - name: Detect Migration Status
         id: detect
@@ -282,7 +198,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          MIGRATION_LIST="$(bun run db:migrate:status -- --db-url "$DIRECT_URL" 2>&1)"
+          MIGRATION_LIST="$(supabase migration list --db-url "$DIRECT_URL" 2>&1)"
           echo "$MIGRATION_LIST"
 
           RESULT=$(MIGRATION_LIST="$MIGRATION_LIST" node -e '
@@ -336,31 +252,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install
+          version: 2.109.1
 
       - name: Link Supabase project
-        run: bunx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -373,7 +271,7 @@ jobs:
           echo "### Migration Dry Run" >> "$GITHUB_STEP_SUMMARY"
           echo "The following migrations would be applied to the remote database:" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          bun run db:migrate:push:dry-run 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          supabase db push --linked --dry-run 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "> Review the output above and approve the **Migration Apply** job to proceed." >> "$GITHUB_STEP_SUMMARY"
@@ -399,10 +297,10 @@ jobs:
       base_version: ${{ steps.bump.outputs.base_version }}
       has_code_changes: ${{ steps.bump.outputs.has_code_changes }}
     steps:
-      - name: Checkout develop
+      - name: Checkout validated commit
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -543,10 +441,10 @@ jobs:
       - migration-check
       - version-bump
     steps:
-      - name: Checkout develop
+      - name: Checkout validated commit
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -554,13 +452,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
       - name: Deploy to Vercel (Preview)
         id: vercel-preview
         run: |
-          DEPLOY_URL=$(vercel deploy \
+          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --yes \
             2>&1 | tail -1)
@@ -589,10 +484,10 @@ jobs:
       - deploy-preview
       - version-bump
     steps:
-      - name: Checkout develop (latest)
+      - name: Checkout validated commit
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -609,7 +504,7 @@ jobs:
       - name: Reset release branch to develop and apply version bump
         if: ${{ needs['build'].result == 'success' && needs['version-bump'].outputs.bumped == 'true' && needs['migration-check'].outputs.has_pending == 'false' && needs['deploy-preview'].result == 'success' }}
         run: |
-          git checkout -B release/develop-to-main origin/develop
+          git checkout -B release/develop-to-main ${{ github.sha }}
           VERSION="${{ needs['version-bump'].outputs.new_version }}"
           if [ -n "$VERSION" ]; then
             node -e "

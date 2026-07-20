@@ -42,7 +42,11 @@ export class StudioBotN8nDispatchService {
       return { ok: false, status: 0 };
     }
 
-    const body = JSON.stringify(payload);
+    const enriched =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? { ...(payload as Record<string, unknown>), idempotencyKey }
+        : { payload, idempotencyKey };
+    const body = JSON.stringify(enriched);
     const response = await this.postSigned(config.outboundUrl, body, config.secret, idempotencyKey);
     return { ok: response.ok, status: response.status };
   }

@@ -24,6 +24,7 @@ export const STORAGE_BUCKETS = {
   CONTRACTS: process.env.SUPABASE_CONTRACTS_BUCKET || "backoffice-contracts",
   SUPPORT_REQUEST_ATTACHMENTS:
     process.env.SUPABASE_SUPPORT_ATTACHMENTS_BUCKET || "support-request-attachments",
+  WHATSAPP_MEDIA: process.env.SUPABASE_WHATSAPP_MEDIA_BUCKET || "whatsapp-media",
 } as const;
 
 export type BucketName = typeof STORAGE_BUCKETS[keyof typeof STORAGE_BUCKETS];
@@ -83,6 +84,28 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
     maxFileSize: 5 * 1024 * 1024, // 5MB
     allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
     description: "Imagens anexadas a pedidos de suporte (bucket privado)",
+  },
+  [STORAGE_BUCKETS.WHATSAPP_MEDIA]: {
+    maxFileSize: 16 * 1024 * 1024, // 16MB
+    allowedTypes: [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain",
+      "audio/mpeg",
+      "audio/ogg",
+      "audio/webm",
+      "audio/mp4",
+      "video/mp4",
+      "video/webm",
+    ],
+    description: "Mídia do inbox WhatsApp (bucket privado)",
   },
 };
 

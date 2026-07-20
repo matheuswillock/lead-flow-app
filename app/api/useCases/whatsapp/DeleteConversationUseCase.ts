@@ -27,7 +27,16 @@ class DeleteConversationUseCase {
         profileId: input.access.profileId,
       })
 
-      await whatsAppRepository.deleteConversation(input.conversationId)
+      await whatsAppRepository.softDeleteConversationWithAudit({
+        conversationId: input.conversationId,
+        teamId: input.teamId,
+        actorProfileId: input.access.profileId,
+        action: "conversation.delete",
+        metadata: {
+          normalizedPhone: conversation.normalizedPhone,
+          wasArchived: conversation.isArchived,
+        },
+      })
       return new Output(true, ["Conversa excluída com sucesso"], [], null)
     } catch (error) {
       if (error instanceof WhatsAppAccessDeniedError) {

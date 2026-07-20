@@ -55,6 +55,7 @@ export interface WhatsAppConversationSelect {
   isArchived: boolean
   handoffMode: string
   welcomeSentAt: Date | null
+  deletedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -77,6 +78,9 @@ export interface WhatsAppMessageSelect {
   mediaUrl: string | null
   mediaMimeType: string | null
   mediaFileName: string | null
+  storagePath: string | null
+  mediaSha256: string | null
+  mediaSizeBytes: number | null
   linkPreview: Prisma.JsonValue | null
   caption: string | null
   senderDisplayName: string | null
@@ -260,6 +264,23 @@ export interface IWhatsAppRepository {
   }): Promise<WhatsAppMessageSelect[]>
 
   listConversationsForTeam(teamId: string): Promise<WhatsAppConversationSelect[]>
+
+  softDeleteConversation(id: string): Promise<void>
+  softDeleteConversationWithAudit(input: {
+    conversationId: string
+    teamId: string
+    actorProfileId?: string | null
+    action: string
+    metadata?: Prisma.InputJsonValue
+  }): Promise<void>
+  deleteConversation(id: string): Promise<void>
+  createAuditEvent(input: {
+    teamId: string
+    conversationId?: string | null
+    actorProfileId?: string | null
+    action: string
+    metadata?: Prisma.InputJsonValue
+  }): Promise<void>
 
   findTeamMasterContext(teamId: string): Promise<{ masterId: string; timezone: string | null } | null>
 

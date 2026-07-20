@@ -1,5 +1,9 @@
 # WHATSAPP_AUDIT.md — Auditoria do Módulo WhatsApp (Corretor Studio)
 
+> **HISTÓRICO — NÃO USAR COMO CHECKLIST DE TRABALHO**  
+> Auditoria congelada em **2026-07-03**. Vários itens marcados como ausentes/parciais já foram corrigidos (tags, create-lead, LeadDetailsSheet, RBAC manager=all / operator vê `assignee=null`, handoff no envio manual).  
+> **Fonte de verdade atual:** [`WHATSAPP_SPEC.md`](WHATSAPP_SPEC.md) (v2.0, 2026-07-17).
+
 **Data:** 2026-07-03
 **Método:** auditoria código-nível (audit factual + critique arquitetural), branch `develop`
 **Escopo:** inbox WhatsApp de leads por time (Evolution API), auto-respostas, RBAC de conversas, RLS/realtime, workflows N8N da Bethânia
