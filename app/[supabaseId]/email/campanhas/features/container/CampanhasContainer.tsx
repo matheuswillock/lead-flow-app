@@ -132,7 +132,7 @@ export function CampanhasContainer() {
 
       <CampaignList onOpenAnalytics={openCampaignAnalytics} />
       <CampaignCreateWizard />
-      <CampaignDetailSheet />
+      <CampaignDetailSheet onOpenAnalytics={openCampaignAnalytics} />
       <CampaignAnalyticsDialog
         open={analyticsOpen}
         onOpenChange={setAnalyticsOpen}
