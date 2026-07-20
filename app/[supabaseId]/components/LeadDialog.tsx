@@ -44,6 +44,7 @@ import { EmojiStyle, Theme } from "emoji-picker-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -115,6 +116,31 @@ type PendingStatusConfirmation = {
   confirmationRuleId: string;
   message: string;
 };
+
+
+function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: string; teamId: string; supabaseId: string }) {
+  const [items, setItems] = useState<any[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/v1/teams/${teamId}/leads/${leadId}/public-form-submissions`, {
+      headers: { "x-supabase-user-id": supabaseId, "x-team-id": teamId },
+      signal: controller.signal,
+    }).then(async (response) => {
+      const output = await response.json();
+      if (!response.ok || !output.isValid) throw new Error(output.errorMessages?.[0] ?? "Erro ao carregar respostas");
+      setItems(output.result ?? []);
+    }).catch((fetchError) => {
+      if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
+      setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar respostas");
+    });
+    return () => controller.abort();
+  }, [leadId, teamId, supabaseId]);
+  if (error) return <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">{error}</div>;
+  if (!items) return <div className="mt-4 space-y-2"><div className="h-20 animate-pulse rounded-lg bg-muted"/><div className="h-20 animate-pulse rounded-lg bg-muted"/></div>;
+  if (!items.length) return <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Este lead ainda não respondeu formulários públicos.</div>;
+  return <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">{items.map((submission) => <div className="rounded-lg border p-3" key={submission.id}><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium">{submission.form.name}</p><p className="text-xs text-muted-foreground">Versão {submission.publication.version} · {new Date(submission.createdAt).toLocaleString("pt-BR")}</p></div>{submission.scoreBandLabel ? <Badge variant="secondary">{submission.scoreBandLabel} · {submission.score} pts</Badge> : null}</div><div className="mt-3 space-y-2">{submission.answers.map((answer: any) => { const snapshot = answer.questionSnapshot as { title?: string }; const value = Array.isArray(answer.value) ? answer.value.join(", ") : typeof answer.value === "object" ? JSON.stringify(answer.value) : String(answer.value ?? "—"); return <div key={answer.id}><p className="text-xs font-medium text-muted-foreground">{snapshot.title ?? "Pergunta"}</p><p className="text-sm break-words">{value}</p></div> })}</div></div>)}</div>;
+}
 
 type PendingSalesInfoGate = {
   status: string;
@@ -201,6 +227,7 @@ export default function LeadDialog({
   const [scheduleShareExpiresAt, setScheduleShareExpiresAt] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
   const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email" | "task">("note");
+  const [sidePanelTab, setSidePanelTab] = useState<"activities" | "forms">("activities");
   const [activityBody, setActivityBody] = useState("");
   const [activitySubmitting, setActivitySubmitting] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -2748,16 +2775,28 @@ export default function LeadDialog({
 
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:w-[320px] lg:min-w-[320px] lg:max-w-[320px] lg:h-[95%] lg:max-h-[95%] lg:self-center">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold">Feed de Atividades</h3>
+                <h3 className="text-base font-semibold">Informações do lead</h3>
                 <DialogClose asChild>
                   <Button type="button" size="icon" variant="ghost" className="h-8 w-8">
                     <X className="h-4 w-4" />
                   </Button>
                 </DialogClose>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Registro de criação, comentários e mudanças importantes.
-              </p>
+              <Tabs value={sidePanelTab} onValueChange={(value) => setSidePanelTab(value as "activities" | "forms")} className="mt-3">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="activities">Atividades</TabsTrigger>
+                  <TabsTrigger value="forms">Formulários</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {sidePanelTab === "forms" ? (
+                currentLead && activeTeamId ? (
+                  <LeadPublicFormResponses leadId={currentLead.id} teamId={activeTeamId} supabaseId={supabaseId ?? ""} />
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Respostas disponíveis após criar o lead.</div>
+                )
+              ) : (
+              <>
 
               {currentLead && activeTeamId && hasAccess(FEATURE_SLUGS.WHATSAPP) && (
                 <LeadWhatsAppCard
@@ -2929,6 +2968,9 @@ export default function LeadDialog({
                   </>
                 )}
               </div>
+
+              </>
+              )}
 
               {currentLead && supabaseId && activeTeamId && (
                 <TaskFormDialog

@@ -180,6 +180,18 @@ const FEATURES: Array<{
 
   // ── Integração guarda-chuva ───────────────────────────────────────────────
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
+  {
+    slug: "public-forms",
+    name: "Formulários públicos",
+    accessMode: BackofficeFeatureAccessMode.PUBLIC,
+    defaultAccessLevel: BackofficeFeatureAccessLevel.FULL,
+    betaEnabled: true,
+    inheritParentSettings: false,
+    sortOrder: 201,
+    parentSlug: "integration",
+    productSlug: "configuration",
+  },
+
 ]
 
 const WHATSAPP_PAYMENT_RULES: Array<{
@@ -407,6 +419,13 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "BACKOFFICE", accessLevel: "FULL" },
   ]),
   integration: completeRuleSet([{ principal: "MASTER", accessLevel: "FULL" }]),
+  "public-forms": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+    { principal: "OPERATOR", accessLevel: "FULL" },
+  ]),
+
 }
 
 async function main() {

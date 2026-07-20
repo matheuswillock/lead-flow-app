@@ -19,6 +19,12 @@ export interface IPublicLeadFormUseCase {
   createPublicLead(data: PublicLeadFormRequest, originContext?: PublicLeadFormOriginContext): Promise<Output>;
   getPublicFormBootstrap(teamId: string, legacySupabaseId?: string): Promise<Output>;
   getTeamClosers(teamId: string, legacySupabaseId?: string): Promise<Output>;
-  getCloserAvailability(teamId: string, closerId: string, date: string, legacySupabaseId?: string): Promise<Output>;
+  getCloserAvailability(
+    teamId: string,
+    closerId: string,
+    date: string,
+    legacySupabaseId?: string,
+    slotMinutes?: number,
+  ): Promise<Output>;
   getPreScheduleSlots(teamId: string, date: string, legacySupabaseId?: string): Promise<Output>;
 }

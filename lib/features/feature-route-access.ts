@@ -18,6 +18,7 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
   "/teams": FEATURE_SLUGS.CRM_TIME_MANAGE_TEAMS,
   "/manager-users": FEATURE_SLUGS.CRM_TIME_MANAGE_USERS,
   "/integrations": FEATURE_SLUGS.CONFIGURATION,
+  "/forms": FEATURE_SLUGS.PUBLIC_FORMS,
   "/whatsapp/configuracoes": FEATURE_SLUGS.WHATSAPP_SETTINGS,
   "/whatsapp/auto-respostas": FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES,
   "/whatsapp": FEATURE_SLUGS.WHATSAPP,

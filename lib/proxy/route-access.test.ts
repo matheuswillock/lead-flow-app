@@ -59,6 +59,13 @@ describe("isPublicPageRoute", () => {
     expect(isPublicPageRoute("/backoffice-lead-form")).toBe(true)
   })
 
+
+  it("permite o renderer público, mas não confunde a rota autenticada do time", () => {
+    expect(isPublicPageRoute("/forms/formulario-publico")).toBe(true)
+    expect(isPublicPageRoute(`/${USER_A}/forms`)).toBe(false)
+    expect(requiresAuth(`/${USER_A}/forms`)).toBe(true)
+  })
+
   it("does not treat sign-in as a generic public page", () => {
     expect(isPublicPageRoute("/sign-in")).toBe(false)
   })
@@ -78,6 +85,12 @@ describe("requiresManagerRole", () => {
   it("requires manager for legacy integrations route", () => {
     expect(requiresManagerRole("/integrations")).toBe(true)
   })
+
+
+  it("delega formulários às permissões dinâmicas de edição e aprovação", () => {
+    expect(requiresManagerRole(`/${USER_A}/forms`)).toBe(false)
+  })
+
 })
 
 describe("tenant associados route", () => {

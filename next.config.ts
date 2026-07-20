@@ -74,6 +74,10 @@ const nextConfig: NextConfig = {
         headers: getLeadFormEmbedHeaders(),
       },
       {
+        source: "/forms/:path*",
+        headers: getLeadFormEmbedHeaders(),
+      },
+      {
         source: "/backoffice-lead-form",
         headers: getLeadFormEmbedHeaders(),
       },
