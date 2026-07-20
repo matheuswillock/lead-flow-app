@@ -68,15 +68,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
 
       - name: Check Migration Status
         shell: bash
         run: |
           set -euo pipefail
 
-          migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
+          migration_list="$(supabase migration list --db-url "$DIRECT_URL")"
           echo "$migration_list"
 
           if MIGRATION_LIST="$migration_list" node -e '
@@ -154,13 +156,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
       - name: Deploy to Vercel (Production)
         id: vercel-prod
         run: |
-          DEPLOY_URL=$(vercel deploy --prod \
+          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy --prod \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --yes \
             2>&1 | tail -1)

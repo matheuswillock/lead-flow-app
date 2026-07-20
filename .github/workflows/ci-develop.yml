@@ -184,8 +184,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
 
       - name: Detect Migration Status
         id: detect
@@ -193,7 +195,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          MIGRATION_LIST="$(bun run db:migrate:status -- --db-url "$DIRECT_URL" 2>&1)"
+          MIGRATION_LIST="$(supabase migration list --db-url "$DIRECT_URL" 2>&1)"
           echo "$MIGRATION_LIST"
 
           RESULT=$(MIGRATION_LIST="$MIGRATION_LIST" node -e '
@@ -247,11 +249,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
 
       - name: Link Supabase project
-        run: bunx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -264,7 +268,7 @@ jobs:
           echo "### Migration Dry Run" >> "$GITHUB_STEP_SUMMARY"
           echo "The following migrations would be applied to the remote database:" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          bun run db:migrate:push:dry-run 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          supabase db push --linked --dry-run 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "> Review the output above and approve the **Migration Apply** job to proceed." >> "$GITHUB_STEP_SUMMARY"
@@ -445,13 +449,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
       - name: Deploy to Vercel (Preview)
         id: vercel-preview
         run: |
-          DEPLOY_URL=$(vercel deploy \
+          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --yes \
             2>&1 | tail -1)
