@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Calls OpenAI API to generate a PR description from the current branch diff vs develop.
-Writes 'claude-description' to $GITHUB_OUTPUT using HEREDOC multiline syntax.
+Writes 'pr-description' to $GITHUB_OUTPUT using HEREDOC multiline syntax.
 Exits cleanly (empty output) if OPENAI_API_KEY is not set or on any error.
 """
 import json
@@ -86,10 +86,10 @@ def call_gpt(api_key: str, branch: str, commits: str, files: str, diff_stat: str
 def write_output(value: str) -> None:
     github_output = os.environ.get("GITHUB_OUTPUT", "")
     if not github_output:
-        print(f"claude-description={value}")
+        print(f"pr-description={value}")
         return
     with open(github_output, "a") as f:
-        f.write(f"claude-description<<CLAUDE_EOF\n{value}\nCLAUDE_EOF\n")
+        f.write(f"pr-description<<CLAUDE_EOF\n{value}\nCLAUDE_EOF\n")
 
 
 def main() -> None:
