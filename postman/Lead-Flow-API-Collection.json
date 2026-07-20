@@ -9683,6 +9683,52 @@
               }
             },
             {
+              "name": "PATCH Platform User Invoice",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"value\": 59.9,\n  \"dueDate\": \"2026-10-18\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/invoices/:invoiceId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "invoices",
+                    ":invoiceId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    },
+                    {
+                      "key": "invoiceId",
+                      "value": "{{asaasPaymentId}}"
+                    }
+                  ]
+                },
+                "description": "Atualiza valor e vencimento de uma cobrança Asaas a vencer ou vencida do usuário master."
+              }
+            },
+            {
               "name": "DELETE Platform User Account",
               "request": {
                 "method": "DELETE",

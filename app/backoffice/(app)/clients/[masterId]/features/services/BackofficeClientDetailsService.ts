@@ -177,6 +177,24 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
+  async updateUserType(
+    masterId: string,
+    data: {
+      userType: "common" | "member_pro"
+      accessExpiresAt?: string
+    }
+  ): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/clients/all-users/${masterId}/user-type`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao atualizar tipo de usuário")
+    }
+  }
+
   async banUser(profileId: string, reason?: string | null): Promise<void> {
     const res = await fetch("/api/v1/backoffice/anatemas", {
       method: "POST",
