@@ -1,6 +1,24 @@
 # SPEC — WhatsApp Inbox de Leads por Time
 
-**Versão:** 2.0 · **Atualizada:** 2026-07-17 · **Status:** roadmap consolidado a partir da auditoria de código e UX.
+**Versão:** 2.1 · **Atualizada:** 2026-07-20 · **Status:** SPEC viva; implementação registrada por commit na worktree `feat/whatsapp-inbox-v2-closure`.
+
+## Registro de implementação
+
+| Data | Fase | Status | Implementado | Decisão e limite conhecido |
+|---|---|---|---|---|
+| 2026-07-20 | V2.1 | Concluída | Cron de outbox, recuperação de `PROCESSING` abandonado, auditoria de handoff e fluxo único de microfone com o mesmo `MediaStream`. | O cron executa a cada 5 minutos e não altera permissões do navegador. |
+| 2026-07-20 | V2.2 | Em implementação | Retry agendado com backoff, concorrência limitada a 10, `UNKNOWN` para comando sem confirmação, reprocessamento auditado de dead-letter. | A Evolution continua sendo a fonte de confirmação; `UNKNOWN` não é reenviado automaticamente. |
+| 2026-07-20 | V2.2 | Pendente | Purge de mídia/mensagens após 90 dias e limpeza de payload legado. | Depende de cron dedicado e validação de storage local antes de ativação. |
+| 2026-07-20 | V2.3–V2.5 | Pendente | Filas, explicabilidade, documentação contextual, painel, alertas e rollout. | Nenhum item pendente é anunciado como disponível na documentação do produto. |
+| 2026-07-20 | V2.4 | Concluída parcialmente | Links contextuais do Inbox, Configurações e Auto-respostas para capítulos diretos; revisão de conteúdo que prometia simulação e purge ainda indisponíveis. | FAQ de filas, `UNKNOWN` e microfone será ampliado junto às respectivas entregas funcionais. |
+| 2026-07-20 | V2.5 | Concluída parcialmente | Rate limit de saída tornou-se reserva atômica por time e minuto no Postgres. | A tabela não recebe grants da Data API, possui RLS habilitado e é acessada somente pelo servidor. |
+
+### Contratos adicionados em V2.2
+
+- `whatsapp_webhook_events.nextAttemptAt` e `processingStartedAt` controlam o retry e a recuperação de processamento interrompido.
+- `whatsapp_outbound_commands.reconciledAt` registra a transição automática de `PENDING` para `UNKNOWN` após dez minutos sem confirmação.
+- `POST /api/v1/teams/:teamId/whatsapp/webhook-events/:eventId/requeue` exige gestor, aceita somente eventos `DEAD_LETTER` do próprio time e cria auditoria `webhook.dead_letter.requeue`.
+- A migration `20260720210000_whatsapp_outbox_reliability.sql` não cria tabela exposta nem grants; as tabelas permanecem acessadas pelo servidor.
 
 Este é o documento canônico do módulo WhatsApp. Ele substitui os estágios anteriores como plano de execução: descreve o que já existe, as lacunas verificadas e a ordem obrigatória para evoluir o produto sem regredir segurança, confiabilidade ou fluidez.
 

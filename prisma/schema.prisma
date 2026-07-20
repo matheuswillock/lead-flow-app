@@ -2069,6 +2069,7 @@ model Team {
   whatsappOutboundCommands WhatsAppOutboundCommand[]
   whatsappWebhookEvents WhatsAppWebhookEvent[]
   whatsappAuditEvents   WhatsAppAuditEvent[]
+  whatsappSendRateLimitWindows WhatsAppSendRateLimitWindow[]
 
   // CDP relations
   customerProfiles      CustomerProfile[]
@@ -3409,6 +3410,7 @@ model WhatsAppOutboundCommand {
   status          WhatsAppOutboundCommandStatus @default(PENDING)
   attemptCount    Int                           @default(0)
   lastError       String?                       @db.Text
+  reconciledAt    DateTime?                     @db.Timestamptz(6)
   createdAt       DateTime                      @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime                      @updatedAt @db.Timestamptz(6)
 
@@ -3430,6 +3432,8 @@ model WhatsAppWebhookEvent {
   status        WhatsAppWebhookEventStatus @default(PENDING)
   attemptCount  Int                        @default(0)
   lastError     String?                    @db.Text
+  nextAttemptAt DateTime?                  @db.Timestamptz(6)
+  processingStartedAt DateTime?            @db.Timestamptz(6)
   processedAt   DateTime?                  @db.Timestamptz(6)
   createdAt     DateTime                   @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime                   @updatedAt @db.Timestamptz(6)
@@ -3438,7 +3442,7 @@ model WhatsAppWebhookEvent {
   team   Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([configId, providerEventId])
-  @@index([status, createdAt])
+  @@index([status, nextAttemptAt, createdAt], map: "whatsapp_webhook_events_retry_idx")
   @@map("whatsapp_webhook_events")
 }
 
@@ -3485,6 +3489,19 @@ model WhatsAppUsageEvent {
   @@index([configId, periodKey])
   @@index([teamId, eventType, createdAt(sort: Desc)])
   @@map("whatsapp_usage_events")
+}
+
+model WhatsAppSendRateLimitWindow {
+  teamId      String   @db.Uuid
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, windowStart])
+  @@map("whatsapp_send_rate_limit_windows")
 }
 
 model WhatsAppAutoResponseRule {
