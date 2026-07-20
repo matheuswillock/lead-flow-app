@@ -1,8 +1,24 @@
 import { Output } from "@/lib/output";
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import { studioBotN8nDispatchService } from "@/app/api/services/backofficeBot/StudioBotN8nDispatchService";
+import {
+  computeOutboxNextAttemptAt,
+  shouldRetryOutboxEvent,
+} from "@/lib/studio-bot/outbox-retry";
 import type { StudioBotEventOutboxPayload } from "@/lib/studio-bot/types";
 import type { IBackofficeBotEventOutboxUseCase } from "./IBackofficeBotEventOutboxUseCase";
+
+function truncateError(message: string, max = 500): string {
+  const trimmed = message.trim();
+  if (trimmed.length <= max) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, max - 1)}…`;
+}
+
+function isAmbiguousDispatchFailure(status: number): boolean {
+  return status === 0 || status >= 500;
+}
 
 export class BackofficeBotEventOutboxUseCase implements IBackofficeBotEventOutboxUseCase {
   async enqueueEvent(input: StudioBotEventOutboxPayload, idempotencyKey: string): Promise<Output> {
@@ -34,25 +50,112 @@ export class BackofficeBotEventOutboxUseCase implements IBackofficeBotEventOutbo
       }
 
       const events = await backofficeBotRepository.listPendingOutboxEvents(limit);
-      const results: Array<{ eventId: string; ok: boolean; status: number }> = [];
+      const results: Array<{
+        eventId: string;
+        ok: boolean;
+        status: number;
+        attemptCount?: number;
+        skipped?: string;
+      }> = [];
 
       for (const event of events) {
         try {
+          const claim = await backofficeBotRepository.claimOutboundDelivery(event.idempotencyKey);
+
+          if (claim === "completed") {
+            await backofficeBotRepository.updateOutboxEventStatus(event.id, "sent", {
+              sentAt: event.sentAt ?? new Date(),
+              nextAttemptAt: null,
+              lastError: null,
+            });
+            results.push({
+              eventId: event.id,
+              ok: true,
+              status: 200,
+              skipped: "delivery_already_completed",
+            });
+            continue;
+          }
+
+          if (claim === "busy") {
+            results.push({
+              eventId: event.id,
+              ok: true,
+              status: 202,
+              skipped: "delivery_claim_busy",
+            });
+            continue;
+          }
+
           const dispatch = await studioBotN8nDispatchService.dispatchEvent(
             event.payload,
             event.idempotencyKey
           );
 
           if (dispatch.ok) {
-            await backofficeBotRepository.updateOutboxEventStatus(event.id, "sent", new Date());
+            await backofficeBotRepository.completeOutboundDelivery(event.idempotencyKey);
+            await backofficeBotRepository.updateOutboxEventStatus(event.id, "sent", {
+              sentAt: new Date(),
+              nextAttemptAt: null,
+              lastError: null,
+            });
             results.push({ eventId: event.id, ok: true, status: dispatch.status });
-          } else {
-            await backofficeBotRepository.updateOutboxEventStatus(event.id, "failed");
-            results.push({ eventId: event.id, ok: false, status: dispatch.status });
+            continue;
           }
-        } catch {
-          await backofficeBotRepository.updateOutboxEventStatus(event.id, "failed");
-          results.push({ eventId: event.id, ok: false, status: 0 });
+
+          if (isAmbiguousDispatchFailure(dispatch.status)) {
+            // Mantém claim `processing`: retry não reassumirá até STALE — evita WA duplicado
+            // se a Evolution já aceitou e só a resposta HTTP se perdeu.
+            const attemptCount = event.attemptCount + 1;
+            const nextAttemptAt = shouldRetryOutboxEvent(attemptCount)
+              ? computeOutboxNextAttemptAt(attemptCount)
+              : null;
+            await backofficeBotRepository.updateOutboxEventStatus(event.id, "failed", {
+              attemptCount,
+              nextAttemptAt,
+              lastError: truncateError(
+                `HTTP ${dispatch.status} (ambíguo — claim retained para dedupe)`
+              ),
+            });
+            results.push({
+              eventId: event.id,
+              ok: false,
+              status: dispatch.status,
+              attemptCount,
+            });
+            continue;
+          }
+
+          // 4xx: falha clara antes/sem side-effect confiável — libera claim p/ retry
+          await backofficeBotRepository.releaseOutboundDelivery(event.idempotencyKey);
+          const attemptCount = event.attemptCount + 1;
+          const nextAttemptAt = shouldRetryOutboxEvent(attemptCount)
+            ? computeOutboxNextAttemptAt(attemptCount)
+            : null;
+          await backofficeBotRepository.updateOutboxEventStatus(event.id, "failed", {
+            attemptCount,
+            nextAttemptAt,
+            lastError: truncateError(`HTTP ${dispatch.status}`),
+          });
+          results.push({
+            eventId: event.id,
+            ok: false,
+            status: dispatch.status,
+            attemptCount,
+          });
+        } catch (error) {
+          await backofficeBotRepository.releaseOutboundDelivery(event.idempotencyKey);
+          const attemptCount = event.attemptCount + 1;
+          const nextAttemptAt = shouldRetryOutboxEvent(attemptCount)
+            ? computeOutboxNextAttemptAt(attemptCount)
+            : null;
+          const message = error instanceof Error ? error.message : "dispatch_exception";
+          await backofficeBotRepository.updateOutboxEventStatus(event.id, "failed", {
+            attemptCount,
+            nextAttemptAt,
+            lastError: truncateError(message),
+          });
+          results.push({ eventId: event.id, ok: false, status: 0, attemptCount });
         }
       }
 
