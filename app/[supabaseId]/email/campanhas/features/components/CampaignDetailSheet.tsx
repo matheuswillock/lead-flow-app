@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
+import { BarChart3, Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,7 +19,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Separator } from "@/components/ui/separator"
@@ -50,13 +49,18 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CampaignStatusBadge } from "./CampaignStatusBadge"
-import { CampaignLogsTab } from "./CampaignLogsTab"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import type { ContactList, CampaignSheetTab, SubCampaignSummary } from "../context/CampanhasTypes"
+import type { ContactList, SubCampaignSummary } from "../context/CampanhasTypes"
+
+type CampaignAnalyticsTarget = {
+  id: string
+  name: string
+  errorMessage?: string | null
+}
 
 function formatContactListLabel(list: ContactList): string {
   const activeCount = list.activeContacts ?? list.totalContacts
@@ -79,6 +83,7 @@ function SubCampaignActionsMenu({
   sendingId,
   openEditById,
   handleSend,
+  onOpenAnalytics,
 }: {
   subCampaign: SubCampaignSummary
   canSendCampaign: boolean
@@ -86,6 +91,7 @@ function SubCampaignActionsMenu({
   sendingId: string | null
   openEditById: (id: string) => Promise<void>
   handleSend: (id: string) => Promise<void>
+  onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
@@ -127,6 +133,18 @@ function SubCampaignActionsMenu({
             Editar
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={() =>
+              onOpenAnalytics({
+                id: subCampaign.id,
+                name: subCampaign.name,
+                errorMessage: subCampaign.errorMessage ?? null,
+              })
+            }
+          >
+            <BarChart3 />
+            Métricas e logs
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => setSendConfirmOpen(true)}
             disabled={!canRetry}
             title={!canRetry ? retryDisabledReason : undefined}
@@ -165,13 +183,15 @@ function SubCampaignActionsMenu({
   )
 }
 
-export function CampaignDetailSheet() {
+export function CampaignDetailSheet({
+  onOpenAnalytics,
+}: {
+  onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
+}) {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
   const {
     detailCampaign,
-    sheetTab,
-    setSheetTab,
     closeDetail,
     editName,
     editTemplateId,
@@ -238,22 +258,12 @@ export function CampaignDetailSheet() {
                 sub-campanhas
               </Badge>
             ) : null}
-            <span>Campanha atual e logs de disparo.</span>
+            <span>Campanha atual.</span>
           </SheetDescription>
         </SheetHeader>
 
         {detailCampaign ? (
-          <Tabs
-            value={sheetTab}
-            onValueChange={(value) => setSheetTab(value as CampaignSheetTab)}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <TabsList className="mx-0 mt-4 w-full justify-start">
-              <TabsTrigger value="campaign">Campanha atual</TabsTrigger>
-              <TabsTrigger value="logs">Logs</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="campaign" className="mt-4 flex min-h-0 flex-1 flex-col">
+          <div className="mt-4 flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto">
                 <div className="mb-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
@@ -294,8 +304,8 @@ export function CampaignDetailSheet() {
                 {isParentCampaign && detailCampaign.subCampaigns && detailCampaign.subCampaigns.length > 0 ? (
                   <div className="mb-4 flex flex-col gap-2">
                     <p className="text-sm font-medium">Sub-campanhas</p>
-                    <div className="rounded-md border">
-                      <Table>
+                    <div className="overflow-x-auto rounded-md border">
+                      <Table className="min-w-[760px]">
                         <TableHeader>
                           <TableRow>
                             <TableHead>Parte</TableHead>
@@ -330,6 +340,7 @@ export function CampaignDetailSheet() {
                                   sendingId={sendingId}
                                   openEditById={openEditById}
                                   handleSend={handleSend}
+                                  onOpenAnalytics={onOpenAnalytics}
                                 />
                               </TableCell>
                             </TableRow>
@@ -467,12 +478,7 @@ export function CampaignDetailSheet() {
                   </Button>
                 </SheetFooter>
               ) : null}
-            </TabsContent>
-
-            <TabsContent value="logs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
-              <CampaignLogsTab campaignId={detailCampaign.id} />
-            </TabsContent>
-          </Tabs>
+          </div>
         ) : null}
       </SheetContent>
     </Sheet>
