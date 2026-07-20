@@ -186,8 +186,9 @@ export class PendingActionUseCase {
 
 
   /**
-   * Aplica PendingAction add_user sem cobrança Asaas e sem sync de assinatura.
-   * Uso: backfill para masters com usuários ilimitados / Member PRO.
+   * Aplica PendingAction add_user sem cobrança incremental.
+   * Cancela cobrança Asaas aberta (se houver), nunca sincroniza targetRecurringTotal do payload
+   * e, para Member PRO ativo, sincroniza uso via syncUsageToSubscription.
    */
   async forceApplyPendingActionWithoutCharge(
     pendingActionId: string,
@@ -225,15 +226,70 @@ export class PendingActionUseCase {
       );
     }
 
+    if (action.paymentId) {
+      try {
+        const payment = await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, {
+          method: "GET",
+        });
+        const paymentStatus = String(payment?.status ?? "PENDING");
+        const paidStatuses = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
+        if (paidStatuses.has(paymentStatus)) {
+          return new Output(
+            false,
+            [],
+            [
+              `Cobrança Asaas ${action.paymentId} já está paga (${paymentStatus}); não é possível dispensar`,
+            ],
+            null
+          );
+        }
+
+        const cancelableStatuses = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"]);
+        if (cancelableStatuses.has(paymentStatus)) {
+          await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, { method: "DELETE" });
+          console.info(
+            `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Falha ao cancelar cobrança Asaas ${action.paymentId}:`,
+          error
+        );
+        return new Output(
+          false,
+          [],
+          ["Não foi possível cancelar a cobrança Asaas aberta antes de dispensar"],
+          null
+        );
+      }
+
+      await prisma.pendingAction.update({
+        where: { id: action.id },
+        data: { paymentId: null },
+      });
+      action.paymentId = null;
+    }
+
     console.info(
       `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Aplicando ${pendingActionId} reason=${options.reason}`
     );
 
-    return this.applyResolvedPendingAction(action, undefined, {
+    // Nunca aplica targetRecurringTotal do payload (evita subir mensalidade no waive).
+    const result = await this.applyResolvedPendingAction(action, undefined, {
       skipSubscriptionSync: true,
       paymentStatus: "WAIVED",
       waivedReason: options.reason,
     });
+
+    if (result.isValid) {
+      const memberProContext = await memberProBillingUseCase.getMemberProContext(action.masterId);
+      if (memberProContext.isActive) {
+        await memberProBillingUseCase.syncUsageToSubscription(action.masterId, "add_user");
+      }
+    }
+
+    return result;
   }
 
   private async applyResolvedPendingAction(
@@ -577,11 +633,14 @@ export class PendingActionUseCase {
       });
     }
 
+    const nextPaymentId =
+      paymentStatus === "WAIVED" ? null : (paymentId ?? action.paymentId);
+
     await tx.pendingAction.update({
       where: { id: action.id },
       data: {
         status: "applied",
-        paymentId: paymentId ?? action.paymentId,
+        paymentId: nextPaymentId,
         teamId,
         payload: {
           ...payload,
