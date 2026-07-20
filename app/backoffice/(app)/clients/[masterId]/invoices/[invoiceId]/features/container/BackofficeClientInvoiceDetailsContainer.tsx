@@ -223,9 +223,11 @@ export function BackofficeClientInvoiceDetailsContainer() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <CardTitle className="flex flex-wrap items-center gap-2">
               <Receipt className="h-5 w-5 text-primary" />
-              <span>Fatura {invoice.invoiceNumber ? `#${invoice.invoiceNumber}` : invoice.id}</span>
+              <span>
+                {invoice.invoiceName} · {invoice.invoiceIdDisplay}
+              </span>
               <Badge variant={statusBadge.variant} className={statusBadge.className}>
-                {statusBadge.label}
+                {invoice.status === "WAIVED" ? "Dispensada" : statusBadge.label}
               </Badge>
             </CardTitle>
 

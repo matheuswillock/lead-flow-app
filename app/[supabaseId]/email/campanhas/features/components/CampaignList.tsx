@@ -80,7 +80,8 @@ function CampaignActionsMenu({
     !isParentCampaign &&
     (campaign.status === "draft" ||
       campaign.status === "scheduled" ||
-      campaign.status === "sent")
+      campaign.status === "sent" ||
+      campaign.status === "failed")
   const canSend = canSendCampaign && canSendByStatus
   const sendDisabledReason =
     sendBlockReason ??
