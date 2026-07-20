@@ -43,4 +43,29 @@ export class BackofficeClientInvoiceDetailsService
       message: data.successMessages?.[0] ?? "Notificação enviada com sucesso",
     }
   }
+
+  async updateInvoice(
+    masterId: string,
+    invoiceId: string,
+    data: { value: number; dueDate: string }
+  ): Promise<BackofficeClientInvoiceDetails> {
+    const response = await fetch(
+      `/api/v1/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      }
+    )
+
+    const json = await response.json()
+
+    if (!json.isValid || !json.result) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao atualizar a cobrança")
+    }
+
+    return json.result
+  }
 }

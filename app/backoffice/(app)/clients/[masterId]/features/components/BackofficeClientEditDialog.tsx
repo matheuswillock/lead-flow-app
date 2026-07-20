@@ -16,6 +16,14 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { maskPhone, maskCEP, unmask, formatDocumentInput } from "@/lib/masks"
 import type { BackofficeClientDetails } from "../context/BackofficeClientDetailsTypes"
@@ -25,6 +33,12 @@ const FUNCTIONS = [
   { value: "SDR", label: "SDR", description: "Qualifica leads e organiza o funil." },
   { value: "CLOSER", label: "Closer", description: "Conduz reuniões e fechamento." },
 ] as const
+
+const MEMBER_PRO_MIN_DAYS = 1
+const MEMBER_PRO_MAX_DAYS = 365
+const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
+
+type EditableUserType = "common" | "member_pro"
 
 interface FormState {
   fullName: string
@@ -38,9 +52,26 @@ interface FormState {
   city: string
   state: string
   functions: string[]
+  userType: EditableUserType
+  memberProAccessDays: string
+}
+
+function remainingAccessDays(accessExpiresAt: string | null): number | null {
+  if (!accessExpiresAt) return null
+  const ms = new Date(accessExpiresAt).getTime() - Date.now()
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  return Math.min(
+    MEMBER_PRO_MAX_DAYS,
+    Math.max(MEMBER_PRO_MIN_DAYS, Math.ceil(ms / MEMBER_PRO_DAY_MS))
+  )
+}
+
+function suggestedMemberProAccessDays(accessExpiresAt: string | null): number {
+  return remainingAccessDays(accessExpiresAt) ?? MEMBER_PRO_MAX_DAYS
 }
 
 function initForm(details: BackofficeClientDetails): FormState {
+  const slug = details.userType.slug === "member_pro" ? "member_pro" : "common"
   return {
     fullName: details.fullName ?? "",
     phone: details.phone ?? "",
@@ -53,12 +84,22 @@ function initForm(details: BackofficeClientDetails): FormState {
     city: details.city ?? "",
     state: details.state ?? "",
     functions: details.functions ?? [],
+    userType: slug,
+    memberProAccessDays:
+      slug === "member_pro"
+        ? String(suggestedMemberProAccessDays(details.userType.accessExpiresAt))
+        : "",
   }
 }
 
 function nullOrTrim(v: string): string | null {
   const s = v.trim()
   return s.length > 0 ? s : null
+}
+
+function parsePositiveInt(value: string): number | null {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
 interface Props {
@@ -107,7 +148,27 @@ export function BackofficeClientEditDialog({
     }))
   }
 
-  const isValid = form.fullName.trim().length >= 2
+  const memberProAccessDaysValue = parsePositiveInt(form.memberProAccessDays)
+  const memberProAccessDaysValid =
+    form.userType !== "member_pro" ||
+    (memberProAccessDaysValue !== null &&
+      memberProAccessDaysValue >= MEMBER_PRO_MIN_DAYS &&
+      memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
+
+  const isValid = form.fullName.trim().length >= 2 && memberProAccessDaysValid
+
+  const initialUserType: EditableUserType =
+    details.userType.slug === "member_pro" ? "member_pro" : "common"
+  const userTypeChanged = form.userType !== initialUserType
+  const currentRemainingDays = remainingAccessDays(details.userType.accessExpiresAt)
+  const memberProDaysChanged =
+    form.userType === "member_pro" &&
+    memberProAccessDaysValue !== null &&
+    currentRemainingDays !== null &&
+    memberProAccessDaysValue !== currentRemainingDays
+  const memberProNeedsRenewal =
+    form.userType === "member_pro" && details.userType.isExpired
+  const shouldUpdateUserType = userTypeChanged || memberProDaysChanged || memberProNeedsRenewal
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -130,6 +191,21 @@ export function BackofficeClientEditDialog({
         state: nullOrTrim(form.state),
         functions: form.functions,
       })
+
+      if (shouldUpdateUserType) {
+        if (form.userType === "common") {
+          await service.updateUserType(masterId, { userType: "common" })
+        } else {
+          const accessExpiresAt = new Date(
+            Date.now() + (memberProAccessDaysValue as number) * MEMBER_PRO_DAY_MS
+          ).toISOString()
+          await service.updateUserType(masterId, {
+            userType: "member_pro",
+            accessExpiresAt,
+          })
+        }
+      }
+
       toast.success("Dados atualizados com sucesso")
       onOpenChange(false)
       onSuccess()
@@ -219,6 +295,73 @@ export function BackofficeClientEditDialog({
                 onChange={(e) => setField("cpfCnpj", unmask(formatDocumentInput(e.target.value)))}
                 disabled={isSubmitting}
               />
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium">Tipo de usuário</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Defina se o cliente é Comum ou Member PRO.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-user-type">Tipo</Label>
+                  <Select
+                    value={form.userType}
+                    onValueChange={(value) => {
+                      const next = value as EditableUserType
+                      setForm((prev) => ({
+                        ...prev,
+                        userType: next,
+                        memberProAccessDays:
+                          next === "member_pro"
+                            ? prev.memberProAccessDays || String(MEMBER_PRO_MAX_DAYS)
+                            : "",
+                      }))
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="edit-user-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="common">Comum</SelectItem>
+                        <SelectItem value="member_pro">Member PRO</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {details.userType.slug === "member_pro" && details.userType.accessExpiresAt ? (
+                    <p className="text-xs text-muted-foreground">
+                      Acesso atual expira em{" "}
+                      {new Date(details.userType.accessExpiresAt).toLocaleDateString("pt-BR")}
+                      {details.userType.isExpired ? " (expirado)" : ""}.
+                    </p>
+                  ) : null}
+                </div>
+                {form.userType === "member_pro" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-member-pro-days">Validade do acesso (dias)</Label>
+                    <Input
+                      id="edit-member-pro-days"
+                      type="number"
+                      min={MEMBER_PRO_MIN_DAYS}
+                      max={MEMBER_PRO_MAX_DAYS}
+                      value={form.memberProAccessDays}
+                      onChange={(e) => setField("memberProAccessDays", e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Entre {MEMBER_PRO_MIN_DAYS} e {MEMBER_PRO_MAX_DAYS} dias. Member PRO ativa
+                      usuários ilimitados.
+                    </p>
+                    {form.memberProAccessDays.length > 0 && !memberProAccessDaysValid ? (
+                      <p className="text-xs text-destructive">Informe um número entre 1 e 365</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             {/* Address */}

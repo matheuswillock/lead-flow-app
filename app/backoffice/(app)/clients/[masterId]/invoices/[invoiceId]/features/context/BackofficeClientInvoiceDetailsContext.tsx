@@ -16,9 +16,11 @@ interface BackofficeClientInvoiceDetailsContextValue {
   invoice: BackofficeClientInvoiceDetails | null
   isLoading: boolean
   isSendingNotification: boolean
+  isUpdatingInvoice: boolean
   error: string | null
   reload: () => Promise<void>
   sendStatusNotification: () => Promise<string>
+  updateInvoice: (data: { value: number; dueDate: string }) => Promise<void>
 }
 
 const BackofficeClientInvoiceDetailsContext = createContext<
@@ -41,6 +43,7 @@ export function BackofficeClientInvoiceDetailsProvider({
   const [invoice, setInvoice] = useState<BackofficeClientInvoiceDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSendingNotification, setIsSendingNotification] = useState(false)
+  const [isUpdatingInvoice, setIsUpdatingInvoice] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
@@ -83,15 +86,32 @@ export function BackofficeClientInvoiceDetailsProvider({
     }
   }, [invoiceId, isSendingNotification, masterId, service])
 
+  const updateInvoice = useCallback(
+    async (data: { value: number; dueDate: string }) => {
+      if (isUpdatingInvoice) return
+
+      setIsUpdatingInvoice(true)
+      try {
+        const updated = await service.updateInvoice(masterId, invoiceId, data)
+        setInvoice(updated)
+      } finally {
+        setIsUpdatingInvoice(false)
+      }
+    },
+    [invoiceId, isUpdatingInvoice, masterId, service]
+  )
+
   return (
     <BackofficeClientInvoiceDetailsContext.Provider
       value={{
         invoice,
         isLoading,
         isSendingNotification,
+        isUpdatingInvoice,
         error,
         reload: loadInvoice,
         sendStatusNotification,
+        updateInvoice,
       }}
     >
       {children}
