@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
+import { BarChart3, Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -56,6 +56,12 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import type { ContactList, SubCampaignSummary } from "../context/CampanhasTypes"
 
+type CampaignAnalyticsTarget = {
+  id: string
+  name: string
+  errorMessage?: string | null
+}
+
 function formatContactListLabel(list: ContactList): string {
   const activeCount = list.activeContacts ?? list.totalContacts
   return `${list.name} (${activeCount.toLocaleString("pt-BR")} ativos)`
@@ -77,6 +83,7 @@ function SubCampaignActionsMenu({
   sendingId,
   openEditById,
   handleSend,
+  onOpenAnalytics,
 }: {
   subCampaign: SubCampaignSummary
   canSendCampaign: boolean
@@ -84,6 +91,7 @@ function SubCampaignActionsMenu({
   sendingId: string | null
   openEditById: (id: string) => Promise<void>
   handleSend: (id: string) => Promise<void>
+  onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
@@ -125,6 +133,18 @@ function SubCampaignActionsMenu({
             Editar
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={() =>
+              onOpenAnalytics({
+                id: subCampaign.id,
+                name: subCampaign.name,
+                errorMessage: subCampaign.errorMessage ?? null,
+              })
+            }
+          >
+            <BarChart3 />
+            Métricas e logs
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => setSendConfirmOpen(true)}
             disabled={!canRetry}
             title={!canRetry ? retryDisabledReason : undefined}
@@ -163,7 +183,11 @@ function SubCampaignActionsMenu({
   )
 }
 
-export function CampaignDetailSheet() {
+export function CampaignDetailSheet({
+  onOpenAnalytics,
+}: {
+  onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
+}) {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
   const {
@@ -316,6 +340,7 @@ export function CampaignDetailSheet() {
                                   sendingId={sendingId}
                                   openEditById={openEditById}
                                   handleSend={handleSend}
+                                  onOpenAnalytics={onOpenAnalytics}
                                 />
                               </TableCell>
                             </TableRow>
