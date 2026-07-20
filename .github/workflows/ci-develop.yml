@@ -8,9 +8,12 @@ on:
       - "package.json"
   workflow_dispatch:
 
+# cancel-in-progress: false — um run de develop precisa terminar atômico
+# (version bump + push da release branch + PR); cancelar no meio deixava a
+# release inconsistente. Pushes consecutivos enfileiram (GitHub mantém 1 pendente).
 concurrency:
   group: ci-develop-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   actions: read

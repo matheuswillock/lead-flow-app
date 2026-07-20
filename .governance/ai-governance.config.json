@@ -148,7 +148,7 @@
     "nonTypeScriptFileAllowlist": [
       "eslint.config.mjs",
       "postcss.config.mjs",
-      ".github/scripts/claude-pr-description.py",
+      ".github/scripts/generate-pr-description.py",
       "public/sw.js"
     ],
     "routeRepositoryImportAllowlist": [
