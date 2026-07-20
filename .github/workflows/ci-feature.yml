@@ -51,28 +51,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Governance Sync
         id: governance-sync
@@ -147,28 +127,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Run unit tests
         run: bun run test
@@ -198,20 +158,8 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Cache Next.js build
         uses: actions/cache@v4
@@ -221,9 +169,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
             ${{ runner.os }}-next-
-
-      - name: Install deps
-        run: bun install
 
       - name: Generate Prisma Client
         run: bun run prisma:generate
