@@ -143,11 +143,11 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
     }
   }, [])
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (providedStream?: MediaStream) => {
     if (mediaRecorderRef.current) return
 
     try {
-      const stream = await requestMicrophoneStream()
+      const stream = providedStream ?? await requestMicrophoneStream()
       const recorder = new MediaRecorder(stream)
       const audioContext = new AudioContext()
       const analyser = audioContext.createAnalyser()
@@ -267,6 +267,7 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
     elapsedMs,
     waveformLevels,
     start,
+    startWithStream: start,
     pause,
     resume,
     cancel,

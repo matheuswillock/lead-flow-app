@@ -6,6 +6,7 @@ const updateConversationMock = mock(async () => ({
   id: "conv-1",
   handoffMode: "BOT",
 }))
+const createAuditEventMock = mock(async () => ({ id: "audit-1" }))
 
 mock.module("@/app/api/services/whatsapp/WhatsAppConversationAccessService", () => ({
   assertCanAccessConversation: mock(async () => ({
@@ -24,6 +25,7 @@ mock.module("@/app/api/services/whatsapp/WhatsAppConversationAccessService", () 
 mock.module("@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository", () => ({
   whatsAppRepository: {
     updateConversation: updateConversationMock,
+    createAuditEvent: createAuditEventMock,
   },
 }))
 
@@ -58,5 +60,9 @@ describe("SetConversationHandoffUseCase", () => {
 
     expect(output.isValid).toBe(true)
     expect(updateConversationMock).toHaveBeenCalledWith("conv-1", { handoffMode: "BOT" })
+    expect(createAuditEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: "conversation.handoff",
+      actorProfileId: "profile-1",
+    }))
   })
 })

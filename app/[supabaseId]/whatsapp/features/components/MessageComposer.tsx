@@ -112,7 +112,6 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   const [mentionStart, setMentionStart] = useState(0)
   const [mentionHighlight, setMentionHighlight] = useState(0)
   const [micPermissionDenied, setMicPermissionDenied] = useState(false)
-  const [isRequestingMic, setIsRequestingMic] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -194,28 +193,6 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
 
     return () => {
       if (permissionStatus) permissionStatus.onchange = null
-    }
-  }, [])
-
-  const handleRequestMicrophone = useCallback(async () => {
-    if (!isMicrophoneSupported()) {
-      toast.error(getMicrophoneUnsupportedMessage())
-      return
-    }
-
-    setIsRequestingMic(true)
-    try {
-      const stream = await requestMicrophoneStream()
-      stream.getTracks().forEach((track) => track.stop())
-      setMicPermissionDenied(false)
-      toast.success("Microfone habilitado. Toque no ícone de gravar para começar.")
-    } catch (error) {
-      if (error instanceof MicrophoneAccessError && error.code === "NotAllowedError") {
-        setMicPermissionDenied(true)
-      }
-      toast.error(error instanceof Error ? error.message : "Não foi possível acessar o microfone.")
-    } finally {
-      setIsRequestingMic(false)
     }
   }, [])
 
@@ -378,13 +355,22 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
     })
   }, [])
 
-  const handleStartRecording = useCallback(() => {
+  const handleStartRecording = useCallback(async () => {
     if (isDisabled || hasText) return
     if (!isMicrophoneSupported()) {
       toast.error(getMicrophoneUnsupportedMessage())
       return
     }
-    void recorder.start()
+    try {
+      // Must remain the first awaited browser capability after the user gesture.
+      const stream = await requestMicrophoneStream()
+      await recorder.startWithStream(stream)
+    } catch (error) {
+      if (error instanceof MicrophoneAccessError && error.code === "NotAllowedError") {
+        setMicPermissionDenied(true)
+      }
+      toast.error(error instanceof Error ? error.message : "Não foi possível acessar o microfone.")
+    }
   }, [hasText, isDisabled, recorder])
 
   const showSendButton = hasText || isRecording
@@ -406,15 +392,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
           <MicOff />
           <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span>{MICROPHONE_PERMISSION_DENIED_MESSAGE}</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={isRequestingMic || shellDisabled}
-              onClick={() => void handleRequestMicrophone()}
-            >
-              {isRequestingMic ? "Solicitando…" : "Como liberar"}
-            </Button>
+            <span className="text-xs">Libere o acesso nas permissões do site e tente gravar novamente.</span>
           </AlertDescription>
         </Alert>
       ) : null}

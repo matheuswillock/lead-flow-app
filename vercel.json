@@ -22,6 +22,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/whatsapp/cron/process-outbox",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/notifications/cron/task-overdue",
       "schedule": "0 8 * * *"
     },

@@ -577,7 +577,8 @@ class WhatsAppRepository implements IWhatsAppRepository {
     const [event] = await prisma.$queryRaw<WhatsAppWebhookOutboxEvent[]>`
       update whatsapp_webhook_events
       set status = 'PROCESSING', "attemptCount" = "attemptCount" + 1, "updatedAt" = now()
-      where id = ${eventId}::uuid and status = 'PENDING'
+      where id = ${eventId}::uuid
+        and (status = 'PENDING' or (status = 'PROCESSING' and "updatedAt" < now() - interval '5 minutes'))
       returning id, "teamId", "configId", payload, "attemptCount"
     `
     return event ?? null
@@ -596,7 +597,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
   async listPendingWebhookEventIds(limit: number): Promise<string[]> {
     const events = await prisma.$queryRaw<Array<{ id: string }>>`
-      select id from whatsapp_webhook_events where status = 'PENDING' order by "createdAt" asc limit ${Math.min(limit, 100)}
+      select id from whatsapp_webhook_events
+      where status = 'PENDING'
+        or (status = 'PROCESSING' and "updatedAt" < now() - interval '5 minutes')
+      order by "createdAt" asc limit ${Math.min(limit, 100)}
     `
     return events.map((event) => event.id)
   }
