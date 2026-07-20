@@ -210,4 +210,8 @@ export interface IBackofficeBotRepository {
     }
   ): Promise<BackofficeBotEventOutbox>;
   countSentOutboxEventsForProfileSince(profileId: string, since: Date): Promise<number>;
+
+  claimOutboundDelivery(idempotencyKey: string): Promise<"acquired" | "completed" | "busy">;
+  completeOutboundDelivery(idempotencyKey: string): Promise<void>;
+  releaseOutboundDelivery(idempotencyKey: string): Promise<void>;
 }

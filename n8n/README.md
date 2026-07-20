@@ -132,6 +132,7 @@ Base URL nos nós HTTP (container): definida por `LEAD_FLOW_API_BASE_URL` em `.e
 4. **Teste de falha (dev):** em um workflow **ativo** (ex. `bethania-push-outbound`), temporariamente quebrar a URL da Evolution no Code node / env, ou adicionar um Code node `throw new Error('teste alerta Bethânia')` no caminho feliz, salvar, ativar e disparar (ping outbox / mensagem). O `bethania-error-notifier` deve postar no Slack.
 5. `bethania-push-outbound` usa `responseMode: lastNode` — falha de execução → HTTP ≠2xx → outbox marca `failed` (não `sent`).
 6. **Retry outbox (Next.js):** o cron `studio-bot-outbox` reprocessa eventos `failed` com `attemptCount < 5` e `nextAttemptAt` vencido (backoff 1m/5m/15m/1h/6h). Taxa de falha ≥10% com ≥5 despachos gera alerta Sentry/`console.error` (tag `studio-bot-outbox`).
+7. **Dedupe de entrega:** antes do HTTP ao N8N, o consumer grava claim atômico em `backoffice_bot_outbound_delivery` pela `idempotencyKey` (também enviada no body + header). Claim `completed` → não reenvia; falha ambígua (timeout/5xx) **mantém** o claim `processing` (reclaim só após 15min) para não duplicar WhatsApp se a Evolution já aceitou.
 
 ## Stubs N8N — não ativar
 

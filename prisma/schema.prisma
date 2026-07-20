@@ -3921,6 +3921,25 @@ model BackofficeBotEventOutbox {
   @@map("backoffice_bot_event_outbox")
 }
 
+enum BackofficeBotOutboundDeliveryStatus {
+  processing
+  completed
+
+  @@map("backoffice_bot_outbound_delivery_status")
+}
+
+/// Claim atômico por idempotencyKey antes do dispatch N8N/Evolution (evita WA duplicado no retry).
+model BackofficeBotOutboundDelivery {
+  id             String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idempotencyKey String                              @unique @db.Text
+  status         BackofficeBotOutboundDeliveryStatus @default(processing)
+  createdAt      DateTime                            @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                            @updatedAt @db.Timestamptz(6)
+
+  @@index([status, updatedAt], map: "backoffice_bot_outbound_delivery_status_updated_idx")
+  @@map("backoffice_bot_outbound_delivery")
+}
+
 enum BackofficeBotAiProvider {
   groq
   ollama

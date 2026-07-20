@@ -8,6 +8,10 @@ import type {
 import { prisma } from "@/app/api/infra/data/prisma";
 import { normalizePhoneE164 } from "@/lib/studio-bot/phone";
 import { STUDIO_BOT_OUTBOX_MAX_ATTEMPTS } from "@/lib/studio-bot/outbox-retry";
+import {
+  OUTBOUND_DELIVERY_STALE_MS,
+  isOutboundDeliveryClaimStale,
+} from "@/lib/studio-bot/outbound-delivery-claim";
 import type {
   CreateAuthChallengeInput,
   CreateMessageInput,
@@ -697,6 +701,63 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
         status: "sent",
         sentAt: { gte: since },
       },
+    });
+  }
+
+  async claimOutboundDelivery(idempotencyKey: string): Promise<"acquired" | "completed" | "busy"> {
+    try {
+      await prisma.backofficeBotOutboundDelivery.create({
+        data: { idempotencyKey, status: "processing" },
+      });
+      return "acquired";
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: string }).code)
+          : null;
+      if (code !== "P2002") {
+        throw error;
+      }
+    }
+
+    const existing = await prisma.backofficeBotOutboundDelivery.findUnique({
+      where: { idempotencyKey },
+      select: { id: true, status: true, updatedAt: true },
+    });
+    if (!existing) {
+      return "busy";
+    }
+    if (existing.status === "completed") {
+      return "completed";
+    }
+
+    if (!isOutboundDeliveryClaimStale(existing.updatedAt)) {
+      return "busy";
+    }
+
+    const staleBefore = new Date(Date.now() - OUTBOUND_DELIVERY_STALE_MS);
+    const reclaimed = await prisma.backofficeBotOutboundDelivery.updateMany({
+      where: {
+        idempotencyKey,
+        status: "processing",
+        updatedAt: { lte: staleBefore },
+      },
+      data: { updatedAt: new Date() },
+    });
+    return reclaimed.count === 1 ? "acquired" : "busy";
+  }
+
+  async completeOutboundDelivery(idempotencyKey: string): Promise<void> {
+    await prisma.backofficeBotOutboundDelivery.upsert({
+      where: { idempotencyKey },
+      create: { idempotencyKey, status: "completed" },
+      update: { status: "completed" },
+    });
+  }
+
+  async releaseOutboundDelivery(idempotencyKey: string): Promise<void> {
+    await prisma.backofficeBotOutboundDelivery.deleteMany({
+      where: { idempotencyKey, status: "processing" },
     });
   }
 }
