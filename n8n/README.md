@@ -46,7 +46,7 @@ Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows de
 
 4. Ative **bethania-error-notifier**, **bethania-router** e **bethania-push-outbound** após configurar variáveis (o `n8n:import:all` já faz isso).
 
-> **Arquitetura atual (Estágio 5):** a conversa (menu 1–5, verify `VINCULAR`) roda no **Corretor Studio** (`/api/webhooks/backoffice/studio-bot/inbound`). O N8N `bethania-router` é proxy Evolution→API; os JSONs `menu-main` / `list-*` / `add-note` / `verification-*` são stubs manuais até fase 2 (Credentials/HMAC).
+> **Arquitetura atual (Estágio 5 + Caminho A):** a conversa (menu 1–5, submenu de lead, verify `VINCULAR` e **Caminho A e-mail no chat**) roda no **Corretor Studio** (`/api/webhooks/backoffice/studio-bot/inbound`). O N8N `bethania-router` é proxy Evolution→API; os JSONs `menu-main` / `list-*` / `add-note` / `verification-*` são stubs manuais até fase 2 (Credentials/HMAC).
 
 ## Evolution — instância `bethania`
 

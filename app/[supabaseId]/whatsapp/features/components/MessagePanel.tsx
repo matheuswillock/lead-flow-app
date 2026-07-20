@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
-import { Loader2, Phone, RefreshCw, UserSquare2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowLeft, Loader2, Phone, RefreshCw, UserSquare2, Wifi, WifiOff } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -49,6 +49,7 @@ export function MessagePanel() {
   const { activeTeamId } = useTeamContext()
   const {
     selectedConversation,
+    selectConversation,
     messages,
     isLoadingMessages,
     isLoadingOlderMessages,
@@ -90,6 +91,16 @@ export function MessagePanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-11 shrink-0 md:hidden"
+          onClick={() => selectConversation(null)}
+          aria-label="Voltar para a lista de conversas"
+        >
+          <ArrowLeft />
+        </Button>
         <Avatar className="size-9">
           {selectedConversation.contactAvatarUrl ? (
             <AvatarImage src={selectedConversation.contactAvatarUrl} alt={displayName} />

@@ -1,5 +1,10 @@
 # Spec: Bot de WhatsApp por Time — Número Dedicado + Qualificação de Leads
 
+> **ADIADA — NÃO IMPLEMENTAR ANTES DA ESTABILIDADE DO INBOX**  
+> Pré-condição: fechar dívidas bloqueadoras de [`WHATSAPP_SPEC.md`](WHATSAPP_SPEC.md) Fases 0–1 (mídia em storage, webhook async, soft-delete/audit, mic/mobile/UX).  
+> Bloqueio arquitetural: `TeamWhatsAppConfig.teamId @unique` ainda impede segundo config (`purpose INBOX|BOT`).  
+> Status em 2026-07-18: **zero implementação** (schema, rotas, UI, feature slug).
+
 Adiciona ao módulo WhatsApp existente (Evolution API, inbox por time) um **segundo número de WhatsApp por time**, dedicado a um bot com identidade configurável (nome + foto), regras simples de resposta e um **motor de qualificação de leads em etapas** (perguntas sequenciais → pontuação → tag automática). Compatível com `WHATSAPP_SPEC.md` (evolução paralela do mesmo módulo — RBAC, adapter de vendor, tags), sem depender dele.
 
 **Baseada em:** leitura direta de `prisma/schema.prisma` (seção WhatsApp), `app/api/services/whatsapp/**`, `app/api/useCases/whatsapp/**`, `app/api/infra/data/repositories/whatsapp/WhatsAppRepository.ts`, `app/[supabaseId]/whatsapp/features/**`, `prisma/seed-backoffice-products.ts`, `agents.md`, `WHATSAPP_SPEC.md`, `WHATSAPP_AUDIT.md`. Ler `WHATSAPP_AUDIT.md` antes de qualquer estágio.

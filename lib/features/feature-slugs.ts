@@ -25,6 +25,7 @@ export const FEATURE_SLUGS = {
   CDP: "cdp",
   STUDIO_BOT: "studio-bot",
   STUDIO_BOT_OPS: "studio-bot-ops",
+  STUDIO_BOT_AI: "studio-bot-ai",
 } as const
 
 export type FeatureSlug = (typeof FEATURE_SLUGS)[keyof typeof FEATURE_SLUGS]

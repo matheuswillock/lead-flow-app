@@ -25,7 +25,7 @@ interface WhatsAppInboxContainerProps {
 }
 
 export function WhatsAppInboxContainer({ supabaseId }: WhatsAppInboxContainerProps) {
-  const { config, isLoadingConfig } = useWhatsAppInboxContext()
+  const { config, isLoadingConfig, selectedConversationId } = useWhatsAppInboxContext()
 
   if (isLoadingConfig) {
     return <InboxSkeleton />
@@ -38,14 +38,18 @@ export function WhatsAppInboxContainer({ supabaseId }: WhatsAppInboxContainerPro
   const showHistorySyncBanner = isActiveHistorySync(config)
 
   return (
-    <div className="flex h-[calc(100vh-theme(spacing.16))] flex-col gap-2 overflow-hidden">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col gap-2 overflow-hidden pt-0 md:h-[calc(100vh-theme(spacing.16))] md:max-h-none">
       {showHistorySyncBanner ? (
         <Alert>
           <Loader2 className="animate-spin" data-icon="inline-start" />
           <AlertDescription>Sincronizando conversas dos últimos 30 dias…</AlertDescription>
         </Alert>
       ) : null}
-      <MessagingInboxLayout list={<ConversationList />} panel={<MessagePanel />} />
+      <MessagingInboxLayout
+        showPanel={Boolean(selectedConversationId)}
+        list={<ConversationList />}
+        panel={<MessagePanel />}
+      />
     </div>
   )
 }

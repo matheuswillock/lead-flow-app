@@ -298,3 +298,4 @@ Cada fase só inicia após os critérios da anterior. Mudanças devem ser pequen
 | 2026-07-17 | Número formatado é fallback obrigatório da identidade; `Contato` é proibido para conversa individual. |
 | 2026-07-17 | Permissão de microfone é solicitada somente por gesto explícito; negação recebe instrução, não promessa de reversão. |
 | 2026-07-17 | Mídia e efeitos de webhook passam a ter armazenamento/processamento duráveis antes de expansão de recursos. |
+| 2026-07-18 | Fase 0 parcial entregue: mídia outbound em bucket `whatsapp-media` (sem Base64 novo), webhook aceita e processa via `after()`, soft-delete + `WhatsAppAuditEvent`. Fase 1 parcial: mic só alerta em `denied`, mobile lista↔painel, waveform RMS. `WHATSAPP_AUDIT.md` marcado histórico; `WHATSAPP_BOT_SPEC.md` adiada. |

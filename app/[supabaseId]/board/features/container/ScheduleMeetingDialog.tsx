@@ -82,6 +82,9 @@ type ScheduleShareResponse = {
 
 // SCHEDULE_TIMEZONE now comes from useTimezone() inside the component
 
+// Janela de dias carregada ao selecionar o closer (dias + horários por dia).
+const AVAILABILITY_RANGE_DAYS = 30;
+
 interface ScheduleMeetingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -129,7 +132,7 @@ export function ScheduleMeetingDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingNoShowConfirmation, setPendingNoShowConfirmation] =
     useState<NoShowConfirmationPayload | null>(null);
-  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [availabilityByDay, setAvailabilityByDay] = useState<Record<string, string[]> | null>(null);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [teamMembersFromApi, setTeamMembersFromApi] = useState<UserAssociated[]>([]);
@@ -169,6 +172,19 @@ export function ScheduleMeetingDialog({
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   const isPreSchedule = !!lead.isTransfer;
   const meetingDateKey = isValidDate(meetingDate) && meetingDate ? formatLocalDateValue(meetingDate, SCHEDULE_TIMEZONE) : null;
+  const availableTimes = useMemo(
+    () => (meetingDateKey && availabilityByDay ? availabilityByDay[meetingDateKey] ?? [] : []),
+    [availabilityByDay, meetingDateKey]
+  );
+  const availableDateKeys = useMemo(() => {
+    if (!availabilityByDay) return undefined;
+    return Object.keys(availabilityByDay).filter((key) => (availabilityByDay[key]?.length ?? 0) > 0);
+  }, [availabilityByDay]);
+  const maxAvailabilityDateKey = useMemo(() => {
+    if (!availabilityByDay) return undefined;
+    const keys = Object.keys(availabilityByDay).sort();
+    return keys.length > 0 ? keys[keys.length - 1] : undefined;
+  }, [availabilityByDay]);
   const isPreScheduleSlotOccupied = isPreSchedule && isValidDate(meetingDate) && meetingDateKey
     ? (() => {
         const slotTime = formatLocalTimeValue(meetingDate, SCHEDULE_TIMEZONE);
@@ -281,30 +297,24 @@ export function ScheduleMeetingDialog({
     }
   }, [open, closerId, availableClosers, isCloserOperator, currentProfileId]);
 
-  const toDateKey = (date: Date) => (isValidDate(date) ? formatLocalDateValue(date, SCHEDULE_TIMEZONE) : null);
-
   const formatTime = (date: Date) => formatLocalTimeValue(date, SCHEDULE_TIMEZONE);
 
+  // Ao selecionar o closer, carrega de uma vez os dias e horários disponíveis
+  // do range (30 dias) — trocar de data não dispara novo fetch.
   useEffect(() => {
-    if (!open || !isValidDate(meetingDate) || !closerId || !supabaseId) {
-      setAvailableTimes([]);
+    if (!open || isPreSchedule || !closerId || !supabaseId) {
+      setAvailabilityByDay(null);
       setAvailabilityError(null);
       return;
     }
 
-    const currentMeetingDate = meetingDate;
-    const dateKey = toDateKey(currentMeetingDate);
-    if (!dateKey) {
-      setAvailableTimes([]);
-      setAvailabilityError("Data da reunião inválida. Selecione novamente.");
-      return;
-    }
     let isMounted = true;
 
     const fetchAvailability = async () => {
       setAvailabilityLoading(true);
       setAvailabilityError(null);
       try {
+        const todayKey = formatLocalDateValue(new Date(), SCHEDULE_TIMEZONE);
         const response = await fetch("/api/v1/calendar/availability", {
           method: "POST",
           headers: {
@@ -314,7 +324,8 @@ export function ScheduleMeetingDialog({
           },
           body: JSON.stringify({
             closerId,
-            date: dateKey,
+            date: todayKey,
+            days: AVAILABILITY_RANGE_DAYS,
             excludeLeadId: lead.id,
           }),
         });
@@ -324,17 +335,11 @@ export function ScheduleMeetingDialog({
           throw new Error(result?.errorMessages?.join(", ") || "Erro ao buscar disponibilidade.");
         }
 
-        const times = result?.result?.availableTimes ?? [];
         if (!isMounted) return;
-        setAvailableTimes(times);
-
-        const currentTime = formatTime(currentMeetingDate);
-        if (times.length > 0 && !times.includes(currentTime)) {
-          setMeetingDate(parseDateKeyAndTimeToUtc(dateKey, times[0], SCHEDULE_TIMEZONE));
-        }
+        setAvailabilityByDay(result?.result?.days ?? {});
       } catch (error) {
         if (!isMounted) return;
-        setAvailableTimes([]);
+        setAvailabilityByDay(null);
         setAvailabilityError(
           error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
         );
@@ -350,7 +355,18 @@ export function ScheduleMeetingDialog({
     return () => {
       isMounted = false;
     };
-  }, [open, meetingDate, closerId, supabaseId, activeTeamId, lead.id]);
+  }, [open, isPreSchedule, closerId, supabaseId, activeTeamId, lead.id, SCHEDULE_TIMEZONE]);
+
+  // Se o horário selecionado não está disponível no dia escolhido, ajusta para o primeiro disponível.
+  useEffect(() => {
+    if (isPreSchedule || !availabilityByDay || !meetingDateKey || !isValidDate(meetingDate)) return;
+    const times = availabilityByDay[meetingDateKey] ?? [];
+    if (times.length === 0) return;
+    const currentTime = formatTime(meetingDate);
+    if (!times.includes(currentTime)) {
+      setMeetingDate(parseDateKeyAndTimeToUtc(meetingDateKey, times[0], SCHEDULE_TIMEZONE));
+    }
+  }, [isPreSchedule, availabilityByDay, meetingDateKey, meetingDate, SCHEDULE_TIMEZONE]);
 
   // Fetch occupied pre-schedule slots when isPreSchedule and date changes
   useEffect(() => {
@@ -819,6 +835,10 @@ export function ScheduleMeetingDialog({
               disabled={!isOnlineMeeting && !isPreSchedule}
               disablePastDates
               availableTimes={isPreSchedule ? (preScheduleAvailableTimes ?? []) : availableTimes}
+              availableDateKeys={
+                isPreSchedule || availabilityLoading ? undefined : availableDateKeys
+              }
+              maxDateKey={isPreSchedule ? undefined : maxAvailabilityDateKey}
               timeLoading={isPreSchedule ? preSlotsLoading : availabilityLoading}
               tz={SCHEDULE_TIMEZONE}
             />

@@ -239,6 +239,12 @@ export function BackofficeStudioBotOverviewContainer() {
             </Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
+            <Link href="/backoffice/studio-bot/ia">
+              <ScrollText data-icon="inline-start" />
+              IA
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
             <Link href="/backoffice/studio-bot/ops?tab=logs">
               <ScrollText data-icon="inline-start" />
               Ver logs
