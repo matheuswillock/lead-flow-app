@@ -74,6 +74,17 @@ export function BackofficeStudioBotAiContainer() {
         toast.error(output.errorMessages[0] ?? "Falha no teste")
         return
       }
+      const result = output.result as { ok?: boolean; errorCode?: string } | null
+      if (!result?.ok) {
+        toast.error(
+          result?.errorCode
+            ? `Falha no teste do provider: ${result.errorCode}`
+            : "Falha no teste do provider"
+        )
+        lastKeyRef.current = null
+        await load()
+        return
+      }
       toast.success(output.successMessages[0] ?? "Teste sintético concluído")
       lastKeyRef.current = null
       await load()

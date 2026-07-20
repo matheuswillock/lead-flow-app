@@ -266,6 +266,13 @@ export interface IWhatsAppRepository {
   listConversationsForTeam(teamId: string): Promise<WhatsAppConversationSelect[]>
 
   softDeleteConversation(id: string): Promise<void>
+  softDeleteConversationWithAudit(input: {
+    conversationId: string
+    teamId: string
+    actorProfileId?: string | null
+    action: string
+    metadata?: Prisma.InputJsonValue
+  }): Promise<void>
   deleteConversation(id: string): Promise<void>
   createAuditEvent(input: {
     teamId: string

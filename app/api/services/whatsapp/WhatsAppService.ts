@@ -19,7 +19,7 @@ import {
   toStoredNormalizedPhone,
 } from "./WhatsAppPhonePolicy"
 import { resolveContactNameUpdate, type ContactNameSource } from "@/lib/whatsapp/contact-name"
-import { uploadWhatsAppMedia } from "./WhatsAppMediaStorage"
+import { deleteWhatsAppMedia, uploadWhatsAppMedia } from "./WhatsAppMediaStorage"
 import { randomUUID } from "node:crypto"
 
 export const WHATSAPP_HISTORY_SYNC_DAYS = 30
@@ -486,16 +486,21 @@ class WhatsAppService implements IWhatsAppService {
       mediaSha256 = stored.mediaSha256
       mediaSizeBytes = stored.mediaSizeBytes
 
-      evoResult = await this.provider.sendMedia({
-        instanceName: effectiveConfig.instanceName,
-        recipientJid,
-        mediatype: input.media.mediatype,
-        mimeType: input.media.mimeType,
-        fileName: input.media.fileName,
-        base64: input.media.base64,
-        caption: input.media.caption,
-        hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
-      })
+      try {
+        evoResult = await this.provider.sendMedia({
+          instanceName: effectiveConfig.instanceName,
+          recipientJid,
+          mediatype: input.media.mediatype,
+          mimeType: input.media.mimeType,
+          fileName: input.media.fileName,
+          base64: input.media.base64,
+          caption: input.media.caption,
+          hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
+        })
+      } catch (error) {
+        await deleteWhatsAppMedia(stored.storagePath)
+        throw error
+      }
     } else {
       const text = input.contentText?.trim()
       if (!text) {
