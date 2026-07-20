@@ -1,7 +1,7 @@
 # PRICING_MODEL.md — Precificação do Corretor Studio por slug
 
 **Data:** 2026-07-19
-**Fontes:** `prisma/seed-backoffice-products.ts` (fonte de verdade dos valores em produção), `lib/features/feature-slugs.ts` (slugs de feature), `RADAR_BUSINESS_MODEL.md` (proposta comercial do Radar — valores ainda não cadastrados).
+**Fontes:** `prisma/seed-backoffice-products.ts` (fonte de verdade dos valores em produção), `lib/features/feature-slugs.ts` (slugs de feature), `RADAR_AUDIT.md` e `RADAR_SPEC.md` (spec e auditoria do Radar rastreadas no repositório — a proposta comercial de pivot está condensada em `PRICING_TABLE.md` §4 deste repositório).
 **Escopo:** consolida (1) toda a precificação vigente por `featureSlug` de produto, (2) o mapa completo de features → produto que as cobra, e (3) a regra de cálculo correta do valor de uma assinatura a partir dos slugs contratados.
 
 ---
@@ -114,16 +114,18 @@ Todos os slugs de `FEATURE_SLUGS` (`lib/features/feature-slugs.ts`) e o produto 
 
 ```
 total/mês = preço(plano base, método, cadência)
-          + Σ preço(add-on ativo, método, cadência)
-          + (qtd times extras  × preço(extra-team))
-          + (qtd usuários extras × preço(extra-user))
+          + Σ preço(add-on ativo com quantidade = 1, método, cadência)   -- NÃO inclui extra-team/extra-user aqui
+          + (qtd times extras   × preço(extra-team, método, cadência))
+          + (qtd usuários extras × preço(extra-user, método, cadência))
 ```
+
+> ⚠️ **`extra-team` e `extra-user` são tratados separadamente** (última linha) e **não entram** no `Σ add-ons`; contá-los nos dois lugares geraria cobrança duplicada.
 
 Regras que o cálculo DEVE respeitar:
 
 1. **Payment rule primeiro** — se existir `BackofficeProductPaymentRule` para (produto, método, cadência), ela é o preço. Só cair no preço base do produto na ausência de regra.
 2. **Cadência é da assinatura, não do item** — todos os itens seguem a mesma cadência contratada (trimestral, semestral…). Não misturar cadências entre plano e add-ons.
-3. **Add-ons multiplicáveis** — `extra-team` e `extra-user` multiplicam por quantidade; os demais são 0 ou 1.
+3. **Add-ons multiplicáveis** — `extra-team` e `extra-user` são os únicos itens que multiplicam por quantidade; todos os demais são 0 ou 1 (presentes ou ausentes).
 4. **Lifetime não entra na recorrência** — `crm-lifetime` (e futura `radar-setup`) são cobranças únicas, somadas apenas na primeira fatura.
 5. **Feature ≠ preço** — features nunca têm preço próprio; o preço vem sempre do `BackofficeProduct` apontado por `productSlug`. `crm-time-manage-teams`/`crm-time-manage-users` são o exemplo canônico: vivem sob o CRM na navegação, mas cobram pelos add-ons.
 

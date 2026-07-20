@@ -23,7 +23,7 @@ Valores **por mês** salvo indicação de cobrança única. PIX é o preço de r
 | PIX | R$89,90 | R$79,90 | R$69,90 | R$69,90 | — |
 | Cartão | R$102,90 | R$91,40 | R$79,90 | R$79,90 | até 3×/6×/12× conforme cadência |
 
-> A partir desta revisão, o CRM **inclui o módulo de e-mail transacional/templates** sem cobrança à parte — o antigo add-on `email` (R$29,90) deixa de ser vendido; o valor já está embutido na mensalidade. Disparo em massa é produto próprio (§3).
+> **Proposta pendente de implementação** — esta decisão não está ativa ainda. O add-on `email` (R$29,90) segue sendo cobrado enquanto o seed, a migration e o `FeatureAccessService` não forem atualizados (pendência §7, item 5). Este parágrafo descreve o estado-alvo após a migração técnica.
 
 ### 1.2 CRM Vitalício (`crm-lifetime`) — PLAN, pagamento único 💡
 
@@ -217,8 +217,8 @@ Excedentes (por uso, fora do Total): Disparo Starter R$0,25 · Plus R$0,20 · Pr
 | 1 | Aprovar os valores 💡 (lifetime, cartão de `extra-*`, tiers/excedentes do E-mail Disparo, cartão do Radar, setup no cartão, `radar-dispatch-pack`) | Decisão do owner |
 | 2 | Validar tiers Radar Starter/Plus (R$350/R$590 são extrapolados) | Decisão do owner |
 | 3 | Fixar `crm-lifetime` e variante Associados no seed (hoje só existem no backoffice manual) | `prisma/seed-backoffice-products.ts` + migration |
-| 4 | Criar payment rules de cartão para `extra-team` e `extra-user` | seed + migration |
-| 5 | Descontinuar `email` como add-on cobrado: features `email-*` migram para `productSlug: "crm"` | seed + migration |
+| 4 | Criar payment rules de cartão para `extra-team` e `extra-user` **e** atualizar `BackofficeAdhesionService.resolvePrices` + `calculateBackofficeAdhesionPricing` para carregar e aplicar essas regras — sem isso, os preços de cartão novos não chegam às faturas | seed + migration + `BackofficeAdhesionService` |
+| 5 | Descontinuar `email` como add-on cobrado: features `email-*` migram para `productSlug: "crm"` no seed/migration; atualizar `FeatureAccessService` para não exigir mais o produto `email` separado | seed + migration + `FeatureAccessService` |
 | 6 | Cadastrar slugs `email-dispatch-*` (produto + feature + access rules + excedente) | `lib/features/feature-slugs.ts` + `bun run db:migrate:new` + seed |
-| 7 | Cadastrar produtos/features Radar (`radar-*`, `radar-setup`, `radar-dispatch-pack`) e desativar `cdp` | idem |
+| 7 | Cadastrar produtos/features Radar (`radar-*`, `radar-setup`, `radar-dispatch-pack`) e desativar `cdp`; **incluir** o tier recorrente, setup único e dispatch-pack em `calculateBackofficeAdhesionPricing` e na ativação de adesão para que o Asaas gere as cobranças corretas | `feature-slugs.ts` + migration + seed + `BackofficeAdhesionService` + Asaas billing |
 | 8 | Definir mecânica de medição/cobrança do excedente (fatura do mês seguinte via Asaas) | Spec técnica futura |
