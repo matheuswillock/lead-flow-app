@@ -89,6 +89,16 @@ export async function uploadWhatsAppMedia(input: {
   return { storagePath, mediaSha256, mediaSizeBytes: buffer.byteLength }
 }
 
+export async function deleteWhatsAppMedia(storagePath: string): Promise<void> {
+  const result = await SupabaseStorageService.deleteFile(
+    storagePath,
+    STORAGE_BUCKETS.WHATSAPP_MEDIA
+  )
+  if (!result.success) {
+    console.error("[deleteWhatsAppMedia]", { storagePath, error: result.error })
+  }
+}
+
 export async function createWhatsAppMediaSignedUrl(
   storagePath: string,
   expiresInSeconds = 120

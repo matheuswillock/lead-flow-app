@@ -489,7 +489,8 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     teamId: string,
     closerId: string,
     date: string,
-    legacySupabaseId?: string
+    legacySupabaseId?: string,
+    slotMinutes = SLOT_MINUTES,
   ): Promise<Output> {
     try {
       const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
@@ -500,6 +501,11 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return new Output(false, [], ["Formato de data inválido. Use YYYY-MM-DD."], null);
       }
+
+      const resolvedSlotMinutes =
+        Number.isFinite(slotMinutes) && slotMinutes >= 5 && slotMinutes <= 480
+          ? Math.floor(slotMinutes)
+          : SLOT_MINUTES;
 
       const access = accessResult.access as PublicIntegrationAccess;
       const closerValidationOutput = await this.validateCloserForTeam(access.teamId, closerId);
@@ -550,7 +556,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         .filter((lead) => !!lead.meetingDate)
         .map((lead) => {
           const start = lead.meetingDate as Date;
-          const end = new Date(start.getTime() + SLOT_MINUTES * 60 * 1000);
+          const end = new Date(start.getTime() + resolvedSlotMinutes * 60 * 1000);
           return { start: start.toISOString(), end: end.toISOString() };
         });
 
@@ -559,7 +565,10 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       const isToday = date === todayKey;
       const nowMinutes = getMinutesInTz(now, timezone);
 
-      const slots = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => index * SLOT_MINUTES);
+      const slots = Array.from(
+        { length: Math.floor((24 * 60) / resolvedSlotMinutes) },
+        (_, index) => index * resolvedSlotMinutes,
+      );
 
       const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile.googleConnection);
       let busyIntervals: Array<{ start: string; end: string }> = [];
@@ -590,7 +599,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
             return false;
           }
 
-          const slotEnd = slotStart + SLOT_MINUTES;
+          const slotEnd = slotStart + resolvedSlotMinutes;
           return !busyIntervals.some((interval) => {
             const startDate = new Date(interval.start);
             const endDate = new Date(interval.end);

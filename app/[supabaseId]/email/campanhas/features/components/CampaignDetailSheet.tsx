@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { BarChart3, Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -17,11 +19,27 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Table,
   TableBody,
@@ -31,11 +49,18 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CampaignStatusBadge } from "./CampaignStatusBadge"
-import { CampaignLogsTab } from "./CampaignLogsTab"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
-import type { ContactList, CampaignSheetTab } from "../context/CampanhasTypes"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import type { ContactList, SubCampaignSummary } from "../context/CampanhasTypes"
+
+type CampaignAnalyticsTarget = {
+  id: string
+  name: string
+  errorMessage?: string | null
+}
 
 function formatContactListLabel(list: ContactList): string {
   const activeCount = list.activeContacts ?? list.totalContacts
@@ -51,18 +76,130 @@ function audienceLabel(campaign: {
   return "—"
 }
 
-export function CampaignDetailSheet() {
+function SubCampaignActionsMenu({
+  subCampaign,
+  canSendCampaign,
+  sendBlockReason,
+  sendingId,
+  openEditById,
+  handleSend,
+  onOpenAnalytics,
+}: {
+  subCampaign: SubCampaignSummary
+  canSendCampaign: boolean
+  sendBlockReason?: string
+  sendingId: string | null
+  openEditById: (id: string) => Promise<void>
+  handleSend: (id: string) => Promise<void>
+  onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
+}) {
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(subCampaign.status)
+  const canRetryByStatus = subCampaign.status === "failed"
+  const canRetry =
+    canRetryByStatus && canSendCampaign && !sendBlockReason && sendingId !== subCampaign.id
+  const retryDisabledReason =
+    sendBlockReason ??
+    (!canRetryByStatus
+      ? "Reenvio disponível apenas para sub-campanhas com falha"
+      : !canSendCampaign
+        ? "Ative um plano em Assinaturas para disparar campanhas"
+        : undefined)
+
+  async function handleSendConfirm() {
+    setSending(true)
+    try {
+      await handleSend(subCampaign.id)
+    } finally {
+      setSending(false)
+      setSendConfirmOpen(false)
+    }
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="size-8">
+            <span className="sr-only">Abrir ações da sub-campanha</span>
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => void openEditById(subCampaign.id)} disabled={!canEdit}>
+            <Pencil />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() =>
+              onOpenAnalytics({
+                id: subCampaign.id,
+                name: subCampaign.name,
+                errorMessage: subCampaign.errorMessage ?? null,
+              })
+            }
+          >
+            <BarChart3 />
+            Métricas e logs
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setSendConfirmOpen(true)}
+            disabled={!canRetry}
+            title={!canRetry ? retryDisabledReason : undefined}
+          >
+            {sendingId === subCampaign.id ? <Loader2 className="animate-spin" /> : <Send />}
+            {sendingId === subCampaign.id ? "Reenviando..." : "Reenviar"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reenviar sub-campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A sub-campanha <strong>"{subCampaign.name}"</strong> será reenviada para{" "}
+              <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+              destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleSendConfirm()
+              }}
+              disabled={sending}
+            >
+              {sending ? "Reenviando..." : "Sim, reenviar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+export function CampaignDetailSheet({
+  onOpenAnalytics,
+}: {
+  onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
+}) {
   const { tz } = useTimezone()
+  const { isBeta } = useFeatureAccess()
   const {
     detailCampaign,
-    sheetTab,
-    setSheetTab,
     closeDetail,
     editName,
     editTemplateId,
     editContactListId,
     editScheduledAt,
     editSaving,
+    sendingId,
+    credits,
     templates,
     contactLists,
     setEditName,
@@ -70,7 +207,12 @@ export function CampaignDetailSheet() {
     setEditContactListId,
     setEditScheduledAt,
     handleUpdateCampaign,
+    openEditById,
+    handleSend,
   } = useCampanhasContext()
+  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  const canSendCampaign =
+    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 
   const isParentCampaign = Boolean(
     detailCampaign?.isParentCampaign || (detailCampaign?.subCampaignCount ?? 0) > 0
@@ -83,6 +225,20 @@ export function CampaignDetailSheet() {
     detailCampaign &&
     !isParentCampaign &&
     (detailCampaign.status === "draft" || detailCampaign.status === "scheduled")
+  const isSubCampaign = Boolean(
+    detailCampaign?.parentCampaignId || (detailCampaign?.audienceContactIds?.length ?? 0) > 0
+  )
+
+  function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
+    if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
+    if (!credits?.hasSubscription) {
+      return "Ative um plano em Assinaturas para disparar campanhas"
+    }
+    if (credits.creditsAvailable < subCampaign.totalRecipients) {
+      return `Créditos insuficientes para ${subCampaign.totalRecipients.toLocaleString("pt-BR")} destinatários. Saldo: ${credits.creditsAvailable.toLocaleString("pt-BR")}`
+    }
+    return undefined
+  }
 
   return (
     <Sheet
@@ -91,7 +247,7 @@ export function CampaignDetailSheet() {
         if (!open) closeDetail()
       }}
     >
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-2xl">
+      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-5xl">
         <SheetHeader className="gap-1 border-b pb-4">
           <SheetTitle className="pr-8">{detailCampaign?.name ?? "Campanha"}</SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-2">
@@ -102,22 +258,12 @@ export function CampaignDetailSheet() {
                 sub-campanhas
               </Badge>
             ) : null}
-            <span>Campanha atual e logs de disparo.</span>
+            <span>Campanha atual.</span>
           </SheetDescription>
         </SheetHeader>
 
         {detailCampaign ? (
-          <Tabs
-            value={sheetTab}
-            onValueChange={(value) => setSheetTab(value as CampaignSheetTab)}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <TabsList className="mx-0 mt-4 w-full justify-start">
-              <TabsTrigger value="campaign">Campanha atual</TabsTrigger>
-              <TabsTrigger value="logs">Logs</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="campaign" className="mt-4 flex min-h-0 flex-1 flex-col">
+          <div className="mt-4 flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto">
                 <div className="mb-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
@@ -158,14 +304,15 @@ export function CampaignDetailSheet() {
                 {isParentCampaign && detailCampaign.subCampaigns && detailCampaign.subCampaigns.length > 0 ? (
                   <div className="mb-4 flex flex-col gap-2">
                     <p className="text-sm font-medium">Sub-campanhas</p>
-                    <div className="rounded-md border">
-                      <Table>
+                    <div className="overflow-x-auto rounded-md border">
+                      <Table className="min-w-[760px]">
                         <TableHeader>
                           <TableRow>
                             <TableHead>Parte</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Agendamento</TableHead>
                             <TableHead className="text-right">Destinatários</TableHead>
+                            <TableHead className="w-12 text-right">Ações</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -184,6 +331,17 @@ export function CampaignDetailSheet() {
                               </TableCell>
                               <TableCell className="text-right">
                                 {sub.totalRecipients.toLocaleString("pt-BR")}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <SubCampaignActionsMenu
+                                  subCampaign={sub}
+                                  canSendCampaign={canSendCampaign}
+                                  sendBlockReason={getSendBlockReason(sub)}
+                                  sendingId={sendingId}
+                                  openEditById={openEditById}
+                                  handleSend={handleSend}
+                                  onOpenAnalytics={onOpenAnalytics}
+                                />
                               </TableCell>
                             </TableRow>
                           ))}
@@ -226,25 +384,36 @@ export function CampaignDetailSheet() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field>
-                      <FieldLabel>Lista de contatos</FieldLabel>
-                      <Select
-                        value={editContactListId}
-                        onValueChange={setEditContactListId}
-                        disabled={editSaving}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione uma lista..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {contactLists.map((l) => (
-                            <SelectItem key={l.id} value={l.id}>
-                              {formatContactListLabel(l)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
+                    {!isSubCampaign ? (
+                      <Field>
+                        <FieldLabel>Lista de contatos</FieldLabel>
+                        <Select
+                          value={editContactListId}
+                          onValueChange={setEditContactListId}
+                          disabled={editSaving}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione uma lista..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {contactLists.map((l) => (
+                              <SelectItem key={l.id} value={l.id}>
+                                {formatContactListLabel(l)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    ) : (
+                      <Field>
+                        <FieldLabel>Lista / audiência</FieldLabel>
+                        <Input value={audienceLabel(detailCampaign)} disabled />
+                        <p className="text-xs text-muted-foreground">
+                          A audiência da sub-campanha fica bloqueada para preservar o lote
+                          original de destinatários.
+                        </p>
+                      </Field>
+                    )}
                     {canSchedule ? (
                       <Field>
                         <DateTimePicker
@@ -267,8 +436,9 @@ export function CampaignDetailSheet() {
                       </Field>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Alterações de template e lista valem para o próximo disparo. O histórico
-                        dos disparos anteriores permanece intacto.
+                        {isSubCampaign
+                          ? "Alterações de nome e template valem para o próximo disparo. O histórico dos disparos anteriores permanece intacto."
+                          : "Alterações de template e lista valem para o próximo disparo. O histórico dos disparos anteriores permanece intacto."}
                       </p>
                     )}
                   </FieldGroup>
@@ -308,12 +478,7 @@ export function CampaignDetailSheet() {
                   </Button>
                 </SheetFooter>
               ) : null}
-            </TabsContent>
-
-            <TabsContent value="logs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
-              <CampaignLogsTab campaignId={detailCampaign.id} />
-            </TabsContent>
-          </Tabs>
+          </div>
         ) : null}
       </SheetContent>
     </Sheet>

@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { prisma } from "@/app/api/infra/data/prisma";
+import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import { Output } from "@/lib/output";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
@@ -42,10 +42,7 @@ export async function getBotProductAccess(request: NextRequest): Promise<BotProd
     };
   }
 
-  const profile = await prisma.profile.findUnique({
-    where: { supabaseId: user.id },
-    select: { id: true, activeTeamId: true },
-  });
+  const profile = await backofficeBotRepository.findProfileBotAccessBySupabaseId(user.id);
 
   if (!profile) {
     return {

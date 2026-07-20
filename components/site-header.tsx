@@ -47,6 +47,7 @@ export function SiteHeader() {
 
   const isEmailSection = section === 'email'
   const isPerformanceSection = section === 'performance'
+  const isFormsSection = section === 'forms'
   const isBackofficeClientDetails =
     pathSegments[0] === 'backoffice' && pathSegments[1] === 'clients' && Boolean(pathSegments[2])
   const isBackofficeStudioBot =
@@ -79,6 +80,7 @@ export function SiteHeader() {
 
   const emailBaseHref = `/${supabaseId}/email`
   const performanceBaseHref = `/${supabaseId}/performance`
+  const formsBaseHref = `/${supabaseId}/forms`
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b box-border transition-[height] ease-linear">
@@ -121,6 +123,28 @@ export function SiteHeader() {
                 <BreadcrumbItem>
                   <BreadcrumbPage>E-mail</BreadcrumbPage>
                 </BreadcrumbItem>
+              )}
+            </BreadcrumbList>
+          </Breadcrumb>
+        ) : isFormsSection ? (
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem className="hidden md:block">
+                <BreadcrumbLink asChild>
+                  <Link href={`/${supabaseId}/integrations`}>Integrações</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden md:block" />
+              {subsection ? (
+                <>
+                  <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbLink asChild><Link href={formsBaseHref}>Formulários</Link></BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator className="hidden md:block" />
+                  <BreadcrumbItem><BreadcrumbPage>{override?.label ?? (subsection === 'new' ? 'Novo formulário' : 'Editar formulário')}</BreadcrumbPage></BreadcrumbItem>
+                </>
+              ) : (
+                <BreadcrumbItem><BreadcrumbPage>Formulários</BreadcrumbPage></BreadcrumbItem>
               )}
             </BreadcrumbList>
           </Breadcrumb>

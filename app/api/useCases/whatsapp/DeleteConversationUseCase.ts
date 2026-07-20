@@ -27,10 +27,9 @@ class DeleteConversationUseCase {
         profileId: input.access.profileId,
       })
 
-      await whatsAppRepository.softDeleteConversation(input.conversationId)
-      await whatsAppRepository.createAuditEvent({
-        teamId: input.teamId,
+      await whatsAppRepository.softDeleteConversationWithAudit({
         conversationId: input.conversationId,
+        teamId: input.teamId,
         actorProfileId: input.access.profileId,
         action: "conversation.delete",
         metadata: {

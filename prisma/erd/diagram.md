@@ -971,6 +971,13 @@ failed failed
     
 
 
+        backoffice_bot_outbound_delivery_status {
+            processing processing
+completed completed
+        }
+    
+
+
         backoffice_bot_ai_provider {
             groq groq
 ollama ollama
@@ -1064,6 +1071,90 @@ failed failed
             never never
 succeeded succeeded
 failed failed
+        }
+    
+
+
+        PublicFormStatus {
+            draft draft
+published published
+archived archived
+        }
+    
+
+
+        PublicFormApprovalStatus {
+            draft draft
+pending_approval pending_approval
+approved approved
+rejected rejected
+        }
+    
+
+
+        PublicFormQuestionType {
+            text text
+email email
+phone phone
+number number
+date date
+url url
+single_choice single_choice
+multiple_choice multiple_choice
+boolean boolean
+health_plan health_plan
+crm_field crm_field
+custom_field custom_field
+scheduling scheduling
+consent consent
+        }
+    
+
+
+        PublicFormMappingTarget {
+            native_field native_field
+custom_field custom_field
+notes notes
+history history
+        }
+    
+
+
+        PublicFormRuleOperator {
+            equals equals
+not_equals not_equals
+contains contains
+selected selected
+not_selected not_selected
+        }
+    
+
+
+        PublicFormRuleAction {
+            show show
+skip skip
+        }
+    
+
+
+        PublicFormSubmissionStatus {
+            processing processing
+completed completed
+failed failed
+        }
+    
+
+
+        PublicFormMetricType {
+            form_viewed form_viewed
+form_started form_started
+question_viewed question_viewed
+question_answered question_answered
+question_skipped question_skipped
+form_completed form_completed
+lead_created lead_created
+lead_attached lead_attached
+meeting_scheduled meeting_scheduled
         }
     
   "corretor_studio_profiles" {
@@ -2491,6 +2582,7 @@ failed failed
     WhatsAppOutboundCommandStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime reconciledAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2504,6 +2596,8 @@ failed failed
     WhatsAppWebhookEventStatus status 
     Int attemptCount 
     String lastError "❓"
+    DateTime nextAttemptAt "❓"
+    DateTime processingStartedAt "❓"
     DateTime processedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -2532,6 +2626,14 @@ failed failed
     Int quantity 
     Json rawPayload "❓"
     DateTime createdAt 
+    }
+  
+
+  "whatsapp_send_rate_limit_windows" {
+    DateTime windowStart "🗝️"
+    Int count 
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -2726,8 +2828,20 @@ failed failed
     Json payload 
     BackofficeBotEventOutboxStatus status 
     String idempotencyKey 
+    Int attemptCount 
+    DateTime nextAttemptAt "❓"
+    String lastError "❓"
     DateTime createdAt 
     DateTime sentAt "❓"
+    }
+  
+
+  "backoffice_bot_outbound_delivery" {
+    String id "🗝️"
+    String idempotencyKey 
+    BackofficeBotOutboundDeliveryStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -2878,6 +2992,148 @@ failed failed
     DateTime finishedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_settings" {
+    String id "🗝️"
+    Boolean approvalRequired 
+    UserRole approverRoles 
+    String defaultBackgroundColor 
+    String defaultTextColor 
+    String defaultLineColor 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_rate_limits" {
+    String key "🗝️"
+    Int count 
+    DateTime resetAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_forms" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    String publicId 
+    PublicFormStatus status 
+    PublicFormApprovalStatus approvalStatus 
+    String coverTitle "❓"
+    String coverDescription "❓"
+    String ctaLabel 
+    String successTitle 
+    String successDescription "❓"
+    Boolean useDefaultTheme 
+    String backgroundColor "❓"
+    String textColor "❓"
+    String lineColor "❓"
+    Boolean schedulingEnabled 
+    Int meetingDurationMinutes 
+    String schedulingMessage "❓"
+    String reviewComment "❓"
+    DateTime reviewedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_eligible_closers" {
+    String id "🗝️"
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_public_form_questions" {
+    String id "🗝️"
+    PublicFormQuestionType type 
+    String title 
+    String description "❓"
+    String placeholder "❓"
+    Boolean required 
+    Int position 
+    Json config 
+    PublicFormMappingTarget mappingTarget "❓"
+    String mappingKey "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_options" {
+    String id "🗝️"
+    String label 
+    String value 
+    Int position 
+    Int score 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_rules" {
+    String id "🗝️"
+    PublicFormRuleOperator operator 
+    Json comparisonValue "❓"
+    PublicFormRuleAction action 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_score_bands" {
+    String id "🗝️"
+    String label 
+    String summary "❓"
+    Int minScore 
+    Int maxScore 
+    Int position 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_publications" {
+    String id "🗝️"
+    Int version 
+    Json snapshot 
+    DateTime publishedAt 
+    DateTime endedAt "❓"
+    }
+  
+
+  "corretor_studio_public_form_submissions" {
+    String id "🗝️"
+    String requestKey 
+    PublicFormSubmissionStatus status 
+    Int score 
+    String scoreBandLabel "❓"
+    Json origin "❓"
+    String errorMessage "❓"
+    DateTime submittedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_answers" {
+    String id "🗝️"
+    Json value 
+    Json questionSnapshot 
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_public_form_metric_events" {
+    String id "🗝️"
+    String visitorSessionId 
+    PublicFormMetricType eventType 
+    String eventKey 
+    Json origin "❓"
+    DateTime createdAt 
     }
   
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
@@ -3188,6 +3444,7 @@ failed failed
     "whatsapp_usage_events" |o--|o "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_usage_events" }o--|| corretor_studio_teams : "team"
     "whatsapp_usage_events" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_send_rate_limit_windows" }o--|| corretor_studio_teams : "team"
     "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseRuleType" : "enum:type"
     "whatsapp_auto_response_rules" |o--|| "WhatsAppAutoResponseMatchMode" : "enum:matchMode"
     "whatsapp_auto_response_rules" }o--|| team_whatsapp_configs : "config"
@@ -3227,6 +3484,7 @@ failed failed
     "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
     "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
     "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_outbound_delivery" |o--|| "BackofficeBotOutboundDeliveryStatus" : "enum:status"
     "backoffice_bot_ai_configurations" |o--|| "BackofficeBotAiProvider" : "enum:primaryProvider"
     "backoffice_bot_ai_configurations" }o--|o corretor_studio_profiles : "updatedByProfile"
     "backoffice_bot_ai_interactions" |o--|| "BackofficeBotAiCapability" : "enum:capability"
@@ -3252,4 +3510,36 @@ failed failed
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"
     "backoffice_bot_host_ops_jobs" }o--|| corretor_studio_profiles : "requestedBy"
+    "corretor_studio_public_form_settings" |o--}o "UserRole" : "enum:approverRoles"
+    "corretor_studio_public_form_settings" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_public_forms" |o--|| "PublicFormStatus" : "enum:status"
+    "corretor_studio_public_forms" |o--|| "PublicFormApprovalStatus" : "enum:approvalStatus"
+    "corretor_studio_public_forms" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_public_forms" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "assignedSdr"
+    "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "reviewer"
+    "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_public_form_questions" |o--|| "PublicFormQuestionType" : "enum:type"
+    "corretor_studio_public_form_questions" |o--|o "PublicFormMappingTarget" : "enum:mappingTarget"
+    "corretor_studio_public_form_questions" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_options" }o--|| corretor_studio_public_form_questions : "question"
+    "corretor_studio_public_form_rules" |o--|| "PublicFormRuleOperator" : "enum:operator"
+    "corretor_studio_public_form_rules" |o--|| "PublicFormRuleAction" : "enum:action"
+    "corretor_studio_public_form_rules" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "sourceQuestion"
+    "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "targetQuestion"
+    "corretor_studio_public_form_score_bands" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_publications" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_publications" }o--|| corretor_studio_profiles : "publishedBy"
+    "corretor_studio_public_form_submissions" |o--|| "PublicFormSubmissionStatus" : "enum:status"
+    "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_form_publications : "publication"
+    "corretor_studio_public_form_submissions" }o--|o corretor_studio_leads : "lead"
+    "corretor_studio_public_form_answers" }o--|| corretor_studio_public_form_submissions : "submission"
+    "corretor_studio_public_form_answers" }o--|o corretor_studio_public_form_questions : "question"
+    "corretor_studio_public_form_metric_events" |o--|| "PublicFormMetricType" : "enum:eventType"
+    "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_form_publications : "publication"
+    "corretor_studio_public_form_metric_events" }o--|o corretor_studio_public_form_questions : "question"
 ```

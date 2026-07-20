@@ -37,6 +37,16 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -57,6 +67,10 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
 import { cn } from "@/lib/utils"
+import {
+  MEMBER_PRO_MAX_DAYS,
+  memberProExpiresAtFromDays,
+} from "../utils/memberProAccessUtils"
 
 const TEAMS_TABLE_GRID = "grid-cols-[2rem_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_2.5rem]"
 
@@ -166,9 +180,12 @@ export function BackofficeClientDetailsContainer() {
   const [isTogglingLifetime, setIsTogglingLifetime] = useState(false)
   const [isTogglingMultiskill, setIsTogglingMultiskill] = useState(false)
   const [isTogglingUnlimitedUsers, setIsTogglingUnlimitedUsers] = useState(false)
+  const [isTogglingMemberPro, setIsTogglingMemberPro] = useState(false)
+  const [memberProDisableOpen, setMemberProDisableOpen] = useState(false)
   const lifetimeInFlight = useRef(false)
   const multiskillInFlight = useRef(false)
   const unlimitedUsersInFlight = useRef(false)
+  const memberProInFlight = useRef(false)
   const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
@@ -301,6 +318,45 @@ export function BackofficeClientDetailsContainer() {
     }
   }
 
+  async function handleEnableMemberPro() {
+    if (!details || memberProInFlight.current) return
+    memberProInFlight.current = true
+    setIsTogglingMemberPro(true)
+    try {
+      const accessExpiresAt = memberProExpiresAtFromDays(MEMBER_PRO_MAX_DAYS)
+      await service.updateUserType(masterId, {
+        userType: "member_pro",
+        accessExpiresAt,
+      })
+      toast.success(
+        `Member PRO habilitado por ${MEMBER_PRO_MAX_DAYS} dias. Usuários ilimitados também foram ativados.`
+      )
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao habilitar Member PRO")
+    } finally {
+      setIsTogglingMemberPro(false)
+      memberProInFlight.current = false
+    }
+  }
+
+  async function handleDisableMemberPro() {
+    if (!details || memberProInFlight.current) return
+    memberProInFlight.current = true
+    setIsTogglingMemberPro(true)
+    try {
+      await service.updateUserType(masterId, { userType: "common" })
+      toast.success("Member PRO desabilitado. Cliente voltou ao tipo Comum.")
+      setMemberProDisableOpen(false)
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao desabilitar Member PRO")
+    } finally {
+      setIsTogglingMemberPro(false)
+      memberProInFlight.current = false
+    }
+  }
+
   async function handleSendMemberAccessEmail(
     member: BackofficeClientTeamMember,
     mode: "invite" | "reset_password"
@@ -384,6 +440,12 @@ export function BackofficeClientDetailsContainer() {
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
                   {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
+                  {details.userType.slug === "member_pro" && !details.userType.isExpired ? (
+                    <Badge variant="secondary">Member PRO</Badge>
+                  ) : null}
+                  {details.userType.slug === "member_pro" && details.userType.isExpired ? (
+                    <Badge variant="outline">Member PRO expirado</Badge>
+                  ) : null}
                   {details.multiskillEnabled ? (
                     <Badge variant="secondary">MultiSkill</Badge>
                   ) : null}
@@ -439,6 +501,33 @@ export function BackofficeClientDetailsContainer() {
                     checked={details.hasUnlimitedUsers}
                     disabled={isTogglingUnlimitedUsers}
                     onCheckedChange={() => void handleToggleUnlimitedUsers()}
+                  />
+                </div>
+                <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+                  <div className="text-right">
+                    <p className="text-sm font-medium">Member PRO</p>
+                    <p className="text-xs text-muted-foreground">
+                      {details.userType.slug === "member_pro" &&
+                      !details.userType.isExpired &&
+                      details.userType.accessExpiresAt
+                        ? `Expira em ${formatDate(details.userType.accessExpiresAt, tz)}`
+                        : details.userType.slug === "member_pro" && details.userType.isExpired
+                          ? "Acesso expirado"
+                          : "Acesso Member PRO"}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={
+                      details.userType.slug === "member_pro" && !details.userType.isExpired
+                    }
+                    disabled={isTogglingMemberPro}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        void handleEnableMemberPro()
+                        return
+                      }
+                      setMemberProDisableOpen(true)
+                    }}
                   />
                 </div>
                 <Button
@@ -892,31 +981,43 @@ export function BackofficeClientDetailsContainer() {
                         <Table className="table-fixed">
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-[20%] px-4 text-left">
+                              <TableHead className="w-[16%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
-                                  <CalendarDays className="h-3.5 w-3.5" />
-                                  Data da fatura
+                                  <Tag className="h-3.5 w-3.5" />
+                                  ID
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[20%] px-4 text-left">
+                              <TableHead className="w-[14%] px-4 text-left">
+                                <span className="inline-flex items-center gap-1">
+                                  <Tag className="h-3.5 w-3.5" />
+                                  Nome
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[12%] px-4 text-left">
+                                <span className="inline-flex items-center gap-1">
+                                  <CalendarDays className="h-3.5 w-3.5" />
+                                  Data
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[12%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <CalendarDays className="h-3.5 w-3.5" />
                                   Vencimento
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[18%] px-4 text-right">
+                              <TableHead className="w-[12%] px-4 text-right">
                                 <span className="inline-flex items-center gap-1">
                                   <DollarSign className="h-3.5 w-3.5" />
                                   Valor
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[18%] px-4 text-center">
+                              <TableHead className="w-[12%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   Status
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[24%] px-4 text-center">
+                              <TableHead className="w-[22%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Eye className="h-3.5 w-3.5" />
                                   Ações
@@ -927,9 +1028,24 @@ export function BackofficeClientDetailsContainer() {
                           <TableBody>
                             {invoices.map((invoice) => {
                               const statusInfo = INVOICE_STATUS_BADGES[invoice.statusGroup]
+                              const statusLabel =
+                                invoice.status === "WAIVED"
+                                  ? "Dispensada"
+                                  : invoice.status === "PENDING" && invoice.source === "pending_action"
+                                    ? "Aguardando checkout"
+                                    : statusInfo.label
 
                               return (
                                 <TableRow key={invoice.id} className="h-12">
+                                  <TableCell
+                                    className="px-4 align-middle font-mono text-xs truncate"
+                                    title={invoice.invoiceIdDisplay}
+                                  >
+                                    {invoice.invoiceIdDisplay}
+                                  </TableCell>
+                                  <TableCell className="px-4 align-middle">
+                                    {invoice.invoiceName}
+                                  </TableCell>
                                   <TableCell className="px-4 align-middle">
                                     {formatNullableDate(invoice.dateCreated, tz)}
                                   </TableCell>
@@ -944,19 +1060,32 @@ export function BackofficeClientDetailsContainer() {
                                       variant={statusInfo.variant}
                                       className={statusInfo.className}
                                     >
-                                      {statusInfo.label}
+                                      {statusLabel}
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <Button asChild variant="outline" size="sm">
-                                      <Link
-                                        href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
-                                        className="inline-flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3.5 w-3.5" />
-                                        Visualizar
-                                      </Link>
-                                    </Button>
+                                    <div className="inline-flex items-center gap-2">
+                                      <Button asChild variant="outline" size="sm">
+                                        <Link
+                                          href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
+                                          className="inline-flex items-center gap-1"
+                                        >
+                                          <Eye className="h-3.5 w-3.5" />
+                                          Visualizar
+                                        </Link>
+                                      </Button>
+                                      {invoice.checkoutUrl ? (
+                                        <Button asChild variant="default" size="sm">
+                                          <a
+                                            href={invoice.checkoutUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            Checkout
+                                          </a>
+                                        </Button>
+                                      ) : null}
+                                    </div>
                                   </TableCell>
                                 </TableRow>
                               )
@@ -1022,6 +1151,35 @@ export function BackofficeClientDetailsContainer() {
             teams={teams}
             service={service}
           />
+          <AlertDialog
+            open={memberProDisableOpen}
+            onOpenChange={
+              isTogglingMemberPro ? undefined : (open) => !open && setMemberProDisableOpen(false)
+            }
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Desabilitar Member PRO?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  O cliente voltará ao tipo Comum. Usuários ilimitados podem ser removidos se não
+                  houver outra concessão (vitalício ou adesão anual).
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isTogglingMemberPro}>Voltar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.preventDefault()
+                    void handleDisableMemberPro()
+                  }}
+                  disabled={isTogglingMemberPro}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isTogglingMemberPro ? "Desabilitando..." : "Desabilitar"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
 

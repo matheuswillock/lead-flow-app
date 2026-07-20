@@ -1187,7 +1187,7 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
     id: "whatsapp-auto-respostas", indexLabel: "22", title: "WhatsApp: auto-respostas", eyebrow: "Automação", lead: "Configure boas-vindas, horário e palavras-chave com prioridade previsível.", availability: "beta", audience: "manager",
     audienceNote: "A configuração é restrita a manager e master; operadores visualizam o estado da conversa.",
     blocks: [
-      { type: "steps", items: [{ title: "Crie a regra", description: "Em Auto-respostas, escolha boas-vindas, fora do horário ou palavra-chave." }, { title: "Defina prioridade", description: "A regra com prioridade mais alta vence; use textos claros e curtos." }, { title: "Simule antes de ativar", description: "Revise gatilho, horário e resposta antes de liberar para o time." }] },
+      { type: "steps", items: [{ title: "Crie a regra", description: "Em Auto-respostas, escolha boas-vindas, fora do horário ou palavra-chave." }, { title: "Defina prioridade", description: "A regra com prioridade mais alta vence; use textos claros e curtos." }, { title: "Revise antes de ativar", description: "Confira gatilho, horário e resposta. A simulação assistida será identificada aqui quando estiver disponível." }] },
       { type: "callout", tone: "info", title: "Proteções", content: "O bot não responde quando a conversa está em Atendimento humano e limites anti-loop evitam respostas em cadeia." },
       { type: "faq", items: [{ question: "Por que o bot não respondeu?", answer: "Verifique horário, palavras-chave, prioridade, pausa da conversa e se há atendimento humano ativo." }] },
     ],
@@ -1205,9 +1205,9 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
   {
     id: "whatsapp-privacidade", indexLabel: "24", title: "WhatsApp: privacidade e limites", eyebrow: "Privacidade", lead: "Use dados de clientes somente para atendimento legítimo e dentro dos limites do time.", availability: "available", audience: "all",
     blocks: [
-      { type: "features", columns: 3, items: [{ title: "Retenção", description: "Mensagens e mídias são retidas por 90 dias; a auditoria mínima permanece por 365 dias." }, { title: "Mídia privada", description: "Arquivos não são públicos e links de leitura têm curta duração." }, { title: "Quota", description: "Acompanhe o consumo mensal nas configurações para evitar bloqueios operacionais." }] },
+      { type: "features", columns: 3, items: [{ title: "Retenção", description: "A política alvo é de 90 dias para mensagens e mídias, com auditoria mínima por 365 dias. A purge automática será sinalizada quando ativada." }, { title: "Mídia privada", description: "Arquivos não são públicos e links de leitura têm curta duração." }, { title: "Quota", description: "Acompanhe o consumo mensal nas configurações para evitar bloqueios operacionais." }] },
       { type: "callout", tone: "warning", title: "Dados de clientes", content: "Não compartilhe conversas, documentos ou números fora do atendimento autorizado. Use apenas contas e dispositivos aprovados pelo time." },
-      { type: "faq", items: [{ question: "Posso baixar mídia antiga?", answer: "Após a retenção, a mídia é removida. Salve somente documentos necessários e autorizados nas áreas corretas do CRM." }] },
+      { type: "faq", items: [{ question: "Posso baixar mídia antiga?", answer: "A remoção automática após a retenção ainda está em implantação. Salve somente documentos necessários e autorizados nas áreas corretas do CRM." }] },
     ],
   },
 ]

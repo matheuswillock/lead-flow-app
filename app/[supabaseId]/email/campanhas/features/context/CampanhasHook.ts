@@ -49,6 +49,7 @@ export type CampanhasActions = {
   handleCreateCampaign: () => Promise<void>
   openView: (campaign: Campaign) => void
   openEdit: (campaign: Campaign) => void
+  openEditById: (id: string) => Promise<void>
   closeDetail: () => void
   setSheetTab: (tab: CampaignSheetTab) => void
   setEditName: (v: string) => void
@@ -145,6 +146,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const lastCampaignsKeyRef = useRef("")
   const sendingIdRef = useRef<string | null>(null)
   const sendingCampaignSnapshotRef = useRef<Campaign | null>(null)
+  const sendingSubCampaignParentIdRef = useRef<string | null>(null)
   const dispatchSeenInListRef = useRef(false)
 
   const fetchCampaigns = useCallback(async (
@@ -280,22 +282,32 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
 
     const campaignToSend = campaigns.find((campaign) => campaign.id === id)
+    const isDetailSubCampaign = Boolean(detailCampaign?.subCampaigns?.some((sub) => sub.id === id))
     const sendingSnapshot = campaignToSend
       ? { ...campaignToSend, status: "sending" as const }
       : null
-    sendingIdRef.current = id
-    sendingCampaignSnapshotRef.current = sendingSnapshot
-    dispatchSeenInListRef.current = false
-    setSendingId(id)
-    setStatusFilter(["sending"])
-    setPage(1)
-    lastCampaignsKeyRef.current = ""
+    if (!isDetailSubCampaign) {
+      sendingSubCampaignParentIdRef.current = null
+      sendingIdRef.current = id
+      sendingCampaignSnapshotRef.current = sendingSnapshot
+      dispatchSeenInListRef.current = false
+      setSendingId(id)
+      setStatusFilter(["sending"])
+      setPage(1)
+      lastCampaignsKeyRef.current = ""
+    } else {
+      sendingSubCampaignParentIdRef.current = detailCampaign?.id ?? null
+      sendingIdRef.current = null
+      sendingCampaignSnapshotRef.current = null
+      dispatchSeenInListRef.current = false
+      setSendingId(id)
+    }
 
     if (sendingSnapshot) {
       setCampaigns([sendingSnapshot])
       setTotal(1)
       setTotalPages(1)
-    } else {
+    } else if (!isDetailSubCampaign) {
       setCampaigns((prev) =>
         prev.map((campaign) =>
           campaign.id === id ? { ...campaign, status: "sending" } : campaign
@@ -320,25 +332,45 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
             : campaign
         )
       )
+      setDetailCampaign((prev) => {
+        if (!prev?.subCampaigns?.some((sub) => sub.id === id)) return prev
+        return {
+          ...prev,
+          subCampaigns: prev.subCampaigns.map((sub) =>
+            sub.id === id
+              ? { ...sub, totalRecipients: result.totalRecipients, status: "sending" }
+              : sub
+          ),
+        }
+      })
       toast.success("Disparo iniciado em segundo plano. Você pode sair desta página.")
       if (detailCampaign?.id === id) {
         setDetailCampaign(null)
       }
-      lastCampaignsKeyRef.current = ""
-      void fetchCampaigns(1, ["sending"], pageSize, nameFilter, dateFrom, dateTo)
+      if (!isDetailSubCampaign) {
+        lastCampaignsKeyRef.current = ""
+        void fetchCampaigns(1, ["sending"], pageSize, nameFilter, dateFrom, dateTo)
+      } else {
+        void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+      }
       void fetchCredits()
     } catch (err) {
       console.error("[useCampanhas] handleSend error", err)
       const message = err instanceof Error ? err.message : "Erro ao disparar campanha"
       toast.error(message || "Erro ao disparar campanha")
-      sendingIdRef.current = null
-      sendingCampaignSnapshotRef.current = null
-      dispatchSeenInListRef.current = false
-      setSendingId(null)
-      lastCampaignsKeyRef.current = ""
-      void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+      if (!isDetailSubCampaign) {
+        sendingIdRef.current = null
+        sendingCampaignSnapshotRef.current = null
+        dispatchSeenInListRef.current = false
+        setSendingId(null)
+        lastCampaignsKeyRef.current = ""
+        void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+      } else {
+        sendingSubCampaignParentIdRef.current = null
+        setSendingId(null)
+      }
     }
-  }, [activeTeamId, campaigns, credits?.hasSubscription, credits?.isBetaExempt, detailCampaign?.id, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
+  }, [activeTeamId, campaigns, credits?.hasSubscription, credits?.isBetaExempt, detailCampaign, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
 
   useEffect(() => {
     const trackedId = sendingId
@@ -355,6 +387,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       const name = tracked.name
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
+      sendingSubCampaignParentIdRef.current = null
       dispatchSeenInListRef.current = false
       setSendingId(null)
       toast.success(`Disparo de "${name}" concluído. O status foi atualizado automaticamente.`)
@@ -366,6 +399,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       const name = sendingCampaignSnapshotRef.current?.name
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
+      sendingSubCampaignParentIdRef.current = null
       dispatchSeenInListRef.current = false
       setSendingId(null)
       if (name) {
@@ -379,6 +413,53 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
   useEffect(() => {
     if (!sendingId) return
+
+    const parentCampaignId = sendingSubCampaignParentIdRef.current
+    if (!parentCampaignId) return
+    const trackedParentCampaignId: string = parentCampaignId
+
+    async function refreshSubCampaignStatus() {
+      try {
+        const detailed = await service.getById(supabaseId, activeTeamId, trackedParentCampaignId)
+        setDetailCampaign((prev) => (prev?.id === trackedParentCampaignId ? detailed : prev))
+
+        const tracked = detailed.subCampaigns?.find((sub) => sub.id === sendingId)
+        if (!tracked || tracked.status === "sending") return
+
+        sendingSubCampaignParentIdRef.current = null
+        setSendingId(null)
+        toast.success(
+          `Disparo de "${tracked.name}" concluído. O status foi atualizado automaticamente.`
+        )
+        void fetchCredits()
+        void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+      } catch (err) {
+        console.error("[useCampanhas] refreshSubCampaignStatus error", err)
+      }
+    }
+
+    void refreshSubCampaignStatus()
+    const intervalId = window.setInterval(() => {
+      void refreshSubCampaignStatus()
+    }, 4000)
+    return () => window.clearInterval(intervalId)
+  }, [
+    activeTeamId,
+    dateFrom,
+    dateTo,
+    fetchCampaigns,
+    fetchCredits,
+    nameFilter,
+    page,
+    pageSize,
+    sendingId,
+    statusFilter,
+    supabaseId,
+  ])
+
+  useEffect(() => {
+    if (!sendingId) return
+    if (sendingSubCampaignParentIdRef.current) return
 
     const pollStatus =
       statusFilter.includes("sending") || statusFilter.length === 0
@@ -601,6 +682,24 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       })
   }, [activeTeamId, hydrateEditForm, loadEditOptions, supabaseId])
 
+  const openEditById = useCallback(async (id: string) => {
+    try {
+      const detailed = await service.getById(supabaseId, activeTeamId, id)
+      if (!EDITABLE_STATUSES.has(detailed.status)) {
+        toast.error("Campanha não pode ser editada no status atual")
+        return
+      }
+      setDetailCampaign(detailed)
+      setSheetTab("campaign")
+      hydrateEditForm(detailed)
+      void loadEditOptions()
+    } catch (err) {
+      console.error("[useCampanhas] openEditById getById error", err)
+      const message = err instanceof Error ? err.message : "Erro ao carregar campanha"
+      toast.error(message)
+    }
+  }, [activeTeamId, hydrateEditForm, loadEditOptions, supabaseId])
+
   const closeDetail = useCallback(() => {
     if (editSaving) return
     setDetailCampaign(null)
@@ -619,10 +718,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     console.info("[useCampanhas] handleUpdateCampaign", detailCampaign.id)
     try {
       const canSchedule = detailCampaign.status === "draft" || detailCampaign.status === "scheduled"
+      const isSubCampaign = Boolean(
+        detailCampaign.parentCampaignId || (detailCampaign.audienceContactIds?.length ?? 0) > 0
+      )
       const updated = await service.update(supabaseId, activeTeamId, detailCampaign.id, {
         name: editName.trim(),
         templateId: editTemplateId || undefined,
-        contactListId: editContactListId || undefined,
+        ...(!isSubCampaign && { contactListId: editContactListId || undefined }),
         ...(canSchedule ? { scheduledAt: editScheduledAt?.toISOString() ?? null } : {}),
       })
       const nextTemplate = templates.find((t) => t.id === (editTemplateId || detailCampaign.template?.id)) ?? detailCampaign.template
@@ -729,6 +831,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     handleCreateCampaign,
     openView,
     openEdit,
+    openEditById,
     closeDetail,
     setSheetTab,
     setEditName,

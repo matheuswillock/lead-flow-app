@@ -6,7 +6,7 @@ import {
   WhatsAppAccessDeniedError,
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppService } from "@/app/api/services/whatsapp/WhatsAppService"
-import { isWithinSendRateLimit } from "@/lib/whatsapp/send-rate-limit"
+import { consumeSendRateLimit } from "@/lib/whatsapp/send-rate-limit"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 
 type SendMessageUseCaseInput = SendMessageInput & { access: TeamAccess; clientMessageId: string }
@@ -53,7 +53,7 @@ class SendMessageUseCase {
         return new Output(false, [], ["Limite mensal de mensagens atingido. Contate o administrador para aumentar o limite."], null)
       }
 
-      if (!(await isWithinSendRateLimit(input.teamId))) {
+      if (!(await consumeSendRateLimit(input.teamId))) {
         return new Output(false, [], ["Limite de envio por minuto atingido. Aguarde um momento."], null)
       }
 

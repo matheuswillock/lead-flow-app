@@ -23,6 +23,13 @@ import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBil
 import type { BillingOwnerProfile } from "../../services/billing/IIncrementalBillingService"
 import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncrementalBillingCoordinator"
 import { backofficeBannedUsersRepository } from "../../infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
+import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository"
+import {
+  buildPendingActionInvoiceId,
+  classifyAsaasPaymentInvoice,
+  classifyPendingActionInvoice,
+  parsePendingActionInvoiceId,
+} from "@/app/api/shared/billing/invoiceClassification"
 
 function buildMasterNotificationEmail(params: {
   masterName: string
@@ -127,6 +134,7 @@ interface AsaasPaymentItem {
   bankSlipUrl?: string
   transactionReceiptUrl?: string
   externalReference?: string
+  subscription?: string
   installmentNumber?: number
   confirmedDate?: string
   deleted?: boolean
@@ -136,6 +144,71 @@ interface AsaasPaymentItem {
   pixTransaction?: {
     transactionReceiptUrl?: string
   }
+}
+
+type UnifiedInvoiceRow = {
+  id: string
+  invoiceIdDisplay: string
+  invoiceName: string
+  invoiceKind: "subscription" | "addon_user" | "addon_team" | "other"
+  source: "asaas" | "pending_action"
+  status: string
+  statusGroup: "paid" | "overdue" | "upcoming" | "other"
+  value: number
+  dateCreated: string | null
+  dueDate: string | null
+  paymentDate: string | null
+  description: string
+  billingType: string
+  invoiceUrl: string | null
+  bankSlipUrl: string | null
+  invoiceNumber: string | null
+  checkoutUrl: string | null
+  pendingActionId: string | null
+  sortDate: number
+}
+
+function readPayloadCharge(payload: Record<string, unknown>): number {
+  const totalCharge = Number(payload.totalCharge ?? 0)
+  if (Number.isFinite(totalCharge) && totalCharge > 0) return totalCharge
+  const billingDelta = Number(payload.billingDelta ?? 0)
+  return Number.isFinite(billingDelta) && billingDelta > 0 ? billingDelta : 0
+}
+
+function mapPendingActionStatus(action: {
+  status: string
+  paymentId: string | null
+  payload: Record<string, unknown>
+}): { status: string; statusGroup: "paid" | "overdue" | "upcoming" | "other" } {
+  if (action.status === "pending") {
+    return { status: "PENDING", statusGroup: "upcoming" }
+  }
+  if (action.status === "failed") {
+    return { status: "FAILED", statusGroup: "other" }
+  }
+  if (action.status === "applied") {
+    if (action.payload.paymentStatus === "WAIVED") {
+      return { status: "WAIVED", statusGroup: "other" }
+    }
+    if (action.paymentId) {
+      return { status: "CONFIRMED", statusGroup: "paid" }
+    }
+    return { status: "APPLIED", statusGroup: "other" }
+  }
+  return { status: action.status.toUpperCase(), statusGroup: "other" }
+}
+
+function buildPendingActionDescription(actionType: string, payload: Record<string, unknown>): string {
+  if (actionType === "create_team") {
+    const teamName = (payload.teamName as string | undefined) ?? (payload.name as string | undefined)
+    return teamName ? `Time: ${teamName}` : "Add-on time"
+  }
+  const name = (payload.name as string | undefined) ?? ""
+  const email = (payload.email as string | undefined) ?? ""
+  if (name && email) return `${name} (${email})`
+  if (email) return email
+  if (name) return name
+  return "Add-on usuário"
 }
 
 function createSupabaseAdmin() {
@@ -180,11 +253,6 @@ function getStatusGroup(status?: string): "paid" | "overdue" | "upcoming" | "oth
   if (status && OVERDUE_STATUSES.has(status)) return "overdue"
   if (status && UPCOMING_STATUSES.has(status)) return "upcoming"
   return "other"
-}
-
-function matchesStatusFilter(status: string | undefined, filter: InvoiceStatusFilter): boolean {
-  if (filter === "all") return true
-  return getStatusGroup(status) === filter
 }
 
 function getPeriodStartDate(period: InvoicePeriodFilter, now: Date, timezone: string): Date | null {
@@ -530,72 +598,119 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      if (!master.asaasCustomerId) {
-        return new Output(true, [], [], {
-          items: [],
-          pagination: {
-            page,
-            pageSize,
-            totalItems: 0,
-            totalPages: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-          },
-          summary: {
-            charged: 0,
-            upcoming: 0,
-            overdue: 0,
-          },
-          filters: {
-            status: statusFilter,
-            period: periodFilter,
-          },
+      const now = new Date()
+      const asaasPayments = master.asaasCustomerId
+        ? await this.fetchAllCustomerPayments(master.asaasCustomerId)
+        : []
+
+      const coveredPendingIds = new Set<string>()
+      const coveredPaymentIds = new Set<string>()
+      for (const payment of asaasPayments) {
+        if (payment.id) coveredPaymentIds.add(payment.id)
+        const externalReference = payment.externalReference ?? ""
+        if (externalReference.startsWith("pending-action-")) {
+          coveredPendingIds.add(externalReference.slice("pending-action-".length))
+        }
+      }
+
+      const asaasRows: UnifiedInvoiceRow[] = asaasPayments.map((payment) => {
+        const classification = classifyAsaasPaymentInvoice({
+          subscription: payment.subscription,
+          externalReference: payment.externalReference,
+          description: payment.description,
+        })
+        const status = payment.status ?? "PENDING"
+        return {
+          id: payment.id,
+          invoiceIdDisplay: payment.invoiceNumber ? `#${payment.invoiceNumber}` : payment.id,
+          invoiceName: classification.invoiceName,
+          invoiceKind: classification.invoiceKind,
+          source: "asaas" as const,
+          status,
+          statusGroup: getStatusGroup(status),
+          value: normalizeAsaasValue(payment.value),
+          dateCreated: payment.dateCreated ?? null,
+          dueDate: payment.dueDate ?? null,
+          paymentDate: payment.clientPaymentDate ?? payment.paymentDate ?? null,
+          description: payment.description ?? "Descrição não informada",
+          billingType: payment.billingType ?? "UNDEFINED",
+          invoiceUrl: payment.invoiceUrl ?? null,
+          bankSlipUrl: payment.bankSlipUrl ?? null,
+          invoiceNumber: payment.invoiceNumber ?? null,
+          checkoutUrl: null,
+          pendingActionId: null,
+          sortDate: getSortableInvoiceDate(payment),
+        }
+      })
+
+      const pendingActions = await pendingActionRepository.listBillingByMasterId(masterProfileId)
+      const pendingRows: UnifiedInvoiceRow[] = []
+
+      for (const action of pendingActions) {
+        const payload =
+          action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+            ? (action.payload as Record<string, unknown>)
+            : {}
+        const charge = readPayloadCharge(payload)
+        if (charge <= 0) continue
+        if (coveredPendingIds.has(action.id)) continue
+        if (action.paymentId && coveredPaymentIds.has(action.paymentId)) continue
+
+        const classification = classifyPendingActionInvoice(action.actionType)
+        const mappedStatus = mapPendingActionStatus({
+          status: action.status,
+          paymentId: action.paymentId,
+          payload,
+        })
+        const createdIso = action.createdAt.toISOString()
+        const createdDate = createdIso.slice(0, 10)
+        const billingType =
+          typeof payload.billingType === "string" ? payload.billingType : "UNDEFINED"
+
+        pendingRows.push({
+          id: buildPendingActionInvoiceId(action.id),
+          invoiceIdDisplay: buildPendingActionInvoiceId(action.id),
+          invoiceName: classification.invoiceName,
+          invoiceKind: classification.invoiceKind,
+          source: "pending_action",
+          status: mappedStatus.status,
+          statusGroup: mappedStatus.statusGroup,
+          value: charge,
+          dateCreated: createdDate,
+          dueDate: createdDate,
+          paymentDate: null,
+          description: buildPendingActionDescription(action.actionType, payload),
+          billingType,
+          invoiceUrl: null,
+          bankSlipUrl: null,
+          invoiceNumber: null,
+          checkoutUrl:
+            action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
+          pendingActionId: action.id,
+          sortDate: action.createdAt.getTime(),
         })
       }
 
-      const now = new Date()
-      const allItems = await this.fetchAllCustomerPayments(master.asaasCustomerId)
+      const allRows = [...asaasRows, ...pendingRows]
+        .filter((row) => statusFilter === "all" || row.statusGroup === statusFilter)
+        .filter((row) => matchesPeriodFilter(row.dueDate ?? undefined, periodFilter, now, timezone))
+        .sort((a, b) => b.sortDate - a.sortDate)
 
-      const filteredItems = allItems
-        .filter((payment) => {
-          if (!matchesStatusFilter(payment.status, statusFilter)) {
-            return false
-          }
-
-          return matchesPeriodFilter(payment.dueDate, periodFilter, now, timezone)
-        })
-        .sort((a, b) => getSortableInvoiceDate(b) - getSortableInvoiceDate(a))
-
-      const totalItems = filteredItems.length
+      const totalItems = allRows.length
       const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
       const safePage = Math.min(page, totalPages)
       const offset = (safePage - 1) * pageSize
-      const pagedItems = filteredItems.slice(offset, offset + pageSize)
+      const pagedItems = allRows.slice(offset, offset + pageSize)
 
-      const items = pagedItems.map((payment) => ({
-        id: payment.id,
-        status: payment.status ?? "PENDING",
-        statusGroup: getStatusGroup(payment.status),
-        value: normalizeAsaasValue(payment.value),
-        dateCreated: payment.dateCreated ?? null,
-        dueDate: payment.dueDate ?? null,
-        paymentDate: payment.clientPaymentDate ?? payment.paymentDate ?? null,
-        description: payment.description ?? "Descrição não informada",
-        billingType: payment.billingType ?? "UNDEFINED",
-        invoiceUrl: payment.invoiceUrl ?? null,
-        bankSlipUrl: payment.bankSlipUrl ?? null,
-        invoiceNumber: payment.invoiceNumber ?? null,
-      }))
+      const items = pagedItems.map(({ sortDate: _sortDate, ...item }) => item)
 
-      const summary = filteredItems.reduce(
+      const summary = allRows.reduce(
         (acc, item) => {
-          const status = item.status ?? ""
-
-          if (CHARGED_STATUSES.has(status)) {
+          if (item.statusGroup === "paid") {
             acc.charged += 1
-          } else if (UPCOMING_STATUSES.has(status)) {
+          } else if (item.statusGroup === "upcoming") {
             acc.upcoming += 1
-          } else if (status === "OVERDUE") {
+          } else if (item.statusGroup === "overdue") {
             acc.overdue += 1
           }
           return acc
@@ -636,6 +751,60 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
+      const pendingActionId = parsePendingActionInvoiceId(invoiceId)
+      if (pendingActionId) {
+        const action = await pendingActionRepository.findByIdSimple(pendingActionId)
+        if (!action || action.masterId !== masterProfileId) {
+          return new Output(false, [], ["Fatura não encontrada"], null)
+        }
+
+        const payload =
+          action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+            ? (action.payload as Record<string, unknown>)
+            : {}
+        const charge = readPayloadCharge(payload)
+        const classification = classifyPendingActionInvoice(action.actionType)
+        const mappedStatus = mapPendingActionStatus({
+          status: action.status,
+          paymentId: action.paymentId,
+          payload,
+        })
+        const createdDate = action.createdAt.toISOString().slice(0, 10)
+        const billingType =
+          typeof payload.billingType === "string" ? payload.billingType : "UNDEFINED"
+
+        return new Output(true, [], [], {
+          id: buildPendingActionInvoiceId(action.id),
+          invoiceIdDisplay: buildPendingActionInvoiceId(action.id),
+          invoiceName: classification.invoiceName,
+          invoiceKind: classification.invoiceKind,
+          source: "pending_action",
+          customerName: master.fullName ?? master.email,
+          status: mappedStatus.status,
+          statusGroup: mappedStatus.statusGroup,
+          value: charge,
+          netValue: charge,
+          originalValue: charge,
+          interestValue: 0,
+          billingType,
+          description: buildPendingActionDescription(action.actionType, payload),
+          dateCreated: createdDate,
+          dueDate: createdDate,
+          paymentDate: null,
+          confirmedDate: null,
+          invoiceNumber: null,
+          installmentNumber: null,
+          externalReference: buildPendingActionInvoiceId(action.id),
+          invoiceUrl: null,
+          bankSlipUrl: null,
+          transactionReceiptUrl: null,
+          deleted: false,
+          checkoutUrl:
+            action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
+          pendingActionId: action.id,
+        })
+      }
+
       if (!master.asaasCustomerId) {
         return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
       }
@@ -652,7 +821,119 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
       }
 
+      const classification = classifyAsaasPaymentInvoice({
+        subscription: payment.subscription,
+        externalReference: payment.externalReference,
+        description: payment.description,
+      })
+
       return new Output(true, [], [], {
+        id: payment.id,
+        invoiceIdDisplay: payment.invoiceNumber ? `#${payment.invoiceNumber}` : payment.id,
+        invoiceName: classification.invoiceName,
+        invoiceKind: classification.invoiceKind,
+        source: "asaas",
+        customerName: master.fullName ?? master.email,
+        status: payment.status ?? "PENDING",
+        statusGroup: getStatusGroup(payment.status),
+        value: normalizeAsaasValue(payment.value),
+        netValue: normalizeAsaasValue(payment.netValue),
+        originalValue: normalizeAsaasValue(payment.originalValue),
+        interestValue: normalizeAsaasValue(payment.interestValue),
+        billingType: payment.billingType ?? "UNDEFINED",
+        description: payment.description ?? "Descrição não informada",
+        dateCreated: payment.dateCreated ?? null,
+        dueDate: payment.dueDate ?? null,
+        paymentDate: payment.clientPaymentDate ?? payment.paymentDate ?? null,
+        confirmedDate: payment.confirmedDate ?? null,
+        invoiceNumber: payment.invoiceNumber ?? null,
+        installmentNumber: payment.installmentNumber ?? null,
+        externalReference: payment.externalReference ?? null,
+        invoiceUrl: payment.invoiceUrl ?? null,
+        bankSlipUrl: payment.bankSlipUrl ?? null,
+        transactionReceiptUrl:
+          payment.transactionReceiptUrl ?? payment.pixTransaction?.transactionReceiptUrl ?? null,
+        deleted: Boolean(payment.deleted),
+        checkoutUrl: null,
+        pendingActionId: null,
+      })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][getMasterUserInvoiceById]", error)
+      return new Output(false, [], ["Erro ao carregar detalhes da fatura"], null)
+    }
+  }
+
+  async updateMasterUserInvoice(
+    masterProfileId: string,
+    invoiceId: string,
+    data: { value: number; dueDate: string }
+  ): Promise<Output> {
+    try {
+      if (!invoiceId || invoiceId.trim().length === 0) {
+        return new Output(false, [], ["ID da fatura é obrigatório"], null)
+      }
+
+      if (!Number.isFinite(data.value) || data.value <= 0) {
+        return new Output(false, [], ["Informe um valor válido maior que zero"], null)
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data.dueDate)) {
+        return new Output(false, [], ["Data de vencimento inválida"], null)
+      }
+
+      const dueDateParsed = new Date(`${data.dueDate}T00:00:00.000Z`)
+      if (Number.isNaN(dueDateParsed.getTime())) {
+        return new Output(false, [], ["Data de vencimento inválida"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      if (!master.asaasCustomerId) {
+        return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
+      }
+
+      const currentPayment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "GET",
+      })) as AsaasPaymentItem
+
+      if (!currentPayment?.id) {
+        return new Output(false, [], ["Fatura não encontrada"], null)
+      }
+
+      if (currentPayment.customer && currentPayment.customer !== master.asaasCustomerId) {
+        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
+      }
+
+      if (currentPayment.deleted) {
+        return new Output(false, [], ["Não é possível editar uma cobrança removida"], null)
+      }
+
+      const statusGroup = getStatusGroup(currentPayment.status)
+      if (statusGroup !== "upcoming" && statusGroup !== "overdue") {
+        return new Output(
+          false,
+          [],
+          ["Só é possível editar faturas a vencer ou vencidas"],
+          null
+        )
+      }
+
+      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          value: data.value,
+          dueDate: data.dueDate,
+        }),
+      })) as AsaasPaymentItem
+
+      if (!payment?.id) {
+        return new Output(false, [], ["Não foi possível atualizar a cobrança no Asaas"], null)
+      }
+
+      return new Output(true, ["Cobrança atualizada com sucesso"], [], {
         id: payment.id,
         customerName: master.fullName ?? master.email,
         status: payment.status ?? "PENDING",
@@ -677,8 +958,8 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         deleted: Boolean(payment.deleted),
       })
     } catch (error) {
-      console.error("[BackofficePlatformUsersUseCase][getMasterUserInvoiceById]", error)
-      return new Output(false, [], ["Erro ao carregar detalhes da fatura"], null)
+      console.error("[BackofficePlatformUsersUseCase][updateMasterUserInvoice]", error)
+      return new Output(false, [], ["Erro ao atualizar a cobrança"], null)
     }
   }
 
