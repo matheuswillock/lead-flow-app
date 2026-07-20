@@ -670,6 +670,35 @@ class WhatsAppRepository implements IWhatsAppRepository {
     ])
   }
 
+  async softDeleteConversationWithAudit(input: {
+    conversationId: string
+    teamId: string
+    actorProfileId?: string | null
+    action: string
+    metadata?: Prisma.InputJsonValue
+  }): Promise<void> {
+    const now = new Date()
+    await prisma.$transaction([
+      prisma.whatsAppConversation.update({
+        where: { id: input.conversationId },
+        data: { deletedAt: now, isArchived: true },
+      }),
+      prisma.whatsAppMessage.updateMany({
+        where: { conversationId: input.conversationId, deletedAt: null },
+        data: { deletedAt: now },
+      }),
+      prisma.whatsAppAuditEvent.create({
+        data: {
+          teamId: input.teamId,
+          conversationId: input.conversationId,
+          actorProfileId: input.actorProfileId ?? null,
+          action: input.action,
+          metadata: input.metadata ?? {},
+        },
+      }),
+    ])
+  }
+
   async createAuditEvent(input: {
     teamId: string
     conversationId?: string | null

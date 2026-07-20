@@ -230,6 +230,15 @@ interface BackofficeAdhesionDialogProps {
   onSaved?: () => Promise<void> | void
 }
 
+const USER_TYPE_LABELS: Record<BackofficeAdhesionFormValues["userType"], string> = {
+  common: "Comum",
+  member_pro: "Member PRO",
+  associate: "Associado",
+  guest: "Convidado",
+}
+
+type CreateDialogStep = "form" | "review"
+
 export function BackofficeAdhesionDialog({
   open,
   mode,
@@ -244,6 +253,7 @@ export function BackofficeAdhesionDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [result, setResult] = useState<BackofficeAdhesionCreationResult | null>(null)
   const [leadComboOpen, setLeadComboOpen] = useState(false)
+  const [createStep, setCreateStep] = useState<CreateDialogStep>("form")
 
   const selectedLead = useMemo(
     () => options?.leads.find((lead) => lead.id === values.leadId) ?? null,
@@ -354,6 +364,7 @@ export function BackofficeAdhesionDialog({
     if (!open) return
 
     setResult(null)
+    setCreateStep("form")
     setValues(mode === "edit" && adhesion ? valuesFromAdhesion(adhesion) : defaultValues())
     setIsLoadingOptions(true)
     service
@@ -476,6 +487,16 @@ export function BackofficeAdhesionDialog({
     toast.success("Link copiado")
   }
 
+  function handleReview() {
+    if (!canSubmit || isSubmitting || mode !== "create") return
+    setCreateStep("review")
+  }
+
+  function handleBackToForm() {
+    if (isSubmitting) return
+    setCreateStep("form")
+  }
+
   async function handleSubmit() {
     if (!canSubmit || isSubmitting) return
     setIsSubmitting(true)
@@ -542,11 +563,19 @@ export function BackofficeAdhesionDialog({
     >
       <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{mode === "edit" ? "Editar adesão" : "Nova adesão"}</DialogTitle>
+          <DialogTitle>
+            {mode === "edit"
+              ? "Editar adesão"
+              : createStep === "review"
+                ? "Revisar nova adesão"
+                : "Nova adesão"}
+          </DialogTitle>
           <DialogDescription>
             {mode === "edit"
               ? "Ajuste os dados comerciais enquanto a adesão ainda não foi paga."
-              : "Selecione um lead elegível e escolha o tipo de ativação."}
+              : createStep === "review"
+                ? "Confira os dados e a cobrança antes de confirmar a criação."
+                : "Selecione um lead elegível e escolha o tipo de ativação."}
           </DialogDescription>
         </DialogHeader>
 
@@ -576,6 +605,144 @@ export function BackofficeAdhesionDialog({
                 </>
               )}
             </div>
+          </div>
+        ) : mode === "create" && createStep === "review" ? (
+          <div className="dialog-scrollbar flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">Dados do cliente</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <p>
+                  <span className="text-muted-foreground">Lead: </span>
+                  {selectedLead?.name ?? "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Nome: </span>
+                  {values.fullName.trim() || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">E-mail: </span>
+                  {values.email.trim() || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Telefone: </span>
+                  {values.phone.trim() || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Documento: </span>
+                  {values.cpfCnpj.trim() || "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">Configuração da adesão</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <p>
+                  <span className="text-muted-foreground">Plano: </span>
+                  {selectedVariant?.name ?? "CRM"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Ciclo: </span>
+                  {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Tipo de usuário: </span>
+                  {USER_TYPE_LABELS[values.userType]}
+                  {isMemberPro && memberProAccessDaysValue
+                    ? ` (${memberProAccessDaysValue} dias)`
+                    : ""}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">MultiSkill: </span>
+                  {values.multiskillEnabled ? "Ativo" : "Inativo"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Usuários ilimitados: </span>
+                  {values.cycle === "annual" ||
+                  values.userType === "member_pro" ||
+                  values.hasUnlimitedUsers
+                    ? "Sim"
+                    : "Não"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Pago por fora: </span>
+                  {isExternalPaid ? "Sim" : "Não"}
+                </p>
+                {!isGuest && (
+                  <p>
+                    <span className="text-muted-foreground">Método: </span>
+                    {chargeBillingType === "CREDIT_CARD" ? "Cartão" : "Pix"}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-4">
+              <p className="text-sm font-medium">Cobrança</p>
+              {isGuest ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Convidado: sem checkout e sem cobrança Asaas. A conta será ativada diretamente.
+                </p>
+              ) : isExternalPaid ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Pago por fora: sem cobrança Asaas. A conta será criada e o acesso enviado por
+                  e-mail. Total comercial de referência: {formatCurrency(total)}.
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Checkout: gera link público para o cliente pagar no Asaas. Total do checkout:{" "}
+                  {formatCurrency(total)} ({BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]}).
+                </p>
+              )}
+            </div>
+
+            {!isGuest && (
+              <div className="rounded-md border bg-muted/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Resumo comercial</p>
+                    <p className="text-xs text-muted-foreground">
+                      {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]} com cobrança
+                      {isExternalPaid ? " paga por fora." : " antecipada."}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">
+                      {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
+                    </p>
+                    <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                  </div>
+                </div>
+                <div className="mt-4 divide-y rounded-md border bg-background/60">
+                  {commercialItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className="grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1fr)_7rem_8rem]"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {item.description}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Qtd.</span>
+                        <span>{item.quantity}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
+                        <div>
+                          <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCurrency(item.monthlyUnitPrice)}/mês
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="dialog-scrollbar flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
@@ -1150,25 +1317,54 @@ export function BackofficeAdhesionDialog({
         )}
 
         <DialogFooter className="border-t pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isSubmitting}
-            onClick={() => onOpenChange(false)}
-          >
-            {result ? "Fechar" : "Cancelar"}
-          </Button>
-          {!result ? (
-            <Button type="button" disabled={!canSubmit} onClick={handleSubmit}>
-              {isSubmitting
-                ? "Salvando..."
-                : mode === "edit"
-                  ? "Salvar"
+          {result ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={() => onOpenChange(false)}
+            >
+              Fechar
+            </Button>
+          ) : mode === "create" && createStep === "review" ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={handleBackToForm}
+              >
+                Voltar
+              </Button>
+              <Button type="button" disabled={!canSubmit} onClick={handleSubmit}>
+                {isSubmitting
+                  ? "Salvando..."
                   : isExternalPaid
                     ? "Criar conta e enviar acesso"
                     : "Gerar nova adesão"}
-            </Button>
-          ) : null}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => onOpenChange(false)}
+              >
+                Cancelar
+              </Button>
+              {mode === "edit" ? (
+                <Button type="button" disabled={!canSubmit} onClick={handleSubmit}>
+                  {isSubmitting ? "Salvando..." : "Salvar"}
+                </Button>
+              ) : (
+                <Button type="button" disabled={!canSubmit} onClick={handleReview}>
+                  Revisar
+                </Button>
+              )}
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -892,31 +892,43 @@ export function BackofficeClientDetailsContainer() {
                         <Table className="table-fixed">
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-[20%] px-4 text-left">
+                              <TableHead className="w-[16%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
-                                  <CalendarDays className="h-3.5 w-3.5" />
-                                  Data da fatura
+                                  <Tag className="h-3.5 w-3.5" />
+                                  ID
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[20%] px-4 text-left">
+                              <TableHead className="w-[14%] px-4 text-left">
+                                <span className="inline-flex items-center gap-1">
+                                  <Tag className="h-3.5 w-3.5" />
+                                  Nome
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[12%] px-4 text-left">
+                                <span className="inline-flex items-center gap-1">
+                                  <CalendarDays className="h-3.5 w-3.5" />
+                                  Data
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[12%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <CalendarDays className="h-3.5 w-3.5" />
                                   Vencimento
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[18%] px-4 text-right">
+                              <TableHead className="w-[12%] px-4 text-right">
                                 <span className="inline-flex items-center gap-1">
                                   <DollarSign className="h-3.5 w-3.5" />
                                   Valor
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[18%] px-4 text-center">
+                              <TableHead className="w-[12%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   Status
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[24%] px-4 text-center">
+                              <TableHead className="w-[22%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Eye className="h-3.5 w-3.5" />
                                   Ações
@@ -927,9 +939,24 @@ export function BackofficeClientDetailsContainer() {
                           <TableBody>
                             {invoices.map((invoice) => {
                               const statusInfo = INVOICE_STATUS_BADGES[invoice.statusGroup]
+                              const statusLabel =
+                                invoice.status === "WAIVED"
+                                  ? "Dispensada"
+                                  : invoice.status === "PENDING" && invoice.source === "pending_action"
+                                    ? "Aguardando checkout"
+                                    : statusInfo.label
 
                               return (
                                 <TableRow key={invoice.id} className="h-12">
+                                  <TableCell
+                                    className="px-4 align-middle font-mono text-xs truncate"
+                                    title={invoice.invoiceIdDisplay}
+                                  >
+                                    {invoice.invoiceIdDisplay}
+                                  </TableCell>
+                                  <TableCell className="px-4 align-middle">
+                                    {invoice.invoiceName}
+                                  </TableCell>
                                   <TableCell className="px-4 align-middle">
                                     {formatNullableDate(invoice.dateCreated, tz)}
                                   </TableCell>
@@ -944,19 +971,32 @@ export function BackofficeClientDetailsContainer() {
                                       variant={statusInfo.variant}
                                       className={statusInfo.className}
                                     >
-                                      {statusInfo.label}
+                                      {statusLabel}
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <Button asChild variant="outline" size="sm">
-                                      <Link
-                                        href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
-                                        className="inline-flex items-center gap-1"
-                                      >
-                                        <Eye className="h-3.5 w-3.5" />
-                                        Visualizar
-                                      </Link>
-                                    </Button>
+                                    <div className="inline-flex items-center gap-2">
+                                      <Button asChild variant="outline" size="sm">
+                                        <Link
+                                          href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
+                                          className="inline-flex items-center gap-1"
+                                        >
+                                          <Eye className="h-3.5 w-3.5" />
+                                          Visualizar
+                                        </Link>
+                                      </Button>
+                                      {invoice.checkoutUrl ? (
+                                        <Button asChild variant="default" size="sm">
+                                          <a
+                                            href={invoice.checkoutUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            Checkout
+                                          </a>
+                                        </Button>
+                                      ) : null}
+                                    </div>
                                   </TableCell>
                                 </TableRow>
                               )

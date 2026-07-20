@@ -971,6 +971,13 @@ failed failed
     
 
 
+        backoffice_bot_outbound_delivery_status {
+            processing processing
+completed completed
+        }
+    
+
+
         backoffice_bot_ai_provider {
             groq groq
 ollama ollama
@@ -2726,8 +2733,20 @@ failed failed
     Json payload 
     BackofficeBotEventOutboxStatus status 
     String idempotencyKey 
+    Int attemptCount 
+    DateTime nextAttemptAt "❓"
+    String lastError "❓"
     DateTime createdAt 
     DateTime sentAt "❓"
+    }
+  
+
+  "backoffice_bot_outbound_delivery" {
+    String id "🗝️"
+    String idempotencyKey 
+    BackofficeBotOutboundDeliveryStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -3227,6 +3246,7 @@ failed failed
     "backoffice_bot_notification_preferences" }o--|| corretor_studio_profiles : "profile"
     "backoffice_bot_event_outbox" |o--|| "BackofficeBotEventOutboxStatus" : "enum:status"
     "backoffice_bot_event_outbox" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_bot_outbound_delivery" |o--|| "BackofficeBotOutboundDeliveryStatus" : "enum:status"
     "backoffice_bot_ai_configurations" |o--|| "BackofficeBotAiProvider" : "enum:primaryProvider"
     "backoffice_bot_ai_configurations" }o--|o corretor_studio_profiles : "updatedByProfile"
     "backoffice_bot_ai_interactions" |o--|| "BackofficeBotAiCapability" : "enum:capability"

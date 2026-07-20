@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { backofficeBotEventOutboxUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotEventOutboxUseCase";
+import { alertStudioBotOutboxFailRate } from "@/lib/studio-bot/outbox-fail-rate-alert";
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +13,19 @@ export async function GET(request: NextRequest) {
     }
 
     const output = await backofficeBotEventOutboxUseCase.dispatchPending(50);
+    const result = output.result as { dispatched?: number; failed?: number } | null;
+    if (
+      output.isValid &&
+      result &&
+      typeof result.dispatched === "number" &&
+      typeof result.failed === "number"
+    ) {
+      alertStudioBotOutboxFailRate({
+        dispatched: result.dispatched,
+        failed: result.failed,
+      });
+    }
+
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
