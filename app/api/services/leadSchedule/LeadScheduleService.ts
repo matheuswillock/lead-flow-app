@@ -198,6 +198,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       meetingNotes,
       meetingLink,
       meetingType,
+      durationMinutes,
       extraGuests,
       createdByProfileId,
       transitionStatusToScheduled,
@@ -380,6 +381,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           extraGuests,
           attendeeEmails: googleRecipients,
           existingEventId: calendarTransfer.existingEventIdForUpsert,
+          durationMinutes,
         });
 
         // Cancel the previous closer's event only after the new one succeeds,

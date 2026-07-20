@@ -20,6 +20,7 @@ export const FEATURE_PRODUCT_SLUG_MAP: Record<string, string> = {
   [FEATURE_SLUGS.EMAIL_SETTINGS]: "email",
   [FEATURE_SLUGS.EMAIL_UNSUBSCRIBE]: "email",
   [FEATURE_SLUGS.CONFIGURATION]: "configuration",
+  [FEATURE_SLUGS.PUBLIC_FORMS]: "configuration",
   [FEATURE_SLUGS.WHATSAPP]: "whatsapp",
   [FEATURE_SLUGS.WHATSAPP_SETTINGS]: "whatsapp",
   [FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES]: "whatsapp",

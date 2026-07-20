@@ -761,6 +761,11 @@ model Profile {
   activityReactions LeadActivityReaction[]
   attachments       LeadAttachment[]       @relation("AttachmentUploader")
 
+  publicFormsCreated          PublicForm[]               @relation("PublicFormCreator")
+  publicFormsAssignedAsSdr    PublicForm[]               @relation("PublicFormAssignedSdr")
+  publicFormsReviewed         PublicForm[]               @relation("PublicFormReviewer")
+  publicFormCloserAssignments PublicFormEligibleCloser[]
+  publicFormPublications      PublicFormPublication[]    @relation("PublicFormPublisher")
   // Pending Operators relations
   pendingOperators            PendingOperator[]         @relation("PendingOperatorManager")
   pendingActions              PendingAction[]           @relation("PendingActionMaster")
@@ -1651,6 +1656,7 @@ model Lead {
   requiredDocuments LeadRequiredDocument[]
   customFieldValues LeadCustomFieldValue[]
 
+  publicFormSubmissions PublicFormSubmission[]
   // WhatsApp relations
   whatsappConversations WhatsAppConversation[]
   whatsappMessages      WhatsAppMessage[]
@@ -2031,6 +2037,8 @@ model Team {
   automationRules          TeamAutomationRule[]
   automationRunLogs        TeamAutomationRunLog[]
   leadCustomFieldDefinitions LeadCustomFieldDefinition[]
+  publicForms                PublicForm[]
+  publicFormSettings         PublicFormSettings?
   transferRoutesFrom       TeamTransferRoute[]          @relation("TeamTransferRouteFrom")
   transferRoutesTo         TeamTransferRoute[]          @relation("TeamTransferRouteTo")
   outboundLeadTransfers    LeadTransfer[]               @relation("LeadTransferFromTeam")
@@ -4254,4 +4262,313 @@ model BackofficeBotHostOpsJob {
   @@index([status, createdAt(sort: Desc)])
   @@index([requestedByProfileId, createdAt(sort: Desc)])
   @@map("backoffice_bot_host_ops_jobs")
+}
+
+enum PublicFormStatus {
+  draft
+  published
+  archived
+}
+
+enum PublicFormApprovalStatus {
+  draft
+  pending_approval
+  approved
+  rejected
+}
+
+enum PublicFormQuestionType {
+  text
+  email
+  phone
+  number
+  date
+  url
+  single_choice
+  multiple_choice
+  boolean
+  health_plan
+  crm_field
+  custom_field
+  scheduling
+  consent
+}
+
+enum PublicFormMappingTarget {
+  native_field
+  custom_field
+  notes
+  history
+}
+
+enum PublicFormRuleOperator {
+  equals
+  not_equals
+  contains
+  selected
+  not_selected
+}
+
+enum PublicFormRuleAction {
+  show
+  skip
+}
+
+enum PublicFormSubmissionStatus {
+  processing
+  completed
+  failed
+}
+
+enum PublicFormMetricType {
+  form_viewed
+  form_started
+  question_viewed
+  question_answered
+  question_skipped
+  form_completed
+  lead_created
+  lead_attached
+  meeting_scheduled
+}
+
+model PublicFormSettings {
+  id                     String     @id @default(uuid()) @db.Uuid
+  teamId                 String     @unique @db.Uuid
+  approvalRequired       Boolean    @default(false)
+  approverRoles          UserRole[] @default([manager])
+  defaultBackgroundColor String     @default("#FFFFFF") @db.VarChar(7)
+  defaultTextColor       String     @default("#18181B") @db.VarChar(7)
+  defaultLineColor       String     @default("#E4E4E7") @db.VarChar(7)
+  createdAt              DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime   @updatedAt @db.Timestamptz(6)
+  team                   Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("corretor_studio_public_form_settings")
+}
+
+model PublicFormRateLimit {
+  key       String   @id @db.Text
+  count     Int      @default(0)
+  resetAt   DateTime @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([resetAt])
+  @@map("corretor_studio_public_form_rate_limits")
+}
+
+model PublicForm {
+  id                     String                     @id @default(uuid()) @db.Uuid
+  teamId                 String                     @db.Uuid
+  createdById            String                     @db.Uuid
+  assignedSdrId          String?                    @db.Uuid
+  reviewedById           String?                    @db.Uuid
+  name                   String                     @db.Text
+  description            String?                    @db.Text
+  publicId               String                     @unique @default(uuid()) @db.Uuid
+  status                 PublicFormStatus           @default(draft)
+  approvalStatus         PublicFormApprovalStatus   @default(draft)
+  coverTitle             String?                    @db.Text
+  coverDescription       String?                    @db.Text
+  ctaLabel               String                     @default("Começar") @db.Text
+  successTitle           String                     @default("Respostas enviadas") @db.Text
+  successDescription     String?                    @db.Text
+  useDefaultTheme        Boolean                    @default(true)
+  backgroundColor        String?                    @db.VarChar(7)
+  textColor              String?                    @db.VarChar(7)
+  lineColor              String?                    @db.VarChar(7)
+  schedulingEnabled      Boolean                    @default(false)
+  meetingDurationMinutes Int                        @default(30)
+  schedulingMessage      String?                    @db.Text
+  reviewComment          String?                    @db.Text
+  reviewedAt             DateTime?                  @db.Timestamptz(6)
+  createdAt              DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime                   @updatedAt @db.Timestamptz(6)
+  team                   Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator                Profile                    @relation("PublicFormCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedSdr            Profile?                   @relation("PublicFormAssignedSdr", fields: [assignedSdrId], references: [id], onDelete: SetNull)
+  reviewer               Profile?                   @relation("PublicFormReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  eligibleClosers        PublicFormEligibleCloser[]
+  questions              PublicFormQuestion[]
+  rules                  PublicFormRule[]
+  scoreBands             PublicFormScoreBand[]
+  publications           PublicFormPublication[]
+  submissions            PublicFormSubmission[]
+  metricEvents           PublicFormMetricEvent[]
+
+  @@index([teamId, status, updatedAt(sort: Desc)])
+  @@index([teamId, approvalStatus, updatedAt(sort: Desc)])
+  @@index([assignedSdrId])
+  @@map("corretor_studio_public_forms")
+}
+
+model PublicFormEligibleCloser {
+  id        String     @id @default(uuid()) @db.Uuid
+  formId    String     @db.Uuid
+  profileId String     @db.Uuid
+  createdAt DateTime   @default(now()) @db.Timestamptz(6)
+  form      PublicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  profile   Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, profileId])
+  @@index([profileId])
+  @@map("corretor_studio_public_form_eligible_closers")
+}
+
+model PublicFormQuestion {
+  id            String                   @id @default(uuid()) @db.Uuid
+  formId        String                   @db.Uuid
+  type          PublicFormQuestionType
+  title         String                   @db.Text
+  description   String?                  @db.Text
+  placeholder   String?                  @db.Text
+  required      Boolean                  @default(false)
+  position      Int
+  config        Json                     @default("{}")
+  mappingTarget PublicFormMappingTarget?
+  mappingKey    String?                  @db.Text
+  createdAt     DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime                 @updatedAt @db.Timestamptz(6)
+  form          PublicForm               @relation(fields: [formId], references: [id], onDelete: Cascade)
+  options       PublicFormOption[]
+  sourceRules   PublicFormRule[]         @relation("PublicFormRuleSource")
+  targetRules   PublicFormRule[]         @relation("PublicFormRuleTarget")
+  answers       PublicFormAnswer[]
+  metricEvents  PublicFormMetricEvent[]
+
+  @@unique([formId, position])
+  @@index([formId, position])
+  @@map("corretor_studio_public_form_questions")
+}
+
+model PublicFormOption {
+  id         String             @id @default(uuid()) @db.Uuid
+  questionId String             @db.Uuid
+  label      String             @db.Text
+  value      String             @db.Text
+  position   Int
+  score      Int                @default(0)
+  createdAt  DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime           @updatedAt @db.Timestamptz(6)
+  question   PublicFormQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, position])
+  @@index([questionId, position])
+  @@map("corretor_studio_public_form_options")
+}
+
+model PublicFormRule {
+  id               String                 @id @default(uuid()) @db.Uuid
+  formId           String                 @db.Uuid
+  sourceQuestionId String                 @db.Uuid
+  targetQuestionId String                 @db.Uuid
+  operator         PublicFormRuleOperator
+  comparisonValue  Json?
+  action           PublicFormRuleAction
+  createdAt        DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
+  form             PublicForm             @relation(fields: [formId], references: [id], onDelete: Cascade)
+  sourceQuestion   PublicFormQuestion     @relation("PublicFormRuleSource", fields: [sourceQuestionId], references: [id], onDelete: Cascade)
+  targetQuestion   PublicFormQuestion     @relation("PublicFormRuleTarget", fields: [targetQuestionId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@index([sourceQuestionId])
+  @@index([targetQuestionId])
+  @@map("corretor_studio_public_form_rules")
+}
+
+model PublicFormScoreBand {
+  id        String     @id @default(uuid()) @db.Uuid
+  formId    String     @db.Uuid
+  label     String     @db.Text
+  summary   String?    @db.Text
+  minScore  Int
+  maxScore  Int
+  position  Int
+  createdAt DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime   @updatedAt @db.Timestamptz(6)
+  form      PublicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, position])
+  @@index([formId, minScore, maxScore])
+  @@map("corretor_studio_public_form_score_bands")
+}
+
+model PublicFormPublication {
+  id            String                  @id @default(uuid()) @db.Uuid
+  formId        String                  @db.Uuid
+  publishedById String                  @db.Uuid
+  version       Int
+  snapshot      Json
+  publishedAt   DateTime                @default(now()) @db.Timestamptz(6)
+  endedAt       DateTime?               @db.Timestamptz(6)
+  form          PublicForm              @relation(fields: [formId], references: [id], onDelete: Cascade)
+  publishedBy   Profile                 @relation("PublicFormPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
+  submissions   PublicFormSubmission[]
+  metricEvents  PublicFormMetricEvent[]
+
+  @@unique([formId, version])
+  @@index([formId, endedAt, publishedAt(sort: Desc)])
+  @@map("corretor_studio_public_form_publications")
+}
+
+model PublicFormSubmission {
+  id             String                     @id @default(uuid()) @db.Uuid
+  formId         String                     @db.Uuid
+  publicationId  String                     @db.Uuid
+  leadId         String?                    @db.Uuid
+  requestKey     String                     @unique @db.Text
+  status         PublicFormSubmissionStatus @default(processing)
+  score          Int                        @default(0)
+  scoreBandLabel String?                    @db.Text
+  origin         Json?
+  errorMessage   String?                    @db.Text
+  submittedAt    DateTime?                  @db.Timestamptz(6)
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                   @updatedAt @db.Timestamptz(6)
+  form           PublicForm                 @relation(fields: [formId], references: [id], onDelete: Restrict)
+  publication    PublicFormPublication      @relation(fields: [publicationId], references: [id], onDelete: Restrict)
+  lead           Lead?                      @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  answers        PublicFormAnswer[]
+
+  @@index([formId, createdAt(sort: Desc)])
+  @@index([publicationId, createdAt(sort: Desc)])
+  @@index([leadId, submittedAt(sort: Desc)])
+  @@map("corretor_studio_public_form_submissions")
+}
+
+model PublicFormAnswer {
+  id               String               @id @default(uuid()) @db.Uuid
+  submissionId     String               @db.Uuid
+  questionId       String?              @db.Uuid
+  value            Json
+  questionSnapshot Json
+  createdAt        DateTime             @default(now()) @db.Timestamptz(6)
+  submission       PublicFormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  question         PublicFormQuestion?  @relation(fields: [questionId], references: [id], onDelete: SetNull)
+
+  @@unique([submissionId, questionId])
+  @@index([submissionId])
+  @@index([questionId])
+  @@map("corretor_studio_public_form_answers")
+}
+
+model PublicFormMetricEvent {
+  id               String                @id @default(uuid()) @db.Uuid
+  formId           String                @db.Uuid
+  publicationId    String                @db.Uuid
+  questionId       String?               @db.Uuid
+  visitorSessionId String                @db.Text
+  eventType        PublicFormMetricType
+  eventKey         String                @unique @db.Text
+  origin           Json?
+  createdAt        DateTime              @default(now()) @db.Timestamptz(6)
+  form             PublicForm            @relation(fields: [formId], references: [id], onDelete: Cascade)
+  publication      PublicFormPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  question         PublicFormQuestion?   @relation(fields: [questionId], references: [id], onDelete: SetNull)
+
+  @@index([publicationId, eventType, createdAt])
+  @@index([formId, createdAt(sort: Desc)])
+  @@index([visitorSessionId, createdAt])
+  @@map("corretor_studio_public_form_metric_events")
 }
