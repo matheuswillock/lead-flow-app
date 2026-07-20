@@ -2061,6 +2061,7 @@ model Team {
   whatsappOutboundCommands WhatsAppOutboundCommand[]
   whatsappWebhookEvents WhatsAppWebhookEvent[]
   whatsappAuditEvents   WhatsAppAuditEvent[]
+  whatsappSendRateLimitWindows WhatsAppSendRateLimitWindow[]
 
   // CDP relations
   customerProfiles      CustomerProfile[]
@@ -3480,6 +3481,19 @@ model WhatsAppUsageEvent {
   @@index([configId, periodKey])
   @@index([teamId, eventType, createdAt(sort: Desc)])
   @@map("whatsapp_usage_events")
+}
+
+model WhatsAppSendRateLimitWindow {
+  teamId      String   @db.Uuid
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, windowStart])
+  @@map("whatsapp_send_rate_limit_windows")
 }
 
 model WhatsAppAutoResponseRule {
