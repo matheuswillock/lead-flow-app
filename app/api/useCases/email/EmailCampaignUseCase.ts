@@ -790,7 +790,7 @@ export class EmailCampaignUseCase {
   }
 
   private async refreshParentCampaignStatusForChild(campaignId: string): Promise<void> {
-    const campaign = await prisma.emailCampaign.findUnique({
+    const campaign = await prisma.emailCampaign.findFirst({
       where: { id: campaignId },
       select: { parentCampaignId: true },
     })
@@ -1133,7 +1133,7 @@ export class EmailCampaignUseCase {
 
         const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent)
 
-        await prisma.$transaction([
+        const [, updatedCampaign] = await prisma.$transaction([
           prisma.emailCampaignDispatch.update({
             where: { id: job.dispatchId },
             data: {
@@ -1152,10 +1152,15 @@ export class EmailCampaignUseCase {
               totalSent: { increment: dispatchResult.sent },
               dispatchCount: { increment: 1 },
             },
+            select: { parentCampaignId: true },
           }),
         ])
 
-        await this.refreshParentCampaignStatusForChild(job.campaignId)
+        if (updatedCampaign.parentCampaignId) {
+          await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch((refreshError) => {
+            console.error("[EmailCampaignUseCase][completeManualDispatch][refreshParent]", refreshError)
+          })
+        }
 
         if (terminal.campaignStatus === "failed") {
           return new Output(

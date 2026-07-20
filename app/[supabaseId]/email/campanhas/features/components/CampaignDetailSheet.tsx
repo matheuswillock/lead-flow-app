@@ -91,7 +91,8 @@ function SubCampaignActionsMenu({
   const [sending, setSending] = useState(false)
   const canEdit = ["draft", "scheduled", "sent", "failed"].includes(subCampaign.status)
   const canRetryByStatus = subCampaign.status === "failed"
-  const canRetry = canRetryByStatus && canSendCampaign && sendingId !== subCampaign.id
+  const canRetry =
+    canRetryByStatus && canSendCampaign && !sendBlockReason && sendingId !== subCampaign.id
   const retryDisabledReason =
     sendBlockReason ??
     (!canRetryByStatus

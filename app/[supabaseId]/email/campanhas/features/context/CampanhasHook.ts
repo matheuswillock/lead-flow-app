@@ -146,6 +146,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const lastCampaignsKeyRef = useRef("")
   const sendingIdRef = useRef<string | null>(null)
   const sendingCampaignSnapshotRef = useRef<Campaign | null>(null)
+  const sendingSubCampaignParentIdRef = useRef<string | null>(null)
   const dispatchSeenInListRef = useRef(false)
 
   const fetchCampaigns = useCallback(async (
@@ -286,6 +287,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       ? { ...campaignToSend, status: "sending" as const }
       : null
     if (!isDetailSubCampaign) {
+      sendingSubCampaignParentIdRef.current = null
       sendingIdRef.current = id
       sendingCampaignSnapshotRef.current = sendingSnapshot
       dispatchSeenInListRef.current = false
@@ -293,6 +295,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setStatusFilter(["sending"])
       setPage(1)
       lastCampaignsKeyRef.current = ""
+    } else {
+      sendingSubCampaignParentIdRef.current = detailCampaign?.id ?? null
+      sendingIdRef.current = null
+      sendingCampaignSnapshotRef.current = null
+      dispatchSeenInListRef.current = false
+      setSendingId(id)
     }
 
     if (sendingSnapshot) {
@@ -357,6 +365,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         setSendingId(null)
         lastCampaignsKeyRef.current = ""
         void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+      } else {
+        sendingSubCampaignParentIdRef.current = null
+        setSendingId(null)
       }
     }
   }, [activeTeamId, campaigns, credits?.hasSubscription, credits?.isBetaExempt, detailCampaign, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
@@ -376,6 +387,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       const name = tracked.name
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
+      sendingSubCampaignParentIdRef.current = null
       dispatchSeenInListRef.current = false
       setSendingId(null)
       toast.success(`Disparo de "${name}" concluído. O status foi atualizado automaticamente.`)
@@ -387,6 +399,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       const name = sendingCampaignSnapshotRef.current?.name
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
+      sendingSubCampaignParentIdRef.current = null
       dispatchSeenInListRef.current = false
       setSendingId(null)
       if (name) {
@@ -400,6 +413,53 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
   useEffect(() => {
     if (!sendingId) return
+
+    const parentCampaignId = sendingSubCampaignParentIdRef.current
+    if (!parentCampaignId) return
+    const trackedParentCampaignId: string = parentCampaignId
+
+    async function refreshSubCampaignStatus() {
+      try {
+        const detailed = await service.getById(supabaseId, activeTeamId, trackedParentCampaignId)
+        setDetailCampaign((prev) => (prev?.id === trackedParentCampaignId ? detailed : prev))
+
+        const tracked = detailed.subCampaigns?.find((sub) => sub.id === sendingId)
+        if (!tracked || tracked.status === "sending") return
+
+        sendingSubCampaignParentIdRef.current = null
+        setSendingId(null)
+        toast.success(
+          `Disparo de "${tracked.name}" concluído. O status foi atualizado automaticamente.`
+        )
+        void fetchCredits()
+        void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+      } catch (err) {
+        console.error("[useCampanhas] refreshSubCampaignStatus error", err)
+      }
+    }
+
+    void refreshSubCampaignStatus()
+    const intervalId = window.setInterval(() => {
+      void refreshSubCampaignStatus()
+    }, 4000)
+    return () => window.clearInterval(intervalId)
+  }, [
+    activeTeamId,
+    dateFrom,
+    dateTo,
+    fetchCampaigns,
+    fetchCredits,
+    nameFilter,
+    page,
+    pageSize,
+    sendingId,
+    statusFilter,
+    supabaseId,
+  ])
+
+  useEffect(() => {
+    if (!sendingId) return
+    if (sendingSubCampaignParentIdRef.current) return
 
     const pollStatus =
       statusFilter.includes("sending") || statusFilter.length === 0
