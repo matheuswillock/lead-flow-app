@@ -56,14 +56,18 @@ interface FormState {
   memberProAccessDays: string
 }
 
-function remainingAccessDays(accessExpiresAt: string | null): number {
-  if (!accessExpiresAt) return MEMBER_PRO_MAX_DAYS
+function remainingAccessDays(accessExpiresAt: string | null): number | null {
+  if (!accessExpiresAt) return null
   const ms = new Date(accessExpiresAt).getTime() - Date.now()
-  if (!Number.isFinite(ms) || ms <= 0) return MEMBER_PRO_MAX_DAYS
+  if (!Number.isFinite(ms) || ms <= 0) return null
   return Math.min(
     MEMBER_PRO_MAX_DAYS,
     Math.max(MEMBER_PRO_MIN_DAYS, Math.ceil(ms / MEMBER_PRO_DAY_MS))
   )
+}
+
+function suggestedMemberProAccessDays(accessExpiresAt: string | null): number {
+  return remainingAccessDays(accessExpiresAt) ?? MEMBER_PRO_MAX_DAYS
 }
 
 function initForm(details: BackofficeClientDetails): FormState {
@@ -82,7 +86,9 @@ function initForm(details: BackofficeClientDetails): FormState {
     functions: details.functions ?? [],
     userType: slug,
     memberProAccessDays:
-      slug === "member_pro" ? String(remainingAccessDays(details.userType.accessExpiresAt)) : "",
+      slug === "member_pro"
+        ? String(suggestedMemberProAccessDays(details.userType.accessExpiresAt))
+        : "",
   }
 }
 
@@ -154,11 +160,15 @@ export function BackofficeClientEditDialog({
   const initialUserType: EditableUserType =
     details.userType.slug === "member_pro" ? "member_pro" : "common"
   const userTypeChanged = form.userType !== initialUserType
+  const currentRemainingDays = remainingAccessDays(details.userType.accessExpiresAt)
   const memberProDaysChanged =
     form.userType === "member_pro" &&
     memberProAccessDaysValue !== null &&
-    memberProAccessDaysValue !== remainingAccessDays(details.userType.accessExpiresAt)
-  const shouldUpdateUserType = userTypeChanged || memberProDaysChanged
+    currentRemainingDays !== null &&
+    memberProAccessDaysValue !== currentRemainingDays
+  const memberProNeedsRenewal =
+    form.userType === "member_pro" && details.userType.isExpired
+  const shouldUpdateUserType = userTypeChanged || memberProDaysChanged || memberProNeedsRenewal
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
