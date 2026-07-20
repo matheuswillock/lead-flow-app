@@ -26,6 +26,7 @@ export const PUBLIC_PAGE_ROUTES = [
 const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/recursos/",
   "/lead-form/",
+  "/forms/",
   "/agendamento/",
   "/addon-checkout/",
 ] as const
@@ -42,6 +43,7 @@ export const TENANT_ROUTE_PREFIXES = [
   "/teams",
   "/manager-users",
   "/integrations",
+  "/forms",
   "/whatsapp/configuracoes",
   "/whatsapp/auto-respostas",
   "/whatsapp",

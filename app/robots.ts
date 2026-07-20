@@ -20,6 +20,7 @@ const disallowedPaths = [
   "/manager-users",
   "/notifications",
   "/integrations",
+  "/*/forms",
   "/*/dashboard",
   "/*/account",
   "/*/crm",

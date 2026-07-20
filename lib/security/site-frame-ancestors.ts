@@ -84,6 +84,7 @@ export function getWhatsAppSecurityHeaders(): Header[] {
 export function buildLockedSiteHeaderSource(): string {
   const excludedPrefixes = [
     "lead-form",
+    "forms",
     "backoffice-lead-form",
     ...LIVE_FRAME_HEADER_SOURCES.filter((s) => s !== "/"),
   ].map((source) => source.replace(/^\//, ""))
