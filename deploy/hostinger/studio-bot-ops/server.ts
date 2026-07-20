@@ -104,6 +104,23 @@ async function readBody(req) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Remove aspas dotenv/compose e comentario inline nao-aspasado (# ...). */
+function normalizeEnvValue(raw) {
+  let text = String(raw ?? "").trim();
+  if (!text) return "";
+
+  const quote = text[0];
+  if ((quote === '"' || quote === "'") && text.length >= 2 && text[text.length - 1] === quote) {
+    return text.slice(1, -1);
+  }
+
+  const commentMatch = text.match(/\s+#/);
+  if (commentMatch && commentMatch.index !== undefined) {
+    text = text.slice(0, commentMatch.index).trimEnd();
+  }
+  return text;
+}
+
 function parseEnvFile(content) {
   const out = {};
   for (const line of content.split("\n")) {
@@ -111,7 +128,7 @@ function parseEnvFile(content) {
     if (!trimmed || trimmed.startsWith("#")) continue;
     const eq = trimmed.indexOf("=");
     if (eq <= 0) continue;
-    out[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
+    out[trimmed.slice(0, eq).trim()] = normalizeEnvValue(trimmed.slice(eq + 1));
   }
   return out;
 }
@@ -211,7 +228,7 @@ async function listWorkflows() {
 }
 
 function isConfiguredSecret(value) {
-  const text = String(value ?? "").trim();
+  const text = normalizeEnvValue(value);
   if (!text) return false;
   if (text.includes("...") || text.includes("XXXXXXXX") || text.includes("SUBSTITUA_")) return false;
   return true;
@@ -220,7 +237,7 @@ function isConfiguredSecret(value) {
 function isConfiguredN8nEnv(key, value) {
   const expected = REQUIRED_N8N_ENV_VALUES[key];
   if (expected !== undefined) {
-    return String(value ?? "").trim() === expected;
+    return normalizeEnvValue(value) === expected;
   }
   return isConfiguredSecret(value);
 }
