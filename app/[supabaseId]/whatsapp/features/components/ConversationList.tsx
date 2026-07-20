@@ -87,6 +87,7 @@ export function ConversationList() {
                 key={tab.value}
                 type="button"
                 onClick={() => setFilterMode(tab.value)}
+                aria-pressed={filterMode === tab.value}
                 className={cn(
                   "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                   filterMode === tab.value

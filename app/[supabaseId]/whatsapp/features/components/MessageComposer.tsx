@@ -18,7 +18,6 @@ import {
   getMicrophoneUnsupportedMessage,
   isMicrophoneSupported,
   MICROPHONE_PERMISSION_DENIED_MESSAGE,
-  MICROPHONE_PERMISSION_PROMPT_MESSAGE,
   queryMicrophonePermission,
   requestMicrophoneStream,
   MicrophoneAccessError,
@@ -113,7 +112,6 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   const [mentionStart, setMentionStart] = useState(0)
   const [mentionHighlight, setMentionHighlight] = useState(0)
   const [micPermissionDenied, setMicPermissionDenied] = useState(false)
-  const [micPermissionState, setMicPermissionState] = useState<PermissionState | null>(null)
   const [isRequestingMic, setIsRequestingMic] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -169,7 +167,6 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   useEffect(() => {
     if (recorder.status === "recording") {
       setMicPermissionDenied(false)
-      setMicPermissionState("granted")
     }
   }, [recorder.status])
 
@@ -179,7 +176,6 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
     let permissionStatus: PermissionStatus | null = null
 
     const syncPermissionState = (state: PermissionState) => {
-      setMicPermissionState(state)
       setMicPermissionDenied(state === "denied")
     }
 
@@ -212,12 +208,10 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
       const stream = await requestMicrophoneStream()
       stream.getTracks().forEach((track) => track.stop())
       setMicPermissionDenied(false)
-      setMicPermissionState("granted")
       toast.success("Microfone habilitado. Toque no ícone de gravar para começar.")
     } catch (error) {
       if (error instanceof MicrophoneAccessError && error.code === "NotAllowedError") {
         setMicPermissionDenied(true)
-        setMicPermissionState("denied")
       }
       toast.error(error instanceof Error ? error.message : "Não foi possível acessar o microfone.")
     } finally {
@@ -397,8 +391,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   const shellDisabled = isDisabled && !isRecording
 
   const showMicPermissionPrompt =
-    isMicrophoneSupported() &&
-    (micPermissionDenied || micPermissionState === "prompt" || micPermissionState === null)
+    isMicrophoneSupported() && micPermissionDenied
 
   return (
     <div className="flex flex-col gap-2">
@@ -409,22 +402,18 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
       )}
 
       {showMicPermissionPrompt ? (
-        <Alert variant={micPermissionDenied ? "destructive" : "default"}>
+        <Alert variant="destructive">
           <MicOff />
           <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              {micPermissionDenied
-                ? MICROPHONE_PERMISSION_DENIED_MESSAGE
-                : MICROPHONE_PERMISSION_PROMPT_MESSAGE}
-            </span>
+            <span>{MICROPHONE_PERMISSION_DENIED_MESSAGE}</span>
             <Button
               type="button"
               size="sm"
-              variant={micPermissionDenied ? "secondary" : "default"}
+              variant="secondary"
               disabled={isRequestingMic || shellDisabled}
               onClick={() => void handleRequestMicrophone()}
             >
-              {isRequestingMic ? "Solicitando…" : "Permitir microfone"}
+              {isRequestingMic ? "Solicitando…" : "Como liberar"}
             </Button>
           </AlertDescription>
         </Alert>
@@ -464,7 +453,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-8"
+                    className="size-11"
                     disabled={shellDisabled}
                     onClick={handleStartRecording}
                     aria-label="Gravar áudio"

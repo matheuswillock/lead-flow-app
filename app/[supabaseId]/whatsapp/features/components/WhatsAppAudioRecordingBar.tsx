@@ -24,6 +24,9 @@ export function WhatsAppAudioRecordingBar({
   onResume,
 }: WhatsAppAudioRecordingBarProps) {
   const playheadIndex = Math.max(0, waveformLevels.length - 1)
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 py-0.5">
@@ -31,7 +34,7 @@ export function WhatsAppAudioRecordingBar({
         type="button"
         variant="ghost"
         size="icon"
-        className="size-8 shrink-0"
+        className="size-11 shrink-0"
         onClick={onCancel}
         aria-label="Descartar gravação"
       >
@@ -45,35 +48,35 @@ export function WhatsAppAudioRecordingBar({
         </span>
       </div>
 
-      <div
-        className="flex h-8 min-w-0 flex-1 items-center gap-px overflow-hidden"
-        aria-hidden
-      >
-        {waveformLevels.map((level, index) => {
-          const isPast = index < playheadIndex
-          const isPlayhead = index === playheadIndex
-          return (
-            <div key={index} className="relative flex h-full flex-1 items-center justify-center">
+      {prefersReducedMotion ? (
+        <p className="flex-1 text-xs text-muted-foreground">Gravando áudio</p>
+      ) : (
+        <div
+          className="flex h-8 min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
+          aria-hidden
+        >
+          {waveformLevels.map((level, index) => {
+            const isPlayhead = index === playheadIndex
+            const heightPx = Math.max(2, Math.round(2 + level * 28))
+            return (
               <div
+                key={index}
                 className={cn(
-                  "w-full min-w-px rounded-full",
-                  isPast ? "bg-foreground/80" : "bg-muted-foreground/35"
+                  "w-0.5 shrink-0 rounded-sm",
+                  isPlayhead ? "bg-destructive" : "bg-foreground/70"
                 )}
-                style={{ height: `${Math.round(8 + level * 22)}px` }}
+                style={{ height: `${heightPx}px` }}
               />
-              {isPlayhead ? (
-                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-muted-foreground/60" />
-              ) : null}
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="size-8 shrink-0 text-destructive hover:text-destructive"
+        className="size-11 shrink-0 text-destructive hover:text-destructive"
         onClick={status === "paused" ? onResume : onPause}
         aria-label={status === "paused" ? "Retomar gravação" : "Pausar gravação"}
       >

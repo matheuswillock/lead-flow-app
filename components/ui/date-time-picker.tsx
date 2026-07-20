@@ -40,6 +40,8 @@ interface DateTimePickerProps {
   label?: string
   required?: boolean
   availableTimes?: string[]
+  availableDateKeys?: string[]
+  maxDateKey?: string
   showTime?: boolean
   timeLoading?: boolean
   timeLoadingText?: string
@@ -56,6 +58,8 @@ export function DateTimePicker({
   label = "Data e Hora",
   required = false,
   availableTimes,
+  availableDateKeys,
+  maxDateKey,
   showTime = true,
   timeLoading = false,
   timeLoadingText = "Carregando...",
@@ -154,6 +158,20 @@ export function DateTimePicker({
   }
 
   const todayDateKey = formatLocalDateValue(new Date(), resolvedTz)
+  const availableDateKeySet = React.useMemo(
+    () => (availableDateKeys ? new Set(availableDateKeys) : undefined),
+    [availableDateKeys]
+  )
+  const isDateDisabled = React.useCallback(
+    (candidate: Date) => {
+      const candidateKey = toCalendarDateKey(candidate)
+      if (disablePastDates && candidateKey < todayDateKey) return true
+      if (maxDateKey && candidateKey > maxDateKey) return true
+      if (availableDateKeySet && !availableDateKeySet.has(candidateKey)) return true
+      return false
+    },
+    [availableDateKeySet, disablePastDates, maxDateKey, toCalendarDateKey, todayDateKey]
+  )
 
   return (
     <div className={cn("grid gap-1", className)}>
@@ -194,9 +212,7 @@ export function DateTimePicker({
                 onSelect={handleDateSelect}
                 weekdayLabelFormat="short"
                 disabled={
-                  disablePastDates
-                    ? (candidate: Date) => toCalendarDateKey(candidate) < todayDateKey
-                    : undefined
+                  disablePastDates || availableDateKeySet || maxDateKey ? isDateDisabled : undefined
                 }
                 initialFocus
                 locale={ptBR}

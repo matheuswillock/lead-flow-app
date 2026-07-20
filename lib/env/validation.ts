@@ -158,8 +158,12 @@ export const envSchema = z.object({
   EVO_BETHANIA_INSTANCE: z.string().optional().describe('Evolution instance name for Bethânia'),
   BACKOFFICE_BETHANIA_WHATSAPP_NUMBER: z.string().optional().describe('Bethânia WhatsApp number E.164'),
   SUPABASE_BACKOFFICE_BOT_BUCKET: z.string().optional().describe('Storage bucket for Bethânia avatar'),
-  GROQ_API_KEY: z.string().optional().describe('Groq API key; required only when Bethânia AI is enabled'),
-  GROQ_API_BASE_URL: urlSchema.optional().describe('OpenAI-compatible Groq API base URL'),
+  GROQ_API_KEY: z.string().optional().describe('Deprecated alias; prefer BACKOFFICE_GROQ_API_KEY'),
+  GROQ_API_BASE_URL: urlSchema.optional().describe('Deprecated alias; prefer BACKOFFICE_BETHANIA_AI_BASE_URL'),
+  BACKOFFICE_GROQ_API_KEY: z.string().optional().describe('Groq API key for Bethânia AI'),
+  BACKOFFICE_BETHANIA_AI_ENABLED: z.string().optional().describe('Kill switch mirror (DB is source of truth)'),
+  BACKOFFICE_BETHANIA_AI_BASE_URL: urlSchema.optional().describe('OpenAI-compatible Groq base URL'),
+  BACKOFFICE_BETHANIA_AI_ROLLUP_CRON_SECRET: z.string().optional().describe('Cron secret for AI rollup'),
 });
 
 // Infer the type from the schema

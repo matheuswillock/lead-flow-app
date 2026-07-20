@@ -188,7 +188,16 @@ curl -X POST -H 'Content-type: application/json' \
 
 **Router:** `bethania-router` envia `payload.mediaKey = data.key` para download de mídia no inbound.
 
-**Fora de escopo (follow-up):** caminho A (e-mail no chat); aplicar Estágio 3/4 na VPS sem autorização; reabrir lead a partir de push sem redigitar código.
+**Fora de escopo (follow-up):** aplicar Estágio 3/4 na VPS sem autorização; reabrir lead a partir de push sem redigitar código.
+
+### Checklist owner (produção — não executar sem autorização)
+
+- [ ] QR + número Bethânia em produção (`BACKOFFICE_BETHANIA_WHATSAPP_NUMBER` + `NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER`)
+- [ ] Webhook Evolution → N8N `bethania-inbound`
+- [ ] `BETHANIA_SLACK_WEBHOOK_URL` (dev + VPS) + restart n8n
+- [ ] Preferir painel **Bethânia → Ops / Host** para apply env, restart e import de workflows
+- [ ] Templates HSM aprovados no WhatsApp Manager (`bethania_meeting_reminder`, etc.)
+- [ ] Matriz Estágio 3 em produção + 24h sem falhas no overview n8n
 
 ---
 

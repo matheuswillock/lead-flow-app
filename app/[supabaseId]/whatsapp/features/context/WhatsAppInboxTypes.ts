@@ -160,7 +160,7 @@ export interface SendMessageMediaInput {
 }
 
 export interface InboxActions {
-  selectConversation: (id: string) => void
+  selectConversation: (id: string | null) => void
   loadMoreConversations: () => void
   loadOlderMessages: () => void
   sendMessage: (text: string, media?: SendMessageMediaInput, mentionedJids?: string[]) => void

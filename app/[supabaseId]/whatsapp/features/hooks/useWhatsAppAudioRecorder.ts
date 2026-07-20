@@ -8,6 +8,9 @@ import {
 } from "../utils/microphonePermission"
 
 const WAVEFORM_BAR_COUNT = 56
+const IDLE_LEVEL = 0.02
+const NOISE_GATE = 0.02
+const SMOOTHING = 0.35
 
 export type WhatsAppAudioRecorderStatus = "idle" | "recording" | "paused"
 
@@ -25,11 +28,17 @@ function computeRms(data: Uint8Array): number {
   return Math.sqrt(sum / data.length)
 }
 
+function normalizeWaveformLevel(rms: number): number {
+  const gated = Math.max(0, rms - NOISE_GATE)
+  const boosted = Math.min(1, gated * 8)
+  return Math.max(IDLE_LEVEL, Math.min(0.85, boosted))
+}
+
 export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRecorderOptions) {
   const [status, setStatus] = useState<WhatsAppAudioRecorderStatus>("idle")
   const [elapsedMs, setElapsedMs] = useState(0)
   const [waveformLevels, setWaveformLevels] = useState<number[]>(() =>
-    Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0.08)
+    Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL)
   )
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -43,7 +52,8 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
   const startedAtRef = useRef(0)
   const pausedTotalRef = useRef(0)
   const pauseStartedAtRef = useRef<number | null>(null)
-  const waveformBufferRef = useRef<number[]>(Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0.08))
+  const waveformBufferRef = useRef<number[]>(Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL))
+  const smoothedLevelRef = useRef(IDLE_LEVEL)
   const timeDomainDataRef = useRef<Uint8Array | null>(null)
   const isSendingRef = useRef(false)
 
@@ -69,8 +79,9 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
     cleanupMedia()
     setStatus("idle")
     setElapsedMs(0)
-    setWaveformLevels(Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0.08))
-    waveformBufferRef.current = Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0.08)
+    setWaveformLevels(Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL))
+    waveformBufferRef.current = Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL)
+    smoothedLevelRef.current = IDLE_LEVEL
     audioChunksRef.current = []
     sendOnStopRef.current = false
     startedAtRef.current = 0
@@ -100,9 +111,10 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
       const data = timeDomainDataRef.current
       analyser.getByteTimeDomainData(data as Uint8Array<ArrayBuffer>)
 
-      const rms = computeRms(data)
-      const level = Math.min(1, Math.max(0.08, rms * 3.5))
-      const next = [...waveformBufferRef.current.slice(1), level]
+      const target = normalizeWaveformLevel(computeRms(data))
+      smoothedLevelRef.current =
+        smoothedLevelRef.current * (1 - SMOOTHING) + target * SMOOTHING
+      const next = [...waveformBufferRef.current.slice(1), smoothedLevelRef.current]
       waveformBufferRef.current = next
       setWaveformLevels(next)
 

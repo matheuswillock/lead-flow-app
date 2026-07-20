@@ -1407,15 +1407,13 @@ Adicionar em `.env.example` e `lib/env/validation.ts`. A chave Groq é obrigató
 
 ### Fase 0 — Fundação, telemetria e controle operacional
 
-**Obrigatória antes de qualquer tráfego de usuário.**
+**Obrigatória antes de qualquer tráfego de usuário.** Status 2026-07-18:
 
-- Criar enums/modelos, migrations, RLS, grants explícitos, repository e cron de rollup/retenção.
-- Implementar configuração singleton, kill switch, shadow mode, rollout hash estável, rate limit e circuit breaker.
-- Implementar gateway Groq, mas permitir somente teste sintético; nenhuma mensagem real é encaminhada.
-- Implementar `BethaniaAiTelemetryService`, endpoints, Postman e tela de métricas com estado “IA não ativada”.
-- Cada teste persiste interaction e attempt com usuário nulo de sistema, provider, modelo, status, tokens, custo e latência.
-
-Aceite: `isEnabled=false` impede rede externa; configuração/exportação por operator retornam 403; dashboard filtra e detalha sem conteúdo cru; quota/chave inválida não causam 500.
+- [x] Enums/modelos, migrations, RLS, grants, repository e cron de rollup/retenção.
+- [x] Configuração singleton, kill switch, shadow mode, rollout, rate limit helpers.
+- [x] Gateway Groq + provider/test sintético (sem mensagens reais de WhatsApp).
+- [x] Telemetria, endpoints `/api/v1/backoffice/bot/ai/*`, Postman e tela `studio-bot/ia`.
+- [ ] Aceite e2e com chave Groq + Zero Data Retention ativado (owner).
 
 ### Fase 1 — NLU em sombra e leituras naturais
 

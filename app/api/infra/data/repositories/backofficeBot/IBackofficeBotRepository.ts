@@ -85,7 +85,9 @@ export interface ListConversationsFilters {
 
 export interface IBackofficeBotRepository {
   findProfileActiveTeam(profileId: string): Promise<{ id: string; activeTeamId: string | null } | null>;
-  findProfileByEmail(email: string): Promise<{ id: string; activeTeamId: string | null; email: string } | null>;
+  findProfileByEmail(
+    email: string
+  ): Promise<{ id: string; activeTeamId: string | null; email: string; fullName: string | null } | null>;
   findProfileBotContext(profileId: string): Promise<{
     id: string;
     fullName: string | null;

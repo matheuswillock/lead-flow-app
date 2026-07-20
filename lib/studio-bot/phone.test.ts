@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { phoneDigitsEqual } from "./phone";
+import { looksLikeEmail, phoneDigitsEqual } from "./phone";
 
 describe("phoneDigitsEqual", () => {
   test("aceita mesmo número com formatações diferentes", () => {
@@ -14,5 +14,17 @@ describe("phoneDigitsEqual", () => {
   test("rejeita valores curtos ou vazios", () => {
     expect(phoneDigitsEqual("", "11988859573")).toBe(false);
     expect(phoneDigitsEqual("123", "123")).toBe(false);
+  });
+});
+
+describe("looksLikeEmail", () => {
+  test("aceita e-mail válido", () => {
+    expect(looksLikeEmail("  Nome@Empresa.com  ")).toBe("nome@empresa.com");
+  });
+
+  test("rejeita texto que não é e-mail", () => {
+    expect(looksLikeEmail("menu")).toBeNull();
+    expect(looksLikeEmail("nome@")).toBeNull();
+    expect(looksLikeEmail("")).toBeNull();
   });
 });
