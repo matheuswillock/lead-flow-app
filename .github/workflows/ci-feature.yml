@@ -46,6 +46,7 @@ jobs:
       lint: ${{ steps['quality-result'].outputs.lint }}
       typecheck: ${{ steps['quality-result'].outputs.typecheck }}
       proxy-tests: ${{ steps['quality-result'].outputs['proxy-tests'] }}
+      unit-tests: ${{ steps['quality-result'].outputs['unit-tests'] }}
       quality-passed: ${{ steps['quality-result'].outputs.passed }}
     steps:
       - name: Checkout
@@ -85,6 +86,11 @@ jobs:
         continue-on-error: true
         run: bun run test:proxy
 
+      - name: Unit Tests
+        id: unit-tests
+        continue-on-error: true
+        run: bun run test
+
       - name: Spellcheck PT-BR
         id: spellcheck-pt-br
         continue-on-error: true
@@ -99,39 +105,14 @@ jobs:
           echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
           echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
           echo "proxy-tests=${{ steps['proxy-tests'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "unit-tests=${{ steps['unit-tests'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['unit-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
             echo "passed=true" >> "$GITHUB_OUTPUT"
           else
             echo "passed=false" >> "$GITHUB_OUTPUT"
           fi
-
-  unit-tests:
-    name: Unit Tests
-    if: >-
-      ${{
-        (
-          startsWith(github.ref, 'refs/heads/feature/') ||
-          startsWith(github.ref, 'refs/heads/features/') ||
-          startsWith(github.ref, 'refs/heads/feat/')
-        ) &&
-        (
-          github.event.head_commit == null ||
-          !contains(github.event.head_commit.message, '[skip ci]')
-        )
-      }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
-
-      - name: Run unit tests
-        run: bun run test
 
   build:
     name: Build
@@ -165,10 +146,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
-            ${{ runner.os }}-next-
 
       - name: Generate Prisma Client
         run: bun run prisma:generate
@@ -201,7 +181,6 @@ jobs:
     timeout-minutes: 2
     needs:
       - quality
-      - unit-tests
       - build
     steps:
       - name: Enforce Quality Checks
@@ -214,11 +193,7 @@ jobs:
             echo "lint=${{ needs.quality.outputs.lint }}"
             echo "typecheck=${{ needs.quality.outputs.typecheck }}"
             echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
-            failed=1
-          fi
-          if [[ "${{ needs['unit-tests'].result }}" != "success" ]]; then
-            echo "::error::Unit tests failed."
-            echo "unit-tests=${{ needs['unit-tests'].result }}"
+            echo "unit-tests=${{ needs.quality.outputs['unit-tests'] }}"
             failed=1
           fi
           if [[ "${{ needs.build.result }}" != "success" ]]; then

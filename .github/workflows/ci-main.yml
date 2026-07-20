@@ -53,18 +53,7 @@ jobs:
       - name: Proxy Tests
         run: bun run test:proxy
 
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
-
-      - name: Run unit tests
+      - name: Unit Tests
         run: bun run test
 
   migration-status:
@@ -74,7 +63,6 @@ jobs:
     timeout-minutes: 5
     needs:
       - quality
-      - unit-tests
       - build
     steps:
       - name: Checkout
