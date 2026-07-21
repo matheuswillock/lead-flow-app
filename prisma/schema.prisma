@@ -1206,6 +1206,13 @@ model Team {
   twilioNumberSid       String? @db.Text
   twilioPhoneNumber     String? @db.Text
 
+  // Dialer (Studio Voice) — modo de integração 3C Plus (Decisão A: os dois caminhos coexistem)
+  // master: credencial de aplicação (THREECPLUS_API_TOKEN), Time provisionado via conta mestre do Corretor Studio
+  // own_account: Time conecta a própria conta 3C Plus (credencial cifrada abaixo)
+  dialer3cplusMode      Dialer3cPlusMode @default(master)
+  dialer3cplusAccountId String?          @db.Text
+  dialer3cplusApiToken  String?          @db.Text // cifrado com AES-256-GCM (lib/dialer/secret-crypto), somente para dialer3cplusMode = own_account
+
   master                   Profile                       @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
   members                  TeamMember[]
   leads                    Lead[]
@@ -1819,6 +1826,13 @@ enum DialerPlan {
   dialer_unlimited
 
   @@map("dialer_plan")
+}
+
+enum Dialer3cPlusMode {
+  master
+  own_account
+
+  @@map("dialer_3cplus_mode")
 }
 
 enum DialerSubscriptionStatus {

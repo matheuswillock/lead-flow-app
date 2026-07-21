@@ -116,6 +116,11 @@ export const envSchema = z.object({
   // Google OAuth (Calendar)
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional().describe('Google OAuth client ID (optional)'),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional().describe('Google OAuth client secret (optional)'),
+
+  // Dialer (Studio Voice) — 3C Plus
+  THREECPLUS_API_BASE_URL: urlSchema.optional().describe('3C Plus API base URL (optional, defaults to https://app.3c.plus/api/v1)'),
+  THREECPLUS_API_TOKEN: z.string().optional().describe('3C Plus master account API token (required only for teams in "master" mode)'),
+  DIALER_ENCRYPTION_KEY: z.string().optional().describe('Encryption key for Dialer 3C Plus credentials (optional in non-production, falls back to a dev key)'),
 });
 
 // Infer the type from the schema
