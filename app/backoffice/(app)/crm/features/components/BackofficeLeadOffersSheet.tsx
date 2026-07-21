@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Ban, Loader2, Plus, Tag } from "lucide-react"
+import { Ban, Copy, ExternalLink, Loader2, Plus, Tag } from "lucide-react"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -37,10 +37,18 @@ function formatDateTime(value: string): string {
   }).format(new Date(value))
 }
 
+function formatCurrency(value: number | null): string | null {
+  if (value === null) return null
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value)
+}
+
 function statusLabel(status: BackofficeLeadOfferStatusKey): string {
   switch (status) {
     case "active":
-      return "Ativa"
+      return "Ativa (única)"
     case "expired":
       return "Expirada"
     case "revoked":
@@ -135,6 +143,11 @@ export function BackofficeLeadOffersSheet({
     }
   }
 
+  async function handleCopy(shareUrl: string) {
+    await navigator.clipboard.writeText(shareUrl)
+    toast.success("Link copiado")
+  }
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -143,7 +156,7 @@ export function BackofficeLeadOffersSheet({
             <SheetTitle>Histórico de ofertas</SheetTitle>
             <SheetDescription>
               {lead
-                ? `Ofertas geradas para ${lead.name}. O link só pode ser copiado no momento da geração.`
+                ? `Ofertas geradas para ${lead.name}. Apenas uma oferta pode estar ativa por vez.`
                 : "Ofertas do lead."}
             </SheetDescription>
           </SheetHeader>
@@ -180,7 +193,10 @@ export function BackofficeLeadOffersSheet({
                         Gerada em {formatDateTime(offer.generatedAt)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Expira em {formatDateTime(offer.expiresAt)}
+                        Link expira em {formatDateTime(offer.expiresAt)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Pré-contrato até {formatDateTime(offer.preContractExpiresAt)}
                       </p>
                     </div>
                     {canManage && offer.status === "active" ? (
@@ -209,7 +225,32 @@ export function BackofficeLeadOffersSheet({
                       <span className="text-muted-foreground">CTA: </span>
                       {offer.contactName} · {offer.contactPhone}
                     </p>
+                    {formatCurrency(offer.insuranceAmount) ? (
+                      <p>
+                        <span className="text-muted-foreground">Seguro: </span>
+                        {formatCurrency(offer.insuranceAmount)}
+                      </p>
+                    ) : null}
                   </div>
+                  {offer.status === "active" && offer.shareUrl ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleCopy(offer.shareUrl!)}
+                      >
+                        <Copy data-icon="inline-start" />
+                        Copiar link
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" asChild>
+                        <a href={offer.shareUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink data-icon="inline-start" />
+                          Abrir
+                        </a>
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

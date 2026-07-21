@@ -48,10 +48,20 @@ export async function POST(
       ? data.productIds.filter((item): item is string => typeof item === "string")
       : []
 
+    const insuranceAmount =
+      typeof data.insuranceAmount === "number"
+        ? data.insuranceAmount
+        : data.insuranceAmount === null
+          ? null
+          : undefined
+
     const output = await backofficeLeadOfferUseCase.createOffer(id, result.access.profileId, {
       productIds,
       contactName: typeof data.contactName === "string" ? data.contactName : "",
       contactPhone: typeof data.contactPhone === "string" ? data.contactPhone : "",
+      preContractExpiresAt:
+        typeof data.preContractExpiresAt === "string" ? data.preContractExpiresAt : "",
+      insuranceAmount,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })

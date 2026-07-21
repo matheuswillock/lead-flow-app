@@ -76,6 +76,10 @@ new_adhesion new_adhesion
 lost lost
 implementation implementation
 finalized finalized
+proposal proposal
+future_contact future_contact
+deal_closed deal_closed
+disqualified disqualified
         }
     
 
@@ -1367,7 +1371,10 @@ meeting_scheduled meeting_scheduled
     String contactName 
     String contactPhone 
     Json itemsJson 
+    DateTime preContractExpiresAt 
+    Decimal insuranceAmount "❓"
     String shareTokenHash 
+    String tokenPlain "❓"
     DateTime shareExpiresAt 
     DateTime shareGeneratedAt 
     DateTime revokedAt "❓"
@@ -2371,6 +2378,33 @@ meeting_scheduled meeting_scheduled
     String errorMessage "❓"
     Boolean isEnabled 
     Int sortOrder 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_crm_lead_status_transition_gates" {
+    String id "🗝️"
+    String slug 
+    String name 
+    BackofficeLeadTransitionGateType gateType 
+    BackofficeLeadStatus sourceStatus "❓"
+    BackofficeLeadStatus targetStatus "❓"
+    Json config 
+    String blockerType 
+    String errorMessage "❓"
+    Boolean isEnabled 
+    Int sortOrder 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_crm_lead_status_transition_field_rules" {
+    String id "🗝️"
+    BackofficeLeadStatus targetStatus 
+    BackofficeLeadTransitionFieldKey fieldKey 
+    Boolean isEnabled 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3407,6 +3441,13 @@ meeting_scheduled meeting_scheduled
     "backoffice_lead_status_transition_gates" |o--|o "LeadStatus" : "enum:sourceStatus"
     "backoffice_lead_status_transition_gates" |o--|o "LeadStatus" : "enum:targetStatus"
     "backoffice_lead_status_transition_gates" }o--|| corretor_studio_profiles : "updatedBy"
+    "backoffice_crm_lead_status_transition_gates" |o--|| "BackofficeLeadTransitionGateType" : "enum:gateType"
+    "backoffice_crm_lead_status_transition_gates" |o--|o "BackofficeLeadStatus" : "enum:sourceStatus"
+    "backoffice_crm_lead_status_transition_gates" |o--|o "BackofficeLeadStatus" : "enum:targetStatus"
+    "backoffice_crm_lead_status_transition_gates" }o--|| corretor_studio_profiles : "updatedBy"
+    "backoffice_crm_lead_status_transition_field_rules" |o--|| "BackofficeLeadStatus" : "enum:targetStatus"
+    "backoffice_crm_lead_status_transition_field_rules" |o--|| "BackofficeLeadTransitionFieldKey" : "enum:fieldKey"
+    "backoffice_crm_lead_status_transition_field_rules" }o--|| corretor_studio_profiles : "updatedBy"
     "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"

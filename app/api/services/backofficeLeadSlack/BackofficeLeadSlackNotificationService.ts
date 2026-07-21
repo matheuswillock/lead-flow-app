@@ -34,6 +34,10 @@ const statusLabels: Record<BackofficeLeadStatus, string> = {
   lost: "Perdido",
   implementation: "Implementação",
   finalized: "Finalizado",
+  proposal: "Proposta",
+  future_contact: "Contato futuro",
+  deal_closed: "Negócio fechado",
+  disqualified: "Desqualificado",
 }
 
 const originLabels: Record<BackofficeLeadOrigin | "public_form", string> = {

@@ -69,6 +69,14 @@ describe("isPublicPageRoute", () => {
   it("does not treat sign-in as a generic public page", () => {
     expect(isPublicPageRoute("/sign-in")).toBe(false)
   })
+
+  it("allows public offer share paths", () => {
+    expect(isPublicPageRoute("/oferta/some-token")).toBe(true)
+  })
+
+  it("allows public adhesion share paths", () => {
+    expect(isPublicPageRoute("/adesao/some-token")).toBe(true)
+  })
 })
 
 describe("isAuthRedirectRoute", () => {

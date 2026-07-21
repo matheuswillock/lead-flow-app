@@ -90,6 +90,10 @@ enum BackofficeLeadStatus {
   lost
   implementation
   finalized
+  proposal
+  future_contact
+  deal_closed
+  disqualified
 
   @@map("backoffice_lead_status")
 }
@@ -799,6 +803,8 @@ model Profile {
   createdLeadCustomFieldDefinitions LeadCustomFieldDefinition[] @relation("LeadCustomFieldDefinitionCreator")
   updatedLeadStatusTransitionFieldRules BackofficeLeadStatusTransitionFieldRule[] @relation("BackofficeLeadStatusTransitionFieldRuleUpdater")
   updatedLeadStatusTransitionGates BackofficeLeadStatusTransitionGate[] @relation("BackofficeLeadStatusTransitionGateUpdater")
+  updatedCrmLeadStatusTransitionFieldRules BackofficeCrmLeadStatusTransitionFieldRule[] @relation("BackofficeCrmLeadStatusTransitionFieldRuleUpdater")
+  updatedCrmLeadStatusTransitionGates BackofficeCrmLeadStatusTransitionGate[] @relation("BackofficeCrmLeadStatusTransitionGateUpdater")
   finalizedContracts          LeadFinalized[]           @relation("LeadFinalizedCloser")
   createdTasks                Task[]                    @relation("TaskCreator")
   taskAssignments             TaskAssignee[]            @relation("TaskAssigneeProfile")
@@ -1176,7 +1182,10 @@ model BackofficeLeadOffer {
   contactName               String    @map("contactName") @db.Text
   contactPhone              String    @map("contactPhone") @db.Text
   itemsJson                 Json      @map("itemsJson")
+  preContractExpiresAt      DateTime  @map("preContractExpiresAt") @db.Timestamptz(6)
+  insuranceAmount           Decimal?  @map("insuranceAmount") @db.Decimal(12, 2)
   shareTokenHash            String    @unique @map("shareTokenHash") @db.Text
+  tokenPlain                String?   @map("tokenPlain") @db.Text
   shareExpiresAt            DateTime  @map("shareExpiresAt") @db.Timestamptz(6)
   shareGeneratedAt          DateTime  @default(now()) @map("shareGeneratedAt") @db.Timestamptz(6)
   shareGeneratedByProfileId String?   @map("shareGeneratedByProfileId") @db.Uuid
@@ -2964,6 +2973,47 @@ model BackofficeLeadStatusTransitionGate {
   @@index([sortOrder])
   @@index([isEnabled])
   @@map("backoffice_lead_status_transition_gates")
+}
+
+/// Gates de transição do funil CRM backoffice (BackofficeLeadStatus).
+/// Segregado do módulo de produto (LeadStatus) acima.
+model BackofficeCrmLeadStatusTransitionGate {
+  id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug               String                           @unique
+  name               String
+  gateType           BackofficeLeadTransitionGateType
+  sourceStatus       BackofficeLeadStatus?
+  targetStatus       BackofficeLeadStatus?
+  config             Json                             @default("{}")
+  blockerType        String
+  errorMessage       String?
+  isEnabled          Boolean                          @default(true)
+  sortOrder          Int                              @default(0)
+  updatedByProfileId String                           @db.Uuid
+  createdAt          DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                         @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile @relation("BackofficeCrmLeadStatusTransitionGateUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
+
+  @@index([sortOrder])
+  @@index([isEnabled])
+  @@map("backoffice_crm_lead_status_transition_gates")
+}
+
+model BackofficeCrmLeadStatusTransitionFieldRule {
+  id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  targetStatus       BackofficeLeadStatus
+  fieldKey           BackofficeLeadTransitionFieldKey
+  isEnabled          Boolean                          @default(true)
+  updatedByProfileId String                           @db.Uuid
+  createdAt          DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                         @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile @relation("BackofficeCrmLeadStatusTransitionFieldRuleUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([targetStatus, fieldKey])
+  @@index([targetStatus])
+  @@map("backoffice_crm_lead_status_transition_field_rules")
 }
 
 model BackofficeUserSubscription {
