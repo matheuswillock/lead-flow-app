@@ -38,7 +38,7 @@ const STEP_TITLES: Record<ContactImportStep, string> = {
 };
 
 const STEP_DESCRIPTIONS: Record<ContactImportStep, string> = {
-  upload: "Envie uma planilha Excel (.xlsx) ou um arquivo JSON com os seus contatos.",
+  upload: "Envie uma planilha Excel (.xlsx), CSV (.csv) ou um arquivo JSON com os seus contatos.",
   mapping:
     "Relacione as colunas do seu arquivo com os campos do Corretor Studio. Cada campo explica para que serve.",
   summary: "Revise o mapeamento antes de concluir a importação.",

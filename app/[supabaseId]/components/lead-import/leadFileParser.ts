@@ -112,13 +112,41 @@ const parseJsonFile = async (file: File): Promise<ParsedLeadFile> => {
   return { columns, rows };
 };
 
+const parseCsvFile = async (file: File): Promise<ParsedLeadFile> => {
+  const Papa = (await import("papaparse")).default;
+  const text = await file.text();
+  const result = Papa.parse<string[]>(text, {
+    header: false,
+    skipEmptyLines: false,
+  });
+
+  if (result.errors.length > 0 && result.data.length === 0) {
+    throw new Error("O arquivo CSV é inválido");
+  }
+
+  const matrix = result.data.filter((row) => Array.isArray(row)) as unknown[][];
+  const headerRow = matrix[0] ?? [];
+  const columns = headerRow
+    .map((cell) => toCellString(cell))
+    .map((cell, index) => cell || `Coluna ${index + 1}`);
+
+  if (columns.length === 0 || columns.every((column) => column.startsWith("Coluna "))) {
+    throw new Error("Não foi possível identificar as colunas do CSV");
+  }
+
+  return { columns, rows: buildRows(columns, matrix.slice(1), 2) };
+};
+
 export async function parseLeadFile(file: File): Promise<ParsedLeadFile> {
   const fileName = file.name.toLowerCase();
   if (fileName.endsWith(".xlsx")) {
     return parseXlsxFile(file);
   }
+  if (fileName.endsWith(".csv")) {
+    return parseCsvFile(file);
+  }
   if (fileName.endsWith(".json")) {
     return parseJsonFile(file);
   }
-  throw new Error("Formato não suportado. Envie um arquivo .xlsx ou .json");
+  throw new Error("Formato não suportado. Envie um arquivo .xlsx, .csv ou .json");
 }

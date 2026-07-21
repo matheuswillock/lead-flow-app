@@ -38,7 +38,7 @@ const STEP_TITLES: Record<PortfolioImportStep, string> = {
 };
 
 const STEP_DESCRIPTIONS: Record<PortfolioImportStep, string> = {
-  upload: "Envie uma planilha Excel (.xlsx) ou um arquivo JSON com os seus clientes.",
+  upload: "Envie uma planilha Excel (.xlsx), CSV (.csv) ou um arquivo JSON com os seus clientes.",
   mapping:
     "Relacione as colunas do seu arquivo com os campos do Corretor Studio. Cada campo explica para que serve.",
   summary: "Revise o mapeamento e as configurações antes de concluir a importação.",
