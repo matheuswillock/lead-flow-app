@@ -69,9 +69,9 @@ function formatContactListLabel(list: ContactList): string {
 
 function audienceLabel(campaign: {
   contactList: { name: string } | null
-  cdpSegmentSlug?: string | null
+  radarSegmentSlug?: string | null
 }): string {
-  if (campaign.cdpSegmentSlug) return `Segmento CDP: ${campaign.cdpSegmentSlug}`
+  if (campaign.radarSegmentSlug) return `Segmento Radar: ${campaign.radarSegmentSlug}`
   if (campaign.contactList?.name) return campaign.contactList.name
   return "—"
 }

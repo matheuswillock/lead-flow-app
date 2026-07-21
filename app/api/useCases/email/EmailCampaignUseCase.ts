@@ -18,8 +18,8 @@ import {
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
-import { isCdpSegmentSlug } from "@/lib/cdp/segment-config"
-import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
+import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
+import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipients"
 import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
 import {
@@ -28,7 +28,7 @@ import {
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
-import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
+import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import {
   formatCampaignFromHeader,
@@ -54,7 +54,7 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_HTML: "Template sem HTML. Edite o template antes de disparar",
   NO_CREDITS: "Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas",
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
-  NO_RECIPIENTS_CDP: "Nenhum perfil apto no segmento CDP",
+  NO_RECIPIENTS_RADAR: "Nenhum perfil apto no segmento Radar",
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
   INTERNAL: "Erro interno durante o disparo",
   RESEND_ZERO: "Nenhum e-mail foi enviado pelo provedor",
@@ -64,7 +64,7 @@ export interface CreateCampaignInput {
   name: string
   templateId: string
   contactListId?: string
-  cdpSegmentSlug?: string
+  radarSegmentSlug?: string
   scheduledAt?: string | null
   scheduleIntervalDays?: number | null
 }
@@ -128,10 +128,10 @@ export class EmailCampaignUseCase {
 
   private async countActiveRecipients(
     teamId: string,
-    options: { contactListId?: string | null; cdpSegmentSlug?: string | null }
+    options: { contactListId?: string | null; radarSegmentSlug?: string | null }
   ): Promise<number> {
-    if (options.cdpSegmentSlug) {
-      const recipients = await listCdpSegmentEmailRecipients(teamId, options.cdpSegmentSlug)
+    if (options.radarSegmentSlug) {
+      const recipients = await listRadarSegmentEmailRecipients(teamId, options.radarSegmentSlug)
       return recipients.length
     }
     if (!options.contactListId) return 0
@@ -180,7 +180,7 @@ export class EmailCampaignUseCase {
             createdBy: true,
             templateId: true,
             contactListId: true,
-            cdpSegmentSlug: true,
+            radarSegmentSlug: true,
             errorMessage: true,
             _count: { select: { subCampaigns: true } },
           },
@@ -247,7 +247,7 @@ export class EmailCampaignUseCase {
             .map(async (campaign) => {
               const count = await this.countActiveRecipients(ctx.teamId, {
                 contactListId: campaign.contactListId,
-                cdpSegmentSlug: campaign.cdpSegmentSlug,
+                radarSegmentSlug: campaign.radarSegmentSlug,
               })
               return [campaign.id, count] as const
             })
@@ -279,7 +279,7 @@ export class EmailCampaignUseCase {
             creator: creatorsById.get(campaign.createdBy) ?? null,
             template: templatesById.get(campaign.templateId) ?? null,
             contactList: campaign.contactListId ? contactListsById.get(campaign.contactListId) ?? null : null,
-            cdpSegmentSlug: campaign.cdpSegmentSlug,
+            radarSegmentSlug: campaign.radarSegmentSlug,
             errorMessage: campaign.errorMessage,
             subCampaignCount,
             isParentCampaign: subCampaignCount > 0,
@@ -335,7 +335,7 @@ export class EmailCampaignUseCase {
           ? campaign.totalRecipients
           : await this.countActiveRecipients(ctx.teamId, {
               contactListId: campaign.contactListId,
-              cdpSegmentSlug: campaign.cdpSegmentSlug,
+              radarSegmentSlug: campaign.radarSegmentSlug,
             })
 
       const childTotals = isParent
@@ -389,14 +389,14 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Seu perfil não tem permissão para criar campanhas"], null)
       }
 
-      if (!data.contactListId && !data.cdpSegmentSlug) {
-        return new Output(false, [], ["Selecione uma lista de contatos ou um segmento CDP"], null)
+      if (!data.contactListId && !data.radarSegmentSlug) {
+        return new Output(false, [], ["Selecione uma lista de contatos ou um segmento Radar"], null)
       }
-      if (data.contactListId && data.cdpSegmentSlug) {
-        return new Output(false, [], ["Use apenas lista de contatos ou segmento CDP, não ambos"], null)
+      if (data.contactListId && data.radarSegmentSlug) {
+        return new Output(false, [], ["Use apenas lista de contatos ou segmento Radar, não ambos"], null)
       }
-      if (data.cdpSegmentSlug && !isCdpSegmentSlug(data.cdpSegmentSlug)) {
-        return new Output(false, [], ["Segmento CDP inválido"], null)
+      if (data.radarSegmentSlug && !isRadarSegmentSlug(data.radarSegmentSlug)) {
+        return new Output(false, [], ["Segmento Radar inválido"], null)
       }
 
       const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
@@ -425,17 +425,17 @@ export class EmailCampaignUseCase {
 
       const trimmedName = data.name.trim()
 
-      if (data.cdpSegmentSlug || !data.contactListId) {
+      if (data.radarSegmentSlug || !data.contactListId) {
         const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
           contactListId: data.contactListId,
-          cdpSegmentSlug: data.cdpSegmentSlug,
+          radarSegmentSlug: data.radarSegmentSlug,
         })
         if (requiresSubCampaignSplit(totalRecipients)) {
           return new Output(
             false,
             [],
             [
-              `Segmentos CDP com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Segmentos Radar com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
             ],
             null
           )
@@ -448,7 +448,7 @@ export class EmailCampaignUseCase {
             name: trimmedName,
             templateId: data.templateId,
             contactListId: data.contactListId ?? null,
-            cdpSegmentSlug: data.cdpSegmentSlug ?? null,
+            radarSegmentSlug: data.radarSegmentSlug ?? null,
             status: scheduledAt ? "scheduled" : "draft",
             scheduledAt,
             totalRecipients,
@@ -618,7 +618,7 @@ export class EmailCampaignUseCase {
       }
 
       let totalRecipients: number | undefined
-      if (data.contactListId !== undefined || data.cdpSegmentSlug !== undefined) {
+      if (data.contactListId !== undefined || data.radarSegmentSlug !== undefined) {
         if (existing.audienceContactIds.length > 0 || isParentCampaign) {
           return new Output(
             false,
@@ -629,17 +629,17 @@ export class EmailCampaignUseCase {
         }
         const nextContactListId = data.contactListId !== undefined ? data.contactListId : existing.contactListId
         const nextSegmentSlug =
-          data.cdpSegmentSlug !== undefined ? data.cdpSegmentSlug : existing.cdpSegmentSlug
+          data.radarSegmentSlug !== undefined ? data.radarSegmentSlug : existing.radarSegmentSlug
         totalRecipients = await this.countActiveRecipients(ctx.teamId, {
           contactListId: nextContactListId,
-          cdpSegmentSlug: nextSegmentSlug,
+          radarSegmentSlug: nextSegmentSlug,
         })
         if (nextSegmentSlug && requiresSubCampaignSplit(totalRecipients)) {
           return new Output(
             false,
             [],
             [
-              `Segmentos CDP com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Segmentos Radar com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
             ],
             null
           )
@@ -678,12 +678,12 @@ export class EmailCampaignUseCase {
           ...(data.name !== undefined && { name: data.name.trim() }),
           ...(data.templateId !== undefined && { templateId: data.templateId }),
           ...(data.contactListId !== undefined && { contactListId: data.contactListId }),
-          ...(data.cdpSegmentSlug !== undefined && {
-            cdpSegmentSlug: data.cdpSegmentSlug,
-            ...(data.cdpSegmentSlug ? { contactListId: null } : {}),
+          ...(data.radarSegmentSlug !== undefined && {
+            radarSegmentSlug: data.radarSegmentSlug,
+            ...(data.radarSegmentSlug ? { contactListId: null } : {}),
           }),
           ...(data.contactListId !== undefined && data.contactListId
-            ? { cdpSegmentSlug: null }
+            ? { radarSegmentSlug: null }
             : {}),
           ...(totalRecipients !== undefined && { totalRecipients }),
           ...(canChangeSchedule && data.scheduledAt !== undefined && {
@@ -695,7 +695,7 @@ export class EmailCampaignUseCase {
 
       const resolvedRecipientCount = await this.countActiveRecipients(ctx.teamId, {
         contactListId: campaign.contactListId,
-        cdpSegmentSlug: campaign.cdpSegmentSlug,
+        radarSegmentSlug: campaign.radarSegmentSlug,
       })
 
       return new Output(true, ["Campanha atualizada com sucesso"], [], {
@@ -889,7 +889,7 @@ export class EmailCampaignUseCase {
       const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
         teamId: ctx.teamId,
         contactListId: campaign.contactListId,
-        cdpSegmentSlug: campaign.cdpSegmentSlug,
+        radarSegmentSlug: campaign.radarSegmentSlug,
         audienceContactIds: campaign.audienceContactIds,
         template: {
           subject: publishedTemplate.subject,
@@ -906,8 +906,8 @@ export class EmailCampaignUseCase {
           false,
           [],
           [
-            campaign.cdpSegmentSlug
-              ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_CDP
+            campaign.radarSegmentSlug
+              ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR
               : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST,
           ],
           null
@@ -989,7 +989,7 @@ export class EmailCampaignUseCase {
           templateHtml,
           contactListId: campaign.contactListId,
           contactListName: campaign.contactList?.name ?? null,
-          cdpSegmentSlug: campaign.cdpSegmentSlug,
+          radarSegmentSlug: campaign.radarSegmentSlug,
           triggeredBy: ctx.profileId,
           totalRecipients: dispatchInput.recipients.length,
           status: "sending",
@@ -1293,7 +1293,7 @@ export class EmailCampaignUseCase {
         totalRecipients: true,
         triggeredBy: true,
         contactListId: true,
-        cdpSegmentSlug: true,
+        radarSegmentSlug: true,
         templateId: true,
       },
       orderBy: { updatedAt: "asc" },
@@ -1421,7 +1421,7 @@ export class EmailCampaignUseCase {
   }
 
   /**
-   * Recarrega contactId/customFields (e enriquecimento CDP) para retomar disparos órfãos
+   * Recarrega contactId/customFields (e enriquecimento Radar) para retomar disparos órfãos
    * a partir dos logs queued — os logs não persistem personalização.
    */
   private async rebuildRecipientsForOrphanResume(params: {
@@ -1479,7 +1479,7 @@ export class EmailCampaignUseCase {
       }
     })
 
-    const enriched = await enrichCampaignRecipientsWithCdp(params.teamId, baseRecipients)
+    const enriched = await enrichCampaignRecipientsWithRadar(params.teamId, baseRecipients)
     return enriched.map((recipient) => ({
       email: recipient.email,
       name: recipient.name ?? null,
@@ -1594,7 +1594,7 @@ export class EmailCampaignUseCase {
         const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
           teamId: campaign.teamId,
           contactListId: campaign.contactListId,
-          cdpSegmentSlug: campaign.cdpSegmentSlug,
+          radarSegmentSlug: campaign.radarSegmentSlug,
           audienceContactIds: campaign.audienceContactIds,
           template: {
             subject: publishedTemplate.subject,
@@ -1607,8 +1607,8 @@ export class EmailCampaignUseCase {
         })
 
         if (dispatchInput.recipients.length === 0) {
-          const noRecipientsMessage = campaign.cdpSegmentSlug
-            ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_CDP
+          const noRecipientsMessage = campaign.radarSegmentSlug
+            ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR
             : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST
           await this.markScheduledCampaignFailed(campaign.id, noRecipientsMessage)
           continue
@@ -1681,7 +1681,7 @@ export class EmailCampaignUseCase {
             templateHtml,
             contactListId: campaign.contactListId,
             contactListName: campaign.contactList?.name ?? null,
-            cdpSegmentSlug: campaign.cdpSegmentSlug,
+            radarSegmentSlug: campaign.radarSegmentSlug,
             triggeredBy: campaign.createdBy,
             totalRecipients: dispatchInput.recipients.length,
             status: "sending",

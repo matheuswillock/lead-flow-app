@@ -158,7 +158,7 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         templateVersionNumber: 1,
         templateSubject: "S",
         contactListName: null,
-        cdpSegmentSlug: null,
+        radarSegmentSlug: null,
       },
     ])
     const repo = buildRepo({ countLogs, listDispatches })

@@ -31,7 +31,7 @@ export type DispatchAnalyticsItem = {
   templateVersionNumber: number
   templateSubject: string
   contactListName: string | null
-  cdpSegmentSlug: string | null
+  radarSegmentSlug: string | null
   dispatchedAt: string
   totalRecipients: number
   totalSent: number

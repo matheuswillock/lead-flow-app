@@ -118,6 +118,14 @@ export async function proxy(request: NextRequest) {
       })
     }
 
+    // 308 permanent redirect: /{uuid}/cdp → /{uuid}/radar (R4 slug rename)
+    const cdpRedirectMatch = /^\/([0-9a-f-]{36})(\/cdp)(\/.*)?$/i.exec(pathname)
+    if (cdpRedirectMatch) {
+      const redirectUrl = new URL(`/${cdpRedirectMatch[1]}/radar${cdpRedirectMatch[3] ?? ""}`, request.url)
+      redirectUrl.search = request.nextUrl.search
+      return NextResponse.redirect(redirectUrl, { status: 308 })
+    }
+
     if (requiresAuth(pathname)) {
       if (!user) {
         return redirectWithSession(response, new URL("/sign-in", request.url))

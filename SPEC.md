@@ -11,7 +11,7 @@ Artifacts de especificação separados para evolução independente por domínio
 - [Spec 1: Scheduled Email Dispatch](specs/email-dispatch.md)
 - [Spec 2: Resend Email Analytics Backend](specs/email-analytics.md)
 
-## CDP
+## Radar
 
-- [CDP V1 para e-mail](specs/cdp-email.md)
+- [Radar V1 para e-mail](specs/radar-email.md)
 

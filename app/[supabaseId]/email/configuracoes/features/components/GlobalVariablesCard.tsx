@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { cdpService } from "@/app/[supabaseId]/cdp/features/services/CdpService"
+import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
 import { Braces, ChevronDown, ChevronUp, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react"
 import {
   AlertDialog,
@@ -39,7 +39,7 @@ import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { EmailGlobalVariable, EmailVariableValueSource } from "../context/EmailSettingsTypes"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 
-type CdpFieldOption = {
+type RadarFieldOption = {
   key: string
   label: string
   sourceType: string
@@ -49,17 +49,17 @@ function sanitizeKey(value: string) {
   return value.replace(/[^a-zA-Z0-9_]/g, "")
 }
 
-function useCdpFieldOptions() {
+function useRadarFieldOptions() {
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const { activeTeamId } = useTeamContext()
-  const [fields, setFields] = useState<CdpFieldOption[]>([])
+  const [fields, setFields] = useState<RadarFieldOption[]>([])
 
   useEffect(() => {
     if (!supabaseId || !activeTeamId) return
 
     let active = true
-    void cdpService
+    void radarFrontendService
       .listAvailableFields(supabaseId, activeTeamId)
       .then((items) => {
         if (active) setFields(items)
@@ -73,7 +73,7 @@ function useCdpFieldOptions() {
   }, [activeTeamId, supabaseId])
 
   const grouped = useMemo(() => {
-    const groups = new Map<string, CdpFieldOption[]>()
+    const groups = new Map<string, RadarFieldOption[]>()
     for (const field of fields) {
       const list = groups.get(field.sourceType) ?? []
       list.push(field)
@@ -82,22 +82,22 @@ function useCdpFieldOptions() {
     return groups
   }, [fields])
 
-  return { fields, grouped, hasCdp: fields.length > 0 }
+  return { fields, grouped, hasRadar: fields.length > 0 }
 }
 
-type CdpProfileOption = { id: string; displayName: string; primaryEmail: string | null }
+type RadarProfileOption = { id: string; displayName: string; primaryEmail: string | null }
 
-function useCdpProfileOptions() {
+function useRadarProfileOptions() {
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const { activeTeamId } = useTeamContext()
-  const [profiles, setProfiles] = useState<CdpProfileOption[]>([])
+  const [profiles, setProfiles] = useState<RadarProfileOption[]>([])
 
   useEffect(() => {
     if (!supabaseId || !activeTeamId) return
 
     let active = true
-    void cdpService
+    void radarFrontendService
       .listProfiles(supabaseId, activeTeamId, { page: 1, pageSize: 20 })
       .then((result) => {
         if (!active) return
@@ -120,11 +120,11 @@ function useCdpProfileOptions() {
   return profiles
 }
 
-function CdpInterpolationPreview({ variableKey }: { variableKey: string }) {
+function RadarInterpolationPreview({ variableKey }: { variableKey: string }) {
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const { activeTeamId } = useTeamContext()
-  const profiles = useCdpProfileOptions()
+  const profiles = useRadarProfileOptions()
   const [profileId, setProfileId] = useState("")
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -147,7 +147,7 @@ function CdpInterpolationPreview({ variableKey }: { variableKey: string }) {
         <div className="flex flex-col gap-3">
           <Select value={profileId || "__none"} onValueChange={(value) => setProfileId(value === "__none" ? "" : value)}>
             <SelectTrigger>
-              <SelectValue placeholder="Perfil CDP" />
+              <SelectValue placeholder="Perfil Radar" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none">Selecione um perfil...</SelectItem>
@@ -166,7 +166,7 @@ function CdpInterpolationPreview({ variableKey }: { variableKey: string }) {
             onClick={() => {
               if (!supabaseId || !activeTeamId) return
               setLoading(true)
-              void cdpService
+              void radarFrontendService
                 .previewInterpolation(supabaseId, activeTeamId, {
                   profileId,
                   variableKeys: [variableKey],
@@ -204,22 +204,22 @@ type VariableFormProps = {
 }
 
 function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }: VariableFormProps) {
-  const { fields, grouped, hasCdp } = useCdpFieldOptions()
+  const { fields, grouped, hasRadar } = useRadarFieldOptions()
   const [key, setKey] = useState(initialValue?.key ?? "")
   const [type, setType] = useState<"string" | "number">(initialValue?.type ?? "string")
   const [valueSource, setValueSource] = useState<EmailVariableValueSource>(
     initialValue?.valueSource ?? "STATIC"
   )
-  const [cdpFieldKey, setCdpFieldKey] = useState(initialValue?.cdpFieldKey ?? "")
+  const [radarFieldKey, setRadarFieldKey] = useState(initialValue?.radarFieldKey ?? "")
   const [defaultValue, setDefaultValue] = useState(initialValue?.defaultValue ?? "")
   const [description, setDescription] = useState(initialValue?.description ?? "")
 
   const isDisabled =
     loading ||
     !key.trim() ||
-    (valueSource === "CDP" && !cdpFieldKey.trim())
+    (valueSource === "RADAR" && !radarFieldKey.trim())
 
-  const selectedFieldLabel = fields.find((field) => field.key === cdpFieldKey)?.label
+  const selectedFieldLabel = fields.find((field) => field.key === radarFieldKey)?.label
 
   return (
     <form
@@ -230,7 +230,7 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
           key: sanitizeKey(key),
           type,
           valueSource,
-          cdpFieldKey: valueSource === "CDP" ? cdpFieldKey : null,
+          radarFieldKey: valueSource === "RADAR" ? radarFieldKey : null,
           defaultValue: defaultValue.trim() ? defaultValue : null,
           description: description.trim() ? description : null,
         })
@@ -269,7 +269,7 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
           </FieldContent>
         </Field>
 
-        {hasCdp ? (
+        {hasRadar ? (
           <Field>
             <FieldLabel htmlFor="variable-source">Origem do valor</FieldLabel>
             <FieldContent>
@@ -278,7 +278,7 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
                 onValueChange={(value) => {
                   const next = value as EmailVariableValueSource
                   setValueSource(next)
-                  if (next === "STATIC") setCdpFieldKey("")
+                  if (next === "STATIC") setRadarFieldKey("")
                 }}
               >
                 <SelectTrigger id="variable-source" className="w-full" disabled={loading}>
@@ -286,19 +286,19 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="STATIC">Estático (mesmo valor para todos)</SelectItem>
-                  <SelectItem value="CDP">CDP (por destinatário)</SelectItem>
+                  <SelectItem value="RADAR">Radar (por destinatário)</SelectItem>
                 </SelectContent>
               </Select>
             </FieldContent>
           </Field>
         ) : null}
 
-        {valueSource === "CDP" && hasCdp ? (
+        {valueSource === "RADAR" && hasRadar ? (
           <Field>
-            <FieldLabel htmlFor="variable-cdp-field">Campo da CDP</FieldLabel>
+            <FieldLabel htmlFor="variable-radar-field">Campo do Radar</FieldLabel>
             <FieldContent>
-              <Select value={cdpFieldKey || "__none"} onValueChange={(value) => setCdpFieldKey(value === "__none" ? "" : value)}>
-                <SelectTrigger id="variable-cdp-field" className="w-full" disabled={loading}>
+              <Select value={radarFieldKey || "__none"} onValueChange={(value) => setRadarFieldKey(value === "__none" ? "" : value)}>
+                <SelectTrigger id="variable-radar-field" className="w-full" disabled={loading}>
                   <SelectValue placeholder="Selecione o campo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -323,7 +323,7 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
 
         <Field>
           <FieldLabel htmlFor="variable-default">
-            {valueSource === "CDP" ? "Fallback quando vazio" : "Valor padrão"}
+            {valueSource === "RADAR" ? "Fallback quando vazio" : "Valor padrão"}
           </FieldLabel>
           <FieldContent>
             <Input
@@ -350,7 +350,7 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
         </Field>
       </FieldGroup>
 
-      {valueSource === "CDP" && key.trim() ? <CdpInterpolationPreview variableKey={sanitizeKey(key)} /> : null}
+      {valueSource === "RADAR" && key.trim() ? <RadarInterpolationPreview variableKey={sanitizeKey(key)} /> : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={isDisabled}>
@@ -393,20 +393,20 @@ function VariableRow({
             <Badge variant="outline" className="text-muted-foreground">
               {variable.type === "number" ? "Número" : "Texto"}
             </Badge>
-            {variable.valueSource === "CDP" ? (
-              <Badge variant="secondary">CDP</Badge>
+            {variable.valueSource === "RADAR" ? (
+              <Badge variant="secondary">Radar</Badge>
             ) : (
               <Badge variant="outline">Estático</Badge>
             )}
           </div>
-          {variable.valueSource === "CDP" && variable.cdpFieldKey ? (
-            <p className="text-xs text-muted-foreground">Campo CDP: {variable.cdpFieldKey}</p>
+          {variable.valueSource === "RADAR" && variable.radarFieldKey ? (
+            <p className="text-xs text-muted-foreground">Campo Radar: {variable.radarFieldKey}</p>
           ) : null}
           {variable.description ? (
             <p className="truncate text-sm text-muted-foreground">{variable.description}</p>
           ) : null}
           <p className="truncate text-xs text-muted-foreground">
-            {variable.valueSource === "CDP" ? "Fallback" : "Valor padrão"}:{" "}
+            {variable.valueSource === "RADAR" ? "Fallback" : "Valor padrão"}:{" "}
             {variable.defaultValue ? variable.defaultValue : "—"}
           </p>
         </div>
@@ -452,7 +452,7 @@ function VariableRow({
             key: variable.key,
             type: variable.type,
             valueSource: variable.valueSource,
-            cdpFieldKey: variable.cdpFieldKey,
+            radarFieldKey: variable.radarFieldKey,
             defaultValue: variable.defaultValue,
             description: variable.description,
           }}
