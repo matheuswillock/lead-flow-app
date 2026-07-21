@@ -9145,6 +9145,138 @@
           }
         },
         {
+          "name": "GET Backoffice Lead Offers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/offers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "leads",
+                ":id",
+                "offers"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{backofficeLeadId}}"
+                }
+              ]
+            },
+            "description": "Lista o histórico de ofertas públicas do lead."
+          }
+        },
+        {
+          "name": "POST Backoffice Lead Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productIds\": [\"{{backofficeProductId}}\"],\n  \"contactName\": \"João Closer\",\n  \"contactPhone\": \"11999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/offers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "leads",
+                ":id",
+                "offers"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{backofficeLeadId}}"
+                }
+              ]
+            },
+            "description": "Gera link público único de oferta (TTL 24h)."
+          }
+        },
+        {
+          "name": "DELETE Backoffice Lead Offer",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/offers/:offerId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "leads",
+                ":id",
+                "offers",
+                ":offerId"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{backofficeLeadId}}"
+                },
+                {
+                  "key": "offerId",
+                  "value": "{{backofficeLeadOfferId}}"
+                }
+              ]
+            },
+            "description": "Revoga o link público da oferta antes do TTL."
+          }
+        },
+        {
+          "name": "GET Public Offer Share",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public-offers/{{offerShareToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public-offers",
+                "{{offerShareToken}}"
+              ]
+            },
+            "description": "Resolve oferta pública por token (active ou expired com CTA)."
+          }
+        },
+        {
           "name": "Precificação",
           "item": [
             {

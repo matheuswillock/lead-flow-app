@@ -35,9 +35,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   GripVertical,
+  History,
   MoreHorizontal,
   RefreshCw,
   Settings,
+  Tag,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -96,6 +98,8 @@ import { cn } from "@/lib/utils"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
+import { BackofficeGenerateOfferDialog } from "./BackofficeGenerateOfferDialog"
+import { BackofficeLeadOffersSheet } from "./BackofficeLeadOffersSheet"
 import {
   BACKOFFICE_CRM_COLUMNS,
   BACKOFFICE_CRM_STATUS_LABELS,
@@ -406,6 +410,9 @@ export function BackofficeCrmTable() {
   const [pendingStatusLeadId, setPendingStatusLeadId] = useState<string | null>(null)
   const [leadToSchedule, setLeadToSchedule] = useState<BackofficeLeadItem | null>(null)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [offerLead, setOfferLead] = useState<BackofficeLeadItem | null>(null)
+  const [generateOfferOpen, setGenerateOfferOpen] = useState(false)
+  const [offersHistoryOpen, setOffersHistoryOpen] = useState(false)
 
   useEffect(() => {
     setData(filteredLeads)
@@ -626,6 +633,26 @@ export function BackofficeCrmTable() {
                       </DropdownMenuGroup>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.stopPropagation()
+                      setOfferLead(lead)
+                      setGenerateOfferOpen(true)
+                    }}
+                  >
+                    <Tag data-icon="inline-start" />
+                    Gerar oferta
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.stopPropagation()
+                      setOfferLead(lead)
+                      setOffersHistoryOpen(true)
+                    }}
+                  >
+                    <History data-icon="inline-start" />
+                    Histórico de ofertas
+                  </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
@@ -824,6 +851,29 @@ export function BackofficeCrmTable() {
         }}
         onConfirm={confirmScheduleStatusChange}
         isReschedule={leadToSchedule?.status === "scheduled"}
+      />
+
+      <BackofficeGenerateOfferDialog
+        lead={offerLead}
+        open={generateOfferOpen}
+        onOpenChange={(open) => {
+          setGenerateOfferOpen(open)
+          if (!open && !offersHistoryOpen) setOfferLead(null)
+        }}
+      />
+
+      <BackofficeLeadOffersSheet
+        lead={offerLead}
+        open={offersHistoryOpen}
+        onOpenChange={(open) => {
+          setOffersHistoryOpen(open)
+          if (!open && !generateOfferOpen) setOfferLead(null)
+        }}
+        onGenerateNew={() => {
+          // Open generator first so offerLead is not cleared while history closes.
+          setGenerateOfferOpen(true)
+          setOffersHistoryOpen(false)
+        }}
       />
     </div>
   )

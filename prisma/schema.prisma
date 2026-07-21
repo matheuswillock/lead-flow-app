@@ -786,6 +786,7 @@ model Profile {
   createdBackofficeContracts  BackofficeContract[]      @relation("BackofficeContractCreator")
   importedBackofficeContractVersions BackofficeContractVersion[] @relation("BackofficeContractVersionImporter")
   sharedBackofficeContractVersions   BackofficeContractVersion[] @relation("BackofficeContractVersionShareGenerator")
+  generatedBackofficeLeadOffers      BackofficeLeadOffer[]       @relation("BackofficeLeadOfferShareGenerator")
   receivedNotifications       Notification[]            @relation("NotificationRecipient")
   sentNotifications           Notification[]            @relation("NotificationActor")
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[] @relation("MeetingFollowUpDigestRecipient")
@@ -1155,6 +1156,7 @@ model BackofficeLead {
   schedules            BackofficeLeadSchedule[]
   adhesion             BackofficeAdhesion?
   emailContacts        BackofficeEmailContact[] @relation("BackofficeEmailContactLead")
+  offers               BackofficeLeadOffer[]
 
   @@index([status], map: "backoffice_leads_status_idx")
   @@index([origin], map: "backoffice_leads_origin_idx")
@@ -1165,6 +1167,29 @@ model BackofficeLead {
   @@index([email], map: "backoffice_leads_email_idx")
   @@index([cpfCnpj], map: "backoffice_leads_cpf_cnpj_idx")
   @@map("backoffice_leads")
+}
+
+model BackofficeLeadOffer {
+  id                        String    @id @default(uuid()) @db.Uuid
+  leadId                    String    @map("leadId") @db.Uuid
+  leadNameSnapshot          String    @map("leadNameSnapshot") @db.Text
+  contactName               String    @map("contactName") @db.Text
+  contactPhone              String    @map("contactPhone") @db.Text
+  itemsJson                 Json      @map("itemsJson")
+  shareTokenHash            String    @unique @map("shareTokenHash") @db.Text
+  shareExpiresAt            DateTime  @map("shareExpiresAt") @db.Timestamptz(6)
+  shareGeneratedAt          DateTime  @default(now()) @map("shareGeneratedAt") @db.Timestamptz(6)
+  shareGeneratedByProfileId String?   @map("shareGeneratedByProfileId") @db.Uuid
+  revokedAt                 DateTime? @map("revokedAt") @db.Timestamptz(6)
+  createdAt                 DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                 DateTime  @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  lead             BackofficeLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  shareGeneratedBy Profile?       @relation("BackofficeLeadOfferShareGenerator", fields: [shareGeneratedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([leadId], map: "backoffice_lead_offers_lead_id_idx")
+  @@index([shareExpiresAt], map: "backoffice_lead_offers_share_expires_at_idx")
+  @@map("backoffice_lead_offers")
 }
 
 model BackofficeAdhesion {
