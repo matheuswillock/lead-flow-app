@@ -16,11 +16,14 @@ import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/L
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { LeadsFilterPresetsSheet } from "@/app/[supabaseId]/components/leads-filters/LeadsFilterPresetsSheet";
+import { LeadsCustomFieldFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsCustomFieldFilter";
+import { Separator } from "@/components/ui/separator";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
 import { isManagerLikeRole } from "@/lib/roles";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions";
 import {
   areBoardFiltersEqual,
   boardPresetDescriptionLabel,
@@ -60,6 +63,8 @@ export default function BoardHeader({
     setStatusFilter,
     closerFilter,
     setCloserFilter,
+    customFieldFilters,
+    setCustomFieldFilters,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
     onlyTransfer,
@@ -79,6 +84,10 @@ export default function BoardHeader({
   const isManager = isManagerLikeRole(activeRole ?? undefined);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
+  const { definitions: customFieldDefinitions } = useActiveLeadCustomFieldDefinitions(
+    supabaseId,
+    activeTeamId
+  );
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [presets, setPresets] = useState<BoardFiltersState[]>([]);
@@ -106,10 +115,12 @@ export default function BoardHeader({
       onlyTransfer,
       periodStart,
       periodEnd,
+      customFieldFilters,
     }),
     [
       assignedUsers,
       closerFilter,
+      customFieldFilters,
       onlyMeetingsHeld,
       onlyTransfer,
       periodEnd,
@@ -134,6 +145,7 @@ export default function BoardHeader({
     setOnlyTransfer(filters.onlyTransfer);
     setPeriodStart(filters.periodStart);
     setPeriodEnd(filters.periodEnd);
+    setCustomFieldFilters(filters.customFieldFilters);
     if (!filters.periodStart) {
       setDateRange(undefined);
       return;
@@ -189,7 +201,8 @@ export default function BoardHeader({
     onlyMeetingsHeld ||
     onlyTransfer ||
     Boolean(periodStart) ||
-    Boolean(periodEnd);
+    Boolean(periodEnd) ||
+    customFieldFilters.length > 0;
 
   const clearFilters = () => {
     setQuery("");
@@ -201,6 +214,7 @@ export default function BoardHeader({
     setPeriodStart("");
     setPeriodEnd("");
     setDateRange(undefined);
+    setCustomFieldFilters([]);
   };
 
   return (
@@ -323,6 +337,12 @@ export default function BoardHeader({
             title="Data de Criação"
             value={dateRange}
             onChange={handleDateChange}
+          />
+          <Separator orientation="vertical" className="h-6" />
+          <LeadsCustomFieldFilter
+            definitions={customFieldDefinitions}
+            values={customFieldFilters}
+            onChange={setCustomFieldFilters}
           />
           <LeadsFilterPresetsSheet
             scope="board"

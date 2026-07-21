@@ -1,4 +1,8 @@
 import type { ColumnKey } from "../context/BoardTypes";
+import {
+  sortCustomFieldFiltersForComparison,
+  type CustomFieldFilterState,
+} from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
 
 export type BoardFiltersState = {
   query: string;
@@ -9,6 +13,7 @@ export type BoardFiltersState = {
   onlyTransfer: boolean;
   periodStart: string;
   periodEnd: string;
+  customFieldFilters: CustomFieldFilterState[];
 };
 
 export const DEFAULT_BOARD_FILTERS: BoardFiltersState = {
@@ -20,6 +25,7 @@ export const DEFAULT_BOARD_FILTERS: BoardFiltersState = {
   onlyTransfer: false,
   periodStart: "",
   periodEnd: "",
+  customFieldFilters: [],
 };
 
 export function normalizeBoardPresetFilters(raw: unknown): BoardFiltersState {
@@ -36,6 +42,7 @@ export function normalizeBoardPresetFilters(raw: unknown): BoardFiltersState {
     onlyTransfer: data.onlyTransfer === true,
     periodStart: typeof data.periodStart === "string" ? data.periodStart : "",
     periodEnd: typeof data.periodEnd === "string" ? data.periodEnd : "",
+    customFieldFilters: Array.isArray(data.customFieldFilters) ? data.customFieldFilters : [],
   };
 }
 
@@ -50,6 +57,9 @@ function normalizeForComparison(filters: BoardFiltersState): BoardFiltersState {
     periodEnd: filters.periodEnd || "",
     onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
     onlyTransfer: filters.onlyTransfer === true,
+    customFieldFilters: sortCustomFieldFiltersForComparison(
+      filters.customFieldFilters
+    ) as CustomFieldFilterState[],
   };
 }
 
@@ -72,6 +82,7 @@ export function boardPresetDescriptionLabel(filters: BoardFiltersState) {
   }
   if (filters.onlyMeetingsHeld) parts.push("Reuniões realizadas");
   if (filters.onlyTransfer) parts.push("Transferência");
+  if (filters.customFieldFilters.length) parts.push(`Campos personalizados: ${filters.customFieldFilters.length}`);
   if (parts.length === 0) return "Sem filtros aplicados";
   return parts.join(" • ");
 }

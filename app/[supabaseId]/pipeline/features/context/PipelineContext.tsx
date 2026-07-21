@@ -167,6 +167,9 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     () => pipelineService ?? createBoardService(),
     [pipelineService]
   );
+  // customFieldFilters é aplicado server-side (não há estado próprio no Pipeline —
+  // vem sempre de CrmFiltersState via externalFilters, mesma origem do CRM/board).
+  const activeCustomFieldFilters = externalFilters?.customFieldFilters ?? [];
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
@@ -368,7 +371,10 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   // Função para carregar leads da API
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
+    const customFieldFiltersKey = JSON.stringify(
+      activeCustomFieldFilters.map(({ definitionId, operator, value }) => ({ definitionId, operator, value }))
+    );
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${customFieldFiltersKey}`;
 
     if (
       !options?.force &&
@@ -409,7 +415,15 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           return;
         }
         
-        const result = await resolvedPipelineService.fetchLeads(supabaseId, roleToSend, activeTeamId);
+        const result = await resolvedPipelineService.fetchLeads(supabaseId, roleToSend, activeTeamId, {
+          ...(activeCustomFieldFilters.length > 0 && {
+            customFieldFilters: activeCustomFieldFilters.map(({ definitionId, operator, value }) => ({
+              definitionId,
+              operator,
+              value,
+            })),
+          }),
+        });
 
         if (result.isValid && result.result) {
           console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
@@ -493,7 +507,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
+  }, [activeCustomFieldFilters, activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
 
   const leadTimeRulesVersionRef = useRef("");
 
