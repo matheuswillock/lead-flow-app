@@ -1,6 +1,6 @@
-# Spec: CDP V1 para e-mail
+# Spec: Radar V1 para e-mail
 
-A CDP (Customer Data Platform) team-scoped sera criada como uma camada nova para unificar dados de clientes vindos do CRM, carteira, listas de contatos de e-mail e futuro WhatsApp. A primeira fase foca em e-mail: consolidar perfis, identidades, fontes, consentimentos e eventos para permitir segmentacao e personalizacao sem substituir os modulos atuais.
+O Radar team-scoped sera criada como uma camada nova para unificar dados de clientes vindos do CRM, carteira, listas de contatos de e-mail e futuro WhatsApp. A primeira fase foca em e-mail: consolidar perfis, identidades, fontes, consentimentos e eventos para permitir segmentacao e personalizacao sem substituir os modulos atuais.
 
 ## Background
 
@@ -9,18 +9,18 @@ Hoje os dados de clientes vivem em superficies separadas:
 - CRM: leads, status, atividades, reunioes, responsaveis e origem comercial.
 - Carteira: clientes fechados, status de contrato, renovacao e dados do titular.
 - E-mail: listas de contatos, campanhas, logs de envio e eventos de Resend.
-- WhatsApp: implementacao paralela que deve se tornar uma fonte/canal da CDP depois.
+- WhatsApp: implementacao paralela que deve se tornar uma fonte/canal da Radar depois.
 
 Essa fragmentacao dificulta responder perguntas basicas para marketing e vendas, como quais clientes podem receber campanha, quem abriu um e-mail mas nao clicou, quem clicou e ainda nao fechou contrato, ou quais clientes da carteira estao proximos da renovacao.
 
-A CDP resolve esse problema criando um perfil unico por cliente dentro de cada time, com identidades normalizadas, vinculos de origem, consentimento por canal e uma timeline de eventos.
+A Radar resolve esse problema criando um perfil unico por cliente dentro de cada time, com identidades normalizadas, vinculos de origem, consentimento por canal e uma timeline de eventos.
 
 ## Goals
 
-- Criar uma especificacao implementavel para uma CDP v1 focada em e-mail.
+- Criar uma especificacao implementavel para uma Radar v1 focada em e-mail.
 - Definir a identidade primaria v1 como `teamId + telefone normalizado + nome normalizado`.
 - Usar e-mail, documento/CNPJ e IDs de origem como enriquecimento e identidades auxiliares.
-- Consolidar dados de CRM, carteira e listas de e-mail em perfis CDP team-scoped.
+- Consolidar dados de CRM, carteira e listas de e-mail em perfis Radar team-scoped.
 - Registrar eventos de e-mail a partir de campanhas, logs e webhooks de analytics.
 - Preparar o modelo para WhatsApp sem depender da implementacao paralela.
 - Definir segmentos iniciais que possam alimentar campanhas de e-mail no futuro.
@@ -30,16 +30,16 @@ A CDP resolve esse problema criando um perfil unico por cliente dentro de cada t
 - Implementar codigo nesta etapa.
 - Criar automacoes avancadas, construtor visual livre de jornadas ou dashboards analiticos complexos nesta fase.
 - Substituir CRM, carteira, listas de contatos de e-mail ou WhatsApp como fontes operacionais.
-- Tornar a CDP a fonte de verdade para edicao de lead, contrato ou contato de e-mail.
-- Executar campanhas diretamente pela CDP na v1.
-- Depender da entrega do modulo de WhatsApp para finalizar a CDP de e-mail.
+- Tornar a Radar a fonte de verdade para edicao de lead, contrato ou contato de e-mail.
+- Executar campanhas diretamente pela Radar na v1.
+- Depender da entrega do modulo de WhatsApp para finalizar a Radar de e-mail.
 - Criar integracao com ferramentas externas de ads, SMS ou push nesta fase.
 
 ## Design
 
 ### Technical Approach
 
-A CDP sera uma camada backend/modelo/API separada dos dominios existentes. O fluxo futuro deve seguir a arquitetura do projeto:
+A Radar sera uma camada backend/modelo/API separada dos dominios existentes. O fluxo futuro deve seguir a arquitetura do projeto:
 
 ```text
 Route -> UseCase -> Service -> Prisma
@@ -47,26 +47,26 @@ Route -> UseCase -> Service -> Prisma
 
 Componentes previstos:
 
-- `CustomerDataPlatformUseCase`: orquestra syncs, leitura de perfis, eventos e segmentos; retorna `Output`.
-- `CustomerDataPlatformService`: aplica normalizacao, resolucao de identidade, enriquecimento, consentimento e regras de segmento.
-- Repositorio CDP: concentra operacoes Prisma para perfis, identidades, links, eventos e consentimentos.
-- Endpoints `/api/v1/cdp/*`: expõem sync controlado, leitura e segmentacao.
+- `RadarUseCase`: orquestra syncs, leitura de perfis, eventos e segmentos; retorna `Output`.
+- `RadarService`: aplica normalizacao, resolucao de identidade, enriquecimento, consentimento e regras de segmento.
+- Repositorio Radar: concentra operacoes Prisma para perfis, identidades, links, eventos e consentimentos.
+- Endpoints `/api/v1/radar/*`: expõem sync controlado, leitura e segmentacao.
 
 Principios:
 
-- A CDP v1 deve permanecer no PostgreSQL/Supabase relacional do projeto, em tabelas dedicadas, sem criar um segundo banco nao relacional.
+- A Radar v1 deve permanecer no PostgreSQL/Supabase relacional do projeto, em tabelas dedicadas, sem criar um segundo banco nao relacional.
 - A resolucao primaria de perfil usa `teamId + normalizedPhone + normalizedName`.
 - E-mail nao e chave primaria obrigatoria; ele e uma identidade auxiliar e um canal de comunicacao.
 - Documento/CNPJ e usado como enriquecimento e apoio para deduplicacao futura.
 - Syncs devem ser idempotentes, para poderem rodar novamente sem duplicar perfis, vinculos ou eventos.
 - Eventos devem ser append-only sempre que possivel.
 - Consentimento por canal deve bloquear segmentos de campanha quando houver unsubscribe, bounce ou complaint.
-- Dados de CDP devem permanecer isolados por `teamId`.
+- Dados de Radar devem permanecer isolados por `teamId`.
 
 Racional de armazenamento:
 
-- O dominio da CDP v1 e altamente relacional: perfis, identidades, fontes, eventos, consentimentos, times, leads, carteira e contatos de e-mail precisam de integridade, joins, constraints e indices compostos.
-- Manter a CDP no mesmo PostgreSQL/Supabase reduz duplicacao operacional, evita sincronizacao entre dois bancos e preserva transacoes entre leitura de origem e escrita CDP.
+- O dominio da Radar v1 e altamente relacional: perfis, identidades, fontes, eventos, consentimentos, times, leads, carteira e contatos de e-mail precisam de integridade, joins, constraints e indices compostos.
+- Manter a Radar no mesmo PostgreSQL/Supabase reduz duplicacao operacional, evita sincronizacao entre dois bancos e preserva transacoes entre leitura de origem e escrita Radar.
 - Campos flexiveis como `metadata`, `sourceMetadata` e payloads de evento devem usar `Json`/JSONB dentro do Postgres, em vez de justificar um banco nao relacional separado.
 - Um banco nao relacional separado so deve ser reavaliado em fase futura se volume, latencia ou workloads analiticos deixarem de caber no Postgres relacional com indices, particionamento e materializacoes adequadas.
 
@@ -74,7 +74,7 @@ Racional de armazenamento:
 
 Os nomes abaixo representam modelos conceituais para a implementacao futura. A implementacao deve criar migrations pelo fluxo oficial do projeto, usando `bun run db:migrate:new <migration-name>`.
 
-A implementacao deve usar tabelas relacionais dedicadas no PostgreSQL/Supabase atual. A SPEC nao recomenda criar uma base CDP separada em banco nao relacional para a v1.
+A implementacao deve usar tabelas relacionais dedicadas no PostgreSQL/Supabase atual. A SPEC nao recomenda criar uma base Radar separada em banco nao relacional para a v1.
 
 #### `CustomerProfile`
 
@@ -120,7 +120,7 @@ Restricoes recomendadas:
 
 #### `CustomerSourceLink`
 
-Vinculo auditavel entre a CDP e uma entidade operacional existente.
+Vinculo auditavel entre a Radar e uma entidade operacional existente.
 
 - `id`: UUID.
 - `profileId`: UUID do `CustomerProfile`.
@@ -198,41 +198,41 @@ Restricoes recomendadas:
 
 ### API
 
-Endpoints futuros devem ficar em `/api/v1/cdp/*`, usar acesso autenticado e validar autorizacao pelo time. Routes devem cuidar apenas de HTTP, sem Prisma direto.
+Endpoints futuros devem ficar em `/api/v1/radar/*`, usar acesso autenticado e validar autorizacao pelo time. Routes devem cuidar apenas de HTTP, sem Prisma direto.
 
 #### Sync controlado
 
-- `POST /api/v1/cdp/sync/crm`
-  - Sincroniza leads do CRM para perfis CDP.
+- `POST /api/v1/radar/sync/crm`
+  - Sincroniza leads do CRM para perfis Radar.
   - Entrada: filtros opcionais por `teamId`, periodo ou lead especifico, conforme permissao do usuario.
   - Saida: contadores de perfis criados, enriquecidos, ignorados e erros.
 
-- `POST /api/v1/cdp/sync/portfolio`
-  - Sincroniza carteira para perfis CDP.
+- `POST /api/v1/radar/sync/portfolio`
+  - Sincroniza carteira para perfis Radar.
   - Saida: contadores e detalhes de conflitos nao bloqueantes.
 
-- `POST /api/v1/cdp/sync/email`
+- `POST /api/v1/radar/sync/email`
   - Sincroniza listas de contatos, logs e eventos de e-mail.
   - Atualiza identidades de e-mail, consentimento e timeline.
 
 #### Leitura
 
-- `GET /api/v1/cdp/profiles`
-  - Lista perfis CDP do time.
+- `GET /api/v1/radar/profiles`
+  - Lista perfis Radar do time.
   - Filtros: texto, canal, consentimento, origem, segmento, periodo de ultima interacao.
 
-- `GET /api/v1/cdp/profiles/[id]`
+- `GET /api/v1/radar/profiles/[id]`
   - Retorna perfil, identidades, fontes, consentimentos e resumo de eventos.
 
-- `GET /api/v1/cdp/profiles/[id]/events`
+- `GET /api/v1/radar/profiles/[id]/events`
   - Retorna timeline paginada de eventos.
 
 #### Segmentos
 
-- `GET /api/v1/cdp/segments`
+- `GET /api/v1/radar/segments`
   - Retorna segmentos predefinidos e contagens.
 
-- `GET /api/v1/cdp/segments/[segment]/profiles`
+- `GET /api/v1/radar/segments/[segment]/profiles`
   - Retorna perfis que pertencem a um segmento predefinido.
 
 Segmentos v1:
@@ -246,14 +246,14 @@ Segmentos v1:
 
 ### UI/UX
 
-A v1 deve incluir uma UI dedicada para a CDP, focada em consulta, auditoria e uso operacional dos segmentos de e-mail. A UI nao deve substituir as telas de CRM, carteira ou e-mail; ela deve mostrar a visao unificada do cliente e permitir que o time entenda por que um perfil esta apto ou bloqueado para campanhas.
+A v1 deve incluir uma UI dedicada para a Radar, focada em consulta, auditoria e uso operacional dos segmentos de e-mail. A UI nao deve substituir as telas de CRM, carteira ou e-mail; ela deve mostrar a visao unificada do cliente e permitir que o time entenda por que um perfil esta apto ou bloqueado para campanhas.
 
 Superficie prevista:
 
-- Rota tenant-aware em `app/[supabaseId]/cdp`.
+- Rota tenant-aware em `app/[supabaseId]/radar`.
 - Arquitetura local obrigatoria: `page -> context -> service` / `page -> container -> context`.
-- Servico frontend dedicado consumindo `/api/v1/cdp/*`.
-- Tabela principal de perfis CDP com filtros por texto, canal, consentimento, origem, segmento e ultima interacao.
+- Servico frontend dedicado consumindo `/api/v1/radar/*`.
+- Tabela principal de perfis Radar com filtros por texto, canal, consentimento, origem, segmento e ultima interacao.
 - Detalhe de perfil em `Sheet` ou pagina de detalhe, exibindo dados consolidados, identidades, fontes, consentimentos e timeline de eventos.
 - Area de segmentos com contagens e acao para visualizar perfis de cada segmento.
 
@@ -263,7 +263,7 @@ A UI inicial deve ser uma superficie operacional densa, sem hero marketing, sem 
 
 Layout desktop:
 
-- Header compacto com titulo `CDP`, subtitulo curto `Perfis unificados para campanhas de e-mail`, badge de status do ultimo sync e acao secundaria `Sincronizar`.
+- Header compacto com titulo `Radar`, subtitulo curto `Perfis unificados para campanhas de e-mail`, badge de status do ultimo sync e acao secundaria `Sincronizar`.
 - Faixa de metricas no topo com quatro cards compactos:
   - `Perfis unificados`
   - `Aptos para e-mail`
@@ -359,7 +359,7 @@ Regras visuais obrigatorias:
 
 ### Caching And Runtime
 
-A CDP deve priorizar consistencia e isolamento por time. Cache so deve ser considerado em leituras agregadas ou contagens de segmentos, nunca para sync ou mutacoes.
+A Radar deve priorizar consistencia e isolamento por time. Cache so deve ser considerado em leituras agregadas ou contagens de segmentos, nunca para sync ou mutacoes.
 
 Se a implementacao futura usar cache:
 
@@ -387,7 +387,7 @@ Esta SPEC e o artefato base. Se a equipe decidir levar o trabalho ao Notion, o f
 
 ## Security & Privacy
 
-- Dados da CDP contem PII: nome, telefone, e-mail, documento, historico comportamental e eventos de campanha.
+- Dados da Radar contem PII: nome, telefone, e-mail, documento, historico comportamental e eventos de campanha.
 - Toda leitura e sync deve ser isolada por `teamId`.
 - Endpoints devem revalidar autorizacao em Route Handler/UseCase; middleware nao e suficiente como unica barreira.
 - Logs devem evitar payload completo de clientes, listas de destinatarios, documentos, tokens e headers sensiveis.
@@ -425,12 +425,12 @@ Esta SPEC e o artefato base. Se a equipe decidir levar o trabalho ao Notion, o f
 - Rodar sync de CRM em ambiente local/staging com poucos registros.
 - Rodar sync de e-mail para lista com contatos ativos, bounced e unsubscribed.
 - Conferir contagens de segmentos antes e depois de eventos simulados.
-- Conferir que os modulos existentes continuam funcionando sem depender da CDP.
+- Conferir que os modulos existentes continuam funcionando sem depender da Radar.
 
 ## Success Criteria
 
-- A SPEC existe em `specs/cdp-email.md`.
-- A SPEC define claramente a CDP como camada nova, sem substituir CRM, carteira, e-mail ou WhatsApp.
+- A SPEC existe em `specs/radar-email.md`.
+- A SPEC define claramente a Radar como camada nova, sem substituir CRM, carteira, e-mail ou WhatsApp.
 - A identidade primaria v1 esta documentada como `teamId + telefone normalizado + nome normalizado`.
 - E-mail, documento/CNPJ e IDs de origem estao documentados como enriquecimento e identidades auxiliares.
 - O desenho inclui modelos, APIs futuras, segmentos, edge cases, seguranca, testes e decisoes.
@@ -441,27 +441,27 @@ Esta SPEC e o artefato base. Se a equipe decidir levar o trabalho ao Notion, o f
 - [ ] A janela padrao para "campanha recente" deve ser 30, 60 ou 90 dias?
 - [ ] A carteira proxima de renovacao deve considerar qual janela inicial: 30, 45 ou 60 dias?
 - [ ] O segmento `clicked_not_closed` deve considerar apenas fechamento em carteira ou tambem status finais do CRM?
-- [ ] A rota de CDP deve aparecer no menu lateral principal desde a v1 ou ficar acessivel apenas pelo modulo de e-mail ate haver uso suficiente?
+- [ ] A rota de Radar deve aparecer no menu lateral principal desde a v1 ou ficar acessivel apenas pelo modulo de e-mail ate haver uso suficiente?
 
 ## Decisions Log
 
-> **Q:** Qual e a identidade primaria da CDP v1?
+> **Q:** Qual e a identidade primaria da Radar v1?
 > **A:** `teamId + telefone normalizado + nome normalizado`, porque nome e telefone sao obrigatorios nos fluxos atuais e e-mail pode estar ausente.
 
 > **Q:** O e-mail sera chave primaria do perfil?
 > **A:** Nao. E-mail sera identidade auxiliar, canal de comunicacao e dado de enriquecimento.
 
-> **Q:** A CDP substitui CRM, carteira, listas de e-mail ou WhatsApp?
-> **A:** Nao. A CDP unifica e segmenta dados, mas os modulos atuais continuam como fontes operacionais.
+> **Q:** A Radar substitui CRM, carteira, listas de e-mail ou WhatsApp?
+> **A:** Nao. A Radar unifica e segmenta dados, mas os modulos atuais continuam como fontes operacionais.
 
-> **Q:** A entrega de WhatsApp bloqueia a CDP de e-mail?
+> **Q:** A entrega de WhatsApp bloqueia a Radar de e-mail?
 > **A:** Nao. O modelo fica preparado para WhatsApp, mas a v1 de e-mail deve funcionar sem essa integracao.
 
-> **Q:** A CDP v1 deve usar um banco nao relacional separado?
+> **Q:** A Radar v1 deve usar um banco nao relacional separado?
 > **A:** Nao. A v1 deve usar o PostgreSQL/Supabase relacional atual, com tabelas dedicadas e campos JSONB apenas para metadados flexiveis. Isso preserva integridade, joins, transacoes, RLS e reduz complexidade operacional.
 
 > **Q:** Devemos implementar codigo agora?
 > **A:** Nao. Esta etapa cria a SPEC primeiro; a implementacao vem depois da revisao/aprovacao do documento.
 
-> **Q:** A v1 deve ter UI dedicada de CDP?
+> **Q:** A v1 deve ter UI dedicada de Radar?
 > **A:** Sim. A v1 deve incluir uma UI dedicada para consulta de perfis, segmentos, consentimentos, fontes e timeline, sem substituir CRM, carteira ou telas de e-mail.
