@@ -17,6 +17,47 @@ export const EVOLUTION_HOST_ENV_KEYS = [
   "CONFIG_SESSION_PHONE_VERSION",
 ] as const;
 
+/** Agent card fields persisted in BackofficeBotHostSettings (not .env.n8n). */
+export const AGENT_HOST_SETTING_KEYS = ["agentBaseUrl", "desiredHostVersion"] as const;
+
+/** Production Docker-network webhook used by Evolution → N8N. */
+export const BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL =
+  "http://n8n:5678/webhook/bethania-inbound" as const;
+
+/** Public URLs for Ops quick-copy (browser / manager). */
+export const OPS_HOST_REFERENCE_LINKS = [
+  {
+    id: "bethania-inbound-internal",
+    label: "Webhook Evolution → N8N (rede Docker)",
+    href: BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL,
+    hint: "Cole na instância bethania no manager Evolution. Não abre no navegador.",
+  },
+  {
+    id: "bethania-inbound-public",
+    label: "Webhook público (teste no browser)",
+    href: "https://n8n.corretorstudio.com/webhook/bethania-inbound",
+    hint: "Mesmo path, host público. GET pode falhar; o fluxo real é POST da Evolution.",
+  },
+  {
+    id: "n8n-editor",
+    label: "Editor N8N",
+    href: "https://n8n.corretorstudio.com",
+    hint: null,
+  },
+  {
+    id: "evolution-manager",
+    label: "Evolution manager",
+    href: "https://evo.corretorstudio.com/manager",
+    hint: null,
+  },
+  {
+    id: "ops-agent",
+    label: "Agente Ops (healthz)",
+    href: "https://ops.corretorstudio.com/healthz",
+    hint: null,
+  },
+] as const;
+
 export const SECRET_HOST_ENV_KEYS = new Set<string>([
   "BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET",
   "EVO_API_KEY",
@@ -26,12 +67,18 @@ export const SECRET_HOST_ENV_KEYS = new Set<string>([
 
 export type N8nHostEnvKey = (typeof N8N_HOST_ENV_KEYS)[number];
 export type EvolutionHostEnvKey = (typeof EVOLUTION_HOST_ENV_KEYS)[number];
+export type AgentHostSettingKey = (typeof AGENT_HOST_SETTING_KEYS)[number];
 
 export type MaskedEnvField = {
   key: string;
   isSet: boolean;
   isSecret: boolean;
   value: string | null;
+};
+
+export type OpsHostAgentSettings = {
+  agentBaseUrl: string | null;
+  desiredHostVersion: string | null;
 };
 
 export function filterAllowedEnv(
@@ -93,4 +140,61 @@ export function parseEnvFileContent(content: string): Record<string, string> {
     out[key] = value;
   }
   return out;
+}
+
+/** Ordered KEY=value lines for allowlisted keys (empty values omitted). */
+export function envMapToOrderedLines(
+  env: Record<string, string>,
+  keys: readonly string[]
+): string[] {
+  return keys
+    .map((key) => {
+      const value = env[key]?.trim() ?? "";
+      return value ? `${key}=${value}` : null;
+    })
+    .filter((line): line is string => Boolean(line));
+}
+
+/** Combined Ops export (.txt) with Agent + N8N + Evolution sections. */
+export function buildOpsHostEnvFileContent(input: {
+  agent?: OpsHostAgentSettings;
+  n8nEnv: Record<string, string>;
+  evolutionEnv: Record<string, string>;
+}): string {
+  const agentMap: Record<string, string> = {
+    agentBaseUrl: input.agent?.agentBaseUrl?.trim() || "",
+    desiredHostVersion: input.agent?.desiredHostVersion?.trim() || "",
+  };
+  const agentLines = envMapToOrderedLines(agentMap, AGENT_HOST_SETTING_KEYS);
+  const n8nLines = envMapToOrderedLines(input.n8nEnv, N8N_HOST_ENV_KEYS);
+  const evoLines = envMapToOrderedLines(input.evolutionEnv, EVOLUTION_HOST_ENV_KEYS);
+  return [
+    "# Bethânia Ops / Host — Agente VPS",
+    ...agentLines,
+    "",
+    "# Bethânia Ops / Host — variáveis N8N",
+    ...n8nLines,
+    "",
+    "# Bethânia Ops / Host — variáveis Evolution",
+    ...evoLines,
+    "",
+  ].join("\n");
+}
+
+/** Split a combined/ops .env file into agent settings + allowlisted env maps. */
+export function parseOpsHostEnvFileContent(content: string): {
+  agent: OpsHostAgentSettings;
+  n8nEnv: Record<string, string>;
+  evolutionEnv: Record<string, string>;
+} {
+  const parsed = parseEnvFileContent(content);
+  const agentRaw = filterAllowedEnv(parsed, AGENT_HOST_SETTING_KEYS);
+  return {
+    agent: {
+      agentBaseUrl: agentRaw.agentBaseUrl?.trim() || null,
+      desiredHostVersion: agentRaw.desiredHostVersion?.trim() || null,
+    },
+    n8nEnv: filterAllowedEnv(parsed, N8N_HOST_ENV_KEYS),
+    evolutionEnv: filterAllowedEnv(parsed, EVOLUTION_HOST_ENV_KEYS),
+  };
 }

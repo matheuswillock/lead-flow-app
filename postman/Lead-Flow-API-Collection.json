@@ -16580,6 +16580,20 @@
           "response": []
         },
         {
+          "name": "GET Backoffice Bot Host Env File",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings/env-file",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "settings", "env-file"]
+            },
+            "description": "MASTER: exporta .txt com agentBaseUrl, desiredHostVersion e variáveis N8N/Evolution (inclui secrets) salvas no host settings."
+          },
+          "response": []
+        },
+        {
           "name": "POST Backoffice Bot Host Rotate Token",
           "request": {
             "method": "POST",

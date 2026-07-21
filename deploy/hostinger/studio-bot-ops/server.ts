@@ -49,6 +49,34 @@ const STUB_BETHANIA_WORKFLOWS = new Set([
   "bethania-list-tasks",
   "bethania-add-note-confirm",
 ]);
+/** Ordem estável — error-notifier primeiro; stubs no meio; router por último na lista de publish. */
+const WORKFLOW_IMPORT_ORDER = [
+  "bethania-error-notifier.json",
+  "bethania-verification-channel.json",
+  "bethania-verification-web.json",
+  "bethania-menu-main.json",
+  "bethania-list-leads.json",
+  "bethania-agenda-today.json",
+  "bethania-list-tasks.json",
+  "bethania-add-note-confirm.json",
+  "bethania-push-outbound.json",
+  "bethania-router.json",
+];
+const CONTAINER_TMP = "/tmp/lead-flow-n8n-workflows";
+
+function execErrorDetail(error) {
+  if (!error || typeof error !== "object") return String(error);
+  const stderr = typeof error.stderr === "string" ? error.stderr.trim() : "";
+  const stdout = typeof error.stdout === "string" ? error.stdout.trim() : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return [message, stderr, stdout].filter(Boolean).join("\n").slice(0, 2000);
+}
+
+async function n8nExec(...args) {
+  return execFileAsync("docker", ["exec", "-u", "node", "n8n", "n8n", ...args], {
+    maxBuffer: 4 * 1024 * 1024,
+  });
+}
 const REQUIRED_N8N_ENV = [
   "LEAD_FLOW_API_BASE_URL",
   "N8N_WEBHOOK_BASE_URL",
@@ -363,81 +391,128 @@ async function handleRestart(body, res) {
 
 async function handleImportWorkflows(_body, res) {
   const workflowsDir = path.join(DEPLOY_DIR, "n8n", "workflows");
-  const files = (await fs.readdir(workflowsDir)).filter((f) => f.endsWith(".json"));
-  const imported = [];
-  await execFileAsync("docker", ["exec", "n8n", "mkdir", "-p", "/tmp/lead-flow-n8n-workflows"]);
-  for (const file of files) {
-    const local = path.join(workflowsDir, file);
-    await execFileAsync("docker", [
-      "cp",
-      local,
-      `n8n:/tmp/lead-flow-n8n-workflows/${file}`,
-    ]);
-    await execFileAsync("docker", [
-      "exec",
-      "n8n",
-      "n8n",
-      "import:workflow",
-      `--input=/tmp/lead-flow-n8n-workflows/${file}`,
-    ]);
-    imported.push(file);
+  let available = [];
+  try {
+    available = (await fs.readdir(workflowsDir)).filter((f) => f.endsWith(".json"));
+  } catch (error) {
+    return json(res, 500, {
+      ok: false,
+      error: `Diretório de workflows ausente: ${workflowsDir}`,
+      detail: execErrorDetail(error),
+    });
   }
 
-  // activate core workflows
-  const { stdout } = await execFileAsync("docker", ["exec", "n8n", "n8n", "list:workflow"]);
-  const activeNames = new Set([
-    "bethania-router",
-    "bethania-push-outbound",
-    "bethania-error-notifier",
-  ]);
-  const stubNames = new Set([
-    "bethania-verification-channel",
-    "bethania-verification-web",
-    "bethania-menu-main",
-    "bethania-list-leads",
-    "bethania-agenda-today",
-    "bethania-list-tasks",
-    "bethania-add-note-confirm",
-  ]);
-  for (const line of stdout.trim().split("\n")) {
-    if (!line.includes("|")) continue;
-    const [id, name] = line.split("|").map((s) => s.trim());
-    if (activeNames.has(name)) {
-      try {
-        await execFileAsync("docker", ["exec", "n8n", "n8n", "publish:workflow", `--id=${id}`]);
-      } catch {
-        // best effort
-      }
-      try {
-        await execFileAsync("docker", [
-          "exec",
-          "n8n",
-          "n8n",
-          "update:workflow",
-          `--id=${id}`,
-          "--active=true",
-        ]);
-      } catch {
-        // n8n 2.x deprecation — best effort
-      }
-    }
-    if (stubNames.has(name)) {
-      try {
-        await execFileAsync("docker", [
-          "exec",
-          "n8n",
-          "n8n",
-          "update:workflow",
-          `--id=${id}`,
-          "--active=false",
-        ]);
-      } catch {
-        // n8n 2.x deprecation — best effort
+  const availableSet = new Set(available);
+  const ordered = [
+    ...WORKFLOW_IMPORT_ORDER.filter((f) => availableSet.has(f)),
+    ...available.filter((f) => !WORKFLOW_IMPORT_ORDER.includes(f)).sort(),
+  ];
+
+  const imported = [];
+  const failed = [];
+  const skipped = [];
+
+  await execFileAsync("docker", ["exec", "-u", "node", "n8n", "mkdir", "-p", CONTAINER_TMP]);
+
+  for (const file of ordered) {
+    const local = path.join(workflowsDir, file);
+    const name = file.replace(/\.json$/i, "");
+    const isStub = STUB_BETHANIA_WORKFLOWS.has(name);
+    const isCritical = ACTIVE_BETHANIA_WORKFLOWS.has(name);
+
+    try {
+      await execFileAsync("docker", ["cp", local, `n8n:${CONTAINER_TMP}/${file}`]);
+      await n8nExec("import:workflow", `--input=${CONTAINER_TMP}/${file}`);
+      imported.push(file);
+    } catch (error) {
+      const detail = execErrorDetail(error);
+      failed.push({ file, stub: isStub, critical: isCritical, error: detail });
+      console.error("[studio-bot-ops][import] fail", file, detail);
+      if (isCritical) {
+        return json(res, 500, {
+          ok: false,
+          error: `Falha ao importar workflow crítico ${file}`,
+          imported,
+          failed,
+          detail,
+        });
       }
     }
   }
+
+  let listStdout = "";
+  try {
+    const listed = await n8nExec("list:workflow");
+    listStdout = listed.stdout || "";
+  } catch (error) {
+    return json(res, 500, {
+      ok: false,
+      error: "Import parcial, mas falhou ao listar workflows",
+      imported,
+      failed,
+      detail: execErrorDetail(error),
+    });
+  }
+
+  for (const line of listStdout.trim().split("\n")) {
+    if (!line.includes("|")) continue;
+    const [id, name] = line.split("|").map((s) => s.trim());
+    if (!id || !name) continue;
+
+    if (ACTIVE_BETHANIA_WORKFLOWS.has(name)) {
+      try {
+        await n8nExec("publish:workflow", `--id=${id}`);
+      } catch {
+        // best effort — n8n 2.x
+      }
+      try {
+        await n8nExec("update:workflow", `--id=${id}`, "--active=true");
+      } catch {
+        // deprecated in 2.x — best effort
+      }
+    }
+
+    if (STUB_BETHANIA_WORKFLOWS.has(name)) {
+      try {
+        await n8nExec("unpublish:workflow", `--id=${id}`);
+      } catch {
+        try {
+          await n8nExec("update:workflow", `--id=${id}`, "--active=false");
+        } catch {
+          // best effort
+        }
+      }
+    }
+  }
+
+  const missingCritical = [...ACTIVE_BETHANIA_WORKFLOWS].filter(
+    (name) => !imported.includes(`${name}.json`) && !listStdout.includes(name)
+  );
+  for (const name of missingCritical) skipped.push(name);
+
   await compose("restart", "n8n");
-  return json(res, 200, { ok: true, imported });
+
+  const criticalFailed = failed.filter((f) => f.critical);
+  if (criticalFailed.length > 0) {
+    return json(res, 500, {
+      ok: false,
+      error: `Falha em workflows críticos: ${criticalFailed.map((f) => f.file).join(", ")}`,
+      imported,
+      failed,
+      skipped,
+    });
+  }
+
+  return json(res, 200, {
+    ok: true,
+    imported,
+    failed,
+    skipped,
+    note:
+      failed.length > 0
+        ? "Import concluído com soft-fail em stubs; veja failed[].error para o detalhe do n8n."
+        : undefined,
+  });
 }
 
 async function handleLogs(req, res) {

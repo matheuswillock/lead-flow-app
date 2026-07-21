@@ -14,6 +14,16 @@ export interface IBackofficeStudioBotOpsService {
     n8nEnv?: Record<string, string>
     evolutionEnv?: Record<string, string>
   }): Promise<ApiOutput<{ id: string; agentBaseUrl: string | null; desiredHostVersion: string | null }>>
+  exportEnvFile(): Promise<
+    ApiOutput<{
+      content: string
+      fileName: string
+      agentBaseUrl: string | null
+      desiredHostVersion: string | null
+      n8nEnv: Record<string, string>
+      evolutionEnv: Record<string, string>
+    }>
+  >
   rotateToken(): Promise<ApiOutput<{ agentToken: string; settingsId: string }>>
   listJobs(): Promise<BackofficeBotHostJob[]>
   health(): Promise<ApiOutput<{ jobId: string; health: HostHealth }>>
