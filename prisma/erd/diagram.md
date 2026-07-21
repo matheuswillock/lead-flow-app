@@ -862,7 +862,7 @@ GROUP_PARTICIPANT GROUP_PARTICIPANT
     
 
 
-        customer_identity_type {
+        radar_identity_type {
             phone phone
 email email
 document document
@@ -874,7 +874,7 @@ whatsapp_contact_id whatsapp_contact_id
     
 
 
-        customer_source_type {
+        radar_source_type {
             crm_lead crm_lead
 portfolio portfolio
 email_contact email_contact
@@ -884,14 +884,14 @@ whatsapp_contact whatsapp_contact
     
 
 
-        customer_channel {
+        radar_channel {
             email email
 whatsapp whatsapp
         }
     
 
 
-        customer_consent_status {
+        radar_consent_status {
             allowed allowed
 blocked blocked
 unknown unknown
@@ -899,7 +899,7 @@ unknown unknown
     
 
 
-        customer_consent_reason {
+        radar_consent_reason {
             manual manual
 imported imported
 unsubscribe unsubscribe
@@ -2695,7 +2695,7 @@ meeting_scheduled meeting_scheduled
     }
   
 
-  "corretor_studio_cdp_profiles" {
+  "corretor_studio_radar_profiles" {
     String id "🗝️"
     String normalizedName 
     String displayName 
@@ -2712,7 +2712,7 @@ meeting_scheduled meeting_scheduled
     }
   
 
-  "corretor_studio_cdp_identities" {
+  "corretor_studio_radar_identities" {
     String id "🗝️"
     CustomerIdentityType type 
     String value "❓"
@@ -2724,7 +2724,7 @@ meeting_scheduled meeting_scheduled
     }
   
 
-  "corretor_studio_cdp_source_links" {
+  "corretor_studio_radar_source_links" {
     String id "🗝️"
     CustomerSourceType sourceType 
     String sourceId 
@@ -2734,7 +2734,7 @@ meeting_scheduled meeting_scheduled
     }
   
 
-  "corretor_studio_cdp_events" {
+  "corretor_studio_radar_events" {
     String id "🗝️"
     String eventType 
     String sourceType 
@@ -2745,7 +2745,7 @@ meeting_scheduled meeting_scheduled
     }
   
 
-  "corretor_studio_cdp_channel_consents" {
+  "corretor_studio_radar_channel_consents" {
     String id "🗝️"
     CustomerChannel channel 
     CustomerConsentStatus status 
@@ -3474,20 +3474,20 @@ meeting_scheduled meeting_scheduled
     "whatsapp_conversation_tags" }o--|| corretor_studio_teams : "team"
     "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversations : "conversation"
     "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversation_tags : "tag"
-    "corretor_studio_cdp_profiles" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_cdp_identities" |o--|| "CustomerIdentityType" : "enum:type"
-    "corretor_studio_cdp_identities" }o--|| corretor_studio_cdp_profiles : "profile"
-    "corretor_studio_cdp_identities" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_cdp_source_links" |o--|| "CustomerSourceType" : "enum:sourceType"
-    "corretor_studio_cdp_source_links" }o--|| corretor_studio_cdp_profiles : "profile"
-    "corretor_studio_cdp_source_links" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_cdp_events" }o--|| corretor_studio_cdp_profiles : "profile"
-    "corretor_studio_cdp_events" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_cdp_channel_consents" |o--|| "CustomerChannel" : "enum:channel"
-    "corretor_studio_cdp_channel_consents" |o--|| "CustomerConsentStatus" : "enum:status"
-    "corretor_studio_cdp_channel_consents" |o--|o "CustomerConsentReason" : "enum:reason"
-    "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_cdp_profiles : "profile"
-    "corretor_studio_cdp_channel_consents" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_profiles" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_identities" |o--|| "CustomerIdentityType" : "enum:type"
+    "corretor_studio_radar_identities" }o--|| corretor_studio_radar_profiles : "profile"
+    "corretor_studio_radar_identities" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_source_links" |o--|| "CustomerSourceType" : "enum:sourceType"
+    "corretor_studio_radar_source_links" }o--|| corretor_studio_radar_profiles : "profile"
+    "corretor_studio_radar_source_links" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_events" }o--|| corretor_studio_radar_profiles : "profile"
+    "corretor_studio_radar_events" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_channel_consents" |o--|| "CustomerChannel" : "enum:channel"
+    "corretor_studio_radar_channel_consents" |o--|| "CustomerConsentStatus" : "enum:status"
+    "corretor_studio_radar_channel_consents" |o--|o "CustomerConsentReason" : "enum:reason"
+    "corretor_studio_radar_channel_consents" }o--|| corretor_studio_radar_profiles : "profile"
+    "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
     "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"

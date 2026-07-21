@@ -3613,7 +3613,7 @@ enum CustomerIdentityType {
   portfolio_id
   whatsapp_contact_id
 
-  @@map("customer_identity_type")
+  @@map("radar_identity_type")
 }
 
 enum CustomerSourceType {
@@ -3623,14 +3623,14 @@ enum CustomerSourceType {
   email_campaign
   whatsapp_contact
 
-  @@map("customer_source_type")
+  @@map("radar_source_type")
 }
 
 enum CustomerChannel {
   email
   whatsapp
 
-  @@map("customer_channel")
+  @@map("radar_channel")
 }
 
 enum CustomerConsentStatus {
@@ -3638,7 +3638,7 @@ enum CustomerConsentStatus {
   blocked
   unknown
 
-  @@map("customer_consent_status")
+  @@map("radar_consent_status")
 }
 
 enum CustomerConsentReason {
@@ -3650,7 +3650,7 @@ enum CustomerConsentReason {
   opt_out
   missing_identity
 
-  @@map("customer_consent_reason")
+  @@map("radar_consent_reason")
 }
 
 enum EmailVariableValueSource {
@@ -3686,7 +3686,7 @@ model CustomerProfile {
   @@index([teamId, normalizedPrimaryEmail])
   @@index([teamId, normalizedPrimaryDocument])
   @@index([teamId, lastSeenAt(sort: Desc)])
-  @@map("corretor_studio_cdp_profiles")
+  @@map("corretor_studio_radar_profiles")
 }
 
 model CustomerIdentity {
@@ -3706,7 +3706,7 @@ model CustomerIdentity {
 
   @@unique([teamId, type, normalizedValue])
   @@index([profileId, type])
-  @@map("corretor_studio_cdp_identities")
+  @@map("corretor_studio_radar_identities")
 }
 
 model CustomerSourceLink {
@@ -3724,7 +3724,7 @@ model CustomerSourceLink {
 
   @@unique([teamId, sourceType, sourceId])
   @@index([profileId, sourceType])
-  @@map("corretor_studio_cdp_source_links")
+  @@map("corretor_studio_radar_source_links")
 }
 
 model CustomerEvent {
@@ -3744,7 +3744,7 @@ model CustomerEvent {
   @@unique([teamId, sourceType, sourceId, eventType, occurredAt])
   @@index([teamId, eventType, occurredAt(sort: Desc)])
   @@index([profileId, occurredAt(sort: Desc)])
-  @@map("corretor_studio_cdp_events")
+  @@map("corretor_studio_radar_events")
 }
 
 model CustomerChannelConsent {
@@ -3764,7 +3764,7 @@ model CustomerChannelConsent {
 
   @@unique([profileId, channel])
   @@index([teamId, channel, status])
-  @@map("corretor_studio_cdp_channel_consents")
+  @@map("corretor_studio_radar_channel_consents")
 }
 
 // ==============================
