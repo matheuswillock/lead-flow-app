@@ -18,8 +18,8 @@ import type {
   CampaignRecipient,
   IEmailCampaignRecipientService,
 } from "./IEmailCampaignRecipientService"
-import { enrichCampaignRecipientsWithCdp } from "@/lib/cdp/enrich-campaign-recipients"
-import { listCdpSegmentEmailRecipients } from "@/lib/cdp/list-segment-recipients"
+import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
+import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipients"
 import { findTeamBlocklistedEmails } from "@/lib/email/email-contact-blocklist"
 
 export class EmailCampaignRecipientService implements IEmailCampaignRecipientService {
@@ -79,7 +79,7 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
   async buildCampaignDispatchInput(params: {
     teamId: string
     contactListId?: string | null
-    cdpSegmentSlug?: string | null
+    radarSegmentSlug?: string | null
     audienceContactIds?: string[] | null
     template: { subject: string; html: string; variables: unknown }
     teamSettings: {
@@ -95,8 +95,8 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     const baseRecipients =
       audienceIds.length > 0
         ? await this.listActiveRecipientsByIds(audienceIds)
-        : params.cdpSegmentSlug
-          ? await listCdpSegmentEmailRecipients(params.teamId, params.cdpSegmentSlug)
+        : params.radarSegmentSlug
+          ? await listRadarSegmentEmailRecipients(params.teamId, params.radarSegmentSlug)
           : await this.listActiveRecipients(params.teamId, params.contactListId!)
     const blocklistedEmails = await findTeamBlocklistedEmails(params.teamId)
     const eligibleRecipients =
@@ -105,7 +105,7 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
             (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
           )
         : baseRecipients
-    const enrichedRecipients = await enrichCampaignRecipientsWithCdp(params.teamId, eligibleRecipients)
+    const enrichedRecipients = await enrichCampaignRecipientsWithRadar(params.teamId, eligibleRecipients)
     const globalDefaults = await this.getGlobalDefaults(params.teamId)
     const parsedVariables = this.parseTemplateVariables(params.template.variables)
     const timezone = resolveTimezone(params.masterTimezone)

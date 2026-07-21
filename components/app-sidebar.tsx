@@ -136,7 +136,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Formulários", url: `/${supabaseId}/forms`, icon: FileText, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
     { title: "Automações", url: `/${supabaseId}/automations`, icon: Zap, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_AUTOMATIONS },
-    { title: "CDP", url: `/${supabaseId}/cdp`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.CDP },
+    { title: "Radar", url: `/${supabaseId}/radar`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.RADAR },
   ];
 
   const emailItems: SidebarItem[] = [

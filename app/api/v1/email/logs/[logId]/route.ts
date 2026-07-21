@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         dispatch: {
           select: {
             contactListName: true,
-            cdpSegmentSlug: true,
+            radarSegmentSlug: true,
           },
         },
         events: {

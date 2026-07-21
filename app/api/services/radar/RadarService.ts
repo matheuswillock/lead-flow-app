@@ -1,0 +1,894 @@
+import type {
+  RadarConsentReason,
+  RadarConsentStatus,
+  EmailEventType,
+  Prisma,
+  RenewalStatus,
+} from "@prisma/client"
+import {
+  radarRepository,
+  type RadarTeamScope,
+} from "@/app/api/infra/data/repositories/radar/RadarRepository"
+import {
+  whatsAppRepository,
+} from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
+import type {
+  WhatsAppConversationSelect,
+  WhatsAppMessageSelect,
+} from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
+import {
+  PORTFOLIO_RENEWAL_WINDOW_DAYS,
+  RECENT_CAMPAIGN_WINDOW_DAYS,
+  type RadarSegmentSlug,
+} from "@/lib/radar/segment-config"
+import { buildEmailEventMetadata, profileMatchesRadarSegment } from "@/lib/radar/segment-rules"
+import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
+import { RADAR_PRIMARY_SEGMENT_PRIORITY } from "@/lib/radar/field-catalog"
+import {
+  buildProfileDataMap,
+  getLeadIdFromProfile,
+  type RadarResolvableLead,
+  type RadarResolvableProfile,
+} from "@/lib/radar/resolve-field-value"
+import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
+import {
+  formatDisplayPhone,
+  isValidRadarPrimaryIdentity,
+  normalizeRadarDocument,
+  normalizeRadarEmail,
+  normalizeRadarName,
+  normalizeRadarPhone,
+} from "@/lib/radar/normalization"
+import type { LeadStatus } from "@prisma/client"
+
+function toSegmentLeadStatusMap(raw: Map<string, LeadStatus | null>): Map<string, string> {
+  return new Map(
+    [...raw.entries()].flatMap(([key, status]) => (status ? [[key, status] as const] : []))
+  )
+}
+
+const EMAIL_EVENT_MAP: Record<EmailEventType, string> = {
+  sent: "email.sent",
+  delivered: "email.delivered",
+  opened: "email.opened",
+  clicked: "email.clicked",
+  bounced: "email.bounced",
+  complained: "email.complained",
+  delivery_delayed: "email.delivery_delayed",
+  unsubscribed: "email.unsubscribed",
+  failed: "email.failed",
+  suppressed: "email.suppressed",
+}
+
+export type SyncCounters = {
+  created: number
+  enriched: number
+  skipped: number
+  errors: string[]
+}
+
+export type SegmentCount = {
+  slug: RadarSegmentSlug
+  name: string
+  description: string
+  count: number
+}
+
+const SEGMENT_META: Record<RadarSegmentSlug, { name: string; description: string }> = {
+  email_marketable: {
+    name: "Aptos para e-mail",
+    description: "E-mail válido com consentimento permitido",
+  },
+  email_blocked: {
+    name: "Bloqueados",
+    description: "Bloqueados por unsubscribe, bounce ou complaint",
+  },
+  opened_not_clicked: {
+    name: "Abriram e não clicaram",
+    description: "Abriram campanha sem clique subsequente",
+  },
+  clicked_not_closed: {
+    name: "Clicaram e não fecharam",
+    description: "Clicaram em campanha sem fechamento em carteira ou CRM",
+  },
+  portfolio_renewal_due: {
+    name: "Carteira próxima de renovação",
+    description: "Clientes com renovação nos próximos 60 dias",
+  },
+  inactive_recent_campaign: {
+    name: "Sem campanha recente",
+    description: "Sem envio de campanha nos últimos 60 dias",
+  },
+}
+
+function emptyCounters(): SyncCounters {
+  return { created: 0, enriched: 0, skipped: 0, errors: [] }
+}
+
+function consentFromEmailFlags(flags: {
+  isUnsubscribed: boolean
+  isBounced: boolean
+  isComplained: boolean
+}): { status: RadarConsentStatus; reason: RadarConsentReason | null } {
+  if (flags.isComplained) return { status: "blocked", reason: "complaint" }
+  if (flags.isBounced) return { status: "blocked", reason: "bounce" }
+  if (flags.isUnsubscribed) return { status: "blocked", reason: "unsubscribe" }
+  return { status: "allowed", reason: "imported" }
+}
+
+export class RadarService {
+  async syncFromCrm(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
+    const counters = emptyCounters()
+    const leads = await radarRepository.findLeadsForRadarSync(scope.teamId, filters)
+
+    for (const lead of leads) {
+      try {
+        if (!isValidRadarPrimaryIdentity(lead.phone, lead.name)) {
+          counters.skipped += 1
+          continue
+        }
+
+        const normalizedPhone = normalizeRadarPhone(lead.phone)
+        const normalizedName = normalizeRadarName(lead.name)
+        const normalizedEmail = lead.email ? normalizeRadarEmail(lead.email) : null
+        const normalizedDocument = lead.cnpj ? normalizeRadarDocument(lead.cnpj) : null
+
+        const existing = await radarRepository.findProfileByPrimaryKey(
+          scope.teamId,
+          normalizedPhone,
+          normalizedName
+        )
+
+        const profile = await radarRepository.upsertProfile({
+          teamId: scope.teamId,
+          displayName: lead.name.trim(),
+          normalizedName,
+          displayPhone: formatDisplayPhone(lead.phone),
+          normalizedPhone,
+          primaryEmail: lead.email,
+          normalizedPrimaryEmail: normalizedEmail,
+          primaryDocument: lead.cnpj,
+          normalizedPrimaryDocument: normalizedDocument,
+          lastSeenAt: lead.updatedAt,
+        })
+
+        if (existing) counters.enriched += 1
+        else counters.created += 1
+
+        await radarRepository.upsertIdentity({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          type: "phone",
+          value: lead.phone,
+          normalizedValue: normalizedPhone,
+          source: "crm",
+          isPrimary: true,
+        })
+
+        if (normalizedEmail) {
+          await radarRepository.upsertIdentity({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            type: "email",
+            value: lead.email,
+            normalizedValue: normalizedEmail,
+            source: "crm",
+          })
+        }
+
+        if (normalizedDocument) {
+          await radarRepository.upsertIdentity({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            type: "document",
+            value: lead.cnpj,
+            normalizedValue: normalizedDocument,
+            source: "crm",
+          })
+        }
+
+        await radarRepository.upsertIdentity({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          type: "lead_id",
+          value: lead.id,
+          normalizedValue: lead.id,
+          source: "crm",
+        })
+
+        await radarRepository.upsertSourceLink({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          sourceType: "crm_lead",
+          sourceId: lead.id,
+          sourceMetadata: { status: lead.status },
+        })
+
+        await radarRepository.appendEventIfNew({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          eventType: "lead.created",
+          sourceType: "crm_lead",
+          sourceId: lead.id,
+          occurredAt: lead.createdAt,
+        })
+
+        await radarRepository.appendEventIfNew({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          eventType: "lead.status_changed",
+          sourceType: "crm_lead",
+          sourceId: `${lead.id}:${lead.status}`,
+          occurredAt: lead.statusEnteredAt,
+          metadata: { status: lead.status },
+        })
+      } catch (error) {
+        counters.errors.push(`lead:${lead.id}`)
+        console.error("[RadarService][syncFromCrm]", lead.id, error)
+      }
+    }
+
+    return counters
+  }
+
+  async syncFromPortfolio(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
+    const counters = emptyCounters()
+    const portfolios = await radarRepository.findPortfoliosForRadarSync(scope.teamId, filters)
+
+    for (const entry of portfolios) {
+      try {
+        const lead = entry.lead
+        if (!isValidRadarPrimaryIdentity(lead.phone, lead.name)) {
+          counters.skipped += 1
+          continue
+        }
+
+        const normalizedPhone = normalizeRadarPhone(lead.phone)
+        const normalizedName = normalizeRadarName(lead.name)
+        const existing = await radarRepository.findProfileByPrimaryKey(
+          scope.teamId,
+          normalizedPhone,
+          normalizedName
+        )
+
+        const profile = await radarRepository.upsertProfile({
+          teamId: scope.teamId,
+          displayName: lead.name.trim(),
+          normalizedName,
+          displayPhone: formatDisplayPhone(lead.phone),
+          normalizedPhone,
+          primaryEmail: lead.email,
+          normalizedPrimaryEmail: lead.email ? normalizeRadarEmail(lead.email) : null,
+          primaryDocument: lead.cnpj,
+          normalizedPrimaryDocument: lead.cnpj ? normalizeRadarDocument(lead.cnpj) : null,
+          lastSeenAt: entry.updatedAt,
+        })
+
+        if (existing) counters.enriched += 1
+        else counters.created += 1
+
+        await radarRepository.upsertSourceLink({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          sourceType: "portfolio",
+          sourceId: entry.id,
+          sourceMetadata: {
+            portfolioStatus: entry.portfolioStatus,
+            renewalStatus: entry.renewalStatus,
+            renewalAmount: entry.renewalAmount,
+          },
+        })
+
+        await radarRepository.upsertIdentity({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          type: "portfolio_id",
+          value: entry.id,
+          normalizedValue: entry.id,
+          source: "portfolio",
+        })
+
+        await radarRepository.appendEventIfNew({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          eventType: "portfolio.created",
+          sourceType: "portfolio",
+          sourceId: entry.id,
+          occurredAt: entry.createdAt,
+        })
+
+        if (this.isRenewalDue(entry.renewalStatus, lead.contractDueDate)) {
+          await radarRepository.appendEventIfNew({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            eventType: "portfolio.renewal_due",
+            sourceType: "portfolio",
+            sourceId: `${entry.id}:renewal`,
+            occurredAt: entry.updatedAt,
+            metadata: { renewalStatus: entry.renewalStatus },
+          })
+        }
+      } catch (error) {
+        counters.errors.push(`portfolio:${entry.id}`)
+        console.error("[RadarService][syncFromPortfolio]", entry.id, error)
+      }
+    }
+
+    return counters
+  }
+
+  async syncFromEmail(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
+    const counters = emptyCounters()
+    const lists = await radarRepository.findEmailContactLists(scope.teamId)
+
+    for (const list of lists) {
+      const contacts = await radarRepository.findEmailContacts(list.id)
+
+      for (const contact of contacts) {
+        try {
+          const normalizedEmail = normalizeRadarEmail(contact.email)
+          let profile = await radarRepository.findProfileByEmail(scope.teamId, normalizedEmail)
+
+          if (!profile && contact.name) {
+            const phoneFromCustom = await radarRepository.findLeadPhoneByEmail(scope.teamId, normalizedEmail)
+            if (phoneFromCustom && isValidRadarPrimaryIdentity(phoneFromCustom.phone, contact.name)) {
+              profile = await radarRepository.upsertProfile({
+                teamId: scope.teamId,
+                displayName: contact.name.trim(),
+                normalizedName: normalizeRadarName(contact.name),
+                displayPhone: formatDisplayPhone(phoneFromCustom.phone),
+                normalizedPhone: normalizeRadarPhone(phoneFromCustom.phone),
+                primaryEmail: contact.email,
+                normalizedPrimaryEmail: normalizedEmail,
+                lastSeenAt: contact.updatedAt,
+              })
+              counters.created += 1
+            }
+          }
+
+          if (!profile) {
+            counters.skipped += 1
+            continue
+          }
+
+          counters.enriched += 1
+
+          await radarRepository.upsertIdentity({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            type: "email",
+            value: contact.email,
+            normalizedValue: normalizedEmail,
+            source: "email",
+          })
+
+          await radarRepository.upsertIdentity({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            type: "email_contact_id",
+            value: contact.id,
+            normalizedValue: contact.id,
+            source: "email",
+          })
+
+          await radarRepository.upsertSourceLink({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            sourceType: "email_contact",
+            sourceId: contact.id,
+          })
+
+          const consent = consentFromEmailFlags(contact)
+          await radarRepository.upsertConsent({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            channel: "email",
+            status: consent.status,
+            reason: consent.reason,
+            sourceType: "email_contact",
+            sourceId: contact.id,
+          })
+        } catch (error) {
+          counters.errors.push(`contact:${contact.id}`)
+          console.error("[RadarService][syncFromEmail] contact", contact.id, error)
+        }
+      }
+    }
+
+    const logs = await radarRepository.findEmailLogsForRadarSync(scope.teamId, filters)
+
+    for (const log of logs) {
+      try {
+        const normalizedEmail = normalizeRadarEmail(log.recipientEmail)
+        const profile = await radarRepository.findProfileByEmail(scope.teamId, normalizedEmail)
+        if (!profile) continue
+
+        for (const event of log.events) {
+          const eventType = EMAIL_EVENT_MAP[event.type]
+          if (!eventType) continue
+
+          await radarRepository.appendEventIfNew({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            eventType,
+            sourceType: "email_log",
+            sourceId: event.id,
+            occurredAt: event.occurredAt,
+            metadata: buildEmailEventMetadata(
+              log.campaignId,
+              (event.metadata as Record<string, unknown> | null) ?? undefined
+            ),
+          })
+
+          if (event.type === "bounced" || event.type === "complained" || event.type === "unsubscribed") {
+            const reason: RadarConsentReason =
+              event.type === "bounced" ? "bounce" : event.type === "complained" ? "complaint" : "unsubscribe"
+            await radarRepository.upsertConsent({
+              profileId: profile.id,
+              teamId: scope.teamId,
+              channel: "email",
+              status: "blocked",
+              reason,
+              sourceType: "email_log",
+              sourceId: log.id,
+            })
+          }
+        }
+      } catch (error) {
+        counters.errors.push(`log:${log.id}`)
+        console.error("[RadarService][syncFromEmail] log", log.id, error)
+      }
+    }
+
+    return counters
+  }
+
+  async syncWhatsappMessageToRadar(input: {
+    teamId: string
+    message: WhatsAppMessageSelect
+    conversation: WhatsAppConversationSelect
+  }): Promise<void> {
+    const displayName = input.conversation.contactName ?? input.conversation.contactPhone
+    if (!isValidRadarPrimaryIdentity(input.conversation.contactPhone, displayName)) return
+
+    const normalizedPhone = normalizeRadarPhone(input.conversation.contactPhone)
+    const normalizedName = normalizeRadarName(displayName)
+
+    const profile = await radarRepository.upsertProfile({
+      teamId: input.teamId,
+      displayName: displayName.trim(),
+      normalizedName,
+      displayPhone: formatDisplayPhone(input.conversation.contactPhone),
+      normalizedPhone,
+      lastSeenAt: input.message.sentAt ?? input.message.createdAt,
+    })
+
+    await radarRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId: input.teamId,
+      type: "phone",
+      value: input.conversation.contactPhone,
+      normalizedValue: normalizedPhone,
+      source: "whatsapp",
+      isPrimary: true,
+    })
+
+    await radarRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId: input.teamId,
+      type: "whatsapp_contact_id",
+      value: input.conversation.id,
+      normalizedValue: input.conversation.id,
+      source: "whatsapp",
+    })
+
+    await radarRepository.upsertSourceLink({
+      profileId: profile.id,
+      teamId: input.teamId,
+      sourceType: "whatsapp_contact",
+      sourceId: input.conversation.id,
+    })
+
+    await radarRepository.upsertConsent({
+      profileId: profile.id,
+      teamId: input.teamId,
+      channel: "whatsapp",
+      status: "unknown",
+      reason: null,
+      sourceType: "whatsapp_contact",
+      sourceId: input.conversation.id,
+    })
+
+    const eventType =
+      input.message.direction === "OUTBOUND" ? "whatsapp.message_sent" : "whatsapp.message_received"
+    const preview =
+      input.message.contentText ?? input.message.caption ?? input.message.messageType ?? ""
+
+    if (!input.message.providerMessageId) return
+
+    await radarRepository.appendEventIfNew({
+      profileId: profile.id,
+      teamId: input.teamId,
+      eventType,
+      sourceType: "whatsapp_message",
+      sourceId: input.message.providerMessageId,
+      occurredAt: input.message.sentAt ?? input.message.createdAt,
+      metadata: {
+        conversationId: input.conversation.id,
+        direction: input.message.direction,
+        preview,
+        sentAt: (input.message.sentAt ?? input.message.createdAt).toISOString(),
+      },
+    })
+  }
+
+  async syncWhatsappConversationToRadar(
+    teamId: string,
+    conversation: WhatsAppConversationSelect
+  ): Promise<void> {
+    const displayName = conversation.contactName ?? conversation.contactPhone
+    if (!isValidRadarPrimaryIdentity(conversation.contactPhone, displayName)) return
+
+    const normalizedPhone = normalizeRadarPhone(conversation.contactPhone)
+    const normalizedName = normalizeRadarName(displayName)
+
+    const profile = await radarRepository.upsertProfile({
+      teamId,
+      displayName: displayName.trim(),
+      normalizedName,
+      displayPhone: formatDisplayPhone(conversation.contactPhone),
+      normalizedPhone,
+      lastSeenAt: conversation.lastMessageAt ?? conversation.updatedAt,
+    })
+
+    await radarRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId,
+      type: "phone",
+      value: conversation.contactPhone,
+      normalizedValue: normalizedPhone,
+      source: "whatsapp",
+      isPrimary: true,
+    })
+
+    await radarRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId,
+      type: "whatsapp_contact_id",
+      value: conversation.id,
+      normalizedValue: conversation.id,
+      source: "whatsapp",
+    })
+
+    await radarRepository.upsertSourceLink({
+      profileId: profile.id,
+      teamId,
+      sourceType: "whatsapp_contact",
+      sourceId: conversation.id,
+    })
+
+    await radarRepository.upsertConsent({
+      profileId: profile.id,
+      teamId,
+      channel: "whatsapp",
+      status: "unknown",
+      reason: null,
+      sourceType: "whatsapp_contact",
+      sourceId: conversation.id,
+    })
+
+    await radarRepository.appendEventIfNew({
+      profileId: profile.id,
+      teamId,
+      eventType: "whatsapp.contact_created",
+      sourceType: "whatsapp_contact",
+      sourceId: conversation.id,
+      occurredAt: conversation.createdAt,
+    })
+  }
+
+  async syncFromWhatsapp(
+    teamId: string,
+    options?: { since?: Date }
+  ): Promise<SyncCounters> {
+    const counters = emptyCounters()
+    const since =
+      options?.since ??
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+
+    const conversations = await whatsAppRepository.listConversationsForTeam(teamId)
+    const conversationById = new Map(conversations.map((item) => [item.id, item]))
+
+    for (const conversation of conversations) {
+      try {
+        await this.syncWhatsappConversationToRadar(teamId, conversation)
+        counters.enriched += 1
+      } catch (error) {
+        counters.errors.push(`conversation:${conversation.id}`)
+        console.error("[RadarService][syncFromWhatsapp] conversation", conversation.id, error)
+      }
+    }
+
+    const messages = await whatsAppRepository.listMessagesSince({
+      teamId,
+      since,
+    })
+
+    for (const message of messages) {
+      const conversation = conversationById.get(message.conversationId)
+      if (!conversation) {
+        counters.skipped += 1
+        continue
+      }
+
+      try {
+        await this.syncWhatsappMessageToRadar({
+          teamId,
+          message,
+          conversation,
+        })
+        counters.enriched += 1
+      } catch (error) {
+        counters.errors.push(`message:${message.id}`)
+        console.error("[RadarService][syncFromWhatsapp] message", message.id, error)
+      }
+    }
+
+    return counters
+  }
+
+  async countSegments(scope: RadarTeamScope): Promise<SegmentCount[]> {
+    const profiles = await radarRepository.listProfilesForSegmentation(scope.teamId)
+
+    const rawLeadStatuses = await radarRepository.findLeadStatuses(
+      scope.teamId,
+      profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
+    )
+    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
+
+    const counts: Record<RadarSegmentSlug, number> = {
+      email_marketable: 0,
+      email_blocked: 0,
+      opened_not_clicked: 0,
+      clicked_not_closed: 0,
+      portfolio_renewal_due: 0,
+      inactive_recent_campaign: 0,
+    }
+
+    const now = Date.now()
+    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+
+    for (const profile of profiles) {
+      for (const slug of Object.keys(counts) as RadarSegmentSlug[]) {
+        if (profileMatchesRadarSegment(profile, slug, leadStatuses, now, recentMs)) {
+          counts[slug] += 1
+        }
+      }
+    }
+
+    return (Object.keys(SEGMENT_META) as RadarSegmentSlug[]).map((slug) => ({
+      slug,
+      ...SEGMENT_META[slug],
+      count: counts[slug],
+    }))
+  }
+
+  async listSegmentProfileIds(scope: RadarTeamScope, segment: RadarSegmentSlug): Promise<string[]> {
+    const segments = await this.countSegments(scope)
+    if (!segments.find((s) => s.slug === segment)) return []
+
+    const profiles = await radarRepository.listProfilesForSegmentation(scope.teamId)
+
+    const rawLeadStatuses = await radarRepository.findLeadStatuses(
+      scope.teamId,
+      profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
+    )
+    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
+
+    const now = Date.now()
+    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    const ids: string[] = []
+
+    for (const profile of profiles) {
+      if (profileMatchesRadarSegment(profile, segment, leadStatuses, now, recentMs)) {
+        ids.push(profile.id)
+      }
+    }
+
+    return ids
+  }
+
+  async getMetrics(scope: RadarTeamScope) {
+    const [totalProfiles, segments] = await Promise.all([
+      radarRepository.countProfiles(scope),
+      this.countSegments(scope),
+    ])
+
+    const marketable = segments.find((s) => s.slug === "email_marketable")?.count ?? 0
+    const blocked = segments.find((s) => s.slug === "email_blocked")?.count ?? 0
+    const engaged = segments.find((s) => s.slug === "opened_not_clicked")?.count ?? 0
+
+    return { totalProfiles, marketable, blocked, engaged }
+  }
+
+  async handleEmailWebhookEvent(input: {
+    teamId: string
+    recipientEmail: string
+    recipientName?: string | null
+    logId: string
+    campaignId?: string | null
+    eventType: EmailEventType
+    occurredAt: Date
+    metadata?: Record<string, unknown>
+  }) {
+    const normalizedEmail = normalizeRadarEmail(input.recipientEmail)
+    let profile = await radarRepository.findProfileByEmail(input.teamId, normalizedEmail)
+
+    if (!profile && input.recipientName) {
+      const lead = await radarRepository.findLeadPhoneByEmail(input.teamId, normalizedEmail)
+      if (lead?.phone && isValidRadarPrimaryIdentity(lead.phone, input.recipientName)) {
+        profile = await radarRepository.upsertProfile({
+          teamId: input.teamId,
+          displayName: input.recipientName.trim(),
+          normalizedName: normalizeRadarName(input.recipientName),
+          displayPhone: formatDisplayPhone(lead.phone),
+          normalizedPhone: normalizeRadarPhone(lead.phone),
+          primaryEmail: input.recipientEmail,
+          normalizedPrimaryEmail: normalizedEmail,
+          lastSeenAt: input.occurredAt,
+        })
+      }
+    }
+
+    if (!profile) return
+
+    const mapped = EMAIL_EVENT_MAP[input.eventType]
+    if (!mapped) return
+
+    await radarRepository.appendEventIfNew({
+      profileId: profile.id,
+      teamId: input.teamId,
+      eventType: mapped,
+      sourceType: "email_log",
+      sourceId: input.logId,
+      occurredAt: input.occurredAt,
+      metadata: buildEmailEventMetadata(input.campaignId, input.metadata) as Prisma.InputJsonValue,
+    })
+
+    if (input.eventType === "bounced" || input.eventType === "complained" || input.eventType === "unsubscribed") {
+      const reason: RadarConsentReason =
+        input.eventType === "bounced"
+          ? "bounce"
+          : input.eventType === "complained"
+            ? "complaint"
+            : "unsubscribe"
+      await radarRepository.upsertConsent({
+        profileId: profile.id,
+        teamId: input.teamId,
+        channel: "email",
+        status: "blocked",
+        reason,
+        sourceType: "email_log",
+        sourceId: input.logId,
+      })
+    }
+  }
+
+  private isRenewalDue(renewalStatus: RenewalStatus, contractDueDate: Date | null) {
+    if (renewalStatus === "renewed" || renewalStatus === "lost") return false
+    if (!contractDueDate) return renewalStatus === "to_renew" || renewalStatus === "contacted"
+
+    const windowMs = PORTFOLIO_RENEWAL_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    const diff = contractDueDate.getTime() - Date.now()
+    return diff >= 0 && diff <= windowMs
+  }
+
+  async syncProfileDataForTeam(scope: RadarTeamScope) {
+    const variables = await radarRepository.listRadarEmailVariables(scope.teamId)
+    if (variables.length === 0) return { updated: 0 }
+
+    const profiles = await radarRepository.listProfilesForProfileDataSync(scope.teamId)
+    const leadIds = profiles
+      .map((profile) => getLeadIdFromProfile(profile as RadarResolvableProfile))
+      .filter((id): id is string => Boolean(id))
+    const leadsById = await radarRepository.findLeadsForRadarFieldResolution(scope.teamId, leadIds)
+
+    let updated = 0
+    for (const profile of profiles) {
+      const leadId = getLeadIdFromProfile(profile as RadarResolvableProfile)
+      const lead = leadId ? (leadsById.get(leadId) as RadarResolvableLead) : null
+      const profileData = buildProfileDataMap(variables, profile as RadarResolvableProfile, lead)
+      await radarRepository.updateProfileData(profile.id, scope.teamId, profileData)
+      updated += 1
+    }
+
+    return { updated }
+  }
+
+  async resolvePrimarySegmentSlug(
+    scope: RadarTeamScope,
+    profileId: string
+  ): Promise<RadarSegmentSlug | null> {
+    const profiles = await radarRepository.listProfilesForSegmentationByIds(scope.teamId, [profileId])
+    const profile = profiles[0]
+    if (!profile) return null
+
+    const leadStatuses = toSegmentLeadStatusMap(
+      await radarRepository.findLeadStatuses(
+      scope.teamId,
+      profile.identities.map((identity) => identity.normalizedValue)
+    )
+    )
+
+    const now = Date.now()
+    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+
+    for (const slug of RADAR_PRIMARY_SEGMENT_PRIORITY) {
+      if (profileMatchesRadarSegment(profile, slug, leadStatuses, now, recentMs)) {
+        return slug
+      }
+    }
+
+    return null
+  }
+
+  async resolvePrimarySegmentsForProfiles(scope: RadarTeamScope, profileIds: string[]) {
+    if (profileIds.length === 0) return new Map<string, RadarSegmentSlug>()
+
+    const profiles = await radarRepository.listProfilesForSegmentationByIds(scope.teamId, profileIds)
+    const profileMap = new Map(profiles.map((profile) => [profile.id, profile]))
+    const leadStatuses = toSegmentLeadStatusMap(
+      await radarRepository.findLeadStatuses(
+      scope.teamId,
+      profiles.flatMap((profile) => profile.identities.map((identity) => identity.normalizedValue))
+    )
+    )
+
+    const now = Date.now()
+    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    const result = new Map<string, RadarSegmentSlug>()
+
+    for (const profileId of profileIds) {
+      const profile = profileMap.get(profileId)
+      if (!profile) continue
+
+      for (const slug of RADAR_PRIMARY_SEGMENT_PRIORITY) {
+        if (profileMatchesRadarSegment(profile, slug, leadStatuses, now, recentMs)) {
+          result.set(profileId, slug)
+          break
+        }
+      }
+    }
+
+    return result
+  }
+
+  async previewInterpolation(
+    scope: RadarTeamScope,
+    profileId: string,
+    variableKeys: string[]
+  ) {
+    const profile = await radarRepository.getProfileDetailWithCtx(scope, profileId)
+    if (!profile) return null
+
+    const variables = await radarRepository.listRadarEmailVariables(scope.teamId)
+    const filtered =
+      variableKeys.length > 0
+        ? variables.filter((variable) => variableKeys.includes(variable.key))
+        : variables
+
+    const leadId = getLeadIdFromProfile(profile as RadarResolvableProfile)
+    const leadsById = leadId
+      ? await radarRepository.findLeadsForRadarFieldResolution(scope.teamId, [leadId])
+      : new Map()
+    const lead = leadId ? ((leadsById.get(leadId) as RadarResolvableLead) ?? null) : null
+
+    return resolveInterpolationValuesForProfile(
+      filtered,
+      profile as RadarResolvableProfile,
+      lead
+    )
+  }
+}
+
+export const radarService = new RadarService()

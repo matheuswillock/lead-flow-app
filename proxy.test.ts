@@ -219,4 +219,13 @@ describe("proxy", () => {
 
     expect(response.status).toBe(200)
   })
+
+  it("308 redirects /{uuid}/cdp to /{uuid}/radar preserving query", async () => {
+    updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+
+    const response = await proxy(makeRequest(`/${USER_A}/cdp?tab=segments`))
+
+    expect(response.status).toBe(308)
+    expect(response.headers.get("location")).toBe(`${BASE_URL}/${USER_A}/radar?tab=segments`)
+  })
 })

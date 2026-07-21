@@ -8,9 +8,9 @@ export const campaignCreateWizardStep1Schema = z.object({
 
 export const campaignCreateWizardStep2Schema = z
   .object({
-    recipientSource: z.enum(["contact_list", "cdp_segment"]),
+    recipientSource: z.enum(["contact_list", "radar_segment"]),
     contactListId: z.string().optional(),
-    cdpSegmentSlug: z.string().optional(),
+    radarSegmentSlug: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.recipientSource === "contact_list") {
@@ -23,33 +23,33 @@ export const campaignCreateWizardStep2Schema = z
       }
       return
     }
-    if (!data.cdpSegmentSlug?.trim()) {
+    if (!data.radarSegmentSlug?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Selecione um segmento CDP",
-        path: ["cdpSegmentSlug"],
+        message: "Selecione um segmento Radar",
+        path: ["radarSegmentSlug"],
       })
     }
   })
 
 export function buildCampaignCreateWizardSubmitSchema(params: {
   recipientCount: number
-  recipientSource: "contact_list" | "cdp_segment"
+  recipientSource: "contact_list" | "radar_segment"
 }) {
   const needsSplit =
     params.recipientSource === "contact_list" &&
     params.recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
-  const cdpExceedsLimit =
-    params.recipientSource === "cdp_segment" &&
+  const radarExceedsLimit =
+    params.recipientSource === "radar_segment" &&
     params.recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 
   return z
     .object({
       name: z.string().trim().min(1, "Nome da campanha é obrigatório"),
       templateId: z.string().uuid("Selecione um template válido"),
-      recipientSource: z.enum(["contact_list", "cdp_segment"]),
+      recipientSource: z.enum(["contact_list", "radar_segment"]),
       contactListId: z.string().optional(),
-      cdpSegmentSlug: z.string().optional(),
+      radarSegmentSlug: z.string().optional(),
       scheduledAt: z.date().optional(),
       scheduleIntervalDays: z.number().int().optional(),
     })
@@ -62,19 +62,19 @@ export function buildCampaignCreateWizardSubmitSchema(params: {
             path: ["contactListId"],
           })
         }
-      } else if (!data.cdpSegmentSlug?.trim()) {
+      } else if (!data.radarSegmentSlug?.trim()) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Selecione um segmento CDP",
-          path: ["cdpSegmentSlug"],
+          message: "Selecione um segmento Radar",
+          path: ["radarSegmentSlug"],
         })
       }
 
-      if (cdpExceedsLimit) {
+      if (radarExceedsLimit) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Segmentos CDP com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos ou reduza o segmento`,
-          path: ["cdpSegmentSlug"],
+          message: `Segmentos Radar com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos ou reduza o segmento`,
+          path: ["radarSegmentSlug"],
         })
       }
 

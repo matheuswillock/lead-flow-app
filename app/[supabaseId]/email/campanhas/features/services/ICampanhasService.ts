@@ -4,7 +4,7 @@ export type CreateCampaignData = {
   name: string
   templateId: string
   contactListId?: string
-  cdpSegmentSlug?: string
+  radarSegmentSlug?: string
   scheduledAt?: string
   scheduleIntervalDays?: number
 }
@@ -13,7 +13,7 @@ export type UpdateCampaignData = {
   name?: string
   templateId?: string
   contactListId?: string
-  cdpSegmentSlug?: string
+  radarSegmentSlug?: string
   scheduledAt?: string | null
 }
 

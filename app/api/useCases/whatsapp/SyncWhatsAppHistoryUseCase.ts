@@ -1,7 +1,7 @@
 import { Output } from "@/lib/output"
 import { whatsAppService } from "@/app/api/services/whatsapp/WhatsAppService"
 import { WHATSAPP_HISTORY_SYNC_DAYS } from "@/app/api/services/whatsapp/WhatsAppService"
-import { customerDataPlatformService } from "@/app/api/services/cdp/CustomerDataPlatformService"
+import { radarService } from "@/app/api/services/radar/RadarService"
 
 interface SyncWhatsAppHistoryInput {
   teamId: string
@@ -15,9 +15,9 @@ class SyncWhatsAppHistoryUseCase {
       if (result.chats > 0 || result.messages > 0) {
         const since = new Date(Date.now() - WHATSAPP_HISTORY_SYNC_DAYS * 24 * 60 * 60 * 1000)
         try {
-          await customerDataPlatformService.syncFromWhatsapp(input.teamId, { since })
-        } catch (cdpError) {
-          console.error("[SyncWhatsAppHistoryUseCase][execute] CDP backfill failed", cdpError)
+          await radarService.syncFromWhatsapp(input.teamId, { since })
+        } catch (radarError) {
+          console.error("[SyncWhatsAppHistoryUseCase][execute] Radar backfill failed", radarError)
         }
       }
 

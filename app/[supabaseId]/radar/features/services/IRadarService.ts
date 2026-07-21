@@ -1,0 +1,67 @@
+import type {
+  RadarMetrics,
+  RadarProfileDetail,
+  RadarProfileListItem,
+  RadarSegment,
+  RadarSyncResult,
+} from "../context/RadarTypes"
+
+export type ListProfilesParams = {
+  page: number
+  pageSize: number
+  search?: string
+  consent?: string
+  sourceType?: string
+  channel?: string
+  segment?: string
+  lastSeenFrom?: string
+  lastSeenTo?: string
+}
+
+export type RadarFieldOption = {
+  key: string
+  label: string
+  sourceType: string
+}
+
+export interface IRadarService {
+  syncCrm(supabaseId: string, teamId: string, body?: { leadId?: string }): Promise<RadarSyncResult>
+  syncPortfolio(supabaseId: string, teamId: string): Promise<RadarSyncResult>
+  syncEmail(supabaseId: string, teamId: string): Promise<RadarSyncResult>
+  syncWhatsapp(supabaseId: string, teamId: string): Promise<RadarSyncResult>
+  listProfiles(
+    supabaseId: string,
+    teamId: string,
+    params: ListProfilesParams
+  ): Promise<{
+    items: RadarProfileListItem[]
+    total: number
+    page: number
+    pageSize: number
+  }>
+  getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail>
+  listSegments(
+    supabaseId: string,
+    teamId: string
+  ): Promise<{ segments: RadarSegment[]; metrics: RadarMetrics }>
+  listSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segment: string,
+    page: number,
+    pageSize: number
+  ): Promise<{ items: RadarProfileDetail[]; total: number }>
+  listProfileEvents(
+    supabaseId: string,
+    teamId: string,
+    profileId: string,
+    page: number,
+    pageSize: number
+  ): Promise<{ items: RadarProfileDetail["events"]; total: number }>
+  listAvailableFields(supabaseId: string, teamId: string): Promise<RadarFieldOption[]>
+  previewInterpolation(
+    supabaseId: string,
+    teamId: string,
+    body: { profileId: string; variableKeys: string[] }
+  ): Promise<{ values: Record<string, string> }>
+}

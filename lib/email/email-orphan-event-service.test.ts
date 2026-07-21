@@ -105,8 +105,8 @@ mock.module("@/app/api/services/resend/ResendWebhookService", () => {
   }
 })
 
-mock.module("@/app/api/services/cdp/CustomerDataPlatformService", () => ({
-  customerDataPlatformService: {
+mock.module("@/app/api/services/radar/RadarService", () => ({
+  radarService: {
     handleEmailWebhookEvent: handleEmailWebhookEventMock,
   },
 }))
@@ -189,7 +189,7 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     expect(updateMock).toHaveBeenCalled()
   })
 
-  it("repassa evento recuperado para webhook + CDP quando o log já existe", async () => {
+  it("repassa evento recuperado para webhook + Radar quando o log já existe", async () => {
     const occurredAt = new Date("2026-07-17T12:00:00.000Z")
     findManyMock.mockResolvedValueOnce([
       {

@@ -23,6 +23,8 @@ export type CreateLeadOfferInput = {
   productIds: string[]
   contactName: string
   contactPhone: string
+  preContractExpiresAt: string
+  insuranceAmount?: number | null
 }
 
 export type BackofficeLeadOfferListStatus = "active" | "expired" | "revoked"
@@ -53,16 +55,54 @@ function deriveOfferStatus(
 
 function mapListItem(offer: BackofficeLeadOfferRecord) {
   const items = parseItemsJson(offer.itemsJson)
+  const status = deriveOfferStatus(offer)
+  const shareUrl =
+    status === "active" && offer.tokenPlain
+      ? getFullUrl(`/oferta/${offer.tokenPlain}`)
+      : null
+
   return {
     id: offer.id,
-    status: deriveOfferStatus(offer),
+    status,
     expiresAt: offer.shareExpiresAt.toISOString(),
     generatedAt: offer.shareGeneratedAt.toISOString(),
     revokedAt: offer.revokedAt?.toISOString() ?? null,
     contactName: offer.contactName,
     contactPhone: offer.contactPhone,
     productNames: items.map((item) => item.name),
+    preContractExpiresAt: offer.preContractExpiresAt.toISOString(),
+    insuranceAmount: decimalToNumber(offer.insuranceAmount),
+    shareUrl,
   }
+}
+
+function parsePreContractExpiresAt(value: string): { isValid: true; date: Date } | { isValid: false; error: string } {
+  if (!value?.trim()) {
+    return { isValid: false, error: "Data de vencimento do pré-contrato é obrigatória" }
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return { isValid: false, error: "Data de vencimento do pré-contrato é inválida" }
+  }
+  if (date.getTime() <= Date.now()) {
+    return { isValid: false, error: "Data de vencimento do pré-contrato deve ser futura" }
+  }
+  return { isValid: true, date }
+}
+
+function parseInsuranceAmount(
+  value: number | null | undefined
+): { isValid: true; amount: number | null } | { isValid: false; error: string } {
+  if (value === null || value === undefined) {
+    return { isValid: true, amount: null }
+  }
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return { isValid: false, error: "Valor do seguro é inválido" }
+  }
+  if (value < 0) {
+    return { isValid: false, error: "Valor do seguro deve ser maior ou igual a zero" }
+  }
+  return { isValid: true, amount: value }
 }
 
 export class BackofficeLeadOfferUseCase {
@@ -95,6 +135,16 @@ export class BackofficeLeadOfferUseCase {
       return new Output(false, [], ["Telefone do contato do CTA é inválido"], null)
     }
 
+    const preContract = parsePreContractExpiresAt(input.preContractExpiresAt)
+    if (!preContract.isValid) {
+      return new Output(false, [], [preContract.error], null)
+    }
+
+    const insurance = parseInsuranceAmount(input.insuranceAmount)
+    if (!insurance.isValid) {
+      return new Output(false, [], [insurance.error], null)
+    }
+
     const allProducts = await this.productRepository.findAll()
     const selectedProducts = allProducts.filter(
       (product) => productIds.includes(product.id) && product.isActive
@@ -119,13 +169,19 @@ export class BackofficeLeadOfferUseCase {
     const shareExpiresAt = getOfferShareExpiry()
 
     try {
+      const revokedAt = new Date()
+      await this.offerRepository.revokeActiveByLeadId(leadId, revokedAt)
+
       const offer = await this.offerRepository.create({
         leadId,
         leadNameSnapshot: lead.name,
         contactName,
         contactPhone,
         itemsJson,
+        preContractExpiresAt: preContract.date,
+        insuranceAmount: insurance.amount,
         shareTokenHash: hashOfferShareToken(rawToken),
+        tokenPlain: rawToken,
         shareExpiresAt,
         shareGeneratedByProfileId: profileId,
       })
@@ -134,6 +190,7 @@ export class BackofficeLeadOfferUseCase {
         offerId: offer.id,
         shareUrl: getFullUrl(`/oferta/${rawToken}`),
         expiresAt: shareExpiresAt.toISOString(),
+        preContractExpiresAt: preContract.date.toISOString(),
       })
     } catch (error) {
       console.error("[BackofficeLeadOfferUseCase][createOffer] Erro ao gerar oferta:", error)
@@ -172,10 +229,10 @@ export class BackofficeLeadOfferUseCase {
       const revokedAt = new Date()
       await this.offerRepository.revoke(offerId, revokedAt)
       return new Output(true, ["Link da oferta revogado com sucesso"], [], {
-        ...mapListItem({ ...offer, revokedAt, shareExpiresAt: revokedAt }),
+        ...mapListItem({ ...offer, revokedAt, shareExpiresAt: revokedAt, tokenPlain: null }),
       })
     } catch (error) {
-      console.error("[BackofficeLeadOfferUseCase][revokeOffer] Erro ao revogar oferta:", error)
+      console.error("[BackofficeLeadOfferUseCase][revokeOffer] Erro ao revogar a oferta:", error)
       return new Output(false, [], ["Erro inesperado ao revogar a oferta"], null)
     }
   }
@@ -195,11 +252,17 @@ export class BackofficeLeadOfferUseCase {
       contactPhone: offer.contactPhone,
     }
 
+    const preContract = {
+      preContractExpiresAt: offer.preContractExpiresAt.toISOString(),
+      insuranceAmount: decimalToNumber(offer.insuranceAmount),
+    }
+
     if (isOfferShareExpired(offer.shareExpiresAt)) {
       return new Output(true, [], [], {
         status: "expired" as const,
         leadName: offer.leadNameSnapshot,
         ...contact,
+        ...preContract,
       })
     }
 
@@ -209,6 +272,7 @@ export class BackofficeLeadOfferUseCase {
       items: parseItemsJson(offer.itemsJson),
       expiresAt: offer.shareExpiresAt.toISOString(),
       ...contact,
+      ...preContract,
     })
   }
 }

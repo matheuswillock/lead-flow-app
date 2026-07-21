@@ -2,7 +2,7 @@ import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, C
 
 export interface ICampanhasService {
   list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string[], name?: string, createdAtFrom?: string, createdAtTo?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
-  create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; cdpSegmentSlug?: string; scheduledAt?: string; scheduleIntervalDays?: number }): Promise<Campaign>
+  create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; radarSegmentSlug?: string; scheduledAt?: string; scheduleIntervalDays?: number }): Promise<Campaign>
   getById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Campaign>
   send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{
     campaignId: string
@@ -47,7 +47,7 @@ export class CampanhasService implements ICampanhasService {
     return json.result as { campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }
   }
 
-  async create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; cdpSegmentSlug?: string; scheduledAt?: string; scheduleIntervalDays?: number }) {
+  async create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; radarSegmentSlug?: string; scheduledAt?: string; scheduleIntervalDays?: number }) {
     const res = await fetch(`${this.baseUrl}/campaigns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },

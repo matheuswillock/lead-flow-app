@@ -25,7 +25,7 @@ export interface IEmailCampaignRecipientService {
   buildCampaignDispatchInput(params: {
     teamId: string
     contactListId?: string | null
-    cdpSegmentSlug?: string | null
+    radarSegmentSlug?: string | null
     audienceContactIds?: string[] | null
     template: { subject: string; html: string; variables: unknown }
     teamSettings: {
