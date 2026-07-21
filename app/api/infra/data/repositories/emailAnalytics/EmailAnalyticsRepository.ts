@@ -15,7 +15,7 @@ export type EmailAnalyticsDispatchRecord = {
   templateVersionNumber: number
   templateSubject: string
   contactListName: string | null
-  cdpSegmentSlug: string | null
+  radarSegmentSlug: string | null
   dispatchedAt: Date
   totalRecipients: number
   totalSent: number
@@ -125,7 +125,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         templateVersionNumber: true,
         templateSubject: true,
         contactListName: true,
-        cdpSegmentSlug: true,
+        radarSegmentSlug: true,
         dispatchedAt: true,
         totalRecipients: true,
         totalSent: true,

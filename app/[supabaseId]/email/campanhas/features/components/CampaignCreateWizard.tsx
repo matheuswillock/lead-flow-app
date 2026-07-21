@@ -70,29 +70,29 @@ export function CampaignCreateWizard() {
     wizardTemplateId,
     wizardContactListId,
     wizardRecipientSource,
-    wizardCdpSegmentSlug,
+    wizardRadarSegmentSlug,
     wizardScheduledAt,
     wizardScheduleIntervalDays,
     wizardCreating,
     templates,
     contactLists,
-    cdpSegments,
+    radarSegments,
     closeWizard,
     setWizardStep,
     setWizardName,
     setWizardTemplateId,
     setWizardContactListId,
     setWizardRecipientSource,
-    setWizardCdpSegmentSlug,
+    setWizardRadarSegmentSlug,
     setWizardScheduledAt,
     setWizardScheduleIntervalDays,
     handleCreateCampaign,
   } = useCampanhasContext()
 
   const selectedList = contactLists.find((list) => list.id === wizardContactListId)
-  const selectedSegment = cdpSegments.find((segment) => segment.slug === wizardCdpSegmentSlug)
+  const selectedSegment = radarSegments.find((segment) => segment.slug === wizardRadarSegmentSlug)
   const recipientCount =
-    wizardRecipientSource === "cdp_segment"
+    wizardRecipientSource === "radar_segment"
       ? selectedSegment?.count ?? 0
       : selectedList?.activeContacts ?? selectedList?.totalContacts ?? 0
 
@@ -107,7 +107,7 @@ export function CampaignCreateWizard() {
   const step2Parse = campaignCreateWizardStep2Schema.safeParse({
     recipientSource: wizardRecipientSource,
     contactListId: wizardContactListId || undefined,
-    cdpSegmentSlug: wizardCdpSegmentSlug || undefined,
+    radarSegmentSlug: wizardRadarSegmentSlug || undefined,
   })
   const submitSchema = useMemo(
     () =>
@@ -122,7 +122,7 @@ export function CampaignCreateWizard() {
     templateId: wizardTemplateId,
     recipientSource: wizardRecipientSource,
     contactListId: wizardContactListId || undefined,
-    cdpSegmentSlug: wizardCdpSegmentSlug || undefined,
+    radarSegmentSlug: wizardRadarSegmentSlug || undefined,
     scheduledAt: wizardScheduledAt,
     scheduleIntervalDays: wizardScheduleIntervalDays,
   })
@@ -204,7 +204,7 @@ export function CampaignCreateWizard() {
                 <Select
                   value={wizardRecipientSource}
                   onValueChange={(value) =>
-                    setWizardRecipientSource(value as "contact_list" | "cdp_segment")
+                    setWizardRecipientSource(value as "contact_list" | "radar_segment")
                   }
                   disabled={wizardCreating}
                 >
@@ -214,7 +214,7 @@ export function CampaignCreateWizard() {
                   <SelectContent>
                     <SelectGroup>
                       <SelectItem value="contact_list">Lista de contatos</SelectItem>
-                      <SelectItem value="cdp_segment">Segmento CDP</SelectItem>
+                      <SelectItem value="radar_segment">Segmento Radar</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -246,16 +246,16 @@ export function CampaignCreateWizard() {
                   ) : null}
                 </Field>
               ) : (
-                <Field data-invalid={Boolean(fieldErrorMessage(step2Issues, "cdpSegmentSlug")) || undefined}>
+                <Field data-invalid={Boolean(fieldErrorMessage(step2Issues, "radarSegmentSlug")) || undefined}>
                   <div className="flex items-center gap-1.5">
-                    <FieldLabel>Segmento CDP *</FieldLabel>
+                    <FieldLabel>Segmento Radar *</FieldLabel>
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
                             type="button"
                             className="text-muted-foreground hover:text-foreground"
-                            aria-label="O que é segmento CDP?"
+                            aria-label="O que é segmento Radar?"
                           >
                             <CircleHelp />
                           </button>
@@ -268,16 +268,16 @@ export function CampaignCreateWizard() {
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <Select value={wizardCdpSegmentSlug} onValueChange={setWizardCdpSegmentSlug} disabled={wizardCreating}>
-                    <SelectTrigger aria-invalid={Boolean(fieldErrorMessage(step2Issues, "cdpSegmentSlug")) || undefined}>
+                  <Select value={wizardRadarSegmentSlug} onValueChange={setWizardRadarSegmentSlug} disabled={wizardCreating}>
+                    <SelectTrigger aria-invalid={Boolean(fieldErrorMessage(step2Issues, "radarSegmentSlug")) || undefined}>
                       <SelectValue placeholder="Selecione um segmento..." />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {cdpSegments.length === 0 ? (
+                        {radarSegments.length === 0 ? (
                           <SelectItem value="__none" disabled>Nenhum segmento disponível</SelectItem>
                         ) : (
-                          cdpSegments.map((segment) => (
+                          radarSegments.map((segment) => (
                             <SelectItem key={segment.slug} value={segment.slug}>
                               {segment.name} ({segment.count})
                             </SelectItem>
@@ -286,13 +286,13 @@ export function CampaignCreateWizard() {
                       </SelectGroup>
                     </SelectContent>
                   </Select>
-                  {fieldErrorMessage(step2Issues, "cdpSegmentSlug") ? (
-                    <FieldError>{fieldErrorMessage(step2Issues, "cdpSegmentSlug")}</FieldError>
+                  {fieldErrorMessage(step2Issues, "radarSegmentSlug") ? (
+                    <FieldError>{fieldErrorMessage(step2Issues, "radarSegmentSlug")}</FieldError>
                   ) : null}
-                  {wizardRecipientSource === "cdp_segment" &&
+                  {wizardRecipientSource === "radar_segment" &&
                   recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB ? (
                     <FieldError>
-                      Segmentos CDP com mais de {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")}{" "}
+                      Segmentos Radar com mais de {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")}{" "}
                       destinatários não são suportados. Use uma lista de contatos ou reduza o segmento.
                     </FieldError>
                   ) : null}
@@ -312,7 +312,7 @@ export function CampaignCreateWizard() {
                   disabled={
                     !step2Parse.success ||
                     wizardCreating ||
-                    (wizardRecipientSource === "cdp_segment" &&
+                    (wizardRecipientSource === "radar_segment" &&
                       recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB)
                   }
                 >
@@ -330,7 +330,7 @@ export function CampaignCreateWizard() {
                 <AlertDescription>
                   A campanha será enviada para{" "}
                   <strong>{recipientCount.toLocaleString("pt-BR")}</strong> destinatário(s){" "}
-                  {wizardRecipientSource === "cdp_segment" ? (
+                  {wizardRecipientSource === "radar_segment" ? (
                     <>
                       do segmento <strong>{selectedSegment?.name ?? "selecionado"}</strong>
                     </>

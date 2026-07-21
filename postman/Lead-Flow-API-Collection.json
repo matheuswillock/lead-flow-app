@@ -16013,7 +16013,7 @@
       ]
     },
     {
-      "name": "CDP",
+      "name": "Radar",
       "item": [
         {
           "name": "Sync CRM",
@@ -16026,7 +16026,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/crm",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/crm",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16052,7 +16052,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/portfolio",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/portfolio",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16078,7 +16078,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/email",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/email",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16104,7 +16104,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/whatsapp",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/whatsapp",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16130,7 +16130,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/profiles?page=1&pageSize=20",
+              "raw": "{{baseUrl}}/api/v1/radar/profiles?page=1&pageSize=20",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16175,7 +16175,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/segments",
+              "raw": "{{baseUrl}}/api/v1/radar/segments",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16200,7 +16200,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/available-fields",
+              "raw": "{{baseUrl}}/api/v1/radar/available-fields",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16230,10 +16230,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"profileId\": \"{{cdpProfileId}}\",\n  \"variableKeys\": [\"operadora\"]\n}"
+              "raw": "{\n  \"profileId\": \"{{radarProfileId}}\",\n  \"variableKeys\": [\"operadora\"]\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/interpolation-preview",
+              "raw": "{{baseUrl}}/api/v1/radar/interpolation-preview",
               "host": [
                 "{{baseUrl}}"
               ],

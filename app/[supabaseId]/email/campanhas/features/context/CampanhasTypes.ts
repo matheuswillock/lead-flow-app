@@ -42,7 +42,7 @@ export type Campaign = {
   creator: { fullName: string | null; email: string | null } | null
   template: { id: string; name: string } | null
   contactList: { id: string; name: string } | null
-  cdpSegmentSlug?: string | null
+  radarSegmentSlug?: string | null
   errorMessage?: string | null
   subCampaignCount?: number
   isParentCampaign?: boolean
@@ -74,7 +74,7 @@ export type ContactList = {
   activeContacts?: number
 }
 
-export type CdpSegmentOption = {
+export type RadarSegmentOption = {
   slug: string
   name: string
   count: number
@@ -108,7 +108,7 @@ export type CampaignEmailLog = {
   campaign?: { id: string; name: string } | null
   dispatch?: {
     contactListName: string | null
-    cdpSegmentSlug: string | null
+    radarSegmentSlug: string | null
   } | null
 }
 
@@ -144,14 +144,14 @@ export type CampanhasState = {
   wizardName: string
   wizardTemplateId: string
   wizardContactListId: string
-  wizardRecipientSource: "contact_list" | "cdp_segment"
-  wizardCdpSegmentSlug: string
+  wizardRecipientSource: "contact_list" | "radar_segment"
+  wizardRadarSegmentSlug: string
   wizardScheduledAt: Date | undefined
   wizardScheduleIntervalDays: number
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
-  cdpSegments: CdpSegmentOption[]
+  radarSegments: RadarSegmentOption[]
   // Detail sheet state
   detailCampaign: Campaign | null
   sheetTab: CampaignSheetTab

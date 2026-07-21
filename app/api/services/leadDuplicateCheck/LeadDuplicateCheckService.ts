@@ -1,4 +1,4 @@
-import { normalizeCdpEmail, normalizeCdpPhone } from "@/lib/cdp/normalization";
+import { normalizeRadarEmail, normalizeRadarPhone } from "@/lib/radar/normalization";
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import type { ILeadRepository } from "@/app/api/infra/data/repositories/lead/ILeadRepository";
 import type {
@@ -17,14 +17,14 @@ function matchesNormalizedIdentity(
   normalizedEmail: string
 ): boolean {
   if (normalizedPhone) {
-    const leadPhone = normalizeCdpPhone(lead.phone);
+    const leadPhone = normalizeRadarPhone(lead.phone);
     if (leadPhone && leadPhone === normalizedPhone) {
       return true;
     }
   }
 
   if (normalizedEmail) {
-    const leadEmail = normalizeCdpEmail(lead.email);
+    const leadEmail = normalizeRadarEmail(lead.email);
     if (leadEmail && leadEmail === normalizedEmail) {
       return true;
     }
@@ -40,8 +40,8 @@ export class LeadDuplicateCheckService implements ILeadDuplicateCheckService {
     _ctx: TeamContext,
     input: FindDuplicateCandidatesInput
   ): Promise<LeadDuplicateCandidate[]> {
-    const normalizedPhone = normalizeCdpPhone(input.phone);
-    const normalizedEmail = normalizeCdpEmail(input.email);
+    const normalizedPhone = normalizeRadarPhone(input.phone);
+    const normalizedEmail = normalizeRadarEmail(input.email);
 
     if (!normalizedPhone && !normalizedEmail) {
       return [];

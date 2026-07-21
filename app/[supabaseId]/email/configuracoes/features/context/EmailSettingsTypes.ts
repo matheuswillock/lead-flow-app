@@ -54,7 +54,7 @@ export type EmailSender = {
 }
 
 export type EmailVariableType = "string" | "number"
-export type EmailVariableValueSource = "STATIC" | "CDP"
+export type EmailVariableValueSource = "STATIC" | "RADAR"
 
 export type EmailGlobalVariable = {
   id: string
@@ -64,7 +64,7 @@ export type EmailGlobalVariable = {
   description: string | null
   isActive: boolean
   valueSource: EmailVariableValueSource
-  cdpFieldKey: string | null
+  radarFieldKey: string | null
 }
 
 export type EmailSettings = {

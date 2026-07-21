@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { maskPhone, unmask } from "@/lib/masks"
-import { normalizeCdpPhone } from "@/lib/cdp/normalization"
+import { normalizeRadarPhone } from "@/lib/radar/normalization"
 import { useWhatsAppInboxContext } from "../context/WhatsAppInboxContext"
 
 type NewConversationDialogProps = {
@@ -53,7 +53,7 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
   const handleSubmit = async () => {
     if (!canSubmit) return
     const conversation = await createConversation({
-      phone: normalizeCdpPhone(phoneDigits),
+      phone: normalizeRadarPhone(phoneDigits),
       contactName: contactName.trim() || undefined,
       initialMessage: initialMessage.trim() || undefined,
     })

@@ -913,7 +913,7 @@ missing_identity missing_identity
 
         email_variable_value_source {
             STATIC STATIC
-CDP CDP
+RADAR RADAR
         }
     
 
@@ -2185,7 +2185,7 @@ meeting_scheduled meeting_scheduled
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
-    String cdpSegmentSlug "❓"
+    String radarSegmentSlug "❓"
     Int subCampaignIndex "❓"
     String audienceContactIds 
     EmailCampaignStatus status 
@@ -2213,7 +2213,7 @@ meeting_scheduled meeting_scheduled
     String templateSubject 
     String templateHtml 
     String contactListName "❓"
-    String cdpSegmentSlug "❓"
+    String radarSegmentSlug "❓"
     DateTime dispatchedAt 
     Int totalRecipients 
     Int totalSent 
@@ -2470,7 +2470,7 @@ meeting_scheduled meeting_scheduled
     String description "❓"
     Boolean isActive 
     EmailVariableValueSource valueSource 
-    String cdpFieldKey "❓"
+    String radarFieldKey "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2714,7 +2714,7 @@ meeting_scheduled meeting_scheduled
 
   "corretor_studio_radar_identities" {
     String id "🗝️"
-    CustomerIdentityType type 
+    RadarIdentityType type 
     String value "❓"
     String normalizedValue 
     String source 
@@ -2726,7 +2726,7 @@ meeting_scheduled meeting_scheduled
 
   "corretor_studio_radar_source_links" {
     String id "🗝️"
-    CustomerSourceType sourceType 
+    RadarSourceType sourceType 
     String sourceId 
     Json sourceMetadata "❓"
     DateTime firstLinkedAt 
@@ -2747,9 +2747,9 @@ meeting_scheduled meeting_scheduled
 
   "corretor_studio_radar_channel_consents" {
     String id "🗝️"
-    CustomerChannel channel 
-    CustomerConsentStatus status 
-    CustomerConsentReason reason "❓"
+    RadarChannel channel 
+    RadarConsentStatus status 
+    RadarConsentReason reason "❓"
     String sourceType "❓"
     String sourceId "❓"
     DateTime updatedAt 
@@ -3475,17 +3475,17 @@ meeting_scheduled meeting_scheduled
     "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversations : "conversation"
     "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversation_tags : "tag"
     "corretor_studio_radar_profiles" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_radar_identities" |o--|| "CustomerIdentityType" : "enum:type"
+    "corretor_studio_radar_identities" |o--|| "RadarIdentityType" : "enum:type"
     "corretor_studio_radar_identities" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_identities" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_radar_source_links" |o--|| "CustomerSourceType" : "enum:sourceType"
+    "corretor_studio_radar_source_links" |o--|| "RadarSourceType" : "enum:sourceType"
     "corretor_studio_radar_source_links" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_source_links" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_events" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_events" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_radar_channel_consents" |o--|| "CustomerChannel" : "enum:channel"
-    "corretor_studio_radar_channel_consents" |o--|| "CustomerConsentStatus" : "enum:status"
-    "corretor_studio_radar_channel_consents" |o--|o "CustomerConsentReason" : "enum:reason"
+    "corretor_studio_radar_channel_consents" |o--|| "RadarChannel" : "enum:channel"
+    "corretor_studio_radar_channel_consents" |o--|| "RadarConsentStatus" : "enum:status"
+    "corretor_studio_radar_channel_consents" |o--|o "RadarConsentReason" : "enum:reason"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"

@@ -47,7 +47,7 @@ export const TENANT_ROUTE_PREFIXES = [
   "/whatsapp/configuracoes",
   "/whatsapp/auto-respostas",
   "/whatsapp",
-  "/cdp",
+  "/radar",
   "/email/templates",
   "/email/contatos",
   "/email/campanhas",

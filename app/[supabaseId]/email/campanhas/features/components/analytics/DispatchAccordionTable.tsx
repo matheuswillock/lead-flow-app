@@ -118,8 +118,8 @@ export function DispatchAccordionTable({
         <CardContent>
           <Accordion type="single" collapsible className="w-full">
             {dispatches.map((dispatch) => {
-              const audienceLabel = dispatch.cdpSegmentSlug
-                ? `Segmento CDP: ${dispatch.cdpSegmentSlug}`
+              const audienceLabel = dispatch.radarSegmentSlug
+                ? `Segmento Radar: ${dispatch.radarSegmentSlug}`
                 : dispatch.contactListName ?? "Lista não informada"
               const highBounceRate = dispatch.rates.bounceRate > 4
 

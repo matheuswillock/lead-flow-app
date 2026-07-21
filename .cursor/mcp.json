@@ -1,5 +1,13 @@
 {
   "mcpServers": {
+    "obsidian": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@bitbonsai/mcpvault",
+        "/run/media/matheuswillock/Armazenamento/Workspace´s Matheus Willock"
+      ]
+    },
     "shadcn": {
       "command": "npx",
       "args": ["shadcn@latest", "mcp"]
