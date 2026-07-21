@@ -41,8 +41,8 @@ type GlobalVariable = {
   key: string;
   description: string | null;
   defaultValue: string | null;
-  valueSource?: "STATIC" | "CDP";
-  cdpFieldKey?: string | null;
+  valueSource?: "STATIC" | "RADAR";
+  radarFieldKey?: string | null;
 };
 
 function sanitizeKey(value: string) {
@@ -281,14 +281,14 @@ export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
                 key={v.id}
                 label={v.key}
                 hint={
-                  v.valueSource === "CDP"
-                    ? `CDP: ${v.cdpFieldKey ?? "campo não configurado"}`
+                  v.valueSource === "RADAR"
+                    ? `Radar: ${v.radarFieldKey ?? "campo não configurado"}`
                     : v.description ?? undefined
                 }
               />
             ))}
           </div>
-          {globalVariables.some((variable) => variable.valueSource === "CDP") ? (
+          {globalVariables.some((variable) => variable.valueSource === "RADAR") ? (
             <Link
               href={`/${params.supabaseId}/email/configuracoes`}
               className="text-xs text-primary underline-offset-4 hover:underline"

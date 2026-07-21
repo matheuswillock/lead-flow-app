@@ -101,9 +101,9 @@ const PRODUCTS = [
     isDefault: true,
   },
   {
-    featureSlug: "cdp",
-    name: "CDP",
-    description: "CDP — perfis unificados, segmentos e timeline para campanhas de e-mail.",
+    featureSlug: "radar",
+    name: "Radar",
+    description: "Radar — perfis unificados, segmentos e timeline para campanhas de e-mail.",
     type: BackofficeProductType.ADDON,
     billingMode: BackofficeProductBillingMode.RECURRING,
     priceMonthly: 29.9,
@@ -172,7 +172,7 @@ const FEATURES: Array<{
   { slug: "whatsapp-auto-responses", name: "Auto-respostas",         accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 172, parentSlug: "whatsapp", productSlug: "whatsapp" },
   { slug: "whatsapp-settings",       name: "Configurações WhatsApp", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 175, parentSlug: "whatsapp", productSlug: "whatsapp" },
 
-  { slug: "cdp", name: "CDP", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, inheritParentSettings: false, sortOrder: 180, productSlug: "cdp" },
+  { slug: "radar", name: "Radar", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, inheritParentSettings: false, sortOrder: 180, productSlug: "radar" },
 
   { slug: "studio-bot", name: "Bethânia", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 185, productSlug: "crm" },
   { slug: "studio-bot-ops", name: "Ops / Host", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 186, parentSlug: "studio-bot", productSlug: "crm" },
@@ -211,7 +211,7 @@ const WHATSAPP_PAYMENT_RULES: Array<{
   { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.annual,     price: 34.9, canInstallment: true,  maxInstallments: 12 },
 ]
 
-const CDP_PAYMENT_RULES: Array<{
+const RADAR_PAYMENT_RULES: Array<{
   paymentMethod: BackofficePaymentMethod
   billingCycle: BackofficeAdhesionBillingCycle
   price: number
@@ -401,7 +401,7 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MASTER",  accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
   ]),
-  cdp: completeRuleSet([
+  radar: completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
@@ -592,24 +592,24 @@ async function main() {
     console.info("[seed:backoffice-products] Regras de pagamento WhatsApp prontas")
   }
 
-  const cdpProduct = await prisma.backofficeProduct.findFirst({
-    where: { featureSlug: "cdp", isDefault: true },
+  const radarProduct = await prisma.backofficeProduct.findFirst({
+    where: { featureSlug: "radar", isDefault: true },
   })
-  if (cdpProduct) {
-    for (const rule of CDP_PAYMENT_RULES) {
+  if (radarProduct) {
+    for (const rule of RADAR_PAYMENT_RULES) {
       await prisma.backofficeProductPaymentRule.upsert({
         where: {
           productId_paymentMethod_billingCycle: {
-            productId: cdpProduct.id,
+            productId: radarProduct.id,
             paymentMethod: rule.paymentMethod,
             billingCycle: rule.billingCycle,
           },
         },
-        create: { productId: cdpProduct.id, ...rule },
+        create: { productId: radarProduct.id, ...rule },
         update: { price: rule.price, canInstallment: rule.canInstallment, maxInstallments: rule.maxInstallments },
       })
     }
-    console.info("[seed:backoffice-products] Regras de pagamento CDP prontas")
+    console.info("[seed:backoffice-products] Regras de pagamento Radar prontas")
   }
 
   console.info("[seed:backoffice-products] Concluído.")

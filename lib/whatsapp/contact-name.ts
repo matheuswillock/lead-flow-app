@@ -1,5 +1,5 @@
 import type { WhatsAppContactNameSource } from "@prisma/client"
-import { formatDisplayPhone } from "@/lib/cdp/normalization"
+import { formatDisplayPhone } from "@/lib/radar/normalization"
 
 export type ContactNameSource = WhatsAppContactNameSource
 

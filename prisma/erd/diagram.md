@@ -76,6 +76,10 @@ new_adhesion new_adhesion
 lost lost
 implementation implementation
 finalized finalized
+proposal proposal
+future_contact future_contact
+deal_closed deal_closed
+disqualified disqualified
         }
     
 
@@ -913,7 +917,7 @@ missing_identity missing_identity
 
         email_variable_value_source {
             STATIC STATIC
-CDP CDP
+RADAR RADAR
         }
     
 
@@ -1367,7 +1371,10 @@ meeting_scheduled meeting_scheduled
     String contactName 
     String contactPhone 
     Json itemsJson 
+    DateTime preContractExpiresAt 
+    Decimal insuranceAmount "❓"
     String shareTokenHash 
+    String tokenPlain "❓"
     DateTime shareExpiresAt 
     DateTime shareGeneratedAt 
     DateTime revokedAt "❓"
@@ -2185,7 +2192,7 @@ meeting_scheduled meeting_scheduled
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
-    String cdpSegmentSlug "❓"
+    String radarSegmentSlug "❓"
     Int subCampaignIndex "❓"
     String audienceContactIds 
     EmailCampaignStatus status 
@@ -2213,7 +2220,7 @@ meeting_scheduled meeting_scheduled
     String templateSubject 
     String templateHtml 
     String contactListName "❓"
-    String cdpSegmentSlug "❓"
+    String radarSegmentSlug "❓"
     DateTime dispatchedAt 
     Int totalRecipients 
     Int totalSent 
@@ -2376,6 +2383,33 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "backoffice_crm_lead_status_transition_gates" {
+    String id "🗝️"
+    String slug 
+    String name 
+    BackofficeLeadTransitionGateType gateType 
+    BackofficeLeadStatus sourceStatus "❓"
+    BackofficeLeadStatus targetStatus "❓"
+    Json config 
+    String blockerType 
+    String errorMessage "❓"
+    Boolean isEnabled 
+    Int sortOrder 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_crm_lead_status_transition_field_rules" {
+    String id "🗝️"
+    BackofficeLeadStatus targetStatus 
+    BackofficeLeadTransitionFieldKey fieldKey 
+    Boolean isEnabled 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_user_subscriptions" {
     String id "🗝️"
     BackofficeSubscriptionStatus status 
@@ -2470,7 +2504,7 @@ meeting_scheduled meeting_scheduled
     String description "❓"
     Boolean isActive 
     EmailVariableValueSource valueSource 
-    String cdpFieldKey "❓"
+    String radarFieldKey "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2714,7 +2748,7 @@ meeting_scheduled meeting_scheduled
 
   "corretor_studio_radar_identities" {
     String id "🗝️"
-    CustomerIdentityType type 
+    RadarIdentityType type 
     String value "❓"
     String normalizedValue 
     String source 
@@ -2726,7 +2760,7 @@ meeting_scheduled meeting_scheduled
 
   "corretor_studio_radar_source_links" {
     String id "🗝️"
-    CustomerSourceType sourceType 
+    RadarSourceType sourceType 
     String sourceId 
     Json sourceMetadata "❓"
     DateTime firstLinkedAt 
@@ -2747,9 +2781,9 @@ meeting_scheduled meeting_scheduled
 
   "corretor_studio_radar_channel_consents" {
     String id "🗝️"
-    CustomerChannel channel 
-    CustomerConsentStatus status 
-    CustomerConsentReason reason "❓"
+    RadarChannel channel 
+    RadarConsentStatus status 
+    RadarConsentReason reason "❓"
     String sourceType "❓"
     String sourceId "❓"
     DateTime updatedAt 
@@ -3407,6 +3441,13 @@ meeting_scheduled meeting_scheduled
     "backoffice_lead_status_transition_gates" |o--|o "LeadStatus" : "enum:sourceStatus"
     "backoffice_lead_status_transition_gates" |o--|o "LeadStatus" : "enum:targetStatus"
     "backoffice_lead_status_transition_gates" }o--|| corretor_studio_profiles : "updatedBy"
+    "backoffice_crm_lead_status_transition_gates" |o--|| "BackofficeLeadTransitionGateType" : "enum:gateType"
+    "backoffice_crm_lead_status_transition_gates" |o--|o "BackofficeLeadStatus" : "enum:sourceStatus"
+    "backoffice_crm_lead_status_transition_gates" |o--|o "BackofficeLeadStatus" : "enum:targetStatus"
+    "backoffice_crm_lead_status_transition_gates" }o--|| corretor_studio_profiles : "updatedBy"
+    "backoffice_crm_lead_status_transition_field_rules" |o--|| "BackofficeLeadStatus" : "enum:targetStatus"
+    "backoffice_crm_lead_status_transition_field_rules" |o--|| "BackofficeLeadTransitionFieldKey" : "enum:fieldKey"
+    "backoffice_crm_lead_status_transition_field_rules" }o--|| corretor_studio_profiles : "updatedBy"
     "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"
@@ -3475,17 +3516,17 @@ meeting_scheduled meeting_scheduled
     "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversations : "conversation"
     "whatsapp_conversation_tag_assignments" }o--|| whatsapp_conversation_tags : "tag"
     "corretor_studio_radar_profiles" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_radar_identities" |o--|| "CustomerIdentityType" : "enum:type"
+    "corretor_studio_radar_identities" |o--|| "RadarIdentityType" : "enum:type"
     "corretor_studio_radar_identities" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_identities" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_radar_source_links" |o--|| "CustomerSourceType" : "enum:sourceType"
+    "corretor_studio_radar_source_links" |o--|| "RadarSourceType" : "enum:sourceType"
     "corretor_studio_radar_source_links" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_source_links" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_events" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_events" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_radar_channel_consents" |o--|| "CustomerChannel" : "enum:channel"
-    "corretor_studio_radar_channel_consents" |o--|| "CustomerConsentStatus" : "enum:status"
-    "corretor_studio_radar_channel_consents" |o--|o "CustomerConsentReason" : "enum:reason"
+    "corretor_studio_radar_channel_consents" |o--|| "RadarChannel" : "enum:channel"
+    "corretor_studio_radar_channel_consents" |o--|| "RadarConsentStatus" : "enum:status"
+    "corretor_studio_radar_channel_consents" |o--|o "RadarConsentReason" : "enum:reason"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"

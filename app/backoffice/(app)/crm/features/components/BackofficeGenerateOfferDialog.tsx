@@ -22,7 +22,7 @@ import type {
   BackofficeOfferProductOption,
 } from "../context/BackofficeCrmTypes"
 
-type WizardStep = 1 | 2 | 3
+type WizardStep = 1 | 2 | 3 | 4
 
 function formatPrice(value: number | null): string | null {
   if (value === null) return null
@@ -30,6 +30,24 @@ function formatPrice(value: number | null): string | null {
     style: "currency",
     currency: "BRL",
   }).format(value)
+}
+
+function defaultPreContractDate(): string {
+  const date = new Date()
+  date.setDate(date.getDate() + 7)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function parseInsuranceInput(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const normalized = trimmed.replace(/\./g, "").replace(",", ".")
+  const amount = Number(normalized)
+  if (Number.isNaN(amount)) return Number.NaN
+  return amount
 }
 
 export function BackofficeGenerateOfferDialog({
@@ -49,6 +67,8 @@ export function BackofficeGenerateOfferDialog({
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [contactName, setContactName] = useState("")
   const [contactPhone, setContactPhone] = useState("")
+  const [preContractExpiresAt, setPreContractExpiresAt] = useState(defaultPreContractDate)
+  const [insuranceAmountInput, setInsuranceAmountInput] = useState("")
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
@@ -61,6 +81,8 @@ export function BackofficeGenerateOfferDialog({
     setSelectedProductIds([])
     setContactName("")
     setContactPhone("")
+    setPreContractExpiresAt(defaultPreContractDate())
+    setInsuranceAmountInput("")
     setShareUrl(null)
     setExpiresAt(null)
     setIsSubmitting(false)
@@ -94,16 +116,24 @@ export function BackofficeGenerateOfferDialog({
 
   async function handleGenerate() {
     if (!lead || isSubmitting) return
+    const insuranceAmount = parseInsuranceInput(insuranceAmountInput)
+    if (Number.isNaN(insuranceAmount)) {
+      toast.error("Valor do seguro é inválido")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const result = await createOffer(lead.id, {
         productIds: selectedProductIds,
         contactName,
         contactPhone,
+        preContractExpiresAt: new Date(`${preContractExpiresAt}T23:59:59`).toISOString(),
+        insuranceAmount,
       })
       setShareUrl(result.shareUrl)
       setExpiresAt(result.expiresAt)
-      setStep(3)
+      setStep(4)
       onGenerated?.()
       toast.success("Oferta gerada com sucesso")
     } catch (error) {
@@ -121,8 +151,10 @@ export function BackofficeGenerateOfferDialog({
   }
 
   const canGoToStep2 = selectedProductIds.length > 0
+  const canGoToStep3 =
+    contactName.trim().length > 0 && contactPhone.trim().length >= 10
   const canGenerate =
-    contactName.trim().length > 0 && contactPhone.trim().length >= 10 && !isSubmitting
+    preContractExpiresAt.trim().length > 0 && !isSubmitting
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -131,7 +163,7 @@ export function BackofficeGenerateOfferDialog({
           <DialogTitle>Gerar oferta</DialogTitle>
           <DialogDescription>
             {lead
-              ? `Crie um link público de 24h para ${lead.name}.`
+              ? `Crie um link público de 24h para ${lead.name}. Apenas uma oferta pode ficar ativa por lead.`
               : "Crie um link público de oferta."}
           </DialogDescription>
         </DialogHeader>
@@ -213,7 +245,36 @@ export function BackofficeGenerateOfferDialog({
             </FieldGroup>
           ) : null}
 
-          {step === 3 && shareUrl ? (
+          {step === 3 ? (
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="offer-precontract-expires">
+                  Vencimento do pré-contrato
+                </FieldLabel>
+                <Input
+                  id="offer-precontract-expires"
+                  type="date"
+                  value={preContractExpiresAt}
+                  onChange={(event) => setPreContractExpiresAt(event.target.value)}
+                  required
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="offer-insurance-amount">
+                  Valor do seguro (opcional)
+                </FieldLabel>
+                <Input
+                  id="offer-insurance-amount"
+                  value={insuranceAmountInput}
+                  onChange={(event) => setInsuranceAmountInput(event.target.value)}
+                  placeholder="Ex.: 1500,00"
+                  inputMode="decimal"
+                />
+              </Field>
+            </FieldGroup>
+          ) : null}
+
+          {step === 4 && shareUrl ? (
             <FieldGroup>
               <Field>
                 <FieldLabel>Link da oferta</FieldLabel>
@@ -226,12 +287,12 @@ export function BackofficeGenerateOfferDialog({
                 </div>
                 {expiresAt ? (
                   <p className="text-xs text-muted-foreground">
-                    Expira em{" "}
+                    Link expira em{" "}
                     {new Intl.DateTimeFormat("pt-BR", {
                       dateStyle: "short",
                       timeStyle: "short",
                     }).format(new Date(expiresAt))}{" "}
-                    (24 horas). Guarde o link agora — ele não poderá ser recuperado depois.
+                    (24 horas). Ofertas anteriores ativas foram revogadas.
                   </p>
                 ) : null}
               </Field>
@@ -255,13 +316,23 @@ export function BackofficeGenerateOfferDialog({
               <Button type="button" variant="outline" onClick={() => setStep(1)}>
                 Voltar
               </Button>
+              <Button type="button" disabled={!canGoToStep3} onClick={() => setStep(3)}>
+                Continuar
+              </Button>
+            </>
+          ) : null}
+          {step === 3 ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => setStep(2)}>
+                Voltar
+              </Button>
               <Button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()}>
                 {isSubmitting ? <Loader2 className="animate-spin" /> : <Check data-icon="inline-start" />}
                 Gerar link
               </Button>
             </>
           ) : null}
-          {step === 3 ? (
+          {step === 4 ? (
             <Button type="button" onClick={() => onOpenChange(false)}>
               Concluir
             </Button>

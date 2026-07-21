@@ -9174,7 +9174,7 @@
                 }
               ]
             },
-            "description": "Lista o histórico de ofertas públicas do lead."
+            "description": "Lista o histórico de ofertas públicas do lead. Itens ativos incluem shareUrl quando tokenPlain está presente."
           }
         },
         {
@@ -9193,7 +9193,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"productIds\": [\"{{backofficeProductId}}\"],\n  \"contactName\": \"João Closer\",\n  \"contactPhone\": \"11999999999\"\n}"
+              "raw": "{\n  \"productIds\": [\"{{backofficeProductId}}\"],\n  \"contactName\": \"João Closer\",\n  \"contactPhone\": \"11999999999\",\n  \"preContractExpiresAt\": \"2026-08-01T23:59:59.000Z\",\n  \"insuranceAmount\": 1500.00\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/offers",
@@ -9215,7 +9215,7 @@
                 }
               ]
             },
-            "description": "Gera link público único de oferta (TTL 24h)."
+            "description": "Gera link público único de oferta (TTL 24h) com pré-contrato. Revoga ofertas ativas anteriores. Retorna shareUrl; listagem também inclui shareUrl quando ativa."
           }
         },
         {
@@ -11832,6 +11832,89 @@
                   ]
                 },
                 "description": "Atualiza um gate global de transição (master)."
+              }
+            },
+            {
+              "name": "GET CRM Lead Status Transition Gates",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/crm-lead-status-transition-gates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "crm-lead-status-transition-gates"
+                  ]
+                },
+                "description": "Lista gates de transição do funil CRM backoffice (BackofficeLeadStatus)."
+              }
+            },
+            {
+              "name": "PUT CRM Lead Status Transition Gate",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"{{crmGateId}}\",\n  \"gate\": {\n    \"name\": \"CRM: destinos permitidos (todos)\",\n    \"gateType\": \"allowed_target_statuses\",\n    \"sourceStatus\": null,\n    \"targetStatus\": null,\n    \"config\": { \"allowedTargetStatuses\": [\"new_opportunity\", \"scheduled\", \"proposal\", \"deal_closed\", \"disqualified\"] },\n    \"blockerType\": \"validation_error\",\n    \"errorMessage\": \"Transição de status não permitida\",\n    \"isEnabled\": true,\n    \"sortOrder\": 10\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/crm-lead-status-transition-gates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "crm-lead-status-transition-gates"
+                  ]
+                },
+                "description": "Atualiza um gate do funil CRM backoffice (manager)."
+              }
+            },
+            {
+              "name": "GET CRM Lead Status Transition Rules",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/crm-lead-status-transition-rules",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "crm-lead-status-transition-rules"
+                  ]
+                },
+                "description": "Lista field rules do funil CRM backoffice."
               }
             },
             {
@@ -16013,7 +16096,7 @@
       ]
     },
     {
-      "name": "CDP",
+      "name": "Radar",
       "item": [
         {
           "name": "Sync CRM",
@@ -16026,7 +16109,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/crm",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/crm",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16052,7 +16135,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/portfolio",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/portfolio",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16078,7 +16161,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/email",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/email",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16104,7 +16187,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/sync/whatsapp",
+              "raw": "{{baseUrl}}/api/v1/radar/sync/whatsapp",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16130,7 +16213,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/profiles?page=1&pageSize=20",
+              "raw": "{{baseUrl}}/api/v1/radar/profiles?page=1&pageSize=20",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16175,7 +16258,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/segments",
+              "raw": "{{baseUrl}}/api/v1/radar/segments",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16200,7 +16283,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/available-fields",
+              "raw": "{{baseUrl}}/api/v1/radar/available-fields",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16230,10 +16313,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"profileId\": \"{{cdpProfileId}}\",\n  \"variableKeys\": [\"operadora\"]\n}"
+              "raw": "{\n  \"profileId\": \"{{radarProfileId}}\",\n  \"variableKeys\": [\"operadora\"]\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/cdp/interpolation-preview",
+              "raw": "{{baseUrl}}/api/v1/radar/interpolation-preview",
               "host": [
                 "{{baseUrl}}"
               ],

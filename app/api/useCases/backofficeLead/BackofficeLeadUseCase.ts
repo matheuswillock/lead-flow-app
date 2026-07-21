@@ -24,6 +24,7 @@ import type {
 import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 import { BackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 import { backofficeLeadSlackNotificationService } from "@/app/api/services/backofficeLeadSlack/BackofficeLeadSlackNotificationService"
+import { backofficeCrmLeadStatusTransitionGateEvaluatorService } from "@/app/api/services/backofficeCrmLeadStatusTransitionGate/BackofficeCrmLeadStatusTransitionGateEvaluatorService"
 
 export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "new_opportunity",
@@ -33,6 +34,10 @@ export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "lost",
   "implementation",
   "finalized",
+  "proposal",
+  "future_contact",
+  "deal_closed",
+  "disqualified",
 ] as const
 
 export type BackofficeLeadStatusValue = (typeof BACKOFFICE_LEAD_STATUS_VALUES)[number]
@@ -656,12 +661,21 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           ? meetingExtraGuestsValue
           : existing.meetingExtraGuests
 
+      const gateResult = await backofficeCrmLeadStatusTransitionGateEvaluatorService.evaluate({
+        lead: {
+          status: existing.status,
+          closerBackofficeUserId,
+          meetingDate: finalMeetingDate,
+        },
+        targetStatus: status,
+      })
+      if (!gateResult.ok) {
+        return new Output(false, [], gateResult.errorMessages, null)
+      }
+
       if (status === BackofficeLeadStatus.scheduled) {
-        if (!finalMeetingDate) {
-          return new Output(false, [], ["Data de agendamento é obrigatória"], null)
-        }
-        if (!closerBackofficeUserId) {
-          return new Output(false, [], ["Closer é obrigatório para leads agendados"], null)
+        if (!finalMeetingDate || !closerBackofficeUserId) {
+          return new Output(false, [], ["Agendamento inválido para status agendado"], null)
         }
 
         const scheduleChanged =

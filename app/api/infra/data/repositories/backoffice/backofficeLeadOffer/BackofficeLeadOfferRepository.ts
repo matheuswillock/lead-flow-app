@@ -14,7 +14,10 @@ export class BackofficeLeadOfferRepository implements IBackofficeLeadOfferReposi
         contactName: data.contactName,
         contactPhone: data.contactPhone,
         itemsJson: data.itemsJson,
+        preContractExpiresAt: data.preContractExpiresAt,
+        insuranceAmount: data.insuranceAmount,
         shareTokenHash: data.shareTokenHash,
+        tokenPlain: data.tokenPlain,
         shareExpiresAt: data.shareExpiresAt,
         shareGeneratedByProfileId: data.shareGeneratedByProfileId,
       },
@@ -40,12 +43,29 @@ export class BackofficeLeadOfferRepository implements IBackofficeLeadOfferReposi
     })
   }
 
+  async revokeActiveByLeadId(leadId: string, revokedAt: Date): Promise<number> {
+    const result = await prisma.backofficeLeadOffer.updateMany({
+      where: {
+        leadId,
+        revokedAt: null,
+        shareExpiresAt: { gt: revokedAt },
+      },
+      data: {
+        revokedAt,
+        shareExpiresAt: revokedAt,
+        tokenPlain: null,
+      },
+    })
+    return result.count
+  }
+
   async revoke(id: string, revokedAt: Date): Promise<void> {
     await prisma.backofficeLeadOffer.update({
       where: { id },
       data: {
         revokedAt,
         shareExpiresAt: revokedAt,
+        tokenPlain: null,
       },
     })
   }

@@ -22,7 +22,7 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
   "/whatsapp/configuracoes": FEATURE_SLUGS.WHATSAPP_SETTINGS,
   "/whatsapp/auto-respostas": FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES,
   "/whatsapp": FEATURE_SLUGS.WHATSAPP,
-  "/cdp": FEATURE_SLUGS.CDP,
+  "/radar": FEATURE_SLUGS.RADAR,
   "/email/templates": FEATURE_SLUGS.EMAIL_TEMPLATES,
   "/email/contatos": FEATURE_SLUGS.EMAIL_CONTACTS,
   "/email/campanhas": FEATURE_SLUGS.EMAIL_CAMPAIGNS,

@@ -10,8 +10,8 @@ import {
   type ResendWebhookService,
 } from "@/app/api/services/resend/ResendWebhookService"
 import {
-  customerDataPlatformService,
-} from "@/app/api/services/cdp/CustomerDataPlatformService"
+  radarService,
+} from "@/app/api/services/radar/RadarService"
 import {
   resendDomainWebhookUseCase,
 } from "@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase"
@@ -104,7 +104,7 @@ export class ResendWebhookUseCase {
         })
 
         try {
-          await customerDataPlatformService.handleEmailWebhookEvent({
+          await radarService.handleEmailWebhookEvent({
             teamId: log.teamId,
             recipientEmail: log.recipientEmail,
             recipientName: log.recipientName,
@@ -114,8 +114,8 @@ export class ResendWebhookUseCase {
             occurredAt,
             metadata,
           })
-        } catch (cdpError) {
-          console.error("[ResendWebhookUseCase][cdp]", cdpError)
+        } catch (radarError) {
+          console.error("[ResendWebhookUseCase][radar]", radarError)
         }
 
         return new Output(true, ["Evento de email processado"], [], { handled: true, target: "email_log" })

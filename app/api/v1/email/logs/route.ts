@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
           dispatch: {
             select: {
               contactListName: true,
-              cdpSegmentSlug: true,
+              radarSegmentSlug: true,
             },
           },
         },
