@@ -80,10 +80,10 @@ export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
   }
   if (q.type === "boolean" && !["sim", "nao"].includes(s)) return "Selecione uma opção válida"
   if (q.type === "scheduling") {
-    if (typeof v !== "object" || v === null) return "Selecione o profissional, a data e o horário"
-    const scheduling = v as { closerId?: unknown; startsAt?: unknown }
-    if (typeof scheduling.closerId !== "string" || typeof scheduling.startsAt !== "string") {
-      return "Selecione o profissional, a data e o horário"
+    if (typeof v !== "object" || v === null) return "Selecione a data e o horário"
+    const scheduling = v as { startsAt?: unknown }
+    if (typeof scheduling.startsAt !== "string" || !scheduling.startsAt) {
+      return "Selecione a data e o horário"
     }
   }
   if (q.type === "consent" && v !== true) return "É necessário aceitar para continuar"

@@ -73,4 +73,16 @@ describe("motor dos formulários públicos", () => {
       ),
     ).toBe("Informe uma data válida")
   })
+
+  it("exige data e horário no agendamento sem closer", () => {
+    const schedulingQuestion = {
+      ...form().questions[0],
+      type: "scheduling" as const,
+      options: [],
+    }
+    expect(validateAnswer(schedulingQuestion, {})).toBe("Selecione a data e o horário")
+    expect(
+      validateAnswer(schedulingQuestion, { startsAt: "2026-07-21T12:00:00.000Z" }),
+    ).toBeNull()
+  })
 })

@@ -103,7 +103,7 @@ export const publicFormSubmissionSchema = z.object({
   requestKey: z.string().min(8).max(200),
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
-  scheduling: z.object({ closerId: uuid, startsAt: z.string().datetime() }).optional(),
+  scheduling: z.object({ startsAt: z.string().datetime() }).optional(),
 })
 export const publicFormMetricEventSchema = z.object({
   visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/),
