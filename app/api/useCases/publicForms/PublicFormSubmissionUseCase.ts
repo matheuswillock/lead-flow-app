@@ -45,7 +45,7 @@ type SubmissionInput = {
   requestKey: string
   answers: PublicFormAnswerInput[]
   origin: Record<string, unknown>
-  scheduling?: { closerId: string; startsAt: string }
+  scheduling?: { startsAt: string }
 }
 
 export class PublicFormSubmissionUseCase {
@@ -225,11 +225,8 @@ export class PublicFormSubmissionUseCase {
       if (!lead) throw new Error("Não foi possível criar ou localizar o lead")
       let scheduled = false
       if (input.scheduling) {
-        if (
-          !snapshot.schedulingEnabled ||
-          !snapshot.eligibleCloserIds.includes(input.scheduling.closerId)
-        ) {
-          throw new Error("Closer indisponível para este formulário")
+        if (!snapshot.schedulingEnabled || snapshot.eligibleCloserIds.length === 0) {
+          throw new Error("Agendamento indisponível para este formulário")
         }
 
         const timezone = form.team.master.timezone || DEFAULT_TZ
@@ -240,25 +237,29 @@ export class PublicFormSubmissionUseCase {
 
         const dateKey = formatLocalDateValue(startsAt, timezone)
         const timeKey = formatLocalTimeValue(startsAt, timezone)
-        const availabilityOutput = await publicLeadFormUseCase.getCloserAvailability(
-          form.teamId,
-          input.scheduling.closerId,
-          dateKey,
-          undefined,
-          snapshot.meetingDurationMinutes,
-        )
-        if (!availabilityOutput.isValid) {
-          throw new Error(availabilityOutput.errorMessages.join("; ") || "Horário indisponível")
+        const availableCloserIds: string[] = []
+        for (const closerId of snapshot.eligibleCloserIds) {
+          const availabilityOutput = await publicLeadFormUseCase.getCloserAvailability(
+            form.teamId,
+            closerId,
+            dateKey,
+            undefined,
+            snapshot.meetingDurationMinutes,
+          )
+          if (!availabilityOutput.isValid) continue
+          const availableTimes =
+            (availabilityOutput.result as { availableTimes?: string[] } | null)?.availableTimes ??
+            []
+          if (availableTimes.includes(timeKey)) availableCloserIds.push(closerId)
         }
-        const availableTimes =
-          (availabilityOutput.result as { availableTimes?: string[] } | null)?.availableTimes ?? []
-        if (!availableTimes.includes(timeKey)) {
+        if (availableCloserIds.length === 0) {
           throw new Error("O horário selecionado não está mais disponível")
         }
 
-        const closerProfile = await publicFormsRepository.findCloserGoogleConnection(
-          input.scheduling.closerId,
-        )
+        const closerId =
+          availableCloserIds[Math.floor(Math.random() * availableCloserIds.length)]!
+
+        const closerProfile = await publicFormsRepository.findCloserGoogleConnection(closerId)
         const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection)
         // Public forms cannot collect a manual Meet link; fall back to call when Google is offline.
         const meetingType = canUseGoogleCalendar ? "online" : "call"
@@ -273,7 +274,7 @@ export class PublicFormSubmissionUseCase {
           leadAssigneeEmail: form.assignedSdr?.email ?? null,
           leadCurrentCloserId: lead.closerId,
           leadCode: lead.leadCode,
-          closerId: input.scheduling.closerId,
+          closerId,
           teamId: form.teamId,
           meetingDate: input.scheduling.startsAt,
           meetingTitle: `Reunião — ${lead.name}`,
