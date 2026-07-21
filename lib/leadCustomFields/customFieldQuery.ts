@@ -18,6 +18,14 @@ export type CustomFieldSortInput = {
 export const MAX_CUSTOM_FIELD_FILTERS = 3
 
 /**
+ * `LeadDialog`/`persistLeadCustomFieldValues` sempre fazem upsert, nunca deletam
+ * a linha quando o campo é limpo — um texto/multi-select opcional esvaziado
+ * persiste como `""`/`[]`. `is_empty`/`not_empty` precisam tratar isso como
+ * ausência de valor, não apenas checar se a linha existe.
+ */
+const BLANK_VALUE_CONDITIONS: Prisma.JsonFilter[] = [{ equals: "" }, { equals: [] }]
+
+/**
  * Traduz um filtro de custom field para um fragmento de `Prisma.LeadWhereInput`.
  * `neq` inclui leads sem valor para a definição (ausência != valor), espelhando
  * a semântica de "diferente de X" também para o campo vazio.
@@ -27,17 +35,40 @@ export function buildCustomFieldWhereFilter(filter: CustomFieldFilterInput): Pri
 
   if (operator === "is_empty") {
     return {
-      customFieldValues: { none: { definitionId } },
+      customFieldValues: {
+        none: {
+          definitionId,
+          NOT: { OR: BLANK_VALUE_CONDITIONS.map((condition) => ({ value: condition })) },
+        },
+      },
     }
   }
 
   if (operator === "not_empty") {
     return {
-      customFieldValues: { some: { definitionId } },
+      customFieldValues: {
+        some: {
+          definitionId,
+          NOT: { OR: BLANK_VALUE_CONDITIONS.map((condition) => ({ value: condition })) },
+        },
+      },
     }
   }
 
   if (operator === "contains") {
+    // multi_select persiste um array JSON — a UI codifica o valor selecionado
+    // como array para sinalizar teste de pertencimento (array_contains) em vez
+    // de substring (string_contains, usado para texto).
+    if (Array.isArray(value)) {
+      return {
+        customFieldValues: {
+          some: {
+            definitionId,
+            value: { array_contains: value as Prisma.InputJsonValue },
+          },
+        },
+      }
+    }
     return {
       customFieldValues: {
         some: {

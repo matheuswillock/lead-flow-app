@@ -139,24 +139,47 @@ describe("buildCustomFieldWhereFilter", () => {
         },
       })
     })
+
+    it("multi_select usa array_contains quando value é array (pertencimento)", () => {
+      expect(
+        buildCustomFieldWhereFilter({ definitionId: DEFINITION_ID, operator: "contains", value: ["opcao_a"] })
+      ).toEqual({
+        customFieldValues: {
+          some: {
+            definitionId: DEFINITION_ID,
+            value: { array_contains: ["opcao_a"] },
+          },
+        },
+      })
+    })
   })
 
   describe("is_empty", () => {
-    it("usa none independente do tipo", () => {
+    it("trata linha ausente OU value vazio (''/[]) como vazio", () => {
       expect(
         buildCustomFieldWhereFilter({ definitionId: DEFINITION_ID, operator: "is_empty" })
       ).toEqual({
-        customFieldValues: { none: { definitionId: DEFINITION_ID } },
+        customFieldValues: {
+          none: {
+            definitionId: DEFINITION_ID,
+            NOT: { OR: [{ value: { equals: "" } }, { value: { equals: [] } }] },
+          },
+        },
       })
     })
   })
 
   describe("not_empty", () => {
-    it("usa some independente do tipo", () => {
+    it("exige linha existente com value não-vazio (''/[] não contam)", () => {
       expect(
         buildCustomFieldWhereFilter({ definitionId: DEFINITION_ID, operator: "not_empty" })
       ).toEqual({
-        customFieldValues: { some: { definitionId: DEFINITION_ID } },
+        customFieldValues: {
+          some: {
+            definitionId: DEFINITION_ID,
+            NOT: { OR: [{ value: { equals: "" } }, { value: { equals: [] } }] },
+          },
+        },
       })
     })
   })

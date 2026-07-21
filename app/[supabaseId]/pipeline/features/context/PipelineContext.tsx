@@ -22,6 +22,11 @@ import {
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
 import { formatIntimezone, formatLocalDateValue } from "@/lib/dates";
+import type { CustomFieldFilterState } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+
+// Referência estável — evita recriar `loadLeads` (e a instabilidade em cascata
+// no efeito que o dispara) a cada render quando externalFilters está ausente.
+const EMPTY_CUSTOM_FIELD_FILTERS: CustomFieldFilterState[] = [];
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -169,7 +174,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   );
   // customFieldFilters é aplicado server-side (não há estado próprio no Pipeline —
   // vem sempre de CrmFiltersState via externalFilters, mesma origem do CRM/board).
-  const activeCustomFieldFilters = externalFilters?.customFieldFilters ?? [];
+  const activeCustomFieldFilters = externalFilters?.customFieldFilters ?? EMPTY_CUSTOM_FIELD_FILTERS;
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();

@@ -84,9 +84,11 @@ export default function BoardHeader({
   const isManager = isManagerLikeRole(activeRole ?? undefined);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
+  // Quando hideFiltersBar é true (CRM Kanban embute o board sem sua própria
+  // barra — CrmFiltersBar já busca as definições), evita duplicar o fetch.
   const { definitions: customFieldDefinitions } = useActiveLeadCustomFieldDefinitions(
-    supabaseId,
-    activeTeamId
+    hideFiltersBar ? undefined : supabaseId,
+    hideFiltersBar ? undefined : activeTeamId
   );
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);

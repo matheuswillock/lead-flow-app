@@ -53,16 +53,22 @@ export function LeadsCustomFieldFilter({ definitions, values, onChange }: LeadsC
 
   const draftDefinition = draftDefinitionId ? definitionById.get(draftDefinitionId) : undefined;
   const needsValue = draftOperator !== "is_empty" && draftOperator !== "not_empty";
-  const isOptionType = draftDefinition?.type === "select" || draftDefinition?.type === "multi_select";
+  const isMultiSelectType = draftDefinition?.type === "multi_select";
+  const isOptionType = draftDefinition?.type === "select" || isMultiSelectType;
   const isBooleanType = draftDefinition?.type === "boolean";
 
-  const resolvedDraftValue: unknown = isOptionType
-    ? draftOptionValue
-    : isBooleanType
-      ? draftOptionValue === "true"
-      : draftDefinition?.type === "number"
-        ? Number(draftValue)
-        : draftValue;
+  // multi_select persiste um array JSON — o valor selecionado precisa ser
+  // codificado como array para o backend testar pertencimento (array_contains)
+  // em vez de comparar um escalar contra o array armazenado.
+  const resolvedDraftValue: unknown = isMultiSelectType
+    ? [draftOptionValue]
+    : isOptionType
+      ? draftOptionValue
+      : isBooleanType
+        ? draftOptionValue === "true"
+        : draftDefinition?.type === "number"
+          ? Number(draftValue)
+          : draftValue;
 
   const hasValidValue = isOptionType || isBooleanType ? draftOptionValue !== "" : draftValue.trim() !== "";
   const atLimit = values.length >= MAX_CUSTOM_FIELD_FILTERS;
