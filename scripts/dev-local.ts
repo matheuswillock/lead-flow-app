@@ -1,14 +1,25 @@
 /**
- * Local dev orchestrator: Supabase + Evolution API + N8N + Next.js.
+ * Local dev orchestrator: Supabase + optional local stacks + Next.js.
  *
  * `bun run dev` and `bun run dev:local` are aliases — both use the local Docker
  * stack (not the remote DATABASE_URL from `.env`).
  *
- * Flags (preflight):
+ * Optional stacks:
+ *   n8n        Start N8N (Bethânia workflows).
+ *   evolution  Start Evolution API (WhatsApp).
+ *   total      Start N8N + Evolution API.
+ *
+ * Examples:
+ *   bun dev
+ *   bun dev -- n8n
+ *   bun dev -- evolution
+ *   bun dev -- total
+ *
+ * Flags:
  *   --skip-clone  Do not auto-clone even if auth.users is empty.
  *   --no-start    Fail fast if Supabase local stack is not running.
- *   --skip-evo    Do not start Evolution API (WhatsApp unavailable).
- *   --skip-n8n    Do not start N8N (Bethânia workflows unavailable).
+ *   --skip-evo    Legacy: keep Evolution API disabled.
+ *   --skip-n8n    Legacy: keep N8N disabled.
  *   --turbo       Force Turbopack on Windows (default no Windows é Webpack por EPERM).
  *
  * Remaining args are forwarded to `next dev` (e.g. `--port 3001`).
@@ -24,6 +35,7 @@ import {
   EXPECTED_ACTIVE_BACKOFFICE_FEATURES,
   LOCAL_DB_URL as CATALOG_LOCAL_DB_URL,
 } from "./lib/sync-backoffice-catalog";
+import { parseDevLocalArgs } from "./dev-local-options";
 
 const LOCAL_DB_URL = CATALOG_LOCAL_DB_URL;
 const LOCAL_EVO_API_URL = "http://127.0.0.1:8080";
@@ -36,20 +48,15 @@ const EVO_ENV_FILE = join(process.cwd(), ".env.evolution");
 const EVO_ENV_EXAMPLE = join(process.cwd(), ".env.evolution.example");
 
 const rawArgs = process.argv.slice(2);
-const skipClone = rawArgs.includes("--skip-clone");
-const noStart = rawArgs.includes("--no-start");
-const skipEvo = rawArgs.includes("--skip-evo");
-const skipN8n = rawArgs.includes("--skip-n8n");
-const forceTurbo = rawArgs.includes("--turbo") || rawArgs.includes("--turbopack");
-const nextArgs = rawArgs.filter(
-  (arg) =>
-    arg !== "--skip-clone" &&
-    arg !== "--no-start" &&
-    arg !== "--skip-evo" &&
-    arg !== "--skip-n8n" &&
-    arg !== "--turbo" &&
-    arg !== "--turbopack",
-);
+const devOptions = parseDevLocalArgs(rawArgs);
+const {
+  skipClone,
+  noStart,
+  forceTurbo,
+  startEvolution: shouldStartEvolution,
+  startN8n: shouldStartN8n,
+  nextArgs,
+} = devOptions;
 
 type EnvOverrides = Partial<NodeJS.ProcessEnv>;
 
@@ -216,8 +223,24 @@ async function startSupabase(): Promise<void> {
   info("✓ Supabase started");
 }
 
+function ensureN8nDockerNetwork(): boolean {
+  const inspect = run("docker", ["network", "inspect", "n8n-net"], { stdio: "pipe" });
+  if (inspect.status === 0) return true;
+
+  info("⚠ Docker network n8n-net not found — creating it for Evolution…");
+  const create = run("docker", ["network", "create", "n8n-net"], { stdio: "inherit" });
+  if (create.status === 0) {
+    info("✓ Docker network n8n-net ready");
+    return true;
+  }
+
+  info("⚠ Could not create Docker network n8n-net — Evolution may fail to start.");
+  return false;
+}
+
 async function startEvolution(): Promise<void> {
   bootstrapEvolutionEnv();
+  ensureN8nDockerNetwork();
   info("⚠ Evolution API not reachable — starting (`bun run evo:up`)…");
   const start = await runAsync("bun", ["run", "evo:up"], { stdio: "inherit" });
   if (start.status !== 0) {
@@ -277,11 +300,20 @@ async function startN8n(): Promise<void> {
 
 
 async function ensureLocalStacks(): Promise<void> {
-  step("Checking local stacks (Supabase + Evolution + N8N)");
+  const optionalStacks = [
+    shouldStartN8n ? "N8N" : undefined,
+    shouldStartEvolution ? "Evolution" : undefined,
+  ].filter(Boolean);
+
+  step(
+    optionalStacks.length > 0
+      ? `Checking local stacks (Supabase + ${optionalStacks.join(" + ")})`
+      : "Checking local stacks (Supabase only)",
+  );
 
   const supabaseUp = probeSupabase();
-  const evoUp = skipEvo ? true : probeEvolution();
-  const n8nUp = skipN8n ? true : probeN8n();
+  const evoUp = shouldStartEvolution ? probeEvolution() : true;
+  const n8nUp = shouldStartN8n ? probeN8n() : true;
 
   if (supabaseUp) {
     info("✓ Supabase running");
@@ -289,25 +321,28 @@ async function ensureLocalStacks(): Promise<void> {
     fail("Supabase local stack is not running (--no-start passed).");
   }
 
-  if (skipEvo) {
-    info("⊘ Evolution skipped (--skip-evo)");
+  if (!shouldStartEvolution) {
+    info("⊘ Evolution skipped (use `bun dev -- evolution` or `bun dev -- total`)");
   } else if (evoUp) {
     info("✓ Evolution API reachable");
   }
 
-  if (skipN8n) {
-    info("⊘ N8N skipped (--skip-n8n)");
+  if (!shouldStartN8n) {
+    info("⊘ N8N skipped (use `bun dev -- n8n` or `bun dev -- total`)");
   } else if (n8nUp) {
     info("✓ N8N reachable");
   }
 
   const startTasks: Promise<void>[] = [];
   if (!supabaseUp) startTasks.push(startSupabase());
-  if (!skipEvo && !evoUp) startTasks.push(startEvolution());
-  if (!skipN8n && !n8nUp) startTasks.push(startN8n());
+  if (shouldStartN8n && !n8nUp) startTasks.push(startN8n());
 
   if (startTasks.length > 0) {
     await Promise.all(startTasks);
+  }
+
+  if (shouldStartEvolution && !evoUp) {
+    await startEvolution();
   }
 }
 
@@ -551,6 +586,9 @@ async function buildServiceWorker() {
 
 async function main() {
   try {
+    if (devOptions.errors.length > 0) {
+      fail(devOptions.errors.join("\n"));
+    }
     await runPreflight();
     await buildServiceWorker();
     startNextDev();
