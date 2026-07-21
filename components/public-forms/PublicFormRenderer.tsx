@@ -192,16 +192,23 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       track("question_answered", item.id)
     }
     if (index < pages.length - 1) {
-      const nextPage = pages[index + 1] ?? []
-      if (
-        isSimulator &&
-        phase === "form" &&
-        nextPage.some((item) => item.type === "scheduling")
-      ) {
+      const pagesAhead = pages.slice(index + 1)
+      const onlySchedulingAhead = pagesAhead.every((page) =>
+        page.every((item) => item.type === "scheduling"),
+      )
+      if (isSimulator && phase === "form" && onlySchedulingAhead) {
         void runSimulationFlow()
         return
       }
       setIndex(index + 1)
+      return
+    }
+    if (
+      isSimulator &&
+      phase === "form" &&
+      !pageQuestions.some((item) => item.type === "scheduling")
+    ) {
+      void runSimulationFlow()
       return
     }
     void submit()
@@ -360,7 +367,6 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                     setPhase("form")
                     return
                   }
-                  setPhase("agenda")
                   void submit()
                 }}
               >

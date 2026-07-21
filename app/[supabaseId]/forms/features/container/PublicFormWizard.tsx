@@ -10,7 +10,10 @@ import { useUserContext } from "@/app/context/UserContext"
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext"
 import { publicFormsService } from "../services/PublicFormsService"
 import { PublicFormRenderer } from "@/components/public-forms/PublicFormRenderer"
-import { createHealthPlanSimulatorDraft } from "@/lib/public-forms/templates/health-plan-simulator"
+import {
+  applyHealthPlanCatalogToDraft,
+  createHealthPlanSimulatorDraft,
+} from "@/lib/public-forms/templates/health-plan-simulator"
 import type {
   PublicFormDraftInput,
   PublicFormQuestionInput,
@@ -131,7 +134,18 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
       )
     void fetch("/api/v1/health-plans", { headers: h })
       .then((r) => r.json())
-      .then((o) => setHealthPlans(Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []))
+      .then((o) => {
+        const plans = Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []
+        setHealthPlans(plans)
+        if (!formId && plans.length > 0) {
+          setDraft((current) =>
+            applyHealthPlanCatalogToDraft(
+              current,
+              plans.map((plan: { name: string }) => plan.name),
+            ),
+          )
+        }
+      })
     void publicFormsClientService
       .getSettings({ supabaseId: user.id, teamId: activeTeam.id })
       .then(setSettings)

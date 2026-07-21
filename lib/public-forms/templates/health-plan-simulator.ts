@@ -1,7 +1,20 @@
 import type { PublicFormDraftInput } from "../types"
 
+const FALLBACK_HEALTH_PLANS = [
+  "Alice",
+  "Amil",
+  "Bradesco",
+  "Hapvida",
+  "Porto Seguro",
+  "SulAmérica",
+  "Unimed",
+  "Outros",
+]
+
 /** Default Onside-style health plan reduction simulator template. */
-export function createHealthPlanSimulatorDraft(): PublicFormDraftInput {
+export function createHealthPlanSimulatorDraft(
+  planNames: string[] = FALLBACK_HEALTH_PLANS,
+): PublicFormDraftInput {
   const page = {
     cover: crypto.randomUUID(),
     operadora: crypto.randomUUID(),
@@ -21,6 +34,11 @@ export function createHealthPlanSimulatorDraft(): PublicFormDraftInput {
       value: label,
       score: index === 0 ? 2 : 1,
     }))
+
+  const healthPlanLabels =
+    planNames.length > 0
+      ? [...planNames].sort((a, b) => a.localeCompare(b, "pt-BR"))
+      : FALLBACK_HEALTH_PLANS
 
   return {
     name: "Simulador de Redução",
@@ -52,16 +70,7 @@ export function createHealthPlanSimulatorDraft(): PublicFormDraftInput {
         mappingTarget: "native_field",
         mappingKey: "currentHealthPlan",
         config: { pageKey: page.operadora },
-        options: choice([
-          "Alice",
-          "Amil",
-          "Bradesco",
-          "Hapvida",
-          "Porto Seguro",
-          "SulAmérica",
-          "Unimed",
-          "Outros",
-        ]),
+        options: choice(healthPlanLabels),
       },
       {
         id: crypto.randomUUID(),
@@ -205,5 +214,29 @@ export function createHealthPlanSimulatorDraft(): PublicFormDraftInput {
         summary: "Lead captado via simulador.",
       },
     ],
+  }
+}
+
+/** Reconcile health_plan question options with the team catalog (new drafts only). */
+export function applyHealthPlanCatalogToDraft(
+  draft: PublicFormDraftInput,
+  planNames: string[],
+): PublicFormDraftInput {
+  if (planNames.length === 0) return draft
+  const labels = [...planNames].sort((a, b) => a.localeCompare(b, "pt-BR"))
+  return {
+    ...draft,
+    questions: draft.questions.map((question) => {
+      if (question.type !== "health_plan") return question
+      return {
+        ...question,
+        options: labels.map((label, index) => ({
+          id: crypto.randomUUID(),
+          label,
+          value: label,
+          score: index === 0 ? 2 : 1,
+        })),
+      }
+    }),
   }
 }
