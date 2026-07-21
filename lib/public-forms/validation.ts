@@ -12,9 +12,11 @@ const question = z.object({
   id: uuid.optional(),
   type: z.enum([
     "text",
+    "textarea",
     "email",
     "phone",
     "number",
+    "currency",
     "date",
     "url",
     "single_choice",
@@ -52,6 +54,7 @@ export const publicFormDraftSchema = z.object({
   schedulingEnabled: z.boolean().default(false),
   meetingDurationMinutes: z.number().int().min(5).max(480).default(30),
   schedulingMessage: text,
+  formKind: z.enum(["standard", "health_plan_simulator"]).default("standard"),
   questions: z.array(question).max(200).default([]),
   rules: z
     .array(

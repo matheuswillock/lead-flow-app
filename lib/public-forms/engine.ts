@@ -1,3 +1,4 @@
+import { parseCurrencyBR, phoneDigitCount } from "./masks"
 import type { PublicFormAnswerInput, PublicFormDraftInput, PublicFormQuestionInput } from "./types"
 const values = (v: unknown) => (Array.isArray(v) ? v.map(String) : v == null ? [] : [String(v)])
 export function resolveVisibleQuestionIds(
@@ -44,8 +45,14 @@ export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
   const s = String(v)
   if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))
     return "Informe um e-mail válido"
-  if (q.type === "phone" && s.replace(/\D/g, "").length < 8)
-    return "Informe um telefone válido"
+  if (q.type === "phone") {
+    const digits = phoneDigitCount(s)
+    if (digits < 10 || digits > 11) return "Informe um telefone válido"
+  }
+  if (q.type === "currency") {
+    const amount = typeof v === "number" ? v : parseCurrencyBR(s)
+    if (!amount || amount <= 0) return "Informe um valor válido"
+  }
   if (q.type === "date") {
     const parsed = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00.000Z`) : null
     if (!parsed || Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== s) {

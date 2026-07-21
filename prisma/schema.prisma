@@ -4279,9 +4279,11 @@ enum PublicFormApprovalStatus {
 
 enum PublicFormQuestionType {
   text
+  textarea
   email
   phone
   number
+  currency
   date
   url
   single_choice
@@ -4380,6 +4382,7 @@ model PublicForm {
   schedulingEnabled      Boolean                    @default(false)
   meetingDurationMinutes Int                        @default(30)
   schedulingMessage      String?                    @db.Text
+  formKind               String                     @default("standard") @db.VarChar(40)
   reviewComment          String?                    @db.Text
   reviewedAt             DateTime?                  @db.Timestamptz(6)
   createdAt              DateTime                   @default(now()) @db.Timestamptz(6)
