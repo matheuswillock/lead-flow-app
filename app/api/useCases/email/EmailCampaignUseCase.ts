@@ -27,6 +27,12 @@ import {
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
+import {
+  formatInvalidRecipientFailureMessage,
+  formatProviderBatchFailureMessage,
+  isValidResendRecipientEmail,
+} from "@/lib/email/is-valid-resend-recipient-email"
+import type { DispatchProviderError } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
@@ -718,6 +724,54 @@ export class EmailCampaignUseCase {
     return (_max.dispatchNumber ?? 0) + 1
   }
 
+  private partitionRecipientsByEmailValidity<T extends { email: string }>(
+    recipients: T[]
+  ): { valid: T[]; invalid: Array<T & { reason: string }> } {
+    const valid: T[] = []
+    const invalid: Array<T & { reason: string }> = []
+
+    for (const recipient of recipients) {
+      const validation = isValidResendRecipientEmail(recipient.email)
+      if (!validation.ok) {
+        invalid.push({ ...recipient, reason: validation.reason })
+        continue
+      }
+      valid.push({ ...recipient, email: validation.email })
+    }
+
+    return { valid, invalid }
+  }
+
+  private buildFailureReasonByEmail(providerErrors: DispatchProviderError[]): Map<string, string> {
+    const byEmail = new Map<string, string>()
+    for (const error of providerErrors) {
+      const message =
+        typeof error.statusCode === "number"
+          ? `${error.statusCode} — ${error.message}`
+          : error.message
+      for (const email of error.emails) {
+        if (!byEmail.has(email)) {
+          byEmail.set(email, message)
+        }
+      }
+    }
+    return byEmail
+  }
+
+  private buildDispatchFailureDetail(providerErrors: DispatchProviderError[]): string | null {
+    if (providerErrors.length === 0) return null
+
+    const parts = providerErrors.slice(0, 3).map((error) =>
+      formatProviderBatchFailureMessage({
+        message: error.message,
+        statusCode: error.statusCode,
+        emails: error.emails,
+      })
+    )
+    const remaining = providerErrors.length - parts.length
+    return remaining > 0 ? `${parts.join(" | ")} | e mais ${remaining} erro(s)` : parts.join(" | ")
+  }
+
   private recordDispatchLeadActivities(params: {
     teamId: string
     campaignId: string
@@ -1086,29 +1140,56 @@ export class EmailCampaignUseCase {
       }
 
       try {
-        const dispatchResult = await this.dispatchService.dispatchBatch({
-          from: job.from,
-          replyTo: job.replyTo,
-          recipients: job.recipients,
-          subject: job.subject,
-          html: job.html,
-          campaignId: job.campaignId,
-          teamId: job.teamId,
-          dispatchNumber: job.dispatchNumber,
-          globalDefaults: job.globalDefaults,
-          templateVariables: job.templateVariables,
-          onChunkDispatched: async (chunkDispatched) => {
-            const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
-              const logId = logIdsByEmail.get(email)
-              return logId ? [{ logId, resendEmailId: resendId }] : []
-            })
-            if (sentEntries.length > 0) {
-              await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
-            }
-          },
-        })
+        const { valid: validRecipients, invalid: invalidRecipients } =
+          this.partitionRecipientsByEmailValidity(job.recipients)
+
+        const dispatchResult =
+          validRecipients.length > 0
+            ? await this.dispatchService.dispatchBatch({
+                from: job.from,
+                replyTo: job.replyTo,
+                recipients: validRecipients,
+                subject: job.subject,
+                html: job.html,
+                campaignId: job.campaignId,
+                teamId: job.teamId,
+                dispatchNumber: job.dispatchNumber,
+                globalDefaults: job.globalDefaults,
+                templateVariables: job.templateVariables,
+                onChunkDispatched: async (chunkDispatched) => {
+                  const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
+                    const logId = logIdsByEmail.get(email)
+                    return logId ? [{ logId, resendEmailId: resendId }] : []
+                  })
+                  if (sentEntries.length > 0) {
+                    await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
+                  }
+                },
+              })
+            : {
+                sent: 0,
+                failed: invalidRecipients.length,
+                dispatched: [] as Array<{ email: string; resendId: string }>,
+                providerErrors: invalidRecipients.map((recipient) => ({
+                  message: formatInvalidRecipientFailureMessage(
+                    recipient.email,
+                    recipient.reason
+                  ),
+                  emails: [recipient.email],
+                })),
+              }
 
         sentCount = dispatchResult.sent
+
+        const failureReasonByEmail = this.buildFailureReasonByEmail(dispatchResult.providerErrors)
+        for (const recipient of invalidRecipients) {
+          if (!failureReasonByEmail.has(recipient.email)) {
+            failureReasonByEmail.set(
+              recipient.email,
+              formatInvalidRecipientFailureMessage(recipient.email, recipient.reason)
+            )
+          }
+        }
 
         const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
         this.recordDispatchLeadActivities({
@@ -1127,11 +1208,16 @@ export class EmailCampaignUseCase {
           async (recipient) => {
             const logId = logIdsByEmail.get(recipient.email)
             if (!logId) return
-            await teamEmailDispatchLogger.markTeamEmailLogFailed(logId, "Falha no envio via Resend")
+            await teamEmailDispatchLogger.markTeamEmailLogFailed(
+              logId,
+              failureReasonByEmail.get(recipient.email) ?? "Falha no envio via Resend"
+            )
           }
         )
 
-        const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent)
+        const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors)
+        const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent, failureDetail)
+        const totalFailed = job.recipients.length - dispatchResult.sent
 
         const [, updatedCampaign] = await prisma.$transaction([
           prisma.emailCampaignDispatch.update({
@@ -1169,7 +1255,7 @@ export class EmailCampaignUseCase {
             [terminal.errorMessage ?? EMAIL_CAMPAIGN_FAILURE_MESSAGES.RESEND_ZERO],
             {
               sent: dispatchResult.sent,
-              failed: dispatchResult.failed,
+              failed: totalFailed,
               total: job.recipients.length,
               dispatchId: job.dispatchId,
               dispatchNumber: job.dispatchNumber,
@@ -1180,10 +1266,10 @@ export class EmailCampaignUseCase {
         return new Output(
           true,
           [`Campanha disparada para ${job.recipients.length} destinatário(s)`],
-          dispatchResult.failed > 0 ? [`${dispatchResult.failed} e-mails falharam`] : [],
+          totalFailed > 0 ? [`${totalFailed} e-mails falharam`] : [],
           {
             sent: dispatchResult.sent,
-            failed: dispatchResult.failed,
+            failed: totalFailed,
             total: job.recipients.length,
             dispatchId: job.dispatchId,
             dispatchNumber: job.dispatchNumber,
@@ -1689,6 +1775,9 @@ export class EmailCampaignUseCase {
         })
 
         const recipientsList = dispatchInput.recipients
+        const { valid: validRecipients, invalid: invalidRecipients } =
+          this.partitionRecipientsByEmailValidity(recipientsList)
+
         const logInputs = recipientsList.map((recipient) => ({
           teamId: campaign.teamId,
           campaignId: campaign.id,
@@ -1708,29 +1797,53 @@ export class EmailCampaignUseCase {
         const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
         const logIdsByEmail = new Map(createdLogs.map(({ email, logId }) => [email, logId]))
 
-        const dispatchResult = await this.dispatchService.dispatchBatch({
-          from: dispatchInput.from,
-          replyTo: dispatchInput.replyTo,
-          recipients: recipientsList,
-          subject: dispatchInput.subject,
-          html: dispatchInput.html,
-          campaignId: campaign.id,
-          teamId: campaign.teamId,
-          dispatchNumber,
-          globalDefaults: dispatchInput.globalDefaults,
-          templateVariables: dispatchInput.templateVariables,
-          onChunkDispatched: async (chunkDispatched) => {
-            const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
-              const logId = logIdsByEmail.get(email)
-              return logId ? [{ logId, resendEmailId: resendId }] : []
-            })
-            if (sentEntries.length > 0) {
-              await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
-            }
-          },
-        })
+        const dispatchResult =
+          validRecipients.length > 0
+            ? await this.dispatchService.dispatchBatch({
+                from: dispatchInput.from,
+                replyTo: dispatchInput.replyTo,
+                recipients: validRecipients,
+                subject: dispatchInput.subject,
+                html: dispatchInput.html,
+                campaignId: campaign.id,
+                teamId: campaign.teamId,
+                dispatchNumber,
+                globalDefaults: dispatchInput.globalDefaults,
+                templateVariables: dispatchInput.templateVariables,
+                onChunkDispatched: async (chunkDispatched) => {
+                  const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
+                    const logId = logIdsByEmail.get(email)
+                    return logId ? [{ logId, resendEmailId: resendId }] : []
+                  })
+                  if (sentEntries.length > 0) {
+                    await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
+                  }
+                },
+              })
+            : {
+                sent: 0,
+                failed: invalidRecipients.length,
+                dispatched: [] as Array<{ email: string; resendId: string }>,
+                providerErrors: invalidRecipients.map((recipient) => ({
+                  message: formatInvalidRecipientFailureMessage(
+                    recipient.email,
+                    recipient.reason
+                  ),
+                  emails: [recipient.email],
+                })),
+              }
 
         sentCount = dispatchResult.sent
+
+        const failureReasonByEmail = this.buildFailureReasonByEmail(dispatchResult.providerErrors)
+        for (const recipient of invalidRecipients) {
+          if (!failureReasonByEmail.has(recipient.email)) {
+            failureReasonByEmail.set(
+              recipient.email,
+              formatInvalidRecipientFailureMessage(recipient.email, recipient.reason)
+            )
+          }
+        }
 
         const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
         this.recordDispatchLeadActivities({
@@ -1749,11 +1862,15 @@ export class EmailCampaignUseCase {
           async (recipient) => {
             const logId = logIdsByEmail.get(recipient.email)
             if (!logId) return
-            await teamEmailDispatchLogger.markTeamEmailLogFailed(logId, "Falha no envio via Resend")
+            await teamEmailDispatchLogger.markTeamEmailLogFailed(
+              logId,
+              failureReasonByEmail.get(recipient.email) ?? "Falha no envio via Resend"
+            )
           }
         )
 
-        const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent)
+        const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors)
+        const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent, failureDetail)
 
         await prisma.$transaction([
           prisma.emailCampaignDispatch.update({

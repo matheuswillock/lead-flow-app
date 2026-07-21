@@ -139,8 +139,7 @@ export function ContactImportDialog({
     }
 
     const mappedRows = buildMappedRows();
-    const hasImportableRow = mappedRows.some((row) => row.email.includes("@"));
-    if (!hasImportableRow) {
+    if (importPreview.importableCount === 0) {
       toast.error("Nenhuma linha do arquivo tem um e-mail válido na coluna mapeada");
       return;
     }
@@ -186,7 +185,9 @@ export function ContactImportDialog({
               total={EMAIL_CONTACT_IMPORT_FIELDS.length}
               label="campos mapeados"
             />
-            {showImportPreview ? <ContactImportPreviewCard preview={importPreview} /> : null}
+            {showImportPreview ? (
+              <ContactImportPreviewCard preview={importPreview} variant="detailed" />
+            ) : null}
           </div>
         )}
 

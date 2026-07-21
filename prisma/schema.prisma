@@ -2613,6 +2613,7 @@ model EmailImportJob {
   importedCount   Int      @default(0)
   updatedCount    Int      @default(0)
   skippedCount    Int      @default(0)
+  skippedIssues   Json?
   failedBatches   Json?
   batchSize       Int      @default(500)
   attemptsByBatch Json?

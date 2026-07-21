@@ -56,7 +56,10 @@ export function checkDispatchWindow(
 }
 
 /** Campanha só é considerada enviada com sucesso se ao menos um e-mail saiu. */
-export function resolveCampaignStatusAfterDispatch(sentCount: number): {
+export function resolveCampaignStatusAfterDispatch(
+  sentCount: number,
+  failureDetail?: string | null
+): {
   campaignStatus: "sent" | "failed"
   dispatchStatus: "completed" | "failed"
   errorMessage: string | null
@@ -67,6 +70,6 @@ export function resolveCampaignStatusAfterDispatch(sentCount: number): {
   return {
     campaignStatus: "failed",
     dispatchStatus: "failed",
-    errorMessage: "Nenhum e-mail foi enviado pelo provedor",
+    errorMessage: failureDetail?.trim() || "Nenhum e-mail foi enviado pelo provedor",
   }
 }

@@ -10,17 +10,25 @@ import {
   uploadEmailImportPayload,
 } from "@/lib/email/email-import-storage"
 import { generateEmailImportId } from "@/lib/email/generate-import-id"
+import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
 
 const DEFAULT_LIST_NAME = "Todos contatos"
 const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
 const MAX_PROCESSING_MS = 45_000
+const SKIPPED_ISSUES_PERSIST_LIMIT = 100
 
 type ImportRow = {
   line?: number
   email: string
   name?: string
   customFields?: Record<string, string>
+}
+
+type SkippedImportIssue = {
+  line?: number
+  email: string
+  reason: string
 }
 
 type FailedBatchEntry = {
@@ -124,25 +132,54 @@ export class EmailContactImportUseCase {
   private validateRows(rows: ImportRow[]): {
     validRows: ImportRow[]
     skipped: number
+    skippedIssues: SkippedImportIssue[]
   } {
-    let skipped = 0
     const validRows: ImportRow[] = []
+    const skippedIssues: SkippedImportIssue[] = []
 
     for (const row of rows) {
-      const normalizedEmail = this.normalizeEmail(row.email ?? "")
-      if (!normalizedEmail || !normalizedEmail.includes("@")) {
-        skipped += 1
+      const validation = isValidResendRecipientEmail(row.email ?? "")
+      if (!validation.ok) {
+        skippedIssues.push({
+          line: row.line,
+          email: this.normalizeEmail(row.email ?? "") || "(vazio)",
+          reason: validation.reason,
+        })
         continue
       }
       validRows.push({
         line: row.line,
-        email: normalizedEmail,
+        email: validation.email,
         name: row.name?.trim() || undefined,
         customFields: row.customFields,
       })
     }
 
-    return { validRows, skipped }
+    return {
+      validRows,
+      skipped: skippedIssues.length,
+      skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PERSIST_LIMIT),
+    }
+  }
+
+  private mergeSkippedIssues(
+    existing: Prisma.JsonValue | null | undefined,
+    incoming: SkippedImportIssue[]
+  ): SkippedImportIssue[] {
+    const previous = Array.isArray(existing) ? (existing as SkippedImportIssue[]) : []
+    return [...previous, ...incoming].slice(0, SKIPPED_ISSUES_PERSIST_LIMIT)
+  }
+
+  private formatSkippedNotificationSuffix(skippedCount: number, issues: SkippedImportIssue[]): string {
+    if (skippedCount <= 0) return ""
+    const samples = issues.slice(0, 5).map((issue) => {
+      const linePart = typeof issue.line === "number" ? `linha ${issue.line}: ` : ""
+      return `${linePart}${issue.email} (${issue.reason})`
+    })
+    const remaining = skippedCount - samples.length
+    const sampleText = samples.join("; ")
+    const moreText = remaining > 0 ? `; e mais ${remaining}` : ""
+    return ` Exemplos recusados: ${sampleText}${moreText}.`
   }
 
   private async createImportJob(params: {
@@ -304,6 +341,7 @@ export class EmailContactImportUseCase {
       importedCount: number
       updatedCount: number
       skippedCount: number
+      skippedIssues: Prisma.JsonValue | null
       failedBatches: Prisma.JsonValue | null
     },
     listIsSystemDefault: boolean,
@@ -327,6 +365,9 @@ export class EmailContactImportUseCase {
     }
 
     const failedBatches = this.parseFailedBatches(job.failedBatches)
+    const skippedIssues = Array.isArray(job.skippedIssues)
+      ? (job.skippedIssues as SkippedImportIssue[])
+      : []
     const status =
       failedBatches.length > 0 ? "completed_with_errors" : "completed"
 
@@ -336,7 +377,9 @@ export class EmailContactImportUseCase {
     })
 
     const failedBatchCount = failedBatches.length
-    const message = `Importação concluída: ${job.importedCount} importados, ${job.skippedCount} ignorados, ${job.updatedCount} atualizados, ${failedBatchCount} lote(s) com falha`
+    const message =
+      `Importação concluída: ${job.importedCount} importados, ${job.skippedCount} recusados, ${job.updatedCount} atualizados, ${failedBatchCount} lote(s) com falha.` +
+      this.formatSkippedNotificationSuffix(job.skippedCount, skippedIssues)
 
     await notificationService.createSystemNotification({
       recipientProfileId: job.requestedBy,
@@ -350,6 +393,7 @@ export class EmailContactImportUseCase {
         imported: job.importedCount,
         updated: job.updatedCount,
         skipped: job.skippedCount,
+        skippedIssues,
         failedBatches: failedBatchCount,
       },
     })
@@ -398,12 +442,17 @@ export class EmailContactImportUseCase {
       } as TeamContext
 
       const allRows = await this.parseStoredRows(claimed.sourceFormat, claimed.storagePath)
-      const { validRows, skipped: initialSkipped } = this.validateRows(allRows)
+      const {
+        validRows,
+        skipped: initialSkipped,
+        skippedIssues: initialSkippedIssues,
+      } = this.validateRows(allRows)
 
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount
       let updatedCount = claimed.updatedCount
       const skippedCount = claimed.skippedCount + initialSkipped
+      const skippedIssues = this.mergeSkippedIssues(claimed.skippedIssues, initialSkippedIssues)
       const failedBatches = this.parseFailedBatches(claimed.failedBatches)
       const attemptsByBatch = this.parseAttemptsByBatch(claimed.attemptsByBatch)
 
@@ -420,6 +469,7 @@ export class EmailContactImportUseCase {
               importedCount,
               updatedCount,
               skippedCount,
+              skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
               failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
               attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
             },
@@ -480,6 +530,7 @@ export class EmailContactImportUseCase {
             importedCount,
             updatedCount,
             skippedCount,
+            skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
             failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
             attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
           },
@@ -496,6 +547,7 @@ export class EmailContactImportUseCase {
           importedCount,
           updatedCount,
           skippedCount,
+          skippedIssues: skippedIssues as unknown as Prisma.JsonValue,
           failedBatches: failedBatches as unknown as Prisma.JsonValue,
         },
         list.isSystemDefault,
