@@ -48,9 +48,15 @@ Achados adicionais da consulta à API sandbox:
 
 - **3 assinaturas com `value: 5990`** (cinco mil, novecentos e noventa reais) — forte indício de bug de conversão centavos↔reais em algum fluxo de criação/atualização. Investigar origem antes de qualquer refactor.
 - Ciclos trimestral/semestral/vitalício **não existem** nem no Asaas sandbox nem no código (tudo `MONTHLY`). "Vitalício" existe apenas como a flag manual `hasPermanentSubscription`, não como plano comercial cobrado.
-- **Asaas não tem catálogo de planos/produtos**: assinaturas são value-based (`value` + `cycle` livres por assinatura). Não existe `productId`/`planId` a validar — a definição de preço vive **exclusivamente no código**, o que torna a ausência de fonte única (item 1 abaixo) ainda mais grave.
+- **Asaas não tem catálogo de planos/produtos**: assinaturas são value-based (`value` + `cycle` livres por assinatura). Não existe `productId`/`planId` a validar. No System A legado, a definição de preço vive no código; no modelo auditado para a próxima SPEC, a fonte correta deve ser `BackofficeProduct`/`BackofficeProductPaymentRule` no banco, nunca o Asaas.
 
 ⚠️ **Pendência de verificação:** a chave `ASAAS_API_KEY` local é **sandbox** (`ASAAS_ENV=sandbox`). A configuração de **produção** não pôde ser confirmada desta máquina — ver "Perguntas bloqueantes" ao final.
+
+### C5. Entitlements por slug não são contrato da assinatura — risco de acesso/cobrança divergirem
+
+O sistema já possui as peças para feature gating por slug (`backoffice_features`, `productSlug`, `parentId`, `inheritParentSettings`, `billedSeparately`, `FeatureAccessService`), mas a assinatura que o produto consome ainda não carrega formalmente os entitlements liberados. O check principal de assinatura permanece binário (`hasActiveSubscription`) e não responde quais `productSlugs`, `featureSlugs`, add-ons e capacidades foram pagos.
+
+Consequência prática: a cobrança pode reconhecer um add-on por preço/capacidade, enquanto o acesso reconhece outro por `productSlug`; ou a UI pode liberar uma feature filha sem saber se existe capacidade paga para aquele add-on multiplicável. A próxima SPEC precisa tratar "assinatura ativa" e "slugs liberados" como o mesmo contrato operacional, não como duas consultas independentes.
 
 ---
 
@@ -126,9 +132,13 @@ Não existe `autoChargeOverage`, não existe validação de cartão, não existe
 
 **Vazamentos:** módulos de billing ainda checam `subscriptionStatus` diretamente (ex.: [teams/payments/create/route.ts:162](app/api/v1/teams/payments/create/route.ts:162), rotas de teams, `SubscriptionCheckService`), cada um com sua própria noção de "ativo". O conjunto `active|trial|past_due` do gate central não está compartilhado como constante única.
 
-### 5. Gerenciamento de precificação (operação) — ❌ NÃO EXISTE / decisão em aberto
+**Lacuna específica de slugs/capacidades:** `BackofficeUserSubscription` representa produtos contratados, mas não carrega quantidade; `ProfileSubscriptionCapacity` cobre `extra-team`/`extra-user`, porém a resolução de slugs não exige explicitamente capacidade positiva para liberar filhos add-on. Para add-ons multiplicáveis, a regra auditada deve ser: produto ativo + capacidade/quantidade paga. Para add-ons booleanos, produto ativo basta. Para taxas únicas (`radar-setup`), cobrança não deve virar entitlement de feature.
 
-Preço é 100% código versionado (e nem isso de forma centralizada — item 1). Não há UI de precificação no Backoffice nem tabela de preços em banco. **Não assumido**: se preço editável em runtime é requisito real, é decisão de negócio a confirmar — a spec propõe o caminho mínimo (fonte única em código) com evolução opcional para tabela.
+### 5. Gerenciamento de precificação (operação) — ⚠️ PARCIAL / precisa virar fonte única
+
+Atualização de auditoria (2026-07-21): o System A legado ainda tem preço hardcoded em vários fluxos, mas o repositório já possui o modelo de catálogo em banco (`BackofficeProduct` e `BackofficeProductPaymentRule`) usado pelo Backoffice/adesões. Para a próxima SPEC, esse modelo em banco deve ser tratado como a fonte única de preço, generalizando `lib/backoffice-adhesions/adhesion-pricing.ts` para o restante do billing.
+
+Lacunas ainda abertas: clientes legados precisam preservar seus valores atuais sem serem migrados automaticamente para o catálogo novo; variantes manuais precisam ser reproduzíveis por migration/seed; e produtos/taxas novos da `PRICING_TABLE.md` precisam de status explícito (`vigente`, `sugerido`, `descontinuado`, `pendente de implementação`) antes de entrarem no cálculo de cobrança.
 
 ### 6. Integração Asaas — ⚠️ PARCIAL
 
@@ -165,13 +175,14 @@ Existem: `memberProBillingRules.test.ts` (em expansão no branch atual), `EmailC
 | 6 | **P1** | `SUBSCRIPTION_UPDATED` com status desconhecido default-ativa conta suspensa | PaymentValidationService.ts:122 |
 | 7 | **P1** | Estorno/chargeback não tratado — conta permanece ativa após refund | item 6 |
 | 8 | **P1** | Preço hardcoded em ~15 arquivos — dessincronia cobrado × exibido | item 1 |
-| 9 | **P1** | Overage de e-mail registrado mas nunca cobrado (receita perdida silenciosa) | item 3.1 |
-| 10 | **P2** | `subscriptionCycle`/`paymentStatus`/`paymentMethod` como String livre | item 1 |
-| 11 | **P2** | Sem cron de reconciliação Asaas↔banco (`AsaasSubscriptionSyncService` é só on-demand) | item 2 |
-| 12 | **P2** | `nextDueDate` local pode ficar obsoleto (não atualiza em PAYMENT_CONFIRMED) | item 2 |
-| 13 | **P2** | Checks de `subscriptionStatus` duplicados fora do FeatureAccessService | item 4 |
-| 14 | **P2** | Docs de billing desatualizados (R$ 20,00; fluxos antigos) | C4 |
-| 15 | **P3** | `notify-payment` via `fetch` para si mesmo (frágil, sem retry) | processAsaasWebhookEvent.ts:368 |
+| 9 | **P1** | Assinatura não expõe `productSlugs`/`featureSlugs`/capacidades como contrato único | C5 / item 4 |
+| 10 | **P1** | Overage de e-mail registrado mas nunca cobrado (receita perdida silenciosa) | item 3.1 |
+| 11 | **P2** | `subscriptionCycle`/`paymentStatus`/`paymentMethod` como String livre | item 1 |
+| 12 | **P2** | Sem cron de reconciliação Asaas↔banco (`AsaasSubscriptionSyncService` é só on-demand) | item 2 |
+| 13 | **P2** | `nextDueDate` local pode ficar obsoleto (não atualiza em PAYMENT_CONFIRMED) | item 2 |
+| 14 | **P2** | Checks de `subscriptionStatus` duplicados fora do FeatureAccessService | item 4 |
+| 15 | **P2** | Docs de billing desatualizados (R$ 20,00; fluxos antigos) | C4 |
+| 16 | **P3** | `notify-payment` via `fetch` para si mesmo (frágil, sem retry) | processAsaasWebhookEvent.ts:368 |
 
 ## Débito técnico estrutural
 
@@ -194,4 +205,10 @@ Existem: `memberProBillingRules.test.ts` (em expansão no branch atual), `EmailC
 
 **(e) Mudança de ciclo no Asaas — RESPONDIDA pela spec OpenAPI oficial:** `PUT /v3/subscriptions/{id}` suporta `cycle` + `updatePendingPayments` → tratar como atualização da assinatura existente.
 
-**(f) (nova) Preço editável em runtime é requisito?** Hoje é código. A spec assume código versionado como fonte única (Estágio 1) com evolução opcional para tabela gerida pelo Backoffice — confirmar se essa evolução é desejada.
+**(f) (atualizada) Banco como fonte única de preço:** confirmar na SPEC como generalizar `BackofficeProduct`/`BackofficeProductPaymentRule` para todos os fluxos do System A sem alterar automaticamente os valores de clientes legados.
+
+**(g) (nova) Como a assinatura deve expor entitlements?** Decidir o contrato alvo: `productSlugs`, `featureSlugs`, `addonSlugs`, capacidades e itens cobrados devem sair do `/api/v1/subscriptions/check`, do bootstrap autenticado, ou de um resolvedor interno único consumido por ambos.
+
+**(h) (nova) Add-ons multiplicáveis como `extra-team`/`extra-user`:** confirmar que o gate de filhos add-on deve exigir produto ativo + capacidade/quantidade paga. Essa é a regra recomendada para evitar UI liberada sem quota operacional.
+
+**(i) (nova) Fees como `radar-setup`:** confirmar que taxas únicas entram apenas na composição de cobrança/primeira fatura, sem gerar feature slug liberado.
