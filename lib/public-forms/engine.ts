@@ -77,6 +77,13 @@ export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
     ) {
       return "Selecione opções válidas"
     }
+    const maxSelections =
+      typeof q.config?.maxSelections === "number" && Number.isFinite(q.config.maxSelections)
+        ? Math.floor(q.config.maxSelections)
+        : null
+    if (maxSelections != null && maxSelections > 0 && v.length > maxSelections) {
+      return `Selecione no máximo ${maxSelections} opções`
+    }
   }
   if (q.type === "boolean" && !["sim", "nao"].includes(s)) return "Selecione uma opção válida"
   if (q.type === "scheduling") {
