@@ -2,9 +2,13 @@ import type {
   BackofficeCrmUserOption,
   BackofficeLeadCreateInput,
   BackofficeLeadItem,
+  BackofficeLeadOfferCreateInput,
+  BackofficeLeadOfferCreateResult,
+  BackofficeLeadOfferListItem,
   BackofficeLeadScheduleInput,
   BackofficeLeadStatusKey,
   BackofficeLeadUpdateInput,
+  BackofficeOfferProductOption,
 } from "../context/BackofficeCrmTypes"
 import type { IBackofficeCrmService } from "./IBackofficeCrmService"
 
@@ -105,5 +109,44 @@ export class BackofficeCrmService implements IBackofficeCrmService {
       method: "DELETE",
     })
     await parseOutput<null>(response)
+  }
+
+  async listActiveProducts(): Promise<BackofficeOfferProductOption[]> {
+    const response = await fetch(`/api/v1/backoffice/pricing`, {
+      method: "GET",
+      cache: "no-store",
+    })
+    const data = await parseOutput<BackofficeOfferProductOption[]>(response)
+    return (data.result ?? []).filter((product) => product.isActive)
+  }
+
+  async listOffers(leadId: string): Promise<BackofficeLeadOfferListItem[]> {
+    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/offers`, {
+      method: "GET",
+      cache: "no-store",
+    })
+    const data = await parseOutput<{ offers: BackofficeLeadOfferListItem[] }>(response)
+    return data.result?.offers ?? []
+  }
+
+  async createOffer(
+    leadId: string,
+    data: BackofficeLeadOfferCreateInput
+  ): Promise<BackofficeLeadOfferCreateResult> {
+    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/offers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const out = await parseOutput<BackofficeLeadOfferCreateResult>(response)
+    return out.result
+  }
+
+  async revokeOffer(leadId: string, offerId: string): Promise<BackofficeLeadOfferListItem> {
+    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/offers/${offerId}`, {
+      method: "DELETE",
+    })
+    const out = await parseOutput<BackofficeLeadOfferListItem>(response)
+    return out.result
   }
 }

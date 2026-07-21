@@ -255,6 +255,20 @@
       "description": "Token público retornado ao gerar link de compartilhamento de contrato, para endpoints /api/v1/public-contracts/:token"
     },
     {
+      "key": "offerShareToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token público retornado ao gerar oferta do lead, para endpoints /api/v1/public-offers/:token"
+    },
+    {
+      "key": "backofficeLeadOfferId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma BackofficeLeadOffer para DELETE /api/v1/backoffice/leads/:id/offers/:offerId"
+    },
+    {
       "key": "backofficeMetaActiveToken",
       "value": "",
       "type": "default",
