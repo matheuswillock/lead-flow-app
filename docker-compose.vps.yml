@@ -1,0 +1,143 @@
+# =============================================================================
+# docker-compose.vps.yml — Evolution API + N8N (produção Hostinger)
+# =============================================================================
+#
+# Stack unificada com rede compartilhada (Evolution → N8N via http://n8n:5678).
+# Banco Evolution: Supabase remoto (.env.evolution).
+# Banco N8N: Postgres local no container n8n-postgres (.env.n8n).
+#
+# Pré-requisitos na VPS:
+#   - Caddy (ou outro proxy) em 443 → 127.0.0.1:8080 e :5678
+#   - deploy/hostinger/Caddyfile instalado em /etc/caddy/Caddyfile
+#
+# Uso:
+#   cp .env.evolution.example .env.evolution   # preencher produção
+#   cp .env.n8n.example .env.n8n               # preencher produção
+#   bun run vps:up
+#   bun run vps:logs
+#
+# =============================================================================
+
+services:
+  api:
+    container_name: evolution_api
+    image: evoapicloud/evolution-api:latest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - studio-bot-net
+    env_file:
+      - .env.evolution
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
+  redis:
+    container_name: evolution_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - evolution_redis:/data
+    networks:
+      - studio-bot-net
+    expose:
+      - "6379"
+
+  n8n:
+    container_name: n8n
+    image: docker.io/n8nio/n8n:2.28.5
+    restart: unless-stopped
+    depends_on:
+      n8n-postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - studio-bot-net
+    env_file:
+      - .env.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  n8n-postgres:
+    container_name: n8n_postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:-n8n}
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - listen_addresses=*
+    volumes:
+      - n8n_postgres:/var/lib/postgresql/data
+    networks:
+      - studio-bot-net
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  studio-bot-ops:
+    container_name: studio_bot_ops
+    build:
+      context: ./deploy/hostinger/studio-bot-ops
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    environment:
+      OPS_AGENT_HOST: "0.0.0.0"
+      OPS_AGENT_PORT: "9090"
+      OPS_DEPLOY_DIR: /opt/lead-flow-bot
+      OPS_COMPOSE_FILE: /opt/lead-flow-bot/docker-compose.vps.yml
+      OPS_AGENT_TOKEN: ${OPS_AGENT_TOKEN}
+    volumes:
+      - /opt/lead-flow-bot:/opt/lead-flow-bot
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - studio-bot-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:9090/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+volumes:
+  evolution_instances:
+  evolution_redis:
+  n8n_data:
+  n8n_postgres:
+
+networks:
+  studio-bot-net:
+    name: studio-bot-net
+    driver: bridge

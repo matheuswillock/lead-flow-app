@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { BackofficeLeadOrigin, BackofficeLeadStatus } from "@prisma/client"
+import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { Output } from "@/lib/output"
 import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
 import {
@@ -22,6 +23,8 @@ import type {
 } from "./IBackofficeLeadUseCase"
 import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 import { BackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import { backofficeLeadSlackNotificationService } from "@/app/api/services/backofficeLeadSlack/BackofficeLeadSlackNotificationService"
+import { backofficeCrmLeadStatusTransitionGateEvaluatorService } from "@/app/api/services/backofficeCrmLeadStatusTransitionGate/BackofficeCrmLeadStatusTransitionGateEvaluatorService"
 
 export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "new_opportunity",
@@ -31,6 +34,10 @@ export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "lost",
   "implementation",
   "finalized",
+  "proposal",
+  "future_contact",
+  "deal_closed",
+  "disqualified",
 ] as const
 
 export type BackofficeLeadStatusValue = (typeof BACKOFFICE_LEAD_STATUS_VALUES)[number]
@@ -66,7 +73,7 @@ function normalizePhone(value: unknown): NormalizedText {
   const raw = trimOrNull(value)
   if (!raw) return { isValid: true, value: null }
 
-  const digits = raw.replace(/\D/g, "").slice(0, 11)
+  const digits = normalizeLeadPhoneDigits(raw)
   if (!/^\d{10,11}$/.test(digits)) {
     return {
       isValid: false,
@@ -413,6 +420,10 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         }
       }
 
+      await backofficeLeadSlackNotificationService.sendLeadCreatedEventBestEffort({
+        lead,
+      })
+
       return new Output(true, ["Lead criado com sucesso"], [], mapLead(lead))
     } catch (error) {
       console.error("[BackofficeLeadUseCase][createLead]", error)
@@ -650,12 +661,21 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           ? meetingExtraGuestsValue
           : existing.meetingExtraGuests
 
+      const gateResult = await backofficeCrmLeadStatusTransitionGateEvaluatorService.evaluate({
+        lead: {
+          status: existing.status,
+          closerBackofficeUserId,
+          meetingDate: finalMeetingDate,
+        },
+        targetStatus: status,
+      })
+      if (!gateResult.ok) {
+        return new Output(false, [], gateResult.errorMessages, null)
+      }
+
       if (status === BackofficeLeadStatus.scheduled) {
-        if (!finalMeetingDate) {
-          return new Output(false, [], ["Data de agendamento é obrigatória"], null)
-        }
-        if (!closerBackofficeUserId) {
-          return new Output(false, [], ["Closer é obrigatório para leads agendados"], null)
+        if (!finalMeetingDate || !closerBackofficeUserId) {
+          return new Output(false, [], ["Agendamento inválido para status agendado"], null)
         }
 
         const scheduleChanged =

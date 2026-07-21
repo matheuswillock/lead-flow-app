@@ -1,0 +1,38 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
+import { backofficeBotEventOutboxUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotEventOutboxUseCase";
+import { alertStudioBotOutboxFailRate } from "@/lib/studio-bot/outbox-fail-rate-alert";
+
+export async function GET(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 });
+    }
+
+    const output = await backofficeBotEventOutboxUseCase.dispatchPending(50);
+    const result = output.result as { dispatched?: number; failed?: number } | null;
+    if (
+      output.isValid &&
+      result &&
+      typeof result.dispatched === "number" &&
+      typeof result.failed === "number"
+    ) {
+      alertStudioBotOutboxFailRate({
+        dispatched: result.dispatched,
+        failed: result.failed,
+      });
+    }
+
+    return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
+    console.error("[StudioBotOutboxCronRoute][GET] Erro:", error);
+    return NextResponse.json(
+      new Output(false, [], ["Erro interno no cron de outbox Bethânia"], null),
+      { status: 500 }
+    );
+  }
+}

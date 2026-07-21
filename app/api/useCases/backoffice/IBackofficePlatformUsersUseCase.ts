@@ -2,7 +2,7 @@ import type { Output } from "@/lib/output"
 
 export interface IBackofficePlatformUsersUseCase {
   listMasterUsers(
-    filters: { name?: string; email?: string; team?: string } | undefined,
+    filters: { name?: string; email?: string; team?: string; plan?: "lifetime" | "monthly" | "trial" | "none"; userType?: "common" | "member_pro" } | undefined,
     pagination: { page: number; pageSize: number }
   ): Promise<Output>
 
@@ -10,6 +10,8 @@ export interface IBackofficePlatformUsersUseCase {
     masterProfileId: string,
     options: { query?: string; page: number; pageSize: number }
   ): Promise<Output>
+
+  listMasterUserTeams(masterProfileId: string): Promise<Output>
 
   getMasterUserInvoices(
     masterProfileId: string,
@@ -25,6 +27,12 @@ export interface IBackofficePlatformUsersUseCase {
   getMasterUserInvoiceById(
     masterProfileId: string,
     invoiceId: string
+  ): Promise<Output>
+
+  updateMasterUserInvoice(
+    masterProfileId: string,
+    invoiceId: string,
+    data: { value: number; dueDate: string }
   ): Promise<Output>
 
   notifyMasterUserInvoiceStatusEmail(
@@ -47,6 +55,7 @@ export interface IBackofficePlatformUsersUseCase {
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      multiskillEnabled?: boolean
     }
   ): Promise<Output>
 
@@ -63,18 +72,22 @@ export interface IBackofficePlatformUsersUseCase {
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      generateCharge?: boolean
     }
   ): Promise<Output>
 
+  addMasterUserToTeam(masterProfileId: string, teamId: string): Promise<Output>
+
   addTeamToMasterUser(
     masterProfileId: string,
-    data: { name: string }
+    data: { name: string; generateCharge?: boolean }
   ): Promise<Output>
 
   updateTeamForMasterUser(
     masterProfileId: string,
     teamId: string,
-    data: { name: string }
+    data: { name?: string; transferTargetTeamIds?: string[]; updatedBy?: string }
   ): Promise<Output>
 
   deleteTeamFromMasterUser(

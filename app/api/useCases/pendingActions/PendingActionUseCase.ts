@@ -8,7 +8,16 @@ import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import type { Prisma, UserFunction, UserRole } from "@prisma/client";
+import { buildAddedToTeamEmail } from "@/lib/emails/buildAddedToTeamEmail";
+import { getAppUrl } from "@/lib/utils/app-url";
+
+type ApplyPendingActionOptions = {
+  skipSubscriptionSync?: boolean;
+  paymentStatus?: string;
+  waivedReason?: string;
+};
 
 async function findActionByCheckoutId(checkoutId: string) {
   return prisma.pendingAction.findFirst({
@@ -33,6 +42,7 @@ async function findActionByCheckoutId(checkoutId: string) {
           subscriptionNextDueDate: true,
           subscriptionCycle: true,
           hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
           timezone: true,
         },
       },
@@ -63,6 +73,7 @@ async function findActionById(id: string) {
           subscriptionNextDueDate: true,
           subscriptionCycle: true,
           hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
           timezone: true,
         },
       },
@@ -100,6 +111,7 @@ const toBillingOwnerProfile = (action: ResolvedPendingAction): BillingOwnerProfi
   subscriptionNextDueDate: action.master.subscriptionNextDueDate,
   subscriptionCycle: action.master.subscriptionCycle,
   hasPermanentSubscription: action.master.hasPermanentSubscription,
+  hasUnlimitedUsers: action.master.hasUnlimitedUsers,
   timezone: action.master.timezone,
 });
 
@@ -136,6 +148,7 @@ export class PendingActionUseCase {
             subscriptionNextDueDate: true,
             subscriptionCycle: true,
             hasPermanentSubscription: true,
+            hasUnlimitedUsers: true,
             timezone: true,
           },
         },
@@ -171,7 +184,119 @@ export class PendingActionUseCase {
     return this.applyResolvedPendingAction(action, paymentId);
   }
 
-  private async applyResolvedPendingAction(action: ResolvedPendingAction, paymentId?: string): Promise<Output> {
+
+  /**
+   * Aplica PendingAction add_user sem cobrança incremental.
+   * Cancela cobrança Asaas aberta (se houver), nunca sincroniza targetRecurringTotal do payload
+   * e, para Member PRO ativo, sincroniza uso via syncUsageToSubscription.
+   */
+  async forceApplyPendingActionWithoutCharge(
+    pendingActionId: string,
+    options: { reason: string }
+  ): Promise<Output> {
+    const action = await findActionById(pendingActionId);
+    if (!action) {
+      return new Output(false, [], ["Ação pendente não encontrada"], null);
+    }
+
+    if (action.status === "applied") {
+      return new Output(true, ["Ação já aplicada"], [], action);
+    }
+
+    if (action.status !== "pending") {
+      return new Output(false, [], [`Ação não está pendente (status=${action.status})`], null);
+    }
+
+    if (action.actionType !== "add_user") {
+      return new Output(
+        false,
+        [],
+        [`Tipo de ação não suportado no backfill sem cobrança: ${action.actionType}`],
+        null
+      );
+    }
+
+    const bypass = await memberProBillingUseCase.shouldBypassIncrementalCharge(action.masterId);
+    if (!bypass) {
+      return new Output(
+        false,
+        [],
+        ["Master não elegível a bypass de cobrança (sem usuários ilimitados / Member PRO ativo)"],
+        null
+      );
+    }
+
+    if (action.paymentId) {
+      try {
+        const payment = await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, {
+          method: "GET",
+        });
+        const paymentStatus = String(payment?.status ?? "PENDING");
+        const paidStatuses = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
+        if (paidStatuses.has(paymentStatus)) {
+          return new Output(
+            false,
+            [],
+            [
+              `Cobrança Asaas ${action.paymentId} já está paga (${paymentStatus}); não é possível dispensar`,
+            ],
+            null
+          );
+        }
+
+        const cancelableStatuses = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"]);
+        if (cancelableStatuses.has(paymentStatus)) {
+          await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, { method: "DELETE" });
+          console.info(
+            `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Falha ao cancelar cobrança Asaas ${action.paymentId}:`,
+          error
+        );
+        return new Output(
+          false,
+          [],
+          ["Não foi possível cancelar a cobrança Asaas aberta antes de dispensar"],
+          null
+        );
+      }
+
+      await prisma.pendingAction.update({
+        where: { id: action.id },
+        data: { paymentId: null },
+      });
+      action.paymentId = null;
+    }
+
+    console.info(
+      `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Aplicando ${pendingActionId} reason=${options.reason}`
+    );
+
+    // Nunca aplica targetRecurringTotal do payload (evita subir mensalidade no waive).
+    const result = await this.applyResolvedPendingAction(action, undefined, {
+      skipSubscriptionSync: true,
+      paymentStatus: "WAIVED",
+      waivedReason: options.reason,
+    });
+
+    if (result.isValid) {
+      const memberProContext = await memberProBillingUseCase.getMemberProContext(action.masterId);
+      if (memberProContext.isActive) {
+        await memberProBillingUseCase.syncUsageToSubscription(action.masterId, "add_user");
+      }
+    }
+
+    return result;
+  }
+
+  private async applyResolvedPendingAction(
+    action: ResolvedPendingAction,
+    paymentId?: string,
+    options?: ApplyPendingActionOptions
+  ): Promise<Output> {
     if (action.status === "applied") {
       return new Output(true, ["Ação já aplicada"], [], action);
     }
@@ -179,6 +304,8 @@ export class PendingActionUseCase {
     if (action.status === "canceled") {
       return new Output(false, [], ["Ação cancelada"], null);
     }
+
+    const paymentStatus = options?.paymentStatus ?? "CONFIRMED";
 
     try {
       const appliedResult = await prisma.$transaction(async (tx) => {
@@ -191,7 +318,10 @@ export class PendingActionUseCase {
         }
 
         if (action.actionType === "add_user") {
-          return this.applyAddUser(tx, action, paymentId);
+          return this.applyAddUser(tx, action, paymentId, {
+            paymentStatus,
+            waivedReason: options?.waivedReason,
+          });
         }
 
         if (action.actionType === "transfer_team") {
@@ -209,8 +339,16 @@ export class PendingActionUseCase {
         await this.sendInviteForCreatedUser(action, appliedResult.createdUser);
       }
 
+      if (action.actionType === "add_member") {
+        await this.sendAddedToTeamEmailForMember(action);
+      }
+
       const targetRecurringTotal = Number((action.payload as PendingActionPayload)?.targetRecurringTotal ?? 0);
-      if (!Number.isNaN(targetRecurringTotal) && targetRecurringTotal > 0) {
+      if (
+        !options?.skipSubscriptionSync &&
+        !Number.isNaN(targetRecurringTotal) &&
+        targetRecurringTotal > 0
+      ) {
         try {
           await incrementalBillingService.syncRecurringSubscription({
             master: toBillingOwnerProfile(action),
@@ -223,7 +361,7 @@ export class PendingActionUseCase {
             data: {
               payload: {
                 ...(action.payload as PendingActionPayload),
-                paymentStatus: "CONFIRMED",
+                paymentStatus,
                 subscriptionSyncStatus: "updated",
                 subscriptionUpdatedAt: new Date().toISOString(),
               },
@@ -236,7 +374,7 @@ export class PendingActionUseCase {
             data: {
               payload: {
                 ...(action.payload as PendingActionPayload),
-                paymentStatus: "CONFIRMED",
+                paymentStatus,
                 subscriptionSyncStatus: "failed",
               },
             },
@@ -365,12 +503,18 @@ export class PendingActionUseCase {
     });
 
     if (!existingMember) {
+      const role = (payload.role || "operator") as UserRole;
       await tx.teamMember.create({
         data: {
           teamId,
           profileId,
-          role: (payload.role || "operator") as UserRole,
+          role,
           functions: (payload.functions as UserFunction[] | undefined) ?? [],
+          canCreateAccountUsers: role === "manager" && payload.canCreateAccountUsers === true,
+          canManageAccountTeams: role === "manager" && payload.canManageAccountTeams === true,
+          canTransferAccountLeads:
+            (role === "manager" || role === "backoffice") &&
+            payload.canTransferAccountLeads === true,
         },
       });
     }
@@ -394,7 +538,8 @@ export class PendingActionUseCase {
   private async applyAddUser(
     tx: Prisma.TransactionClient,
     action: ResolvedPendingAction,
-    paymentId?: string
+    paymentId?: string,
+    applyOptions?: { paymentStatus?: string; waivedReason?: string }
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
     const teamId = action.teamId || payload.teamId;
@@ -402,21 +547,23 @@ export class PendingActionUseCase {
     const name = payload.name as string | undefined;
     const role = (payload.role || "operator") as UserRole;
     const functions = (payload.functions as UserFunction[] | undefined) ?? [];
+    const paymentStatus = applyOptions?.paymentStatus ?? "CONFIRMED";
 
     if (!teamId || !email || !name) {
       throw new Error("Dados insuficientes para criar usuário");
     }
 
     const delegatedPermissions =
-      role === "manager"
-        ? {
-            canCreateAccountUsers: payload.canCreateAccountUsers === true,
-            canManageAccountTeams: payload.canManageAccountTeams === true,
-          }
-        : {
-            canCreateAccountUsers: false,
-            canManageAccountTeams: false,
-          };
+      {
+        canCreateAccountUsers: role === "manager" && payload.canCreateAccountUsers === true,
+        canManageAccountTeams: role === "manager" && payload.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (role === "manager" || role === "backoffice") &&
+          payload.canTransferAccountLeads === true,
+        canViewAllTeams:
+          (role === "manager" || role === "backoffice") &&
+          payload.canViewAllTeams === true,
+      };
 
     let profile = await tx.profile.findFirst({
       where: { email: { equals: email, mode: "insensitive" } },
@@ -432,8 +579,6 @@ export class PendingActionUseCase {
           functions,
           managerId: action.masterId,
           isMaster: false,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
         },
         select: { id: true },
       });
@@ -442,11 +587,7 @@ export class PendingActionUseCase {
         where: { id: profile.id },
         data: {
           fullName: name,
-          role,
-          functions,
           managerId: action.masterId,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
         },
       });
     }
@@ -467,19 +608,49 @@ export class PendingActionUseCase {
           profileId: profile.id,
           role,
           functions,
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+          canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+          canViewAllTeams: delegatedPermissions.canViewAllTeams,
+        },
+      });
+    } else {
+      await tx.teamMember.update({
+        where: {
+          teamId_profileId: {
+            teamId,
+            profileId: profile.id,
+          },
+        },
+        data: {
+          role,
+          functions,
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+          canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+          canViewAllTeams: delegatedPermissions.canViewAllTeams,
         },
       });
     }
+
+    const nextPaymentId =
+      paymentStatus === "WAIVED" ? null : (paymentId ?? action.paymentId);
 
     await tx.pendingAction.update({
       where: { id: action.id },
       data: {
         status: "applied",
-        paymentId: paymentId ?? action.paymentId,
+        paymentId: nextPaymentId,
         teamId,
         payload: {
           ...payload,
-          paymentStatus: "CONFIRMED",
+          paymentStatus,
+          ...(applyOptions?.waivedReason
+            ? {
+                waivedReason: applyOptions.waivedReason,
+                waivedAt: new Date().toISOString(),
+              }
+            : {}),
         },
       },
     });
@@ -584,6 +755,37 @@ export class PendingActionUseCase {
     });
 
     return { teamId: action.teamId ?? "" };
+  }
+
+  private async sendAddedToTeamEmailForMember(action: ResolvedPendingAction) {
+    const payload = (action.payload as PendingActionPayload) || {};
+    const profileId = payload.profileId as string | undefined;
+    const profileEmail = payload.profileEmail as string | undefined;
+    const profileName = payload.profileName as string | undefined;
+
+    if (!profileId) {
+      return;
+    }
+
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { email: true, fullName: true },
+    });
+
+    const email = profileEmail || profile?.email;
+    if (!email) {
+      return;
+    }
+
+    const userName = profileName || profile?.fullName || email;
+    const appUrl = getAppUrl({ removeTrailingSlash: true });
+    const emailService = getEmailService();
+
+    await emailService.sendEmailUntracked({
+      to: [email],
+      subject: "Corretor Studio - Você foi adicionado a um novo time",
+      html: buildAddedToTeamEmail({ userName, loginUrl: `${appUrl}/sign-in` }),
+    });
   }
 
   private async sendInviteForCreatedUser(

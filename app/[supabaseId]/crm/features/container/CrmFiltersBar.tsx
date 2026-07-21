@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Heart, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import { useParams } from "next/navigation";
-import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useUser } from "@/app/context/UserContext";
+import { isManagerLikeRole } from "@/lib/roles";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import useCrmContext from "../context/CrmHook";
 import { DEFAULT_CRM_FILTERS, type CrmFiltersState, isCrmFiltersEmpty } from "../context/CrmTypes";
@@ -16,8 +16,7 @@ import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
-import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { LeadsFilterPresetsSheet } from "@/app/[supabaseId]/components/leads-filters/LeadsFilterPresetsSheet";
 
 const STATUS_OPTIONS = [
   { value: "new_opportunity", label: "Nova oportunidade" },
@@ -41,12 +40,14 @@ type CrmFilterPreset = {
   name: string;
   description: string | null;
   queryJson: CrmFiltersState;
+  visibility: "private" | "team";
+  createdBy: string;
   lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-const normalizePresetFilters = (raw: unknown): CrmFiltersState => {
+export const normalizeCrmPresetFilters = (raw: unknown): CrmFiltersState => {
   if (!raw || typeof raw !== "object") return DEFAULT_CRM_FILTERS;
   const data = raw as Partial<CrmFiltersState>;
   return {
@@ -70,6 +71,8 @@ const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersStat
   scheduledPeriodStart: filters.scheduledPeriodStart || "",
   scheduledPeriodEnd: filters.scheduledPeriodEnd || "",
   onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
+  onlyTransfer: filters.onlyTransfer === true,
+  onlyDraft: filters.onlyDraft === true,
 });
 
 const areCrmFiltersEqual = (left: CrmFiltersState, right: CrmFiltersState) =>
@@ -90,30 +93,26 @@ export function CrmFiltersBar() {
 
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId } = useTeamContext();
+  const { activeTeamId, activeRole } = useTeamContext();
+  const { user } = useUser();
+  const isManager = isManagerLikeRole(activeRole ?? undefined);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
 
-  const [presetsOpen, setPresetsOpen] = useState(false);
-  const [presetsLoading, setPresetsLoading] = useState(false);
-  const [presets, setPresets] = useState<CrmFilterPreset[]>([]);
-  const [presetName, setPresetName] = useState("");
-  const [presetDescription, setPresetDescription] = useState("");
-  const [isSavingPreset, setIsSavingPreset] = useState(false);
-  const [lastUsedPresetId, setLastUsedPresetId] = useState<string | null>(null);
+  const memberNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of [...sdrMembers, ...closerMembers]) {
+      map.set(member.id, member.name || member.email);
+    }
+    return map;
+  }, [closerMembers, sdrMembers]);
 
   const lastPresetStorageKey = useMemo(() => {
     if (!supabaseId || !activeTeamId) return null;
     return `crm:last-used-preset:${supabaseId}:${activeTeamId}`;
   }, [supabaseId, activeTeamId]);
 
-  useEffect(() => {
-    if (!lastPresetStorageKey || typeof window === "undefined") {
-      setLastUsedPresetId(null);
-      return;
-    }
-    setLastUsedPresetId(window.localStorage.getItem(lastPresetStorageKey));
-  }, [lastPresetStorageKey]);
+  const [presets, setPresets] = useState<CrmFilterPreset[]>([]);
 
   const responsibleOptions = useMemo(
     () =>
@@ -177,52 +176,14 @@ export function CrmFiltersBar() {
     });
   };
 
-  const loadPresets = async () => {
-    if (!supabaseId || !activeTeamId) {
-      setPresets([]);
-      return;
-    }
-
-    setPresetsLoading(true);
-    try {
-      const response = await fetch(`/api/v1/teams/${activeTeamId}/crm/filter-presets`, {
-        headers: {
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId,
-        },
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.[0] || "Erro ao carregar presets.");
-      }
-      const nextPresets = Array.isArray(result.result)
-        ? result.result.map((preset: any) => ({
-            ...preset,
-            queryJson: normalizePresetFilters(preset.queryJson),
-          }))
-        : [];
-      setPresets(nextPresets);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar filtros salvos.");
-      setPresets([]);
-    } finally {
-      setPresetsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadPresets();
-  }, [supabaseId, activeTeamId]);
-
   const isFiltered = !isCrmFiltersEmpty(crmFilters);
-  const activePreset = useMemo(() => {
-    return (
-      presets.find((preset) =>
-        areCrmFiltersEqual(normalizePresetFilters(preset.queryJson), crmFilters)
-      ) || null
-    );
-  }, [crmFilters, presets]);
-  const isPresetInUse = !!activePreset;
+  const isPresetInUse = useMemo(
+    () =>
+      presets.some((preset) =>
+        areCrmFiltersEqual(normalizeCrmPresetFilters(preset.queryJson), crmFilters)
+      ),
+    [crmFilters, presets]
+  );
 
   const presetDescriptionLabel = (queryJson: CrmFiltersState) => {
     const parts: string[] = [];
@@ -241,97 +202,10 @@ export function CrmFiltersBar() {
       );
     }
     if (queryJson.onlyMeetingsHeld) parts.push("Reuniões realizadas");
+    if (queryJson.onlyTransfer) parts.push("Transferência");
+    if (queryJson.onlyDraft) parts.push("Rascunhos");
     if (parts.length === 0) return "Sem filtros aplicados";
     return parts.join(" • ");
-  };
-
-  const handleSavePreset = async () => {
-    if (!supabaseId || !activeTeamId) return;
-    const normalizedName = presetName.trim();
-    if (!normalizedName) {
-      toast.error("Informe um nome para o preset.");
-      return;
-    }
-
-    setIsSavingPreset(true);
-    try {
-      const response = await fetch(`/api/v1/teams/${activeTeamId}/crm/filter-presets`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId,
-        },
-        body: JSON.stringify({
-          name: normalizedName,
-          description: presetDescription.trim() || null,
-          queryJson: crmFilters,
-        }),
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.[0] || "Não foi possível salvar o preset.");
-      }
-      toast.success("Filtro pré-definido salvo.");
-      setPresetName("");
-      setPresetDescription("");
-      await loadPresets();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar preset.");
-    } finally {
-      setIsSavingPreset(false);
-    }
-  };
-
-  const handleUsePreset = async (preset: CrmFilterPreset) => {
-    if (!supabaseId || !activeTeamId) return;
-
-    setCrmFilters(normalizePresetFilters(preset.queryJson));
-    setLastUsedPresetId(preset.id);
-    if (lastPresetStorageKey && typeof window !== "undefined") {
-      window.localStorage.setItem(lastPresetStorageKey, preset.id);
-    }
-
-    try {
-      await fetch(`/api/v1/teams/${activeTeamId}/crm/filter-presets/${preset.id}/use`, {
-        method: "POST",
-        headers: {
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId,
-        },
-      });
-    } catch (error) {
-      console.error("[CrmFiltersBar] Falha ao marcar preset como usado:", error);
-    }
-
-    toast.success(`Preset "${preset.name}" aplicado.`);
-    setPresetsOpen(false);
-    await loadPresets();
-  };
-
-  const handleDeletePreset = async (presetId: string) => {
-    if (!supabaseId || !activeTeamId) return;
-    try {
-      const response = await fetch(`/api/v1/teams/${activeTeamId}/crm/filter-presets/${presetId}`, {
-        method: "DELETE",
-        headers: {
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId,
-        },
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.[0] || "Não foi possível remover o preset.");
-      }
-      if (lastPresetStorageKey && typeof window !== "undefined" && lastUsedPresetId === presetId) {
-        window.localStorage.removeItem(lastPresetStorageKey);
-        setLastUsedPresetId(null);
-      }
-      toast.success("Preset removido.");
-      await loadPresets();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao remover preset.");
-    }
   };
 
   return (
@@ -350,6 +224,10 @@ export function CrmFiltersBar() {
         onToggleMeetingHeld={(value) =>
           setCrmFilter("onlyMeetingsHeld", value)
         }
+        transfer={crmFilters.onlyTransfer}
+        onToggleTransfer={(value) => setCrmFilter("onlyTransfer", value)}
+        draft={crmFilters.onlyDraft}
+        onToggleDraft={(value) => setCrmFilter("onlyDraft", value)}
       />
       {responsibleOptions.length > 0 && (
         <LeadsMultiFilter
@@ -378,92 +256,22 @@ export function CrmFiltersBar() {
         onChange={handleScheduledDateChange}
         allowFutureDates
       />
-      <Sheet
-        open={presetsOpen}
-        onOpenChange={(open) => {
-          setPresetsOpen(open);
-          if (open) {
-            void loadPresets();
-          }
-        }}
-      >
-        <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            className={`h-8 px-2 lg:px-3 ${isPresetInUse ? "border-orange-500/70 text-orange-500" : ""}`}
-          >
-            <Heart
-              className={`mr-2 h-4 w-4 ${isPresetInUse ? "fill-orange-500 text-orange-500" : ""}`}
-            />
-            Presets
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="right" className="w-[420px] sm:w-[480px]">
-          <SheetHeader>
-            <SheetTitle>Filtros pré-definidos</SheetTitle>
-            <SheetDescription>
-              Salve filtros por time para reaproveitar depois. Esses presets são privados por usuário.
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="mt-4 grid gap-3 rounded-lg border border-border/60 p-3">
-            <Input
-              value={presetName}
-              onChange={(event) => setPresetName(event.target.value)}
-              placeholder="Nome do preset"
-            />
-            <Input
-              value={presetDescription}
-              onChange={(event) => setPresetDescription(event.target.value)}
-              placeholder="Descrição da query"
-            />
-            <Button onClick={() => void handleSavePreset()} disabled={isSavingPreset}>
-              {isSavingPreset ? "Salvando..." : "Salvar filtro atual"}
-            </Button>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {presetsLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando presets...</p>
-            ) : presets.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum preset salvo ainda.</p>
-            ) : (
-              presets.map((preset) => {
-                const isLastUsed = preset.id === lastUsedPresetId;
-                return (
-                  <div
-                    key={preset.id}
-                    className="rounded-lg border border-border/60 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold">{preset.name}</p>
-                        {isLastUsed ? <Badge variant="secondary">Último usado</Badge> : null}
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => void handleDeletePreset(preset.id)}
-                        aria-label={`Remover preset ${preset.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {preset.description?.trim() || presetDescriptionLabel(normalizePresetFilters(preset.queryJson))}
-                    </p>
-                    <div className="mt-3 flex justify-end">
-                      <Button size="sm" onClick={() => void handleUsePreset(preset)}>
-                        Usar
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <LeadsFilterPresetsSheet
+        scope="crm"
+        supabaseId={supabaseId}
+        profileId={user?.id}
+        teamId={activeTeamId}
+        isManager={isManager}
+        currentFilters={crmFilters}
+        isPresetActive={isPresetInUse}
+        lastPresetStorageKey={lastPresetStorageKey}
+        normalizePresetFilters={normalizeCrmPresetFilters}
+        areFiltersEqual={areCrmFiltersEqual}
+        presetDescriptionLabel={presetDescriptionLabel}
+        onApplyFilters={setCrmFilters}
+        getCreatorName={(id) => memberNameById.get(id)}
+        onPresetsChange={setPresets}
+      />
       {isFiltered && (
         <Button
           variant="ghost"

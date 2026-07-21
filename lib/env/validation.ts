@@ -63,6 +63,13 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: nonEmptyString.describe('Supabase service role key'),
   SUPABASE_LEAD_ATTACHMENTS_BUCKET: nonEmptyString.describe('Supabase bucket name for lead attachments'),
   SUPABASE_PROFILE_ICONS_BUCKET: nonEmptyString.describe('Supabase bucket name for profile icons'),
+  SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET: nonEmptyString.describe(
+    'Supabase bucket name for email template images (PNG/JPG)'
+  ),
+  SUPABASE_SUPPORT_ATTACHMENTS_BUCKET: z
+    .string()
+    .optional()
+    .describe('Supabase bucket name for support request image attachments'),
 
   // Database PostgreSQL
   POSTGRES_USER: nonEmptyString.describe('PostgreSQL username'),
@@ -84,7 +91,10 @@ export const envSchema = z.object({
     .describe('Resend API key for email sending'),
   EMAIL_TEST_MODE: booleanStringSchema.describe('Enable email test mode'),
   RESEND_OWNER_EMAIL: emailSchema.describe('Owner email address'),
-  SUPPORT_EMAIL: emailSchema.describe('Support email address'),
+
+  // Slack
+  SLACK_SUPPORT_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for support requests'),
+  SLACK_BACKOFFICE_LEADS_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for backoffice lead events'),
 
   // Asaas Payment Gateway
   ASAAS_API_KEY: asaasApiKeySchema.describe('Asaas API key'),
@@ -98,6 +108,18 @@ export const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: urlSchema.describe('Public app URL'),
   NEXT_PUBLIC_API_URL: z.string().optional().describe('Public API URL (optional)'),
   NEXT_API_BASE_URL: nonEmptyString.describe('API base path'),
+
+  // Sentry
+  NEXT_PUBLIC_SENTRY_DSN: urlSchema.describe('Sentry DSN for browser and server SDKs'),
+  // Build-time only — provided via .env.sentry-build-plugin; not needed at runtime
+  SENTRY_AUTH_TOKEN: nonEmptyString.optional().describe('Sentry auth token for source map upload'),
+  // Hardcoded in next.config.ts; kept here for CI/Vercel overrides
+  SENTRY_ORG: nonEmptyString.optional().describe('Sentry organization slug'),
+  SENTRY_PROJECT: nonEmptyString.optional().describe('Sentry project slug'),
+  SENTRY_PUBLIC_KEY: nonEmptyString.optional().describe('Sentry public key (extractable from DSN)'),
+  // Vercel-injected integrations — not available in local dev
+  SENTRY_OTLP_TRACES_URL: urlSchema.optional().describe('Sentry OTLP traces endpoint'),
+  SENTRY_VERCEL_LOG_DRAIN_URL: urlSchema.optional().describe('Sentry Vercel log drain URL'),
 
   // Encryption keys
   ENCRYPTION_KEY: hexKeySchema.describe('Server-side encryption key'),
@@ -121,6 +143,32 @@ export const envSchema = z.object({
   THREECPLUS_API_BASE_URL: urlSchema.optional().describe('3C Plus API base URL (optional, defaults to https://app.3c.plus/api/v1)'),
   THREECPLUS_API_TOKEN: z.string().optional().describe('3C Plus master account API token (required only for teams in "master" mode)'),
   DIALER_ENCRYPTION_KEY: z.string().optional().describe('Encryption key for Dialer 3C Plus credentials (optional in non-production, falls back to a dev key)'),
+
+  // Web Push (optional — notifications still work in-app without these)
+  WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional().describe('VAPID public key for Web Push'),
+  WEB_PUSH_VAPID_PRIVATE_KEY: z.string().optional().describe('VAPID private key for Web Push'),
+  WEB_PUSH_VAPID_SUBJECT: z.string().optional().describe('VAPID subject (mailto: or https:)'),
+  NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional().describe('VAPID public key exposed to client'),
+
+  // Bethânia / N8N (optional — dev local)
+  N8N_BASE_URL: urlSchema.optional().describe('N8N base URL'),
+  N8N_WEBHOOK_BASE_URL: urlSchema.optional().describe('N8N webhook URL for containers'),
+  BACKOFFICE_N8N_OUTBOUND_URL: urlSchema.optional().describe('CS to N8N outbound webhook URL'),
+  BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET: z.string().optional().describe('HMAC secret N8N ↔ CS'),
+  BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN: z
+    .string()
+    .optional()
+    .describe('Bearer token do agente studio-bot-ops na VPS'),
+  N8N_BETHANIA_INBOUND_PATH: z.string().optional().describe('N8N inbound workflow path'),
+  EVO_BETHANIA_INSTANCE: z.string().optional().describe('Evolution instance name for Bethânia'),
+  BACKOFFICE_BETHANIA_WHATSAPP_NUMBER: z.string().optional().describe('Bethânia WhatsApp number E.164'),
+  SUPABASE_BACKOFFICE_BOT_BUCKET: z.string().optional().describe('Storage bucket for Bethânia avatar'),
+  GROQ_API_KEY: z.string().optional().describe('Deprecated alias; prefer BACKOFFICE_GROQ_API_KEY'),
+  GROQ_API_BASE_URL: urlSchema.optional().describe('Deprecated alias; prefer BACKOFFICE_BETHANIA_AI_BASE_URL'),
+  BACKOFFICE_GROQ_API_KEY: z.string().optional().describe('Groq API key for Bethânia AI'),
+  BACKOFFICE_BETHANIA_AI_ENABLED: z.string().optional().describe('Kill switch mirror (DB is source of truth)'),
+  BACKOFFICE_BETHANIA_AI_BASE_URL: urlSchema.optional().describe('OpenAI-compatible Groq base URL'),
+  BACKOFFICE_BETHANIA_AI_ROLLUP_CRON_SECRET: z.string().optional().describe('Cron secret for AI rollup'),
 });
 
 // Infer the type from the schema
@@ -137,6 +185,8 @@ export const CRITICAL_ENV_VARS = [
   'ASAAS_WEBHOOK_TOKEN',
   'ENCRYPTION_KEY',
   'NEXT_PUBLIC_APP_URL',
+  'NEXT_PUBLIC_SENTRY_DSN',
+  'SLACK_BACKOFFICE_LEADS_WEBHOOK_URL',
 ] as const;
 
 /**

@@ -52,9 +52,10 @@ export function DocsContainer() {
       availableChapters.find((chapter) => chapter.id === DEFAULT_CHAPTER_ID)?.id ??
       availableChapters[0].id
 
-    const syncFromHash = () => {
+    const syncFromLocation = () => {
+      const chapterId = new URLSearchParams(window.location.search).get("chapter")
       const hash = window.location.hash.replace("#", "")
-      const matchedChapter = availableChapters.find((chapter) => chapter.id === hash)
+      const matchedChapter = availableChapters.find((chapter) => chapter.id === chapterId || chapter.id === hash)
 
       setActiveChapterId(matchedChapter?.id ?? defaultChapterId)
 
@@ -69,10 +70,14 @@ export function DocsContainer() {
       })
     }
 
-    syncFromHash()
-    window.addEventListener("hashchange", syncFromHash)
+    syncFromLocation()
+    window.addEventListener("hashchange", syncFromLocation)
+    window.addEventListener("popstate", syncFromLocation)
 
-    return () => window.removeEventListener("hashchange", syncFromHash)
+    return () => {
+      window.removeEventListener("hashchange", syncFromLocation)
+      window.removeEventListener("popstate", syncFromLocation)
+    }
   }, [chapters])
 
   function handleSelectChapter(chapterId: string) {
@@ -90,6 +95,7 @@ export function DocsContainer() {
     setIsMobileNavOpen(false)
 
     const url = new URL(window.location.href)
+    url.searchParams.set("chapter", chapterId)
     url.hash = chapterId
     window.history.replaceState(null, "", url.toString())
 
@@ -105,22 +111,22 @@ export function DocsContainer() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Capitulo atual
+                Capítulo atual
               </p>
               <p className="truncate text-sm font-semibold text-foreground">
-                {activeChapter?.title ?? "Documentacao"}
+                {activeChapter?.title ?? "Documentação"}
               </p>
             </div>
             <DrawerTrigger asChild>
               <Button type="button" variant="outline" className="rounded-xl">
                 <PanelLeft className="h-4 w-4" />
-                Capitulos
+                Capítulos
               </Button>
             </DrawerTrigger>
           </div>
           <DrawerContent className="max-h-[85vh]">
             <DrawerHeader>
-              <DrawerTitle>Capitulos da documentacao</DrawerTitle>
+              <DrawerTitle>Capítulos da documentação</DrawerTitle>
               <DrawerDescription>
                 Escolha a página que você quer abrir no painel principal.
               </DrawerDescription>

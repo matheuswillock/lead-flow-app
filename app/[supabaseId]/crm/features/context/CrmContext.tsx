@@ -68,7 +68,7 @@ export function CrmProvider({
   const searchParams = useSearchParams();
   const searchViewParam = searchParams.get("view");
 
-  const [isReady, setIsReady] = useState(false);
+  const [isReady] = useState(true);
   const [viewMode, setViewModeState] = useState<CrmViewMode>(CRM_DEFAULT_VIEW_MODE);
   const [crmFilters, setCrmFiltersState] = useState<CrmFiltersState>(DEFAULT_CRM_FILTERS);
 
@@ -81,8 +81,6 @@ export function CrmProvider({
   );
 
   useEffect(() => {
-    setIsReady(false);
-
     const viewModeFromSearchParam = normalizeCrmViewMode(searchViewParam);
     if (viewModeFromSearchParam) {
       setViewModeState(viewModeFromSearchParam);
@@ -99,8 +97,6 @@ export function CrmProvider({
 
     const savedFilters = resolvedFiltersPreferenceService.getFilters(preferenceScope);
     setCrmFiltersState(savedFilters ?? DEFAULT_CRM_FILTERS);
-
-    setIsReady(true);
   }, [
     preferenceScope,
     resolvedViewPreferenceService,

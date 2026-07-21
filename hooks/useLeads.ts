@@ -11,6 +11,7 @@ import {
 } from '@/app/api/v1/leads/DTO/leadResponseDTO';
 import { CreateLeadRequest } from '@/app/api/v1/leads/DTO/requestToCreateLead';
 import { UpdateLeadRequest } from '@/app/api/v1/leads/DTO/requestToUpdateLead';
+import { leadStatusTransitionClient } from '@/lib/services/leadStatusTransitionClient';
 
 interface UseLeadsOptions {
   status?: LeadStatus;
@@ -105,10 +106,13 @@ export const useLeads = () => {
       // Transform API response to DTO format expected by frontend
       const result: CreateLeadResponseDTO = {
         success: apiResult.isValid,
-        lead: apiResult.result,
+        lead: apiResult.isValid ? apiResult.result : null,
         message: apiResult.isValid 
           ? apiResult.successMessages?.join(', ') || 'Lead criado com sucesso'
-          : apiResult.errorMessages?.join(', ') || 'Erro ao criar lead'
+          : apiResult.errorMessages?.join(', ') || 'Erro ao criar lead',
+        requiresDuplicateConfirmation:
+          apiResult.result?.requiresDuplicateConfirmation === true,
+        duplicateCandidates: apiResult.result?.duplicateCandidates,
       };
       
       console.info('[useLeads] Transformed result:', result);
@@ -231,29 +235,26 @@ export const useLeads = () => {
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/leads/${id}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-supabase-user-id': supabaseId,
-          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
-        },
-        body: JSON.stringify({ status }),
+      const transitionResult = await leadStatusTransitionClient.executeStatusTransition({
+        leadId: id,
+        targetStatus: status,
+        supabaseId,
+        teamId: activeTeamId,
       });
 
-      const apiResult = await response.json().catch(() => null);
-      if (!response.ok || !apiResult?.isValid) {
-        const message = Array.isArray(apiResult?.errorMessages) && apiResult.errorMessages.length > 0
-          ? apiResult.errorMessages.join(', ')
+      const { output } = transitionResult;
+
+      if (!output.isValid) {
+        const message = Array.isArray(output.errorMessages) && output.errorMessages.length > 0
+          ? output.errorMessages.join(', ')
           : 'Erro ao atualizar status do lead';
         throw new Error(message);
       }
       
-      // Transform API response to DTO format expected by frontend
       const result: UpdateLeadResponseDTO = {
         success: true,
-        lead: apiResult.result,
-        message: apiResult.successMessages.join(', ') || 'Status do lead atualizado com sucesso'
+        lead: output.result as UpdateLeadResponseDTO['lead'],
+        message: output.successMessages.join(', ') || 'Status do lead atualizado com sucesso'
       };
       
       return result;

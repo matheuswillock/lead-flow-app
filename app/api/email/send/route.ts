@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
           const output = new Output(false, [], ["to, subject e (html ou text) são obrigatórios"], null);
           return NextResponse.json(output, { status: 400 });
         }
-        result = await emailService.sendEmail(data);
+        result = await emailService.sendEmailUntracked(data);
         break;
 
       case 'subscription-confirmation':
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       const output = new Output(true, ["Email enviado com sucesso"], [], result.data);
       return NextResponse.json(output, { status: 200 });
     } else {
-      const output = new Output(false, [], [result.error], null);
+      const output = new Output(false, [], [result.error ?? "Erro ao enviar email"], null);
       return NextResponse.json(output, { status: 500 });
     }
 

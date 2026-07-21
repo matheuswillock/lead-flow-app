@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   backofficeProfileUserTypeUseCase,
   type BackofficeProfileUserTypeInput,
 } from "@/app/api/useCases/backoffice/BackofficeProfileUserTypeUseCase"
 
-const USER_TYPE_VALUES = ["common", "member_pro"] as const
+const USER_TYPE_VALUES = ["common", "member_pro", "associate", "guest"] as const
 
 function parseUserType(value: unknown): BackofficeProfileUserTypeInput["userType"] | undefined {
   return (USER_TYPE_VALUES as readonly unknown[]).includes(value)
@@ -23,10 +25,8 @@ export async function PATCH(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
-
-    if (!result.access.fullAccess) {
-      return NextResponse.json(new Output(false, [], ["Acesso negado"], null), { status: 403 })
-    }
+    const denied = requireManagerAccess(result.access)
+    if (denied) return denied
 
     const { profileId } = await params
     const body = await request.json()
@@ -39,11 +39,13 @@ export async function PATCH(
     const input: BackofficeProfileUserTypeInput = {
       userType,
       accessExpiresAt: typeof body.accessExpiresAt === "string" ? body.accessExpiresAt : undefined,
+      sponsorMasterId: typeof body.sponsorMasterId === "string" ? body.sponsorMasterId : undefined,
     }
 
     const output = await backofficeProfileUserTypeUseCase.convert(profileId, result.access.profileId, input)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeProfileUserTypeRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

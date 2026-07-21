@@ -9,13 +9,10 @@
  */
 export function maskPhone(value: string): string {
   if (!value) return '';
-  
-  // Remove tudo que não é número
-  const numbers = value.replace(/\D/g, '');
-  
-  // Limita a 11 dígitos
-  const limited = numbers.slice(0, 11);
-  
+
+  const limited = normalizeLeadPhoneDigits(value);
+  if (!limited) return '';
+
   // Aplica a máscara
   if (limited.length <= 10) {
     // Formato: (11) 9999-9999
@@ -178,12 +175,24 @@ export function sanitizeDocumentDigits(value: string): string {
   return value.replace(/\D/g, "").slice(0, 14)
 }
 
+/**
+ * Normaliza telefone de lead para armazenamento/UI: somente DDD + número (máx. 11).
+ * Remove DDI 55 explicitamente em E.164 BR de 12 (fixo) ou 13 (móvel) dígitos.
+ * Ex.: "55 11 99999-9999" | "5511999999999" → "11999999999"
+ * Ex.: "+55 11 3333-4444" → "1133334444" (não usa slice(-11), que geraria "51133334444")
+ */
 export function normalizeLeadPhoneDigits(value: string): string {
   if (!value) return "";
-  const digits = value.replace(/\D/g, "");
+  let digits = value.replace(/\D/g, "");
+  if (
+    (digits.length === 12 || digits.length === 13) &&
+    digits.startsWith("55")
+  ) {
+    digits = digits.slice(2);
+  }
   if (digits.length <= 11) return digits;
-  return digits.slice(0, 11);
-};
+  return digits.slice(-11);
+}
 
 /**
  * Retorna o documento formatado para RG/CPF (somente dígitos)

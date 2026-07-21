@@ -6,6 +6,14 @@ import { ptBR } from "date-fns/locale"
 import { Clock, Calendar } from "lucide-react"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { isPastInTz, formatIntimezone } from "@/lib/dates"
+import {
+  getScheduleMeetingStatus,
+  getScheduleMeetingStatusBadgeClass,
+  getScheduleMeetingStatusLabel,
+  getMeetingPresenceBadgeClass,
+  getMeetingPresenceBadgeLabel,
+  getMeetingPresenceBadgeVariant,
+} from "@/lib/lead-meeting"
 
 import {
   Card,
@@ -25,6 +33,9 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { useTeamContext } from "@/app/context/TeamContext"
+import { useDashboardContext } from "../context/DashboardContext"
+import type { DashboardTeamScope } from "../context/DashboardTypes"
+import { cn } from "@/lib/utils"
 
 interface ScheduleData {
   id: string
@@ -34,6 +45,12 @@ interface ScheduleData {
   leadPhone: string
   responsible: string
   responsibleEmail: string
+  closerName: string
+  closerEmail: string
+  meetingHeald: "yes" | "no" | null
+  meetingPresenceConfirmed: boolean
+  teamName: string
+  teamId: string
   notes?: string
   leadId: string
 }
@@ -46,8 +63,12 @@ const SCHEDULES_CACHE_TTL_MS = 60 * 1000
 const schedulesCacheByKey = new Map<string, { data: ScheduleData[]; timestamp: number }>()
 const schedulesInFlightByKey = new Map<string, Promise<ScheduleData[]>>()
 
-async function getSchedulesWithDedupe(supabaseId: string, teamId: string): Promise<ScheduleData[]> {
-  const requestKey = `${supabaseId}:${teamId}`
+async function getSchedulesWithDedupe(
+  supabaseId: string,
+  teamId: string,
+  teamScope: DashboardTeamScope,
+): Promise<ScheduleData[]> {
+  const requestKey = `${supabaseId}:${teamId}:${teamScope}`
   const now = Date.now()
   const cached = schedulesCacheByKey.get(requestKey)
 
@@ -61,7 +82,12 @@ async function getSchedulesWithDedupe(supabaseId: string, teamId: string): Promi
   }
 
   const requestPromise = (async (): Promise<ScheduleData[]> => {
-    const response = await fetch('/api/v1/dashboard/schedules', {
+    const params = new URLSearchParams()
+    if (teamScope === "all") {
+      params.set("teamScope", "all")
+    }
+
+    const response = await fetch(`/api/v1/dashboard/schedules?${params.toString()}`, {
       headers: {
         'x-supabase-user-id': supabaseId,
         'x-team-id': teamId,
@@ -98,22 +124,23 @@ async function getSchedulesWithDedupe(supabaseId: string, teamId: string): Promi
 export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
   const { tz } = useTimezone()
   const { activeTeamId, isLoading: isTeamLoading } = useTeamContext()
+  const { teamScope } = useDashboardContext()
   const [schedules, setSchedules] = React.useState<ScheduleData[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+
+  const showTeamColumn = teamScope === "all"
 
   React.useEffect(() => {
     let isCancelled = false
     if (!supabaseId) return
 
-    // While TeamContext is still resolving activeTeamId, keep this card loading.
     if (isTeamLoading) {
       setIsLoading(true)
       return
     }
 
     if (!activeTeamId) {
-      // Avoid infinite loading when no team is selected/available.
       setIsLoading(false)
       setSchedules([])
       setError("Selecione um time para visualizar os agendamentos.")
@@ -124,7 +151,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
       try {
         setIsLoading(true)
         setError(null)
-        const nextSchedules = await getSchedulesWithDedupe(supabaseId, activeTeamId)
+        const nextSchedules = await getSchedulesWithDedupe(supabaseId, activeTeamId, teamScope)
         if (isCancelled) return
         setSchedules(nextSchedules)
         setError(null)
@@ -144,7 +171,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
     return () => {
       isCancelled = true
     }
-  }, [supabaseId, activeTeamId, isTeamLoading])
+  }, [supabaseId, activeTeamId, isTeamLoading, teamScope])
 
   const getInitials = (name: string) => {
     const names = name.split(' ')
@@ -164,6 +191,35 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
     } catch {
       return 'Data inválida'
     }
+  }
+
+  const renderMeetingPresenceBadge = (schedule: ScheduleData) => {
+    const variant = getMeetingPresenceBadgeVariant({
+      meetingPresenceConfirmed: schedule.meetingPresenceConfirmed,
+      meetingDate: schedule.date,
+    })
+
+    return (
+      <Badge variant="outline" className={cn(getMeetingPresenceBadgeClass(variant))}>
+        {getMeetingPresenceBadgeLabel(variant)}
+      </Badge>
+    )
+  }
+
+  const renderMeetingStatusBadge = (schedule: ScheduleData) => {
+    const status = getScheduleMeetingStatus({
+      date: schedule.date,
+      meetingHeald: schedule.meetingHeald,
+    })
+
+    return (
+      <Badge
+        variant="outline"
+        className={cn(getScheduleMeetingStatusBadgeClass(status))}
+      >
+        {getScheduleMeetingStatusLabel(status)}
+      </Badge>
+    )
   }
 
   if (isLoading) {
@@ -244,7 +300,11 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
               <TableRow>
                 <TableHead>Horário</TableHead>
                 <TableHead>Lead</TableHead>
+                {showTeamColumn ? <TableHead>Time</TableHead> : null}
                 <TableHead>Responsável</TableHead>
+                <TableHead>Closer</TableHead>
+                <TableHead>Agenda confirmada</TableHead>
+                <TableHead>Reunião realizada</TableHead>
                 <TableHead className="text-right">Tempo Restante</TableHead>
               </TableRow>
             </TableHeader>
@@ -276,6 +336,11 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
                         </span>
                       </div>
                     </TableCell>
+                    {showTeamColumn ? (
+                      <TableCell>
+                        <span className="text-sm">{schedule.teamName}</span>
+                      </TableCell>
+                    ) : null}
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-8 w-8">
@@ -285,6 +350,22 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
                         </Avatar>
                         <span className="text-sm">{schedule.responsible}</span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs">
+                            {getInitials(schedule.closerName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{schedule.closerName}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {renderMeetingPresenceBadge(schedule)}
+                    </TableCell>
+                    <TableCell>
+                      {renderMeetingStatusBadge(schedule)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Badge variant={isPast ? "secondary" : "default"}>

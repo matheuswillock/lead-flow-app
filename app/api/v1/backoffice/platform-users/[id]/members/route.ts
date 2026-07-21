@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { BackofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const VALID_ROLES = ["manager", "backoffice", "operator"] as const
 const VALID_FUNCTIONS = ["SDR", "CLOSER"] as const
@@ -19,6 +21,8 @@ export async function POST(
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const { id } = await params
     const body = await request.json().catch(() => null)
@@ -47,6 +51,8 @@ export async function POST(
     const teamId = typeof data.teamId === "string" ? data.teamId.trim() : ""
     const canCreateAccountUsers = data.canCreateAccountUsers === true
     const canManageAccountTeams = data.canManageAccountTeams === true
+    const canTransferAccountLeads = data.canTransferAccountLeads === true
+    const generateCharge = data.generateCharge === true
 
     if (!fullName) {
       return NextResponse.json(
@@ -79,10 +85,13 @@ export async function POST(
       teamId,
       canCreateAccountUsers,
       canManageAccountTeams,
+      canTransferAccountLeads,
+      generateCharge,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserMembersRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

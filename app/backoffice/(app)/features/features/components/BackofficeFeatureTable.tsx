@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { isBetaGroupEligible } from "@/lib/features/is-beta-group-eligible"
 import type { BackofficeFeatureItem } from "../context/BackofficeFeatureTypes"
 import { useBackofficeFeature } from "../context/BackofficeFeatureContext"
 
@@ -40,9 +41,14 @@ interface FeatureRowProps {
 }
 
 function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
-  const { openEditDialog, openDeleteDialog } = useBackofficeFeature()
+  const { canManage, openEditDialog, openDeleteDialog } = useBackofficeFeature()
 
   const inheritsAccess = Boolean(isChild && parent && feature.inheritParentSettings)
+  const billingLabel = isChild
+    ? feature.billedSeparately
+      ? "cobrado à parte"
+      : "incluso"
+    : null
 
   return (
     <TableRow className={cn(isChild && "bg-muted/20")}>
@@ -58,6 +64,11 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
           </Badge>
           {inheritsAccess && (
             <span className="text-[10px] text-muted-foreground/60">herdado</span>
+          )}
+          {billingLabel && (
+            <Badge variant="outline" className="text-[10px]">
+              {billingLabel}
+            </Badge>
           )}
         </div>
       </TableCell>
@@ -79,7 +90,7 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
         {feature.productSlug ?? <span className="text-muted-foreground/40">—</span>}
       </TableCell>
       <TableCell>
-        {feature.betaEnabled ? (
+        {isBetaGroupEligible(feature) ? (
           <Badge variant="outline" className="text-orange-500 border-orange-500/40">
             Beta
           </Badge>
@@ -93,24 +104,26 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
         </Badge>
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => openEditDialog(feature)}
-            aria-label={`Editar ${feature.name}`}
-          >
-            <Pencil className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => openDeleteDialog(feature)}
-            aria-label={`Excluir ${feature.name}`}
-          >
-            <Trash2 className="size-4 text-destructive" />
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => openEditDialog(feature)}
+              aria-label={`Editar ${feature.name}`}
+            >
+              <Pencil className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => openDeleteDialog(feature)}
+              aria-label={`Excluir ${feature.name}`}
+            >
+              <Trash2 className="size-4 text-destructive" />
+            </Button>
+          </div>
+        )}
       </TableCell>
     </TableRow>
   )

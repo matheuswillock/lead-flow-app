@@ -1,0 +1,35 @@
+import type { BackofficeEmailContact } from "@prisma/client"
+
+export interface UpsertBackofficeEmailContactInput {
+  listId: string
+  email: string
+  name?: string | null
+  customFields?: Record<string, unknown> | null
+  backofficeLeadId?: string | null
+  /** Explicit opt-in only. Import/edit must not clear a prior unsubscribe. */
+  resubscribe?: boolean
+}
+
+export interface ListBackofficeEmailContactsParams {
+  page: number
+  pageSize: number
+}
+
+export interface ListBackofficeEmailContactsResult {
+  contacts: BackofficeEmailContact[]
+  total: number
+}
+
+export interface IBackofficeEmailContactRepository {
+  upsertActive(data: UpsertBackofficeEmailContactInput): Promise<BackofficeEmailContact>
+  listByListId(
+    listId: string,
+    params: ListBackofficeEmailContactsParams
+  ): Promise<ListBackofficeEmailContactsResult>
+  listActiveByListId(listId: string): Promise<BackofficeEmailContact[]>
+  findById(id: string): Promise<BackofficeEmailContact | null>
+  markUnsubscribedByEmailInAllLists(email: string): Promise<number>
+  markBouncedByEmailInAllLists(email: string): Promise<number>
+  markComplainedByEmailInAllLists(email: string): Promise<number>
+  delete(id: string): Promise<void>
+}

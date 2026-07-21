@@ -194,7 +194,7 @@ export function SubscriptionContainer() {
         <SubscriptionInvoices invoices={invoices} />
       )}
 
-      {hasAccess(FEATURE_SLUGS.EMAIL) && (
+      {hasAccess(FEATURE_SLUGS.EMAIL_CAMPAIGNS) && (
         <div className="space-y-2">
           <h2 className="text-lg font-semibold">Créditos de E-mail</h2>
           <EmailCreditsCard />

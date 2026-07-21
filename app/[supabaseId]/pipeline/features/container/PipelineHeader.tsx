@@ -27,6 +27,8 @@ export default function PipelineHeader({
         setAssignedUser, 
         onlyMeetingsHeld,
         setOnlyMeetingsHeld,
+        onlyTransfer,
+        setOnlyTransfer,
         taskOwners,
         user,
         userLoading,
@@ -112,6 +114,18 @@ export default function PipelineHeader({
             <SelectContent>
               <SelectItem value="all">Todas as reuniões</SelectItem>
               <SelectItem value="held">Reuniões realizadas</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={onlyTransfer ? "transfer" : "all"}
+            onValueChange={(value) => setOnlyTransfer(value === "transfer")}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas transferências</SelectItem>
+              <SelectItem value="transfer">Transferência</SelectItem>
             </SelectContent>
           </Select>
 

@@ -29,7 +29,6 @@ import { cn } from '@/lib/utils';
 import {
   formatDocumentInput,
   formatRgCpfInput,
-  isValidPhone,
   maskPhone,
   normalizeLeadPhoneDigits,
   sanitizeDocumentDigits,
@@ -38,7 +37,7 @@ import {
 import { useTeamContext } from '@/app/context/TeamContext';
 import { useTeamClosers } from '@/hooks/useTeamMembersByFunction';
 import { useHealthPlans } from '@/hooks/useHealthPlans';
-import type { CreateCarteiraIdentityStepPayload } from '../context/CarteiraTypes';
+import type { ContractType, CreateCarteiraIdentityStepPayload } from '../context/CarteiraTypes';
 import { useCarteiraContext } from '../context/CarteiraContext';
 
 const PARENTESCO_OPTIONS = [
@@ -171,6 +170,7 @@ const emptyIdentity: CreateCarteiraIdentityStepPayload = {
 };
 
 interface ContractForm {
+  contractType: ContractType;
   amount: string;
   startDateAt: Date | undefined;
   finalizedDateAt: Date | undefined;
@@ -181,11 +181,13 @@ interface ContractForm {
   holderName: string;
   holderBirthDate: Date | undefined;
   holderDocument: string;
+  holderRazaoSocial: string;
   holderCnpj: string;
   dependents: DependentEntry[];
 }
 
 const emptyContract: ContractForm = {
+  contractType: 'individual',
   amount: '',
   startDateAt: undefined,
   finalizedDateAt: undefined,
@@ -196,6 +198,7 @@ const emptyContract: ContractForm = {
   holderName: '',
   holderBirthDate: undefined,
   holderDocument: '',
+  holderRazaoSocial: '',
   holderCnpj: '',
   dependents: [],
 };
@@ -230,15 +233,27 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
 
   const closeFlow = () => onOpenChange(false);
 
-  const isIdentityValid = useMemo(() => {
-    const hasName  = identity.name.trim().length > 0;
-    const hasEmail = identity.email.trim().length > 0 && EMAIL_REGEX.test(identity.email.trim());
-    const hasPhone = identity.phone.trim().length > 0 && isValidPhone(identity.phone);
-    return hasName && hasEmail && hasPhone;
+  const identityValidation = useMemo(() => {
+    const trimmedName = identity.name.trim();
+    const trimmedEmail = identity.email.trim();
+    const phoneDigits = normalizeLeadPhoneDigits(identity.phone);
+
+    return {
+      hasName: trimmedName.length > 0,
+      hasEmail: trimmedEmail.length > 0 && EMAIL_REGEX.test(trimmedEmail),
+      hasPhone: phoneDigits.length === 10 || phoneDigits.length === 11,
+    };
   }, [identity.email, identity.name, identity.phone]);
+
+  const isIdentityValid = identityValidation.hasName && identityValidation.hasEmail && identityValidation.hasPhone;
+
+  const isCorporate = contract.contractType === 'corporate';
 
   const isContractValid = useMemo(() => {
     const amount = parseCurrencyInput(contract.amount);
+    const holderDocOk = isCorporate
+      ? !!contract.holderRazaoSocial.trim() && !!sanitizeDocumentDigits(contract.holderCnpj)
+      : !!sanitizeRgCpfDigits(contract.holderDocument);
     return (
       amount > 0 &&
       !!contract.closerId &&
@@ -248,9 +263,9 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
       contract.finalizedDateAt >= contract.startDateAt &&
       !!contract.holderName.trim() &&
       !!contract.holderBirthDate &&
-      !!sanitizeRgCpfDigits(contract.holderDocument)
+      holderDocOk
     );
-  }, [contract]);
+  }, [contract, isCorporate]);
 
   const patch = <K extends keyof ContractForm>(key: K, value: ContractForm[K]) => {
     setContract((prev) => ({ ...prev, [key]: value }));
@@ -280,6 +295,7 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
         phone: normalizeLeadPhoneDigits(identity.phone),
         cnpj: sanitizeDocumentDigits(identity.cnpj || '') || undefined,
         source: identity.source,
+        contractType: contract.contractType,
         amount: parseCurrencyInput(contract.amount),
         startDateAt: contract.startDateAt!.toISOString(),
         finalizedDateAt: contract.finalizedDateAt!.toISOString(),
@@ -291,9 +307,10 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
         notes: contract.notes.trim() || undefined,
         holder: {
           name: contract.holderName.trim(),
+          razaoSocial: isCorporate ? contract.holderRazaoSocial.trim() || undefined : undefined,
           birthDate: contract.holderBirthDate!.toISOString(),
           document: sanitizeRgCpfDigits(contract.holderDocument),
-          cnpj: contract.holderCnpj.trim() || undefined,
+          cnpj: sanitizeDocumentDigits(contract.holderCnpj) || undefined,
         },
         dependents: contract.dependents.map((d) => ({
           name: d.name,
@@ -364,6 +381,9 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                     value={identity.name}
                     onChange={(e) => setIdentity((prev) => ({ ...prev, name: e.target.value }))}
                   />
+                  {identity.name.length > 0 && !identityValidation.hasName && (
+                    <p className="text-xs text-destructive">Informe o nome do cliente.</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -375,6 +395,9 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                       value={identity.email}
                       onChange={(e) => setIdentity((prev) => ({ ...prev, email: e.target.value }))}
                     />
+                    {identity.email.length > 0 && !identityValidation.hasEmail && (
+                      <p className="text-xs text-destructive">Informe um e-mail válido.</p>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="add-phone">Telefone *</Label>
@@ -383,6 +406,9 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                       value={identity.phone}
                       onChange={(e) => setIdentity((prev) => ({ ...prev, phone: maskPhone(e.target.value) }))}
                     />
+                    {identity.phone.length > 0 && !identityValidation.hasPhone && (
+                      <p className="text-xs text-destructive">Informe um telefone com DDD.</p>
+                    )}
                   </div>
                 </div>
 
@@ -397,6 +423,32 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
               </div>
             ) : (
               <div className="flex flex-col gap-5">
+                {/* Tipo de Contrato */}
+                <section className="flex flex-col gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo de contrato</p>
+                  <RadioGroup
+                    value={contract.contractType}
+                    onValueChange={(v) => patch('contractType', v as ContractType)}
+                    className="flex flex-col gap-2"
+                  >
+                    {([
+                      { value: 'individual', title: 'PF', description: 'Pessoa Física' },
+                      { value: 'corporate',  title: 'Empresarial', description: 'Pessoa Jurídica' },
+                      { value: 'adhesion',   title: 'Adesão', description: 'Pessoa Física por Profissão' },
+                    ] as const).map((opt) => (
+                      <div key={opt.value} className="flex items-center gap-2">
+                        <RadioGroupItem id={`add-ct-${opt.value}`} value={opt.value} />
+                        <Label htmlFor={`add-ct-${opt.value}`} className="cursor-pointer">
+                          <span className="font-medium">{opt.title}</span>
+                          <span className="ml-1.5 text-xs text-muted-foreground">{opt.description}</span>
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </section>
+
+                <Separator />
+
                 {/* Contrato */}
                 <section className="flex flex-col gap-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contrato</p>
@@ -485,21 +537,35 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                       showTime={false}
                       disablePastDates={false}
                     />
-                    <div className="flex flex-col gap-1.5">
-                      <Label>CPF</Label>
-                      <Input
-                        value={formatRgCpfInput(contract.holderDocument)}
-                        onChange={(e) => patch('holderDocument', sanitizeRgCpfDigits(e.target.value))}
-                        placeholder="000.000.000-00"
-                      />
-                    </div>
-                    <div className="col-span-2 flex flex-col gap-1.5">
-                      <Label>CNPJ (opcional)</Label>
-                      <Input
-                        value={contract.holderCnpj}
-                        onChange={(e) => patch('holderCnpj', e.target.value)}
-                      />
-                    </div>
+                    {isCorporate ? (
+                      <>
+                        <div className="flex flex-col gap-1.5">
+                          <Label>CNPJ *</Label>
+                          <Input
+                            value={formatDocumentInput(contract.holderCnpj)}
+                            onChange={(e) => patch('holderCnpj', sanitizeDocumentDigits(e.target.value))}
+                            placeholder="00.000.000/0000-00"
+                          />
+                        </div>
+                        <div className="col-span-2 flex flex-col gap-1.5">
+                          <Label>Razão Social *</Label>
+                          <Input
+                            value={contract.holderRazaoSocial}
+                            onChange={(e) => patch('holderRazaoSocial', e.target.value)}
+                            placeholder="Razão social da empresa"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        <Label>CPF *</Label>
+                        <Input
+                          value={formatRgCpfInput(contract.holderDocument)}
+                          onChange={(e) => patch('holderDocument', sanitizeRgCpfDigits(e.target.value))}
+                          placeholder="000.000.000-00"
+                        />
+                      </div>
+                    )}
                   </div>
                 </section>
 

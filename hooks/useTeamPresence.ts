@@ -1,25 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import { fetchTeamMembersPayload } from "@/lib/team/teamMembersClientCache";
 
 type TeamMemberFunction = "SDR" | "CLOSER";
 type PresenceAvailability = "online" | "away";
 type PresenceStatus = PresenceAvailability | "offline";
-
-type TeamMembersApiMember = {
-  profileId: string;
-  name: string;
-  email: string;
-  profileIconUrl: string | null;
-  functions: string[] | null;
-};
-
-type TeamMembersApiResponse = {
-  isValid: boolean;
-  errorMessages?: string[];
-  result: {
-    members: TeamMembersApiMember[];
-  } | null;
-};
 
 type PresenceStateEntry = {
   profileId?: string;
@@ -44,6 +29,8 @@ type UseTeamPresenceParams = {
   supabaseId?: string;
   currentProfileId?: string | null;
   enabled?: boolean;
+  isAssociateAccount?: boolean;
+  sponsorMasterId?: string | null;
 };
 
 type PresenceRecord = {
@@ -127,6 +114,8 @@ export function useTeamPresence({
   supabaseId,
   currentProfileId,
   enabled = true,
+  isAssociateAccount = false,
+  sponsorMasterId = null,
 }: UseTeamPresenceParams) {
   const [members, setMembers] = useState<Omit<TeamPresenceMember, "presenceStatus">[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
@@ -138,7 +127,7 @@ export function useTeamPresence({
   const lastTrackAtRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!enabled || !activeTeamId || activeTeamId.startsWith("pending-") || !supabaseId) {
+    if (!enabled || !activeTeamId || !supabaseId) {
       setMembers([]);
       setIsLoadingMembers(false);
       return;
@@ -150,28 +139,18 @@ export function useTeamPresence({
       setIsLoadingMembers(true);
 
       try {
-        const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
-          headers: {
-            "x-supabase-user-id": supabaseId,
-          },
-          cache: "no-store",
-        });
+        const payload = await fetchTeamMembersPayload(supabaseId, activeTeamId);
 
-        const result = (await response.json()) as TeamMembersApiResponse;
-
-        if (!response.ok || !result?.isValid || !result?.result?.members) {
-          throw new Error(
-            Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
-              ? result.errorMessages.join(", ")
-              : "Erro ao carregar membros do time."
-          );
-        }
-
-        const mappedMembers = result.result.members.map((member) => ({
-          profileId: member.profileId,
+        const mappedMembers = payload.members
+          .filter((member) => {
+            if (!isAssociateAccount || !sponsorMasterId) return true;
+            return member.id !== sponsorMasterId;
+          })
+          .map((member) => ({
+          profileId: member.id,
           name: member.name || member.email || "Usuário",
           email: member.email || "",
-          profileIconUrl: member.profileIconUrl ?? null,
+          profileIconUrl: member.avatarImageUrl || null,
           functions: normalizeFunctions(member.functions),
         }));
 
@@ -195,7 +174,7 @@ export function useTeamPresence({
     return () => {
       isMounted = false;
     };
-  }, [enabled, activeTeamId, supabaseId]);
+  }, [enabled, activeTeamId, supabaseId, isAssociateAccount, sponsorMasterId]);
 
   const syncPresenceFromChannel = useCallback(() => {
     const channel = channelRef.current;
@@ -414,6 +393,10 @@ export function useTeamPresence({
       };
 
       return members
+        .filter((member) => {
+          if (!isAssociateAccount || !sponsorMasterId) return true;
+          return member.profileId !== sponsorMasterId;
+        })
         .map((member) => {
           const records = presenceByProfile.get(member.profileId) ?? [];
           return {
@@ -428,7 +411,7 @@ export function useTeamPresence({
           return a.name.localeCompare(b.name, "pt-BR");
         });
     },
-    [members, presenceByProfile, statusTick]
+    [members, presenceByProfile, statusTick, isAssociateAccount, sponsorMasterId]
   );
 
   return {

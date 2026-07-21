@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { backofficeMetaWebhookUseCase } from "@/app/api/useCases/backofficeMetaWebhook/BackofficeMetaWebhookUseCase"
 import type { Output } from "@/lib/output"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function resolveOutputStatus(output: Output): number {
   const result = output.result
@@ -54,6 +55,7 @@ export async function POST(
       { status }
     )
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMetaLeadWebhookRoute][POST] Falha inesperada:", error)
     return NextResponse.json(
       { success: false, message: "Erro interno" },

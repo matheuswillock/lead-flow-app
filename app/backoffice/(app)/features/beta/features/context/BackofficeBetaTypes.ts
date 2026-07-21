@@ -1,13 +1,24 @@
+export type BetaTeamScope = "ALL_TEAMS" | "SPECIFIC_TEAMS"
+
+export interface BetaGrantTeamItem {
+  id: string
+  name: string
+}
+
 export interface RawBetaGrant {
   id: string
   profileId: string
   isActive: boolean
+  betaTeamScope: BetaTeamScope
+  teams: BetaGrantTeamItem[]
 }
 
 export interface BetaGrantItem {
   id: string
   profileId: string
   isActive: boolean
+  betaTeamScope: BetaTeamScope
+  teams: BetaGrantTeamItem[]
   profile: {
     id: string
     fullName: string | null
@@ -39,4 +50,16 @@ export interface BetaClientSearchResult {
     hasNextPage: boolean
     hasPreviousPage: boolean
   }
+}
+
+export interface AddBetaUserPayload {
+  profileId: string
+  betaTeamScope: BetaTeamScope
+  teamIds?: string[]
+}
+
+export interface UpdateBetaUserPayload {
+  profileId: string
+  betaTeamScope: BetaTeamScope
+  teamIds?: string[]
 }

@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 type RouteParams = { params: Promise<{ id: string; teamId: string }> }
 
@@ -11,6 +13,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const { id, teamId } = await params
     const body = await request.json().catch(() => null)
@@ -18,20 +22,34 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(new Output(false, [], ["Payload inválido"], null), { status: 400 })
     }
 
-    const name = typeof (body as Record<string, unknown>).name === "string"
-      ? ((body as Record<string, unknown>).name as string).trim()
-      : ""
+    const rawBody = body as Record<string, unknown>
+    const name = typeof rawBody.name === "string" ? rawBody.name.trim() : undefined
+    const transferTargetTeamIds = Array.isArray(rawBody.transferTargetTeamIds)
+      ? (rawBody.transferTargetTeamIds as unknown[]).filter((v): v is string => typeof v === "string")
+      : undefined
 
-    if (!name) {
+    if (name === undefined && transferTargetTeamIds === undefined) {
+      return NextResponse.json(
+        new Output(false, [], ["Nenhum campo para atualizar"], null),
+        { status: 400 }
+      )
+    }
+
+    if (name !== undefined && !name) {
       return NextResponse.json(
         new Output(false, [], ["Nome do time é obrigatório"], null),
         { status: 400 }
       )
     }
 
-    const output = await backofficePlatformUsersUseCase.updateTeamForMasterUser(id, teamId, { name })
+    const output = await backofficePlatformUsersUseCase.updateTeamForMasterUser(id, teamId, {
+      ...(name ? { name } : {}),
+      transferTargetTeamIds,
+      updatedBy: access.access.profileId,
+    })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserTeamByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -43,11 +61,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const { id, teamId } = await params
     const output = await backofficePlatformUsersUseCase.deleteTeamFromMasterUser(id, teamId)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficePlatformUserTeamByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

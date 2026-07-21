@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, ChevronDown, Plus, Search, Users } from "lucide-react"
+import { AlertCircle, ChevronDown, Plus, Users, X } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
 import {
   Table,
   TableBody,
@@ -25,7 +26,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useBackofficeClients } from "../context/BackofficeClientsContext"
-import type { BackofficeClientsFilters } from "../context/BackofficeClientsTypes"
+import type {
+  BackofficeClientsFilters,
+  BackofficeClientsPlanFilter,
+  BackofficeClientsUserTypeFilter,
+} from "../context/BackofficeClientsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { BackofficeAdhesionDialog } from "../../adhesions/features/components/BackofficeAdhesionDialog"
 import { BackofficeAdhesionsService } from "../../adhesions/features/services/BackofficeAdhesionsService"
@@ -34,6 +39,18 @@ import { maskPhone } from "@/lib/masks"
 
 const CLIENTS_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
 const adhesionsService = new BackofficeAdhesionsService()
+
+const PLAN_OPTIONS: { value: BackofficeClientsPlanFilter; label: string }[] = [
+  { value: "lifetime", label: "Vitalício" },
+  { value: "monthly", label: "Mensal" },
+  { value: "trial", label: "Trial" },
+  { value: "none", label: "Sem plano ativo" },
+]
+
+const USER_TYPE_OPTIONS: { value: BackofficeClientsUserTypeFilter; label: string }[] = [
+  { value: "common", label: "Comum" },
+  { value: "member_pro", label: "Member PRO" },
+]
 
 function formatDate(value: string, tz: string) {
   return formatIntimezone(new Date(value), "dd/MM/yyyy", tz)
@@ -75,26 +92,53 @@ export function BackofficeClientsContainer() {
     [clients]
   )
 
+  const isFiltered = useMemo(
+    () =>
+      localFilters.query.trim().length > 0 ||
+      localFilters.plan !== "all" ||
+      localFilters.userType !== "all",
+    [localFilters.plan, localFilters.query, localFilters.userType]
+  )
+
   useEffect(() => {
     setLocalFilters(filters)
   }, [filters])
 
-  function handleFilterChange(field: keyof BackofficeClientsFilters, value: string) {
-    const next = {
-      ...localFilters,
-      [field]: value,
-    }
-    setLocalFilters(next)
-    setFilters(next)
+  useEffect(() => {
+    const nextQuery = localFilters.query.trim()
+    const currentQuery = filters.query.trim()
+    if (nextQuery === currentQuery) return
+
+    const debounceId = window.setTimeout(() => {
+      void fetchClients({ filters: localFilters, page: 1 })
+    }, 300)
+
+    return () => window.clearTimeout(debounceId)
+  }, [fetchClients, filters.query, localFilters])
+
+  function handlePlanChange(values: string[]) {
+    const selected = values[values.length - 1]
+    const next = (selected ?? "all") as BackofficeClientsPlanFilter | "all"
+    const updated = { ...localFilters, plan: next }
+    setLocalFilters(updated)
+    setFilters(updated)
+    void fetchClients({ filters: updated, page: 1 })
   }
 
-  async function handleSearch() {
-    await fetchClients({ filters: localFilters, page: 1 })
+  function handleUserTypeChange(values: string[]) {
+    const selected = values[values.length - 1]
+    const next = (selected ?? "all") as BackofficeClientsUserTypeFilter | "all"
+    const updated = { ...localFilters, userType: next }
+    setLocalFilters(updated)
+    setFilters(updated)
+    void fetchClients({ filters: updated, page: 1 })
   }
 
   async function handleClear() {
     const cleared: BackofficeClientsFilters = {
       query: "",
+      plan: "all",
+      userType: "all",
     }
     setLocalFilters(cleared)
     setFilters(cleared)
@@ -131,16 +175,33 @@ export function BackofficeClientsContainer() {
         <Input
           placeholder="Buscar por nome/e-mail de usuário ou nome do time"
           value={localFilters.query}
-          onChange={(e) => handleFilterChange("query", e.target.value)}
-          className="h-8 w-[260px] lg:w-[420px]"
+          onChange={(e) => setLocalFilters((prev) => ({ ...prev, query: e.target.value }))}
+          className="h-8 w-65 lg:w-105"
         />
-        <Button size="sm" onClick={handleSearch} disabled={isLoading}>
-          <Search className="mr-1 h-4 w-4" />
-          Buscar
-        </Button>
-        <Button size="sm" variant="outline" onClick={handleClear} disabled={isLoading}>
-          Limpar
-        </Button>
+        <LeadsMultiFilter
+          title="Plano"
+          options={PLAN_OPTIONS}
+          selectedValues={localFilters.plan === "all" ? [] : [localFilters.plan]}
+          onChange={handlePlanChange}
+        />
+        <LeadsMultiFilter
+          title="Tipo"
+          options={USER_TYPE_OPTIONS}
+          selectedValues={localFilters.userType === "all" ? [] : [localFilters.userType]}
+          onChange={handleUserTypeChange}
+        />
+        {isFiltered ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 lg:px-3"
+            onClick={() => void handleClear()}
+            disabled={isLoading}
+          >
+            Limpar
+            <X data-icon="inline-end" />
+          </Button>
+        ) : null}
       </LeadsFiltersLayout>
 
       {error && (
@@ -184,7 +245,7 @@ export function BackofficeClientsContainer() {
               collapsible
               value={openClientId}
               onValueChange={setOpenClientId}
-              className="w-full min-w-[1200px]"
+              className="w-full min-w-300"
             >
               {clients.map((client) => (
                 <AccordionItem key={client.id} value={client.id} className="border-b last:border-b-0">
@@ -278,7 +339,7 @@ export function BackofficeClientsContainer() {
                   }}
                   disabled={isLoading}
                 >
-                  <SelectTrigger className="w-[92px]">
+                  <SelectTrigger className="w-23">
                     <SelectValue placeholder="10" />
                   </SelectTrigger>
                   <SelectContent>

@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 async function getTeamMasterId(teamId: string) {
   const team = await prisma.team.findUnique({
@@ -84,50 +85,53 @@ export async function GET(
       orderBy: { team: { name: "asc" } },
     });
 
-    const otherMemberships = memberships.filter((membership) => membership.teamId !== teamId);
-    if (!otherMemberships.length) {
+    if (!memberships.length) {
       const output = new Output(true, [], [], { teams: [] });
       return NextResponse.json(output, { status: 200 });
     }
 
-    const otherTeamIds = otherMemberships.map((membership) => membership.teamId);
+    const allTeamIds = memberships.map((m) => m.teamId);
 
-    const leadsCounts = await prisma.lead.groupBy({
-      by: ["teamId"],
-      where: {
-        teamId: { in: otherTeamIds },
-        assignedTo: userId,
-      },
-      _count: { _all: true },
-    });
-
-    const meetingsCounts = await prisma.lead.groupBy({
-      by: ["teamId"],
-      where: {
-        teamId: { in: otherTeamIds },
-        closerId: userId,
-        meetingHeald: "yes",
-      },
-      _count: { _all: true },
-    });
+    const [leadsCounts, scheduledCounts, meetingsCounts] = await Promise.all([
+      prisma.lead.groupBy({
+        by: ["teamId"],
+        where: { teamId: { in: allTeamIds }, assignedTo: userId },
+        _count: { _all: true },
+      }),
+      prisma.lead.groupBy({
+        by: ["teamId"],
+        where: { teamId: { in: allTeamIds }, assignedTo: userId, status: "scheduled" },
+        _count: { _all: true },
+      }),
+      prisma.lead.groupBy({
+        by: ["teamId"],
+        where: { teamId: { in: allTeamIds }, closerId: userId, meetingHeald: "yes" },
+        _count: { _all: true },
+      }),
+    ]);
 
     const leadsMap = new Map<string, number>(
       leadsCounts.map((item) => [item.teamId as string, item._count._all])
+    );
+    const scheduledMap = new Map<string, number>(
+      scheduledCounts.map((item) => [item.teamId as string, item._count._all])
     );
     const meetingsMap = new Map<string, number>(
       meetingsCounts.map((item) => [item.teamId as string, item._count._all])
     );
 
-    const teams = otherMemberships.map((membership) => ({
+    const teams = memberships.map((membership) => ({
       id: membership.teamId,
       name: membership.team.name,
       leadsCount: leadsMap.get(membership.teamId) ?? 0,
+      scheduledLeadsCount: scheduledMap.get(membership.teamId) ?? 0,
       meetingsCount: meetingsMap.get(membership.teamId) ?? 0,
     }));
 
     const output = new Output(true, [], [], { teams });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao listar times do usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

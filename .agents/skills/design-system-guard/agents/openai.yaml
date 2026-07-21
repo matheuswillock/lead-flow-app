@@ -1,0 +1,5 @@
+version: 1
+interface:
+  display_name: Design System Guard
+  short_description: Guardrail de design system para alteracoes de frontend no Corretor Studio.
+  default_prompt: Aplique o design-system-guard para revisar e manter conformidade visual em toda alteracao de frontend do lead-flow-app.

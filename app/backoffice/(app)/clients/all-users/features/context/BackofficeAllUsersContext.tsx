@@ -15,7 +15,10 @@ import type {
   BackofficeAllUsersFilters,
   BackofficeAllUsersItem,
   BackofficePagination,
+  BackofficeAllUsersScheduleTarget,
+  BackofficeEmailDispatchTarget,
 } from "./BackofficeAllUsersTypes"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 const DEFAULT_FILTERS: BackofficeAllUsersFilters = {
   query: "",
@@ -39,11 +42,16 @@ interface BackofficeAllUsersContextValue {
   pagination: BackofficePagination
   isLoading: boolean
   error: string | null
+  canManage: boolean
   filters: BackofficeAllUsersFilters
   selectedDetail: BackofficeAllUsersDetail | null
+  scheduleTarget: BackofficeAllUsersScheduleTarget | null
+  emailDispatchTarget: BackofficeEmailDispatchTarget | null
   isDetailLoading: boolean
   detailError: string | null
   sheetOpen: boolean
+  scheduleDialogOpen: boolean
+  emailDispatchDialogOpen: boolean
   setFilters: (next: BackofficeAllUsersFilters) => void
   fetchUsers: (options?: {
     filters?: Partial<BackofficeAllUsersFilters>
@@ -55,6 +63,10 @@ interface BackofficeAllUsersContextValue {
   clearFilters: () => Promise<void>
   openUserSheet: (profileId: string) => Promise<void>
   closeUserSheet: () => void
+  openSchedulesDialog: (target: BackofficeAllUsersScheduleTarget) => void
+  closeSchedulesDialog: () => void
+  openEmailDispatchesDialog: (target: BackofficeEmailDispatchTarget) => void
+  closeEmailDispatchesDialog: () => void
 }
 
 const BackofficeAllUsersContext = createContext<BackofficeAllUsersContextValue | undefined>(undefined)
@@ -65,15 +77,21 @@ interface Props {
 }
 
 export function BackofficeAllUsersProvider({ children, service }: Props) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [items, setItems] = useState<BackofficeAllUsersItem[]>([])
   const [pagination, setPagination] = useState<BackofficePagination>(DEFAULT_PAGINATION)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<BackofficeAllUsersFilters>(DEFAULT_FILTERS)
   const [selectedDetail, setSelectedDetail] = useState<BackofficeAllUsersDetail | null>(null)
+  const [scheduleTarget, setScheduleTarget] = useState<BackofficeAllUsersScheduleTarget | null>(null)
+  const [emailDispatchTarget, setEmailDispatchTarget] = useState<BackofficeEmailDispatchTarget | null>(null)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [emailDispatchDialogOpen, setEmailDispatchDialogOpen] = useState(false)
   const inFlight = useRef(false)
   const queuedRequest = useRef<{
     filters: BackofficeAllUsersFilters
@@ -183,6 +201,24 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
     setDetailError(null)
   }, [])
 
+  const openSchedulesDialog = useCallback((target: BackofficeAllUsersScheduleTarget) => {
+    setScheduleTarget(target)
+    setScheduleDialogOpen(true)
+  }, [])
+
+  const closeSchedulesDialog = useCallback(() => {
+    setScheduleDialogOpen(false)
+  }, [])
+
+  const openEmailDispatchesDialog = useCallback((target: BackofficeEmailDispatchTarget) => {
+    setEmailDispatchTarget(target)
+    setEmailDispatchDialogOpen(true)
+  }, [])
+
+  const closeEmailDispatchesDialog = useCallback(() => {
+    setEmailDispatchDialogOpen(false)
+  }, [])
+
   const openUserSheet = useCallback(async (profileId: string) => {
     const requestId = ++detailRequestId.current
     setSheetOpen(true)
@@ -219,11 +255,16 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         pagination,
         isLoading,
         error,
+        canManage,
         filters,
         selectedDetail,
+        scheduleTarget,
+        emailDispatchTarget,
         isDetailLoading,
         detailError,
         sheetOpen,
+        scheduleDialogOpen,
+        emailDispatchDialogOpen,
         setFilters,
         fetchUsers,
         setUsersPage,
@@ -231,6 +272,10 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         clearFilters,
         openUserSheet,
         closeUserSheet,
+        openSchedulesDialog,
+        closeSchedulesDialog,
+        openEmailDispatchesDialog,
+        closeEmailDispatchesDialog,
       }}
     >
       {children}

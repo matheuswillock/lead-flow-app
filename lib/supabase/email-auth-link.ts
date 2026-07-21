@@ -1,5 +1,10 @@
 import { getFullUrl } from "@/lib/utils/app-url"
 
+/** Must match `auth.email.otp_expiry` in supabase/config.toml (max 86400 on hosted Supabase). */
+export const AUTH_SET_PASSWORD_LINK_EXPIRY_SECONDS = 86_400
+
+export const AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL = "24 horas"
+
 type SupabaseEmailLinkType = "invite" | "recovery"
 
 type SupabaseGeneratedLinkData = {

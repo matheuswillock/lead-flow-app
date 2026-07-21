@@ -1,4 +1,4 @@
-import type { LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadCustomFieldType, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export interface LeadResponseDTO {
   id: string;
@@ -6,11 +6,12 @@ export interface LeadResponseDTO {
   managerId: string;
   teamId: string | null;
   assignedTo: string | null;
-  status: LeadStatus;
+  status: LeadStatus | null;
   name: string;
   email: string | null;
   phone: string | null;
   cnpj: string | null;
+  razaoSocial: string | null;
   age: string | null;
   currentHealthPlan: string | null;
   currentValue: number | null;
@@ -21,6 +22,9 @@ export interface LeadResponseDTO {
   meetingNotes: string | null;
   meetingLink: string | null;
   meetingHeald: MeetingHeald | null;
+  meetingPresenceConfirmed: boolean;
+  meetingPresenceConfirmedAt: string | null;
+  isTransfer: boolean;
   followUpAt?: string | null;
   followUpNotes?: string | null;
   followUpSourceStatus?: LeadStatus | null;
@@ -45,6 +49,8 @@ export interface LeadResponseDTO {
   leadTimeDueAt?: string | null;
   isLeadTimeBreached?: boolean;
   attachmentCount?: number;
+  proposalReviewStatus?: LeadProposalReviewStatus | null;
+  customFields?: LeadCustomFieldValueResponseDTO[];
   manager?: {
     id: string;
     fullName: string | null;
@@ -63,6 +69,14 @@ export interface LeadResponseDTO {
     avatarUrl?: string | null;
   } | null;
   activities?: LeadActivityResponseDTO[];
+}
+
+export interface LeadCustomFieldValueResponseDTO {
+  key: string;
+  label: string;
+  type: LeadCustomFieldType;
+  value: unknown;
+  isRequired: boolean;
 }
 
 export interface LeadActivityResponseDTO {
@@ -95,10 +109,22 @@ export interface LeadListResponseDTO {
   totalPages: number;
 }
 
+export interface LeadDuplicateCandidateDTO {
+  id: string;
+  leadCode: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  status: LeadStatus | null;
+  createdAt: string;
+}
+
 export interface CreateLeadResponseDTO {
   success: boolean;
   lead: LeadResponseDTO | null;
   message: string;
+  requiresDuplicateConfirmation?: boolean;
+  duplicateCandidates?: LeadDuplicateCandidateDTO[];
 }
 
 export interface UpdateLeadResponseDTO {

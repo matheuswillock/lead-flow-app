@@ -1,15 +1,30 @@
 "use client";
 
 import { createContext, ReactNode, useContext } from "react";
-import type { Template, TemplateEditorDraft, TemplateEditorState } from "./TemplateEditorTypes";
+import type {
+  Template,
+  TemplateEditorDraft,
+  TemplateEditorState,
+  TemplateTestRequest,
+  TemplateVersionItem,
+} from "./TemplateEditorTypes";
 import { useTemplateEditor } from "./TemplateEditorHook";
 
 interface ITemplateEditorContext extends TemplateEditorState {
+  activeRole: "manager" | "backoffice" | "operator" | null;
   reloadTemplate: () => Promise<void>;
   saveTemplate: (patch?: Partial<TemplateEditorDraft>) => Promise<Template | null>;
+  publishTemplate: (id?: string) => Promise<Template | null>;
+  unpublishTemplate: () => Promise<Template | null>;
+  submitForApproval: () => Promise<void>;
+  approveTemplate: () => Promise<void>;
+  rejectTemplate: (reviewNote: string) => Promise<void>;
+  sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
+  restoreTemplateVersion: (versionId: string) => Promise<void>;
   updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
-  setMailyJson: (json: unknown) => void;
   setHtml: (html: string) => void;
+  versions: TemplateVersionItem[];
+  restoringVersionId: string | null;
 }
 
 const TemplateEditorContext = createContext<ITemplateEditorContext | undefined>(undefined);

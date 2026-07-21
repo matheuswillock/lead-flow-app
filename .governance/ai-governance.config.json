@@ -71,7 +71,6 @@
       "app/api/v1/teams/route.ts",
       "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
-      "app/api/v1/email/analytics/route.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
       "app/api/v1/email/cron/reset-credits/route.ts",
       "app/api/v1/email/logs/[logId]/route.ts",
@@ -138,12 +137,19 @@
       "app/backoffice/(app)",
       "app/backoffice/(app)/clients",
       "app/backoffice/(app)/payments",
-      "app/backoffice/(app)/users"
+      "app/backoffice/(app)/users",
+      "app/backoffice/(app)/studio-bot/conversas",
+      "app/backoffice/(app)/studio-bot/canal",
+      "app/backoffice/(app)/studio-bot/vinculacoes",
+      "app/backoffice/(app)/studio-bot/verificacoes",
+      "app/prime",
+      "app/email-unsubscribe/[token]"
     ],
     "nonTypeScriptFileAllowlist": [
       "eslint.config.mjs",
       "postcss.config.mjs",
-      ".github/scripts/claude-pr-description.py"
+      ".github/scripts/generate-pr-description.py",
+      "public/sw.js"
     ],
     "routeRepositoryImportAllowlist": [
       "app/api/v1/backoffice/clients/[id]/route.ts",
@@ -216,11 +222,16 @@
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/teams/route.ts",
       "app/api/v1/teams/payments/create/route.ts",
-      "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
-      "app/api/webhooks/asaas/route.ts",
+      "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
       "app/api/webhooks/meta/route.ts",
-      "app/api/v1/email/cron/dispatch-scheduled/route.ts"
+      "app/api/v1/email/cron/dispatch-scheduled/route.ts",
+      "app/api/services/resend/EmailOrphanEventService.ts",
+      "app/api/services/teamAutomation/executors/CreateNotificationExecutor.ts",
+      "app/api/services/teamAutomation/executors/SendEmailExecutor.ts",
+      "app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts",
+      "app/api/services/teamAutomation/TeamAutomationDispatcherService.ts",
+      "app/api/useCases/leads/LeadUseCase.ts"
     ],
     "nonRepositoryDatabaseAccessAllowlist": [
       "app/api/services/AsaasOperator/AsaasOperatorService.ts",
@@ -230,6 +241,7 @@
       "app/api/services/leadSchedule/participantDispatch.ts",
       "app/api/services/notifications/NotificationService.ts",
       "app/api/services/Performance/PerformanceService.ts",
+      "app/api/services/Performance/PerformanceMeetingsHeldService.ts",
       "app/api/services/Portfolio/PortfolioService.ts",
       "app/api/services/StudioWebhookIntegration/StudioWebhookIntegrationService.ts",
       "app/api/services/SubscriptionStatus/SubscriptionStatusService.ts",
@@ -247,13 +259,23 @@
       "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
-      "app/api/webhooks/asaas/route.ts",
+      "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
       "app/api/services/EmailCredit/EmailCreditService.ts",
       "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailContactListUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/email/EmailTemplateUseCase.ts",
-      "app/api/webhooks/resend/route.ts"
+      "app/api/useCases/email/EmailTeamSettingsUseCase.ts",
+      "app/api/useCases/email/EmailTeamVariablesUseCase.ts",
+      "app/api/useCases/email/EmailContactImportUseCase.ts",
+      "app/api/useCases/email/EmailUnsubscribeUseCase.ts",
+      "app/api/services/resend/EmailOrphanEventService.ts",
+      "app/api/services/teamAutomation/TeamAutomationDispatcherService.ts",
+      "app/api/services/teamAutomation/TeamAutomationRuleService.ts",
+      "app/api/services/teamAutomation/executors/AssignOperatorExecutor.ts",
+      "app/api/services/teamAutomation/executors/CreateNotificationExecutor.ts",
+      "app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts",
+      "app/api/useCases/teamAutomations/EvaluateIdleLeadsUseCase.ts"
     ]
   }
 }

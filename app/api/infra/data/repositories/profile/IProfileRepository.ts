@@ -5,7 +5,11 @@ export interface IProfileRepository {
   findBySupabaseId(supabaseId: string): Promise<Profile | null>;
   findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null>;
   findFirstTeamIdByProfileId(profileId: string): Promise<string | null>;
-  existingByEmailOrPhone(email: string, phone: string): Promise<boolean>;
+  existingByEmailOrPhone(
+    email: string,
+    phone: string,
+    excludeProfileId?: string
+  ): Promise<boolean>;
   findByEmail(email: string): Promise<Profile | null>;
   findByGoogleEmail(googleEmail: string): Promise<Profile | null>;
   createProfile(
@@ -79,8 +83,6 @@ export interface IProfileRepository {
       email?: string;
       role?: string;
       functions?: ("SDR" | "CLOSER")[];
-      canCreateAccountUsers?: boolean;
-      canManageAccountTeams?: boolean;
     }
   ): Promise<Profile | null>;
   updateProfileIcon(
@@ -105,4 +107,18 @@ export interface IProfileRepository {
     email: string,
     fullName: string
   ): Promise<{ profileId: string }>;
+  findAsaasSyncProfileById(profileId: string): Promise<{
+    id: string;
+    fullName: string | null;
+    email: string;
+    cpfCnpj: string | null;
+    phone: string | null;
+    postalCode: string | null;
+    address: string | null;
+    addressNumber: string | null;
+    neighborhood: string | null;
+    complement: string | null;
+    asaasCustomerId: string | null;
+  } | null>;
+  updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
 }

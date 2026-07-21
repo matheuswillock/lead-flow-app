@@ -30,23 +30,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install --frozen-lockfile
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Governance Check
         run: bun run governance:check
@@ -65,40 +50,35 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Proxy Tests
+        run: bun run test:proxy
+
+      - name: Unit Tests
+        run: bun run test
+
   migration-status:
     name: Migration Status
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
       - quality
+      - build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install --frozen-lockfile
+          version: 2.109.1
 
       - name: Check Migration Status
         shell: bash
         run: |
           set -euo pipefail
 
-          migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
+          migration_list="$(supabase migration list --db-url "$DIRECT_URL")"
           echo "$migration_list"
 
           if MIGRATION_LIST="$migration_list" node -e '
@@ -132,57 +112,54 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs:
-      - migration-status
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version-file: '.nvmrc'
 
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install --frozen-lockfile
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
       - name: Build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
+          DATABASE_URL: ${{ github.event_name == 'push' && secrets.DATABASE_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
+          DIRECT_URL: ${{ github.event_name == 'push' && secrets.DIRECT_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
         run: bun run build
 
   deploy-production:
     name: Deploy Vercel (Production)
-    if: github.event_name == 'push'
-    needs: build
+    if: |
+      github.event_name == 'push' &&
+      needs.build.result == 'success' &&
+      needs['migration-status'].result == 'success'
+    needs:
+      - build
+      - migration-status
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
 
       - name: Deploy to Vercel (Production)
         id: vercel-prod
         run: |
-          DEPLOY_URL=$(vercel deploy --prod \
+          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy --prod \
             --token=${{ secrets.VERCEL_TOKEN }} \
             --yes \
             2>&1 | tail -1)

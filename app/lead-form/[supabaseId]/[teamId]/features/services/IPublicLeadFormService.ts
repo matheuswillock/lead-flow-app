@@ -1,3 +1,5 @@
+import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
+
 export interface HealthPlanOption {
   id: string;
   name: string;
@@ -41,6 +43,9 @@ export interface SubmitPublicLeadPayload {
   meetingTitle?: string;
   meetingNotes?: string;
   extraGuests?: string[];
+  isTransfer?: boolean;
+  saveAsDraft?: boolean;
+  customFields?: Record<string, unknown>;
   source?: string;
   utmSource?: string;
   utmMedium?: string;
@@ -55,6 +60,9 @@ export interface SubmitPublicLeadResult {
   isValid: boolean;
   successMessages: string[];
   errorMessages: string[];
+  lead?: {
+    razaoSocial?: string | null;
+  } | null;
 }
 
 export interface AvailabilityResult {
@@ -63,15 +71,23 @@ export interface AvailabilityResult {
 }
 
 export interface PublicLeadFormBootstrapData {
+  teamName: string;
   healthPlans: HealthPlanOption[];
   closers: CloserOption[];
   sdrs: SdrOption[];
   guestCandidates: GuestCandidateOption[];
   timezone: string;
+  hasTransferTargets: boolean;
+  customFieldDefinitions: LeadCustomFieldDefinitionDTO[];
+}
+
+export interface PreScheduleSlotsResult {
+  occupiedSlots: number[];
 }
 
 export interface IPublicLeadFormService {
   getBootstrapData(teamId: string, supabaseId?: string): Promise<PublicLeadFormBootstrapData>;
   getAvailability(teamId: string, closerId: string, date: string, supabaseId?: string): Promise<AvailabilityResult>;
+  getPreScheduleSlots(teamId: string, date: string, supabaseId?: string): Promise<PreScheduleSlotsResult>;
   submitLead(payload: SubmitPublicLeadPayload): Promise<SubmitPublicLeadResult>;
 }

@@ -64,7 +64,7 @@ function formatCurrency(value: number): string {
 }
 
 function canSubmit(formData: BackofficeProductFormData): boolean {
-  if (!formData.name.trim() || !formData.slug.trim()) return false
+  if (!formData.name.trim() || !formData.featureSlug.trim()) return false
   if (formData.billingMode === "RECURRING") {
     return CYCLES.every(
       ({ key }) =>
@@ -95,10 +95,14 @@ export function BackofficeProductDialog() {
       <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>
-            {dialogMode === "create" ? "Novo produto" : "Editar produto"}
+            {dialogMode === "create" && "Novo produto"}
+            {dialogMode === "duplicate" && "Duplicar produto"}
+            {dialogMode === "edit" && "Editar produto"}
           </DialogTitle>
           <DialogDescription>
-            Configure o produto usado na precificação das adesões.
+            {dialogMode === "duplicate"
+              ? "Revise os dados copiados e ajuste o que for necessário antes de criar a nova precificação."
+              : "Configure o produto usado na precificação das adesões."}
           </DialogDescription>
         </DialogHeader>
 
@@ -114,25 +118,25 @@ export function BackofficeProductDialog() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="product-slug">Slug *</Label>
+              <Label htmlFor="product-slug">Slug da funcionalidade *</Label>
               {dialogMode === "edit" ? (
                 <>
                   <Input
                     id="product-slug"
-                    value={formData.slug}
+                    value={formData.featureSlug}
                     disabled
                     className="font-mono text-xs"
                   />
                   <p className="text-xs text-muted-foreground">
-                    O slug não pode ser alterado após a criação.
+                    O slug da funcionalidade não pode ser alterado após a criação.
                   </p>
                 </>
               ) : (
                 <>
                   <Select
-                    value={formData.slug}
+                    value={formData.featureSlug}
                     disabled={isSaving}
-                    onValueChange={(value) => setFormField("slug", value)}
+                    onValueChange={(value) => setFormField("featureSlug", value)}
                   >
                     <SelectTrigger id="product-slug">
                       <SelectValue placeholder="Selecione a funcionalidade" />
@@ -141,7 +145,7 @@ export function BackofficeProductDialog() {
                       <SelectGroup>
                         {availableFeatureSlugs.length === 0 ? (
                           <SelectItem value="__none__" disabled>
-                            Nenhuma funcionalidade sem produto vinculado
+                            Nenhuma funcionalidade disponível
                           </SelectItem>
                         ) : (
                           availableFeatureSlugs.map((slug) => (
@@ -154,7 +158,7 @@ export function BackofficeProductDialog() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Apenas funcionalidades sem produto vinculado aparecem aqui.
+                    Múltiplas precificações podem usar o mesmo slug de funcionalidade.
                   </p>
                 </>
               )}
@@ -211,6 +215,15 @@ export function BackofficeProductDialog() {
                   </SelectGroup>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center gap-3 pt-6">
+              <Switch
+                id="product-default"
+                checked={formData.isDefault}
+                disabled={isSaving}
+                onCheckedChange={(checked) => setFormField("isDefault", checked)}
+              />
+              <Label htmlFor="product-default">Produto padrão</Label>
             </div>
             <div className="flex items-center gap-3 pt-6">
               <Switch

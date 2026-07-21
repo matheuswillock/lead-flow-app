@@ -1,4 +1,4 @@
-import type { PerformanceData, PerformanceFiltersState } from '../context/PerformanceTypes';
+import type { PerformanceData, PerformanceFiltersState, PerformanceTeamScope } from '../context/PerformanceTypes';
 import type { PerformanceExportFormat, PerformanceExportSectionFlags } from '@/lib/performance/exportPerformanceFiles';
 
 export interface SendPerformanceExportEmailInput {
@@ -16,7 +16,8 @@ export interface IPerformanceService {
   getSalesPerformance(
     supabaseId: string,
     teamId: string,
-    filters: PerformanceFiltersState
+    filters: PerformanceFiltersState,
+    teamScope?: PerformanceTeamScope
   ): Promise<PerformanceData>;
 
   sendPerformanceExportEmail(

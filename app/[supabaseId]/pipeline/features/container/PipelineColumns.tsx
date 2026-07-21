@@ -16,6 +16,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical, RefreshCw } from "lucide-react";
 import { Lead } from "../context/PipelineTypes";
 import { formatDate } from "../context/PipelineContext";
+import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
+import { isDraftLead } from "@/lib/lead-status";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { maskPhone } from "@/lib/masks";
@@ -280,10 +282,14 @@ export const createColumns = ({
       )
     },
     cell: ({ row }) => {
-      const status = row.getValue("status") as string
+      const lead = row.original;
+      if (isDraftLead(lead)) {
+        return <DraftLeadIndicator />;
+      }
+      const status = row.getValue("status") as string;
       return (
         <Badge className={`${getStatusColor(status)} text-white`}>{statusLabels[status]}</Badge>
-      )
+      );
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id))

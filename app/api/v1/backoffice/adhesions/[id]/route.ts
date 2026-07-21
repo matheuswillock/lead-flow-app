@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
@@ -57,6 +59,8 @@ export async function PATCH(
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== "object") {
@@ -77,10 +81,13 @@ export async function PATCH(
       activationMode: parseActivationMode(data.activationMode),
       sdrBackofficeUserId: optionalString(data, "sdrBackofficeUserId"),
       closerBackofficeUserId: optionalString(data, "closerBackofficeUserId"),
+      hasUnlimitedUsers:
+        typeof data.hasUnlimitedUsers === "boolean" ? data.hasUnlimitedUsers : undefined,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -95,12 +102,15 @@ export async function DELETE(
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const { id } = await params
     const output = await backofficeAdhesionUseCase.deletePending(id)
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

@@ -1,5 +1,7 @@
-import type { Template, TemplateEditorDraft } from "../context/TemplateEditorTypes";
-import type { ITemplateEditorService } from "./ITemplateEditorService";
+import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../context/TemplateEditorTypes";
+import type { ITemplateEditorService, EmailTemplateAssetUploadResult, XPostEmbedResult } from "./ITemplateEditorService";
+import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 type ApiOutput<T> = {
   isValid: boolean;
@@ -10,10 +12,13 @@ type ApiOutput<T> = {
 
 class TemplateEditorService implements ITemplateEditorService {
   private readonly baseUrl = "/api/v1/email/templates";
+  private readonly assetsUrl = "/api/v1/email/templates/assets";
+  private readonly xPostEmbedUrl = "/api/v1/email/templates/embeds/x-post";
+  private readonly settingsUrl = "/api/v1/email/settings";
 
-  private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
+  private buildHeaders(supabaseId: string, teamId?: string | null, json = true): HeadersInit {
     return {
-      "Content-Type": "application/json",
+      ...(json ? { "Content-Type": "application/json" } : {}),
       "x-supabase-user-id": supabaseId,
       ...(teamId ? { "x-team-id": teamId } : {}),
     };
@@ -23,7 +28,7 @@ class TemplateEditorService implements ITemplateEditorService {
     const body = (await response.json().catch(() => null)) as ApiOutput<T> | null;
     if (!response.ok || !body?.isValid) {
       const message = body?.errorMessages?.join(", ") || fallbackMessage;
-      throw new Error(message);
+      throw new ApiRequestError(message);
     }
 
     return body.result;
@@ -41,6 +46,38 @@ class TemplateEditorService implements ITemplateEditorService {
     });
 
     return this.parseResponse<Template>(response, "Erro ao buscar template");
+  }
+
+  async getApprovalSettings(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ templateApprovalRequired: boolean }> {
+    const response = await fetch(this.settingsUrl, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+    const settings = await this.parseResponse<{ templateApprovalRequired?: boolean }>(
+      response,
+      "Erro ao buscar configurações de aprovação"
+    );
+
+    return { templateApprovalRequired: settings.templateApprovalRequired ?? false };
+  }
+
+  async getEmailSettingsForTips(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ fromEmail: string | null }> {
+    const response = await fetch(this.settingsUrl, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+    const settings = await this.parseResponse<{ fromEmail?: string | null }>(
+      response,
+      "Erro ao buscar configurações de e-mail"
+    );
+
+    return { fromEmail: settings.fromEmail ?? null };
   }
 
   async createTemplate(
@@ -74,6 +111,179 @@ class TemplateEditorService implements ITemplateEditorService {
     return this.parseResponse<Template>(response, "Erro ao atualizar template");
   }
 
+  async publishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Publishing template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/publish`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao publicar template");
+  }
+
+  async unpublishTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Unpublishing template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/publish`, {
+      method: "DELETE",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao despublicar template");
+  }
+
+  async submitForApproval(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Submitting for approval", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/submit`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao enviar para aprovação");
+  }
+
+  async approveTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Approving template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/approve`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao aprovar template");
+  }
+
+  async rejectTemplate(
+    supabaseId: string,
+    templateId: string,
+    reviewNote: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Rejecting template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/reject`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify({ reviewNote }),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao recusar template");
+  }
+
+  async sendTest(
+    supabaseId: string,
+    templateId: string,
+    teamId: string | null | undefined,
+    input: TemplateTestRequest
+  ): Promise<void> {
+    console.info("[TemplateEditorService] Sending test email", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}/test`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify(input),
+    });
+
+    await this.parseResponse<null>(response, "Erro ao enviar email de teste");
+  }
+
+  async listVersions(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<{ versions: import("../context/TemplateEditorTypes").TemplateVersionItem[] }> {
+    const response = await fetch(`${this.baseUrl}/${templateId}/versions`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse(response, "Erro ao listar versões do template");
+  }
+
+  async restoreVersion(
+    supabaseId: string,
+    templateId: string,
+    versionId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    const response = await fetch(`${this.baseUrl}/${templateId}/restore-version`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify({ versionId }),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao recuperar HTML da versão");
+  }
+
+  async listAssets(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<{ assets: EmailTemplateAssetItem[] }> {
+    const response = await fetch(this.assetsUrl, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse(response, "Erro ao listar imagens do template");
+  }
+
+  async uploadAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    file: File
+  ): Promise<EmailTemplateAssetUploadResult> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(this.assetsUrl, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId, false),
+      body: formData,
+    });
+
+    return this.parseResponse(response, "Erro ao enviar imagem");
+  }
+
+  async deleteAsset(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    fileId: string
+  ): Promise<void> {
+    const params = new URLSearchParams({ fileId })
+    const response = await fetch(`${this.assetsUrl}?${params.toString()}`, {
+      method: "DELETE",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+
+    await this.parseResponse<null>(response, "Erro ao excluir imagem")
+  }
+
+  async resolveXPostEmbed(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    url: string
+  ): Promise<XPostEmbedResult> {
+    const response = await fetch(this.xPostEmbedUrl, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify({ url }),
+    })
+
+    return this.parseResponse<XPostEmbedResult>(response, "Erro ao gerar card do post do X")
+  }
+
   private toPayload(draft: TemplateEditorDraft) {
     return {
       name: draft.name,
@@ -81,6 +291,8 @@ class TemplateEditorService implements ITemplateEditorService {
       previewText: draft.previewText,
       html: draft.html,
       mailyJson: draft.mailyJson,
+      editorMode: draft.editorMode,
+      variables: draft.variables,
     };
   }
 }

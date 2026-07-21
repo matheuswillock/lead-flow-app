@@ -348,7 +348,8 @@ function SetPasswordContent() {
           
           // Redirecionar para dashboard após 2 segundos
           setTimeout(() => {
-            router.push(`/${user.id}/dashboard`)
+            const isManagerOrMaster = profileData.result?.isMaster || profileData.result?.role === 'manager'
+            router.push(`/${user.id}/${isManagerOrMaster ? 'dashboard' : 'crm'}`)
           }, 2000)
         } else {
           setError('Erro ao carregar perfil do usuário')

@@ -5,6 +5,8 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
+import { getAccountAccessStatus } from "@/lib/account/getAccountAccessStatus";
+import { ACCOUNT_MASTER_BANNED_MESSAGE } from "@/lib/account/isAccountMasterBanned";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -16,6 +18,8 @@ export type TeamAccess = {
   managerId: string;
   canCreateAccountUsers: boolean;
   canManageAccountTeams: boolean;
+  canTransferAccountLeads: boolean;
+  canViewAllTeams: boolean;
   userTimezone: string;
   teamMember: {
     role: UserRole;
@@ -37,8 +41,6 @@ const resolveProfileForTeamAccess = cache(async (supabaseId: string) => {
       activeTeamId: true,
       isMaster: true,
       managerId: true,
-      canCreateAccountUsers: true,
-      canManageAccountTeams: true,
       timezone: true,
     },
   });
@@ -55,9 +57,32 @@ const resolveTeamMembershipForAccess = cache(async (teamId: string, profileId: s
     select: {
       role: true,
       functions: true,
+      canCreateAccountUsers: true,
+      canManageAccountTeams: true,
+      canTransferAccountLeads: true,
+      canViewAllTeams: true,
       team: {
         select: {
           masterId: true,
+          master: {
+            select: {
+              sponsorMasterId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+});
+
+const resolveTeamForSponsorAccess = cache(async (teamId: string) => {
+  return prisma.team.findUnique({
+    where: { id: teamId },
+    select: {
+      masterId: true,
+      master: {
+        select: {
+          sponsorMasterId: true,
         },
       },
     },
@@ -106,11 +131,83 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   const teamMember = await resolveTeamMembershipForAccess(teamId, profile.id);
 
   if (!teamMember) {
+    const teamForSponsor = await resolveTeamForSponsorAccess(teamId);
+    const sponsorMasterId = teamForSponsor?.master.sponsorMasterId;
+    if (!teamForSponsor || sponsorMasterId !== profile.id) {
+      return {
+        error: new Output(false, [], ["Acesso negado para este time"], null),
+        status: 403,
+      };
+    }
+
+    const accountMasterId = teamForSponsor.masterId;
+    const accountAccess = await getAccountAccessStatus(accountMasterId);
+    if (!accountAccess.subscriptionActive) {
+      return {
+        error: new Output(
+          false,
+          [],
+          ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
+          null
+        ),
+        status: 403,
+      };
+    }
+
+    if (accountAccess.banned) {
+      return {
+        error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
+        status: 403,
+      };
+    }
+
     return {
-      error: new Output(false, [], ["Acesso negado para este time"], null),
+      access: {
+        supabaseId,
+        teamId,
+        profileId: profile.id,
+        profileEmail: profile.email,
+        profileName: profile.fullName,
+        isMaster: false,
+        managerId: accountMasterId,
+        canCreateAccountUsers: false,
+        canManageAccountTeams: true,
+        canTransferAccountLeads: false,
+        canViewAllTeams: false,
+        userTimezone: resolveTimezone(profile.timezone),
+        teamMember: {
+          role: "backoffice" as UserRole,
+          functions: [] as UserFunction[],
+        },
+      },
+    };
+  }
+
+  const accountMasterId = teamMember.team.masterId;
+  const accountAccess = await getAccountAccessStatus(accountMasterId);
+
+  if (!accountAccess.subscriptionActive) {
+    return {
+      error: new Output(
+        false,
+        [],
+        ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
+        null
+      ),
       status: 403,
     };
   }
+
+  if (accountAccess.banned) {
+    return {
+      error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
+      status: 403,
+    };
+  }
+
+  const resolvedCanViewAllTeams =
+    (teamMember.role === "manager" || teamMember.role === "backoffice") &&
+    teamMember.canViewAllTeams === true;
 
   return {
     access: {
@@ -119,12 +216,16 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       profileId: profile.id,
       profileEmail: profile.email,
       profileName: profile.fullName,
-      isMaster: teamMember.team.masterId === profile.id || profile.isMaster,
-      managerId: profile.managerId ?? teamMember.team.masterId ?? profile.id,
+      isMaster: accountMasterId === profile.id,
+      managerId: accountMasterId,
       canCreateAccountUsers:
-        teamMember.role === "manager" && profile.canCreateAccountUsers === true,
+        teamMember.role === "manager" && teamMember.canCreateAccountUsers === true,
       canManageAccountTeams:
-        teamMember.role === "manager" && profile.canManageAccountTeams === true,
+        teamMember.role === "manager" && teamMember.canManageAccountTeams === true,
+      canTransferAccountLeads:
+        (teamMember.role === "manager" || teamMember.role === "backoffice") &&
+        teamMember.canTransferAccountLeads === true,
+      canViewAllTeams: resolvedCanViewAllTeams,
       userTimezone: resolveTimezone(profile.timezone),
       teamMember,
     },
@@ -157,4 +258,8 @@ export function hasDelegatedUserCreationAccess(access: TeamAccess) {
 
 export function hasDelegatedTeamManagementAccess(access: TeamAccess) {
   return access.isMaster || access.canManageAccountTeams;
+}
+
+export function hasDelegatedLeadTransferAccess(access: TeamAccess) {
+  return access.isMaster || access.canTransferAccountLeads;
 }

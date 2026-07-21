@@ -2,10 +2,16 @@ import { cacheLife, cacheTag } from "next/cache";
 import { NotificationType, type UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { cacheTags } from "@/lib/cache/cacheTags";
-import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { auditLogService } from "@/app/api/services/audit/AuditLogService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import type { ITeamMembersRepository, TeamMembersListItem, TeamMembersTeam, TeamMembersProfileOption } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
+import { multiskillTransferService } from "@/app/api/services/multiskillTransfer/MultiskillTransferService";
+import { canListExternalMultiskillTargets } from "@/lib/multiskill/is-multiskill-origin-master";
+import { buildTransferTargetItems } from "@/lib/multiskill/build-transfer-target-items";
 
 type ListMembersFunction = Extract<UserFunction, "SDR" | "CLOSER">;
 
@@ -34,24 +40,54 @@ function getDisplayName(profile: { fullName: string | null; email: string | null
   return profile.fullName || profile.email || "Usuário";
 }
 
+function formatTeamMembersList(
+  members: TeamMembersListItem[],
+  team: TeamMembersTeam
+) {
+  return members.map((member) => ({
+    id: member.id,
+    profileId: member.profileId,
+    name: getDisplayName(member.profile),
+    email: member.profile.email,
+    role: member.role,
+    functions: member.functions,
+    googleCalendarConnected: member.profile.googleCalendarConnected,
+    profileIconUrl: member.profile.profileIconUrl,
+    isMaster: member.profileId === team.masterId,
+  }));
+}
+
 export class TeamMembersUseCase {
   constructor(private readonly repository: ITeamMembersRepository) {}
 
-  async listMembers(
-    supabaseId: string,
+  async listMembersWithCtx(
+    access: TeamAccess,
     teamId: string,
     requestedFunction: ListMembersFunction | null
   ): Promise<Output> {
     try {
-      const profile = await this.repository.findRequesterProfile(supabaseId);
-      if (!profile) {
-        return new Output(false, [], ["Perfil não encontrado"], null);
-      }
+      const profile = {
+        id: access.profileId,
+        email: access.profileEmail,
+        fullName: access.profileName,
+        isMaster: access.isMaster,
+        managerId: access.managerId,
+      };
 
-      const membership = await this.repository.findMembership(teamId, profile.id);
-      if (!membership) {
-        const team = await this.repository.findTeam(teamId);
-        if (!team) return new Output(false, [], ["Time não encontrado"], null);
+      const accessTeam = await this.repository.findTeam(teamId);
+      if (!accessTeam) return new Output(false, [], ["Time não encontrado"], null);
+
+      const canManageMembers = await this.repository.canManageTeamMembers(profile.id, accessTeam.masterId);
+      const membership =
+        access.teamId === teamId
+          ? {
+              id: "ctx",
+              role: access.teamMember.role,
+              canManageAccountTeams: access.canManageAccountTeams,
+            }
+          : await this.repository.findMembership(teamId, profile.id);
+
+      if (!membership && !canManageMembers) {
         return new Output(false, [], ["Você não faz parte deste time"], null);
       }
 
@@ -71,21 +107,20 @@ export class TeamMembersUseCase {
       if (!cached) return new Output(false, [], ["Time não encontrado"], null);
       const { team, members, masterAccountTeamMembers, masterAccountProfiles } = cached;
 
-      const formattedMembers = members.map((member) => ({
-        id: member.id,
-        profileId: member.profileId,
-        name: getDisplayName(member.profile),
-        email: member.profile.email,
-        role: member.role,
-        functions: member.functions,
-        googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
-        profileIconUrl: member.profile.profileIconUrl,
-        isMaster: member.profileId === team.masterId,
-      }));
+      const formattedMembers = formatTeamMembersList(members, team);
+
+      const isAssociateAccount = Boolean(team.sponsorMasterId);
+      const viewerOnAssociateAccount =
+        profile.id === team.masterId || profile.managerId === team.masterId;
+
+      const visibleMembers =
+        isAssociateAccount && viewerOnAssociateAccount && team.sponsorMasterId
+          ? formattedMembers.filter((member) => member.profileId !== team.sponsorMasterId)
+          : formattedMembers;
 
       const filteredMembers = requestedFunction
-        ? formattedMembers.filter((member) => member.functions.includes(requestedFunction))
-        : formattedMembers;
+        ? visibleMembers.filter((member) => member.functions.includes(requestedFunction))
+        : visibleMembers;
 
       let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
       let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
@@ -113,14 +148,249 @@ export class TeamMembersUseCase {
             id: member.profile.id,
             name: getDisplayName(member.profile),
             email: member.profile.email,
-          }));
+          }))
+          .sort((a, b) => {
+            const aKey = (a.name || a.email || "").toLowerCase();
+            const bKey = (b.name || b.email || "").toLowerCase();
+            return aKey.localeCompare(bKey, "pt-BR");
+          });
       }
+
+      const canManageTransferRoutes =
+        team.masterId === profile.id ||
+        (membership?.role === "manager" && membership.canManageAccountTeams === true);
+
+      const transferTargets = await this.repository.findTransferTargets(teamId);
 
       return new Output(true, [], [], {
         team: { id: team.id, name: team.name, masterId: team.masterId },
         members: filteredMembers,
         eligibleProfiles,
         transferCandidates,
+        transferTargets,
+        canManageTransferRoutes,
+        canManageMembers,
+      });
+    } catch (error) {
+      console.error("[TeamMembersUseCase][listMembersWithCtx] Erro ao listar membros do time:", error);
+      return new Output(false, [], ["Erro interno ao listar membros do time"], null);
+    }
+  }
+
+  async listTransferTargetMembersWithCtx(
+    access: TeamAccess,
+    sourceTeamId: string,
+    targetTeamId: string,
+    requestedFunction: ListMembersFunction | null
+  ): Promise<Output> {
+    try {
+      if (!access.isMaster && !access.canTransferAccountLeads) {
+        return new Output(false, [], ["Acesso negado para listar membros do time destino"], null);
+      }
+
+      const [sourceTeam, targetTeam, hasRoute] = await Promise.all([
+        this.repository.findTeam(sourceTeamId),
+        this.repository.findTeam(targetTeamId),
+        this.repository.hasTransferRoute(sourceTeamId, targetTeamId),
+      ]);
+
+      if (!sourceTeam || !targetTeam) {
+        return new Output(false, [], ["Time não encontrado"], null);
+      }
+
+      if (sourceTeam.masterId !== targetTeam.masterId) {
+        return new Output(false, [], ["Time destino inválido para transferência"], null);
+      }
+
+      if (!hasRoute) {
+        return new Output(false, [], ["Time destino não habilitado para transferência"], null);
+      }
+
+      const members = await this.repository.findMembers(targetTeamId);
+      const formattedMembers = formatTeamMembersList(members, targetTeam);
+      const filteredMembers = requestedFunction
+        ? formattedMembers.filter((member) => member.functions.includes(requestedFunction))
+        : formattedMembers;
+
+      return new Output(true, [], [], {
+        team: { id: targetTeam.id, name: targetTeam.name, masterId: targetTeam.masterId },
+        members: filteredMembers,
+      });
+    } catch (error) {
+      console.error(
+        "[TeamMembersUseCase][listTransferTargetMembersWithCtx] Erro ao listar membros do time destino:",
+        error
+      );
+      return new Output(false, [], ["Erro interno ao listar membros do time destino"], null);
+    }
+  }
+
+  async listTransferTargetsWithCtx(
+    access: TeamAccess,
+    teamId: string,
+    input: { query?: string; page: number; pageSize: number }
+  ): Promise<Output> {
+    try {
+      if (teamId !== access.teamId) {
+        return new Output(false, [], ["Time de origem inválido para listar destinos"], null);
+      }
+
+      if (!access.isMaster && !access.canTransferAccountLeads) {
+        return new Output(
+          false,
+          [],
+          ["Acesso negado: delegação de transferência de leads é obrigatória."],
+          null
+        );
+      }
+
+      const page = Math.max(input.page, 1);
+      const pageSize = Math.min(100, Math.max(input.pageSize, 1));
+      const query = input.query?.trim() || undefined;
+
+      const canExternal = await canListExternalMultiskillTargets(
+        access,
+        teamId,
+        (id) => backofficeOperationalAccessService.hasMultiskillOriginTeam(id)
+      );
+
+      const [internalTargets, externalTargetsResult] = await Promise.all([
+        this.repository.findInternalTransferTargetsWithSearch(teamId, query),
+        canExternal
+          ? multiskillTransferService.listTransferTargets({
+              originMasterId: access.managerId,
+              query,
+              page: 1,
+              pageSize: 100,
+            })
+          : Promise.resolve(null),
+      ]);
+
+      const result = buildTransferTargetItems({
+        internalTargets,
+        externalTargets: externalTargetsResult?.items ?? null,
+        canExternalMultiskill: canExternal,
+        page,
+        pageSize,
+      });
+
+      return new Output(true, [], [], result);
+    } catch (error) {
+      console.error("[TeamMembersUseCase][listTransferTargetsWithCtx] Erro ao listar destinos:", error);
+      return new Output(false, [], ["Erro interno ao listar destinos de transferência"], null);
+    }
+  }
+
+  async listMembers(
+    supabaseId: string,
+    teamId: string,
+    requestedFunction: ListMembersFunction | null
+  ): Promise<Output> {
+    try {
+      const profile = await this.repository.findRequesterProfile(supabaseId);
+      if (!profile) {
+        return new Output(false, [], ["Perfil não encontrado"], null);
+      }
+
+      const accessTeam = await this.repository.findTeam(teamId);
+      if (!accessTeam) return new Output(false, [], ["Time não encontrado"], null);
+
+      const canManageMembers = await this.repository.canManageTeamMembers(profile.id, accessTeam.masterId);
+      const membership = await this.repository.findMembership(teamId, profile.id);
+
+      if (!membership && !canManageMembers) {
+        return new Output(false, [], ["Você não faz parte deste time"], null);
+      }
+
+      const cached = this.repository === defaultTeamMembersRepository
+        ? await getCachedTeamMembersData(teamId)
+        : await (async () => {
+            const team = await this.repository.findTeam(teamId);
+            if (!team) return null;
+            const [members, masterAccountTeamMembers, masterAccountProfiles] = await Promise.all([
+              this.repository.findMembers(teamId),
+              this.repository.findMasterAccountTeamMembers(team.masterId),
+              this.repository.findMasterAccountProfiles(team.masterId),
+            ]);
+            return { team, members, masterAccountTeamMembers, masterAccountProfiles };
+          })();
+
+      if (!cached) return new Output(false, [], ["Time não encontrado"], null);
+      const { team, members, masterAccountTeamMembers, masterAccountProfiles } = cached;
+
+      const formattedMembers = members.map((member) => ({
+        id: member.id,
+        profileId: member.profileId,
+        name: getDisplayName(member.profile),
+        email: member.profile.email,
+        role: member.role,
+        functions: member.functions,
+        googleCalendarConnected: member.profile.googleCalendarConnected,
+        profileIconUrl: member.profile.profileIconUrl,
+        isMaster: member.profileId === team.masterId,
+      }));
+
+      const isAssociateAccount = Boolean(team.sponsorMasterId);
+      const viewerOnAssociateAccount =
+        profile.id === team.masterId || profile.managerId === team.masterId;
+
+      const visibleMembers =
+        isAssociateAccount && viewerOnAssociateAccount && team.sponsorMasterId
+          ? formattedMembers.filter((member) => member.profileId !== team.sponsorMasterId)
+          : formattedMembers;
+
+      const filteredMembers = requestedFunction
+        ? visibleMembers.filter((member) => member.functions.includes(requestedFunction))
+        : visibleMembers;
+
+      let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
+      let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
+
+      if (!requestedFunction) {
+        const currentMemberIds = new Set(members.map((member) => member.profileId));
+        eligibleProfiles = masterAccountProfiles
+          .filter((accountProfile) => accountProfile.supabaseId)
+          .filter((accountProfile) => !currentMemberIds.has(accountProfile.id))
+          .map((accountProfile) => ({
+            id: accountProfile.id,
+            name: getDisplayName(accountProfile),
+            email: accountProfile.email,
+          }))
+          .sort((a, b) => {
+            const aKey = (a.name || a.email || "").toLowerCase();
+            const bKey = (b.name || b.email || "").toLowerCase();
+            return aKey.localeCompare(bKey, "pt-BR");
+          });
+
+        transferCandidates = masterAccountTeamMembers
+          .filter((member) => member.profile?.supabaseId)
+          .filter((member) => member.profileId !== team.masterId)
+          .map((member) => ({
+            id: member.profile.id,
+            name: getDisplayName(member.profile),
+            email: member.profile.email,
+          }))
+          .sort((a, b) => {
+            const aKey = (a.name || a.email || "").toLowerCase();
+            const bKey = (b.name || b.email || "").toLowerCase();
+            return aKey.localeCompare(bKey, "pt-BR");
+          });
+      }
+
+      const canManageTransferRoutes =
+        team.masterId === profile.id ||
+        (membership?.role === "manager" && membership.canManageAccountTeams === true);
+
+      const transferTargets = await this.repository.findTransferTargets(teamId);
+
+      return new Output(true, [], [], {
+        team: { id: team.id, name: team.name, masterId: team.masterId },
+        members: filteredMembers,
+        eligibleProfiles,
+        transferCandidates,
+        transferTargets,
+        canManageTransferRoutes,
+        canManageMembers,
       });
     } catch (error) {
       console.error("[TeamMembersUseCase][listMembers] Erro ao listar membros do time:", error);
@@ -140,8 +410,8 @@ export class TeamMembersUseCase {
         return new Output(false, [], ["Time não encontrado"], null);
       }
 
-      if (team.masterId !== profile.id) {
-        return new Output(false, [], ["Apenas o master do time pode adicionar membros"], null);
+      if (!(await this.repository.canManageTeamMembers(profile.id, team.masterId))) {
+        return new Output(false, [], ["Apenas o master ou um manager delegado pode adicionar membros"], null);
       }
 
       const existingMember = await this.repository.findExistingMember(teamId, profileId);
@@ -178,6 +448,16 @@ export class TeamMembersUseCase {
         console.error("[TeamMembersUseCase][addMember] Erro ao criar notificação de membro adicionado:", notificationError);
       }
 
+      await auditLogService.logAudit({
+        entityType: "TEAM_MEMBER",
+        entityId: newMember.id,
+        action: "CREATE",
+        actorProfileId: profile.id,
+        before: null,
+        after: newMember,
+        metadata: { teamId },
+      });
+
       return new Output(true, ["Membro adicionado com sucesso"], [], newMember);
     } catch (error) {
       console.error("[TeamMembersUseCase][addMember] Erro ao adicionar membro:", error);
@@ -205,6 +485,8 @@ export class TeamMembersUseCase {
         return new Output(false, [], ["Não é possível remover o master do time"], null);
       }
 
+      const memberSnapshot = await this.repository.findMemberSnapshot(teamId, profileId);
+
       try {
         await notificationService.createTeamMembershipNotification({
           teamId,
@@ -219,6 +501,20 @@ export class TeamMembersUseCase {
       }
 
       await this.repository.deleteMember(teamId, profileId);
+
+      if (memberSnapshot) {
+        await auditLogService.logAudit({
+          entityType: "TEAM_MEMBER",
+          entityId: memberSnapshot.id,
+          action: "DELETE",
+          actorProfileId: profile.id,
+          before: memberSnapshot,
+          after: null,
+          metadata: { teamId },
+        });
+      }
+
+      await memberProBillingUseCase.syncBillingAfterUsageChange(team.masterId, "remove_member");
 
       return new Output(true, ["Membro removido com sucesso"], [], null);
     } catch (error) {

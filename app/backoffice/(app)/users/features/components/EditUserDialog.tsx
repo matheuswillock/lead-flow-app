@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import type {
   BackofficeUserItem,
   UpdateUserFormData,
@@ -110,7 +111,7 @@ export function EditUserDialog({
       return
     }
     if (!isBackofficeEmail(form.email)) {
-      setEmailError("Informe o prefixo do e-mail @corretorstudio.com")
+      setEmailError("Informe o prefixo do e-mail @corretorstudio.com.br")
       return
     }
 
@@ -183,21 +184,31 @@ export function EditUserDialog({
                   {emailError ? <p className="text-xs text-destructive">{emailError}</p> : null}
                 </div>
 
-                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="editFullAccess">Acesso total</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Permite criar e gerenciar outros usuários backoffice.
-                    </p>
-                  </div>
-                  <Switch
-                    id="editFullAccess"
-                    checked={form.fullAccess}
-                    onCheckedChange={(value) =>
-                      setForm((current) => ({ ...current, fullAccess: value }))
+                <div className="flex flex-col gap-2 rounded-md border p-3">
+                  <Label>Tipo de usuário</Label>
+                  <RadioGroup
+                    value={form.fullAccess ? "manager" : "operator"}
+                    onValueChange={(value) =>
+                      setForm((current) => ({ ...current, fullAccess: value === "manager" }))
                     }
                     disabled={isPending}
-                  />
+                    className="flex flex-col gap-2"
+                  >
+                    <div className="flex items-start gap-3">
+                      <RadioGroupItem value="manager" id="edit-role-manager" className="mt-0.5" />
+                      <div>
+                        <Label htmlFor="edit-role-manager" className="font-medium cursor-pointer">Manager</Label>
+                        <p className="text-xs text-muted-foreground">Acesso total ao backoffice</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <RadioGroupItem value="operator" id="edit-role-operator" className="mt-0.5" />
+                      <div>
+                        <Label htmlFor="edit-role-operator" className="font-medium cursor-pointer">Operator</Label>
+                        <p className="text-xs text-muted-foreground">Apenas visualização</p>
+                      </div>
+                    </div>
+                  </RadioGroup>
                 </div>
 
                 <div className="flex items-center justify-between gap-4 rounded-md border p-3">

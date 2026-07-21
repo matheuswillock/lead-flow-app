@@ -9,9 +9,18 @@ import {
   calendarAvailabilityRepository,
 } from "@/app/api/infra/data/repositories/calendarAvailability/CalendarAvailabilityRepository";
 import type { ICalendarAvailabilityRepository } from "@/app/api/infra/data/repositories/calendarAvailability/ICalendarAvailabilityRepository";
-import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
+import {
+  DEFAULT_TZ,
+  addDaysInTz,
+  formatLocalDateValue,
+  getBusyMinutesRangeInDay,
+  getDayRangeInTz,
+  getMinutesInTz,
+  resolveTimezone,
+} from "@/lib/dates";
 
 const SLOT_MINUTES = 30;
+const MAX_RANGE_DAYS = 60;
 
 const formatTimeSlot = (minutes: number) => {
   const hour = Math.floor(minutes / 60);
@@ -35,12 +44,15 @@ const isExpectedGoogleFallbackError = (error: unknown) => {
   );
 };
 
+type DayWindow = { dateKey: string; start: Date; end: Date };
+
 export class CalendarAvailabilityService implements ICalendarAvailabilityService {
   constructor(private readonly repository: ICalendarAvailabilityRepository) {}
 
   async getAvailability(input: GetCalendarAvailabilityInput): Promise<CalendarAvailabilityResult> {
     const { teamId, requestedCloserIds, date, excludeLeadId } = input;
     const timezone = resolveTimezone(input.userTimezone ?? DEFAULT_TZ);
+    const rangeDays = Math.min(Math.max(input.days ?? 1, 1), MAX_RANGE_DAYS);
 
     const memberProfileIds = await this.repository.findTeamMemberProfileIds(teamId, requestedCloserIds);
     if (memberProfileIds.length !== requestedCloserIds.length) {
@@ -55,30 +67,44 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
       throw new CalendarAvailabilityServiceError("CLOSERS_NOT_FOUND", "Closers não encontrados.");
     }
 
+    const dayWindows: DayWindow[] = [];
+    let cursor = getDayRangeInTz(date, timezone);
+    for (let index = 0; index < rangeDays; index += 1) {
+      dayWindows.push({
+        dateKey: formatLocalDateValue(cursor.start, timezone),
+        start: cursor.start,
+        end: cursor.end,
+      });
+      cursor = { start: cursor.end, end: addDaysInTz(cursor.end, 1, timezone) };
+    }
+
+    const rangeStart = dayWindows[0].start;
+    const rangeEnd = dayWindows[dayWindows.length - 1].end;
+    const dayWindowByKey = new Map(dayWindows.map((window) => [window.dateKey, window]));
+
     const excludedLead = excludeLeadId
       ? await this.repository.findExcludedLead(excludeLeadId, teamId)
       : null;
 
-    const preservedSlotByCloser = new Map<string, string>();
+    const preservedSlotByCloser = new Map<string, { dateKey: string; slot: string }>();
     if (excludedLead?.closerId && excludedLead.meetingDate) {
       const excludedDateKey = formatLocalDateValue(excludedLead.meetingDate, timezone);
-      if (excludedDateKey === date) {
-        preservedSlotByCloser.set(
-          excludedLead.closerId,
-          formatTimeSlot(getMinutesInTz(excludedLead.meetingDate, timezone))
-        );
+      if (dayWindowByKey.has(excludedDateKey)) {
+        preservedSlotByCloser.set(excludedLead.closerId, {
+          dateKey: excludedDateKey,
+          slot: formatTimeSlot(getMinutesInTz(excludedLead.meetingDate, timezone)),
+        });
       }
     }
 
-    const { start: dayStart, end: dayEnd } = getDayRangeInTz(date, timezone);
-    const timeMin = dayStart.toISOString();
-    const timeMax = dayEnd.toISOString();
+    const timeMin = rangeStart.toISOString();
+    const timeMax = rangeEnd.toISOString();
 
     const internalLeads = await this.repository.findScheduledLeadsForDay({
       teamId,
       requestedCloserIds,
-      dayStart,
-      dayEnd,
+      dayStart: rangeStart,
+      dayEnd: rangeEnd,
     });
 
     const internalBusyByCloser = internalLeads.reduce<Record<string, Array<{ start: string; end: string }>>>(
@@ -95,12 +121,16 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
 
     const now = new Date();
     const todayKey = formatLocalDateValue(now, timezone);
-    const isToday = date === todayKey;
     const nowMinutes = getMinutesInTz(now, timezone);
 
     const slots = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => index * SLOT_MINUTES);
 
-    const computeAvailability = (busyIntervals: Array<{ start: string; end: string }>) => {
+    const computeAvailability = (
+      busyIntervals: Array<{ start: string; end: string }>,
+      dayWindow: DayWindow
+    ) => {
+      const isToday = dayWindow.dateKey === todayKey;
+
       return slots
         .filter((slotStart) => {
           if (isToday && slotStart < nowMinutes) {
@@ -113,71 +143,94 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
             const startDate = new Date(interval.start);
             const endDate = new Date(interval.end);
             if (endDate <= now) return false;
-            if (endDate <= dayStart || startDate >= dayEnd) return false;
 
-            const startClamp = startDate < dayStart ? dayStart : startDate;
-            const endClamp = endDate > dayEnd ? dayEnd : endDate;
+            const busyRange = getBusyMinutesRangeInDay(
+              { start: startDate, end: endDate },
+              { start: dayWindow.start, end: dayWindow.end },
+              timezone
+            );
+            if (!busyRange) return false;
 
-            const busyStart = getMinutesInTz(startClamp, timezone);
-            const busyEnd = getMinutesInTz(endClamp, timezone);
-
-            return slotStart < busyEnd && slotEnd > busyStart;
+            return slotStart < busyRange.endMinutes && slotEnd > busyRange.startMinutes;
           });
         })
         .map(formatTimeSlot);
     };
 
+    // Consultas ao Google em paralelo (antes eram seriais por closer);
+    // falhas caem no fallback interno individualmente.
+    const busyByCloser = await Promise.all(
+      closerProfiles.map(async (closerProfile) => {
+        const canUseGoogleCalendar =
+          !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+
+        if (canUseGoogleCalendar) {
+          try {
+            if (!closerProfile.googleConnection) {
+              throw new Error("Perfil marcado com Google conectado, mas sem conexao OAuth carregada");
+            }
+
+            const busyIntervals = await getCalendarBusyIntervals({
+              organizer: {
+                profileId: closerProfile.id,
+                supabaseId: closerProfile.supabaseId,
+                timezone: closerProfile.timezone ?? timezone,
+                connection: closerProfile.googleConnection,
+              },
+              timeMin,
+              timeMax,
+            });
+            return { closerProfile, busyIntervals, usedGoogle: true };
+          } catch (error) {
+            const reason = isExpectedGoogleFallbackError(error)
+              ? "google_connection_unavailable"
+              : "google_availability_unavailable";
+            console.info(
+              `Google Calendar indisponivel para disponibilidade (${reason}); usando fallback interno.`
+            );
+          }
+        }
+
+        return {
+          closerProfile,
+          busyIntervals: internalBusyByCloser[closerProfile.id] ?? [],
+          usedGoogle: false,
+        };
+      })
+    );
+
     const perCloser: Record<string, string[]> = {};
+    const days: Record<string, string[]> = {};
     let source: "google" | "internal" = "internal";
 
-    for (const closerProfile of closerProfiles) {
-      const canUseGoogleCalendar =
-        !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
-      let busyIntervals: Array<{ start: string; end: string }> = [];
-      let usedGoogle = false;
+    for (const window of dayWindows) {
+      const daySlots = new Set<string>();
 
-      if (canUseGoogleCalendar) {
-        try {
-          if (!closerProfile.googleConnection) {
-            throw new Error("Perfil marcado com Google conectado, mas sem conexao OAuth carregada");
+      for (const { closerProfile, busyIntervals, usedGoogle } of busyByCloser) {
+        const closerAvailability = computeAvailability(busyIntervals, window);
+        const preserved = preservedSlotByCloser.get(closerProfile.id);
+        if (
+          preserved &&
+          preserved.dateKey === window.dateKey &&
+          !closerAvailability.includes(preserved.slot)
+        ) {
+          closerAvailability.push(preserved.slot);
+          closerAvailability.sort(sortTimeSlots);
+        }
+
+        if (window.dateKey === date) {
+          perCloser[closerProfile.id] = closerAvailability;
+          if (usedGoogle) {
+            source = "google";
           }
+        }
 
-          busyIntervals = await getCalendarBusyIntervals({
-            organizer: {
-              profileId: closerProfile.id,
-              supabaseId: closerProfile.supabaseId,
-              timezone: closerProfile.timezone ?? timezone,
-              connection: closerProfile.googleConnection,
-            },
-            timeMin,
-            timeMax,
-          });
-          usedGoogle = true;
-        } catch (error) {
-          const reason = isExpectedGoogleFallbackError(error)
-            ? "google_connection_unavailable"
-            : "google_availability_unavailable";
-          console.info(
-            `Google Calendar indisponivel para disponibilidade (${reason}); usando fallback interno.`
-          );
+        for (const slot of closerAvailability) {
+          daySlots.add(slot);
         }
       }
 
-      if (!usedGoogle) {
-        busyIntervals = internalBusyByCloser[closerProfile.id] ?? [];
-      }
-
-      const closerAvailability = computeAvailability(busyIntervals);
-      const preservedSlot = preservedSlotByCloser.get(closerProfile.id);
-      if (preservedSlot && !closerAvailability.includes(preservedSlot)) {
-        closerAvailability.push(preservedSlot);
-        closerAvailability.sort(sortTimeSlots);
-      }
-
-      perCloser[closerProfile.id] = closerAvailability;
-      if (usedGoogle) {
-        source = "google";
-      }
+      days[window.dateKey] = Array.from(daySlots).sort(sortTimeSlots);
     }
 
     const availableTimes = Array.from(new Set(Object.values(perCloser).flat())).sort(sortTimeSlots);
@@ -186,6 +239,7 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
       availableTimes,
       source,
       perCloser,
+      days,
     };
   }
 }

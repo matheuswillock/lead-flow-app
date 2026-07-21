@@ -1,8 +1,15 @@
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { LeadForm } from "@/components/forms/leadForm";
+import type { LeadFormSaveMode } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
-import { leadFormData } from "@/lib/validations/validationForms";
+import { useLeadCustomFieldDefinitions } from "@/hooks/useLeadCustomFieldDefinitions";
+import { buildLeadCustomFieldsSchema } from "@/lib/leadCustomFields/schema";
+import type { LeadFormWithCustomFields } from "@/hooks/useForms";
+import { isDraftLead } from "@/lib/lead-status";
+import { normalizeLeadPhoneDigits } from "@/lib/masks";
+import { resolveActivityAuthor as resolveActivityAuthorFromLib } from "@/lib/lead-activities/resolveActivityAuthor";
+import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
 import {
   useCallback,
   useEffect,
@@ -11,7 +18,6 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent,
-  type ReactNode,
   type SyntheticEvent,
 } from "react";
 import { useLeads } from "@/hooks/useLeads";
@@ -20,7 +26,7 @@ import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ArrowRightLeft, Calendar, CheckCircle, ClipboardList, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
+import { ArrowRightLeft, CheckCircle, ClipboardList, Copy, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
@@ -35,16 +41,16 @@ import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app
 import { useParams, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { EmojiStyle, Theme } from "emoji-picker-react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -57,10 +63,11 @@ import {
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
-import { isMeetingOverdue } from "@/lib/lead-meeting";
+import { isMeetingOverdue, canConfirmMeetingPresence } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 import { TransferBetweenTeamsDialog } from "@/app/[supabaseId]/board/features/container/TransferBetweenTeamsDialog";
+import { ResendScheduleInviteDialog } from "@/app/[supabaseId]/board/features/components/ResendScheduleInviteDialog";
 import {
   SalesInfoRequirementDialog,
   type MissingSalesField,
@@ -68,19 +75,30 @@ import {
   type SalesInfoPayload,
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 import {
+  CloserRequirementDialog,
+  type CloserRequirementPayload,
+} from "@/app/[supabaseId]/components/CloserRequirementDialog";
+import {
   LeadInfoRequirementDialog,
   type LeadInfoInitialValues,
   type LeadInfoPayload,
   type MissingLeadField,
 } from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
 import {
-  formatIntimezone,
   parseLocalToUtc,
 } from "@/lib/dates";
 import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
 } from "@/lib/services/leadStatusTransitionClient";
+import { mapLeadInfoPayloadForUpdate } from "@/lib/leadStatusTransitionFields";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
+import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
+import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timeline/LeadActivityTimeline";
+import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDuplicateWarningDialog";
+import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
+import type { LeadDuplicateCandidateDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 
 interface LeadDialogProps {
   open: boolean;
@@ -99,11 +117,42 @@ type PendingStatusConfirmation = {
   message: string;
 };
 
+
+function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: string; teamId: string; supabaseId: string }) {
+  const [items, setItems] = useState<any[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/v1/teams/${teamId}/leads/${leadId}/public-form-submissions`, {
+      headers: { "x-supabase-user-id": supabaseId, "x-team-id": teamId },
+      signal: controller.signal,
+    }).then(async (response) => {
+      const output = await response.json();
+      if (!response.ok || !output.isValid) throw new Error(output.errorMessages?.[0] ?? "Erro ao carregar respostas");
+      setItems(output.result ?? []);
+    }).catch((fetchError) => {
+      if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
+      setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar respostas");
+    });
+    return () => controller.abort();
+  }, [leadId, teamId, supabaseId]);
+  if (error) return <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">{error}</div>;
+  if (!items) return <div className="mt-4 space-y-2"><div className="h-20 animate-pulse rounded-lg bg-muted"/><div className="h-20 animate-pulse rounded-lg bg-muted"/></div>;
+  if (!items.length) return <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Este lead ainda não respondeu formulários públicos.</div>;
+  return <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">{items.map((submission) => <div className="rounded-lg border p-3" key={submission.id}><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium">{submission.form.name}</p><p className="text-xs text-muted-foreground">Versão {submission.publication.version} · {new Date(submission.createdAt).toLocaleString("pt-BR")}</p></div>{submission.scoreBandLabel ? <Badge variant="secondary">{submission.scoreBandLabel} · {submission.score} pts</Badge> : null}</div><div className="mt-3 space-y-2">{submission.answers.map((answer: any) => { const snapshot = answer.questionSnapshot as { title?: string }; const value = Array.isArray(answer.value) ? answer.value.join(", ") : typeof answer.value === "object" ? JSON.stringify(answer.value) : String(answer.value ?? "—"); return <div key={answer.id}><p className="text-xs font-medium text-muted-foreground">{snapshot.title ?? "Pergunta"}</p><p className="text-sm break-words">{value}</p></div> })}</div></div>)}</div>;
+}
+
 type PendingSalesInfoGate = {
   status: string;
   trigger?: LeadStatusTransitionTrigger;
   missingFields: MissingSalesField[];
   currentSalesInfo: SalesInfoInitialValues;
+};
+
+type PendingCloserGate = {
+  status: string;
+  trigger?: LeadStatusTransitionTrigger;
+  currentCloserId: string | null;
 };
 
 type PendingLeadInfoGate = {
@@ -145,14 +194,6 @@ type LeadOriginBadge = {
   variant: "default" | "secondary" | "outline";
 };
 
-const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
-
-const normalizeLeadPhoneDigits = (phone: string): string => {
-  if (!phone) return "";
-  const numbers = phone.replace(/\D/g, "");
-  if (numbers.length <= 11) return numbers;
-  return numbers.slice(0, 11);
-};
 
 
 
@@ -170,24 +211,23 @@ export default function LeadDialog({
   const [localLead, setLocalLead] = useState<Lead | null>(lead);
   const currentLead = localLead ?? lead;
   const currentLeadId = currentLead?.id ?? "";
-  const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [meetingHealdSaving, setMeetingHealdSaving] = useState(false);
+  const [meetingPresenceConfirmSaving, setMeetingPresenceConfirmSaving] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
   const [resendDialogOpen, setResendDialogOpen] = useState(false);
-  const [resendTarget, setResendTarget] = useState<"all" | "single" | "new">("all");
-  const [resendEmail, setResendEmail] = useState<string>("");
-  const [newParticipantDraft, setNewParticipantDraft] = useState("");
-  const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
-  const [_pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [_pendingSubmitData, setPendingSubmitData] = useState<LeadFormWithCustomFields | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [scheduleShareDialogOpen, setScheduleShareDialogOpen] = useState(false);
+  const [scheduleShareUrl, setScheduleShareUrl] = useState("");
+  const [scheduleShareExpiresAt, setScheduleShareExpiresAt] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
   const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email" | "task">("note");
+  const [sidePanelTab, setSidePanelTab] = useState<"activities" | "forms">("activities");
   const [activityBody, setActivityBody] = useState("");
   const [activitySubmitting, setActivitySubmitting] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -204,10 +244,22 @@ export default function LeadDialog({
   const [salesInfoDialogOpen, setSalesInfoDialogOpen] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
+  const [closerRequirementDialogOpen, setCloserRequirementDialogOpen] = useState(false);
+  const [closerRequirementSaving, setCloserRequirementSaving] = useState(false);
+  const [pendingCloserGate, setPendingCloserGate] = useState<PendingCloserGate | null>(null);
   const [leadInfoDialogOpen, setLeadInfoDialogOpen] = useState(false);
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
   const [showTransferBetweenTeamsDialog, setShowTransferBetweenTeamsDialog] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateCandidates, setDuplicateCandidates] = useState<LeadDuplicateCandidateDTO[]>([]);
+  const [pendingDuplicateCreate, setPendingDuplicateCreate] = useState<{
+    data: CreateLeadRequest;
+    saveAsDraft: boolean;
+  } | null>(null);
+  const [duplicateConfirming, setDuplicateConfirming] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [isTransferToggling, setIsTransferToggling] = useState(false);
 
   useEffect(() => {
     setLocalLead(lead);
@@ -234,13 +286,44 @@ export default function LeadDialog({
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const { activeTeamId, activeTeam, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const leadDetailsTeamId = currentLead?.teamId ?? activeTeamId ?? null;
   const {
     details: leadDetails,
     loading: leadDetailsLoading,
     error: leadDetailsError,
     refresh: refreshLeadDetails,
-  } = useLeadDetails(currentLeadId || null, activeTeamId, supabaseId);
+  } = useLeadDetails(currentLeadId || null, leadDetailsTeamId, supabaseId);
+  const customFieldsTeamId = useMemo(
+    () => leadDetails?.lead?.teamId ?? currentLead?.teamId ?? activeTeamId ?? null,
+    [leadDetails?.lead?.teamId, currentLead?.teamId, activeTeamId]
+  );
+  const {
+    activeDefinitions: leadCustomFieldDefinitions,
+    isLoading: leadCustomFieldDefinitionsLoading,
+    refresh: refreshLeadCustomFieldDefinitions,
+  } = useLeadCustomFieldDefinitions({
+    teamId: customFieldsTeamId,
+    supabaseId,
+  });
+  const form = useLeadForm(leadCustomFieldDefinitions);
+  const { hasAccess } = useFeatureAccess();
+  const { access: operationalAccess } = useOperationalAccess();
+  const canTransferBetweenTeams =
+    isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
+  const canMergeLead =
+    Boolean(currentLead) &&
+    (isTeamMaster || isManagerLikeRole(activeRole ?? user?.role ?? ""));
+  const allowedTransferTargetIds = useMemo(
+    () => (leadDetails?.transferTargets ?? []).map((target) => target.teamId),
+    [leadDetails?.transferTargets]
+  );
+  // MultiSkill origin teams may have no internal transfer route yet the external
+  // MultiSkill lookup still yields valid targets. multiskillExternalTransfer is a
+  // team-level flag, not a per-user one, so it must still respect transfer delegation.
+  const hasTransferTargets =
+    allowedTransferTargetIds.length > 0 ||
+    (canTransferBetweenTeams && operationalAccess.multiskillExternalTransfer);
   const isCloserOperator =
     activeFunctions.includes("CLOSER") &&
     !isTeamMaster &&
@@ -268,6 +351,15 @@ export default function LeadDialog({
     () => (currentLead ? sdrsByTeam : newLeadSdrs),
     [currentLead, sdrsByTeam, newLeadSdrs]
   );
+  const scheduleCloserName = useMemo(() => {
+    if (!currentLead || currentLead.isTransfer === true) return null;
+    if (currentLead.closer?.fullName || currentLead.closer?.email) {
+      return currentLead.closer.fullName || currentLead.closer.email || null;
+    }
+    if (!currentLead.closerId) return null;
+    const closerMember = closersByTeam.find((member) => member.id === currentLead.closerId);
+    return closerMember?.name || closerMember?.email || null;
+  }, [closersByTeam, currentLead]);
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
   const currentActivitiesLead =
@@ -276,19 +368,16 @@ export default function LeadDialog({
     leadDetailsLoading || (!!currentLead && leadDetails?.lead?.id !== currentLead?.id);
   // Único gating de loading do conteúdo do dialog: o useLeadDetails carrega lead,
   // anexos e membros em paralelo — basta aguardar o loading dele.
-  const isLeadContentLoading = !!currentLead && leadDetailsLoading;
+  const isCustomFieldsLoading =
+    Boolean(customFieldsTeamId) && leadCustomFieldDefinitionsLoading;
+  const isLeadContentLoading =
+    (!!currentLead && leadDetailsLoading) || isCustomFieldsLoading;
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOrigin(window.location.origin);
     }
   }, []);
-
-  useEffect(() => {
-    if (currentLead?.id && open) {
-      void refreshLeadDetails();
-    }
-  }, [currentLead?.id, open, refreshLeadDetails]);
 
   useEffect(() => {
     if (!open) {
@@ -316,6 +405,15 @@ export default function LeadDialog({
     setSelectedMentions([]);
     setHighlightedActivityId(null);
   }, [currentLead?.id]);
+
+  useEffect(() => {
+    if (!leadDetails?.lead || leadDetails.lead.id !== currentLeadId) return;
+    setLocalLead((prev) =>
+      prev?.id === leadDetails.lead.id
+        ? ({ ...prev, ...leadDetails.lead } as Lead)
+        : (leadDetails.lead as Lead)
+    );
+  }, [leadDetails?.lead, currentLeadId]);
 
   // teamMembers para o popover de menções — derivado do useLeadDetails (sem fetch separado)
   useEffect(() => {
@@ -371,9 +469,23 @@ export default function LeadDialog({
     currentLead.status === "offerSubmission"
   );
   const shouldShowMeetingHeald = !!currentLead && currentLead.status === "scheduled";
+  const isTransferWithoutPreSchedule = useMemo(
+    () => !!currentLead && currentLead.isTransfer === true && !currentLead.meetingDate,
+    [currentLead]
+  );
   const isAssignedCloser = !!(currentLead && user && currentLead.closerId && currentLead.closerId === user.id);
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || isAssignedCloser);
+  const isAssignedSdr = !!(currentLead && user && currentLead.assignedTo === user.id);
+  const canEditMeetingPresence =
+    !!currentLead &&
+    currentLead.isTransfer !== true &&
+    canConfirmMeetingPresence({
+      status: currentLead.status,
+      meetingDate: currentLead.meetingDate,
+      isTransfer: currentLead.isTransfer,
+    }) &&
+    (isTeamMaster || isManagerLikeRole(user?.role ?? "") || isAssignedSdr || isAssignedCloser);
   const canMarkNoShow =
     !!currentLead &&
     currentLead.status === "scheduled" &&
@@ -571,30 +683,11 @@ export default function LeadDialog({
     [applyLocalLeadPatch]
   );
 
-  const resolveActivityAuthor = useCallback((profileId: string | null | undefined) => {
-    if (!profileId) return null;
-
-    const member = teamMembers.find((teamMember) => teamMember.profileId === profileId);
-    if (member) {
-      return {
-        id: member.profileId,
-        fullName: member.name ?? null,
-        email: member.email || "",
-        avatarUrl: member.profileIconUrl ?? null,
-      };
-    }
-
-    if (user?.id === profileId) {
-      return {
-        id: user.id,
-        fullName: user.fullName ?? null,
-        email: user.email,
-        avatarUrl: user.profileIconUrl ?? null,
-      };
-    }
-
-    return null;
-  }, [teamMembers, user]);
+  const resolveActivityAuthor = useCallback((
+    profileId: string | null | undefined,
+    payload?: Record<string, unknown> | null
+  ) => resolveActivityAuthorFromLib(profileId, payload, { teamMembers, user }),
+  [teamMembers, user]);
 
   const upsertRealtimeActivity = useCallback((activityRow: LeadActivityRealtimeRow) => {
     if (!currentLead?.id || activityRow.leadId !== currentLead.id) return;
@@ -606,7 +699,7 @@ export default function LeadDialog({
       payload: activityRow.payload,
       createdAt: activityRow.createdAt,
       reactions: [],
-      author: resolveActivityAuthor(activityRow.createdBy),
+      author: resolveActivityAuthor(activityRow.createdBy, activityRow.payload as Record<string, unknown> | null),
     };
 
     setOptimisticActivities((prev) => {
@@ -712,60 +805,6 @@ export default function LeadDialog({
       setMentionIndex(0);
     }
   }, [mentionOpen, mentionIndex, mentionMatches.length]);
-
-  const renderActivityBodyWithMentions = (body: string) => {
-    if (!mentionRegex) return body;
-    const regex = new RegExp(mentionRegex.source, mentionRegex.flags);
-    const parts: ReactNode[] = [];
-    let lastIndex = 0;
-    for (const match of body.matchAll(regex)) {
-      const index = match.index ?? 0;
-      if (index > lastIndex) {
-        parts.push(body.slice(lastIndex, index));
-      }
-      parts.push(
-        <span key={`${index}-${match[0]}`} className="text-primary font-medium">
-          {match[0]}
-        </span>
-      );
-      lastIndex = index + match[0].length;
-    }
-    if (lastIndex < body.length) {
-      parts.push(body.slice(lastIndex));
-    }
-    return parts.length > 0 ? parts : body;
-  };
-
-  const buildParticipantOptions = () => {
-    const options: { label: string; email: string }[] = [];
-    if (currentLead?.email) {
-      options.push({ label: `${currentLead.name} (Lead)`, email: currentLead.email });
-    }
-    if (currentLead?.closer?.email) {
-      options.push({
-        label: `${currentLead.closer.fullName || currentLead.closer.email} (Closer)`,
-        email: currentLead.closer.email,
-      });
-    }
-    if (user?.email) {
-      options.push({
-        label: `${user.fullName || user.email} (Master)`,
-        email: user.email,
-      });
-    }
-    scheduleGuests.forEach((guestEmail) => {
-      if (!options.some((option) => option.email === guestEmail)) {
-        options.push({ label: guestEmail, email: guestEmail });
-      }
-    });
-    const seen = new Set<string>();
-    return options.filter((option) => {
-      const normalized = option.email.toLowerCase();
-      if (seen.has(normalized)) return false;
-      seen.add(normalized);
-      return true;
-    });
-  };
 
   const handleCopyLeadCode = async (code: string) => {
     try {
@@ -904,21 +943,6 @@ export default function LeadDialog({
     }
   };
 
-  const formatActivityDate = (value: string) => {
-    try {
-      return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", scheduleTimezone)
-    } catch {
-      return value;
-    }
-  };
-
-  const getInitials = (name: string) => {
-    const words = name.trim().split(" ").filter(Boolean);
-    if (words.length === 0) return "LF";
-    if (words.length === 1) return words[0].charAt(0).toUpperCase();
-    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
-  };
-
   const activityTypeOptions = [
     { value: "note", label: "Comentário", icon: <MessageSquare className="h-4 w-4 text-primary" /> },
     { value: "call", label: "Ligação", icon: <Phone className="h-4 w-4 text-primary" /> },
@@ -926,54 +950,6 @@ export default function LeadDialog({
     { value: "email", label: "Email", icon: <Mail className="h-4 w-4 text-primary" /> },
     { value: "task", label: "Tarefa", icon: <ClipboardList className="h-4 w-4 text-primary" /> },
   ];
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case "call":
-        return <Phone className="h-4 w-4 text-primary" />;
-      case "whatsapp":
-        return <MessageCircle className="h-4 w-4 text-primary" />;
-      case "email":
-        return <Mail className="h-4 w-4 text-primary" />;
-      case "status_change":
-        return <CheckCircle className="h-4 w-4 text-primary" />;
-      case "task":
-        return <ClipboardList className="h-4 w-4 text-primary" />;
-      case "note":
-      default:
-        return <MessageSquare className="h-4 w-4 text-primary" />;
-    }
-  };
-
-  const getActivityLabel = (type: string) => {
-    switch (type) {
-      case "call":
-        return "Ligação";
-      case "whatsapp":
-        return "WhatsApp";
-      case "email":
-        return "Email";
-      case "status_change":
-        return "Status";
-      case "task":
-        return "Tarefa";
-      case "note":
-      default:
-        return "Comentário";
-    }
-  };
-
-  const isScheduleActivity = (activity: LeadActivityResponseDTO) => {
-    if (activity?.payload && typeof activity.payload === "object") {
-      const payload = activity.payload as { kind?: string };
-      if (payload.kind === "schedule") return true;
-    }
-    return (
-      activity.body?.startsWith("Agendamento") ||
-      activity.body?.startsWith("Reagendamento") ||
-      false
-    );
-  };
 
   const mergedActivities = useMemo(() => {
     const serverActivities = currentActivitiesLead?.activities || [];
@@ -1317,7 +1293,54 @@ export default function LeadDialog({
     }
   };
 
-  const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
+  const handleConfirmDuplicateCreate = async () => {
+    if (!pendingDuplicateCreate || duplicateConfirming) return;
+
+    setDuplicateConfirming(true);
+    const loadingToast = toast.loading(
+      pendingDuplicateCreate.saveAsDraft
+        ? `Salvando rascunho "${pendingDuplicateCreate.data.name}"...`
+        : `Criando lead "${pendingDuplicateCreate.data.name}"...`
+    );
+
+    try {
+      const result = await createLead({
+        ...pendingDuplicateCreate.data,
+        confirmDuplicate: true,
+      });
+
+      if (result.success) {
+        toast.success(
+          pendingDuplicateCreate.saveAsDraft
+            ? `Rascunho "${pendingDuplicateCreate.data.name}" salvo com sucesso!`
+            : `Lead "${pendingDuplicateCreate.data.name}" criado com sucesso!`,
+          { id: loadingToast, duration: 4000 }
+        );
+        if (result.lead) {
+          form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
+          setLocalLead(result.lead as Lead);
+        }
+        await refreshLeads();
+        setDuplicateDialogOpen(false);
+        setPendingDuplicateCreate(null);
+        setDuplicateCandidates([]);
+      } else {
+        toast.error(result.message || "Erro ao criar lead", {
+          id: loadingToast,
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao criar lead", {
+        id: loadingToast,
+        duration: 5000,
+      });
+    } finally {
+      setDuplicateConfirming(false);
+    }
+  };
+
+  const transformToCreateRequest = (data: LeadFormWithCustomFields, saveAsDraft: boolean): CreateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
     return {
@@ -1337,7 +1360,8 @@ export default function LeadDialog({
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       closerId: data.closerId || undefined,
-      status: "new_opportunity" as any,
+      saveAsDraft,
+      isTransfer: data.isTransfer || false,
       ticket: undefined,
       contractDueDate: undefined,
       soldPlan: undefined,
@@ -1346,10 +1370,14 @@ export default function LeadDialog({
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
       referrerPhone: data.referrerPhone || undefined,
+      customFields:
+        data.customFields && Object.keys(data.customFields).length > 0
+          ? data.customFields
+          : undefined,
     };
   };
 
-  const transformToUpdateRequest = (data: leadFormData): UpdateLeadRequest => {
+  const transformToUpdateRequest = (data: LeadFormWithCustomFields, saveAsDraft: boolean): UpdateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
     return {
@@ -1378,10 +1406,16 @@ export default function LeadDialog({
         currentLead?.meetingType === "whatsapp"
           ? currentLead.meetingType
           : undefined,
+      isTransfer: data.isTransfer || false,
       isReferral: data.isReferral || false,
       referrerLeadId: data.referrerLeadId || undefined,
       referrerName: data.referrerName || undefined,
       referrerPhone: data.referrerPhone || undefined,
+      saveAsDraft,
+      customFields:
+        data.customFields && Object.keys(data.customFields).length > 0
+          ? data.customFields
+          : undefined,
     };
   };
 
@@ -1438,23 +1472,149 @@ export default function LeadDialog({
     }
   };
 
-  const onSubmit = async (data: leadFormData) => {
+  const handleMeetingPresenceConfirm = async () => {
+    if (!currentLead || !supabaseId || !activeTeamId) return;
+    if (!canEditMeetingPresence) return;
+    if (currentLead.meetingPresenceConfirmed === true) return;
+
+    const previousPresenceConfirmed = currentLead.meetingPresenceConfirmed ?? false;
+    const previousPresenceConfirmedAt = currentLead.meetingPresenceConfirmedAt ?? null;
+
+    patchLead?.(currentLead.id, { meetingPresenceConfirmed: true });
+    setLocalLead((prev) =>
+      prev && prev.id === currentLead.id
+        ? ({ ...prev, meetingPresenceConfirmed: true } as Lead)
+        : prev,
+    );
+    setMeetingPresenceConfirmSaving(true);
+
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId,
+        },
+        body: JSON.stringify({ meetingPresenceConfirmed: true }),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível confirmar a agenda.");
+      }
+
+      patchLead?.(currentLead.id, {
+        meetingPresenceConfirmed: true,
+        meetingPresenceConfirmedAt:
+          result.result?.meetingPresenceConfirmedAt ?? new Date().toISOString(),
+      });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id
+          ? ({
+              ...prev,
+              meetingPresenceConfirmed: true,
+              meetingPresenceConfirmedAt:
+                result.result?.meetingPresenceConfirmedAt ?? new Date().toISOString(),
+            } as Lead)
+          : prev,
+      );
+      toast.success("Agenda confirmada com o lead");
+    } catch (error) {
+      patchLead?.(currentLead.id, { meetingPresenceConfirmed: previousPresenceConfirmed, meetingPresenceConfirmedAt: previousPresenceConfirmedAt });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id
+          ? ({
+              ...prev,
+              meetingPresenceConfirmed: previousPresenceConfirmed,
+              meetingPresenceConfirmedAt: previousPresenceConfirmedAt,
+            } as Lead)
+          : prev,
+      );
+      toast.warning(error instanceof Error ? error.message : "Não foi possível confirmar a agenda.");
+    } finally {
+      setMeetingPresenceConfirmSaving(false);
+    }
+  };
+
+  const onSubmit = async (data: LeadFormWithCustomFields, mode: LeadFormSaveMode = "full") => {
+    const saveAsDraft = mode === "draft";
+    if (leadCustomFieldDefinitions.length > 0 && data.customFields) {
+      const customValidation = buildLeadCustomFieldsSchema(leadCustomFieldDefinitions).safeParse({
+        customFields: data.customFields,
+      });
+      if (!customValidation.success) {
+        toast.error(customValidation.error.issues[0]?.message || "Revise os campos personalizados");
+        return;
+      }
+    }
     setIsSubmitting(true);
 
     try {
       if (currentLead) {
         setPendingSubmitData(null);
-        const loadingToast = toast.loading("Atualizando lead...");
+        const loadingToast = toast.loading(
+          saveAsDraft ? "Salvando rascunho..." : "Atualizando lead..."
+        );
 
-        const updateData = transformToUpdateRequest(data);
+        const updateData = transformToUpdateRequest(data, saveAsDraft);
+        const previousCloserId = currentLead.closerId ?? "";
+        const nextCloserId = data.closerId ?? "";
+        const closerChanged = nextCloserId !== previousCloserId;
+        const hasScheduledMeeting =
+          !!currentLead.meetingDate && currentLead.isTransfer !== true;
+        const shouldRescheduleCloser =
+          closerChanged &&
+          hasScheduledMeeting &&
+          !saveAsDraft &&
+          (currentLead.status === "scheduled" || currentLead.status === "no_show");
+
+        if (shouldRescheduleCloser) {
+          if (!supabaseId) {
+            toast.error("Usuário não identificado", { id: loadingToast });
+            return;
+          }
+
+          const scheduleResponse = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-supabase-user-id": supabaseId,
+              "x-team-id": activeTeamId || "",
+            },
+            body: JSON.stringify({
+              date: new Date(currentLead.meetingDate as string).toISOString(),
+              meetingTitle: currentLead.meetingTitle || undefined,
+              notes: currentLead.meetingNotes || undefined,
+              meetingLink: currentLead.meetingLink || undefined,
+              meetingType: currentLead.meetingType || undefined,
+              closerId: nextCloserId || undefined,
+              extraGuests: scheduleGuests.length ? scheduleGuests : undefined,
+              transitionStatusToScheduled: false,
+            }),
+          });
+
+          const scheduleResult = await scheduleResponse.json().catch(() => null);
+          if (!scheduleResponse.ok || !scheduleResult?.isValid) {
+            throw new Error(
+              scheduleResult?.errorMessages?.join(", ") || "Erro ao reagendar closer da reunião"
+            );
+          }
+        }
+
         const result = await updateLead(currentLead.id, updateData);
 
         if (result.success) {
-          toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
+          toast.success(
+            saveAsDraft
+              ? `Rascunho "${data.name}" salvo com sucesso!`
+              : `Lead "${data.name}" atualizado com sucesso!`,
+            {
             id: loadingToast,
             duration: 3000,
           });
           if (result.lead) {
+            form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
             await applyLocalLeadPatch(currentLead.id, result.lead);
             setLocalLead((prev) =>
               prev && prev.id === currentLead.id ? ({ ...prev, ...result.lead } as Lead) : prev,
@@ -1469,18 +1629,33 @@ export default function LeadDialog({
           });
         }
       } else {
-        const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
+        const loadingToast = toast.loading(
+          saveAsDraft ? `Salvando rascunho "${data.name}"...` : `Criando lead "${data.name}"...`
+        );
 
         try {
-          const createData = transformToCreateRequest(data);
+          const createData = transformToCreateRequest(data, saveAsDraft);
           const result = await createLead(createData);
 
+          if (result.requiresDuplicateConfirmation && result.duplicateCandidates?.length) {
+            setPendingDuplicateCreate({ data: createData, saveAsDraft });
+            setDuplicateCandidates(result.duplicateCandidates);
+            setDuplicateDialogOpen(true);
+            toast.dismiss(loadingToast);
+            return;
+          }
+
           if (result.success) {
-            toast.success(`Lead "${data.name}" criado com sucesso!`, {
+            toast.success(
+              saveAsDraft
+                ? `Rascunho "${data.name}" salvo com sucesso!`
+                : `Lead "${data.name}" criado com sucesso!`,
+              {
               id: loadingToast,
               duration: 4000,
             });
             if (result.lead) {
+              form.setValue("razaoSocial", result.lead.razaoSocial ?? "", { shouldDirty: false });
               setLocalLead(result.lead as Lead);
             }
             await refreshLeads();
@@ -1651,6 +1826,17 @@ export default function LeadDialog({
           return false;
         }
 
+        if (transition.blockerType === "closer_required") {
+          setPendingCloserGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            currentCloserId: currentLead.closerId ?? null,
+          });
+          setCloserRequirementDialogOpen(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
         if (transition.blockerType === "lead_info_required") {
           const missingFields = Array.isArray(transition.missingLeadFields)
             ? transition.missingLeadFields
@@ -1672,6 +1858,18 @@ export default function LeadDialog({
               typeof transition.currentLeadInfo?.ongoingTreatment === "string"
                 ? transition.currentLeadInfo.ongoingTreatment
                 : currentLead.currentTreatment ?? null,
+            email:
+              typeof transition.currentLeadInfo?.email === "string"
+                ? transition.currentLeadInfo.email
+                : currentLead.email ?? null,
+            phone:
+              typeof transition.currentLeadInfo?.phone === "string"
+                ? transition.currentLeadInfo.phone
+                : currentLead.phone ?? null,
+            cnpj:
+              typeof transition.currentLeadInfo?.cnpj === "string"
+                ? transition.currentLeadInfo.cnpj
+                : currentLead.cnpj ?? null,
           };
 
           setPendingLeadInfoGate({
@@ -1859,6 +2057,98 @@ export default function LeadDialog({
     }
   };
 
+  const handleTransferToggle = async () => {
+    if (!currentLead || !supabaseId || isTransferToggling) return;
+    const next = !currentLead.isTransfer;
+    const shouldClearCloser = next && !!currentLead.closerId;
+    const previousCloserId = currentLead.closerId ?? null;
+    const transferPatch: Partial<Lead> = {
+      isTransfer: next,
+      ...(shouldClearCloser ? { closerId: null, closer: undefined } : {}),
+    };
+    setIsTransferToggling(true);
+    patchLead?.(currentLead.id, transferPatch);
+    setLocalLead((prev) =>
+      prev && prev.id === currentLead.id ? ({ ...prev, ...transferPatch } as Lead) : prev
+    );
+    if (shouldClearCloser) {
+      form.setValue("closerId", "", { shouldDirty: false });
+    }
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({
+          isTransfer: next,
+          ...(shouldClearCloser ? { closerId: null } : {}),
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar a transferência.");
+      }
+      const serverValue = result?.result?.isTransfer ?? next;
+      const serverCloserId =
+        shouldClearCloser ? null : (result?.result?.closerId ?? currentLead.closerId ?? null);
+      const confirmedPatch: Partial<Lead> = {
+        isTransfer: serverValue,
+        ...(shouldClearCloser ? { closerId: null, closer: undefined } : { closerId: serverCloserId }),
+      };
+      patchLead?.(currentLead.id, confirmedPatch);
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, ...confirmedPatch } as Lead) : prev
+      );
+    } catch (error) {
+      const rollbackPatch: Partial<Lead> = {
+        isTransfer: !next,
+        ...(shouldClearCloser && previousCloserId
+          ? { closerId: previousCloserId }
+          : {}),
+      };
+      patchLead?.(currentLead.id, rollbackPatch);
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, ...rollbackPatch } as Lead) : prev
+      );
+      if (shouldClearCloser && previousCloserId) {
+        form.setValue("closerId", previousCloserId, { shouldDirty: false });
+      }
+      toast.warning(error instanceof Error ? error.message : "Não foi possível atualizar a transferência.");
+    } finally {
+      setIsTransferToggling(false);
+    }
+  };
+
+  const handleShareSchedule = async () => {
+    if (!currentLead || !supabaseId) return;
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule/share`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid || !result?.result?.publicUrl) {
+        throw new Error(
+          Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+            ? result.errorMessages.join(", ")
+            : "Erro ao gerar link público do agendamento."
+        );
+      }
+      setScheduleShareUrl(result.result.publicUrl as string);
+      setScheduleShareExpiresAt(result.result.expiresAt as string | null);
+      setScheduleShareDialogOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao gerar link de compartilhamento.");
+    }
+  };
+
   const handleSalesInfoRequirementSave = async (payload: SalesInfoPayload) => {
     if (!currentLead || !supabaseId || !pendingSalesInfoGate) return;
 
@@ -1906,23 +2196,82 @@ export default function LeadDialog({
     }
   };
 
-  const handleScheduleStatusSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
-    if (!currentLead) return;
+  const handleCloserRequirementSave = async (payload: CloserRequirementPayload) => {
+    if (!currentLead || !supabaseId || !pendingCloserGate) return;
 
-    if (payload) {
-      await applySchedulePayload(payload);
+    setCloserRequirementSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({ closerId: payload.closerId }),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao salvar closer do lead");
+      }
+
+      const closerPatch =
+        result.result && typeof result.result === "object"
+          ? (result.result as Partial<Lead>)
+          : {};
+      await applyLocalLeadPatch(currentLead.id, closerPatch);
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, ...closerPatch } as Lead) : prev,
+      );
+
+      const updated = await updateLeadStatus(
+        pendingCloserGate.status,
+        pendingCloserGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setCloserRequirementDialogOpen(false);
+      setPendingCloserGate(null);
+      setStatusDialogOpen(false);
+      setShowStatusTriggerDialog(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao salvar closer do lead");
+    } finally {
+      setCloserRequirementSaving(false);
+    }
+  };
+
+  const handleScheduleStatusSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
+    if (!currentLead || !payload) return;
+
+    await applySchedulePayload(payload);
+    setLocalLead((prev) =>
+      prev && prev.id === payload.leadId
+        ? ({
+            ...prev,
+            email: payload.leadEmail,
+            status: payload.status,
+            meetingDate: payload.meetingDate,
+            meetingTitle: payload.meetingTitle,
+            meetingNotes: payload.meetingNotes,
+            meetingLink: payload.meetingLink,
+            closerId: payload.closerId,
+            meetingType: payload.meetingType,
+            ...(payload.closerId ? {} : { closer: undefined }),
+          } as Lead)
+        : prev,
+    );
+
+    const refreshedDetails = await refreshLeadDetails({ silent: true });
+    if (refreshedDetails?.lead && refreshedDetails.lead.id === payload.leadId) {
       setLocalLead((prev) =>
         prev && prev.id === payload.leadId
           ? ({
               ...prev,
-              email: payload.leadEmail,
-              status: payload.status,
-              meetingDate: payload.meetingDate,
-              meetingTitle: payload.meetingTitle,
-              meetingNotes: payload.meetingNotes,
-              meetingLink: payload.meetingLink,
-              closerId: payload.closerId,
-              meetingType: payload.meetingType,
+              ...refreshedDetails.lead,
+              isTransfer: prev.isTransfer,
             } as Lead)
           : prev,
       );
@@ -1941,7 +2290,7 @@ export default function LeadDialog({
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId || "",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(mapLeadInfoPayloadForUpdate(payload)),
       });
 
       const result = await response.json().catch(() => null);
@@ -1997,6 +2346,7 @@ export default function LeadDialog({
         phone: normalizeLeadPhoneDigits(currentLead.phone || ""),
         email: currentLead.email || "",
         cnpj: formatCNPJ(currentLead.cnpj || ""),
+        razaoSocial: currentLead.razaoSocial ?? "",
         closerId: currentLead.closerId || "",
         age: currentLead.age || "",
         currentHealthPlan: currentLead.currentHealthPlan || undefined,
@@ -2009,6 +2359,7 @@ export default function LeadDialog({
         meetingNotes: currentLead.meetingNotes || "",
         meetingLink: currentLead.meetingLink || "",
         meetingHeald: currentLead.meetingHeald === "yes" ? "yes" : "no",
+        isTransfer: currentLead.isTransfer === true,
         extraGuests: "",
         responsible: currentLead.assignedTo || "",
         ticket: currentLead.ticket ? formatCurrency(currentLead.ticket) : "",
@@ -2018,6 +2369,9 @@ export default function LeadDialog({
         referrerLeadId: currentLead.referrerLeadId || "",
         referrerName: currentLead.referrerName || "",
         referrerPhone: currentLead.referrerPhone || "",
+        customFields: Object.fromEntries(
+          (currentLead.customFields ?? []).map((field) => [field.key, field.value])
+        ),
       });
     } else if (!currentLead && open) {
       form.reset({
@@ -2025,6 +2379,7 @@ export default function LeadDialog({
         phone: "",
         email: "",
         cnpj: "",
+        razaoSocial: "",
         closerId: "",
         age: "",
         currentHealthPlan: undefined,
@@ -2037,6 +2392,7 @@ export default function LeadDialog({
         meetingNotes: "",
         meetingLink: "",
         meetingHeald: "no",
+        isTransfer: false,
         extraGuests: "",
         responsible: "",
         ticket: "",
@@ -2046,9 +2402,47 @@ export default function LeadDialog({
         referrerLeadId: "",
         referrerName: "",
         referrerPhone: "",
+        customFields: {},
       });
     }
   }, [currentLead, open, form]);
+
+  useEffect(() => {
+    if (!open) return;
+    refreshLeadCustomFieldDefinitions();
+  }, [open, customFieldsTeamId, refreshLeadCustomFieldDefinitions]);
+
+  useEffect(() => {
+    if (!open || leadCustomFieldDefinitions.length === 0) return;
+
+    const leadCustomFields =
+      leadDetails?.lead?.customFields ?? currentLead?.customFields ?? [];
+    const fromLead = Object.fromEntries(
+      leadCustomFields.map((field) => [field.key, field.value])
+    );
+    const merged: Record<string, unknown> = { ...fromLead };
+
+    for (const definition of leadCustomFieldDefinitions) {
+      if (!(definition.key in merged)) {
+        if (definition.type === "boolean") {
+          merged[definition.key] = false;
+        } else if (definition.type === "multi_select") {
+          merged[definition.key] = [];
+        } else {
+          merged[definition.key] = "";
+        }
+      }
+    }
+
+    form.setValue("customFields", merged, { shouldDirty: false, shouldValidate: false });
+  }, [
+    open,
+    currentLead?.id,
+    currentLead?.customFields,
+    leadDetails?.lead?.customFields,
+    leadCustomFieldDefinitions,
+    form,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2059,6 +2453,7 @@ export default function LeadDialog({
         setScheduleGuests([]);
         return;
       }
+      if (leadDetailsLoading) return;
       if (!supabaseId) return;
       if (!currentLead.id) {
         setScheduleGuests([]);
@@ -2067,9 +2462,6 @@ export default function LeadDialog({
       if (!currentLead.meetingDate && !currentLead.meetingTitle && !currentLead.meetingLink) {
         setScheduleGuests([]);
         return;
-      }
-      if (isActive) {
-        setScheduleLoading(true);
       }
       try {
         const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
@@ -2114,10 +2506,6 @@ export default function LeadDialog({
           setScheduleGuests([]);
         }
         console.warn("Falha ao carregar convidados extras:", error);
-      } finally {
-        if (isActive) {
-          setScheduleLoading(false);
-        }
       }
     };
 
@@ -2127,97 +2515,7 @@ export default function LeadDialog({
       isActive = false;
       controller.abort();
     };
-  }, [currentLead?.id, open, supabaseId, activeTeamId, form, patchLead]);
-
-  const handleResendInvite = async () => {
-    if (!currentLead || !supabaseId) return;
-    if (resendTarget === "single" && !resendEmail) {
-      toast.error("Selecione um participante para reenviar o convite");
-      return;
-    }
-    if (resendTarget === "new" && newParticipants.length === 0) {
-      toast.error("Informe pelo menos um participante");
-      return;
-    }
-
-    const loadingToast = toast.loading("Reenviando convite...");
-    try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule/resend`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId,
-        },
-        body: JSON.stringify({
-          target: resendTarget,
-          email: resendTarget === "single" ? resendEmail : undefined,
-          emails: resendTarget === "new" ? newParticipants : undefined,
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Erro ao reenviar convite");
-      }
-
-      const warningMessage = Array.isArray(result?.successMessages)
-        ? result.successMessages.find((message: string) => message.toLowerCase().startsWith("aviso"))
-        : undefined;
-      const successMessage =
-        Array.isArray(result?.successMessages) && result.successMessages.length > 0
-          ? result.successMessages[0]
-          : "Convite reenviado com sucesso!";
-
-      const toastHandler = warningMessage && successMessage.toLowerCase().includes("não reenviados")
-        ? toast.info
-        : toast.success;
-
-      toastHandler(successMessage, {
-        id: loadingToast,
-        duration: 3000,
-      });
-      if (warningMessage) {
-        toast.info(warningMessage, { duration: 5000 });
-      }
-      setResendDialogOpen(false);
-      setNewParticipants([]);
-      setNewParticipantDraft("");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao reenviar convite";
-      toast.error(message, { id: loadingToast });
-    }
-  };
-
-  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-  const addNewParticipants = (values: string[]) => {
-    const normalized = values
-      .map((item) => item.trim().toLowerCase())
-      .filter(Boolean)
-      .filter(isValidEmail);
-    if (normalized.length === 0) return;
-    setNewParticipants((prev) => Array.from(new Set([...prev, ...normalized])));
-  };
-
-  const handleNewParticipantInput = (value: string) => {
-    if (!value) {
-      setNewParticipantDraft("");
-      return;
-    }
-    const parts = value.split(/[,;\s]+/);
-    if (parts.length === 1) {
-      setNewParticipantDraft(value);
-      return;
-    }
-    const last = value.match(/[,\s;]$/) ? "" : parts.pop() || "";
-    addNewParticipants(parts);
-    setNewParticipantDraft(last);
-  };
-
-  const commitNewParticipantDraft = () => {
-    if (!newParticipantDraft.trim()) return;
-    handleNewParticipantInput(`${newParticipantDraft} `);
-  };
+  }, [currentLead?.id, open, supabaseId, activeTeamId, form, patchLead, leadDetailsLoading, currentLead?.meetingDate, currentLead?.meetingTitle, currentLead?.meetingLink]);
 
   return (
     <>
@@ -2247,6 +2545,14 @@ export default function LeadDialog({
                         : "Preencha os dados para criar um novo lead."
                       }
                     </DialogDescription>
+                    {currentLead && isDraftLead(currentLead) ? (
+                      <div className="mt-3 flex flex-col gap-2 rounded-md bg-muted px-3 py-2">
+                        <DraftLeadIndicator />
+                        <p className="text-sm text-muted-foreground">
+                          Este lead ainda é um rascunho. Use Salvar para entrar no funil.
+                        </p>
+                      </div>
+                    ) : null}
                     {(currentLead?.leadCode || leadOriginBadge) && (
                       <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                         {currentLead?.leadCode && (
@@ -2271,7 +2577,7 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    {currentLead && currentLead.status === "new_opportunity" && (isTeamMaster || activeRole === "manager") && (
+                    {currentLead && !leadDetailsLoading && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && hasTransferTargets && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -2287,6 +2593,46 @@ export default function LeadDialog({
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Transferir entre times</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {currentLead && !leadDetailsLoading && hasTransferTargets && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={currentLead.isTransfer ? "default" : "outline"}
+                              onClick={() => void handleTransferToggle()}
+                              disabled={isTransferToggling}
+                            >
+                              {currentLead.isTransfer ? "Transferência ativa" : "Ativar transferência"}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {currentLead.isTransfer
+                              ? "Clique para desativar a transferência"
+                              : "Clique para marcar como lead para transferência"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {canMergeLead && currentLead && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setMergeDialogOpen(true)}
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Mesclar
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Mesclar com outro lead</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
@@ -2363,6 +2709,7 @@ export default function LeadDialog({
                       form={form}
                       onSubmit={onSubmit}
                       isLoading={isSubmitting}
+                      customFieldDefinitions={leadCustomFieldDefinitions}
                     healthPlanOptions={healthPlans}
                     healthPlanOptionsLoading={healthPlansLoading}
                     onCancel={() => setOpen(false)}
@@ -2381,27 +2728,44 @@ export default function LeadDialog({
                           ? {
                               status: currentLead.status,
                               meetingDate: currentLead.meetingDate,
-                              closerName:
-                                currentLead.closer?.fullName ||
-                                currentLead.closer?.email ||
-                                null,
+                              closerName: scheduleCloserName,
                               meetingTitle: currentLead.meetingTitle,
                               meetingNotes: currentLead.meetingNotes,
                               meetingLink: currentLead.meetingLink,
                               meetingHeald: currentLead.meetingHeald,
+                              meetingPresenceConfirmed: currentLead.meetingPresenceConfirmed === true,
+                              isPreSchedule: currentLead.isTransfer === true,
                             }
                           : undefined
                       }
                       onManageSchedule={currentLead ? () => setShowScheduleDialog(true) : undefined}
+                      onResendScheduleInvite={
+                        currentLead?.meetingDate && currentLead.status === "scheduled" && currentLead.isTransfer !== true
+                          ? () => setResendDialogOpen(true)
+                          : undefined
+                      }
+                      onShareSchedule={
+                        currentLead?.meetingDate && currentLead.isTransfer !== true
+                          ? () => void handleShareSchedule()
+                          : undefined
+                      }
                       canToggleMeetingHeald={canEditMeetingHeald}
                       meetingHealdSaving={meetingHealdSaving}
                       onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
+                      canConfirmMeetingPresence={canEditMeetingPresence}
+                      meetingPresenceConfirmSaving={meetingPresenceConfirmSaving}
+                      onMeetingPresenceConfirm={
+                        canEditMeetingPresence ? handleMeetingPresenceConfirm : undefined
+                      }
                       canMarkNoShow={canMarkNoShow}
                       onMarkNoShow={handleNoShow}
                       isEditMode={!!currentLead}
                       currentProfileId={user.id}
                       currentUserIsSdr={isOperatorSdr}
                       currentUserIsCloser={isCloserOperator}
+                      isCloserSelectDisabled={isCloserOperator}
+                      isFullSaveDisabled={isTransferWithoutPreSchedule}
+                      fullSaveDisabledReason="Selecione uma data para o pré-agendamento da transferência."
                       supabaseId={supabaseId}
                       activeTeamId={activeTeamId ?? undefined}
                     />
@@ -2411,16 +2775,37 @@ export default function LeadDialog({
 
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:w-[320px] lg:min-w-[320px] lg:max-w-[320px] lg:h-[95%] lg:max-h-[95%] lg:self-center">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold">Feed de Atividades</h3>
+                <h3 className="text-base font-semibold">Informações do lead</h3>
                 <DialogClose asChild>
                   <Button type="button" size="icon" variant="ghost" className="h-8 w-8">
                     <X className="h-4 w-4" />
                   </Button>
                 </DialogClose>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Registro de criação, comentários e mudanças importantes.
-              </p>
+              <Tabs value={sidePanelTab} onValueChange={(value) => setSidePanelTab(value as "activities" | "forms")} className="mt-3">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="activities">Atividades</TabsTrigger>
+                  <TabsTrigger value="forms">Formulários</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {sidePanelTab === "forms" ? (
+                currentLead && activeTeamId ? (
+                  <LeadPublicFormResponses leadId={currentLead.id} teamId={activeTeamId} supabaseId={supabaseId ?? ""} />
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Respostas disponíveis após criar o lead.</div>
+                )
+              ) : (
+              <>
+
+              {currentLead && activeTeamId && hasAccess(FEATURE_SLUGS.WHATSAPP) && (
+                <LeadWhatsAppCard
+                  leadId={currentLead.id}
+                  supabaseId={supabaseId ?? ''}
+                  teamId={activeTeamId}
+                  enabled={!isLeadContentLoading}
+                />
+              )}
 
               <div className="mt-4 flex-1 min-h-0 w-full">
                 {!currentLead ? (
@@ -2436,167 +2821,19 @@ export default function LeadDialog({
                     <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
                   </div>
                 ) : (
-                  <div className="activity-scrollbar h-full min-h-0 overflow-y-auto pr-2">
-                    <div className="space-y-3">
-                      {mergedActivities.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground w-full">
-                          Nenhuma atividade registrada.
-                        </div>
-                      ) : (
-                        mergedActivities.map((activity) => {
-                          const taskPayload =
-                            activity.type === "task" && activity.payload && typeof activity.payload === "object"
-                              ? (activity.payload as {
-                                  kind?: string;
-                                  title?: string;
-                                  status?: string;
-                                  isUrgent?: boolean;
-                                  assigneeMentions?: Array<{ profileId?: string; label?: string }>;
-                                })
-                              : null;
-                          const taskTitle = taskPayload?.title?.trim() || "Sem título";
-                          const isTaskStatusUpdate = taskPayload?.kind === "task_status_update";
-                          const taskMentions = (taskPayload?.assigneeMentions ?? [])
-                            .map((entry) => entry?.label?.trim())
-                            .map((value) => (value && !value.startsWith("@") ? `@${value}` : value))
-                            .filter((value): value is string => Boolean(value));
-                          const taskAssignedText =
-                            taskMentions.length > 0
-                              ? `Nova task atribuída para ${taskMentions.join(", ")}`
-                              : "Nova task atribuída";
-                          const taskStatusText = taskPayload?.status === "DONE" ? "Task concluída" : "Status da task atualizado";
-                          const taskHeaderText = isTaskStatusUpdate ? taskStatusText : taskAssignedText;
-                          const authorName =
-                            activity.author?.fullName ||
-                            activity.author?.email ||
-                            "Sistema";
-                          const initials = getInitials(authorName);
-                          const fallbackEmail = activity.author?.email || "guest";
-                          const avatarSrc = activity.author?.avatarUrl || `https://avatar.vercel.sh/${fallbackEmail}.png`;
-                          const activityIcon = isScheduleActivity(activity)
-                            ? <Calendar className="h-4 w-4 text-primary" />
-                            : getActivityIcon(activity.type);
-                          const reactions = getReactionsForActivity(activity.id);
-                          return (
-                            <div
-                              key={activity.id}
-                              ref={(node) => {
-                                if (node) {
-                                  activityItemRefs.current.set(activity.id, node);
-                                } else {
-                                  activityItemRefs.current.delete(activity.id);
-                                }
-                              }}
-                              className={cn(
-                                "rounded-lg border border-border/60 bg-background/60 p-3 w-77 max-w-full mr-auto transition-colors",
-                                highlightedActivityId === activity.id
-                                  ? "ring-2 ring-primary/50 bg-primary/5"
-                                  : ""
-                              )}
-                            >
-                              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center-safe">
-                                <Avatar className="h-6 w-6 rounded-lg border border-border/60">
-                                  <AvatarImage src={avatarSrc} />
-                                  <AvatarFallback className="rounded-lg text-[10px]">
-                                    {initials || "LF"}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex items-start justify-between gap-2">
-                                  <span className="text-sm font-medium text-foreground">
-                                    {authorName}
-                                  </span>
-                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                                    <span>{formatActivityDate(activity.createdAt)}</span>
-                                    <span className="inline-flex items-center">
-                                      {activityIcon}
-                                      <span className="sr-only">{getActivityLabel(activity.type)}</span>
-                                    </span>
-                                  </div>
-                                </div>
-                              {activity.type === "task" ? (
-                                <div className="col-span-2 flex flex-col gap-1">
-                                  <p className="text-xs font-medium text-primary">{taskHeaderText}</p>
-                                  <p className="text-sm font-semibold text-foreground">{taskTitle}</p>
-                                  {taskPayload?.isUrgent ? (
-                                    <Badge variant="destructive" className="w-fit">
-                                      Urgente
-                                    </Badge>
-                                  ) : null}
-                                  {activity.body && (
-                                    <p className="text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
-                                      {renderActivityBodyWithMentions(activity.body)}
-                                    </p>
-                                  )}
-                                </div>
-                              ) : activity.body ? (
-                                <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
-                                  {renderActivityBodyWithMentions(activity.body)}
-                                </p>
-                              ) : null}
-                                {(reactions.length > 0 || canReactToActivity) && (
-                                  <div className="col-span-2 flex flex-wrap items-center gap-2">
-                                    {reactions.map((reaction) => (
-                                      <button
-                                        key={`${activity.id}-${reaction.unified}`}
-                                        type="button"
-                                        className={cn(
-                                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition",
-                                          reaction.reactedByMe
-                                            ? "border-primary/40 bg-primary/15 text-primary"
-                                            : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground"
-                                        )}
-                                        onClick={() =>
-                                          handleToggleReaction(activity.id, reaction.emoji, reaction.unified)
-                                        }
-                                        disabled={!canReactToActivity}
-                                      >
-                                        <span>{reaction.emoji}</span>
-                                        <span>{reaction.count}</span>
-                                      </button>
-                                    ))}
-                                    {canReactToActivity && (
-                                      <Popover
-                                        open={reactionPickerOpenId === activity.id}
-                                        onOpenChange={(open) =>
-                                          setReactionPickerOpenId(open ? activity.id : null)
-                                        }
-                                      >
-                                        <PopoverTrigger asChild>
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 px-2 text-[11px]"
-                                          >
-                                            <Smile className="mr-1 h-3.5 w-3.5" />
-                                            Reagir
-                                          </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0" align="start" side="top">
-                                          <EmojiPicker
-                                            onEmojiClick={(emojiData: EmojiPickerData) => {
-                                              if (!emojiData?.emoji || !emojiData?.unified) return;
-                                              handleToggleReaction(activity.id, emojiData.emoji, emojiData.unified);
-                                              setReactionPickerOpenId(null);
-                                            }}
-                                            reactionsDefaultOpen
-                                            reactions={DEFAULT_REACTION_UNIFIEDS}
-                                            emojiStyle={EmojiStyle.NATIVE}
-                                            theme={Theme.DARK}
-                                            lazyLoadEmojis
-                                          />
-                                        </PopoverContent>
-                                      </Popover>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
+                  <LeadActivityTimeline
+                    activities={mergedActivities}
+                    supabaseId={supabaseId ?? ""}
+                    scheduleTimezone={scheduleTimezone}
+                    highlightedActivityId={highlightedActivityId}
+                    activityItemRefs={activityItemRefs}
+                    canReactToActivity={canReactToActivity}
+                    reactionPickerOpenId={reactionPickerOpenId}
+                    onReactionPickerOpenChange={setReactionPickerOpenId}
+                    onToggleReaction={handleToggleReaction}
+                    getReactionsForActivity={getReactionsForActivity}
+                    mentionRegex={mentionRegex}
+                  />
                 )}
               </div>
 
@@ -2732,13 +2969,16 @@ export default function LeadDialog({
                 )}
               </div>
 
+              </>
+              )}
+
               {currentLead && supabaseId && activeTeamId && (
                 <TaskFormDialog
                   open={taskDialogOpen}
                   onOpenChange={setTaskDialogOpen}
                   leadId={currentLead.id}
                   leadName={currentLead.name}
-                  teamMembers={(user as ProfileResponseDTO | null)?.usersAssociated ?? []}
+                  teamMembers={usersToAssign}
                   supabaseId={supabaseId}
                   activeTeamId={activeTeamId}
                   onSuccess={() => {
@@ -2751,103 +2991,23 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={resendDialogOpen} onOpenChange={setResendDialogOpen}>
-        <DialogContent className="sm:max-w-105">
-          <DialogHeader>
-            <DialogTitle>Reenviar convite</DialogTitle>
-            <DialogDescription>
-              Escolha se deseja reenviar o convite para todos ou para um participante.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <RadioGroup
-              value={resendTarget}
-              onValueChange={(value) => setResendTarget(value as "all" | "single" | "new")}
-              className="grid gap-3"
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="all" id="resend-all" />
-                <Label htmlFor="resend-all">Todos os participantes</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="single" id="resend-single" />
-                <Label htmlFor="resend-single">Somente um participante</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="new" id="resend-new" />
-                <Label htmlFor="resend-new">Novo participante</Label>
-              </div>
-            </RadioGroup>
-
-            {resendTarget === "single" && (
-              <div className="grid gap-2">
-                <Label>Participante</Label>
-                <Select value={resendEmail} onValueChange={setResendEmail}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={scheduleLoading ? "Carregando..." : "Selecione o e-mail"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {buildParticipantOptions().map((option) => (
-                      <SelectItem key={option.email} value={option.email}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {resendTarget === "new" && (
-              <div className="grid gap-2">
-                <Label>Novo participante</Label>
-                <div className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2">
-                  {newParticipants.map((email) => (
-                    <Badge key={email} variant="secondary" className="gap-1 pr-1">
-                      <span>{email}</span>
-                      <button
-                        type="button"
-                        className="rounded-sm px-1 text-muted-foreground transition hover:text-foreground"
-                        onClick={() =>
-                          setNewParticipants((prev) => prev.filter((item) => item !== email))
-                        }
-                        aria-label={`Remover ${email}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                  <input
-                    type="text"
-                    value={newParticipantDraft}
-                    onChange={(event) => handleNewParticipantInput(event.target.value)}
-                    onBlur={commitNewParticipantDraft}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        commitNewParticipantDraft();
-                      }
-                    }}
-                    placeholder="ex: participante@email.com"
-                    className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Separe os emails por virgula ou espaco.
-                </p>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setResendDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleResendInvite}>
-                Reenviar convite
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {currentLead && supabaseId && (
+        <ResendScheduleInviteDialog
+          open={resendDialogOpen}
+          onOpenChange={setResendDialogOpen}
+          leadId={currentLead.id}
+          supabaseId={supabaseId}
+          teamId={activeTeamId}
+          participants={{
+            leadEmail: currentLead.email,
+            leadName: currentLead.name,
+            closerEmail: currentLead.closer?.email,
+            closerName: currentLead.closer?.fullName ?? undefined,
+            assigneeEmail: currentLead.assignee?.email,
+            assigneeName: currentLead.assignee?.fullName ?? undefined,
+          }}
+        />
+      )}
 
       <Dialog
         open={statusDialogOpen}
@@ -2921,6 +3081,7 @@ export default function LeadDialog({
           initialStartDate={currentLead.contractDueDate}
           initialOperadora={currentLead.soldPlan}
           initialHolderCnpj={currentLead.cnpj}
+          initialHolderRazaoSocial={currentLead.razaoSocial}
         />
       )}
 
@@ -2935,6 +3096,7 @@ export default function LeadDialog({
           mode={currentLead.meetingDate ? "reschedule" : "create"}
           initialExtraGuests={scheduleGuests}
           currentProfileId={user?.id}
+          onResendScheduleInvite={() => setResendDialogOpen(true)}
         />
       )}
 
@@ -3032,6 +3194,25 @@ export default function LeadDialog({
       )}
 
       {currentLead && (
+        <CloserRequirementDialog
+          open={closerRequirementDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setCloserRequirementDialogOpen(nextOpen);
+            if (!nextOpen) {
+              setPendingCloserGate(null);
+            }
+          }}
+          onSave={handleCloserRequirementSave}
+          closers={availableScheduleClosers}
+          closersLoading={leadDetailsLoading}
+          closersError={leadDetailsError}
+          leadName={currentLead.name}
+          isSaving={closerRequirementSaving}
+          initialCloserId={pendingCloserGate?.currentCloserId}
+        />
+      )}
+
+      {currentLead && (
         <LeadInfoRequirementDialog
           open={leadInfoDialogOpen}
           onOpenChange={(nextOpen) => {
@@ -3118,6 +3299,7 @@ export default function LeadDialog({
           open={showTransferBetweenTeamsDialog}
           onOpenChange={setShowTransferBetweenTeamsDialog}
           lead={currentLead}
+          allowedTeamIds={allowedTransferTargetIds}
           onSuccess={async (updatedLead) => {
             await applyLocalLeadPatch(updatedLead.id, updatedLead);
             await refreshLeads();
@@ -3125,6 +3307,76 @@ export default function LeadDialog({
           }}
         />
       )}
+
+      {currentLead && activeTeamId && supabaseId && (
+        <LeadMergeDialog
+          open={mergeDialogOpen}
+          onOpenChange={setMergeDialogOpen}
+          targetLead={currentLead}
+          supabaseId={supabaseId}
+          teamId={activeTeamId}
+          onMerged={async () => {
+            await refreshLeads();
+            setOpen(false);
+          }}
+        />
+      )}
+
+      <LeadDuplicateWarningDialog
+        open={duplicateDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setDuplicateDialogOpen(nextOpen);
+          if (!nextOpen) {
+            setPendingDuplicateCreate(null);
+            setDuplicateCandidates([]);
+          }
+        }}
+        candidates={duplicateCandidates}
+        isConfirming={duplicateConfirming}
+        onConfirm={() => void handleConfirmDuplicateCreate()}
+      />
+
+      <Dialog open={scheduleShareDialogOpen} onOpenChange={setScheduleShareDialogOpen}>
+        <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Link público do agendamento</DialogTitle>
+            <DialogDescription>
+              Compartilhe este link para que o participante acesse a reunião.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            {scheduleShareExpiresAt && (
+              <p className="text-xs text-muted-foreground">
+                Expira em {new Date(scheduleShareExpiresAt).toLocaleString("pt-BR")}
+              </p>
+            )}
+            <div className="grid gap-2">
+              <Label>Link público</Label>
+              <div className="flex items-center gap-2">
+                <Input value={scheduleShareUrl} readOnly />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(scheduleShareUrl).then(() =>
+                      toast.success("Link copiado.")
+                    );
+                  }}
+                  disabled={!scheduleShareUrl}
+                >
+                  <CopyIcon size={16} />
+                  Copiar
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Fechar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </>
   );

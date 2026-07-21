@@ -71,6 +71,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           cpfCnpj: data.cpfCnpj,
           billingType: data.billingType ?? null,
           plan: data.plan,
+          productId: data.productId ?? null,
           cycle: data.cycle,
           modules: data.modules,
           extraTeams: data.extraTeams,
@@ -89,6 +90,9 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           createdByBackofficeUserId: data.createdByBackofficeUserId ?? null,
           requestedUserTypeSlug: data.requestedUserTypeSlug ?? null,
           requestedMemberProAccessExpiresAt: data.requestedMemberProAccessExpiresAt ?? null,
+          sponsorMasterId: data.sponsorMasterId ?? null,
+          multiskillEnabled: data.multiskillEnabled ?? false,
+          hasUnlimitedUsers: data.hasUnlimitedUsers ?? false,
           additionalUsersData: (data.additionalUsersData ?? []) as Prisma.InputJsonValue,
           additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
         },
@@ -180,6 +184,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
         ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
+        ...(data.productId !== undefined ? { productId: data.productId } : {}),
         ...(data.cycle !== undefined ? { cycle: data.cycle } : {}),
         ...(data.modules !== undefined ? { modules: data.modules } : {}),
         ...(data.extraTeams !== undefined ? { extraTeams: data.extraTeams } : {}),
@@ -205,6 +210,9 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           : {}),
         ...(data.billingType !== undefined ? { billingType: data.billingType } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.hasUnlimitedUsers !== undefined
+          ? { hasUnlimitedUsers: data.hasUnlimitedUsers }
+          : {}),
         ...(data.tokenHash !== undefined ? { tokenHash: data.tokenHash } : {}),
         ...(data.tokenPreview !== undefined ? { tokenPreview: data.tokenPreview } : {}),
         ...(data.tokenPlain !== undefined ? ({ tokenPlain: data.tokenPlain } as object) : {}),
@@ -309,6 +317,10 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       complement: data.complement ?? undefined,
       city: data.city ?? undefined,
       state: data.state ?? undefined,
+      hasPermanentSubscription: data.hasPermanentSubscription ?? false,
+      hasUnlimitedUsers: data.hasUnlimitedUsers ?? false,
+      multiskillEnabled: data.multiskillEnabled ?? false,
+      sponsorMasterId: data.sponsorMasterId ?? undefined,
     }
 
     const profile = await prisma.$transaction(async (tx) => {
@@ -327,6 +339,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           profileId: createdProfile.id,
           role: "manager",
           functions: createdProfile.functions ?? [],
+          canCreateAccountUsers: true,
+          canManageAccountTeams: true,
         },
       })
 
@@ -347,8 +361,6 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       subscriptionEndDate: Date
       subscriptionCycle: string
       subscriptionNextDueDate: Date
-      canCreateAccountUsers: boolean
-      canManageAccountTeams: boolean
     }
   ): Promise<void> {
     await prisma.profile.update({
@@ -452,7 +464,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       }),
     ])
 
-    return { leads, users }
+    return { leads, users, sponsorOptions: [] }
   }
 
   async cancelAdhesionAndRestoreLead(

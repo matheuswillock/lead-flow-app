@@ -2,6 +2,7 @@
 
 import { div as MotionDiv } from "framer-motion/client"
 import { Quote, Star } from "lucide-react"
+import { useLandingReveal } from "@/lib/landing/use-landing-motion"
 
 const testimonials = [
   {
@@ -42,20 +43,26 @@ export function TestimonialsSection() {
   const featuredTestimonial = testimonials.find((t) => t.featured)!
   const otherTestimonials = testimonials.filter((t) => !t.featured)
 
+  const headingMotion = useLandingReveal({ distance: 20, duration: 0.6 })
+  const featuredMotion = useLandingReveal({ distance: 20, duration: 0.6 })
+  const statMotions = [
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0 }),
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0.08 }),
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0.16 }),
+    useLandingReveal({ distance: 0, scale: true, duration: 0.4, delay: 0.24 }),
+  ]
+  const cardMotions = [
+    useLandingReveal({ distance: 20, duration: 0.5, delay: 0 }),
+    useLandingReveal({ distance: 20, duration: 0.5, delay: 0.1 }),
+  ]
+
   return (
     <section id="testimonials" className="relative py-20 md:py-28">
-      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-20 landing-testimonials-orbs" />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
-        <MotionDiv
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-16"
-        >
+        <MotionDiv {...headingMotion} className="text-center mb-16">
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-            Corretores que <span className="landing-primary-gradient">confiam na gente</span>
+            Corretores que <span className="text-primary">confiam na gente</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
             Veja o que nossos usuários dizem sobre a experiência com o Corretor Studio.
@@ -66,11 +73,8 @@ export function TestimonialsSection() {
           {stats.map((stat, idx) => (
             <MotionDiv
               key={stat.label}
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: idx * 0.08 }}
-              className="text-center rounded-2xl p-6 shadow-lg backdrop-blur landing-surface-card-soft"
+              {...statMotions[idx]}
+              className="text-center rounded-2xl border border-border bg-card p-6"
             >
               <div className="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-none text-primary">
                 {stat.value}
@@ -81,11 +85,8 @@ export function TestimonialsSection() {
         </div>
 
         <MotionDiv
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="relative rounded-3xl border border-primary/25 p-8 sm:p-10 mb-8 overflow-hidden bg-primary/5 landing-surface-card"
+          {...featuredMotion}
+          className="relative rounded-3xl border border-primary/25 p-8 sm:p-10 mb-8 overflow-hidden bg-primary/5"
         >
           <Quote className="absolute -top-2 -left-2 h-20 w-20 opacity-[0.07] text-primary" />
 
@@ -118,11 +119,8 @@ export function TestimonialsSection() {
           {otherTestimonials.map((testimonial, idx) => (
             <MotionDiv
               key={testimonial.name}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: idx * 0.1 }}
-              className="group relative rounded-2xl p-7 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 landing-surface-card-compact"
+              {...cardMotions[idx]}
+              className="group relative rounded-2xl border border-border bg-card p-7 transition-colors hover:border-primary/30"
             >
               <Quote className="absolute top-5 right-5 h-7 w-7 opacity-10 text-primary" />
 

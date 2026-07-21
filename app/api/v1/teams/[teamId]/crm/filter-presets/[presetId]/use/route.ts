@@ -1,38 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Output } from "@/lib/output";
-import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
-import { teamFilterPresetsUseCase } from "@/app/api/useCases/teamFilterPresets/TeamFilterPresetsUseCase";
+import { NextRequest } from "next/server";
+import { handleFilterPresetUse } from "@/app/api/v1/teams/[teamId]/filter-presets/handlers";
+
+const SCOPE = "crm" as const;
+const ROUTE_LABEL = "CrmFilterPresetUseRoute";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string; presetId: string }> }
 ) {
-  try {
-    const teamAccess = await getTeamAccess(request);
-    if (teamAccess.error) {
-      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
-    }
-
-    const { teamId, presetId } = await params;
-    if (!teamId || teamId !== teamAccess.access.teamId) {
-      return NextResponse.json(
-        new Output(false, [], ["Acesso negado para este time"], null),
-        { status: 403 }
-      );
-    }
-
-    const output = await teamFilterPresetsUseCase.markAsUsed(
-      teamId,
-      teamAccess.access.profileId,
-      presetId
-    );
-    return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
-  } catch (error) {
-    console.error("[TeamFilterPresetUseRoute][POST] Erro ao marcar preset como utilizado:", error);
-    return NextResponse.json(
-      new Output(false, [], ["Erro interno ao atualizar último filtro utilizado"], null),
-      { status: 500 }
-    );
-  }
+  return handleFilterPresetUse(request, params, SCOPE, ROUTE_LABEL);
 }
-

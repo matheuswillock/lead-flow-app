@@ -1,4 +1,4 @@
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Copy, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -40,7 +40,7 @@ interface Props {
 }
 
 export function BackofficeProductTable({ products }: Props) {
-  const { openEditDialog, openDeleteDialog } = useBackofficePricing()
+  const { canManage, openEditDialog, openDuplicateDialog, openDeleteDialog } = useBackofficePricing()
 
   if (products.length === 0) {
     return (
@@ -55,6 +55,7 @@ export function BackofficeProductTable({ products }: Props) {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>Slug</TableHead>
             <TableHead>Nome</TableHead>
             <TableHead className="text-center">Tipo</TableHead>
             <TableHead className="text-center">Modo</TableHead>
@@ -83,6 +84,12 @@ export function BackofficeProductTable({ products }: Props) {
 
             return (
               <TableRow key={product.id}>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  <div className="flex flex-col gap-1">
+                    <span>{product.featureSlug}</span>
+                    {product.isDefault && <Badge variant="secondary">Padrão</Badge>}
+                  </div>
+                </TableCell>
                 <TableCell className="font-medium">
                   <div>
                     <p>{product.name}</p>
@@ -125,29 +132,35 @@ export function BackofficeProductTable({ products }: Props) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-center">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" aria-label={`Ações de ${product.name}`}>
-                        <MoreHorizontal data-icon="inline-start" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => openEditDialog(product)}>
-                          <Pencil data-icon="inline-start" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => openDeleteDialog(product)}
-                        >
-                          <Trash2 data-icon="inline-start" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {canManage && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" aria-label={`Ações de ${product.name}`}>
+                          <MoreHorizontal data-icon="inline-start" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem onClick={() => openEditDialog(product)}>
+                            <Pencil data-icon="inline-start" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openDuplicateDialog(product)}>
+                            <Copy data-icon="inline-start" />
+                            Duplicar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => openDeleteDialog(product)}
+                          >
+                            <Trash2 data-icon="inline-start" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </TableCell>
               </TableRow>
             )

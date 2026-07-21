@@ -2,11 +2,17 @@ export const cacheTags = {
   healthPlans: () => "health-plans",
   pmeSimulator: () => "pme-simulator",
   backofficeFeatures: () => "backoffice-features",
-  featureAccess: (profileId: string) => `feature-access:${profileId}`,
+  featureAccess: (profileId: string, activeTeamId?: string | null) =>
+    `feature-access:${profileId}:${activeTeamId ?? "none"}`,
+  featureAccessProfile: (profileId: string) => `feature-access-profile:${profileId}`,
   featureAccessOwner: (managerId: string) => `feature-access-owner:${managerId}`,
+  accountAccessStatus: (accountMasterId: string) => `account-access-status:${accountMasterId}`,
   teamStatusRules: (teamId: string) => `team-status-rules:${teamId}`,
+  leadStatusTransitionFieldRules: () => "lead-status-transition-field-rules",
+  leadStatusTransitionGates: () => "lead-status-transition-gates",
   teamMembers: (teamId: string) => `team-members:${teamId}`,
   teamDashboard: (teamId: string) => `team-dashboard:${teamId}`,
+  accountDashboard: (masterId: string) => `account-dashboard:${masterId}`,
   teamPerformance: (teamId: string) => `team-performance:${teamId}`,
   portfolio: (teamId: string) => `portfolio:${teamId}`,
   portfolioDetail: (leadId: string) => `portfolio-detail:${leadId}`,
@@ -23,5 +29,8 @@ export const cacheTags = {
   dialerCalls: (campaignId: string) => `dialer-calls:${campaignId}`,
   dialerUsage: (teamId: string) => `dialer-usage:${teamId}`,
   dialerSubscription: (teamId: string) => `dialer-subscription:${teamId}`,
+  teamFilterPresets: (teamId: string, profileId: string, scope: string) =>
+    `team-filter-presets:${teamId}:${profileId}:${scope}`,
+  notifications: (recipientProfileId: string) => `notifications:${recipientProfileId}`,
 } as const;
 

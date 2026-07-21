@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { CircleCheckBig, CircleX, Crown, ExternalLink } from "lucide-react"
+import { useState } from "react"
+import { CalendarRange, CircleCheckBig, CircleX, Crown, ExternalLink, KeyRound, Mail, Send, ShieldBan } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,10 @@ import {
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { maskPhone } from "@/lib/masks"
+import { toast } from "sonner"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import { useBackofficeAllUsers } from "../context/BackofficeAllUsersContext"
+import { BanUserDialog } from "./BanUserDialog"
 
 function getInitials(name: string | null, email: string) {
   const source = (name || email).trim()
@@ -53,13 +57,61 @@ function RoleBadge({ role, isMaster }: { role: string; isMaster: boolean }) {
 
 export function BackofficeAllUsersDetailSheet() {
   const { tz } = useTimezone()
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const {
+    service,
     sheetOpen,
     isDetailLoading,
     detailError,
     selectedDetail,
+    openUserSheet,
     closeUserSheet,
+    openSchedulesDialog,
+    openEmailDispatchesDialog,
+    fetchUsers,
   } = useBackofficeAllUsers()
+  const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | null>(null)
+  const [banDialogOpen, setBanDialogOpen] = useState(false)
+  const [isBanning, setIsBanning] = useState(false)
+
+  async function handleSendAccessEmail(mode: "invite" | "reset_password") {
+    if (!selectedDetail || accessAction) return
+
+    setAccessAction(mode)
+    try {
+      const result = await service.sendAccessEmail(selectedDetail.id, mode)
+      toast.success(
+        mode === "invite"
+          ? `Convite reenviado para ${result.email}.`
+          : `Reset de senha enviado para ${result.email}.`
+      )
+      await openUserSheet(selectedDetail.id)
+    } catch (error) {
+      console.error("[BackofficeAllUsersDetailSheet][handleSendAccessEmail]", error)
+      toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.")
+    } finally {
+      setAccessAction(null)
+    }
+  }
+
+  async function handleBanUser(reason?: string | null) {
+    if (!selectedDetail || isBanning) return
+
+    setIsBanning(true)
+    try {
+      await service.banUser(selectedDetail.id, reason)
+      toast.success("Usuário banido com sucesso")
+      setBanDialogOpen(false)
+      await fetchUsers()
+      await openUserSheet(selectedDetail.id)
+    } catch (error) {
+      console.error("[BackofficeAllUsersDetailSheet][handleBanUser]", error)
+      toast.error(error instanceof Error ? error.message : "Erro ao banir usuário")
+    } finally {
+      setIsBanning(false)
+    }
+  }
 
   return (
     <Sheet open={sheetOpen} onOpenChange={(next) => (next ? null : closeUserSheet())}>
@@ -91,7 +143,12 @@ export function BackofficeAllUsersDetailSheet() {
                   {selectedDetail.fullName || "Sem nome"}
                 </p>
                 <p className="text-sm text-muted-foreground truncate">{selectedDetail.email}</p>
-                <RoleBadge role={selectedDetail.role} isMaster={selectedDetail.isMaster} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <RoleBadge role={selectedDetail.role} isMaster={selectedDetail.isMaster} />
+                  {selectedDetail.isBanned ? (
+                    <Badge variant="destructive">Banido</Badge>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -128,6 +185,106 @@ export function BackofficeAllUsersDetailSheet() {
 
                 <span className="text-muted-foreground">Plano do master</span>
                 <span>{selectedDetail.master ? selectedDetail.master.plan.label : "—"}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Acesso à plataforma
+              </p>
+              <div className="grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+                <span className="text-muted-foreground">Primeiro acesso</span>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className={
+                      selectedDetail.hasCompletedFirstAccess
+                        ? "border-semantic-success-border bg-semantic-success-surface text-semantic-success"
+                        : "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning"
+                    }
+                  >
+                    {selectedDetail.hasCompletedFirstAccess
+                      ? "Primeiro acesso concluído"
+                      : "Convite pendente"}
+                  </Badge>
+                </div>
+
+                <span className="text-muted-foreground">Último acesso</span>
+                <span>
+                  {selectedDetail.lastSignInAt
+                    ? formatIntimezone(new Date(selectedDetail.lastSignInAt), "dd/MM/yyyy HH:mm", tz)
+                    : "—"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    openSchedulesDialog({
+                      id: selectedDetail.id,
+                      fullName: selectedDetail.fullName,
+                      email: selectedDetail.email,
+                    })
+                  }
+                >
+                  <CalendarRange data-icon="inline-start" />
+                  Ver agendamentos
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    openEmailDispatchesDialog({
+                      id: selectedDetail.id,
+                      fullName: selectedDetail.fullName,
+                      email: selectedDetail.email,
+                    })
+                  }
+                >
+                  <Send data-icon="inline-start" />
+                  Ver e-mails disparados
+                </Button>
+                {selectedDetail.accessStatus === "pending_first_access" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleSendAccessEmail("invite")}
+                    disabled={accessAction !== null}
+                  >
+                    <Mail data-icon="inline-start" />
+                    Reenviar convite
+                  </Button>
+                ) : null}
+                {selectedDetail.accessStatus === "active" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleSendAccessEmail("reset_password")}
+                    disabled={accessAction !== null}
+                  >
+                    <KeyRound data-icon="inline-start" />
+                    Enviar reset de senha
+                  </Button>
+                ) : null}
+                {canManage && !selectedDetail.isBanned ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setBanDialogOpen(true)}
+                    disabled={isBanning}
+                  >
+                    <ShieldBan data-icon="inline-start" />
+                    Banir usuário
+                  </Button>
+                ) : null}
+                {selectedDetail.isBanned ? (
+                  <Button type="button" variant="outline" asChild>
+                    <Link href="/backoffice/anatemas">Ver em Anatemas</Link>
+                  </Button>
+                ) : null}
               </div>
             </div>
 
@@ -184,6 +341,14 @@ export function BackofficeAllUsersDetailSheet() {
           </div>
         )}
       </SheetContent>
+      <BanUserDialog
+        open={banDialogOpen}
+        isSubmitting={isBanning}
+        isMaster={selectedDetail?.isMaster ?? false}
+        userLabel={selectedDetail?.fullName || selectedDetail?.email || "usuário"}
+        onOpenChange={setBanDialogOpen}
+        onConfirm={handleBanUser}
+      />
     </Sheet>
   )
 }

@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import type { Attachment } from "@/components/ui/attachment-list";
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import type { TeamTransferTarget } from "@/lib/team/teamMembersClientCache";
 
 export type LeadDetails = {
   lead: LeadResponseDTO;
   attachments: Attachment[];
   teamMembers: UserAssociated[];
+  transferTargets: TeamTransferTarget[];
 };
 
 type LeadDetailsCacheEntry = {
@@ -71,12 +73,14 @@ async function fetchLeadDetails(
     lead: LeadResponseDTO;
     attachments: unknown[];
     teamMembers: Record<string, unknown>[];
+    transferTargets?: TeamTransferTarget[];
   };
 
   return {
     lead: raw.lead,
     attachments: (raw.attachments ?? []) as Attachment[],
     teamMembers: (raw.teamMembers ?? []).map(mapRawMember),
+    transferTargets: Array.isArray(raw.transferTargets) ? raw.transferTargets : [],
   };
 }
 
@@ -118,6 +122,17 @@ async function loadLeadDetailsWithDedupe(
 }
 
 /**
+ * Pré-carrega detalhes do lead (cache + dedupe) — usar em hover na tabela.
+ */
+export function prefetchLeadDetails(
+  supabaseId: string,
+  teamId: string,
+  leadId: string
+): void {
+  void loadLeadDetailsWithDedupe(supabaseId, teamId, leadId);
+}
+
+/**
  * Invalida o cache de detalhes de um lead específico.
  * Usar após uploads/deletes de anexos ou mutações no lead.
  */
@@ -131,13 +146,13 @@ export function invalidateLeadDetailsCache(
 }
 
 /**
- * Hook que busca lead + anexos + membros do time em um único request
+ * Hook que busca lead + anexos + membros do time + rotas de transferência em um único request
  * para o endpoint agregado GET /api/v1/leads/{id}/details.
  *
  * - Deduplicação: múltiplos consumidores com a mesma chave compartilham
  *   o mesmo request em voo.
  * - Cache TTL 60s: reabertura do dialog não gera novo round-trip.
- * - Graceful degradation: se attachments ou teamMembers falharem no
+ * - Graceful degradation: se attachments, teamMembers ou transferTargets falharem no
  *   backend, retornam vazios (o lead ainda é exibido).
  * - silent: true — re-fetch sem exibir loading spinner (para sync por realtime).
  */
@@ -149,7 +164,7 @@ export function useLeadDetails(
   details: LeadDetails | null;
   loading: boolean;
   error: string | null;
-  refresh: (options?: { silent?: boolean }) => void;
+  refresh: (options?: { silent?: boolean }) => Promise<LeadDetails | null>;
 } {
   const [details, setDetails] = useState<LeadDetails | null>(null);
   const [loading, setLoading] = useState(false);
@@ -157,7 +172,7 @@ export function useLeadDetails(
   const latestKeyRef = useRef<string | null>(null);
 
   const load = useCallback(
-    async (options?: { force?: boolean; silent?: boolean }) => {
+    async (options?: { force?: boolean; silent?: boolean }): Promise<LeadDetails | null> => {
       const force = options?.force ?? false;
       const silent = options?.silent ?? false;
 
@@ -165,7 +180,7 @@ export function useLeadDetails(
         setDetails(null);
         setError(null);
         latestKeyRef.current = null;
-        return;
+        return null;
       }
 
       const key = buildCacheKey(supabaseId, teamId, leadId);
@@ -180,7 +195,7 @@ export function useLeadDetails(
         ) {
           setDetails(cached.details);
           setError(null);
-          return;
+          return cached.details;
         }
       }
 
@@ -197,17 +212,19 @@ export function useLeadDetails(
           force
         );
 
-        if (latestKeyRef.current !== key) return;
+        if (latestKeyRef.current !== key) return null;
 
         setDetails(result);
         setError(null);
+        return result;
       } catch (loadError) {
-        if (latestKeyRef.current !== key) return;
+        if (latestKeyRef.current !== key) return null;
         setError(
           loadError instanceof Error
             ? loadError.message
             : "Erro ao carregar detalhes do lead"
         );
+        return null;
       } finally {
         if (!silent && latestKeyRef.current === key) {
           setLoading(false);
@@ -229,7 +246,7 @@ export function useLeadDetails(
       if (leadId && teamId && supabaseId) {
         invalidateLeadDetailsCache(supabaseId, teamId, leadId);
       }
-      void load({ force: true, silent: options?.silent });
+      return load({ force: true, silent: options?.silent });
     },
     [load, leadId, teamId, supabaseId]
   );

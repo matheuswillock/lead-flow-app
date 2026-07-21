@@ -122,6 +122,7 @@ function defaultValues(): BackofficeAdhesionFormValues {
     phone: "",
     email: "",
     cpfCnpj: "",
+    productId: "",
     cycle: "monthly",
     extraTeams: 0,
     extraUsers: 0,
@@ -131,6 +132,9 @@ function defaultValues(): BackofficeAdhesionFormValues {
     activationMode: "checkout",
     userType: "common",
     memberProAccessDays: "",
+    sponsorMasterId: null,
+    multiskillEnabled: false,
+    hasUnlimitedUsers: false,
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -143,6 +147,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     phone: adhesion.phone,
     email: adhesion.email ?? "",
     cpfCnpj: adhesion.cpfCnpj ?? "",
+    productId: adhesion.productId ?? "",
     cycle: adhesion.cycle,
     extraTeams: adhesion.extraTeams,
     extraUsers: adhesion.extraUsers,
@@ -157,6 +162,9 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     activationMode: "checkout",
     userType: "common",
     memberProAccessDays: "",
+    sponsorMasterId: null,
+    multiskillEnabled: adhesion.multiskillEnabled ?? false,
+    hasUnlimitedUsers: adhesion.hasUnlimitedUsers === true || adhesion.cycle === "annual",
     additionalUsers: [],
     additionalTeams: [],
   }
@@ -222,6 +230,15 @@ interface BackofficeAdhesionDialogProps {
   onSaved?: () => Promise<void> | void
 }
 
+const USER_TYPE_LABELS: Record<BackofficeAdhesionFormValues["userType"], string> = {
+  common: "Comum",
+  member_pro: "Member PRO",
+  associate: "Associado",
+  guest: "Convidado",
+}
+
+type CreateDialogStep = "form" | "review"
+
 export function BackofficeAdhesionDialog({
   open,
   mode,
@@ -236,17 +253,38 @@ export function BackofficeAdhesionDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [result, setResult] = useState<BackofficeAdhesionCreationResult | null>(null)
   const [leadComboOpen, setLeadComboOpen] = useState(false)
+  const [createStep, setCreateStep] = useState<CreateDialogStep>("form")
 
   const selectedLead = useMemo(
     () => options?.leads.find((lead) => lead.id === values.leadId) ?? null,
     [options?.leads, values.leadId]
   )
-  const cyclePrices = options?.pricing.cycles[values.cycle] ?? {
+  const selectedVariant = useMemo(() => {
+    if (!options?.productVariants.length) return null
+    return (
+      options.productVariants.find((variant) => variant.id === values.productId) ??
+      options.productVariants.find((variant) => variant.isDefault) ??
+      options.productVariants[0]
+    )
+  }, [options?.productVariants, values.productId])
+
+  const addonCyclePrices = options?.pricing.cycles[values.cycle] ?? {
     baseMonthlyPrice: 0,
     extraTeamPrice: 0,
     extraUserPrice: 0,
     pixBaseMonthlyPrice: null,
     cardBaseMonthlyPrice: null,
+  }
+  const variantCyclePrices = selectedVariant?.pricesByCycle[values.cycle]
+  const cyclePrices = {
+    baseMonthlyPrice:
+      variantCyclePrices?.cardMonthlyPrice ?? addonCyclePrices.baseMonthlyPrice,
+    extraTeamPrice: addonCyclePrices.extraTeamPrice,
+    extraUserPrice: addonCyclePrices.extraUserPrice,
+    pixBaseMonthlyPrice:
+      variantCyclePrices?.pixMonthlyPrice ?? addonCyclePrices.pixBaseMonthlyPrice,
+    cardBaseMonthlyPrice:
+      variantCyclePrices?.cardMonthlyPrice ?? addonCyclePrices.cardBaseMonthlyPrice,
   }
   const extrasMonthly =
     values.extraTeams * cyclePrices.extraTeamPrice +
@@ -264,7 +302,7 @@ export function BackofficeAdhesionDialog({
   const commercialItems = [
     {
       key: "crm",
-      name: "CRM",
+      name: selectedVariant?.name ?? "CRM",
       description: "Plano principal do Corretor Studio",
       quantity: "1 plano",
       monthlyUnitPrice: selectedBaseMonthly,
@@ -301,32 +339,49 @@ export function BackofficeAdhesionDialog({
   const hasValidOptionalCpfCnpj =
     sanitizedCpfCnpj.length === 0 || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)
   const isMemberPro = values.userType === "member_pro"
+  const isAssociate = values.userType === "associate"
+  const isGuest = values.userType === "guest"
+  const needsSponsor = isAssociate || isGuest
   const memberProAccessDaysValue = parsePositiveInt(values.memberProAccessDays)
   const memberProAccessDaysValid =
     !isMemberPro ||
     (memberProAccessDaysValue !== null &&
       memberProAccessDaysValue >= MEMBER_PRO_MIN_DAYS &&
       memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
-  const isDocRequired = mode === "create" || isExternalBilling
+  const isDocRequired = mode === "create" && !isGuest || isExternalBilling
   const canSubmit =
     values.fullName.trim().length >= 2 &&
     (sanitizePhone(values.phone).length === 0 || /^\d{10,11}$/.test(sanitizePhone(values.phone))) &&
     (mode === "edit" || Boolean(values.leadId)) &&
     (!isDocRequired ? hasValidOptionalCpfCnpj : /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
-    (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
-    (isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
+    (!(isExternalPaid || isExternalBilling || isGuest) || isValidEmail(values.email.trim())) &&
+    (isGuest || isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
     (mode === "edit" || memberProAccessDaysValid) &&
+    (!needsSponsor || Boolean(values.sponsorMasterId)) &&
     !isSubmitting
 
   useEffect(() => {
     if (!open) return
 
     setResult(null)
+    setCreateStep("form")
     setValues(mode === "edit" && adhesion ? valuesFromAdhesion(adhesion) : defaultValues())
     setIsLoadingOptions(true)
     service
       .getOptions()
-      .then(setOptions)
+      .then((loaded) => {
+        setOptions(loaded)
+        const defaultVariant =
+          loaded.productVariants.find((variant) => variant.isDefault) ??
+          loaded.productVariants[0]
+        if (mode === "create" && defaultVariant) {
+          setValues((current) =>
+            current.productId ? current : { ...current, productId: defaultVariant.id }
+          )
+        } else if (mode === "edit" && adhesion && !adhesion.productId && defaultVariant) {
+          setValues((current) => ({ ...current, productId: defaultVariant.id }))
+        }
+      })
       .catch((err) => {
         console.error("[BackofficeAdhesionDialog][options]", err)
         toast.error(err instanceof Error ? err.message : "Erro ao carregar opções")
@@ -354,14 +409,27 @@ export function BackofficeAdhesionDialog({
           defaultAdditionalTeam
         )
       }
-      if (key === "cycle" && current.userType === "member_pro") {
-        next.memberProAccessDays = String(CYCLE_DAYS[value as BackofficeAdhesionBillingCycleKey])
+      if (key === "cycle") {
+        const cycle = value as BackofficeAdhesionBillingCycleKey
+        if (current.userType === "member_pro") {
+          next.memberProAccessDays = String(CYCLE_DAYS[cycle])
+        }
+        if (cycle === "annual" || current.userType === "member_pro") {
+          next.hasUnlimitedUsers = true
+        }
       }
       if (key === "userType" && value === "member_pro") {
         next.memberProAccessDays = String(CYCLE_DAYS[current.cycle])
+        next.hasUnlimitedUsers = true
       }
       if (key === "userType" && value !== "member_pro") {
         next.memberProAccessDays = ""
+        if (current.cycle !== "annual") {
+          next.hasUnlimitedUsers = current.hasUnlimitedUsers
+        }
+      }
+      if (key === "userType" && value !== "associate" && value !== "guest") {
+        next.sponsorMasterId = null
       }
       return next
     })
@@ -419,6 +487,16 @@ export function BackofficeAdhesionDialog({
     toast.success("Link copiado")
   }
 
+  function handleReview() {
+    if (!canSubmit || isSubmitting || mode !== "create") return
+    setCreateStep("review")
+  }
+
+  function handleBackToForm() {
+    if (isSubmitting) return
+    setCreateStep("form")
+  }
+
   async function handleSubmit() {
     if (!canSubmit || isSubmitting) return
     setIsSubmitting(true)
@@ -429,6 +507,7 @@ export function BackofficeAdhesionDialog({
           phone: sanitizePhone(values.phone),
           email: values.email.trim().toLowerCase(),
           cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
+          productId: values.productId || undefined,
           cycle: values.cycle,
           extraTeams: values.extraTeams,
           extraUsers: values.extraUsers,
@@ -436,6 +515,7 @@ export function BackofficeAdhesionDialog({
           activationMode: values.billingType === "EXTERNAL" ? "external_paid" : "checkout",
           sdrBackofficeUserId: values.sdrBackofficeUserId,
           closerBackofficeUserId: values.closerBackofficeUserId,
+          hasUnlimitedUsers: values.cycle === "annual" || values.hasUnlimitedUsers,
         })
         toast.success("Adesão atualizada")
         await onSaved?.()
@@ -456,6 +536,10 @@ export function BackofficeAdhesionDialog({
         cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
         billingType: chargeBillingType,
         accessExpiresAt,
+        hasUnlimitedUsers:
+          values.cycle === "annual" ||
+          values.userType === "member_pro" ||
+          values.hasUnlimitedUsers,
       })
       setResult(created)
       await onSaved?.()
@@ -479,11 +563,19 @@ export function BackofficeAdhesionDialog({
     >
       <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{mode === "edit" ? "Editar adesão" : "Nova adesão"}</DialogTitle>
+          <DialogTitle>
+            {mode === "edit"
+              ? "Editar adesão"
+              : createStep === "review"
+                ? "Revisar nova adesão"
+                : "Nova adesão"}
+          </DialogTitle>
           <DialogDescription>
             {mode === "edit"
               ? "Ajuste os dados comerciais enquanto a adesão ainda não foi paga."
-              : "Selecione um lead elegível e escolha o tipo de ativação."}
+              : createStep === "review"
+                ? "Confira os dados e a cobrança antes de confirmar a criação."
+                : "Selecione um lead elegível e escolha o tipo de ativação."}
           </DialogDescription>
         </DialogHeader>
 
@@ -513,6 +605,144 @@ export function BackofficeAdhesionDialog({
                 </>
               )}
             </div>
+          </div>
+        ) : mode === "create" && createStep === "review" ? (
+          <div className="dialog-scrollbar flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">Dados do cliente</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <p>
+                  <span className="text-muted-foreground">Lead: </span>
+                  {selectedLead?.name ?? "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Nome: </span>
+                  {values.fullName.trim() || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">E-mail: </span>
+                  {values.email.trim() || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Telefone: </span>
+                  {values.phone.trim() || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Documento: </span>
+                  {values.cpfCnpj.trim() || "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">Configuração da adesão</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <p>
+                  <span className="text-muted-foreground">Plano: </span>
+                  {selectedVariant?.name ?? "CRM"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Ciclo: </span>
+                  {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Tipo de usuário: </span>
+                  {USER_TYPE_LABELS[values.userType]}
+                  {isMemberPro && memberProAccessDaysValue
+                    ? ` (${memberProAccessDaysValue} dias)`
+                    : ""}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">MultiSkill: </span>
+                  {values.multiskillEnabled ? "Ativo" : "Inativo"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Usuários ilimitados: </span>
+                  {values.cycle === "annual" ||
+                  values.userType === "member_pro" ||
+                  values.hasUnlimitedUsers
+                    ? "Sim"
+                    : "Não"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Pago por fora: </span>
+                  {isExternalPaid ? "Sim" : "Não"}
+                </p>
+                {!isGuest && (
+                  <p>
+                    <span className="text-muted-foreground">Método: </span>
+                    {chargeBillingType === "CREDIT_CARD" ? "Cartão" : "Pix"}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-4">
+              <p className="text-sm font-medium">Cobrança</p>
+              {isGuest ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Convidado: sem checkout e sem cobrança Asaas. A conta será ativada diretamente.
+                </p>
+              ) : isExternalPaid ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Pago por fora: sem cobrança Asaas. A conta será criada e o acesso enviado por
+                  e-mail. Total comercial de referência: {formatCurrency(total)}.
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Checkout: gera link público para o cliente pagar no Asaas. Total do checkout:{" "}
+                  {formatCurrency(total)} ({BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]}).
+                </p>
+              )}
+            </div>
+
+            {!isGuest && (
+              <div className="rounded-md border bg-muted/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Resumo comercial</p>
+                    <p className="text-xs text-muted-foreground">
+                      {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]} com cobrança
+                      {isExternalPaid ? " paga por fora." : " antecipada."}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">
+                      {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
+                    </p>
+                    <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                  </div>
+                </div>
+                <div className="mt-4 divide-y rounded-md border bg-background/60">
+                  {commercialItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className="grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1fr)_7rem_8rem]"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {item.description}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Qtd.</span>
+                        <span>{item.quantity}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
+                        <div>
+                          <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCurrency(item.monthlyUnitPrice)}/mês
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="dialog-scrollbar flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
@@ -566,7 +796,43 @@ export function BackofficeAdhesionDialog({
               </div>
             ) : null}
 
-            {mode === "create" ? (
+            {mode === "create" && !isGuest ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div>
+                  <Label htmlFor="adhesion-multiskill">MultiSkill (receber transferências)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita o time padrão desta conta a receber leads transferidos pelo MultiSkill.
+                  </p>
+                </div>
+                <Switch
+                  id="adhesion-multiskill"
+                  checked={values.multiskillEnabled}
+                  disabled={isSubmitting}
+                  onCheckedChange={(checked) => updateValue("multiskillEnabled", checked)}
+                />
+              </div>
+            ) : null}
+
+            {!isGuest ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div>
+                  <Label htmlFor="adhesion-unlimited-users">Usuários ilimitados</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Ciclo anual e Member PRO ativam automaticamente. Sem cobrança/checkout de usuários extras.
+                  </p>
+                </div>
+                <Switch
+                  id="adhesion-unlimited-users"
+                  checked={values.cycle === "annual" || values.userType === "member_pro" || values.hasUnlimitedUsers}
+                  disabled={
+                    isSubmitting || values.cycle === "annual" || values.userType === "member_pro"
+                  }
+                  onCheckedChange={(checked) => updateValue("hasUnlimitedUsers", checked)}
+                />
+              </div>
+            ) : null}
+
+            {mode === "create" && !isGuest ? (
               <div className="flex items-center justify-between gap-3 rounded-md border p-3">
                 <div>
                   <Label htmlFor="adhesion-external-paid">Pago por fora</Label>
@@ -695,10 +961,38 @@ export function BackofficeAdhesionDialog({
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label>Plano</Label>
-                <div className="flex h-10 items-center rounded-md border px-3">
-                  <Badge variant="secondary">CRM</Badge>
-                </div>
+                <Label>Plano / precificação</Label>
+                {options?.productVariants.length ? (
+                  <Select
+                    value={values.productId}
+                    onValueChange={(value) => updateValue("productId", value)}
+                    disabled={isSubmitting || isLoadingOptions}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o plano" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {options.productVariants.map((variant) => {
+                          const prices = variant.pricesByCycle[values.cycle]
+                          const displayPrice =
+                            prices.cardMonthlyPrice ?? prices.pixMonthlyPrice ?? 0
+                          return (
+                            <SelectItem key={variant.id} value={variant.id}>
+                              {variant.name}
+                              {variant.isDefault ? " (padrão)" : ""} —{" "}
+                              {formatCurrency(displayPrice)}/mês
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex h-10 items-center rounded-md border px-3">
+                    <Badge variant="secondary">CRM</Badge>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Ciclo *</Label>
@@ -744,6 +1038,8 @@ export function BackofficeAdhesionDialog({
                       <SelectGroup>
                         <SelectItem value="common">Comum</SelectItem>
                         <SelectItem value="member_pro">Member PRO</SelectItem>
+                        <SelectItem value="associate">Associado</SelectItem>
+                        <SelectItem value="guest">Convidado</SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -769,54 +1065,87 @@ export function BackofficeAdhesionDialog({
                     )}
                   </div>
                 )}
+                {needsSponsor && (
+                  <div className="flex flex-col gap-2">
+                    <Label>Patrocinador *</Label>
+                    <Select
+                      value={values.sponsorMasterId ?? ""}
+                      onValueChange={(value) => updateValue("sponsorMasterId", value || null)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o patrocinador" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {(options?.sponsorOptions ?? []).map((sponsor) => (
+                            <SelectItem key={sponsor.id} value={sponsor.id}>
+                              {sponsor.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              <Label>Forma de pagamento *</Label>
-              <RadioGroup
-                value={mode === "edit" ? (values.billingType ?? "PIX") : chargeBillingType}
-                onValueChange={(value) => {
-                  if (value === "EXTERNAL") {
-                    updateValue("billingType", "EXTERNAL")
-                    return
-                  }
-                  updateValue("billingType", value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
-                }}
-                className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
-                disabled={isSubmitting}
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="PIX" id="adhesion-billing-pix" />
-                  <Label htmlFor="adhesion-billing-pix">PIX</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
-                  <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
-                </div>
-                {mode === "edit" ? (
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="EXTERNAL" id="adhesion-billing-external" />
-                    <Label htmlFor="adhesion-billing-external">Pagamento externo</Label>
-                  </div>
-                ) : null}
-              </RadioGroup>
-            </div>
+            {mode === "create" && isGuest && (
+              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                Conta gratuita — recursos ilimitados (times e usuários), sem cobrança.
+              </div>
+            )}
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <NumberStepper
-                label="Mais times"
-                value={values.extraTeams}
-                onChange={(value) => updateValue("extraTeams", value)}
-                disabled={isSubmitting}
-              />
-              <NumberStepper
-                label="Usuários adicionais"
-                value={values.extraUsers}
-                onChange={(value) => updateValue("extraUsers", value)}
-                disabled={isSubmitting}
-              />
-            </div>
+            {!isGuest && (
+              <div className="flex flex-col gap-2">
+                <Label>Forma de pagamento *</Label>
+                <RadioGroup
+                  value={mode === "edit" ? (values.billingType ?? "PIX") : chargeBillingType}
+                  onValueChange={(value) => {
+                    if (value === "EXTERNAL") {
+                      updateValue("billingType", "EXTERNAL")
+                      return
+                    }
+                    updateValue("billingType", value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
+                  }}
+                  className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
+                  disabled={isSubmitting}
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="PIX" id="adhesion-billing-pix" />
+                    <Label htmlFor="adhesion-billing-pix">PIX</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
+                    <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
+                  </div>
+                  {mode === "edit" ? (
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="EXTERNAL" id="adhesion-billing-external" />
+                      <Label htmlFor="adhesion-billing-external">Pagamento externo</Label>
+                    </div>
+                  ) : null}
+                </RadioGroup>
+              </div>
+            )}
+
+            {!isGuest && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <NumberStepper
+                  label="Mais times"
+                  value={values.extraTeams}
+                  onChange={(value) => updateValue("extraTeams", value)}
+                  disabled={isSubmitting}
+                />
+                <NumberStepper
+                  label="Usuários adicionais"
+                  value={values.extraUsers}
+                  onChange={(value) => updateValue("extraUsers", value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
 
             {mode === "create" && values.extraUsers > 0 && (
               <div className="flex flex-col gap-3">
@@ -924,87 +1253,118 @@ export function BackofficeAdhesionDialog({
               </div>
             )}
 
-            <div className="rounded-md border bg-muted/30 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">Resumo comercial</p>
-                  <p className="text-xs text-muted-foreground">
-                    {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]} com cobrança
-                    {isExternalPaid ? " paga por fora." : " antecipada."}
-                  </p>
+            {!isGuest && (
+              <div className="rounded-md border bg-muted/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Resumo comercial</p>
+                    <p className="text-xs text-muted-foreground">
+                      {BACKOFFICE_ADHESION_CYCLE_LABELS[values.cycle]} com cobrança
+                      {isExternalPaid ? " paga por fora." : " antecipada."}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">
+                      {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
+                    </p>
+                    <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground">
-                    {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
-                  </p>
-                  <p className="text-lg font-semibold">{formatCurrency(total)}</p>
-                </div>
-              </div>
-              <div className="mt-4 divide-y rounded-md border bg-background/60">
-                {commercialItems.map((item) => (
-                  <div
-                    key={item.key}
-                    className="grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1fr)_7rem_8rem]"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium">{item.name}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        {item.description}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 md:block md:text-right">
-                      <span className="text-xs text-muted-foreground md:hidden">Qtd.</span>
-                      <span>{item.quantity}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 md:block md:text-right">
-                      <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
-                      <div>
-                        <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatCurrency(item.monthlyUnitPrice)}/mês
+                <div className="mt-4 divide-y rounded-md border bg-background/60">
+                  {commercialItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className="grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1fr)_7rem_8rem]"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {item.description}
                         </p>
                       </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Qtd.</span>
+                        <span>{item.quantity}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                        <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
+                        <div>
+                          <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCurrency(item.monthlyUnitPrice)}/mês
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>PIX: {formatCurrency(pixTotal)}</span>
+                  <span>Cartão: {formatCurrency(cardTotal)}</span>
+                  <span>
+                    Ciclo: {cycleMonths}{" "}
+                    {cycleMonths === 1 ? "mês" : "meses"}
+                  </span>
+                </div>
+                {selectedLead ? (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Lead vinculado: {selectedLead.name}
+                  </p>
+                ) : null}
               </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>PIX: {formatCurrency(pixTotal)}</span>
-                <span>Cartão: {formatCurrency(cardTotal)}</span>
-                <span>
-                  Ciclo: {cycleMonths}{" "}
-                  {cycleMonths === 1 ? "mês" : "meses"}
-                </span>
-              </div>
-              {selectedLead ? (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Lead vinculado: {selectedLead.name}
-                </p>
-              ) : null}
-            </div>
+            )}
           </div>
         )}
 
         <DialogFooter className="border-t pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isSubmitting}
-            onClick={() => onOpenChange(false)}
-          >
-            {result ? "Fechar" : "Cancelar"}
-          </Button>
-          {!result ? (
-            <Button type="button" disabled={!canSubmit} onClick={handleSubmit}>
-              {isSubmitting
-                ? "Salvando..."
-                : mode === "edit"
-                  ? "Salvar"
+          {result ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={() => onOpenChange(false)}
+            >
+              Fechar
+            </Button>
+          ) : mode === "create" && createStep === "review" ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={handleBackToForm}
+              >
+                Voltar
+              </Button>
+              <Button type="button" disabled={!canSubmit} onClick={handleSubmit}>
+                {isSubmitting
+                  ? "Salvando..."
                   : isExternalPaid
                     ? "Criar conta e enviar acesso"
                     : "Gerar nova adesão"}
-            </Button>
-          ) : null}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => onOpenChange(false)}
+              >
+                Cancelar
+              </Button>
+              {mode === "edit" ? (
+                <Button type="button" disabled={!canSubmit} onClick={handleSubmit}>
+                  {isSubmitting ? "Salvando..." : "Salvar"}
+                </Button>
+              ) : (
+                <Button type="button" disabled={!canSubmit} onClick={handleReview}>
+                  Revisar
+                </Button>
+              )}
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

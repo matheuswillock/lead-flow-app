@@ -34,6 +34,7 @@ export const UpdateLeadRequestSchema = z.object({
   meetingLink: z.string().url("Link da reunião inválido").nullish().transform(val => val || undefined),
   // Allow explicit null so we can clear the flag (unchecked) via PATCH/PUT.
   meetingHeald: z.nativeEnum(MeetingHeald).nullable().optional(),
+  meetingPresenceConfirmed: z.boolean().optional(),
   notes: z.string().nullish().transform(val => val || undefined),
   assignedTo: z.string().uuid("ID do operador deve ser um UUID válido").nullish().transform(val => val || undefined),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").nullish().transform(val => val || undefined),
@@ -50,10 +51,13 @@ export const UpdateLeadRequestSchema = z.object({
   soldPlan: z.string().trim().min(1, "Plano vendido deve ser válido").nullish().transform(val => val || undefined),
   // Meeting type & referral fields
   meetingType: z.enum(["online", "call", "whatsapp"]).optional(),
+  isTransfer: z.boolean().optional(),
   isReferral: z.boolean().optional(),
   referrerLeadId: z.string().uuid("ID do lead indicador deve ser um UUID válido").optional(),
   referrerName: z.string().optional(),
   referrerPhone: z.string().optional(),
+  saveAsDraft: z.boolean().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * POST /api/v1/operators/[operatorId]/remove
@@ -42,6 +43,7 @@ export async function POST(
     return NextResponse.json(result, { status: statusCode });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [POST /api/v1/operators/:operatorId/remove] Erro inesperado:', error);
 
     return NextResponse.json(

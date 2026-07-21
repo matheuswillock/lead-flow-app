@@ -3,22 +3,41 @@ import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
-import { assertResend } from "@/lib/email"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+
+const functionDefinitionSchema = z.object({
+  operator: z.enum([
+    "current_year",
+    "current_month",
+    "current_day",
+    "current_date",
+    "current_time",
+    "current_date_time",
+    "sum",
+    "subtract",
+    "multiply",
+    "divide",
+    "concat",
+  ]),
+  arguments: z.array(z.string()).optional(),
+  separator: z.string().nullable().optional(),
+  timezone: z.string().nullable().optional(),
+})
 
 const bodySchema = z.object({
   to: z.string().email("Endereço de email inválido"),
+  subject: z.string().min(1, "Assunto é obrigatório"),
+  html: z.string().min(1, "HTML é obrigatório"),
+  variables: z.array(z.object({
+    key: z.string().min(1),
+    kind: z.enum(["variable", "function"]).optional(),
+    type: z.enum(["string", "number"]).optional(),
+    fallbackValue: z.string().nullable().optional(),
+    reviewStatus: z.enum(["pending", "reviewed"]).optional(),
+    definition: functionDefinitionSchema.nullable().optional(),
+    value: z.string().optional().default(""),
+  })).optional().default([]),
 })
-
-const FROM = "Corretor Studio <no-reply@corretorstudio.com>"
-
-function interpolateTestVariables(template: string, to: string): string {
-  const fallbackName = to.split("@")[0] ?? ""
-  return template
-    .replace(/\{\{nome_do_lead\}\}/gi, fallbackName)
-    .replace(/\{\{nome\}\}/gi, fallbackName)
-    .replace(/\{\{name\}\}/gi, fallbackName)
-    .replace(/\{\{email\}\}/gi, to)
-}
 
 export async function POST(
   request: NextRequest,
@@ -39,45 +58,19 @@ export async function POST(
     }
 
     const useCase = new EmailTemplateUseCase()
-    const templateOutput = await useCase.getById(id, teamAccess.access)
-    if (!templateOutput.isValid || !templateOutput.result) {
-      return NextResponse.json(templateOutput, { status: 404 })
-    }
-
-    const template = templateOutput.result as {
-      subject: string
-      html: string | null
-      previewText: string | null
-    }
-
-    if (!template.html) {
-      return NextResponse.json(
-        new Output(false, [], ["Template não possui HTML para envio"], null),
-        { status: 400 }
-      )
-    }
-
-    const resend = assertResend()
-    const { error } = await resend.emails.send({
-      from: FROM,
-      to: validation.data.to,
-      subject: `[Teste] ${interpolateTestVariables(template.subject, validation.data.to)}`,
-      html: interpolateTestVariables(template.html, validation.data.to),
-    })
-
-    if (error) {
-      console.error("[EmailTemplateTestRoute][POST] Resend error", error)
-      return NextResponse.json(
-        new Output(false, [], [error.message ?? "Erro ao enviar email de teste"], null),
-        { status: 500 }
-      )
-    }
-
-    console.info("[EmailTemplateTestRoute][POST] Test email sent", { id, to: validation.data.to })
-    return NextResponse.json(
-      new Output(true, [`Email de teste enviado para ${validation.data.to}`], [], null)
+    const output = await useCase.sendTest(
+      id,
+      {
+        to: validation.data.to,
+        subject: validation.data.subject,
+        html: validation.data.html,
+        variables: validation.data.variables,
+      },
+      teamAccess.access
     )
+    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailTemplateTestRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

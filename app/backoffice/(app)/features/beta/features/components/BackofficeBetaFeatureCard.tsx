@@ -1,11 +1,11 @@
 "use client"
 
-import { UserPlus, X, Loader2 } from "lucide-react"
+import { Settings2, UserPlus, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
-import type { BetaFeatureItem } from "../context/BackofficeBetaTypes"
+import type { BetaFeatureItem, BetaGrantItem } from "../context/BackofficeBetaTypes"
 import { useBackofficeBeta } from "../context/BackofficeBetaContext"
 
 function initials(name: string | null) {
@@ -19,12 +19,28 @@ function initials(name: string | null) {
     .toUpperCase()
 }
 
+function scopeLabel(grant: BetaGrantItem): string {
+  if (grant.betaTeamScope === "ALL_TEAMS") {
+    return "Todos os times"
+  }
+
+  if (grant.teams.length === 0) {
+    return "Times específicos"
+  }
+
+  if (grant.teams.length <= 2) {
+    return grant.teams.map((team) => team.name).join(", ")
+  }
+
+  return `${grant.teams.length} times`
+}
+
 interface Props {
   feature: BetaFeatureItem
 }
 
 export function BackofficeBetaFeatureCard({ feature }: Props) {
-  const { openAddDialog, removeBetaUser, isRemoving } = useBackofficeBeta()
+  const { openAddDialog, openEditScopeDialog, removeBetaUser, isRemoving } = useBackofficeBeta()
 
   const activeGrants = feature.grants.filter((g) => g.isActive)
 
@@ -49,7 +65,7 @@ export function BackofficeBetaFeatureCard({ feature }: Props) {
           onClick={() => openAddDialog(feature)}
           className="shrink-0"
         >
-          <UserPlus className="size-3.5" />
+          <UserPlus data-icon="inline-start" />
           Adicionar
         </Button>
       </div>
@@ -59,7 +75,7 @@ export function BackofficeBetaFeatureCard({ feature }: Props) {
       <div className="flex flex-col gap-1 p-4">
         {activeGrants.length === 0 && (
           <p className="text-xs text-muted-foreground py-2 text-center">
-            Nenhum usuário no grupo beta desta funcionalidade.
+            Nenhum master no grupo beta desta funcionalidade.
           </p>
         )}
 
@@ -85,22 +101,37 @@ export function BackofficeBetaFeatureCard({ feature }: Props) {
                   <p className="truncate text-xs text-muted-foreground">
                     {grant.profile.email ?? "—"}
                   </p>
+                  <Badge variant="outline" className="mt-1 text-[10px] font-normal">
+                    {scopeLabel(grant)}
+                  </Badge>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
-                disabled={removing}
-                onClick={() => removeBetaUser(feature.id, grant.profileId)}
-                aria-label={`Remover ${grant.profile.fullName ?? grant.profileId} do grupo beta`}
-              >
-                {removing ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <X className="size-3.5" />
-                )}
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-muted-foreground"
+                  disabled={removing}
+                  onClick={() => openEditScopeDialog(feature, grant)}
+                  aria-label={`Editar escopo de ${grant.profile.fullName ?? grant.profileId}`}
+                >
+                  <Settings2 className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-muted-foreground hover:text-destructive"
+                  disabled={removing}
+                  onClick={() => removeBetaUser(feature.id, grant.profileId)}
+                  aria-label={`Remover ${grant.profile.fullName ?? grant.profileId} do grupo beta`}
+                >
+                  {removing ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <X className="size-3.5" />
+                  )}
+                </Button>
+              </div>
             </div>
           )
         })}

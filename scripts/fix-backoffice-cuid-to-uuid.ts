@@ -21,10 +21,6 @@ function isCuid(value: string): boolean {
   return /^c[a-z0-9]{19,31}$/.test(value);
 }
 
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-}
-
 /** Deterministic UUID v5-like from a CUID: same CUID always → same UUID */
 function cuidToUuid(cuid: string): string {
   const hash = createHash('sha256').update(`backoffice-cuid-to-uuid:${cuid}`).digest('hex');

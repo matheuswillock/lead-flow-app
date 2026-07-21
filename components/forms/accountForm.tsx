@@ -145,7 +145,7 @@ export function AccountForm({
           name="cpfCnpj"
           render={({ field }) => (
             <FormItem className="space-y-2">
-              <FormLabel>CPF/CNPJ (opcional)</FormLabel>
+              <FormLabel>CPF/CNPJ</FormLabel>
               <FormControl>
                 <Input
                   placeholder="000.000.000-00 ou 00.000.000/0000-00"
@@ -166,7 +166,7 @@ export function AccountForm({
         />
 
         <div className="space-y-4">
-          <h3 className="text-sm font-medium text-muted-foreground">Endereço (opcional)</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">Endereço</h3>
           
           <div className="grid gap-6 sm:grid-cols-2">
             <FormField
@@ -320,7 +320,7 @@ export function AccountForm({
             name="password"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel>Nova Senha (opcional)</FormLabel>
+                <FormLabel>Nova Senha</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <Input

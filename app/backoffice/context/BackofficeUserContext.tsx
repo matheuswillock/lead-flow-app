@@ -21,6 +21,7 @@ export interface BackofficeUserData {
   profileIconId: string | null
   profileIconUrl: string | null
   fullAccess: boolean
+  isOperator: boolean
   isSdr: boolean
   isCloser: boolean
   googleCalendarConnected: boolean

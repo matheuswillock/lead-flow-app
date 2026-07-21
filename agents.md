@@ -39,17 +39,32 @@ The migration workflow uses **Supabase CLI** as the source of truth for migratio
 
 ### Creating migrations (MUST)
 
-For any database change (schema, RLS, functions, triggers, publications, extensions):
+Agents **MUST NOT** create migration files manually in `supabase/migrations/` (hand-crafted timestamps, copy/paste, or rename-only flows). Every new file **MUST** originate from the Supabase CLI.
+
+| Change type | Command | SQL |
+|-------------|---------|-----|
+| **Schema** (`prisma/schema.prisma` — models, enums, indexes) | `bun run db:migrate:from-prisma -- <migration-name>` | Auto-generated via `prisma db push` (local) + `supabase db diff -f` — **review before remote push** |
+| **Manual** (RLS, triggers, functions, seeds, publications, extensions) | `bun run db:migrate:new <migration-name>` | Written by hand in the generated file |
+
+**Schema workflow** (requires local Supabase on port 55322):
+
+```bash
+# Preview diff without writing a file
+bun run db:migrate:from-prisma -- --dry-run <migration-name>
+
+# Generate supabase/migrations/<timestamp>_<migration-name>.sql
+bun run db:migrate:from-prisma -- <migration-name>
+
+# Validate replay
+bun run db:migrate:reset:local
+```
+
+**Manual workflow** (RLS, data seeds, etc.):
 
 ```bash
 bun run db:migrate:new <migration-name>
-# Creates: supabase/migrations/<timestamp>_<migration-name>.sql
+# Edit the generated SQL file (idempotent when possible)
 ```
-
-Agents **MUST NOT** create migration files manually in `supabase/migrations/` (including hand-crafted timestamps, copy/paste, or rename-only flows).  
-Every new migration file **MUST** originate from `supabase migration new` (via `bun run db:migrate:new <migration-name>`), and only then receive SQL edits.
-
-Write SQL directly in the generated file. For schema changes driven by `prisma/schema.prisma`, apply the schema to the local DB first (`bun run prisma:db:push`), then use `bun run db:diff` to capture the diff.
 
 All migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`).
 
@@ -262,6 +277,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - Commit or push directly to `main` or `develop` branches under any circumstances. All changes **MUST** go through a feature, bugfix, or release branch and be merged via pull request.
 - Create implementation summary docs (`*_IMPLEMENTATION_SUMMARY.md`, `*_FIX_SUMMARY.md`, similar).
 - Use npm or yarn (project standard is Bun).
+- Use the `Bun.*` runtime global in `app/**` or `lib/**` (production runs on Node at Vercel; Bun is only the local script runner). Use portable APIs instead (e.g. `bcryptjs`, `node:crypto`). Enforced by `governance:check`.
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.
 - Create routes/folders/files with ambiguous or generic names that don't describe intent (e.g. `me`, `data`, `misc`, `temp`, `utils2`).
 - Use browser-native dialogs (`window.alert`, `window.confirm`, `window.prompt`, or global equivalents). Use shadcn `AlertDialog`/`Dialog` and `sonner` instead.
@@ -325,6 +341,58 @@ CI **MUST** fail when governance checks fail.
 - Check: `bun run governance:check`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 
+## Feature Registration Policy (FOR NEW FEATURES)
+
+Every new feature that uses a `featureSlug` (visible in the sidebar via `FEATURE_SLUGS.*`) **MUST** be registered in the database. Defining the constant in `lib/features/feature-slugs.ts` alone is **not sufficient** — without a corresponding row in `backoffice_features`, `hasAccess(slug)` returns `false` for all users and the feature is invisible.
+
+### Registration is two-step (MUST)
+
+**1. Data migration** — `bun run db:migrate:new seed-<feature-slug>`
+
+The generated file **MUST** contain idempotent SQL that inserts the feature and its access rules:
+
+```sql
+-- Insert feature (child of parent slug, or top-level if no parentSlug)
+INSERT INTO "public"."backoffice_features"
+  ("id","slug","name","accessMode","defaultAccessLevel","betaEnabled","sortOrder","productSlug","parentId","isActive","createdAt","updatedAt")
+SELECT gen_random_uuid(), '<slug>', '<Name>', '<MODE>', '<LEVEL>', false, <sortOrder>, '<productSlug>',
+       (SELECT "id" FROM "public"."backoffice_features" WHERE "slug" = '<parentSlug>'),
+       true, now(), now()
+ON CONFLICT ("slug") DO NOTHING;
+
+-- Insert access rules
+DO $$
+DECLARE v_id uuid;
+BEGIN
+  SELECT "id" INTO v_id FROM "public"."backoffice_features" WHERE "slug" = '<slug>';
+  IF v_id IS NOT NULL THEN
+    INSERT INTO "public"."backoffice_feature_access_rules"
+      ("id","featureId","principal","accessLevel","createdAt","updatedAt")
+    VALUES
+      (gen_random_uuid(), v_id, 'MASTER',           '<LEVEL>', now(), now()),
+      (gen_random_uuid(), v_id, 'MANAGER',          '<LEVEL>', now(), now()),
+      -- ... remaining principals with appropriate levels
+    ON CONFLICT ("featureId","principal") DO NOTHING;
+  END IF;
+END $$;
+```
+
+**2. Seed file update** — `prisma/seed-backoffice-products.ts`
+
+Add the feature to both:
+- `FEATURES` array (slug, name, accessMode, defaultAccessLevel, betaEnabled, sortOrder, parentSlug, productSlug)
+- `ACCESS_RULES_BY_SLUG` record using `completeRuleSet([...])` with the intended principals
+
+Run `bun run db:seed:backoffice-products` locally after editing to verify correctness.
+
+### Why both?
+
+The migration guarantees the row reaches production via the tracked migration pipeline. The seed file ensures local dev environments and CI database resets stay consistent with production.
+
+### PR checklist item
+
+The PR checklist entry below covers this: "Criou nova feature com featureSlug? Registrou em backoffice_features via migration de dados e atualizou seed-backoffice-products.ts?"
+
 ## Feature Scaffolding
 
 Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline. Agents **SHOULD** start from scaffold and then adapt business logic.
@@ -332,9 +400,10 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 ## Pull Request Checklist (MUST)
 
 - [ ] Seguiu `agents.md`?
-- [ ] Criou migration? Gerou com `bun run prisma:migrate -- <name>`, revisou `migration.sql` e aplicou somente com autorização?
+- [ ] Criou migration? Schema via `bun run db:migrate:from-prisma -- <name>` ou manual via `db:migrate:new`; revisou SQL e aplicou remoto somente com autorização?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
 - [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
+- [ ] Criou nova feature com `featureSlug`? Registrou em `backoffice_features` via migration de dados (`bun run db:migrate:new seed-<slug>`) **e** atualizou `prisma/seed-backoffice-products.ts`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
 

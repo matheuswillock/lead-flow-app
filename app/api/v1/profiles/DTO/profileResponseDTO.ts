@@ -32,6 +32,7 @@ export interface ProfileResponseDTO {
   isMaster: boolean;
   canCreateAccountUsers: boolean;
   canManageAccountTeams: boolean;
+  canTransferAccountLeads?: boolean;
   hasPermanentSubscription: boolean;
   managerId: string | null;
   profileIconId: string | null;
@@ -48,6 +49,9 @@ export interface ProfileResponseDTO {
 
 export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
   const usersAssociated: UserAssociated[] = [];
+  const activeMembership = profile.activeTeamMembership ?? null;
+  const effectiveRole = activeMembership?.role ?? profile.role;
+  const effectiveFunctions = activeMembership?.functions ?? profile.functions ?? [];
   
   // SEMPRE incluir o próprio usuário no array como primeiro item
   const currentUser: UserAssociated = {
@@ -55,15 +59,15 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     name: profile.fullName || 'N/A',
     avatarImageUrl: profile.profileIconUrl || '',
     email: profile.email,
-    role: profile.role,
-    functions: profile.functions ?? [],
+    role: effectiveRole,
+    functions: effectiveFunctions,
     googleCalendarConnected: profile.googleCalendarConnected ?? false,
   };
   
   usersAssociated.push(currentUser);
   
   // Se for manager, incluir TAMBÉM todos os operadores (evitando duplicatas)
-  if (isManagerLikeRole(profile.role) && profile.operators && profile.operators.length > 0) {
+  if (isManagerLikeRole(effectiveRole) && profile.operators && profile.operators.length > 0) {
     const operators = profile.operators
       .filter((operator: any) => operator.id !== profile.id) // Evitar duplicar o próprio usuário
       .map((operator: any) => ({
@@ -98,11 +102,16 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     complement: profile.complement ?? null,
     city: profile.city ?? null,
     state: profile.state ?? null,
-    role: profile.role,
-    functions: profile.functions ?? [],
+    role: effectiveRole,
+    functions: effectiveFunctions,
     isMaster: profile.isMaster ?? false,
-    canCreateAccountUsers: profile.canCreateAccountUsers ?? false,
-    canManageAccountTeams: profile.canManageAccountTeams ?? false,
+    canCreateAccountUsers:
+      effectiveRole === "manager" && activeMembership?.canCreateAccountUsers === true,
+    canManageAccountTeams:
+      effectiveRole === "manager" && activeMembership?.canManageAccountTeams === true,
+    canTransferAccountLeads:
+      (effectiveRole === "manager" || effectiveRole === "backoffice") &&
+      activeMembership?.canTransferAccountLeads === true,
     hasPermanentSubscription: profile.hasPermanentSubscription ?? false,
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,

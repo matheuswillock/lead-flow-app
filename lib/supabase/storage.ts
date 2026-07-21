@@ -19,6 +19,12 @@ import { createSupabaseAdmin } from "./server";
 export const STORAGE_BUCKETS = {
   LEAD_ATTACHMENTS: process.env.SUPABASE_LEAD_ATTACHMENTS_BUCKET || "lead-attachments",
   PROFILE_ICONS: process.env.SUPABASE_PROFILE_ICONS_BUCKET || "profile-icons",
+  EMAIL_TEMPLATE_ASSETS:
+    process.env.SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET || "email-template-assets",
+  CONTRACTS: process.env.SUPABASE_CONTRACTS_BUCKET || "backoffice-contracts",
+  SUPPORT_REQUEST_ATTACHMENTS:
+    process.env.SUPABASE_SUPPORT_ATTACHMENTS_BUCKET || "support-request-attachments",
+  WHATSAPP_MEDIA: process.env.SUPABASE_WHATSAPP_MEDIA_BUCKET || "whatsapp-media",
 } as const;
 
 export type BucketName = typeof STORAGE_BUCKETS[keyof typeof STORAGE_BUCKETS];
@@ -50,8 +56,9 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
       "image/gif",
       // Outros
       "text/plain",
+      "text/csv",
     ],
-    description: "Anexos de leads (PDFs, DOCs, imagens)",
+    description: "Anexos de leads (PDFs, DOCs, CSV, imagens)",
   },
   [STORAGE_BUCKETS.PROFILE_ICONS]: {
     maxFileSize: 5 * 1024 * 1024, // 5MB
@@ -62,6 +69,43 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
       "image/gif",
     ],
     description: "Ícones de perfil de usuários",
+  },
+  [STORAGE_BUCKETS.EMAIL_TEMPLATE_ASSETS]: {
+    maxFileSize: 2 * 1024 * 1024, // 2MB
+    allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+    description: "Imagens PNG/JPG para templates de e-mail",
+  },
+  [STORAGE_BUCKETS.CONTRACTS]: {
+    maxFileSize: 10 * 1024 * 1024, // 10MB
+    allowedTypes: ["application/pdf"],
+    description: "PDFs de contratos do backoffice (bucket privado)",
+  },
+  [STORAGE_BUCKETS.SUPPORT_REQUEST_ATTACHMENTS]: {
+    maxFileSize: 5 * 1024 * 1024, // 5MB
+    allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    description: "Imagens anexadas a pedidos de suporte (bucket privado)",
+  },
+  [STORAGE_BUCKETS.WHATSAPP_MEDIA]: {
+    maxFileSize: 16 * 1024 * 1024, // 16MB
+    allowedTypes: [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain",
+      "audio/mpeg",
+      "audio/ogg",
+      "audio/webm",
+      "audio/mp4",
+      "video/mp4",
+      "video/webm",
+    ],
+    description: "Mídia do inbox WhatsApp (bucket privado)",
   },
 };
 
@@ -383,8 +427,44 @@ export class SupabaseStorageService {
   }
 
   /**
+   * Gera uma URL assinada de curta duração para um arquivo em bucket privado
+   *
+   * @param fileId - ID do arquivo (caminho completo)
+   * @param bucketName - Nome do bucket
+   * @param expiresInSeconds - Tempo de validade da URL assinada, em segundos
+   * @returns URL assinada ou erro
+   */
+  static async createSignedUrl(
+    fileId: string,
+    bucketName: BucketName,
+    expiresInSeconds: number
+  ): Promise<{ success: boolean; signedUrl?: string; error?: string }> {
+    try {
+      const supabase = createSupabaseAdmin();
+      if (!supabase) {
+        console.error("[SupabaseStorage] Failed to initialize Supabase client");
+        return { success: false, error: "Failed to initialize Supabase client" };
+      }
+
+      const { data, error } = await supabase.storage
+        .from(bucketName)
+        .createSignedUrl(fileId, expiresInSeconds);
+
+      if (error || !data) {
+        console.error("[SupabaseStorage] Error creating signed URL:", error);
+        return { success: false, error: StorageErrorMapper.mapError(error) };
+      }
+
+      return { success: true, signedUrl: data.signedUrl };
+    } catch (error) {
+      console.error("[SupabaseStorage] Unexpected error creating signed URL:", error);
+      return { success: false, error: StorageErrorMapper.mapError(error) };
+    }
+  }
+
+  /**
    * Obtém a URL pública de um arquivo
-   * 
+   *
    * @param fileId - ID do arquivo (caminho completo)
    * @param bucketName - Nome do bucket
    * @returns URL pública ou null

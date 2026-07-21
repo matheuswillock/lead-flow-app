@@ -1,0 +1,215 @@
+import { describe, expect, it, mock } from "bun:test"
+import { EmailAnalyticsUseCase } from "./EmailAnalyticsUseCase"
+import type { IEmailAnalyticsRepository } from "@/app/api/infra/data/repositories/emailAnalytics/EmailAnalyticsRepository"
+
+// EmailAnalyticsUseCase usa injeção por construtor — sem mock.module necessário
+
+// ---------- helpers ----------
+
+function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAnalyticsRepository {
+  return {
+    countLogs: mock(async () => 0),
+    listDispatches: mock(async () => []),
+    findDispatchPreview: mock(async () => null),
+    ...overrides,
+  }
+}
+
+const baseWindow = { from: new Date("2026-01-01"), to: new Date("2026-01-31") }
+
+// ---------- testes ----------
+
+describe("EmailAnalyticsUseCase.getAnalytics", () => {
+  it("A1 — openRate usa 'sent' como denominador (não 'delivered')", async () => {
+    const repo = buildRepo({
+      countLogs: mock()
+        .mockResolvedValueOnce(2000)    // total (sent)
+        .mockResolvedValueOnce(1800)    // delivered
+        .mockResolvedValueOnce(400)     // opened
+        .mockResolvedValueOnce(100)     // clicked
+        .mockResolvedValueOnce(50)      // bounced
+        .mockResolvedValueOnce(5)       // complained
+        .mockResolvedValueOnce(0)       // failed
+        .mockResolvedValueOnce(0)       // delivery_delayed
+        .mockResolvedValueOnce(0)       // unsubscribed
+        .mockResolvedValueOnce(0),      // suppressed
+    })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.isValid).toBe(true)
+    // openRate correto: 400/2000 = 20.00
+    expect(output.result.rates.openRate).toBe(20)
+    // garante que o bug antigo (400/1800 ≈ 22.22) não está presente
+    expect(output.result.rates.openRate).not.toBe(22.22)
+  })
+
+  it("A2 — clickRate usa 'sent' como denominador", async () => {
+    const repo = buildRepo({
+      countLogs: mock()
+        .mockResolvedValueOnce(2000)
+        .mockResolvedValueOnce(1800)
+        .mockResolvedValueOnce(400)
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(50)
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0),
+    })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    // clickRate correto: 100/2000 = 5.00
+    expect(output.result.rates.clickRate).toBe(5)
+  })
+
+  it("A3 — deliverabilityRate = delivered / sent", async () => {
+    const repo = buildRepo({
+      countLogs: mock()
+        .mockResolvedValueOnce(2000)
+        .mockResolvedValueOnce(1800)
+        .mockResolvedValueOnce(400)
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(50)
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0),
+    })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.result.rates.deliverabilityRate).toBe(90) // 1800/2000
+  })
+
+  it("A4 — todos os rates são 0 quando sent=0 (sem divisão por zero)", async () => {
+    const repo = buildRepo({ countLogs: mock(async () => 0) })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.rates.openRate).toBe(0)
+    expect(output.result.rates.clickRate).toBe(0)
+    expect(output.result.rates.deliverabilityRate).toBe(0)
+    expect(output.result.rates.bounceRate).toBe(0)
+    expect(output.result.rates.complainRate).toBe(0)
+  })
+
+  it("A5 — safeRate arredonda para 2 casas decimais", async () => {
+    // 1 opened / 3 sent = 33.33...
+    const repo = buildRepo({
+      countLogs: mock()
+        .mockResolvedValueOnce(3)   // sent
+        .mockResolvedValueOnce(3)   // delivered
+        .mockResolvedValueOnce(1)   // opened
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0),
+    })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.result.rates.openRate).toBe(33.33)
+  })
+
+  it("A6 — sem campaignId: listDispatches NÃO é chamado", async () => {
+    const listDispatches = mock(async () => [])
+    const repo = buildRepo({ listDispatches })
+    const uc = new EmailAnalyticsUseCase(repo)
+    await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(listDispatches).not.toHaveBeenCalled()
+  })
+
+  it("A7 — com campaignId: rates por disparo calculadas com 'sent' como denominador", async () => {
+    const countLogs = mock()
+      .mockResolvedValueOnce(500)   // overall sent
+      .mockResolvedValueOnce(450)
+      .mockResolvedValueOnce(200)
+      .mockResolvedValueOnce(50)
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+    const listDispatches = mock(async () => [
+      {
+        id: "disp-1",
+        dispatchNumber: 1,
+        createdAt: new Date(),
+        dispatchedAt: new Date(),
+        totalRecipients: 100,
+        totalSent: 100,
+        totalDelivered: 90,
+        totalOpened: 40,
+        totalClicked: 10,
+        totalBounced: 5,
+        totalComplained: 1,
+        status: "sent",
+        templateName: "T",
+        templateVersionNumber: 1,
+        templateSubject: "S",
+        contactListName: null,
+        radarSegmentSlug: null,
+      },
+    ])
+    const repo = buildRepo({ countLogs, listDispatches })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow, campaignId: "camp-1" })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.dispatches).toHaveLength(1)
+    // openRate do disparo: 40/100 = 40
+    expect(output.result.dispatches[0].rates.openRate).toBe(40)
+    // deliverabilityRate do disparo: 90/100 = 90
+    expect(output.result.dispatches[0].rates.deliverabilityRate).toBe(90)
+  })
+
+  it("A10 — repository lança exceção → isValid: false sem propagar", async () => {
+    const repo = buildRepo({
+      countLogs: mock(async () => {
+        throw new Error("DB connection lost")
+      }),
+    })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.length).toBeGreaterThan(0)
+  })
+})
+
+describe("EmailAnalyticsUseCase.getDispatchPreview", () => {
+  it("A8 — disparo não encontrado → isValid: false", async () => {
+    const uc = new EmailAnalyticsUseCase(buildRepo({ findDispatchPreview: mock(async () => null) }))
+    const output = await uc.getDispatchPreview({ teamId: "t1", campaignId: "c1", dispatchId: "d1" })
+
+    expect(output.isValid).toBe(false)
+  })
+
+  it("A9 — disparo encontrado → retorna subject e html corretos", async () => {
+    const preview = {
+      templateSubject: "Assunto Campanha",
+      templateHtml: "<p>Corpo</p>",
+      templateVersionNumber: 3,
+      templateName: "Template V3",
+    }
+    const uc = new EmailAnalyticsUseCase(
+      buildRepo({ findDispatchPreview: mock(async () => preview) })
+    )
+    const output = await uc.getDispatchPreview({ teamId: "t1", campaignId: "c1", dispatchId: "d1" })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.subject).toBe("Assunto Campanha")
+    expect(output.result.html).toBe("<p>Corpo</p>")
+    expect(output.result.templateVersionNumber).toBe(3)
+  })
+})

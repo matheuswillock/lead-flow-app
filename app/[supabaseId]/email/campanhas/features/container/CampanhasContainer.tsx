@@ -1,57 +1,145 @@
 "use client"
 
-import { Send } from "lucide-react"
+import { useState } from "react"
+import dynamic from "next/dynamic"
+import { BarChart3, Send, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter"
+import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
 import { useCampanhasContext } from "../context/CampanhasContext"
-import { CreditBalanceBar } from "../components/CreditBalanceBar"
+import type { DateRange } from "react-day-picker"
+import { format } from "date-fns"
+import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
+import { CampaignDetailSheet } from "../components/CampaignDetailSheet"
 
-const STATUS_TABS = [
-  { value: "", label: "Todas" },
+const CampaignAnalyticsDialog = dynamic(
+  () =>
+    import("../components/analytics/CampaignAnalyticsDialog").then(
+      (mod) => mod.CampaignAnalyticsDialog
+    ),
+  { ssr: false }
+)
+
+const STATUS_FILTER_OPTIONS = [
   { value: "draft", label: "Rascunhos" },
   { value: "scheduled", label: "Agendadas" },
   { value: "sending", label: "Enviando" },
   { value: "sent", label: "Enviadas" },
   { value: "canceled", label: "Canceladas" },
   { value: "failed", label: "Falhou" },
+  { value: "archived", label: "Arquivadas" },
 ]
 
 export function CampanhasContainer() {
-  const { statusFilter, handleStatusFilter, openWizard } = useCampanhasContext()
+  const {
+    statusFilter,
+    nameFilter,
+    dateFrom,
+    dateTo,
+    handleStatusFilter,
+    handleNameFilter,
+    handleDateFilter,
+    clearFilters,
+    openWizard,
+  } = useCampanhasContext()
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+
+  const dateRange: DateRange | undefined =
+    dateFrom || dateTo
+      ? {
+          from: dateFrom ? new Date(`${dateFrom}T00:00:00`) : undefined,
+          to: dateTo ? new Date(`${dateTo}T00:00:00`) : undefined,
+        }
+      : undefined
+
+  function handleDateRangeChange(range: DateRange | undefined) {
+    handleDateFilter(
+      range?.from ? format(range.from, "yyyy-MM-dd") : "",
+      range?.to ? format(range.to, "yyyy-MM-dd") : "",
+    )
+  }
+
+  const hasActiveFilters = nameFilter || dateFrom || dateTo || statusFilter.length > 0
+  const [analyticsCampaign, setAnalyticsCampaign] = useState<{
+    id: string
+    name: string
+    errorMessage?: string | null
+  } | null>(null)
+
+  function openGeneralAnalytics() {
+    setAnalyticsCampaign(null)
+    setAnalyticsOpen(true)
+  }
+
+  function openCampaignAnalytics(campaign: {
+    id: string
+    name: string
+    errorMessage?: string | null
+  }) {
+    setAnalyticsCampaign(campaign)
+    setAnalyticsOpen(true)
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Send className="h-6 w-6" />
           <h1 className="text-2xl font-semibold">Campanhas</h1>
         </div>
-        <Button size="sm" onClick={() => void openWizard()}>
-          + Nova Campanha
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={openGeneralAnalytics}>
+            <BarChart3 data-icon="inline-start" />
+            Métricas
+          </Button>
+          <Button size="sm" onClick={() => void openWizard()}>
+            + Nova Campanha
+          </Button>
+        </div>
       </div>
 
-      <CreditBalanceBar />
+      <CampaignDispatchProgressBanner />
 
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => handleStatusFilter(tab.value)}
-            className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              statusFilter === tab.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <LeadsFiltersLayout>
+        <Input
+          className="h-8 w-64 text-sm"
+          placeholder="Filtrar por nome..."
+          value={nameFilter}
+          onChange={(e) => handleNameFilter(e.target.value)}
+        />
+        <LeadsMultiFilter
+          title="Status"
+          options={STATUS_FILTER_OPTIONS}
+          selectedValues={statusFilter}
+          onChange={handleStatusFilter}
+        />
+        <LeadsDateFilter
+          title="Data de criação"
+          value={dateRange}
+          onChange={handleDateRangeChange}
+        />
+        {hasActiveFilters ? (
+          <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs" onClick={clearFilters}>
+            <X className="h-3 w-3" />
+            Limpar filtros
+          </Button>
+        ) : null}
+      </LeadsFiltersLayout>
 
-      <CampaignList />
+      <CampaignList onOpenAnalytics={openCampaignAnalytics} />
       <CampaignCreateWizard />
+      <CampaignDetailSheet onOpenAnalytics={openCampaignAnalytics} />
+      <CampaignAnalyticsDialog
+        open={analyticsOpen}
+        onOpenChange={setAnalyticsOpen}
+        campaignId={analyticsCampaign?.id}
+        campaignName={analyticsCampaign?.name}
+        campaignErrorMessage={analyticsCampaign?.errorMessage}
+      />
     </div>
   )
 }

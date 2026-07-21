@@ -7,14 +7,22 @@ import { formatDate } from "../context/BoardContext";
 import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { CheckCircle, Calendar, Video } from "lucide-react";
+import { CheckCircle, Calendar, Video, Mail, BadgeCheck, Loader2 } from "lucide-react";
 import { Paperclip } from "@/components/ui/paperclip";
 import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/copy";
 import { toast } from "sonner";
 import useBoardContext from "../context/BoardHook";
 import { cn } from "@/lib/utils";
-import { isMeetingOverdue } from "@/lib/lead-meeting";
+import {
+    isMeetingFollowUpOverdue,
+    isMeetingOverdue,
+    isMeetingPresenceConfirmationDue,
+    canConfirmMeetingPresence,
+    getMeetingPresenceBadgeClass,
+    getMeetingPresenceBadgeLabel,
+    getMeetingPresenceAlertLabel,
+} from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates"
 
@@ -27,6 +35,9 @@ interface LeadCardProps {
     onFinalizeContract?: (lead: LeadResponseDTO) => void;
     onScheduleMeeting?: (lead: LeadResponseDTO) => void;
     onNoShow?: (lead: LeadResponseDTO) => void;
+    onResendScheduleInvite?: (lead: LeadResponseDTO) => void;
+    onConfirmMeetingPresence?: (lead: LeadResponseDTO) => void;
+    isConfirmingMeetingPresence?: boolean;
     attachmentCount?: number;
 }
 
@@ -39,6 +50,9 @@ function LeadCardComponent({
     onFinalizeContract,
     onScheduleMeeting,
     onNoShow,
+    onResendScheduleInvite,
+    onConfirmMeetingPresence,
+    isConfirmingMeetingPresence = false,
     attachmentCount = 0,
 }: LeadCardProps) {
     const { leadCardDisplay } = useBoardContext();
@@ -63,6 +77,29 @@ function LeadCardComponent({
     const isNoShow = columnKey === 'no_show';
     const canMarkNoShow =
         isScheduled && isMeetingOverdue(lead.meetingDate) && lead.meetingHeald !== "yes";
+    const isFollowUpOverdue = isMeetingFollowUpOverdue({
+        status: lead.status,
+        meetingDate: lead.meetingDate,
+        meetingHeald: lead.meetingHeald,
+    });
+    const canConfirmPresence =
+        isScheduled &&
+        !lead.isTransfer &&
+        canConfirmMeetingPresence({
+            status: lead.status,
+            meetingDate: lead.meetingDate,
+            isTransfer: lead.isTransfer,
+        });
+    const isPresenceConfirmed = lead.meetingPresenceConfirmed === true;
+    const isPresenceConfirmationDue = isMeetingPresenceConfirmationDue({
+        status: lead.status,
+        meetingDate: lead.meetingDate,
+        meetingPresenceConfirmed: lead.meetingPresenceConfirmed,
+        isTransfer: lead.isTransfer,
+    });
+    const showDestructivePulse =
+        lead.isLeadTimeBreached || isFollowUpOverdue;
+    const showCriticizedHighlight = lead.proposalReviewStatus === "criticized";
 
     const handleFinalizeClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Evita que o card seja clicado
@@ -82,6 +119,20 @@ function LeadCardComponent({
         e.stopPropagation();
         if (onNoShow) {
             onNoShow(lead);
+        }
+    };
+
+    const handleResendInviteClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onResendScheduleInvite) {
+            onResendScheduleInvite(lead);
+        }
+    };
+
+    const handleConfirmPresenceClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onConfirmMeetingPresence) {
+            onConfirmMeetingPresence(lead);
         }
     };
 
@@ -127,7 +178,13 @@ function LeadCardComponent({
             onClick={() => handleCardClick(lead)}
             className={cn(
                 "cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent m-0",
-                lead.isLeadTimeBreached && "border-destructive/70 ring-1 ring-destructive/40 animate-pulse"
+                showDestructivePulse &&
+                    "border-destructive/70 ring-1 ring-destructive/40",
+                showCriticizedHighlight &&
+                    "border-semantic-danger-border bg-semantic-danger-surface/30 ring-1 ring-semantic-danger-border",
+                !showDestructivePulse &&
+                    isPresenceConfirmationDue &&
+                    "border-semantic-warning/70 ring-1 ring-semantic-warning/40"
             )}
         >
             {hasHeaderInfo && (
@@ -138,8 +195,11 @@ function LeadCardComponent({
                         </CardTitle>
                     )}
                     {showId && (
-                        <div className="mt-1 flex items-center gap-2 text-xs text-accent-foreground">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-accent-foreground">
                             <span>ID: {lead.leadCode}</span>
+                            {lead.isTransfer && (
+                                <Badge variant="secondary">Transferência ativa</Badge>
+                            )}
                             <button
                                 type="button"
                                 onClick={handleCopyLeadCode}
@@ -157,7 +217,27 @@ function LeadCardComponent({
                     )}
                 </CardHeader>
             )}
-            <CardContent>
+            <CardContent className="flex flex-col gap-2">
+                {isScheduled && lead.meetingDate && !lead.isTransfer && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        {isPresenceConfirmed ? (
+                            <Badge
+                                variant="outline"
+                                className={cn(getMeetingPresenceBadgeClass("confirmed"))}
+                            >
+                                <BadgeCheck data-icon="inline-start" />
+                                {getMeetingPresenceBadgeLabel("confirmed")}
+                            </Badge>
+                        ) : isPresenceConfirmationDue ? (
+                            <Badge
+                                variant="outline"
+                                className={cn(getMeetingPresenceBadgeClass("pending"))}
+                            >
+                                {getMeetingPresenceAlertLabel()}
+                            </Badge>
+                        ) : null}
+                    </div>
+                )}
                 {canScheduleMeeting && (
                     <Button
                         size="sm"
@@ -166,7 +246,7 @@ function LeadCardComponent({
                         onClick={handleScheduleClick}
                     >
                         <Calendar className="mr-2 h-4 w-4" />
-                        Agendar Reunião
+                        {lead.isTransfer ? "Pré-agendar reunião" : "Agendar Reunião"}
                     </Button>
                 )}
                 {isNoShow && (
@@ -178,6 +258,38 @@ function LeadCardComponent({
                     >
                         <Calendar className="mr-2 h-4 w-4" />
                         Reagendar Reunião
+                    </Button>
+                )}
+                {isScheduled && lead.meetingDate && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full cursor-pointer"
+                        onClick={handleResendInviteClick}
+                    >
+                        <Mail className="mr-2 h-4 w-4" />
+                        Reenviar convite
+                    </Button>
+                )}
+                {canConfirmPresence && !isPresenceConfirmed && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full cursor-pointer"
+                        disabled={isConfirmingMeetingPresence}
+                        onClick={handleConfirmPresenceClick}
+                    >
+                        {isConfirmingMeetingPresence ? (
+                            <>
+                                <Loader2 data-icon="inline-start" className="animate-spin" />
+                                Confirmando...
+                            </>
+                        ) : (
+                            <>
+                                <BadgeCheck data-icon="inline-start" />
+                                Confirmar agenda
+                            </>
+                        )}
                     </Button>
                 )}
                 {canMarkNoShow && (
@@ -231,6 +343,16 @@ function LeadCardComponent({
                 {lead.isLeadTimeBreached && (
                     <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
                         Lead a vencer: tempo máximo neste status ultrapassado.
+                    </div>
+                )}
+                {isFollowUpOverdue && (
+                    <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+                        Confirme a reunião: aguardando há mais de 3 dias.
+                    </div>
+                )}
+                {isPresenceConfirmationDue && (
+                    <div className="rounded-md border border-semantic-warning-border bg-semantic-warning-surface px-2 py-1 text-[11px] font-medium text-semantic-warning">
+                        Confirme com o lead a presença na reunião antes do horário marcado.
                     </div>
                 )}
                 {showNotesSection && (

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { invalidateTeamMembersCache } from "@/lib/cache/invalidation";
 import { teamMembersUseCase } from "@/app/api/useCases/teamMembers/TeamMembersUseCase";
+import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const addMemberSchema = z.object({
   profileId: z.string().uuid(),
@@ -24,7 +26,7 @@ function resolveStatus(output: Output) {
   if (messages.includes("Perfil não encontrado") || messages.includes("Time não encontrado")) {
     return 404;
   }
-  if (messages.includes("não faz parte") || messages.includes("Apenas o master")) {
+  if (messages.includes("não faz parte") || messages.includes("Apenas o master") || messages.includes("Acesso negado")) {
     return 403;
   }
   if (messages.includes("já pertence")) {
@@ -41,12 +43,9 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const supabaseId = getSupabaseId(request);
-    if (!supabaseId) {
-      return NextResponse.json(
-        new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null),
-        { status: 401 }
-      );
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
     const { teamId } = await params;
@@ -67,9 +66,37 @@ export async function GET(
       requestedFunction = parsedFunction.data;
     }
 
-    const output = await teamMembersUseCase.listMembers(supabaseId, teamId, requestedFunction);
+    const originTeamId = teamAccess.access.teamId;
+
+    if (teamId !== originTeamId) {
+      const transferOutput = await teamMembersUseCase.listTransferTargetMembersWithCtx(
+        teamAccess.access,
+        originTeamId,
+        teamId,
+        requestedFunction
+      );
+      if (transferOutput.isValid) {
+        return NextResponse.json(transferOutput, { status: 200 });
+      }
+
+      const managedOutput = await teamMembersUseCase.listMembersWithCtx(
+        teamAccess.access,
+        teamId,
+        requestedFunction
+      );
+      return NextResponse.json(managedOutput, {
+        status: managedOutput.isValid ? 200 : resolveStatus(managedOutput),
+      });
+    }
+
+    const output = await teamMembersUseCase.listMembersWithCtx(
+      teamAccess.access,
+      teamId,
+      requestedFunction
+    );
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamMembersRoute][GET] Erro ao listar membros do time:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao listar membros do time"], null),
@@ -109,6 +136,7 @@ export async function POST(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamMembersRoute][POST] Erro ao adicionar membro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao adicionar membro"], null),
@@ -148,6 +176,7 @@ export async function DELETE(
 
     return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamMembersRoute][DELETE] Erro ao remover membro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao remover membro"], null),

@@ -1,21 +1,46 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
-  BackofficeFeature,
-  BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
-  BackofficeUserSubscription,
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
-import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo } from "./IFeatureAccessRepository"
+import type {
+  ActiveFeatureRecord,
+  ActiveUserSubscriptionRecord,
+  IFeatureAccessRepository,
+  OwnerUserTypeAssignment,
+  UserRoleInfo,
+  BetaEligibilityContext,
+  EmailBetaAccessContext,
+} from "./IFeatureAccessRepository"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+
+const activeFeatureSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  parentId: true,
+  inheritParentSettings: true,
+  betaEnabled: true,
+  accessMode: true,
+  defaultAccessLevel: true,
+  billedSeparately: true,
+  productSlug: true,
+} as const
 
 export class FeatureAccessRepository implements IFeatureAccessRepository {
-  async listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>> {
+  async listActiveFeatures(): Promise<ActiveFeatureRecord[]> {
     try {
       return await prisma.backofficeFeature.findMany({
         where: { isActive: true },
-        include: {
-          accessRules: true,
+        select: {
+          ...activeFeatureSelect,
+          accessRules: {
+            select: {
+              principal: true,
+              accessLevel: true,
+            },
+          },
         },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       })
@@ -23,6 +48,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       if (this.isMissingAccessRulesTable(error)) {
         const features = await prisma.backofficeFeature.findMany({
           where: { isActive: true },
+          select: activeFeatureSelect,
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         })
         return features.map((feature) => ({ ...feature, accessRules: [] }))
@@ -45,7 +71,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     ownerProfileId: string
   ): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
-      product: { slug: string } | null
+      product: { featureSlug: string } | null
     }) | null
   > {
     return prisma.profileSubscription.findUnique({
@@ -53,14 +79,12 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
-        product: { select: { slug: true } },
+        product: { select: { featureSlug: true } },
       },
     })
   }
 
-  async listActiveUserSubscriptions(
-    profileId: string
-  ): Promise<Array<BackofficeUserSubscription & { product: { slug: string } }>> {
+  async listActiveUserSubscriptions(profileId: string): Promise<ActiveUserSubscriptionRecord[]> {
     const now = new Date()
     return prisma.backofficeUserSubscription.findMany({
       where: {
@@ -68,9 +92,9 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
         status: "active",
         OR: [{ endDate: null }, { endDate: { gte: now } }],
       },
-      include: {
+      select: {
         product: {
-          select: { slug: true },
+          select: { featureSlug: true },
         },
       },
     })
@@ -89,28 +113,178 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     })
   }
 
+  async resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>> {
+    const eligible = new Set<string>()
+    const grantOwnerId = ctx.isMaster ? ctx.profileId : ctx.managerId
+
+    if (!grantOwnerId) {
+      return eligible
+    }
+
+    const grants = await prisma.backofficeFeatureGrant.findMany({
+      where: {
+        profileId: grantOwnerId,
+        grantType: "BETA",
+        isActive: true,
+      },
+      select: {
+        featureId: true,
+        betaTeamScope: true,
+        teams: {
+          select: { teamId: true },
+        },
+      },
+    })
+
+    for (const grant of grants) {
+      if (grant.betaTeamScope === "ALL_TEAMS") {
+        eligible.add(grant.featureId)
+        continue
+      }
+
+      // O master é o dono do grant — é elegível independente do escopo de time,
+      // que controla apenas a distribuição para membros do time.
+      if (ctx.isMaster) {
+        eligible.add(grant.featureId)
+        continue
+      }
+
+      if (!ctx.activeTeamId) {
+        continue
+      }
+
+      const scopedTeamIds = grant.teams.map((item) => item.teamId)
+      if (scopedTeamIds.includes(ctx.activeTeamId)) {
+        eligible.add(grant.featureId)
+      }
+    }
+
+    return eligible
+  }
+
+  async resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean> {
+    const grantOwnerId = ctx.isMaster ? ctx.profileId : ctx.managerId
+    if (!grantOwnerId) return false
+
+    // Uma única query traz as features de e-mail e todos os nós ativos;
+    // a subida de ancestrais acontece em memória (antes era 1 query por nível).
+    const featureNodes = await prisma.backofficeFeature.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        slug: true,
+        parentId: true,
+        inheritParentSettings: true,
+        betaEnabled: true,
+      },
+    })
+
+    const nodeById = new Map(featureNodes.map((node) => [node.id, node]))
+    const findBySlug = (slug: string) => featureNodes.find((node) => node.slug === slug) ?? null
+
+    let current =
+      findBySlug(FEATURE_SLUGS.EMAIL_CAMPAIGNS) ?? findBySlug(FEATURE_SLUGS.EMAIL)
+
+    if (!current) return false
+
+    const visited = new Set<string>()
+    while (current.inheritParentSettings && current.parentId && !visited.has(current.id)) {
+      visited.add(current.id)
+      const parent = nodeById.get(current.parentId)
+      if (!parent) break
+      current = parent
+    }
+
+    if (!current.betaEnabled) return false
+
+    const emailRoot = findBySlug(FEATURE_SLUGS.EMAIL)
+
+    const candidateFeatureIds = Array.from(
+      new Set([current.id, emailRoot?.id].filter((id): id is string => Boolean(id)))
+    )
+
+    const grants = await prisma.backofficeFeatureGrant.findMany({
+      where: {
+        profileId: grantOwnerId,
+        grantType: "BETA",
+        isActive: true,
+        featureId: { in: candidateFeatureIds },
+      },
+      select: {
+        betaTeamScope: true,
+        teams: {
+          select: { teamId: true },
+        },
+      },
+    })
+
+    if (grants.length === 0) return false
+
+    for (const grant of grants) {
+      if (grant.betaTeamScope === "ALL_TEAMS") {
+        return true
+      }
+
+      if (ctx.isMaster) {
+        return true
+      }
+
+      const scopedTeamIds = grant.teams.map((item) => item.teamId)
+      if (scopedTeamIds.includes(ctx.teamId)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
   async findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null> {
     const profile = await prisma.profile.findUnique({
       where: { id: profileId },
       select: {
         isMaster: true,
-        role: true,
-        functions: true,
-        canManageAccountTeams: true,
-        canCreateAccountUsers: true,
+        activeTeamId: true,
       },
     })
     if (!profile) return null
 
+    const membership = profile.activeTeamId
+      ? await prisma.teamMember.findUnique({
+          where: {
+            teamId_profileId: {
+              teamId: profile.activeTeamId,
+              profileId,
+            },
+          },
+          select: {
+            role: true,
+            functions: true,
+            canManageAccountTeams: true,
+            canCreateAccountUsers: true,
+            team: {
+              select: {
+                masterId: true,
+              },
+            },
+          },
+        })
+      : null
+
+    const isTeamMaster =
+      membership !== null && membership.team.masterId === profileId
+
     return {
-      isMaster: profile.isMaster,
-      role: profile.role,
-      functions: profile.functions as string[],
-      canManageAccountTeams: profile.canManageAccountTeams,
-      canCreateAccountUsers: profile.canCreateAccountUsers,
+      isMaster: isTeamMaster,
+      role: membership?.role ?? "operator",
+      functions: (membership?.functions ?? []) as string[],
+      canManageAccountTeams:
+        membership?.role === "manager" && membership.canManageAccountTeams === true,
+      canCreateAccountUsers:
+        membership?.role === "manager" && membership.canCreateAccountUsers === true,
       userTypeSlug: "common",
       memberProActive: false,
       memberProExpiresAt: null,
+      activeTeamId: profile.activeTeamId,
     }
   }
 
@@ -138,3 +312,5 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     )
   }
 }
+
+export const featureAccessRepository = new FeatureAccessRepository()

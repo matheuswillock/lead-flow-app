@@ -73,7 +73,7 @@ export function BackofficeUsersContainer() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validateEmail(form.email)) {
-      setEmailError("Informe o prefixo do e-mail @corretorstudio.com")
+      setEmailError("Informe o prefixo do e-mail @corretorstudio.com.br")
       return
     }
 
@@ -155,7 +155,7 @@ export function BackofficeUsersContainer() {
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>E-mail</TableHead>
-              <TableHead>Acesso Total</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Funções</TableHead>
               <TableHead>Mailbox</TableHead>
               <TableHead>Ativo</TableHead>
@@ -205,8 +205,8 @@ export function BackofficeUsersContainer() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={u.fullAccess ? "default" : "secondary"}>
-                        {u.fullAccess ? "Sim" : "Não"}
+                      <Badge variant={u.fullAccess ? "default" : "outline"}>
+                        {u.fullAccess ? "Manager" : "Operator"}
                       </Badge>
                     </TableCell>
                     <TableCell>

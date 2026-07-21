@@ -1,6 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Claude Code worktrees (never commit)
+# Claude Code — local IDE settings (never commit)
+.claude/settings.local.json
 .claude/worktrees/
 
 # dependencies
@@ -37,6 +38,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+!.env.evolution.example
+!.env.ops.example
+!.env.n8n.example
+!.env.*.example
+!deploy/hostinger/.env.*.example
+!deploy/hostinger/.env.*.production.example
 
 # vercel
 .vercel
@@ -48,3 +55,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Sentry Config File
+.env.sentry-build-plugin
+deploy/hostinger/host-pack/dist/

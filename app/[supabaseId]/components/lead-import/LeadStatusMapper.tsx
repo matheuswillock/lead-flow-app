@@ -2,20 +2,9 @@
 
 import { ArrowRight } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldTitle,
-} from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldTitle } from "@/components/ui/field";
+import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
+import { ImportSelect } from "@/components/import/ImportSelect";
 import {
   LEAD_IMPORT_STATUS_OPTIONS,
   type LeadImportStatusKey,
@@ -51,32 +40,25 @@ export function LeadStatusMapper({
         </AlertDescription>
       </Alert>
 
-      <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <span>Status no Corretor Studio</span>
-        <span>Status do seu arquivo</span>
-      </div>
+      <ImportMappingHeader left="Status no Corretor Studio" right="Status do seu arquivo" />
 
-      <FieldGroup className="gap-4">
+      <FieldGroup className="gap-0">
         {distinctValues.map(({ value, count }) => (
-          <Field key={value} orientation="responsive">
-            <Select
+          <Field
+            key={value}
+            orientation="responsive"
+            className="border-l-2 border-l-primary border-b border-b-border py-4 pl-3"
+          >
+            <ImportSelect
               value={statusMapping[value] ?? "new_opportunity"}
-              onValueChange={(next) =>
-                onStatusMappingChange(value, next as LeadImportStatusKey)
-              }
+              options={LEAD_IMPORT_STATUS_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+              placeholder="Selecione o status"
+              onChange={(next) => next && onStatusMappingChange(value, next as LeadImportStatusKey)}
               disabled={disabled}
-            >
-              <SelectTrigger className="w-full sm:w-56">
-                <SelectValue placeholder="Selecione o status" />
-              </SelectTrigger>
-              <SelectContent>
-                {LEAD_IMPORT_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             <FieldContent className="@md/field-group:items-end @md/field-group:text-right">
               <FieldTitle>&ldquo;{value}&rdquo;</FieldTitle>
               <FieldDescription>

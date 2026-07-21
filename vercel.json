@@ -1,12 +1,65 @@
 {
+  "regions": ["gru1"],
   "crons": [
     {
       "path": "/api/v1/email/cron/dispatch-scheduled",
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/email/cron/process-import-jobs",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/email/cron/reset-credits",
       "schedule": "0 3 1 * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/meeting-reminders",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/studio-bot-outbox",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/whatsapp/cron/process-outbox",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/task-overdue",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/lead-status-batch",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/automations/cron/evaluate-idle",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/meeting-follow-up",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/v1/notifications/cron/meeting-follow-up",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/v1/billing/cron/member-pro-expiration",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/v1/backoffice/cron/provision-live-campaign",
+      "schedule": "0 16 * * 4"
+    },
+    {
+      "path": "/api/v1/backoffice/cron/dispatch-email-campaigns",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/backoffice/cron/process-email-import-jobs",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

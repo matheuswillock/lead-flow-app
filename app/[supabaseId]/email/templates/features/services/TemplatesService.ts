@@ -1,21 +1,9 @@
-import { Template } from '../context/TemplatesTypes'
+import type { Template } from '../context/TemplatesTypes'
+import type { CreateTemplateData, ITemplatesService } from './ITemplatesService'
 
-export interface CreateTemplateData {
-  name: string
-  subject: string
-  previewText?: string
-  mailyJson?: unknown
-  html?: string
-}
-
-export interface ITemplatesService {
-  list(supabaseId: string, teamId?: string | null): Promise<Template[]>
-  create(supabaseId: string, data: CreateTemplateData, teamId?: string | null): Promise<Template>
-  delete(supabaseId: string, id: string, teamId?: string | null): Promise<void>
-}
-
-export class TemplatesService implements ITemplatesService {
+class TemplatesService implements ITemplatesService {
   private readonly baseUrl = '/api/v1/email/templates'
+  private readonly settingsUrl = '/api/v1/email/settings'
 
   private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
     return {
@@ -24,56 +12,43 @@ export class TemplatesService implements ITemplatesService {
     }
   }
 
+  private async parseJson<T>(response: Response, fallback: string): Promise<T> {
+    const body = await response.json().catch(() => null) as { isValid: boolean; result: T; errorMessages?: string[] } | null
+    if (!response.ok || !body?.isValid) {
+      throw new Error(body?.errorMessages?.join(', ') || fallback)
+    }
+    return body.result
+  }
+
   async list(supabaseId: string, teamId?: string | null): Promise<Template[]> {
     console.info('[TemplatesService] Fetching templates list')
     const response = await fetch(this.baseUrl, {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
+    return this.parseJson<Template[]>(response, 'Erro ao buscar templates')
+  }
 
-    if (!response.ok) {
-      const message = `Erro ao buscar templates: ${response.status}`
-      console.error('[TemplatesService]', message)
-      throw new Error(message)
-    }
-
-    const body = await response.json() as { isValid: boolean; result: Template[] }
-
-    if (!body.isValid) {
-      const message = 'Resposta inválida ao buscar templates'
-      console.error('[TemplatesService]', message)
-      throw new Error(message)
-    }
-
-    return body.result
+  async getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }> {
+    const response = await fetch(this.settingsUrl, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const settings = await this.parseJson<{ templateApprovalRequired?: boolean }>(
+      response,
+      'Erro ao buscar configurações de aprovação'
+    )
+    return { templateApprovalRequired: settings.templateApprovalRequired ?? false }
   }
 
   async create(supabaseId: string, data: CreateTemplateData, teamId?: string | null): Promise<Template> {
     console.info('[TemplatesService] Creating template', data.name)
     const response = await fetch(this.baseUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.buildHeaders(supabaseId, teamId),
-      },
+      headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
       body: JSON.stringify(data),
     })
-
-    if (!response.ok) {
-      const message = `Erro ao criar template: ${response.status}`
-      console.error('[TemplatesService]', message)
-      throw new Error(message)
-    }
-
-    const body = await response.json() as { isValid: boolean; result: Template }
-
-    if (!body.isValid) {
-      const message = 'Resposta inválida ao criar template'
-      console.error('[TemplatesService]', message)
-      throw new Error(message)
-    }
-
-    return body.result
+    return this.parseJson<Template>(response, 'Erro ao criar template')
   }
 
   async delete(supabaseId: string, id: string, teamId?: string | null): Promise<void> {
@@ -82,12 +57,37 @@ export class TemplatesService implements ITemplatesService {
       method: 'DELETE',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-
     if (!response.ok) {
-      const message = `Erro ao excluir template: ${response.status}`
-      console.error('[TemplatesService]', message)
-      throw new Error(message)
+      throw new Error(`Erro ao excluir template: ${response.status}`)
     }
+  }
+
+  async submitForApproval(supabaseId: string, id: string, teamId?: string | null): Promise<Template> {
+    console.info('[TemplatesService] Submitting template for approval', id)
+    const response = await fetch(`${this.baseUrl}/${id}/submit`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return this.parseJson<Template>(response, 'Erro ao enviar template para aprovação')
+  }
+
+  async approve(supabaseId: string, id: string, teamId?: string | null): Promise<Template> {
+    console.info('[TemplatesService] Approving template', id)
+    const response = await fetch(`${this.baseUrl}/${id}/approve`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return this.parseJson<Template>(response, 'Erro ao aprovar template')
+  }
+
+  async reject(supabaseId: string, id: string, reviewNote: string, teamId?: string | null): Promise<Template> {
+    console.info('[TemplatesService] Rejecting template', id)
+    const response = await fetch(`${this.baseUrl}/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
+      body: JSON.stringify({ reviewNote }),
+    })
+    return this.parseJson<Template>(response, 'Erro ao recusar template')
   }
 }
 

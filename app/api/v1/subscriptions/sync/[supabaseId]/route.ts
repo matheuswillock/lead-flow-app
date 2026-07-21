@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Output } from '@/lib/output';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { AsaasSubscriptionService } from '@/app/api/services/AsaasSubscription/AsaasSubscriptionService';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * POST /api/v1/subscriptions/sync/[supabaseId]
@@ -121,6 +122,7 @@ export async function POST(
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [SyncSubscription] Erro ao sincronizar:', error);
     
     return NextResponse.json(

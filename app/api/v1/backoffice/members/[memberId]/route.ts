@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeMemberUseCase } from "@/app/api/useCases/backoffice/BackofficeMemberUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PATCH(
   request: NextRequest,
@@ -12,6 +14,8 @@ export async function PATCH(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
+    const denied = requireManagerAccess(accessResult.access)
+    if (denied) return denied
 
     const { memberId } = await params
     const body = await request.json().catch(() => ({}))
@@ -48,6 +52,12 @@ export async function PATCH(
       typeof body.canCreateAccountUsers === "boolean" ? body.canCreateAccountUsers : undefined
     const canManageAccountTeams =
       typeof body.canManageAccountTeams === "boolean" ? body.canManageAccountTeams : undefined
+    const canTransferAccountLeads =
+      typeof body.canTransferAccountLeads === "boolean" ? body.canTransferAccountLeads : undefined
+    const canViewAllTeams =
+      typeof body.canViewAllTeams === "boolean" ? body.canViewAllTeams : undefined
+    const teamId = optionalString(body.teamId)
+    const accountMasterId = optionalString(body.accountMasterId)
 
     const data = {
       fullName: optionalString(body.fullName),
@@ -57,11 +67,16 @@ export async function PATCH(
       functions,
       canCreateAccountUsers,
       canManageAccountTeams,
+      canTransferAccountLeads,
+      canViewAllTeams,
+      teamId,
+      accountMasterId,
     }
 
     const output = await backofficeMemberUseCase.updateMember(memberId, data)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMemberByIdRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -76,6 +91,8 @@ export async function DELETE(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
+    const denied = requireManagerAccess(accessResult.access)
+    if (denied) return denied
 
     const { memberId } = await params
     const body = await request.json().catch(() => ({}))
@@ -98,6 +115,7 @@ export async function DELETE(
 
     return NextResponse.json(output, { status })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeMemberByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

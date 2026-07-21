@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import { createEmailService } from "@/lib/services/EmailService"
+import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import { getAppUrl, getFullUrl } from "@/lib/utils/app-url"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
@@ -17,6 +18,18 @@ import {
 } from "@/lib/dates"
 import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 import { BackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
+import { incrementalBillingService } from "../../services/billing/IncrementalBillingService"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
+import type { BillingOwnerProfile } from "../../services/billing/IIncrementalBillingService"
+import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncrementalBillingCoordinator"
+import { backofficeBannedUsersRepository } from "../../infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
+import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository"
+import {
+  buildPendingActionInvoiceId,
+  classifyAsaasPaymentInvoice,
+  classifyPendingActionInvoice,
+  parsePendingActionInvoiceId,
+} from "@/app/api/shared/billing/invoiceClassification"
 
 function buildMasterNotificationEmail(params: {
   masterName: string
@@ -29,7 +42,7 @@ function buildMasterNotificationEmail(params: {
     <!DOCTYPE html>
     <html lang="pt-BR">
       <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
         <table role="presentation" style="width:100%;border-collapse:collapse;">
           <tr>
             <td align="center" style="padding:24px;">
@@ -67,7 +80,7 @@ function buildAddedToTeamEmail(params: { userName: string; loginUrl: string }): 
     <!DOCTYPE html>
     <html lang="pt-BR">
       <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
         <table role="presentation" style="width:100%;border-collapse:collapse;">
           <tr>
             <td align="center" style="padding:24px;">
@@ -121,6 +134,7 @@ interface AsaasPaymentItem {
   bankSlipUrl?: string
   transactionReceiptUrl?: string
   externalReference?: string
+  subscription?: string
   installmentNumber?: number
   confirmedDate?: string
   deleted?: boolean
@@ -130,6 +144,71 @@ interface AsaasPaymentItem {
   pixTransaction?: {
     transactionReceiptUrl?: string
   }
+}
+
+type UnifiedInvoiceRow = {
+  id: string
+  invoiceIdDisplay: string
+  invoiceName: string
+  invoiceKind: "subscription" | "addon_user" | "addon_team" | "other"
+  source: "asaas" | "pending_action"
+  status: string
+  statusGroup: "paid" | "overdue" | "upcoming" | "other"
+  value: number
+  dateCreated: string | null
+  dueDate: string | null
+  paymentDate: string | null
+  description: string
+  billingType: string
+  invoiceUrl: string | null
+  bankSlipUrl: string | null
+  invoiceNumber: string | null
+  checkoutUrl: string | null
+  pendingActionId: string | null
+  sortDate: number
+}
+
+function readPayloadCharge(payload: Record<string, unknown>): number {
+  const totalCharge = Number(payload.totalCharge ?? 0)
+  if (Number.isFinite(totalCharge) && totalCharge > 0) return totalCharge
+  const billingDelta = Number(payload.billingDelta ?? 0)
+  return Number.isFinite(billingDelta) && billingDelta > 0 ? billingDelta : 0
+}
+
+function mapPendingActionStatus(action: {
+  status: string
+  paymentId: string | null
+  payload: Record<string, unknown>
+}): { status: string; statusGroup: "paid" | "overdue" | "upcoming" | "other" } {
+  if (action.status === "pending") {
+    return { status: "PENDING", statusGroup: "upcoming" }
+  }
+  if (action.status === "failed") {
+    return { status: "FAILED", statusGroup: "other" }
+  }
+  if (action.status === "applied") {
+    if (action.payload.paymentStatus === "WAIVED") {
+      return { status: "WAIVED", statusGroup: "other" }
+    }
+    if (action.paymentId) {
+      return { status: "CONFIRMED", statusGroup: "paid" }
+    }
+    return { status: "APPLIED", statusGroup: "other" }
+  }
+  return { status: action.status.toUpperCase(), statusGroup: "other" }
+}
+
+function buildPendingActionDescription(actionType: string, payload: Record<string, unknown>): string {
+  if (actionType === "create_team") {
+    const teamName = (payload.teamName as string | undefined) ?? (payload.name as string | undefined)
+    return teamName ? `Time: ${teamName}` : "Add-on time"
+  }
+  const name = (payload.name as string | undefined) ?? ""
+  const email = (payload.email as string | undefined) ?? ""
+  if (name && email) return `${name} (${email})`
+  if (email) return email
+  if (name) return name
+  return "Add-on usuário"
 }
 
 function createSupabaseAdmin() {
@@ -174,11 +253,6 @@ function getStatusGroup(status?: string): "paid" | "overdue" | "upcoming" | "oth
   if (status && OVERDUE_STATUSES.has(status)) return "overdue"
   if (status && UPCOMING_STATUSES.has(status)) return "upcoming"
   return "other"
-}
-
-function matchesStatusFilter(status: string | undefined, filter: InvoiceStatusFilter): boolean {
-  if (filter === "all") return true
-  return getStatusGroup(status) === filter
 }
 
 function getPeriodStartDate(period: InvoicePeriodFilter, now: Date, timezone: string): Date | null {
@@ -319,7 +393,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
   }
 
   async listMasterUsers(
-    filters: { name?: string; email?: string; team?: string } | undefined,
+    filters: { name?: string; email?: string; team?: string; plan?: "lifetime" | "monthly" | "trial" | "none"; userType?: "common" | "member_pro" } | undefined,
     pagination: { page: number; pageSize: number }
   ): Promise<Output> {
     try {
@@ -401,6 +475,22 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         master.hasPermanentSubscription ||
         (!!master.subscriptionId && master.subscriptionStatus === "active")
 
+      const accessByProfileId = await resolveBackofficeMemberAccess(
+        master.teams.flatMap((team) =>
+          team.members.map((member) => ({
+            profileId: member.id,
+            supabaseId: member.supabaseId,
+            email: member.email,
+            fullName: member.fullName,
+            role: member.role as "manager" | "backoffice" | "operator",
+            isMaster: member.isMaster,
+            managerName: master.fullName ?? master.email,
+          }))
+        )
+      )
+
+      const activeBan = await backofficeBannedUsersRepository.findActiveByProfileId(masterProfileId)
+
       return new Output(true, [], [], {
         id: master.id,
         fullName: master.fullName,
@@ -423,7 +513,40 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           hasAccess,
           status: master.subscriptionStatus,
         },
-        teams: master.teams,
+        userType: master.userType,
+        hasUnlimitedUsers: master.hasUnlimitedUsers || master.hasPermanentSubscription,
+        multiskillEnabled: master.multiskillEnabled,
+        isBanned: Boolean(activeBan),
+        allTeams: master.allTeams,
+        teams: master.teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          createdAt: team.createdAt,
+          membersCount: team.membersCount,
+          transferRoutes: team.transferRoutes,
+          members: team.members.map((member) => ({
+            id: member.id,
+            teamMemberId: member.teamMemberId,
+            fullName: member.fullName,
+            email: member.email,
+            phone: member.phone,
+            addedAt: member.addedAt,
+            role: member.role,
+            googleCalendarConnected: member.googleCalendarConnected,
+            googleEmail: member.googleEmail,
+            functions: member.functions,
+            isMaster: member.isMaster,
+            canCreateAccountUsers: member.canCreateAccountUsers,
+            canManageAccountTeams: member.canManageAccountTeams,
+            canTransferAccountLeads: member.canTransferAccountLeads,
+            canViewAllTeams: member.canViewAllTeams,
+            ...(accessByProfileId.get(member.id) ?? {
+              accessStatus: "pending_first_access",
+              hasCompletedFirstAccess: false,
+              lastSignInAt: null,
+            }),
+          })),
+        })),
         teamsPagination: {
           page,
           pageSize,
@@ -436,6 +559,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][getMasterUserDetails]", error)
       return new Output(false, [], ["Erro ao carregar detalhes do usuário master"], null)
+    }
+  }
+
+  async listMasterUserTeams(masterProfileId: string): Promise<Output> {
+    try {
+      const teams = await this.platformUsersRepository.listTeamsByMasterId(masterProfileId)
+      if (!teams) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      return new Output(true, [], [], teams)
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][listMasterUserTeams]", error)
+      return new Output(false, [], ["Erro ao listar times do master"], null)
     }
   }
 
@@ -461,72 +598,119 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      if (!master.asaasCustomerId) {
-        return new Output(true, [], [], {
-          items: [],
-          pagination: {
-            page,
-            pageSize,
-            totalItems: 0,
-            totalPages: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-          },
-          summary: {
-            charged: 0,
-            upcoming: 0,
-            overdue: 0,
-          },
-          filters: {
-            status: statusFilter,
-            period: periodFilter,
-          },
+      const now = new Date()
+      const asaasPayments = master.asaasCustomerId
+        ? await this.fetchAllCustomerPayments(master.asaasCustomerId)
+        : []
+
+      const coveredPendingIds = new Set<string>()
+      const coveredPaymentIds = new Set<string>()
+      for (const payment of asaasPayments) {
+        if (payment.id) coveredPaymentIds.add(payment.id)
+        const externalReference = payment.externalReference ?? ""
+        if (externalReference.startsWith("pending-action-")) {
+          coveredPendingIds.add(externalReference.slice("pending-action-".length))
+        }
+      }
+
+      const asaasRows: UnifiedInvoiceRow[] = asaasPayments.map((payment) => {
+        const classification = classifyAsaasPaymentInvoice({
+          subscription: payment.subscription,
+          externalReference: payment.externalReference,
+          description: payment.description,
+        })
+        const status = payment.status ?? "PENDING"
+        return {
+          id: payment.id,
+          invoiceIdDisplay: payment.invoiceNumber ? `#${payment.invoiceNumber}` : payment.id,
+          invoiceName: classification.invoiceName,
+          invoiceKind: classification.invoiceKind,
+          source: "asaas" as const,
+          status,
+          statusGroup: getStatusGroup(status),
+          value: normalizeAsaasValue(payment.value),
+          dateCreated: payment.dateCreated ?? null,
+          dueDate: payment.dueDate ?? null,
+          paymentDate: payment.clientPaymentDate ?? payment.paymentDate ?? null,
+          description: payment.description ?? "Descrição não informada",
+          billingType: payment.billingType ?? "UNDEFINED",
+          invoiceUrl: payment.invoiceUrl ?? null,
+          bankSlipUrl: payment.bankSlipUrl ?? null,
+          invoiceNumber: payment.invoiceNumber ?? null,
+          checkoutUrl: null,
+          pendingActionId: null,
+          sortDate: getSortableInvoiceDate(payment),
+        }
+      })
+
+      const pendingActions = await pendingActionRepository.listBillingByMasterId(masterProfileId)
+      const pendingRows: UnifiedInvoiceRow[] = []
+
+      for (const action of pendingActions) {
+        const payload =
+          action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+            ? (action.payload as Record<string, unknown>)
+            : {}
+        const charge = readPayloadCharge(payload)
+        if (charge <= 0) continue
+        if (coveredPendingIds.has(action.id)) continue
+        if (action.paymentId && coveredPaymentIds.has(action.paymentId)) continue
+
+        const classification = classifyPendingActionInvoice(action.actionType)
+        const mappedStatus = mapPendingActionStatus({
+          status: action.status,
+          paymentId: action.paymentId,
+          payload,
+        })
+        const createdIso = action.createdAt.toISOString()
+        const createdDate = createdIso.slice(0, 10)
+        const billingType =
+          typeof payload.billingType === "string" ? payload.billingType : "UNDEFINED"
+
+        pendingRows.push({
+          id: buildPendingActionInvoiceId(action.id),
+          invoiceIdDisplay: buildPendingActionInvoiceId(action.id),
+          invoiceName: classification.invoiceName,
+          invoiceKind: classification.invoiceKind,
+          source: "pending_action",
+          status: mappedStatus.status,
+          statusGroup: mappedStatus.statusGroup,
+          value: charge,
+          dateCreated: createdDate,
+          dueDate: createdDate,
+          paymentDate: null,
+          description: buildPendingActionDescription(action.actionType, payload),
+          billingType,
+          invoiceUrl: null,
+          bankSlipUrl: null,
+          invoiceNumber: null,
+          checkoutUrl:
+            action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
+          pendingActionId: action.id,
+          sortDate: action.createdAt.getTime(),
         })
       }
 
-      const now = new Date()
-      const allItems = await this.fetchAllCustomerPayments(master.asaasCustomerId)
+      const allRows = [...asaasRows, ...pendingRows]
+        .filter((row) => statusFilter === "all" || row.statusGroup === statusFilter)
+        .filter((row) => matchesPeriodFilter(row.dueDate ?? undefined, periodFilter, now, timezone))
+        .sort((a, b) => b.sortDate - a.sortDate)
 
-      const filteredItems = allItems
-        .filter((payment) => {
-          if (!matchesStatusFilter(payment.status, statusFilter)) {
-            return false
-          }
-
-          return matchesPeriodFilter(payment.dueDate, periodFilter, now, timezone)
-        })
-        .sort((a, b) => getSortableInvoiceDate(b) - getSortableInvoiceDate(a))
-
-      const totalItems = filteredItems.length
+      const totalItems = allRows.length
       const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
       const safePage = Math.min(page, totalPages)
       const offset = (safePage - 1) * pageSize
-      const pagedItems = filteredItems.slice(offset, offset + pageSize)
+      const pagedItems = allRows.slice(offset, offset + pageSize)
 
-      const items = pagedItems.map((payment) => ({
-        id: payment.id,
-        status: payment.status ?? "PENDING",
-        statusGroup: getStatusGroup(payment.status),
-        value: normalizeAsaasValue(payment.value),
-        dateCreated: payment.dateCreated ?? null,
-        dueDate: payment.dueDate ?? null,
-        paymentDate: payment.clientPaymentDate ?? payment.paymentDate ?? null,
-        description: payment.description ?? "Descrição não informada",
-        billingType: payment.billingType ?? "UNDEFINED",
-        invoiceUrl: payment.invoiceUrl ?? null,
-        bankSlipUrl: payment.bankSlipUrl ?? null,
-        invoiceNumber: payment.invoiceNumber ?? null,
-      }))
+      const items = pagedItems.map(({ sortDate: _sortDate, ...item }) => item)
 
-      const summary = filteredItems.reduce(
+      const summary = allRows.reduce(
         (acc, item) => {
-          const status = item.status ?? ""
-
-          if (CHARGED_STATUSES.has(status)) {
+          if (item.statusGroup === "paid") {
             acc.charged += 1
-          } else if (UPCOMING_STATUSES.has(status)) {
+          } else if (item.statusGroup === "upcoming") {
             acc.upcoming += 1
-          } else if (status === "OVERDUE") {
+          } else if (item.statusGroup === "overdue") {
             acc.overdue += 1
           }
           return acc
@@ -567,6 +751,60 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
+      const pendingActionId = parsePendingActionInvoiceId(invoiceId)
+      if (pendingActionId) {
+        const action = await pendingActionRepository.findByIdSimple(pendingActionId)
+        if (!action || action.masterId !== masterProfileId) {
+          return new Output(false, [], ["Fatura não encontrada"], null)
+        }
+
+        const payload =
+          action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+            ? (action.payload as Record<string, unknown>)
+            : {}
+        const charge = readPayloadCharge(payload)
+        const classification = classifyPendingActionInvoice(action.actionType)
+        const mappedStatus = mapPendingActionStatus({
+          status: action.status,
+          paymentId: action.paymentId,
+          payload,
+        })
+        const createdDate = action.createdAt.toISOString().slice(0, 10)
+        const billingType =
+          typeof payload.billingType === "string" ? payload.billingType : "UNDEFINED"
+
+        return new Output(true, [], [], {
+          id: buildPendingActionInvoiceId(action.id),
+          invoiceIdDisplay: buildPendingActionInvoiceId(action.id),
+          invoiceName: classification.invoiceName,
+          invoiceKind: classification.invoiceKind,
+          source: "pending_action",
+          customerName: master.fullName ?? master.email,
+          status: mappedStatus.status,
+          statusGroup: mappedStatus.statusGroup,
+          value: charge,
+          netValue: charge,
+          originalValue: charge,
+          interestValue: 0,
+          billingType,
+          description: buildPendingActionDescription(action.actionType, payload),
+          dateCreated: createdDate,
+          dueDate: createdDate,
+          paymentDate: null,
+          confirmedDate: null,
+          invoiceNumber: null,
+          installmentNumber: null,
+          externalReference: buildPendingActionInvoiceId(action.id),
+          invoiceUrl: null,
+          bankSlipUrl: null,
+          transactionReceiptUrl: null,
+          deleted: false,
+          checkoutUrl:
+            action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
+          pendingActionId: action.id,
+        })
+      }
+
       if (!master.asaasCustomerId) {
         return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
       }
@@ -583,7 +821,119 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
       }
 
+      const classification = classifyAsaasPaymentInvoice({
+        subscription: payment.subscription,
+        externalReference: payment.externalReference,
+        description: payment.description,
+      })
+
       return new Output(true, [], [], {
+        id: payment.id,
+        invoiceIdDisplay: payment.invoiceNumber ? `#${payment.invoiceNumber}` : payment.id,
+        invoiceName: classification.invoiceName,
+        invoiceKind: classification.invoiceKind,
+        source: "asaas",
+        customerName: master.fullName ?? master.email,
+        status: payment.status ?? "PENDING",
+        statusGroup: getStatusGroup(payment.status),
+        value: normalizeAsaasValue(payment.value),
+        netValue: normalizeAsaasValue(payment.netValue),
+        originalValue: normalizeAsaasValue(payment.originalValue),
+        interestValue: normalizeAsaasValue(payment.interestValue),
+        billingType: payment.billingType ?? "UNDEFINED",
+        description: payment.description ?? "Descrição não informada",
+        dateCreated: payment.dateCreated ?? null,
+        dueDate: payment.dueDate ?? null,
+        paymentDate: payment.clientPaymentDate ?? payment.paymentDate ?? null,
+        confirmedDate: payment.confirmedDate ?? null,
+        invoiceNumber: payment.invoiceNumber ?? null,
+        installmentNumber: payment.installmentNumber ?? null,
+        externalReference: payment.externalReference ?? null,
+        invoiceUrl: payment.invoiceUrl ?? null,
+        bankSlipUrl: payment.bankSlipUrl ?? null,
+        transactionReceiptUrl:
+          payment.transactionReceiptUrl ?? payment.pixTransaction?.transactionReceiptUrl ?? null,
+        deleted: Boolean(payment.deleted),
+        checkoutUrl: null,
+        pendingActionId: null,
+      })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][getMasterUserInvoiceById]", error)
+      return new Output(false, [], ["Erro ao carregar detalhes da fatura"], null)
+    }
+  }
+
+  async updateMasterUserInvoice(
+    masterProfileId: string,
+    invoiceId: string,
+    data: { value: number; dueDate: string }
+  ): Promise<Output> {
+    try {
+      if (!invoiceId || invoiceId.trim().length === 0) {
+        return new Output(false, [], ["ID da fatura é obrigatório"], null)
+      }
+
+      if (!Number.isFinite(data.value) || data.value <= 0) {
+        return new Output(false, [], ["Informe um valor válido maior que zero"], null)
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data.dueDate)) {
+        return new Output(false, [], ["Data de vencimento inválida"], null)
+      }
+
+      const dueDateParsed = new Date(`${data.dueDate}T00:00:00.000Z`)
+      if (Number.isNaN(dueDateParsed.getTime())) {
+        return new Output(false, [], ["Data de vencimento inválida"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      if (!master.asaasCustomerId) {
+        return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
+      }
+
+      const currentPayment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "GET",
+      })) as AsaasPaymentItem
+
+      if (!currentPayment?.id) {
+        return new Output(false, [], ["Fatura não encontrada"], null)
+      }
+
+      if (currentPayment.customer && currentPayment.customer !== master.asaasCustomerId) {
+        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
+      }
+
+      if (currentPayment.deleted) {
+        return new Output(false, [], ["Não é possível editar uma cobrança removida"], null)
+      }
+
+      const statusGroup = getStatusGroup(currentPayment.status)
+      if (statusGroup !== "upcoming" && statusGroup !== "overdue") {
+        return new Output(
+          false,
+          [],
+          ["Só é possível editar faturas a vencer ou vencidas"],
+          null
+        )
+      }
+
+      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          value: data.value,
+          dueDate: data.dueDate,
+        }),
+      })) as AsaasPaymentItem
+
+      if (!payment?.id) {
+        return new Output(false, [], ["Não foi possível atualizar a cobrança no Asaas"], null)
+      }
+
+      return new Output(true, ["Cobrança atualizada com sucesso"], [], {
         id: payment.id,
         customerName: master.fullName ?? master.email,
         status: payment.status ?? "PENDING",
@@ -608,8 +958,8 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         deleted: Boolean(payment.deleted),
       })
     } catch (error) {
-      console.error("[BackofficePlatformUsersUseCase][getMasterUserInvoiceById]", error)
-      return new Output(false, [], ["Erro ao carregar detalhes da fatura"], null)
+      console.error("[BackofficePlatformUsersUseCase][updateMasterUserInvoice]", error)
+      return new Output(false, [], ["Erro ao atualizar a cobrança"], null)
     }
   }
 
@@ -673,7 +1023,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           </head>
-          <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+          <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
             <table role="presentation" style="width:100%;border-collapse:collapse;">
               <tr>
                 <td align="center" style="padding:24px;">
@@ -716,11 +1066,15 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         </html>
       `
 
-      const emailService = createEmailService()
-      const emailResult = await emailService.sendEmail({
-        to: [master.email],
+      const { sendTrackedEmailToProfileRecipients } = await import("@/lib/email/send-tracked-profile-email")
+      const emailResult = await sendTrackedEmailToProfileRecipients({
+        profileId: master.id,
+        category: "invoice_notification",
         subject,
         html,
+        sourceType: "backoffice_invoice",
+        sourceId: payment.id,
+        idempotencyKey: `invoice-notification/${payment.id}`,
       })
 
       if (!emailResult.success) {
@@ -762,6 +1116,8 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      hasUnlimitedUsers?: boolean
+      multiskillEnabled?: boolean
     }
   ): Promise<Output> {
     try {
@@ -777,9 +1133,41 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         data = { ...data, state: data.state.toUpperCase().slice(0, 2) }
       }
 
+      const shouldSyncUnlimited =
+        data.hasUnlimitedUsers !== undefined || data.hasPermanentSubscription !== undefined
+      const previous = shouldSyncUnlimited
+        ? await this.platformUsersRepository.findMasterUserDetailsById(masterProfileId, {
+            page: 1,
+            pageSize: 5,
+          })
+        : null
+
       const updated = await this.platformUsersRepository.updateMasterUserProfile(masterProfileId, data)
       if (!updated) {
         return new Output(false, [], ["Usuário master não encontrado ou não foi possível atualizar"], null)
+      }
+
+      const nextPermanent =
+        data.hasPermanentSubscription !== undefined
+          ? data.hasPermanentSubscription
+          : previous?.hasPermanentSubscription === true
+      const nextUnlimited = shouldSyncUnlimited
+        ? updated.hasUnlimitedUsers || nextPermanent
+        : undefined
+      const previousUnlimited =
+        previous !== null
+          ? previous.hasUnlimitedUsers || previous.hasPermanentSubscription
+          : null
+
+      if (
+        previousUnlimited !== null &&
+        nextUnlimited !== undefined &&
+        previousUnlimited !== nextUnlimited
+      ) {
+        await memberProBillingUseCase.syncBillingAfterUsageChange(
+          masterProfileId,
+          "has_unlimited_users_toggle"
+        )
       }
 
       return new Output(true, ["Dados atualizados com sucesso"], [], { id: updated.id })
@@ -853,6 +1241,8 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       teamId: string
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
+      generateCharge?: boolean
     }
   ): Promise<Output> {
     try {
@@ -891,35 +1281,156 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       }
       const roleLabel = roleLabels[data.role] ?? data.role
 
-      const delegatedPermissions = data.role === "manager"
-        ? { canCreateAccountUsers: data.canCreateAccountUsers ?? false, canManageAccountTeams: data.canManageAccountTeams ?? false }
-        : { canCreateAccountUsers: false, canManageAccountTeams: false }
+      const delegatedPermissions = {
+        canCreateAccountUsers: data.role === "manager" && data.canCreateAccountUsers === true,
+        canManageAccountTeams: data.role === "manager" && data.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (data.role === "manager" || data.role === "backoffice") &&
+          data.canTransferAccountLeads === true,
+      }
 
       if (existingProfile) {
-        if (existingProfile.isMaster) {
-          return new Output(false, [], ["Este e-mail já possui uma conta master na plataforma"], null)
+        if (!existingProfile.supabaseId) {
+          return new Output(false, [], ["Usuário precisa ter conta ativa no sistema"], null)
         }
 
-        await this.platformUsersRepository.addExistingProfileToTeam(existingProfile.id, data.teamId, data.role, data.functions, delegatedPermissions)
+        const alreadyInTeam = await this.platformUsersRepository.findTeamMember(
+          data.teamId,
+          existingProfile.id
+        )
+        if (alreadyInTeam) {
+          return new Output(false, [], ["Usuário já pertence a este time"], null)
+        }
 
-        await emailService.sendEmail({
+        const belongsToMaster = await this.platformUsersRepository.profileBelongsToMasterAccount(
+          existingProfile.id,
+          masterProfileId
+        )
+
+        const existingDisplayName = existingProfile.fullName ?? trimmedName
+
+        if (!belongsToMaster) {
+          const billingOwner = master as BillingOwnerProfile
+          const bypassCharge = await memberProBillingUseCase.shouldBypassIncrementalCharge(
+            masterProfileId,
+            { forceCharge: data.generateCharge }
+          )
+
+          if (!bypassCharge) {
+            const projectedBilling = await incrementalBillingService.projectBilling(masterProfileId, {
+              additionalUsers: 1,
+            })
+
+            if (!billingOwner.hasPermanentSubscription && projectedBilling.billingDelta > 0) {
+              const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
+              if (chargeError) {
+                return new Output(false, [], [chargeError], null)
+              }
+
+              const pending = await backofficeIncrementalBillingCoordinator.createAddMemberPendingAction({
+                master: billingOwner,
+                teamId: data.teamId,
+                profileId: existingProfile.id,
+                profileEmail: existingProfile.email,
+                profileName: existingDisplayName,
+                role: data.role,
+                functions: data.functions,
+                ...delegatedPermissions,
+                initiatedBy: "backoffice",
+              })
+
+              return new Output(
+                true,
+                ["Cobrança pendente criada. O usuário será adicionado após o pagamento."],
+                [],
+                {
+                  requiresPayment: true,
+                  pendingActionId: pending.pendingActionId,
+                  checkoutUrl: pending.checkoutUrl,
+                  totalCharge: pending.totalCharge,
+                  remainingMonths: pending.remainingMonths,
+                }
+              )
+            }
+
+            await this.platformUsersRepository.assertUserSubscriptionCapacity(masterProfileId)
+          }
+        }
+
+        await this.platformUsersRepository.addExistingProfileToTeam(
+          existingProfile.id,
+          data.teamId,
+          data.role,
+          data.functions,
+          delegatedPermissions
+        )
+
+        await emailService.sendEmailUntracked({
           to: [email],
           subject: "Corretor Studio - Você foi adicionado a um novo time",
-          html: buildAddedToTeamEmail({ userName: trimmedName, loginUrl: `${appUrl}/sign-in` }),
+          html: buildAddedToTeamEmail({ userName: existingDisplayName, loginUrl: `${appUrl}/sign-in` }),
         }).catch((err: unknown) => {
           console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao usuário existente:", err)
         })
 
-        await emailService.sendEmail({
+        await emailService.sendEmailUntracked({
           to: [master.email],
           subject: "Corretor Studio - Novo usuário adicionado",
-          html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: trimmedName, userEmail: email, roleLabel }),
+          html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: existingDisplayName, userEmail: email, roleLabel }),
         }).catch((err: unknown) => {
           console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao master:", err)
         })
 
         console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Usuário existente adicionado ao time:", email)
+        await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_member")
         return new Output(true, ["Usuário adicionado ao time com sucesso"], [], { profileId: existingProfile.id })
+      }
+
+      const billingOwner = master as BillingOwnerProfile
+      const generateCharge = data.generateCharge === true
+      const bypassCharge = await memberProBillingUseCase.shouldBypassIncrementalCharge(
+        masterProfileId,
+        { forceCharge: generateCharge }
+      )
+
+      if (!bypassCharge && generateCharge && !billingOwner.hasPermanentSubscription) {
+        const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
+        if (chargeError) {
+          return new Output(false, [], [chargeError], null)
+        }
+
+        const projectedBilling = await incrementalBillingService.projectBilling(masterProfileId, {
+          additionalUsers: 1,
+        })
+
+        if (projectedBilling.billingDelta > 0) {
+          const pending = await backofficeIncrementalBillingCoordinator.createAddUserPendingAction({
+            master: billingOwner,
+            teamId: data.teamId,
+            fullName: trimmedName,
+            email,
+            role: data.role,
+            functions: data.functions,
+            canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+            canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+            canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+          })
+
+          return new Output(
+            true,
+            ["Cobrança pendente criada. O usuário será adicionado após o pagamento."],
+            [],
+            {
+              requiresPayment: true,
+              pendingActionId: pending.pendingActionId,
+              checkoutUrl: pending.checkoutUrl,
+              totalCharge: pending.totalCharge,
+              remainingMonths: pending.remainingMonths,
+            }
+          )
+        }
+
+        await this.platformUsersRepository.assertUserSubscriptionCapacity(masterProfileId)
       }
 
       const { profileId } = await this.platformUsersRepository.createMemberForMaster(
@@ -963,7 +1474,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         inviteUrl: inviteLink,
       })
 
-      await emailService.sendEmail({
+      await emailService.sendEmailUntracked({
         to: [master.email],
         subject: "Corretor Studio - Novo usuário adicionado",
         html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: trimmedName, userEmail: email, roleLabel }),
@@ -972,6 +1483,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       })
 
       console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Membro adicionado:", email)
+      await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_user")
       return new Output(true, ["Usuário convidado com sucesso"], [], { profileId })
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser]", error)
@@ -979,9 +1491,58 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     }
   }
 
+  async addMasterUserToTeam(masterProfileId: string, teamId: string): Promise<Output> {
+    try {
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const team = await this.platformUsersRepository.findTeamByIdAndMasterId(teamId, masterProfileId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado ou não pertence ao master selecionado"], null)
+      }
+
+      const existingMember = await this.platformUsersRepository.findTeamMember(teamId, masterProfileId)
+      if (existingMember) {
+        return new Output(false, [], ["Master já pertence a este time"], null)
+      }
+
+      await this.platformUsersRepository.addExistingProfileToTeam(
+        masterProfileId,
+        teamId,
+        "manager",
+        [],
+        {
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
+          canTransferAccountLeads: false,
+        }
+      )
+
+      const emailService = createEmailService()
+      const appUrl = getAppUrl({ removeTrailingSlash: true })
+      const masterName = master.fullName ?? master.email
+
+      await emailService.sendEmailUntracked({
+        to: [master.email],
+        subject: "Corretor Studio - Você foi adicionado a um novo time",
+        html: buildAddedToTeamEmail({ userName: masterName, loginUrl: `${appUrl}/sign-in` }),
+      }).catch((err: unknown) => {
+        console.error("[BackofficePlatformUsersUseCase][addMasterUserToTeam] Erro ao enviar e-mail:", err)
+      })
+
+      console.info("[BackofficePlatformUsersUseCase][addMasterUserToTeam] Master adicionado ao time:", teamId)
+      return new Output(true, ["Master adicionado ao time com sucesso"], [], { profileId: masterProfileId, teamId })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][addMasterUserToTeam]", error)
+      return new Output(false, [], ["Erro ao adicionar master ao time"], null)
+    }
+  }
+
   async addTeamToMasterUser(
     masterProfileId: string,
-    data: { name: string }
+    data: { name: string; generateCharge?: boolean }
   ): Promise<Output> {
     try {
       const name = data.name.trim()
@@ -994,9 +1555,50 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
+      const billingOwner = master as BillingOwnerProfile
+      const generateCharge = data.generateCharge === true
+      const bypassCharge = await memberProBillingUseCase.shouldBypassIncrementalCharge(
+        masterProfileId,
+        { forceCharge: generateCharge }
+      )
+
+      if (!bypassCharge && generateCharge && !billingOwner.hasPermanentSubscription) {
+        const chargeError = backofficeIncrementalBillingCoordinator.assertChargeableMaster(billingOwner)
+        if (chargeError) {
+          return new Output(false, [], [chargeError], null)
+        }
+
+        const proportionalData = await incrementalBillingService.calculateProportionalAmount(
+          masterProfileId,
+          "team"
+        )
+
+        if (proportionalData.billingDelta > 0) {
+          const pending = await backofficeIncrementalBillingCoordinator.createCreateTeamPendingAction({
+            master: billingOwner,
+            teamName: name,
+            masterFunctions: (master.functions ?? []) as ("SDR" | "CLOSER")[],
+          })
+
+          return new Output(
+            true,
+            ["Cobrança pendente criada. O time será criado após o pagamento."],
+            [],
+            {
+              requiresPayment: true,
+              pendingActionId: pending.pendingActionId,
+              checkoutUrl: pending.checkoutUrl,
+              totalCharge: pending.totalCharge,
+              remainingMonths: pending.remainingMonths,
+            }
+          )
+        }
+      }
+
       const team = await this.platformUsersRepository.createTeamForMaster(masterProfileId, name)
 
       console.info("[BackofficePlatformUsersUseCase][addTeamToMasterUser] Time criado:", team.id)
+      await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_team")
       return new Output(true, ["Time criado com sucesso"], [], { teamId: team.id, name: team.name })
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][addTeamToMasterUser]", error)
@@ -1007,22 +1609,32 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
   async updateTeamForMasterUser(
     masterProfileId: string,
     teamId: string,
-    data: { name: string }
+    data: { name?: string; transferTargetTeamIds?: string[]; updatedBy?: string }
   ): Promise<Output> {
     try {
-      const name = data.name.trim()
-      if (name.length < 2) {
-        return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
-      }
-
       const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
       if (!master) {
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      const updated = await this.platformUsersRepository.updateTeam(teamId, masterProfileId, { name })
-      if (!updated) {
-        return new Output(false, [], ["Time não encontrado"], null)
+      if (data.name !== undefined) {
+        const name = data.name.trim()
+        if (name.length < 2) {
+          return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
+        }
+        const updated = await this.platformUsersRepository.updateTeam(teamId, masterProfileId, { name })
+        if (!updated) {
+          return new Output(false, [], ["Time não encontrado"], null)
+        }
+      }
+
+      if (data.transferTargetTeamIds !== undefined) {
+        await this.platformUsersRepository.syncTeamTransferRoutes(
+          teamId,
+          masterProfileId,
+          data.transferTargetTeamIds,
+          data.updatedBy ?? masterProfileId
+        )
       }
 
       console.info("[BackofficePlatformUsersUseCase][updateTeamForMasterUser] Time atualizado:", teamId)
@@ -1051,6 +1663,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       await this.platformUsersRepository.deleteTeam(teamId, masterProfileId)
 
       console.info("[BackofficePlatformUsersUseCase][deleteTeamFromMasterUser] Time excluído:", teamId)
+      await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "remove_team")
       return new Output(true, ["Time excluído com sucesso"], [], { teamId })
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][deleteTeamFromMasterUser]", error)

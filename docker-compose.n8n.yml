@@ -1,0 +1,77 @@
+# =============================================================================
+# docker-compose.n8n.yml — N8N para desenvolvimento local (Bethânia)
+# =============================================================================
+#
+# Stack isolada: N8N + Postgres dedicado (não usa Supabase nem Evolution Postgres).
+#
+# Uso:
+#   cp .env.n8n.example .env.n8n
+# Produção VPS: prefira docker-compose.vps.yml (bun run vps:up)
+#   bun run n8n:up
+#   bun run n8n:logs
+#   bun run n8n:down
+#
+# UI: http://127.0.0.1:5678
+#
+# =============================================================================
+
+services:
+  n8n:
+    container_name: n8n
+    image: docker.io/n8nio/n8n:2.28.5
+    restart: unless-stopped
+    depends_on:
+      n8n-postgres:
+        condition: service_healthy
+    ports:
+      # 0.0.0.0 (não só 127.0.0.1): Evolution em outro compose alcança via host.docker.internal
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - n8n-net
+    env_file:
+      - .env.n8n
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  n8n-postgres:
+    container_name: n8n_postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:-n8n}
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - listen_addresses=*
+    volumes:
+      - n8n_postgres:/var/lib/postgresql/data
+    networks:
+      - n8n-net
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  n8n_data:
+  n8n_postgres:
+
+networks:
+  n8n-net:
+    name: n8n-net
+    driver: bridge

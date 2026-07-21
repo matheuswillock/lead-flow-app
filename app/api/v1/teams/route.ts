@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -11,6 +12,10 @@ import {
 } from "@/app/api/v1/utils/teamAccess";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { getAccountSubscriptionStatus } from "@/lib/subscription/isAccountSubscriptionActive";
+import { findActiveAccountBannedMasterIds } from "@/lib/account/isAccountMasterBanned";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -28,6 +33,7 @@ async function getPendingPaymentStatus(paymentId?: string | null) {
       paymentMethod: payment?.billingType || "UNDEFINED",
     };
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[TeamsRoute][GET] Erro ao consultar pagamento pendente:", error);
     const is404 = (error as any)?.statusCode === 404;
     return {
@@ -47,11 +53,14 @@ async function createTeamForAccount(args: {
   tx?: Prisma.TransactionClient;
 }) {
   const db = args.tx ?? prisma;
+  const existingTeamsCount = await db.team.count({
+    where: { masterId: args.masterId },
+  });
   const team = await db.team.create({
     data: {
       name: args.teamName,
       masterId: args.masterId,
-      isDefault: false,
+      isDefault: existingTeamsCount === 0,
     },
   });
 
@@ -94,6 +103,16 @@ async function createTeamForAccount(args: {
     });
   }
 
+  await auditLogWriter.logAudit({
+    entityType: "TEAM",
+    entityId: team.id,
+    action: "CREATE",
+    actorProfileId: args.requesterProfileId,
+    before: null,
+    after: team,
+    metadata: { masterId: args.masterId },
+  });
+
   return team;
 }
 
@@ -125,7 +144,20 @@ export async function GET(request: NextRequest) {
 
     const memberships = await prisma.teamMember.findMany({
       where: { profileId: profile.id },
-      include: { team: true },
+      include: {
+        team: {
+          include: {
+            master: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                sponsorMasterId: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "asc" }
     });
 
@@ -180,23 +212,144 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const activeTeams = memberships.map((membership) => ({
-      id: membership.team.id,
-      name: membership.team.name,
-      masterId: membership.team.masterId,
-      isDefault: membership.team.isDefault,
-      role: membership.role,
-      functions: membership.functions,
-      membershipCreatedAt: membership.createdAt,
-      pendingPayment: pendingByName.get(membership.team.name) ?? null,
-    }));
+    const subscriptionByMasterId = new Map<string, boolean>();
+    const uniqueMasterIds = [...new Set(memberships.map((item) => item.team.masterId))];
+    await Promise.all(
+      uniqueMasterIds.map(async (masterId) => {
+        const status = await getAccountSubscriptionStatus(masterId);
+        subscriptionByMasterId.set(masterId, status.isActive);
+      })
+    );
+
+    const activeTeamIds = new Set(memberships.map((m) => m.team.id));
+
+    const memberTeamIds = memberships.map((m) => m.team.id);
+    const transferRoutes = await prisma.teamTransferRoute.findMany({
+      where: { sourceTeamId: { in: memberTeamIds } },
+      select: { sourceTeamId: true },
+    });
+    const teamsWithRoutes = new Set(transferRoutes.map((r) => r.sourceTeamId));
+
+    const sponsoredTeams = await prisma.team.findMany({
+      where: {
+        master: {
+          sponsorMasterId: profile.id,
+        },
+      },
+      include: {
+        master: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            sponsorMasterId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    for (const masterId of sponsoredTeams.map((t) => t.masterId)) {
+      if (!subscriptionByMasterId.has(masterId)) {
+        const status = await getAccountSubscriptionStatus(masterId);
+        subscriptionByMasterId.set(masterId, status.isActive);
+      }
+    }
+
+    const bannedMasterIds = await findActiveAccountBannedMasterIds([
+      ...subscriptionByMasterId.keys(),
+    ]);
+
+    const accountTeamsCountByMasterId = new Map<string, number>();
+    await Promise.all(
+      [...subscriptionByMasterId.keys()].map(async (masterId) => {
+        const count = await prisma.team.count({ where: { masterId } });
+        accountTeamsCountByMasterId.set(masterId, count);
+      })
+    );
+
+    const activeTeams = memberships.map((membership) => {
+      const accountMasterId = membership.team.masterId;
+      const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+      const accountMasterBanned = bannedMasterIds.has(accountMasterId);
+      const isAccessible = accountSubscriptionActive && !accountMasterBanned;
+
+      return {
+        id: membership.team.id,
+        name: membership.team.name,
+        masterId: accountMasterId,
+        accountMasterId,
+        accountName: membership.team.master.fullName ?? membership.team.master.email,
+        isOwnAccount: accountMasterId === profile.id,
+        isAssociateAccount: Boolean(membership.team.master.sponsorMasterId),
+        sponsorMasterId: membership.team.master.sponsorMasterId ?? null,
+        associateAccountName:
+          membership.team.master.sponsorMasterId
+            ? (membership.team.master.fullName ?? membership.team.master.email)
+            : null,
+        isAccessible,
+        accountSubscriptionActive,
+        accountMasterBanned,
+        isDefault: membership.team.isDefault,
+        role: membership.role,
+        functions: membership.functions,
+        canCreateAccountUsers: membership.canCreateAccountUsers,
+        canManageAccountTeams: membership.canManageAccountTeams,
+        canTransferAccountLeads: membership.canTransferAccountLeads,
+        canViewAllTeams: membership.canViewAllTeams,
+        accountTeamsCount: accountTeamsCountByMasterId.get(accountMasterId) ?? 1,
+        hasTransferRoutes: teamsWithRoutes.has(membership.team.id),
+        membershipCreatedAt: membership.createdAt,
+        isPending: false,
+        pendingPayment: pendingByName.get(membership.team.name) ?? null,
+      };
+    });
+
+    const sponsoredTeamRows = sponsoredTeams
+      .filter((team) => !activeTeamIds.has(team.id))
+      .map((team) => {
+        const accountMasterId = team.masterId;
+        const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
+        const accountMasterBanned = bannedMasterIds.has(accountMasterId);
+        const isAccessible = accountSubscriptionActive && !accountMasterBanned;
+        const associateAccountName = team.master.fullName ?? team.master.email;
+
+        return {
+          id: team.id,
+          name: team.name,
+          masterId: accountMasterId,
+          accountMasterId,
+          accountName: associateAccountName,
+          isOwnAccount: false,
+          isAssociateAccount: true,
+          sponsorMasterId: team.master.sponsorMasterId ?? profile.id,
+          associateAccountName,
+          isAccessible,
+          accountSubscriptionActive,
+          accountMasterBanned,
+          isDefault: team.isDefault,
+          role: "backoffice" as const,
+          functions: [] as string[],
+          canCreateAccountUsers: false,
+          canManageAccountTeams: true,
+          canTransferAccountLeads: false,
+          canViewAllTeams: false,
+          accountTeamsCount: accountTeamsCountByMasterId.get(accountMasterId) ?? 1,
+          hasTransferRoutes: false,
+          membershipCreatedAt: team.createdAt,
+          isPending: false,
+          pendingPayment: null,
+        };
+      });
+
+    const activeTeamsMerged = [...activeTeams, ...sponsoredTeamRows];
 
     const pendingTeamRows = pendingActions
       .filter((action) => {
         const payload = (action.payload as Record<string, unknown>) || {};
         const teamName = String(payload.teamName ?? "").trim();
         if (!teamName) return false;
-        return !activeTeams.some((team) => team.name.trim() === teamName);
+        return !activeTeamsMerged.some((team) => team.name.trim() === teamName);
       })
       .map((action) => {
         const payload = (action.payload as Record<string, unknown>) || {};
@@ -212,13 +365,20 @@ export async function GET(request: NextRequest) {
             : pendingByName.get(teamName)?.paymentMethod || billingType;
 
         return {
-          id: `pending-${action.id}`,
+          id: action.id,
           name: teamName,
           masterId: profile.id,
           isDefault: false,
           role: "manager",
           functions: [],
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
+          canTransferAccountLeads: false,
+          canViewAllTeams: false,
+          accountTeamsCount: accountTeamsCountByMasterId.get(profile.id) ?? 1,
+          hasTransferRoutes: false,
           membershipCreatedAt: action.createdAt,
+          isPending: true,
           pendingPayment: {
             id: action.id,
             paymentId: action.paymentId || "",
@@ -229,13 +389,34 @@ export async function GET(request: NextRequest) {
         };
       });
 
-    const teams = [...activeTeams, ...pendingTeamRows];
+    const teams = [...activeTeamsMerged, ...pendingTeamRows];
+
+    let activeTeamId = profile.activeTeamId;
+    const currentTeam = teams.find((team) => team.id === activeTeamId);
+    const currentIsAccessible =
+      currentTeam &&
+      !currentTeam.isPending &&
+      ("isAccessible" in currentTeam ? currentTeam.isAccessible : true);
+
+    if (!currentIsAccessible) {
+      const fallbackTeam = activeTeamsMerged.find((team) => team.isAccessible);
+      if (fallbackTeam) {
+        activeTeamId = fallbackTeam.id;
+        await prisma.profile.update({
+          where: { id: profile.id },
+          data: { activeTeamId: fallbackTeam.id },
+        });
+      } else {
+        activeTeamId = null;
+      }
+    }
 
     return NextResponse.json(
-      new Output(true, [], [], { teams, activeTeamId: profile.activeTeamId }),
+      new Output(true, [], [], { teams, activeTeamId }),
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in GET /api/v1/teams:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),
@@ -259,7 +440,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const { profileId, managerId, teamMember, isMaster } = teamAccess.access;
+    const { profileId, managerId, teamMember } = teamAccess.access;
     if (!hasDelegatedTeamManagementAccess(teamAccess.access)) {
       return NextResponse.json(
         new Output(false, [], ["Apenas o master ou um manager delegado pode criar times"], null),
@@ -270,11 +451,19 @@ export async function POST(request: NextRequest) {
     const [profile, billingOwner] = await Promise.all([
       prisma.profile.findUnique({
         where: { supabaseId },
-        select: { id: true, fullName: true, email: true, functions: true },
+        select: { id: true, fullName: true, email: true },
       }),
       prisma.profile.findUnique({
         where: { id: managerId },
-        select: { id: true, hasPermanentSubscription: true, functions: true },
+        select: {
+          id: true,
+          hasPermanentSubscription: true,
+          teamMemberships: {
+            orderBy: { createdAt: "asc" },
+            take: 1,
+            select: { functions: true },
+          },
+        },
       }),
     ]);
 
@@ -294,14 +483,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 });
     }
 
+    const masterFunctions = billingOwner.teamMemberships[0]?.functions ?? [];
+    const requesterFunctions = teamMember.functions ?? [];
+
     if (billingOwner.hasPermanentSubscription) {
       const team = await createTeamForAccount({
         teamName: validatedData.name,
         masterId: managerId,
         requesterProfileId: profileId,
-        masterFunctions: billingOwner.functions ?? [],
-        requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
+        masterFunctions,
+        requesterFunctions,
       });
+
+      return NextResponse.json(
+        new Output(true, ["Time criado com sucesso"], [], { teamId: team.id }),
+        { status: 201 }
+      );
+    }
+
+    if (await memberProBillingUseCase.shouldBypassIncrementalCharge(managerId)) {
+      const team = await createTeamForAccount({
+        teamName: validatedData.name,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        masterFunctions,
+        requesterFunctions,
+      });
+
+      await memberProBillingUseCase.syncUsageToSubscription(managerId, "add_team");
 
       return NextResponse.json(
         new Output(true, ["Time criado com sucesso"], [], { teamId: team.id }),
@@ -321,8 +530,8 @@ export async function POST(request: NextRequest) {
           teamName: validatedData.name,
           masterId: managerId,
           requesterProfileId: profileId,
-          masterFunctions: billingOwner.functions ?? [],
-          requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
+          masterFunctions,
+          requesterFunctions,
           tx,
         });
       });
@@ -342,6 +551,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Error in POST /api/v1/teams:", error);
     return NextResponse.json(
       new Output(false, [], ["Internal server error"], null),

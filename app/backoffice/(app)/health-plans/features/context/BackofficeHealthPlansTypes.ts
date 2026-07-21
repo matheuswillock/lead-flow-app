@@ -20,4 +20,6 @@ export type BackofficeHealthPlansActions = {
   uploadIcon: (file: File) => Promise<{ isValid: boolean; errorMessages: string[]; result?: { iconUrl: string } }>
 }
 
-export type BackofficeHealthPlansContextValue = BackofficeHealthPlansState & BackofficeHealthPlansActions
+export type BackofficeHealthPlansContextValue = BackofficeHealthPlansState & BackofficeHealthPlansActions & {
+  canManage: boolean
+}

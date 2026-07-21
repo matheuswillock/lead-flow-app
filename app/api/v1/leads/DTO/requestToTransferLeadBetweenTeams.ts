@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const TransferLeadBetweenTeamsRequestSchema = z.object({
   targetTeamId: z.string().uuid("ID do time destino deve ser um UUID válido"),
-  closerId: z.string().uuid("ID do closer deve ser um UUID válido"),
+  closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
   sdrId: z.string().uuid("ID do SDR deve ser um UUID válido").optional().nullable().default(null),
   schedule: z
     .object({

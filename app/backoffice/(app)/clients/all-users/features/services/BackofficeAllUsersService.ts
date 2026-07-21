@@ -3,7 +3,12 @@ import type {
   BackofficeAllUsersDetail,
   BackofficeAllUsersFilters,
   BackofficeAllUsersListResult,
+  BackofficeAllUsersScheduleFilters,
+  BackofficeAllUsersScheduleListResult,
+  BackofficeAllUsersEmailDispatchFilters,
+  BackofficeAllUsersEmailDispatchListResult,
   BackofficeAllUsersUserType,
+  BackofficeSponsorMasterOption,
 } from "../context/BackofficeAllUsersTypes"
 
 interface OutputResponse<T> {
@@ -89,6 +94,138 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     )
   }
 
+  async getSchedules(
+    profileId: string,
+    params?: {
+      filters?: Partial<BackofficeAllUsersScheduleFilters>
+      page?: number
+      pageSize?: number
+    }
+  ): Promise<BackofficeAllUsersScheduleListResult> {
+    const page = Math.max(params?.page ?? 1, 1)
+    const pageSize = Math.max(params?.pageSize ?? 10, 5)
+    const search = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    })
+
+    const query = params?.filters?.query?.trim()
+    if (query) search.set("q", query)
+
+    for (const fn of params?.filters?.functions ?? []) {
+      if (fn) search.append("function", fn)
+    }
+
+    for (const status of params?.filters?.meetingStatuses ?? []) {
+      if (status) search.append("meetingStatus", status)
+    }
+
+    for (const status of params?.filters?.leadStatuses ?? []) {
+      if (status) search.append("leadStatus", status)
+    }
+
+    if (params?.filters?.dateFrom) search.set("dateFrom", params.filters.dateFrom)
+    if (params?.filters?.dateTo) search.set("dateTo", params.filters.dateTo)
+
+    const result = await parseOutput<{
+      items?: BackofficeAllUsersScheduleListResult["items"]
+      pagination?: BackofficeAllUsersScheduleListResult["pagination"]
+    }>(
+      await fetch(
+        `/api/v1/backoffice/clients/all-users/${profileId}/schedules?${search.toString()}`,
+        { cache: "no-store" }
+      ),
+      "Erro ao carregar agendamentos do usuário"
+    )
+
+    const fallbackPagination = {
+      page,
+      pageSize,
+      totalItems: 0,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    }
+
+    return {
+      items: result.items ?? [],
+      pagination: result.pagination ?? fallbackPagination,
+    }
+  }
+
+  async getEmailDispatches(
+    profileId: string,
+    params?: {
+      filters?: Partial<BackofficeAllUsersEmailDispatchFilters>
+      page?: number
+      pageSize?: number
+    }
+  ): Promise<BackofficeAllUsersEmailDispatchListResult> {
+    const page = Math.max(params?.page ?? 1, 1)
+    const pageSize = Math.max(params?.pageSize ?? 10, 5)
+    const search = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    })
+
+    const query = params?.filters?.query?.trim()
+    if (query) search.set("q", query)
+
+    for (const status of params?.filters?.statuses ?? []) {
+      if (status) search.append("status", status)
+    }
+
+    for (const provider of params?.filters?.providers ?? []) {
+      if (provider) search.append("provider", provider)
+    }
+
+    for (const category of params?.filters?.categories ?? []) {
+      if (category) search.append("category", category)
+    }
+
+    if (params?.filters?.dateFrom) search.set("dateFrom", params.filters.dateFrom)
+    if (params?.filters?.dateTo) search.set("dateTo", params.filters.dateTo)
+
+    const result = await parseOutput<{
+      items?: BackofficeAllUsersEmailDispatchListResult["items"]
+      pagination?: BackofficeAllUsersEmailDispatchListResult["pagination"]
+    }>(
+      await fetch(
+        `/api/v1/backoffice/clients/all-users/${profileId}/email-dispatches?${search.toString()}`,
+        { cache: "no-store" }
+      ),
+      "Erro ao carregar e-mails disparados do usuário"
+    )
+
+    const fallbackPagination = {
+      page,
+      pageSize,
+      totalItems: 0,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    }
+
+    return {
+      items: result.items ?? [],
+      pagination: result.pagination ?? fallbackPagination,
+    }
+  }
+
+  async sendAccessEmail(
+    memberId: string,
+    mode: "invite" | "reset_password"
+  ): Promise<{ email: string }> {
+    return parseOutput<{ email: string }>(
+      await fetch(`/api/v1/backoffice/members/${memberId}/access-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      }),
+      "Erro ao enviar e-mail de acesso"
+    )
+  }
+
   async updateUserType(
     profileId: string,
     payload: BackofficeAllUsersUpdateUserTypeInput
@@ -102,5 +239,24 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
       "Erro ao atualizar tipo de usuário"
     )
     return result.userType
+  }
+
+  async listSponsorMasters(): Promise<BackofficeSponsorMasterOption[]> {
+    const result = await parseOutput<{ options: BackofficeSponsorMasterOption[] }>(
+      await fetch("/api/v1/backoffice/clients/all-users/sponsor-masters"),
+      "Erro ao carregar patrocinadores"
+    )
+    return result.options
+  }
+
+  async banUser(profileId: string, reason?: string | null): Promise<void> {
+    await parseOutput<Record<string, unknown>>(
+      await fetch("/api/v1/backoffice/anatemas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, reason }),
+      }),
+      "Erro ao banir usuário"
+    )
   }
 }

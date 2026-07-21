@@ -1,3 +1,6 @@
+import { FilterPresetScope } from "@prisma/client";
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { Output } from "@/lib/output";
 import type { ITeamFilterPresetService } from "@/app/api/services/teamFilterPreset/ITeamFilterPresetService";
 import { teamFilterPresetService } from "@/app/api/services/teamFilterPreset/TeamFilterPresetService";
@@ -7,12 +10,19 @@ import type {
   TeamFilterPresetUpdateInput,
 } from "./ITeamFilterPresetsUseCase";
 
+async function getCachedFilterPresets(teamId: string, profileId: string, scope: FilterPresetScope) {
+  "use cache";
+  cacheTag(cacheTags.teamFilterPresets(teamId, profileId, scope));
+  cacheLife({ stale: 60, revalidate: 300 });
+  return teamFilterPresetService.listByTeamScopeAndProfile(teamId, profileId, scope);
+}
+
 export class TeamFilterPresetsUseCase implements ITeamFilterPresetsUseCase {
   constructor(private readonly service: ITeamFilterPresetService = teamFilterPresetService) {}
 
-  async list(teamId: string, createdBy: string): Promise<Output> {
+  async list(teamId: string, profileId: string, scope: FilterPresetScope): Promise<Output> {
     try {
-      const presets = await this.service.listByTeamAndCreator(teamId, createdBy);
+      const presets = await getCachedFilterPresets(teamId, profileId, scope);
       return new Output(true, [], [], presets);
     } catch (error) {
       console.error("[TeamFilterPresetsUseCase][list] Erro ao listar presets:", error);
@@ -20,16 +30,23 @@ export class TeamFilterPresetsUseCase implements ITeamFilterPresetsUseCase {
     }
   }
 
-  async create(teamId: string, createdBy: string, input: TeamFilterPresetInput): Promise<Output> {
+  async create(
+    teamId: string,
+    profileId: string,
+    scope: FilterPresetScope,
+    input: TeamFilterPresetInput
+  ): Promise<Output> {
     try {
       const name = input.name?.trim();
       if (!name) {
         return new Output(false, [], ["Nome do preset é obrigatório"], null);
       }
-      const preset = await this.service.create(teamId, createdBy, {
+      const preset = await this.service.create(teamId, profileId, {
         name,
         description: input.description,
         queryJson: input.queryJson,
+        scope,
+        visibility: input.visibility,
       });
       return new Output(true, ["Filtro pré-definido criado com sucesso"], [], preset);
     } catch (error) {
@@ -40,12 +57,22 @@ export class TeamFilterPresetsUseCase implements ITeamFilterPresetsUseCase {
 
   async update(
     teamId: string,
-    createdBy: string,
+    profileId: string,
     presetId: string,
-    input: TeamFilterPresetUpdateInput
+    input: TeamFilterPresetUpdateInput,
+    isManager: boolean
   ): Promise<Output> {
     try {
-      const preset = await this.service.update(teamId, createdBy, presetId, input);
+      const { preset, forbidden } = await this.service.update(
+        teamId,
+        profileId,
+        presetId,
+        input,
+        isManager
+      );
+      if (forbidden) {
+        return new Output(false, [], ["Sem permissão para editar este filtro pré-definido"], null);
+      }
       if (!preset) {
         return new Output(false, [], ["Filtro pré-definido não encontrado"], null);
       }
@@ -56,9 +83,22 @@ export class TeamFilterPresetsUseCase implements ITeamFilterPresetsUseCase {
     }
   }
 
-  async remove(teamId: string, createdBy: string, presetId: string): Promise<Output> {
+  async remove(
+    teamId: string,
+    profileId: string,
+    presetId: string,
+    isManager: boolean
+  ): Promise<Output> {
     try {
-      const removed = await this.service.delete(teamId, createdBy, presetId);
+      const { removed, forbidden } = await this.service.delete(
+        teamId,
+        profileId,
+        presetId,
+        isManager
+      );
+      if (forbidden) {
+        return new Output(false, [], ["Sem permissão para excluir este filtro pré-definido"], null);
+      }
       if (!removed) {
         return new Output(false, [], ["Filtro pré-definido não encontrado"], null);
       }
@@ -69,9 +109,22 @@ export class TeamFilterPresetsUseCase implements ITeamFilterPresetsUseCase {
     }
   }
 
-  async markAsUsed(teamId: string, createdBy: string, presetId: string): Promise<Output> {
+  async markAsUsed(
+    teamId: string,
+    profileId: string,
+    presetId: string,
+    isManager: boolean
+  ): Promise<Output> {
     try {
-      const preset = await this.service.markAsUsed(teamId, createdBy, presetId);
+      const { preset, forbidden } = await this.service.markAsUsed(
+        teamId,
+        profileId,
+        presetId,
+        isManager
+      );
+      if (forbidden) {
+        return new Output(false, [], ["Sem permissão para usar este filtro pré-definido"], null);
+      }
       if (!preset) {
         return new Output(false, [], ["Filtro pré-definido não encontrado"], null);
       }
@@ -84,4 +137,3 @@ export class TeamFilterPresetsUseCase implements ITeamFilterPresetsUseCase {
 }
 
 export const teamFilterPresetsUseCase: ITeamFilterPresetsUseCase = new TeamFilterPresetsUseCase();
-

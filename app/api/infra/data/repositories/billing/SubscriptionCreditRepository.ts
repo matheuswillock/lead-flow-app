@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import type { BillingSnapshot } from "@/app/api/infra/data/repositories/billing/IBillingRepository";
 import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary";
 import type { BillingSummary } from "@/app/api/shared/billing/billingConfig";
+import { resolveHasUnlimitedUsers } from "@/app/api/shared/billing/memberProBillingRules";
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -118,12 +119,12 @@ class PrismaSubscriptionCreditRepository {
   private async getSnapshotWithTx(tx: TransactionClient, masterId: string): Promise<BillingSnapshot | null> {
     const master = await tx.profile.findUnique({
       where: { id: masterId },
-      select: { hasPermanentSubscription: true },
+      select: { hasPermanentSubscription: true, hasUnlimitedUsers: true },
     });
 
     if (!master) return null;
 
-    const [teamCount, teamMembers, subscription, annualAdhesionCount] = await Promise.all([
+    const [teamCount, teamMembers, subscription] = await Promise.all([
       tx.team.count({ where: { masterId } }),
       tx.teamMember.findMany({
         where: { team: { masterId } },
@@ -133,10 +134,6 @@ class PrismaSubscriptionCreditRepository {
       tx.profileSubscription.findUnique({
         where: { profileId: masterId },
         select: {
-          subscriptionCycle: true,
-          subscriptionStatus: true,
-          subscriptionStartDate: true,
-          subscriptionEndDate: true,
           capacity: {
             select: {
               includedExtraTeams: true,
@@ -147,23 +144,13 @@ class PrismaSubscriptionCreditRepository {
           },
         },
       }),
-      tx.backofficeAdhesion.count({
-        where: {
-          createdProfileId: masterId,
-          status: "paid",
-          cycle: "annual",
-        },
-      }),
     ]);
 
     const distinctUserCount = teamMembers.filter((member) => member.profileId !== masterId).length;
-    const now = new Date();
-    const hasYearlySubscription =
-      subscription?.subscriptionCycle === "YEARLY" &&
-      (!subscription?.subscriptionStatus || subscription.subscriptionStatus === "active") &&
-      (!subscription?.subscriptionStartDate || subscription.subscriptionStartDate <= now) &&
-      (!subscription?.subscriptionEndDate || subscription.subscriptionEndDate >= now);
-    const hasUnlimitedUsers = hasYearlySubscription || annualAdhesionCount > 0;
+    const hasUnlimitedUsers = resolveHasUnlimitedUsers({
+      hasUnlimitedUsersFlag: master.hasUnlimitedUsers,
+      hasPermanentSubscription: master.hasPermanentSubscription,
+    });
 
     return {
       hasPermanentSubscription: master.hasPermanentSubscription,

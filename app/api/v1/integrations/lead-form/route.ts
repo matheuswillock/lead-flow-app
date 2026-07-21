@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { PublicLeadFormRequestSchema } from "./DTO/requestPublicLeadForm";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 import { detectSqlInjection } from "@/app/api/v1/utils/inputSecurity";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const normalizeTrackingValue = (value?: string | null): string | undefined => {
   if (!value) return undefined;
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output, { status: 201 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[IntegrationLeadFormRoute][POST] Erro ao criar lead público:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno do servidor"], null),

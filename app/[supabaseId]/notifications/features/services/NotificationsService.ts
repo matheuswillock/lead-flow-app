@@ -47,6 +47,25 @@ export class NotificationsService {
     return output.result as NotificationsListResponse;
   }
 
+  async unreadCount(context: RequestContext): Promise<number> {
+    const response = await fetch(`${this.baseUrl}/unread-count`, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": context.supabaseId,
+        "x-team-id": context.teamId,
+      },
+    });
+
+    const output = await this.parseOutput(response);
+    if (!response.ok || !output.isValid || !output.result) {
+      throw new Error(output.errorMessages?.join(", ") || "Erro ao consultar notificações");
+    }
+
+    return Number((output.result as { unreadCount?: number }).unreadCount ?? 0);
+  }
+
   async markAllAsRead(context: RequestContext, options?: MarkAllAsReadOptions): Promise<number> {
     const response = await fetch(this.baseUrl, {
       method: "PATCH",

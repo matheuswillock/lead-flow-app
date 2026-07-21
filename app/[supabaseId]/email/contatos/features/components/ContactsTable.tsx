@@ -1,11 +1,19 @@
 "use client"
 
 import { useState } from "react"
-import { Search, Trash2 } from "lucide-react"
+import { Eye, MoreHorizontal, Search, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +24,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -29,15 +43,26 @@ import type { Contact } from "../context/ContatosTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 
-function ContactStatusBadge({ contact }: { contact: Contact }) {
+function ContactStatusBadge({ contact, isBlocklist }: { contact: Contact; isBlocklist?: boolean }) {
+  if (isBlocklist || contact.isUnsubscribed) {
+    return <Badge variant="secondary">Bloqueado</Badge>
+  }
   if (contact.isComplained) return <Badge variant="destructive">Reclamação</Badge>
   if (contact.isBounced) return <Badge variant="destructive">Bounce</Badge>
-  if (contact.isUnsubscribed) return <Badge variant="secondary">Descadastrado</Badge>
-  return <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">Ativo</Badge>
+  return <Badge className="border-semantic-success-border bg-semantic-success-surface text-semantic-success hover:bg-semantic-success-surface">Ativo</Badge>
 }
 
-function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfirm: () => Promise<void> }) {
-  const [open, setOpen] = useState(false)
+function DeleteContactDialog({
+  contact,
+  onConfirm,
+  readOnly,
+}: {
+  contact: Contact
+  onConfirm: () => Promise<void>
+  readOnly?: boolean
+}) {
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [viewOpen, setViewOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   async function handleConfirm() {
@@ -46,41 +71,90 @@ function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfi
       await onConfirm()
     } finally {
       setDeleting(false)
-      setOpen(false)
+      setDeleteOpen(false)
     }
   }
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-        onClick={() => setOpen(true)}
-        title="Remover contato"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover contato?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O contato <strong>{contact.email}</strong> será removido desta lista.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirm}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? "Removendo..." : "Remover"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className="h-8 w-8 p-0"
+            title="Abrir menu"
+          >
+            <span className="sr-only">Abrir menu</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => setViewOpen(true)}>
+            <Eye className="mr-2 h-4 w-4" />
+            Visualizar
+          </DropdownMenuItem>
+          {!readOnly ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDeleteOpen(true)}
+                className="text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Deletar
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent className="max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Detalhes do contato</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 space-y-3 text-sm">
+            <div>
+              <p className="text-muted-foreground">E-mail</p>
+              <p className="font-medium">{contact.email}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Nome</p>
+              <p className="font-medium">{contact.name ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Status</p>
+              <div className="pt-1">
+                <ContactStatusBadge contact={contact} isBlocklist={readOnly} />
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {!readOnly ? (
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remover contato?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O contato <strong>{contact.email}</strong> será removido desta lista.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirm}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? "Removendo..." : "Remover"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
     </>
   )
 }
@@ -89,6 +163,8 @@ export function ContactsTable() {
   const { tz } = useTimezone()
   const {
     contacts,
+    lists,
+    selectedListId,
     totalContacts: total,
     page,
     totalPages,
@@ -98,6 +174,9 @@ export function ContactsTable() {
     handlePageChange,
     handleDeleteContact,
   } = useContactsContext()
+
+  const selectedList = lists.find((list) => list.id === selectedListId) ?? null
+  const isBlocklist = Boolean(selectedList?.isBlocklist)
 
   return (
     <div className="space-y-3">
@@ -119,7 +198,7 @@ export function ContactsTable() {
               <TableHead>Nome</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Adicionado em</TableHead>
-              <TableHead className="w-10" />
+              <TableHead className="w-10 text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -144,13 +223,16 @@ export function ContactsTable() {
                 <TableRow key={contact.id}>
                   <TableCell className="font-mono text-sm">{contact.email}</TableCell>
                   <TableCell className="text-sm">{contact.name ?? "—"}</TableCell>
-                  <TableCell><ContactStatusBadge contact={contact} /></TableCell>
+                  <TableCell>
+                    <ContactStatusBadge contact={contact} isBlocklist={isBlocklist} />
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {formatIntimezone(new Date(contact.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-right">
                     <DeleteContactDialog
                       contact={contact}
+                      readOnly={isBlocklist}
                       onConfirm={() => handleDeleteContact(contact.id)}
                     />
                   </TableCell>

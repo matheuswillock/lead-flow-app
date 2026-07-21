@@ -5,6 +5,7 @@ import { getTeamAccess, hasLeadAccess } from '@/app/api/v1/utils/teamAccess';
 import { invalidateLeadCache, invalidatePortfolioCache } from '@/lib/cache/invalidation';
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(
   request: NextRequest,
@@ -36,7 +37,11 @@ export async function POST(
       contractStoragePath,
       dependents,
       source,
+      contractType,
     } = body;
+
+    const normalizedContractType: 'individual' | 'corporate' | 'adhesion' =
+      contractType === 'corporate' || contractType === 'adhesion' ? contractType : 'individual';
 
     if (!amount || amount <= 0) {
       return NextResponse.json(
@@ -95,6 +100,8 @@ export async function POST(
 
     const holderName =
       typeof contractHolder.name === 'string' ? contractHolder.name.trim() : '';
+    const holderRazaoSocial =
+      typeof contractHolder.razaoSocial === 'string' ? contractHolder.razaoSocial.trim() : '';
     const holderBirthDate = new Date(contractHolder.birthDate);
     const holderDocument = sanitizeRgCpfDigits(
       typeof contractHolder.document === 'string' ? contractHolder.document : ''
@@ -117,11 +124,26 @@ export async function POST(
       );
     }
 
-    if (!holderDocument) {
-      return NextResponse.json(
-        new Output(false, [], ['O documento do titular é obrigatório'], null),
-        { status: 400 }
-      );
+    if (normalizedContractType === 'corporate') {
+      if (!holderRazaoSocial) {
+        return NextResponse.json(
+          new Output(false, [], ['A Razão Social é obrigatória para contratos Empresariais'], null),
+          { status: 400 }
+        );
+      }
+      if (!holderCnpj) {
+        return NextResponse.json(
+          new Output(false, [], ['O CNPJ é obrigatório para contratos Empresariais'], null),
+          { status: 400 }
+        );
+      }
+    } else {
+      if (!holderDocument) {
+        return NextResponse.json(
+          new Output(false, [], ['O CPF do titular é obrigatório'], null),
+          { status: 400 }
+        );
+      }
     }
 
     for (const dep of dependentsList) {
@@ -156,6 +178,7 @@ export async function POST(
           startDateAt: new Date(startDateAt),
           finalizedDateAt: new Date(finalizedDateAt),
           duration: durationInDays,
+          contractType: normalizedContractType,
           notes: notes || null,
           closerId: closerId || null,
           operadora: operadora || null,
@@ -169,6 +192,7 @@ export async function POST(
         data: {
           leadFinalizedId: leadFinalized.id,
           name: holderName,
+          razaoSocial: holderRazaoSocial || null,
           birthDate: holderBirthDate,
           document: holderDocument,
           cnpj: holderCnpj || null,
@@ -233,6 +257,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('[FinalizeLeadRoute][POST] Erro ao finalizar contrato:', error);
     return NextResponse.json(
       new Output(false, [], ['Erro interno ao finalizar contrato'], null),

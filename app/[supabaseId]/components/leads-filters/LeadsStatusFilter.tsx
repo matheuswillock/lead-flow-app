@@ -34,6 +34,10 @@ interface LeadsStatusFilterProps {
   onChangeStatuses: (values: string[]) => void;
   meetingHeld?: boolean;
   onToggleMeetingHeld?: (value: boolean) => void;
+  transfer?: boolean;
+  onToggleTransfer?: (value: boolean) => void;
+  draft?: boolean;
+  onToggleDraft?: (value: boolean) => void;
 }
 
 export function LeadsStatusFilter({
@@ -43,6 +47,10 @@ export function LeadsStatusFilter({
   onChangeStatuses,
   meetingHeld = false,
   onToggleMeetingHeld,
+  transfer = false,
+  onToggleTransfer,
+  draft = false,
+  onToggleDraft,
 }: LeadsStatusFilterProps) {
   const selectedSet = React.useMemo(
     () => new Set(selectedStatuses),
@@ -54,10 +62,16 @@ export function LeadsStatusFilter({
       .filter((option) => selectedSet.has(option.value))
       .map((option) => option.label);
     if (meetingHeld) {
-      labels.unshift("Reunião realizadas");
+      labels.unshift("Reuniões realizadas");
+    }
+    if (transfer) {
+      labels.unshift("Transferência");
+    }
+    if (draft) {
+      labels.unshift("Rascunhos");
     }
     return labels;
-  }, [meetingHeld, selectedSet, statusOptions]);
+  }, [draft, meetingHeld, selectedSet, statusOptions, transfer]);
 
   const hasSelections = selectedLabels.length > 0;
 
@@ -75,6 +89,9 @@ export function LeadsStatusFilter({
     onChangeStatuses([]);
     if (onToggleMeetingHeld) {
       onToggleMeetingHeld(false);
+    }
+    if (onToggleTransfer) {
+      onToggleTransfer(false);
     }
   };
 
@@ -122,24 +139,58 @@ export function LeadsStatusFilter({
           <CommandInput placeholder={title} />
           <CommandList>
             <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
-            {onToggleMeetingHeld && (
+            {(onToggleMeetingHeld || onToggleTransfer || onToggleDraft) && (
               <>
                 <CommandGroup>
-                  <CommandItem
-                    onSelect={() => onToggleMeetingHeld(!meetingHeld)}
-                  >
-                    <div
-                      className={cn(
-                        "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                        meetingHeld
-                          ? "bg-primary text-primary-foreground"
-                          : "opacity-50 [&_svg]:invisible"
-                      )}
+                  {onToggleMeetingHeld && (
+                    <CommandItem
+                      onSelect={() => onToggleMeetingHeld(!meetingHeld)}
                     >
-                      <Check className="h-4 w-4" />
-                    </div>
-                    <span>Reunião realizadas</span>
-                  </CommandItem>
+                      <div
+                        className={cn(
+                          "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                          meetingHeld
+                            ? "bg-primary text-primary-foreground"
+                            : "opacity-50 [&_svg]:invisible"
+                        )}
+                      >
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <span>Reuniões realizadas</span>
+                    </CommandItem>
+                  )}
+                  {onToggleTransfer && (
+                    <CommandItem
+                      onSelect={() => onToggleTransfer(!transfer)}
+                    >
+                      <div
+                        className={cn(
+                          "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                          transfer
+                            ? "bg-primary text-primary-foreground"
+                            : "opacity-50 [&_svg]:invisible"
+                        )}
+                      >
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <span>Transferência</span>
+                    </CommandItem>
+                  )}
+                  {onToggleDraft && (
+                    <CommandItem onSelect={() => onToggleDraft(!draft)}>
+                      <div
+                        className={cn(
+                          "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                          draft
+                            ? "bg-primary text-primary-foreground"
+                            : "opacity-50 [&_svg]:invisible"
+                        )}
+                      >
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <span>Somente rascunhos</span>
+                    </CommandItem>
+                  )}
                 </CommandGroup>
                 <CommandSeparator />
               </>

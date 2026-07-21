@@ -1,5 +1,6 @@
 export type PerformancePreset = '1d' | '7d' | '15d' | '1m' | '3m';
 export const DEFAULT_PRESET: PerformancePreset = '7d';
+export type PerformanceTeamScope = 'active' | 'all';
 
 export interface PerformanceFiltersState {
   preset: PerformancePreset;
@@ -127,7 +128,10 @@ export interface PerformancePagination {
   totalPages: number;
 }
 
+export type PerformanceViewMode = 'team' | 'self';
+
 export interface PerformanceData {
+  viewMode: PerformanceViewMode;
   kpis: PerformanceKpis;
   highlights: {
     topCloser: PerformanceHighlight | null;

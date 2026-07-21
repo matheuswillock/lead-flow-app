@@ -4,8 +4,18 @@ import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/A
 import { createEmailService } from "@/lib/services/EmailService"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 
 type MemberRole = "manager" | "backoffice" | "operator"
+
+interface TeamAccessInput {
+  role: MemberRole
+  functions: string[]
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
+  canTransferAccountLeads: boolean
+  canViewAllTeams: boolean
+}
 
 interface UpdateMemberInput {
   fullName?: string | null
@@ -15,6 +25,10 @@ interface UpdateMemberInput {
   functions?: string[]
   canCreateAccountUsers?: boolean
   canManageAccountTeams?: boolean
+  canTransferAccountLeads?: boolean
+  canViewAllTeams?: boolean
+  teamId?: string
+  accountMasterId?: string
 }
 
 function createSupabaseAdmin() {
@@ -93,12 +107,21 @@ export class BackofficeMemberUseCase {
         }
       }
 
-      if (data.role !== undefined) payload.role = data.role
-      if (data.functions !== undefined) payload.functions = data.functions
-      if (data.canCreateAccountUsers !== undefined) payload.canCreateAccountUsers = data.canCreateAccountUsers
-      if (data.canManageAccountTeams !== undefined) payload.canManageAccountTeams = data.canManageAccountTeams
+      const hasTeamAccessUpdate =
+        data.role !== undefined ||
+        data.functions !== undefined ||
+        data.canCreateAccountUsers !== undefined ||
+        data.canManageAccountTeams !== undefined ||
+        data.canTransferAccountLeads !== undefined ||
+        data.canViewAllTeams !== undefined
 
-      if (Object.keys(payload).length === 0) {
+      if (hasTeamAccessUpdate && data.teamId === undefined && data.accountMasterId === undefined) {
+        return new Output(false, [], ["teamId é obrigatório para alterar permissões do membro"], null)
+      }
+
+      const profilePayloadEmpty = Object.keys(payload).length === 0
+
+      if (profilePayloadEmpty && !hasTeamAccessUpdate) {
         return new Output(true, ["Nenhuma alteração necessária"], [], { id: memberId })
       }
 
@@ -107,8 +130,53 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Não foi possível atualizar o membro"], null)
       }
 
-      if (data.role !== undefined && data.functions !== undefined) {
-        await this.repository.updateAllTeamMembershipsRoleAndFunctions(memberId, data.role, data.functions)
+      if (hasTeamAccessUpdate) {
+        const role = data.role
+        const accessPayload: {
+          role?: string
+          functions?: string[]
+          canCreateAccountUsers?: boolean
+          canManageAccountTeams?: boolean
+          canTransferAccountLeads?: boolean
+          canViewAllTeams?: boolean
+        } = {}
+
+        if (role !== undefined) accessPayload.role = role
+        if (data.functions !== undefined) accessPayload.functions = data.functions
+
+        if (role !== undefined || data.canCreateAccountUsers !== undefined) {
+          accessPayload.canCreateAccountUsers =
+            role === "manager" || (role === undefined && data.canCreateAccountUsers !== undefined)
+              ? data.canCreateAccountUsers
+              : false
+        }
+
+        if (role !== undefined || data.canManageAccountTeams !== undefined) {
+          accessPayload.canManageAccountTeams =
+            role === "manager" || (role === undefined && data.canManageAccountTeams !== undefined)
+              ? data.canManageAccountTeams
+              : false
+        }
+
+        if (role !== undefined || data.canTransferAccountLeads !== undefined) {
+          accessPayload.canTransferAccountLeads =
+            role === "manager" || role === "backoffice" || (role === undefined && data.canTransferAccountLeads !== undefined)
+              ? data.canTransferAccountLeads
+              : false
+        }
+
+        if (role !== undefined || data.canViewAllTeams !== undefined) {
+          accessPayload.canViewAllTeams =
+            role === "manager" || role === "backoffice" || (role === undefined && data.canViewAllTeams !== undefined)
+              ? data.canViewAllTeams
+              : false
+        }
+
+        if (data.accountMasterId) {
+          await this.repository.updateAccountMemberAccess(memberId, data.accountMasterId, accessPayload)
+        } else {
+          await this.repository.updateTeamMemberAccess(memberId, data.teamId!, accessPayload)
+        }
       }
 
       if (emailChanged && member.supabaseId) {
@@ -217,6 +285,10 @@ export class BackofficeMemberUseCase {
 
       await this.repository.deleteMemberCascade(memberId)
 
+      if (member.managerId) {
+        await memberProBillingUseCase.syncBillingAfterUsageChange(member.managerId, "remove_user")
+      }
+
       if (member.supabaseId) {
         try {
           await supabase.auth.admin.deleteUser(member.supabaseId)
@@ -259,11 +331,133 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Membro não pertence a este time"], null)
       }
 
+      const team = await this.repository.findTeamById(teamId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado"], null)
+      }
+
       await this.repository.deleteTeamMembership(teamId, memberId)
+
+      await memberProBillingUseCase.syncBillingAfterUsageChange(team.masterId, "remove_member")
+
       return new Output(true, ["Membro removido do time"], [], { teamId, memberId })
     } catch (error) {
       console.error("[BackofficeMemberUseCase][removeFromTeam]", error)
       return new Output(false, [], ["Erro ao remover membro do time"], null)
+    }
+  }
+
+  async addToTeam(
+    memberId: string,
+    teamId: string,
+    explicitAccess?: TeamAccessInput
+  ): Promise<Output> {
+    try {
+      const member = await this.repository.findMemberForUpdate(memberId)
+      if (!member) {
+        return new Output(false, [], ["Membro não encontrado"], null)
+      }
+
+      const profileContext = await this.repository.findProfileRoleContext(memberId)
+      if (!profileContext) {
+        return new Output(false, [], ["Membro não encontrado"], null)
+      }
+
+      const team = await this.repository.findTeamById(teamId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado"], null)
+      }
+
+      const existingMembership = await this.repository.findTeamMembership(teamId, memberId)
+      if (existingMembership) {
+        return new Output(false, [], ["Usuário já pertence a este time"], null)
+      }
+
+      let role: string
+      let functions: string[]
+      let canCreateAccountUsers = false
+      let canManageAccountTeams = false
+      let canTransferAccountLeads = false
+      let canViewAllTeams = false
+
+      if (explicitAccess) {
+        role = explicitAccess.role
+        functions = explicitAccess.functions
+        canCreateAccountUsers = explicitAccess.canCreateAccountUsers
+        canManageAccountTeams = explicitAccess.canManageAccountTeams
+        canTransferAccountLeads = explicitAccess.canTransferAccountLeads
+        canViewAllTeams = explicitAccess.canViewAllTeams
+      } else if (profileContext.isMaster && team.masterId === memberId) {
+        role = "manager"
+        functions = []
+      } else {
+        const template = await this.repository.findAccountMembershipTemplate(memberId, team.masterId)
+        if (template) {
+          role = template.role
+          functions = template.functions
+          canCreateAccountUsers = template.canCreateAccountUsers
+          canManageAccountTeams = template.canManageAccountTeams
+          canTransferAccountLeads = template.canTransferAccountLeads
+          canViewAllTeams = template.canViewAllTeams
+        } else if (profileContext.isMaster) {
+          role = "operator"
+          functions = profileContext.functions
+        } else {
+          role = profileContext.role === "backoffice" ? "backoffice" : profileContext.role
+          functions = profileContext.functions
+        }
+      }
+
+      const teamMember = await this.repository.createTeamMembership({
+        teamId,
+        profileId: memberId,
+        role,
+        functions,
+        canCreateAccountUsers: role === "manager" && canCreateAccountUsers,
+        canManageAccountTeams: role === "manager" && canManageAccountTeams,
+        canTransferAccountLeads:
+          (role === "manager" || role === "backoffice") && canTransferAccountLeads,
+        canViewAllTeams: (role === "manager" || role === "backoffice") && canViewAllTeams,
+      })
+
+      console.info("[BackofficeMemberUseCase][addToTeam] Membro adicionado ao time:", teamId, memberId)
+      return new Output(true, ["Membro adicionado ao time com sucesso"], [], {
+        teamMemberId: teamMember.id,
+        teamId,
+        memberId,
+      })
+    } catch (error) {
+      console.error("[BackofficeMemberUseCase][addToTeam]", error)
+      return new Output(false, [], ["Erro ao adicionar membro ao time"], null)
+    }
+  }
+
+  async listExternalTeamMemberships(
+    memberId: string,
+    accountMasterId: string
+  ): Promise<Output> {
+    try {
+      const memberships = await this.repository.findExternalTeamMemberships(
+        memberId,
+        accountMasterId
+      )
+      return new Output(true, [], [], { items: memberships })
+    } catch (error) {
+      console.error("[BackofficeMemberUseCase][listExternalTeamMemberships]", error)
+      return new Output(false, [], ["Erro ao listar times externos"], null)
+    }
+  }
+
+  async listAccountTeamMemberships(
+    memberId: string,
+    accountMasterId: string
+  ): Promise<Output> {
+    try {
+      const items = await this.repository.findAccountTeamMemberships(memberId, accountMasterId)
+      return new Output(true, [], [], { items })
+    } catch (error) {
+      console.error("[BackofficeMemberUseCase][listAccountTeamMemberships]", error)
+      return new Output(false, [], ["Erro ao listar times da conta"], null)
     }
   }
 }

@@ -349,8 +349,10 @@ bun run governance:sync
 # Scaffold nova feature
 bun run scaffold:feature -- --name <feature-name>
 
-# Prisma
-bun run prisma:migrate
+# Prisma / Supabase migrations
+bun run db:migrate:from-prisma -- <name>   # schema.prisma → SQL em supabase/migrations/
+bun run db:migrate:new <name>              # SQL manual (RLS, seeds, triggers)
+bun run db:migrate:reset:local
 bun run prisma:seed
 bunx prisma studio
 ```
@@ -415,6 +417,43 @@ NEXT_PUBLIC_APP_URL=
 - Exceções legadas: `.governance/ai-governance.config.json`
 - CI falha se `bun run governance:check` falhar
 - Todo PR deve passar pelo checklist em `agents.md`
+
+---
+
+## Módulo Radar
+
+O módulo Radar é um add-on (`FEATURE_SLUGS.RADAR = "radar"`) que unifica dados de clientes vindos do CRM, carteira, listas de contatos de e-mail e WhatsApp em perfis team-scoped para campanhas de e-mail.
+
+### Modelos Prisma
+
+- `RadarProfile` — perfil unificado por cliente dentro de um time
+- `RadarIdentity` — identidades normalizadas (lead_id, email, phone, document, whatsapp)
+- `RadarSourceLink` — vínculos de origem (crm_lead, portfolio, email_contact, whatsapp_contact)
+- `RadarEvent` — timeline de eventos por canal (email.*, whatsapp.*)
+- `RadarChannelConsent` — consentimento por canal (email, whatsapp)
+
+Tabelas físicas: `corretor_studio_radar_profiles`, `corretor_studio_radar_identities`, etc.
+
+### Paths canônicos
+
+- API: `app/api/v1/radar/**` (sync, profiles, segments, available-fields, interpolation-preview)
+- Repositório: `app/api/infra/data/repositories/radar/RadarRepository.ts`
+- Service: `app/api/services/radar/RadarService.ts`
+- UseCase: `app/api/useCases/radar/RadarUseCase.ts`
+- Lib: `lib/radar/**` (normalization, segment-config, segment-rules, field-catalog, resolve-field-value, enrich-campaign-recipients, etc.)
+- Frontend: `app/[supabaseId]/radar/**` (RadarContainer, RadarContext, useRadarHook, RadarService)
+
+### RBAC
+
+- Autenticação via `getRadarAccess()` (`app/api/v1/radar/utils/getRadarAccess.ts`)
+- Exige `isManagerOrMaster` + add-on `FEATURE_SLUGS.RADAR` ativo para o time
+- Validação local: `teamHasRadarFeature(teamId)` em `lib/radar/team-has-radar-feature.ts`
+
+### Limites de disparo
+
+- **2.000 perfis/dia** por time via segmento Radar
+- **≤ 2.000 por campanha** de segmento Radar (campanhas maiores devem usar lista de contatos com sub-campanhas)
+- Constante: `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB` em `lib/email/campaign-limits.ts`
 
 ---
 

@@ -4,17 +4,13 @@ import { useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { ImportDialogHeader } from "@/components/import/ImportDialogHeader";
+import { ImportProgressSummary } from "@/components/import/ImportProgressSummary";
+import { ImportRequiredFooterHint } from "@/components/import/ImportRequiredFooterHint";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
 import {
+  PORTFOLIO_IMPORT_FIELDS,
   PORTFOLIO_IMPORT_MAX_ROWS,
   type PortfolioImportFieldKey,
   type PortfolioImportRow,
@@ -73,6 +69,10 @@ export function PortfolioImportDialog({
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<CarteiraImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
 
   const { members: closerMembers } = useTeamClosers(supabaseId, teamId ?? undefined);
 
@@ -87,6 +87,7 @@ export function PortfolioImportDialog({
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
+    setImportProgress(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -175,14 +176,22 @@ export function PortfolioImportDialog({
     }
 
     setIsSubmitting(true);
+    setImportProgress({ processed: 0, total: mappedRows.length });
     try {
-      const importResult = await carteiraImportService.importMappedClients(mappedRows, {
-        supabaseId,
-        teamId,
-        closerId,
-        source,
-      });
+      const importResult = await carteiraImportService.importMappedClientsInBatches(
+        mappedRows,
+        {
+          supabaseId,
+          teamId,
+          closerId,
+          source,
+        },
+        {
+          onProgress: (processed, total) => setImportProgress({ processed, total }),
+        }
+      );
       setResult(importResult);
+      setImportProgress(null);
       toast.success(`Importação concluída. Criados: ${importResult.created}.`);
       if (onImportComplete) {
         await onImportComplete();
@@ -190,31 +199,42 @@ export function PortfolioImportDialog({
     } catch (error) {
       console.error("Erro ao importar clientes:", error);
       toast.error(error instanceof Error ? error.message : "Erro ao importar clientes");
+      setImportProgress(null);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const requiredFieldsMapped =
-    Boolean(mapping.name) &&
-    Boolean(mapping.phone) &&
-    Boolean(mapping.operadora) &&
-    Boolean(mapping.amount) &&
-    Boolean(mapping.startDateAt);
+  const requiredFieldKeys: PortfolioImportFieldKey[] = [
+    "name",
+    "phone",
+    "operadora",
+    "amount",
+    "startDateAt",
+  ];
+  const requiredPendingCount = requiredFieldKeys.filter((key) => !mapping[key]).length;
+  const requiredFieldsMapped = requiredPendingCount === 0;
+  const mappedFieldCount = Object.keys(mapping).length;
   const stepIndex = step === "upload" ? 1 : step === "mapping" ? 2 : 3;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            Importar clientes
-            <Badge variant="secondary">Etapa {stepIndex} de 3</Badge>
-          </DialogTitle>
-          <DialogDescription>
-            {STEP_TITLES[step]} — {STEP_DESCRIPTIONS[step]}
-          </DialogDescription>
-        </DialogHeader>
+        <ImportDialogHeader
+          title="Importar clientes"
+          stepIndex={stepIndex}
+          totalSteps={3}
+          stepTitle={STEP_TITLES[step]}
+          stepDescription={STEP_DESCRIPTIONS[step]}
+        />
+
+        {step === "mapping" && (
+          <ImportProgressSummary
+            mapped={mappedFieldCount}
+            total={PORTFOLIO_IMPORT_FIELDS.length}
+            label="campos mapeados"
+          />
+        )}
 
         <div className="overflow-y-auto flex-1 pr-1">
           {step === "upload" && (
@@ -246,6 +266,7 @@ export function PortfolioImportDialog({
               source={source}
               onSourceChange={setSource}
               isSubmitting={isSubmitting}
+              importProgress={importProgress}
               result={result}
             />
           )}
@@ -259,13 +280,16 @@ export function PortfolioImportDialog({
           )}
           {step === "mapping" && (
             <>
-              <Button variant="ghost" onClick={resetState}>
+              <Button variant="ghost" onClick={resetState} className="sm:mr-auto">
                 <ArrowLeft className="mr-2 size-4" />
                 Trocar arquivo
               </Button>
-              <Button onClick={() => setStep("summary")} disabled={!requiredFieldsMapped}>
-                Continuar
-              </Button>
+              <div className="flex items-center gap-3">
+                <ImportRequiredFooterHint pendingCount={requiredPendingCount} />
+                <Button onClick={() => setStep("summary")} disabled={!requiredFieldsMapped}>
+                  Continuar
+                </Button>
+              </div>
             </>
           )}
           {step === "summary" && !result && (

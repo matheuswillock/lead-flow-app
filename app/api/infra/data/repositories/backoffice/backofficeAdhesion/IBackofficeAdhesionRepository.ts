@@ -41,6 +41,7 @@ export interface CreateBackofficeAdhesionInput {
   cpfCnpj?: string | null
   billingType?: string | null
   plan: BackofficeAdhesionPlan
+  productId?: string | null
   cycle: BackofficeAdhesionBillingCycle
   modules: string[]
   extraTeams: number
@@ -57,8 +58,11 @@ export interface CreateBackofficeAdhesionInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   createdByBackofficeUserId?: string | null
-  requestedUserTypeSlug?: "common" | "member_pro" | null
+  requestedUserTypeSlug?: "common" | "member_pro" | "associate" | "guest" | null
   requestedMemberProAccessExpiresAt?: Date | null
+  sponsorMasterId?: string | null
+  multiskillEnabled?: boolean
+  hasUnlimitedUsers?: boolean
   additionalUsersData?: unknown[]
   additionalTeamsData?: unknown[]
 }
@@ -68,6 +72,7 @@ export interface UpdateBackofficeAdhesionInput {
   phone?: string
   email?: string | null
   cpfCnpj?: string | null
+  productId?: string | null
   cycle?: BackofficeAdhesionBillingCycle
   modules?: string[]
   extraTeams?: number
@@ -85,6 +90,7 @@ export interface UpdateBackofficeAdhesionInput {
   tokenPreview?: string
   tokenPlain?: string | null
   expiresAt?: Date
+  hasUnlimitedUsers?: boolean
 }
 
 export interface UpdateBackofficeAdhesionCheckoutInput {
@@ -137,6 +143,10 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   complement?: string | null
   city?: string | null
   state?: string | null
+  hasPermanentSubscription?: boolean
+  hasUnlimitedUsers?: boolean
+  multiskillEnabled?: boolean
+  sponsorMasterId?: string | null
 }
 
 export interface ListBackofficeAdhesionsInput {
@@ -154,6 +164,7 @@ export interface ListBackofficeAdhesionsResult {
 export interface BackofficeAdhesionOptions {
   leads: BackofficeAdhesionLeadRelation[]
   users: BackofficeAdhesionUserRelation[]
+  sponsorOptions: Array<{ id: string; fullName: string | null; email: string | null }>
 }
 
 export interface IBackofficeAdhesionRepository {
@@ -196,8 +207,6 @@ export interface IBackofficeAdhesionRepository {
       subscriptionEndDate: Date
       subscriptionCycle: string
       subscriptionNextDueDate: Date
-      canCreateAccountUsers: boolean
-      canManageAccountTeams: boolean
     }
   ): Promise<void>
   upsertProfileSubscription(data: {

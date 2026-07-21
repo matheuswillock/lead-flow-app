@@ -1,15 +1,41 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { AlertCircle } from "lucide-react";
 import { ConnectingDots } from "@/components/ui/connecting-dots";
+import { isBackofficeRole } from "@/lib/roles";
+import { isValidBackofficeEmail } from "@/lib/backoffice/email-domain";
 
 type Status = "connecting" | "error";
 
 const REDIRECT_SECONDS = 5;
+
+function getAuthCallbackLockKey(authCode: string | null) {
+  return authCode ? `authCallbackFinalized:${authCode}` : "authCallbackFinalized:session";
+}
+
+function persistGoogleConnection(
+  supabaseId: string,
+  payload: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: string;
+    email?: string;
+    source: "login" | "account";
+  }
+) {
+  void fetch("/api/v1/google/connect", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-supabase-user-id": supabaseId,
+    },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
 
 function GoogleIcon() {
   return (
@@ -42,6 +68,7 @@ function GoogleIcon() {
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const finalizeStartedRef = useRef(false);
   const [status, setStatus] = useState<Status>("connecting");
   const [errorMessage, setErrorMessage] = useState("");
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
@@ -62,6 +89,15 @@ function AuthCallbackContent() {
   }, [redirectCountdown, router]);
 
   useEffect(() => {
+    const authCode = searchParams.get("code");
+    const lockKey = getAuthCallbackLockKey(authCode);
+
+    if (finalizeStartedRef.current || sessionStorage.getItem(lockKey) === "1") {
+      return;
+    }
+    finalizeStartedRef.current = true;
+    sessionStorage.setItem(lockKey, "1");
+
     const finalize = async () => {
       const supabase = createSupabaseBrowser();
       if (!supabase) {
@@ -94,7 +130,33 @@ function AuthCallbackContent() {
         return;
       }
 
-      const { data, error } = await supabase.auth.getSession();
+      const connectContextRaw = sessionStorage.getItem("googleConnectContext");
+      let connectContext: { source?: string; expectedSupabaseId?: string; next?: string } | null = null;
+      if (connectContextRaw) {
+        try {
+          connectContext = JSON.parse(connectContextRaw) as {
+            source?: string;
+            expectedSupabaseId?: string;
+            next?: string;
+          };
+        } catch {
+          sessionStorage.removeItem("googleConnectContext");
+        }
+      }
+
+      const authCode = searchParams.get("code");
+
+      let sessionResponse = await supabase.auth.getSession();
+      if ((sessionResponse.error || !sessionResponse.data.session?.user) && authCode) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
+        if (exchangeError) {
+          setError("Falha ao validar retorno do Google. Tente novamente.");
+          return;
+        }
+        sessionResponse = await supabase.auth.getSession();
+      }
+
+      const { data, error } = sessionResponse;
       if (error || !data.session?.user) {
         setError("Sessão inválida. Faça login novamente.");
         return;
@@ -104,23 +166,14 @@ function AuthCallbackContent() {
       const providerToken = session.provider_token;
       const refreshToken = session.provider_refresh_token;
       const supabaseId = session.user.id;
-      const next = searchParams.get("next") || "/crm";
-      const connectContextRaw = sessionStorage.getItem("googleConnectContext");
-      let connectContext: { source?: string; expectedSupabaseId?: string } | null = null;
-      if (connectContextRaw) {
-        try {
-          connectContext = JSON.parse(connectContextRaw) as {
-            source?: string;
-            expectedSupabaseId?: string;
-          };
-        } catch {
-          sessionStorage.removeItem("googleConnectContext");
-        }
-      }
+      const next = searchParams.get("next") || connectContext?.next || "/crm";
+      const isBackofficeSignInFlow =
+        next === "/backoffice" || connectContext?.source === "backoffice-sign-in";
       const isBackofficeAccountConnectFlow =
         next === "/backoffice/account" || connectContext?.source === "backoffice-account";
       const isAccountReconnectFlow =
         !isBackofficeAccountConnectFlow &&
+        !isBackofficeSignInFlow &&
         (next === "/account" || connectContext?.source === "account");
 
       if (
@@ -143,20 +196,88 @@ function AuthCallbackContent() {
         | undefined;
       const googleEmail = identityData?.email || session.user.email || undefined;
 
+      const connectPayload = {
+        accessToken: providerToken ?? "",
+        refreshToken: refreshToken || undefined,
+        expiresAt: session.expires_at
+          ? new Date(session.expires_at * 1000).toISOString()
+          : undefined,
+        email: googleEmail,
+      };
+
+      const isLoginFlow =
+        !isAccountReconnectFlow &&
+        !isBackofficeAccountConnectFlow &&
+        !isBackofficeSignInFlow;
+
+      if (isBackofficeSignInFlow) {
+        const sessionEmail = (googleEmail || session.user.email || "").toLowerCase();
+
+        if (!isValidBackofficeEmail(sessionEmail)) {
+          sessionStorage.removeItem("googleConnectContext");
+          await supabase.auth.signOut();
+          setError("Use uma conta Google @corretorstudio.com.br do time interno.");
+          setTimeout(() => router.replace("/backoffice/sign-in"), 2500);
+          return;
+        }
+
+        const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
+          cache: "no-store",
+        });
+
+        if (!profileResponse.ok) {
+          sessionStorage.removeItem("googleConnectContext");
+          await supabase.auth.signOut();
+          setError("Acesso negado. Esta área é restrita ao time interno.");
+          setTimeout(() => router.replace("/backoffice/sign-in"), 2500);
+          return;
+        }
+
+        const profilePayload = (await profileResponse.json()) as {
+          result?: { role?: string };
+        };
+        const profileRole = profilePayload.result?.role;
+
+        if (!isBackofficeRole(profileRole)) {
+          sessionStorage.removeItem("googleConnectContext");
+          await supabase.auth.signOut();
+          setError("Acesso negado. Esta área é restrita ao time interno.");
+          setTimeout(() => router.replace("/backoffice/sign-in"), 2500);
+          return;
+        }
+
+        sessionStorage.removeItem("googleConnectContext");
+        router.replace("/backoffice");
+        return;
+      }
+
+      if (isLoginFlow) {
+        if (providerToken) {
+          persistGoogleConnection(supabaseId, {
+            ...connectPayload,
+            source: "login",
+          });
+        }
+
+        sessionStorage.removeItem("googleConnectContext");
+        router.replace(`/${supabaseId}${next}`);
+        return;
+      }
+
+      if (!providerToken) {
+        setError("Token do Google não encontrado. Tente novamente.");
+        return;
+      }
+
       const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
         cache: "no-store",
       });
 
       if (profileResponse.status === 404) {
-        if (isAccountReconnectFlow || isBackofficeAccountConnectFlow) {
-          sessionStorage.removeItem("googleConnectContext");
-          setError(
-            "Não foi possível vincular a conta Google ao usuário atual. Tente novamente na tela de conta."
-          );
-          return;
-        }
-        setError("Conta não encontrada. Você será redirecionado em instantes...");
-        setTimeout(() => router.replace("/"), 5000);
+        sessionStorage.removeItem("googleConnectContext");
+        setError(
+          "Não foi possível vincular a conta Google ao usuário atual. Tente novamente na tela de conta."
+        );
         return;
       }
 
@@ -165,10 +286,10 @@ function AuthCallbackContent() {
         return;
       }
 
-      if (!providerToken) {
-        setError("Token do Google não encontrado. Tente novamente.");
-        return;
-      }
+      const profilePayload = (await profileResponse.json()) as {
+        result?: { role?: string };
+      };
+      const profileRole = profilePayload.result?.role;
 
       if (isBackofficeAccountConnectFlow) {
         const response = await fetch("/api/v1/backoffice/google/connect", {
@@ -180,9 +301,7 @@ function AuthCallbackContent() {
           body: JSON.stringify({
             accessToken: providerToken,
             refreshToken: refreshToken || undefined,
-            expiresAt: session.expires_at
-              ? new Date(session.expires_at * 1000).toISOString()
-              : undefined,
+            expiresAt: connectPayload.expiresAt,
             email: googleEmail,
           }),
         });
@@ -205,12 +324,8 @@ function AuthCallbackContent() {
           "x-supabase-user-id": supabaseId,
         },
         body: JSON.stringify({
-          accessToken: providerToken,
-          refreshToken: refreshToken || undefined,
-          expiresAt: session.expires_at
-            ? new Date(session.expires_at * 1000).toISOString()
-            : undefined,
-          email: googleEmail,
+          ...connectPayload,
+          source: "account",
         }),
       });
 
@@ -218,6 +333,17 @@ function AuthCallbackContent() {
         sessionStorage.removeItem("googleConnectContext");
         setError("Falha ao salvar integração do Google.");
         return;
+      }
+
+      if (isBackofficeRole(profileRole)) {
+        void fetch("/api/v1/backoffice/google/connect", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+          },
+          body: JSON.stringify(connectPayload),
+        }).catch(() => {});
       }
 
       sessionStorage.removeItem("googleConnectContext");

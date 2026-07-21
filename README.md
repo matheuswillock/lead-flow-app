@@ -1,5 +1,7 @@
 # Lead Flow App (Corretor Studio)
 
+[![CI (develop -> version -> preview -> PR main)](https://github.com/matheuswillock/lead-flow-app/actions/workflows/ci-develop.yml/badge.svg)](https://github.com/matheuswillock/lead-flow-app/actions/workflows/ci-develop.yml)
+
 Sistema de gestao de leads para corretores de planos de saude, com operacao em Kanban, pipeline de vendas, gerenciamento de equipe e fluxo de assinaturas/pagamentos.
 
 ## O que e o projeto
@@ -94,6 +96,15 @@ bun run dev
 ```
 
 Acesse `http://localhost:3000`.
+
+Por padrao, `bun dev` sobe apenas o App + Supabase local e clona a base remota
+se `auth.users` estiver vazio. Stacks pesadas sao opcionais no dev local:
+
+```bash
+bun dev -- n8n         # App + Supabase + N8N
+bun dev -- evolution   # App + Supabase + Evolution API
+bun dev -- total       # App + Supabase + N8N + Evolution API
+```
 
 8. (Opcional) Para testar webhook local do Asaas:
 
@@ -200,6 +211,9 @@ Conexao: `postgresql://postgres:postgres@localhost:5433/leadflow_dev`
 ```bash
 # Desenvolvimento
 bun run dev
+bun dev -- n8n
+bun dev -- evolution
+bun dev -- total
 bun run build
 bun run start
 

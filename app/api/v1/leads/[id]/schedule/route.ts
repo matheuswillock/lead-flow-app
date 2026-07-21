@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/app/api/infra/data/prisma";
@@ -7,6 +9,15 @@ import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { isPreScheduleSlotAvailable } from "@/app/api/services/preSchedule/PreScheduleSlotService";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+
+async function getCachedLeadSchedule(leadId: string) {
+  "use cache";
+  cacheTag(cacheTags.leadSchedules(leadId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  return leadScheduleRepository.findByLeadId(leadId);
+}
 
 const scheduleSchema = z.object({
   date: z.string().datetime().optional(),
@@ -86,13 +97,101 @@ export async function POST(
       return NextResponse.json(output, { status: 404 });
     }
 
+    const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
+
+    if (lead.isTransfer === true) {
+      if (!date) {
+        const output = new Output(false, [], ["Data do pré-agendamento é obrigatória."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      const meetingDate = new Date(date);
+      if (Number.isNaN(meetingDate.getTime())) {
+        const output = new Output(false, [], ["Data do pré-agendamento inválida."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      if (lead.teamId) {
+        const slotCheck = await isPreScheduleSlotAvailable(
+          lead.teamId,
+          meetingDate,
+          undefined,
+          leadId
+        );
+        if (!slotCheck.available) {
+          const output = new Output(false, [], ["Este horário de pré-agendamento já está lotado."], null);
+          return NextResponse.json(output, { status: 400 });
+        }
+      }
+
+      const resolvedMeetingTitle = meetingTitle?.trim() || `Estudo Plano de Saúde: ${lead.name}`;
+      const resolvedMeetingType =
+        meetingType ??
+        ((lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
+          ? lead.meetingType
+          : "online");
+
+      const [preSchedule] = await prisma.$transaction([
+        prisma.leadsSchedule.upsert({
+          where: { leadId },
+          create: {
+            leadId,
+            date: meetingDate,
+            meetingTitle: resolvedMeetingTitle,
+            notes,
+            meetingLink: null,
+            meetingType: resolvedMeetingType,
+            extraGuests: extraGuests ?? [],
+            publicShareTokenHash: null,
+            publicShareExpiresAt: null,
+          },
+          update: {
+            date: meetingDate,
+            meetingTitle: resolvedMeetingTitle,
+            notes,
+            meetingLink: null,
+            meetingType: resolvedMeetingType,
+            extraGuests: extraGuests ?? [],
+            publicShareTokenHash: null,
+            publicShareExpiresAt: null,
+          },
+        }),
+        prisma.lead.update({
+          where: { id: leadId },
+          data: {
+            meetingDate,
+            meetingTitle: resolvedMeetingTitle,
+            meetingNotes: notes || null,
+            meetingLink: null,
+            meetingType: resolvedMeetingType,
+          },
+        }),
+      ]);
+
+      invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
+      const output = new Output(true, ["Pré-agendamento salvo com sucesso"], [], {
+        ...preSchedule,
+        status: lead.status,
+      });
+      return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
+    }
+
     const resolvedCloserId = closerId || lead.closerId;
     if (!resolvedCloserId) {
       const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
       return NextResponse.json(output, { status: 400 });
     }
 
-    const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
+    if (!lead.status) {
+      const output = new Output(
+        false,
+        [],
+        ["Finalize o lead antes de agendar uma reunião completa."],
+        null
+      );
+      return NextResponse.json(output, { status: 400 });
+    }
+
     const result = await leadScheduleService.createSchedule({
       leadId: lead.id,
       leadName: lead.name,
@@ -102,6 +201,7 @@ export async function POST(
       leadAssignedTo: lead.assignedTo ?? null,
       leadAssigneeEmail: lead.assignee?.email ?? null,
       leadCurrentCloserId: lead.closerId ?? null,
+      leadMeetingLink: lead.meetingLink ?? null,
       leadCode: lead.leadCode ?? null,
       closerId: resolvedCloserId,
       teamId: teamAccess.access.teamId,
@@ -127,6 +227,7 @@ export async function POST(
     invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(result, { status: existingSchedule ? 200 : 201 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadScheduleRoute][POST] Erro ao criar agendamento:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
@@ -163,11 +264,12 @@ export async function GET(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const schedules = await leadScheduleRepository.findByLeadId(leadId);
+    const schedules = await getCachedLeadSchedule(leadId);
 
     const output = new Output(true, [], [], schedules);
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[LeadScheduleRoute][GET] Erro ao buscar agendamentos:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

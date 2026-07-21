@@ -14,10 +14,14 @@ interface ManagerTeamsContainerProps {
   teams: TeamSummary[];
   activeTeamId: string | null;
   switchingTeamId: string | null;
+  cancelingPendingTeamId: string | null;
+  settingDefaultTeamId: string | null;
   onSetActiveTeam: (teamId: string) => void;
+  onSetDefaultTeam: (teamId: string) => void;
   onManageTeam: (teamId: string, teamName: string) => void;
   onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
   onEditPendingPayment: (team: ManagerTeamTableRow) => void;
+  onCancelPendingTeam: (team: ManagerTeamTableRow) => void;
   onRefreshTeams: () => void;
   onOpenCreateTeam: () => void;
   canManageTeams: boolean;
@@ -29,10 +33,14 @@ export function ManagerTeamsContainer({
   teams,
   activeTeamId,
   switchingTeamId,
+  cancelingPendingTeamId,
+  settingDefaultTeamId,
   onSetActiveTeam,
+  onSetDefaultTeam,
   onManageTeam,
   onViewPendingCheckout,
   onEditPendingPayment,
+  onCancelPendingTeam,
   onRefreshTeams,
   onOpenCreateTeam,
   canManageTeams,
@@ -49,6 +57,9 @@ export function ManagerTeamsContainer({
     role: team.role,
     functions: team.functions ?? [],
     createdAt: team.membershipCreatedAt,
+    isAssociateAccount: team.isAssociateAccount ?? false,
+    associateAccountName: team.associateAccountName ?? undefined,
+    isPending: team.isPending ?? false,
     pendingPayment: team.pendingPayment ?? null,
   }));
   const pendingCount = tableData.filter((team) => {
@@ -56,14 +67,22 @@ export function ManagerTeamsContainer({
     return status === "PENDING" || status === "FAILED";
   }).length;
 
+  const ownAccountTeams = tableData.filter((team) => !team.isAssociateAccount && !team.isPending);
+  const ownAccountTeamCount = ownAccountTeams.length;
+
   const columns = createColumns({
     tz,
     activeTeamId,
     switchingTeamId,
+    cancelingPendingTeamId,
+    settingDefaultTeamId,
+    ownAccountTeamCount,
     onSetActiveTeam,
+    onSetDefaultTeam,
     onManageTeam,
     onViewPendingCheckout,
     onEditPendingPayment,
+    onCancelPendingTeam,
     canManageTeams,
   });
 
@@ -130,6 +149,7 @@ export function ManagerTeamsContainer({
             columns={columns}
             data={tableData}
             loading={loading}
+            getRowClassName={(row) => (row.isPending ? "opacity-50" : "")}
             toolbar={{
               search: { columnId: "name", placeholder: "Buscar por nome ou e-mail..." },
               selectFilters: [

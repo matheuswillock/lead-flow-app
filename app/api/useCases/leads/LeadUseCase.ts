@@ -1,3 +1,5 @@
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { ILeadUseCase } from "./ILeadUseCase";
 import type {
   LeadCreateOptions,
@@ -6,13 +8,17 @@ import type {
   UpdateLeadStatusTriggerInput,
 } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
+import type { LeadUpdateRepositoryInput, TransferToTeamSanitization } from "../../infra/data/repositories/lead/ILeadRepository";
+import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
-import { LeadStatus, ActivityType, InviteDispatchStatus, Prisma, TeamStatusRuleType } from "@prisma/client";
+import { LeadStatus, ActivityType, Prisma, TeamStatusRuleType } from "@prisma/client";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { TransferLeadBetweenTeamsRequest } from "../../v1/leads/DTO/requestToTransferLeadBetweenTeams";
+import type { TransferLeadBetweenTeamsResult } from "../../v1/leads/DTO/transferLeadBetweenTeamsResult";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
@@ -25,11 +31,35 @@ import { normalizeHealthPlanName } from "@/lib/healthPlans";
 import { getEmailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { isManagerLikeRole } from "@/lib/roles";
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { isLostStatus } from "@/lib/leadImport/normalizers";
+import { isPreScheduleSlotAvailable } from "../../services/preSchedule/PreScheduleSlotService";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import {
+  resolveTransferScheduleInput,
+  type ResolvedTransferSchedule,
+} from "./utils/resolveTransferSchedule";
+import { leadStatusTransitionFieldRequirementService } from "@/app/api/services/leadStatusTransitionFieldRequirement/LeadStatusTransitionFieldRequirementService";
+import { leadStatusTransitionGateEvaluatorService } from "@/app/api/services/leadStatusTransitionGate/LeadStatusTransitionGateEvaluatorService";
+import {
+  buildCurrentLeadInfo,
+  resolveMissingLeadFields,
+} from "@/lib/leadStatusTransitionFields";
+import { cnpjLookupService } from "@/app/api/services/cnpjLookup/CnpjLookupService";
+import { associateProposalUseCase } from "@/app/api/useCases/associateProposal/AssociateProposalUseCase";
+import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
+import { leadCustomFieldService } from "@/app/api/services/leadCustomField/LeadCustomFieldService";
+import {
+  mapLeadCustomFieldDefinitionToDTO,
+} from "@/app/api/infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
+import { leadCustomFieldRepository } from "@/app/api/infra/data/repositories/leadCustomField/LeadCustomFieldRepository";
+import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
+import { leadDuplicateCheckService } from "@/app/api/services/leadDuplicateCheck/LeadDuplicateCheckService";
+import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -49,14 +79,6 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 const getStatusLabel = (status: LeadStatus) => LEAD_STATUS_LABELS[status] ?? status;
-const SCHEDULED_INVITE_SUCCESS_STATUSES: InviteDispatchStatus[] = ["sent_google", "sent_resend"];
-const SALES_INFO_REQUIRED_TARGET_STATUSES: LeadStatus[] = [
-  LeadStatus.pending_documents,
-  LeadStatus.offerSubmission,
-  LeadStatus.dps_agreement,
-  LeadStatus.invoicePayment,
-  LeadStatus.contract_finalized,
-];
 
 type LeadStatusTransitionBlockerType =
   | "sales_info"
@@ -70,7 +92,34 @@ type LeadStatusTransitionBlockerType =
   | "validation_error"
   | "email_required"
   | "lead_info_required"
+  | "closer_required"
+  | "required_documents"
   | "none";
+
+const defaultLeadRepository = new LeadRepository();
+
+function serializeLeadForCache<T extends { currentValue?: unknown; ticket?: unknown }>(
+  lead: T | null
+): T | null {
+  if (!lead) {
+    return null;
+  }
+
+  return {
+    ...lead,
+    currentValue:
+      lead.currentValue != null ? Number(lead.currentValue as number | string) : null,
+    ticket: lead.ticket != null ? Number(lead.ticket as number | string) : null,
+  };
+}
+
+async function getCachedLeadById(leadId: string) {
+  "use cache";
+  cacheTag(cacheTags.lead(leadId));
+  cacheLife({ stale: 30, revalidate: 60 });
+  const lead = await defaultLeadRepository.findById(leadId);
+  return serializeLeadForCache(lead);
+}
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -97,7 +146,7 @@ export class LeadUseCase implements ILeadUseCase {
       return leadOutput;
     }
 
-    const hasMeetingData = !!(data.closerId && data.meetingDate);
+    const hasMeetingData = !data.isTransfer && !!(data.closerId && data.meetingDate);
     if (!hasMeetingData || !teamId) {
       return leadOutput;
     }
@@ -108,7 +157,15 @@ export class LeadUseCase implements ILeadUseCase {
         return leadOutput;
       }
 
-      const managerId = profileInfo.isMaster ? profileInfo.id : profileInfo.managerId;
+      const teamForSchedule = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { masterId: true },
+      });
+      if (!teamForSchedule) {
+        return leadOutput;
+      }
+
+      const managerId = teamForSchedule.masterId;
       const assigneeEmail = data.assignedTo
         ? (await prisma.profile.findUnique({
             where: { id: data.assignedTo },
@@ -239,24 +296,20 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      // O managerId do lead deve sempre apontar para o master
-      const managerId = profileInfo.isMaster ? profileInfo.id : profileInfo.managerId;
-      
-      if (!managerId) {
-        return new Output(false, [], ["Master não identificado"], null);
-      }
-
-      // Se for operator e não foi definido assignedTo, atribuir automaticamente ao próprio operator
-      let assignedTo = skipAutoAssign ? undefined : data.assignedTo;
-      if (!skipAutoAssign && profileInfo.role === 'operator' && !assignedTo) {
-        assignedTo = profileInfo.id;
-      }
-
-      const leadCode = await this.generateLeadCode(data.name);
-
       if (!teamId) {
         return new Output(false, [], ["Team ID é obrigatório para criar lead"], null);
       }
+
+      const teamRecord = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { masterId: true },
+      });
+
+      if (!teamRecord) {
+        return new Output(false, [], ["Time não encontrado"], null);
+      }
+
+      const managerId = teamRecord.masterId;
 
       if (typeof data.currentValue === "number" && data.currentValue > MAX_DECIMAL_VALUE) {
         return new Output(false, [], [`Valor atual deve ser menor que ${MAX_DECIMAL_LABEL}`], null);
@@ -289,6 +342,92 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      if (data.phone || data.email) {
+        const duplicateCandidates = await leadDuplicateCheckService.findCandidates(
+          {
+            profileId: profileInfo.id,
+            teamMember: {
+              role: profileInfo.role,
+              functions: [],
+            },
+          },
+          {
+            teamId,
+            phone: data.phone,
+            email: data.email,
+          }
+        );
+
+        if (duplicateCandidates.length > 0 && data.confirmDuplicate !== true) {
+          return new Output(
+            false,
+            [],
+            ["Possível lead duplicado neste time"],
+            {
+              requiresDuplicateConfirmation: true,
+              duplicateCandidates: duplicateCandidates.map((candidate) => ({
+                ...candidate,
+                createdAt: candidate.createdAt.toISOString(),
+              })),
+            }
+          );
+        }
+      }
+
+      const saveAsDraft = data.saveAsDraft === true;
+      const isTransferLead = data.isTransfer === true;
+      if (isTransferLead && !saveAsDraft) {
+        if (data.closerId) {
+          return new Output(
+            false,
+            [],
+            ["Não é possível atribuir closer em lead com transferência ativa na criação."],
+            null
+          );
+        }
+        if (data.status === LeadStatus.scheduled) {
+          return new Output(
+            false,
+            [],
+            ["Lead com transferência ativa não pode ser criado com status Agendado."],
+            null
+          );
+        }
+        if (!data.meetingDate) {
+          return new Output(
+            false,
+            [],
+            ["Selecione uma data para o pré-agendamento da transferência."],
+            null
+          );
+        }
+        const meetingDate = new Date(data.meetingDate);
+        const slotCheck = await isPreScheduleSlotAvailable(teamId, meetingDate);
+        if (!slotCheck.available) {
+          return new Output(false, [], ["Este horário de pré-agendamento já está lotado."], null);
+        }
+      }
+
+      const leadStatus = saveAsDraft
+        ? null
+        : isTransferLead
+          ? LeadStatus.new_opportunity
+          : data.status || LeadStatus.new_opportunity;
+
+      const leadCode = await this.generateLeadCode(data.name);
+
+      if (data.customFields !== undefined) {
+        const customFieldsValidation = await this.validateLeadCustomFieldsInput(teamId, data.customFields);
+        if (customFieldsValidation) {
+          return customFieldsValidation;
+        }
+      }
+
+      let assignedTo = skipAutoAssign ? undefined : data.assignedTo;
+      if (!skipAutoAssign && profileInfo.role === "operator" && !assignedTo) {
+        assignedTo = profileInfo.id;
+      }
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
         team: { connect: { id: teamId } },
@@ -297,6 +436,8 @@ export class LeadUseCase implements ILeadUseCase {
         email: data.email || null,
         phone: data.phone || null,
         cnpj: data.cnpj || null,
+        // Razão social é resolvida em background após a criação (ver enrichLeadRazaoSocial).
+        razaoSocial: null,
         age: data.age || null,
         currentHealthPlan: normalizedPlans.currentHealthPlan,
         currentValue: data.currentValue || null,
@@ -308,7 +449,8 @@ export class LeadUseCase implements ILeadUseCase {
         meetingLink: data.meetingLink || null,
         meetingHeald: data.meetingHeald || null,
         notes: data.notes || null,
-        status: data.status || LeadStatus.new_opportunity,
+        status: leadStatus,
+        isTransfer: isTransferLead,
         // Novos campos de venda (sempre null na criação)
         ticket: data.ticket || null,
         contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
@@ -326,23 +468,75 @@ export class LeadUseCase implements ILeadUseCase {
         ...(assignedTo && {
           assignee: { connect: { id: assignedTo } }
         }),
-        ...(data.closerId && {
+        ...(data.closerId && !isTransferLead && {
           closer: { connect: { id: data.closerId } }
         }),
         activities: {
-          create: {
-            type: ActivityType.note,
-            body: creationActivityContext?.body || "Lead criado no sistema",
-            payload:
-              creationActivityContext?.payload === null
-                ? Prisma.JsonNull
-                : (creationActivityContext?.payload ?? undefined),
-            author: { connect: { id: profileInfo.id } }
-          }
-        }
+          create: creationActivityContext?.authorAsStudio
+            ? buildStudioActivityData({
+                type: ActivityType.note,
+                body: saveAsDraft
+                  ? "Rascunho criado"
+                  : creationActivityContext?.body || "Lead criado no sistema",
+                payload:
+                  creationActivityContext?.payload === null
+                    ? null
+                    : (creationActivityContext?.payload ?? undefined),
+              })
+            : {
+                type: ActivityType.note,
+                body: saveAsDraft
+                  ? "Rascunho criado"
+                  : creationActivityContext?.body || "Lead criado no sistema",
+                payload:
+                  creationActivityContext?.payload === null
+                    ? Prisma.JsonNull
+                    : (creationActivityContext?.payload ?? undefined),
+                author: { connect: { id: profileInfo.id } },
+              },
+        },
       });
 
-      return new Output(true, ["Lead criado com sucesso"], [], this.transformToDTO(lead));
+      if (lead.isTransfer === true && lead.meetingDate && lead.status !== null) {
+        await this.ensureTransferPreSchedule(lead);
+      }
+
+      if (lead.isTransfer === true && lead.status !== null) {
+        this.handleTransferActivationAlert(lead).catch((err) =>
+          console.error("[LeadUseCase][handleTransferActivationAlert] Background error:", err)
+        );
+      }
+
+      if (assignedTo) {
+        this.enqueueLeadAssignedPush(
+          { id: lead.id, leadCode: lead.leadCode ?? null, name: lead.name },
+          assignedTo,
+        );
+      }
+
+      if (lead.status !== null) {
+        teamAutomationDispatcherService
+          .dispatch({
+            type: "lead_created",
+            teamId,
+            leadId: lead.id,
+          })
+          .catch(console.error);
+      }
+
+      if (data.customFields !== undefined) {
+        await leadCustomFieldRepository.upsertValuesForLead(
+          lead.id,
+          await this.buildCustomFieldUpsertEntries(teamId, data.customFields)
+        );
+      }
+
+      return new Output(
+        true,
+        ["Lead criado com sucesso"],
+        [],
+        await this.attachCustomFieldsToDto(lead.id, this.transformToDTO(lead))
+      );
     } catch (error) {
       console.error("Erro ao criar lead:", error);
       
@@ -397,21 +591,26 @@ export class LeadUseCase implements ILeadUseCase {
     return `${firstLetter}${fallbackDigits}${lastLetter}`;
   }
 
-  async getLeadById(supabaseId: string, id: string): Promise<Output> {
+  async getLeadById(supabaseId: string, id: string, resolvedProfileId?: string): Promise<Output> {
     try {
-      const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
-      
-      if (!profileInfo) {
-        return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+      // Quando o caller já resolveu o profileId (ex.: rota de details), evita
+      // repetir o profile.findUnique via ProfileUseCase.
+      let profileId = resolvedProfileId;
+      if (!profileId) {
+        const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
+        if (!profileInfo) {
+          return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+        }
+        profileId = profileInfo.id;
       }
 
-      const lead = await this.leadRepository.findById(id);
-      
+      const lead = await getCachedLeadById(id);
+
       if (!lead) {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
-      return new Output(true, [], [], this.transformToDTO(lead, profileInfo.id));
+      return new Output(true, [], [], await this.attachCustomFieldsToDto(id, this.transformToDTO(lead, profileId)));
     } catch (error) {
       console.error("Erro ao buscar lead:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
@@ -428,6 +627,7 @@ export class LeadUseCase implements ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<Output> {
     try {
@@ -462,6 +662,59 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
+  async getAllLeadsByUserRoleWithCtx(
+    access: TeamAccess,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+      onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
+    }
+  ): Promise<Output> {
+    try {
+      const teamId = access.teamId;
+      const teamRole = access.teamMember.role;
+      let leads: Awaited<ReturnType<ILeadRepository["findAllByTeamId"]>>["leads"] = [];
+
+      if (isManagerLikeRole(teamRole)) {
+        const result = await this.leadRepository.findAllByTeamId(teamId, {
+          status: options?.status,
+          assignedTo: options?.assignedTo,
+          search: options?.search,
+          startDate: options?.startDate,
+          endDate: options?.endDate,
+          onlyTransfer: options?.onlyTransfer,
+          calendarWindowStart: options?.calendarWindowStart,
+          calendarWindowEnd: options?.calendarWindowEnd,
+        });
+        leads = result.leads;
+      } else if (teamRole === "operator") {
+        const result = await this.leadRepository.findAllByOperatorIdInTeam(access.profileId, teamId, {
+          status: options?.status,
+          assignedTo: options?.assignedTo,
+          search: options?.search,
+          startDate: options?.startDate,
+          endDate: options?.endDate,
+          onlyTransfer: options?.onlyTransfer,
+          calendarWindowStart: options?.calendarWindowStart,
+          calendarWindowEnd: options?.calendarWindowEnd,
+        });
+        leads = result.leads;
+      } else {
+        return new Output(false, [], ["Role inválido. Use 'manager', 'backoffice' ou 'operator'"], null);
+      }
+
+      return new Output(true, [], [], leads.map((lead) => this.transformToDTO(lead)));
+    } catch (error) {
+      console.error("[LeadUseCase][getAllLeadsByUserRoleWithCtx] Erro ao buscar leads:", error);
+      return new Output(false, [], ["Erro interno do servidor"], null);
+    }
+  }
+
   async getAllLeadsByUserRole(
     supabaseId: string,
     options?: {
@@ -470,6 +723,9 @@ export class LeadUseCase implements ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
       role: string;
       teamId?: string;
     }
@@ -514,6 +770,9 @@ export class LeadUseCase implements ILeadUseCase {
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
+          onlyTransfer: options.onlyTransfer,
+          calendarWindowStart: options.calendarWindowStart,
+          calendarWindowEnd: options.calendarWindowEnd,
         });
 
         leads = result.leads;
@@ -524,6 +783,9 @@ export class LeadUseCase implements ILeadUseCase {
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
+          onlyTransfer: options.onlyTransfer,
+          calendarWindowStart: options.calendarWindowStart,
+          calendarWindowEnd: options.calendarWindowEnd,
         });
 
         leads = result.leads;
@@ -549,15 +811,30 @@ export class LeadUseCase implements ILeadUseCase {
       const actorLabel = profileInfo.fullName || profileInfo.email || "Usuário";
 
       const shouldTrackAssignment = data.assignedTo !== undefined;
-      const shouldTrackCloser = data.closerId !== undefined;
       const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
+      const shouldTrackMeetingPresence = data.meetingPresenceConfirmed !== undefined;
       const shouldTrackStatus = data.status !== undefined;
       const shouldCheckCnpj = data.cnpj !== undefined && !!data.cnpj;
-      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus || shouldCheckCnpj;
+      const shouldTrackTransfer = data.isTransfer === true;
+      const shouldTrackChanges =
+        shouldTrackAssignment ||
+        data.closerId !== undefined ||
+        shouldTrackMeetingHeald ||
+        shouldTrackMeetingPresence ||
+        shouldTrackStatus ||
+        shouldCheckCnpj ||
+        shouldTrackTransfer;
       const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
       if (shouldTrackChanges && !existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
+
+      const autoClearCloserOnTransfer =
+        data.isTransfer === true &&
+        !!existingLead &&
+        existingLead.isTransfer !== true &&
+        !!existingLead.closerId;
+      const shouldTrackCloser = data.closerId !== undefined || autoClearCloserOnTransfer;
 
       if (shouldCheckCnpj && existingLead) {
         const cnpjConflict = await prisma.lead.findFirst({
@@ -574,7 +851,97 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
-      const updateData: any = {};
+      if (existingLead) {
+        const effectiveIsTransfer =
+          data.isTransfer !== undefined ? data.isTransfer === true : existingLead.isTransfer === true;
+
+        if (effectiveIsTransfer) {
+          if (data.status === LeadStatus.scheduled) {
+            return new Output(
+              false,
+              [],
+              ["Lead com transferência ativa não pode ser marcado como Agendado. Conclua a transferência primeiro."],
+              null
+            );
+          }
+          if (data.closerId !== undefined && data.closerId) {
+            return new Output(
+              false,
+              [],
+              ["Não é possível atribuir closer enquanto a transferência estiver ativa. Conclua a transferência primeiro."],
+              null
+            );
+          }
+        }
+
+        if (data.isTransfer === true && existingLead.status === LeadStatus.scheduled) {
+          return new Output(
+            false,
+            [],
+            ["Não é possível ativar transferência em lead com status Agendado."],
+            null
+          );
+        }
+      }
+
+      const leadForDraft = await this.leadRepository.findById(id);
+      if (!leadForDraft) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      const saveAsDraft = data.saveAsDraft === true;
+      const isExistingDraft = leadForDraft.status === null;
+
+      if (!isExistingDraft && saveAsDraft) {
+        return new Output(false, [], ["Não é possível converter um lead ativo em rascunho."], null);
+      }
+
+      if (data.customFields !== undefined && leadForDraft.teamId) {
+        const customFieldsValidation = await this.validateLeadCustomFieldsInput(
+          leadForDraft.teamId,
+          data.customFields
+        );
+        if (customFieldsValidation) {
+          return customFieldsValidation;
+        }
+      }
+
+      const effectiveIsTransferForSave =
+        data.isTransfer !== undefined ? data.isTransfer === true : leadForDraft.isTransfer === true;
+      const resolvedMeetingDate =
+        data.meetingDate !== undefined
+          ? data.meetingDate
+            ? new Date(data.meetingDate)
+            : null
+          : leadForDraft.meetingDate;
+
+      if (!saveAsDraft && effectiveIsTransferForSave && !resolvedMeetingDate) {
+        return new Output(
+          false,
+          [],
+          ["Selecione uma data para o pré-agendamento da transferência."],
+          null
+        );
+      }
+
+      if (
+        !saveAsDraft &&
+        effectiveIsTransferForSave &&
+        resolvedMeetingDate &&
+        leadForDraft.teamId
+      ) {
+        const slotCheck = await isPreScheduleSlotAvailable(
+          leadForDraft.teamId,
+          resolvedMeetingDate,
+          undefined,
+          id
+        );
+        if (!slotCheck.available) {
+          return new Output(false, [], ["Este horário de pré-agendamento já está lotado."], null);
+        }
+      }
+
+      const updateData: LeadUpdateRepositoryInput = {};
       const shouldValidateHealthPlans = data.currentHealthPlan !== undefined || data.soldPlan !== undefined;
       const normalizedPlans = shouldValidateHealthPlans
         ? await this.validateAndNormalizeLeadPlans({
@@ -589,19 +956,90 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.name !== undefined) updateData.name = data.name;
       if (data.email !== undefined) updateData.email = data.email || null;
       if (data.phone !== undefined) updateData.phone = data.phone || null;
-      if (data.cnpj !== undefined) updateData.cnpj = data.cnpj || null;
+      if (data.cnpj !== undefined) {
+        const nextCnpj = data.cnpj?.trim() || null;
+        const previousCnpj = leadForDraft.cnpj?.trim() || null;
+        const previousRazaoSocial = leadForDraft.razaoSocial?.trim() || null;
+
+        updateData.cnpj = nextCnpj;
+        if (!nextCnpj) {
+          // CNPJ removido: não pode existir razão social sem CNPJ.
+          updateData.razaoSocial = null;
+        } else if (nextCnpj === previousCnpj && previousRazaoSocial) {
+          // CNPJ inalterado e já tínhamos razão social: reaproveita, sem custo de rede.
+          updateData.razaoSocial = previousRazaoSocial;
+        } else {
+          // CNPJ novo/alterado (ou ainda sem razão social resolvida): limpa até o
+          // enriquecimento em background terminar — nunca mostrar razão social
+          // que pertence ao CNPJ antigo.
+          updateData.razaoSocial = null;
+        }
+      }
       if (data.age !== undefined) updateData.age = data.age;
       if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = normalizedPlans?.currentHealthPlan || null;
       if (data.currentValue !== undefined) updateData.currentValue = data.currentValue;
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
-      if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+      if (data.meetingDate !== undefined) {
+        const nextMeetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+        const previousMeetingDate = existingLead?.meetingDate ?? null;
+        const meetingDateChanged =
+          (nextMeetingDate?.getTime() ?? null) !== (previousMeetingDate?.getTime() ?? null);
+        updateData.meetingDate = nextMeetingDate;
+        if (meetingDateChanged) {
+          updateData.meetingPresenceConfirmed = false;
+          updateData.meetingPresenceConfirmedAt = null;
+        }
+      }
       if (data.meetingTitle !== undefined) updateData.meetingTitle = data.meetingTitle || null;
       if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
+      if (data.meetingPresenceConfirmed !== undefined) {
+        if (data.meetingPresenceConfirmed === true) {
+          const effectiveStatus = data.status ?? existingLead?.status;
+          const effectiveIsTransfer =
+            data.isTransfer !== undefined ? data.isTransfer === true : existingLead?.isTransfer === true;
+          const effectiveMeetingDate =
+            data.meetingDate !== undefined
+              ? data.meetingDate
+                ? new Date(data.meetingDate)
+                : null
+              : existingLead?.meetingDate ?? null;
+
+          if (effectiveStatus !== LeadStatus.scheduled) {
+            return new Output(false, [], ["Só é possível confirmar agenda para leads agendados."], null);
+          }
+          if (effectiveIsTransfer) {
+            return new Output(false, [], ["Pré-agendamento de transferência não pode ser confirmado como agenda."], null);
+          }
+          if (!effectiveMeetingDate || effectiveMeetingDate.getTime() <= Date.now()) {
+            return new Output(false, [], ["Só é possível confirmar agenda antes do horário da reunião."], null);
+          }
+
+          updateData.meetingPresenceConfirmed = true;
+          updateData.meetingPresenceConfirmedAt = new Date();
+        } else {
+          updateData.meetingPresenceConfirmed = false;
+          updateData.meetingPresenceConfirmedAt = null;
+        }
+      }
+      if (data.isTransfer !== undefined) updateData.isTransfer = data.isTransfer === true;
+      if (autoClearCloserOnTransfer && data.closerId === undefined) {
+        updateData.closer = { disconnect: true };
+      }
       if (data.notes !== undefined) updateData.notes = data.notes || null;
-      if (data.status !== undefined) updateData.status = data.status;
+      if (data.status !== undefined && !isExistingDraft && !saveAsDraft) updateData.status = data.status;
+      if (isExistingDraft || data.saveAsDraft !== undefined) {
+        if (saveAsDraft) {
+          updateData.status = null;
+        } else if (isExistingDraft) {
+          updateData.status = effectiveIsTransferForSave
+            ? LeadStatus.new_opportunity
+            : data.status ?? LeadStatus.new_opportunity;
+          updateData.statusEnteredAt = new Date();
+        }
+      }
       // Novos campos de venda
       if (data.ticket !== undefined) updateData.ticket = data.ticket;
       if (data.contractDueDate !== undefined) updateData.contractDueDate = data.contractDueDate ? new Date(data.contractDueDate) : null;
@@ -663,10 +1101,23 @@ export class LeadUseCase implements ILeadUseCase {
         } catch (error) {
           console.warn("Não foi possível registrar atividade de atribuição:", error);
         }
+
+        if (data.assignedTo) {
+          this.enqueueLeadAssignedPush(
+            { id: lead.id, leadCode: lead.leadCode ?? null, name: lead.name },
+            data.assignedTo,
+          );
+        }
       }
 
-      if (shouldTrackCloser && existingLead?.closerId !== data.closerId) {
-        const closerLabel = data.closerId
+      const resolvedCloserId =
+        data.closerId !== undefined ? data.closerId ?? null : autoClearCloserOnTransfer ? null : undefined;
+      if (
+        shouldTrackCloser &&
+        resolvedCloserId !== undefined &&
+        existingLead?.closerId !== resolvedCloserId
+      ) {
+        const closerLabel = resolvedCloserId
           ? (leadWithRelations.closer?.fullName || leadWithRelations.closer?.email || "Closer")
           : "Nenhum closer";
         try {
@@ -677,7 +1128,7 @@ export class LeadUseCase implements ILeadUseCase {
               body: `Closer alterado para ${closerLabel}`,
               payload: {
                 previousCloserId: existingLead?.closerId ?? null,
-                closerId: data.closerId ?? null,
+                closerId: resolvedCloserId,
               },
               createdBy: profileInfo.id,
             },
@@ -710,17 +1161,64 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
-      if (shouldTrackStatus && existingLead && existingLead.status !== lead.status) {
+      if (
+        shouldTrackMeetingPresence &&
+        existingLead?.meetingPresenceConfirmed !== data.meetingPresenceConfirmed &&
+        data.meetingPresenceConfirmed === true
+      ) {
+        try {
+          await prisma.leadActivity.create({
+            data: {
+              leadId: id,
+              type: ActivityType.note,
+              body: "Presença confirmada com o lead para a reunião.",
+              payload: {
+                previousMeetingPresenceConfirmed: existingLead?.meetingPresenceConfirmed ?? false,
+                meetingPresenceConfirmed: true,
+              },
+              createdBy: profileInfo.id,
+            },
+          });
+        } catch (error) {
+          console.warn("Não foi possível registrar atividade de confirmação de agenda:", error);
+        }
+      }
+
+      if (
+        shouldTrackStatus &&
+        existingLead &&
+        existingLead.status &&
+        lead.status &&
+        existingLead.status !== lead.status
+      ) {
         await this.handleOfferSubmissionAlert({
           lead,
           previousStatus: existingLead.status,
           nextStatus: lead.status,
           actorProfileId: profileInfo.id,
           actorName: actorLabel,
-        });
+        }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
       }
 
-      return new Output(true, ["Lead atualizado com sucesso"], [], this.transformToDTO(lead));
+      if (data.isTransfer === true && existingLead && !existingLead.isTransfer) {
+        this.handleTransferActivationAlert(lead).catch((err) =>
+          console.error("[LeadUseCase][handleTransferActivationAlert] Background error:", err)
+        );
+      }
+
+      if (data.customFields !== undefined && leadForDraft.teamId) {
+        await leadCustomFieldRepository.upsertValuesForLead(
+          id,
+          await this.buildCustomFieldUpsertEntries(leadForDraft.teamId, data.customFields)
+        );
+      }
+
+      return new Output(
+        true,
+        ["Lead atualizado com sucesso"],
+        [],
+        await this.attachCustomFieldsToDto(id, this.transformToDTO(lead))
+      );
     } catch (error) {
       console.error("Erro ao atualizar lead:", error);
       return new Output(false, [], ["Erro interno do servidor ao atualizar lead"], null);
@@ -853,232 +1351,85 @@ export class LeadUseCase implements ILeadUseCase {
         ...extra,
       });
 
-      if (mode === "validate" && status === LeadStatus.contract_finalized) {
+      if (status === LeadStatus.contract_finalized) {
+        const earlyGate = await leadStatusTransitionGateEvaluatorService.evaluate({
+          lead: existingLead,
+          targetStatus: status,
+          trigger,
+          mode,
+          profileInfo,
+          createTransition,
+          sortOrderRange: { max: 5 },
+        });
+        if ("errorMessages" in earlyGate) {
+          return new Output(false, [], earlyGate.errorMessages, earlyGate.result);
+        }
+      }
+
+      const requiredTransitionFields =
+        await leadStatusTransitionFieldRequirementService.getRequiredFieldsByTargetStatus(status);
+      const missingLeadFields = resolveMissingLeadFields(
+        {
+          age: existingLead.age,
+          currentHealthPlan: existingLead.currentHealthPlan,
+          referenceHospital: existingLead.referenceHospital,
+          currentTreatment: existingLead.currentTreatment,
+          email: existingLead.email,
+          phone: existingLead.phone,
+          cnpj: existingLead.cnpj,
+        },
+        requiredTransitionFields
+      );
+
+      if (missingLeadFields.length > 0) {
+        const currentLeadInfo = buildCurrentLeadInfo({
+          age: existingLead.age,
+          currentHealthPlan: existingLead.currentHealthPlan,
+          referenceHospital: existingLead.referenceHospital,
+          currentTreatment: existingLead.currentTreatment,
+          email: existingLead.email,
+          phone: existingLead.phone,
+          cnpj: existingLead.cnpj,
+        });
         return new Output(
           false,
           [],
-          ["Para concluir como Negócio fechado, use o fluxo de fechamento de contrato."],
+          [
+            status === LeadStatus.pricingRequest
+              ? "Preencha as informações do lead para continuar para Cotação."
+              : "Preencha as informações do lead para continuar a mudança de status.",
+          ],
           {
-            requiresFinalizeContract: true,
+            missingLeadFields,
+            currentLeadInfo,
             sourceStatus: existingLead.status,
             targetStatus: status,
-            transition: createTransition(false, "finalize_contract"),
-          }
-        );
-      }
-
-      // R6: Gate — require lead qualification info before pricingRequest
-      if (status === LeadStatus.pricingRequest) {
-        const missingLeadFields: Array<"age" | "currentHealthPlan" | "referenceHospital" | "ongoingTreatment"> = [];
-        if (!existingLead.age?.trim()) missingLeadFields.push("age");
-        if (!existingLead.currentHealthPlan?.trim()) missingLeadFields.push("currentHealthPlan");
-        if (!existingLead.referenceHospital?.trim()) missingLeadFields.push("referenceHospital");
-        if (!existingLead.currentTreatment?.trim()) missingLeadFields.push("ongoingTreatment");
-
-        if (missingLeadFields.length > 0) {
-          const currentLeadInfo = {
-            age: existingLead.age || null,
-            currentHealthPlan: existingLead.currentHealthPlan || null,
-            referenceHospital: existingLead.referenceHospital || null,
-            ongoingTreatment: existingLead.currentTreatment || null,
-          };
-          return new Output(
-            false,
-            [],
-            ["Preencha as informações do lead para continuar para Cotação."],
-            {
+            transition: createTransition(false, "lead_info_required", {
               missingLeadFields,
               currentLeadInfo,
-              sourceStatus: existingLead.status,
-              targetStatus: status,
-              transition: createTransition(false, "lead_info_required", {
-                missingLeadFields,
-                currentLeadInfo,
-              }),
-            }
-          );
-        }
-      }
-
-      const requiresSalesInfoBeforeTransition =
-        existingLead.status === LeadStatus.offerNegotiation &&
-        SALES_INFO_REQUIRED_TARGET_STATUSES.includes(status);
-
-      if (requiresSalesInfoBeforeTransition) {
-        const missingFields: Array<"ticket" | "contractDueDate" | "soldPlan"> = [];
-        const hasValidTicket =
-          existingLead.ticket !== null &&
-          existingLead.ticket !== undefined &&
-          !Number.isNaN(Number(existingLead.ticket)) &&
-          Number(existingLead.ticket) > 0;
-
-        if (!hasValidTicket) {
-          missingFields.push("ticket");
-        }
-        if (!existingLead.contractDueDate) {
-          missingFields.push("contractDueDate");
-        }
-        if (!existingLead.soldPlan?.trim()) {
-          missingFields.push("soldPlan");
-        }
-
-        if (missingFields.length > 0) {
-          const currentSalesInfo = {
-            ticket: existingLead.ticket ? Number(existingLead.ticket) : null,
-            contractDueDate: existingLead.contractDueDate
-              ? existingLead.contractDueDate.toISOString()
-              : null,
-            soldPlan: existingLead.soldPlan || null,
-          };
-          return new Output(
-            false,
-            [],
-            [
-              "Preencha ticket, data de vigência e plano vendido para continuar a mudança de status.",
-            ],
-            {
-              requiresSalesInfo: true,
-              missingFields,
-              sourceStatus: existingLead.status,
-              targetStatus: status,
-              currentSalesInfo,
-              transition: createTransition(false, "sales_info", {
-                missingFields,
-                currentSalesInfo,
-              }),
-            }
-          );
-        }
-      }
-
-      const requiresFinalizeContractBeforeTransition =
-        existingLead.status === LeadStatus.offerSubmission &&
-        (status === LeadStatus.invoicePayment ||
-          status === LeadStatus.contract_finalized);
-
-      if (requiresFinalizeContractBeforeTransition) {
-        const finalizedContract = await leadFinalizedRepository.findLatestByLeadId(id);
-        if (!finalizedContract) {
-          return new Output(
-            false,
-            [],
-            ["Para mover de Proposta para este status, você precisa finalizar o contrato!"],
-            {
-              requiresFinalizeContract: true,
-              sourceStatus: LeadStatus.offerSubmission,
-              targetStatus: status,
-              transition: createTransition(false, "finalize_contract"),
-            }
-          );
-        }
+            }),
+          }
+        );
       }
 
       const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
       const transitionWarnings: string[] = [];
 
-      const isCurrentStatusScheduled = existingLead.status === LeadStatus.scheduled;
-      const isMeetingHeald = existingLead.meetingHeald === "yes";
+      const gateEvaluation = await leadStatusTransitionGateEvaluatorService.evaluate({
+        lead: existingLead,
+        targetStatus: status,
+        trigger,
+        mode,
+        profileInfo,
+        createTransition,
+        sortOrderRange: { min: 10 },
+      });
 
-      if (
-        isCurrentStatusScheduled &&
-        isMeetingHeald &&
-        (status === LeadStatus.new_opportunity || status === LeadStatus.no_show)
-      ) {
-        return new Output(
-          false,
-          [],
-          ["Lead com reunião realizada não pode voltar para Nova oportunidade ou No-show."],
-          {
-            transition: createTransition(false, "validation_error"),
-          }
-        );
+      if ("errorMessages" in gateEvaluation) {
+        return new Output(false, [], gateEvaluation.errorMessages, gateEvaluation.result);
       }
 
-      if (status === LeadStatus.no_show) {
-        if (!existingLead.meetingDate) {
-          return new Output(
-            false,
-            [],
-            ["Lead precisa ter um agendamento para marcar no-show."],
-            {
-              transition: createTransition(false, "validation_error"),
-            }
-          );
-        }
-        if (existingLead.meetingDate.getTime() > Date.now()) {
-          return new Output(
-            false,
-            [],
-            ["Não é possível marcar no-show antes do horário agendado."],
-            {
-              transition: createTransition(false, "validation_error"),
-            }
-          );
-        }
-      }
-
-      const isLeavingScheduled =
-        isCurrentStatusScheduled &&
-        status !== LeadStatus.scheduled &&
-        status !== LeadStatus.no_show &&
-        status !== LeadStatus.new_opportunity &&
-        status !== LeadStatus.opportunityLost;
-
-      if (isLeavingScheduled && existingLead.meetingHeald !== "yes") {
-        const team = existingLead.teamId
-          ? await prisma.team.findUnique({
-              where: { id: existingLead.teamId },
-              select: { masterId: true },
-            })
-          : null;
-        const isTeamMaster = !!(team && team.masterId === profileInfo.id);
-        const isAssignedCloser = !!existingLead.closerId && existingLead.closerId === profileInfo.id;
-        const canConfirmMeetingHeald = isTeamMaster || isAssignedCloser;
-
-        const allowNoShow =
-          !!existingLead.meetingDate && existingLead.meetingDate.getTime() <= Date.now();
-
-        const wantsMarkMeetingHeald = trigger?.meetingHeald === "yes";
-        if (!wantsMarkMeetingHeald) {
-          return new Output(
-            false,
-            [],
-            ["Reunião não marcada como realizada. Somente o master ou o closer do lead pode confirmar."],
-            {
-              requiresMeetingHeald: true,
-              canConfirmMeetingHeald,
-              allowNoShow,
-              meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
-              transition: createTransition(false, "meeting_heald", {
-                canConfirmMeetingHeald,
-                allowNoShow,
-                meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
-              }),
-            }
-          );
-        }
-
-        if (!canConfirmMeetingHeald) {
-          return new Output(
-            false,
-            [],
-            ["Acesso negado: somente o master ou o closer do lead pode marcar a reunião como realizada."],
-            {
-              requiresMeetingHeald: true,
-              canConfirmMeetingHeald: false,
-              allowNoShow,
-              meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
-              transition: createTransition(false, "meeting_heald", {
-                canConfirmMeetingHeald: false,
-                allowNoShow,
-                meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
-              }),
-            }
-          );
-        }
-
-        statusUpdateExtraData.meetingHeald = "yes";
-      }
+      Object.assign(statusUpdateExtraData, gateEvaluation.statusUpdatePatch);
 
       const activeStatusRules = existingLead.teamId
         ? await teamStatusRuleService.findActiveByTargetStatus(existingLead.teamId, status)
@@ -1153,45 +1504,6 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
-      if (status === LeadStatus.scheduled) {
-        const latestSchedule = await leadScheduleRepository.findLatestByLeadId(id);
-        const resolvedMeetingType = (latestSchedule?.meetingType || existingLead.meetingType || "online") as
-          | "online"
-          | "call"
-          | "whatsapp";
-        const resolvedMeetingLink = latestSchedule?.meetingLink?.trim() || existingLead.meetingLink?.trim() || "";
-        const inviteDispatchSuccessful = latestSchedule?.inviteDispatchStatus
-          ? SCHEDULED_INVITE_SUCCESS_STATUSES.includes(latestSchedule.inviteDispatchStatus)
-          : false;
-        const requiresOnlineArtifacts = resolvedMeetingType === "online";
-
-        if (requiresOnlineArtifacts && !existingLead.email?.trim()) {
-          return new Output(
-            false,
-            [],
-            ["Lead precisa de um email para agendamento online. Preencha o email do lead antes de agendar."],
-            {
-              transition: createTransition(false, "email_required"),
-            }
-          );
-        }
-
-        if (
-          !existingLead.meetingDate ||
-          !existingLead.closerId ||
-          (requiresOnlineArtifacts && (!resolvedMeetingLink || !inviteDispatchSuccessful))
-        ) {
-          return new Output(
-            false,
-            [],
-            ["Lead precisa de um agendamento válido antes de mudar para Agendado. Use o fluxo de agendamento."],
-            {
-              transition: createTransition(false, "schedule_required"),
-            }
-          );
-        }
-      }
-
       const shouldCleanupScheduledOnRevert =
         existingLead.status === LeadStatus.scheduled &&
         status === LeadStatus.new_opportunity;
@@ -1251,45 +1563,12 @@ export class LeadUseCase implements ILeadUseCase {
         statusUpdateExtraData.meetingNotes = null;
         statusUpdateExtraData.meetingLink = null;
         statusUpdateExtraData.meetingHeald = null;
+        statusUpdateExtraData.meetingPresenceConfirmed = false;
+        statusUpdateExtraData.meetingPresenceConfirmedAt = null;
       }
 
       if (status !== existingLead.status) {
         statusUpdateExtraData.statusEnteredAt = new Date();
-      }
-
-      if (status === LeadStatus.future_sale) {
-        const followUpAt = trigger?.followUpAt ? new Date(trigger.followUpAt) : null;
-        if (!followUpAt || Number.isNaN(followUpAt.getTime())) {
-          return new Output(
-            false,
-            [],
-            ["Venda Futura exige data válida para entrar em contato."],
-            {
-              transition: createTransition(false, "future_sale_trigger"),
-            }
-          );
-        }
-
-        statusUpdateExtraData.followUpAt = followUpAt;
-        statusUpdateExtraData.followUpNotes = trigger?.followUpNotes?.trim() || null;
-        statusUpdateExtraData.followUpSourceStatus = existingLead.status;
-      }
-
-      if (status === LeadStatus.opportunityLost || status === LeadStatus.operator_denied) {
-        const reason = trigger?.reason?.trim() || "";
-        if (!reason) {
-          return new Output(
-            false,
-            [],
-            ["Informe o motivo para concluir a mudança de status."],
-            {
-              transition: createTransition(false, "loss_reason_trigger"),
-            }
-          );
-        }
-
-        statusUpdateExtraData.lossReason = reason;
-        statusUpdateExtraData.lossReasonDetails = trigger?.reasonDetails?.trim() || null;
       }
 
       if (mode === "validate") {
@@ -1306,25 +1585,7 @@ export class LeadUseCase implements ILeadUseCase {
       // Atualizar o status do lead
       const lead = await this.leadRepository.updateStatus(id, status, statusUpdateExtraData);
 
-      // Se o status for contract_finalized, criar registro na tabela LeadFinalized
-      if (status === LeadStatus.contract_finalized) {
-        const createdAt = new Date(existingLead.createdAt);
-        const finalizedAt = new Date();
-        const durationInDays = Math.floor(
-          (finalizedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        await leadFinalizedRepository.create({
-          leadId: id,
-          finalizedAt: finalizedAt,
-          startDateAt: finalizedAt,
-          duration: durationInDays,
-          amount: Number(existingLead.currentValue || 0),
-          notes: `Venda finalizada. Valor: R$ ${existingLead.currentValue || 0}`,
-        });
-      }
-
-      if (existingLead.status !== status) {
+      if (existingLead.status && existingLead.status !== status) {
         const fromLabel = getStatusLabel(existingLead.status);
         const toLabel = getStatusLabel(status);
         try {
@@ -1412,13 +1673,29 @@ export class LeadUseCase implements ILeadUseCase {
           }
         }
 
-        await this.handleOfferSubmissionAlert({
-          lead,
-          previousStatus: existingLead.status,
-          nextStatus: status,
-          actorProfileId: profileInfo.id,
-          actorName: actorLabel,
-        });
+        if (existingLead.status) {
+          await this.handleOfferSubmissionAlert({
+            lead,
+            previousStatus: existingLead.status,
+            nextStatus: status,
+            actorProfileId: profileInfo.id,
+            actorName: actorLabel,
+          }).catch((err) => console.error("[LeadUseCase][handleOfferSubmissionAlert] Background error:", err));
+        }
+
+        if (existingLead.status !== status && existingLead.teamId) {
+          teamAutomationDispatcherService
+            .dispatch({
+              type: status === LeadStatus.no_show ? "meeting_no_show" : "status_changed",
+              teamId: existingLead.teamId,
+              leadId: id,
+              data: {
+                newStatus: status,
+                statusEnteredAt: lead.statusEnteredAt?.toISOString(),
+              },
+            })
+            .catch(console.error);
+        }
       }
 
       const successMessages = ["Status do lead atualizado com sucesso"];
@@ -1494,6 +1771,11 @@ export class LeadUseCase implements ILeadUseCase {
         } catch (error) {
           console.warn("Não foi possível registrar atividade de atribuição:", error);
         }
+
+        this.enqueueLeadAssignedPush(
+          { id: lead.id, leadCode: lead.leadCode ?? null, name: lead.name },
+          operatorId,
+        );
       }
 
       return new Output(true, ["Lead atribuído ao operador com sucesso"], [], this.transformToDTO(lead));
@@ -1583,8 +1865,27 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      if (!profileInfo.isMaster && !isManagerLikeRole(profileInfo.role)) {
-        return new Output(false, [], ["Apenas managers e masters podem transferir leads entre times"], null);
+      if (!profileInfo.isMaster) {
+        const transferMembership = await prisma.teamMember.findUnique({
+          where: {
+            teamId_profileId: {
+              teamId: callerTeamId,
+              profileId: profileInfo.id,
+            },
+          },
+          select: {
+            role: true,
+            canTransferAccountLeads: true,
+          },
+        });
+
+        const canTransfer =
+          (transferMembership?.role === "manager" || transferMembership?.role === "backoffice") &&
+          transferMembership.canTransferAccountLeads === true;
+
+        if (!canTransfer) {
+          return new Output(false, [], ["Acesso negado: delegação de transferência de leads é obrigatória."], null);
+        }
       }
 
       const lead = await this.leadRepository.findById(id);
@@ -1624,6 +1925,26 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["O lead já pertence a este time"], null);
       }
 
+      const transferRoute = lead.teamId
+        ? await prisma.teamTransferRoute.findUnique({
+            where: {
+              sourceTeamId_targetTeamId: {
+                sourceTeamId: lead.teamId,
+                targetTeamId: data.targetTeamId,
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+
+      if (!transferRoute) {
+        return new Output(false, [], ["O time destino não está habilitado para receber transferências deste time"], null);
+      }
+
+      if (!data.closerId) {
+        return new Output(false, [], ["Selecione um closer do time destino para concluir a transferência"], null);
+      }
+
       const closerMember = await prisma.teamMember.findUnique({
         where: { teamId_profileId: { teamId: data.targetTeamId, profileId: data.closerId } },
         select: { functions: true },
@@ -1651,51 +1972,310 @@ export class LeadUseCase implements ILeadUseCase {
         assigneeEmail = sdrProfile?.email ?? null;
       }
 
+      const existingPreSchedule = data.schedule
+        ? await leadScheduleRepository.findLatestByLeadId(id)
+        : null;
+
+      let resolvedTransferSchedule: ResolvedTransferSchedule | null = null;
+
+      if (data.schedule) {
+        const scheduleResolution = resolveTransferScheduleInput(data.schedule, lead, existingPreSchedule);
+        if (!scheduleResolution.ok) {
+          return new Output(false, [], [scheduleResolution.error], null);
+        }
+        resolvedTransferSchedule = scheduleResolution.value;
+      }
+
+      const conflictResolution = await this.resolveTransferTeamUniqueConflicts(lead, data.targetTeamId);
+      if (!conflictResolution.ok) {
+        return conflictResolution.output;
+      }
+
       const transferredLead = await this.leadRepository.transferToTeam(
         id,
         data.targetTeamId,
         data.closerId,
-        data.sdrId ?? null
+        data.sdrId ?? null,
+        conflictResolution.sanitizations
       );
 
-      if (data.schedule) {
-        const scheduleOutput = await leadScheduleService.createSchedule({
+      const transferStateLead = await prisma.lead.update({
+        where: { id: transferredLead.id },
+        data: {
+          isTransfer: false,
+        },
+        include: {
+          manager: { select: { id: true, fullName: true, email: true } },
+          assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          _count: { select: { attachments: true } },
+        },
+      });
+
+      const deferredSchedule = resolvedTransferSchedule
+        ? {
+            leadId: transferredLead.id,
+            leadName: transferredLead.name,
+            leadEmail: transferredLead.email ?? null,
+            leadStatus: transferredLead.status ?? LeadStatus.new_opportunity,
+            leadManagerId: transferredLead.managerId,
+            leadAssignedTo: transferredLead.assignedTo ?? null,
+            leadAssigneeEmail: assigneeEmail,
+            leadCurrentCloserId: null,
+            leadCode: transferredLead.leadCode ?? null,
+            closerId: data.closerId,
+            teamId: data.targetTeamId,
+            meetingDate: resolvedTransferSchedule.meetingDateIso,
+            meetingTitle: resolvedTransferSchedule.meetingTitle,
+            meetingNotes: resolvedTransferSchedule.meetingNotes,
+            meetingLink: resolvedTransferSchedule.meetingLink,
+            meetingType: resolvedTransferSchedule.meetingType,
+            extraGuests: resolvedTransferSchedule.extraGuests,
+            createdByProfileId: profileInfo.id,
+            transitionStatusToScheduled: resolvedTransferSchedule.transitionStatusToScheduled,
+          }
+        : undefined;
+
+      await prisma.leadTransfer.create({
+        data: {
           leadId: transferredLead.id,
-          leadName: transferredLead.name,
-          leadEmail: transferredLead.email ?? null,
-          leadStatus: transferredLead.status,
-          leadManagerId: transferredLead.managerId,
-          leadAssignedTo: transferredLead.assignedTo ?? null,
-          leadAssigneeEmail: assigneeEmail,
-          leadCurrentCloserId: data.closerId,
-          leadCode: transferredLead.leadCode ?? null,
-          closerId: data.closerId,
-          teamId: data.targetTeamId,
-          meetingDate: data.schedule.date,
-          meetingTitle: data.schedule.meetingTitle ?? "",
-          meetingNotes: data.schedule.meetingNotes,
-          meetingLink: data.schedule.meetingLink,
-          meetingType: data.schedule.meetingType ?? null,
-          extraGuests: data.schedule.extraGuests,
-          createdByProfileId: profileInfo.id,
-          transitionStatusToScheduled: data.schedule.transitionStatusToScheduled,
-        });
+          fromTeamId: lead.teamId!,
+          toTeamId: data.targetTeamId,
+          transferredByProfileId: profileInfo.id,
+          receivedByProfileId: data.closerId,
+          fromManagerId: lead.managerId,
+          toManagerId: transferredLead.managerId,
+          transferTagUsed: lead.isTransfer === true,
+          preScheduledAt: lead.meetingDate ?? null,
+          scheduledAtTransfer: false,
+        },
+      });
 
-        if (!scheduleOutput.isValid) {
-          return new Output(
-            true,
-            [],
-            ["Lead transferido, mas o agendamento falhou: " + (scheduleOutput.errorMessages?.[0] ?? "erro desconhecido")],
-            this.transformToDTO(transferredLead)
-          );
-        }
-      }
+      const finalLead = await this.leadRepository.findById(transferredLead.id);
+      const result: TransferLeadBetweenTeamsResult = {
+        lead: this.transformToDTO(finalLead ?? transferStateLead),
+        ...(deferredSchedule
+          ? {
+              schedulePending: true,
+              deferredSchedule,
+              transferredByProfileId: profileInfo.id,
+              sourceTeamId: lead.teamId!,
+              targetTeamId: data.targetTeamId,
+            }
+          : {}),
+      };
 
-      return new Output(true, [], ["Lead transferido entre times com sucesso"], this.transformToDTO(transferredLead));
+      return new Output(true, ["Lead transferido entre times com sucesso"], [], result);
     } catch (error) {
       console.error("[transferLeadBetweenTeams] Erro ao transferir lead entre times:", error);
+
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const target = error.meta?.target;
+        const isCnpjDup = Array.isArray(target) && target.includes("cnpj");
+        const message = isCnpjDup
+          ? "Já existe um lead com este CNPJ no time destino"
+          : "Já existe um lead com este e-mail no time destino";
+        return new Output(false, [], [message], null);
+      }
+
       return new Output(false, [], ["Erro interno do servidor ao transferir lead entre times"], null);
     }
+  }
+
+  async runDeferredTransferScheduleAfterTransfer(
+    leadId: string,
+    transferResult: TransferLeadBetweenTeamsResult
+  ): Promise<void> {
+    const { deferredSchedule, transferredByProfileId, sourceTeamId, targetTeamId, lead } = transferResult;
+    if (!deferredSchedule || !transferredByProfileId || !sourceTeamId || !targetTeamId) {
+      return;
+    }
+
+    const notifyScheduleFailure = async (errorMessage: string) => {
+      await prisma.leadActivity.create({
+        data: {
+          leadId,
+          ...buildStudioActivityData({
+            type: ActivityType.note,
+            body: `Lead transferido, mas o agendamento falhou: ${errorMessage}`,
+            payload: {
+              kind: "schedule",
+              action: "transfer_schedule_failed",
+              error: errorMessage,
+            },
+          }),
+        },
+      });
+
+      await notificationService.createTransferScheduleFailedNotification({
+        teamId: targetTeamId,
+        recipientProfileId: transferredByProfileId,
+        leadId,
+        leadCode: lead.leadCode ?? null,
+        leadName: lead.name,
+        errorMessage,
+      });
+    };
+
+    try {
+      const scheduleOutput = await leadScheduleService.createSchedule(deferredSchedule);
+
+      if (scheduleOutput.isValid) {
+        await prisma.leadTransfer.updateMany({
+          where: { leadId, toTeamId: targetTeamId },
+          data: { scheduledAtTransfer: true },
+        });
+        return;
+      }
+
+      const errorMessage =
+        Array.isArray(scheduleOutput.errorMessages) && scheduleOutput.errorMessages.length > 0
+          ? scheduleOutput.errorMessages[0]
+          : "erro desconhecido";
+
+      await notifyScheduleFailure(errorMessage);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "erro interno ao agendar após transferência";
+      console.error("[transferLeadBetweenTeams][deferredSchedule] Erro no agendamento pós-transferência:", error);
+
+      try {
+        await notifyScheduleFailure(errorMessage);
+      } catch (notifyError) {
+        console.error("[transferLeadBetweenTeams][deferredSchedule] Erro ao registrar falha de agendamento:", notifyError);
+      }
+    }
+  }
+
+  private formatLeadConflictLabel(conflict: { leadCode: string | null; name: string; id: string }): string {
+    if (conflict.leadCode && conflict.name) {
+      return `${conflict.leadCode} — ${conflict.name}`;
+    }
+    return conflict.leadCode ?? conflict.name ?? conflict.id;
+  }
+
+  private async resolveTransferTeamUniqueConflicts(
+    lead: { id: string; email: string | null; cnpj: string | null },
+    targetTeamId: string
+  ): Promise<{ ok: true; sanitizations: TransferToTeamSanitization[] } | { ok: false; output: Output }> {
+    const conflictFilters: Prisma.LeadWhereInput[] = [];
+    if (lead.email) {
+      conflictFilters.push({ email: { equals: lead.email, mode: "insensitive" } });
+    }
+    const normalizedCnpj = lead.cnpj?.trim();
+    if (normalizedCnpj) {
+      conflictFilters.push({ cnpj: normalizedCnpj });
+    }
+
+    if (!conflictFilters.length) {
+      return { ok: true, sanitizations: [] };
+    }
+
+    const conflicts = await prisma.lead.findMany({
+      where: {
+        teamId: targetTeamId,
+        NOT: { id: lead.id },
+        OR: conflictFilters,
+      },
+      select: { id: true, email: true, cnpj: true, leadCode: true, name: true, status: true },
+    });
+
+    const sanitizationByLeadId = new Map<string, TransferToTeamSanitization>();
+
+    for (const conflict of conflicts) {
+      const emailMatches =
+        !!lead.email &&
+        !!conflict.email &&
+        lead.email.toLowerCase() === conflict.email.toLowerCase();
+      const cnpjMatches = !!normalizedCnpj && conflict.cnpj === normalizedCnpj;
+
+      if (emailMatches) {
+        if (!isLostStatus(conflict.status)) {
+          return {
+            ok: false,
+            output: new Output(
+              false,
+              [],
+              [
+                `Já existe um lead com este e-mail no time destino (${this.formatLeadConflictLabel(conflict)})`,
+              ],
+              null
+            ),
+          };
+        }
+
+        const existing = sanitizationByLeadId.get(conflict.id) ?? {
+          leadId: conflict.id,
+          clearEmail: false,
+          clearCnpj: false,
+        };
+        existing.clearEmail = true;
+        sanitizationByLeadId.set(conflict.id, existing);
+      }
+
+      if (cnpjMatches) {
+        if (!isLostStatus(conflict.status)) {
+          return {
+            ok: false,
+            output: new Output(
+              false,
+              [],
+              [
+                `Já existe um lead com este CNPJ no time destino (${this.formatLeadConflictLabel(conflict)})`,
+              ],
+              null
+            ),
+          };
+        }
+
+        const existing = sanitizationByLeadId.get(conflict.id) ?? {
+          leadId: conflict.id,
+          clearEmail: false,
+          clearCnpj: false,
+        };
+        existing.clearCnpj = true;
+        sanitizationByLeadId.set(conflict.id, existing);
+      }
+    }
+
+    return { ok: true, sanitizations: [...sanitizationByLeadId.values()] };
+  }
+
+  private async validateLeadCustomFieldsInput(
+    teamId: string,
+    customFields: Record<string, unknown>
+  ): Promise<Output | null> {
+    const definitions = await leadCustomFieldRepository.listActiveByTeamId(teamId);
+    const validation = validateLeadCustomFieldsPayload(
+      definitions.map(mapLeadCustomFieldDefinitionToDTO),
+      customFields,
+      true
+    );
+    if (!validation.success) {
+      return new Output(false, [], validation.errors, null);
+    }
+    return null;
+  }
+
+  private async buildCustomFieldUpsertEntries(
+    teamId: string,
+    customFields: Record<string, unknown>
+  ) {
+    const definitions = await leadCustomFieldRepository.listActiveByTeamId(teamId);
+    const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+    return Object.entries(customFields)
+      .filter(([key]) => definitionByKey.has(key))
+      .map(([key, value]) => ({
+        definitionId: definitionByKey.get(key)!.id,
+        value: value as never,
+      }));
+  }
+
+  private async attachCustomFieldsToDto(leadId: string, dto: LeadResponseDTO): Promise<LeadResponseDTO> {
+    const customFields = await leadCustomFieldService.getLeadCustomFieldValues(leadId);
+    if (customFields.length === 0) {
+      return dto;
+    }
+    return { ...dto, customFields };
   }
 
   private transformToDTO(lead: any, viewerProfileId?: string | null): LeadResponseDTO {
@@ -1710,6 +2290,7 @@ export class LeadUseCase implements ILeadUseCase {
       email: lead.email,
       phone: lead.phone,
       cnpj: lead.cnpj,
+      razaoSocial: lead.razaoSocial ?? null,
       age: lead.age,
       currentHealthPlan: lead.currentHealthPlan,
       currentValue: lead.currentValue ? Number(lead.currentValue) : null,
@@ -1720,6 +2301,11 @@ export class LeadUseCase implements ILeadUseCase {
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
+      meetingPresenceConfirmed: lead.meetingPresenceConfirmed === true,
+      meetingPresenceConfirmedAt: lead.meetingPresenceConfirmedAt
+        ? lead.meetingPresenceConfirmedAt.toISOString()
+        : null,
+      isTransfer: lead.isTransfer === true,
       followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
       followUpNotes: lead.followUpNotes ?? null,
       followUpSourceStatus: lead.followUpSourceStatus ?? null,
@@ -1745,6 +2331,7 @@ export class LeadUseCase implements ILeadUseCase {
       leadTimeDueAt: lead.leadTimeDueAt ?? null,
       isLeadTimeBreached: lead.isLeadTimeBreached ?? false,
       attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
+      proposalReviewStatus: lead.proposalReview?.status ?? null,
       ...(lead.manager && {
         manager: {
           id: lead.manager.id,
@@ -1776,14 +2363,25 @@ export class LeadUseCase implements ILeadUseCase {
           payload: activity.payload,
           createdAt: activity.createdAt.toISOString(),
           reactions: this.aggregateActivityReactions(activity.reactions, viewerProfileId),
-          ...(activity.author && {
-            author: {
-              id: activity.author.id,
-              fullName: activity.author.fullName,
-              email: activity.author.email,
-              avatarUrl: activity.author.profileIconUrl || null,
-            }
-          })
+          ...((activity.author
+            ? {
+                author: {
+                  id: activity.author.id,
+                  fullName: activity.author.fullName,
+                  email: activity.author.email,
+                  avatarUrl: activity.author.profileIconUrl || null,
+                },
+              }
+            : activity.payload?.displayAuthor
+              ? {
+                  author: {
+                    id: "corretor-studio",
+                    fullName: String(activity.payload.displayAuthor),
+                    email: "",
+                    avatarUrl: activity.payload.authorAvatarUrl ?? "/corretor-studio-icon.svg",
+                  },
+                }
+              : {}) as Record<string, unknown>)
         }))
       })
     };
@@ -1850,6 +2448,11 @@ export class LeadUseCase implements ILeadUseCase {
     const to = normalizeAndCollect(toCandidates);
     const cc = normalizeAndCollect(ccCandidates);
 
+    // Resend exige pelo menos um destinatario em `to`; CC sozinho nao envia.
+    if (to.length === 0 && cc.length > 0) {
+      return { to: cc, cc: [] };
+    }
+
     return { to, cc };
   }
 
@@ -1867,6 +2470,11 @@ export class LeadUseCase implements ILeadUseCase {
       return;
     }
 
+    const leadId = input.lead.id as string;
+    await associateProposalUseCase.resetReviewOnResubmit(leadId).catch((err) =>
+      console.error("[LeadUseCase][resetReviewOnResubmit]", err)
+    );
+
     const teamId = input.lead.teamId as string | null;
     if (!teamId) {
       return;
@@ -1876,7 +2484,10 @@ export class LeadUseCase implements ILeadUseCase {
       const [team, backofficeMembers, closerProfile] = await Promise.all([
         prisma.team.findUnique({
           where: { id: teamId },
-          select: { masterId: true },
+          select: {
+            masterId: true,
+            master: { select: { sponsorMasterId: true } },
+          },
         }),
         prisma.teamMember.findMany({
           where: {
@@ -1905,31 +2516,49 @@ export class LeadUseCase implements ILeadUseCase {
         return;
       }
 
+      if (team.master?.sponsorMasterId) {
+        await associateProposalUseCase.notifyAssociateOfferSubmission({
+          leadId,
+          teamId,
+          leadCode: input.lead.leadCode,
+          leadName: input.lead.name,
+          actorProfileId: input.actorProfileId,
+          actorName: input.actorName,
+        }).catch((err) => console.error("[LeadUseCase][notifyAssociateOfferSubmission]", err));
+      }
+
       const masterProfile = await prisma.profile.findUnique({
         where: { id: team.masterId },
         select: { id: true, email: true, fullName: true },
       });
 
-      const emailRecipients = this.resolveProposalAlertEmails(
-        [
-          ...backofficeMembers.map((member) => member.profile.email),
-          closerProfile?.email,
-        ],
-        [masterProfile?.email],
-        input.lead.email
-      );
+      const isAssociateAccount = Boolean(team.master?.sponsorMasterId);
+
+      const emailRecipients = isAssociateAccount
+        ? { to: [] as string[], cc: [] as string[] }
+        : this.resolveProposalAlertEmails(
+            [
+              ...backofficeMembers.map((member) => member.profile.email),
+              closerProfile?.email,
+            ],
+            [masterProfile?.email],
+            input.lead.email
+          );
 
       const sdrName = input.lead.assignee?.fullName || input.lead.assignee?.email || "Nao informado";
       const closerName = input.lead.closer?.fullName || input.lead.closer?.email || "Nao informado";
-      const leadAttachments = await this.buildLeadProposalAttachments(input.lead.id);
+      const leadAttachments = isAssociateAccount
+        ? []
+        : await this.buildLeadProposalAttachments(input.lead.id);
 
-      if (emailRecipients.to.length > 0 || emailRecipients.cc.length > 0) {
+      if (!isAssociateAccount && (emailRecipients.to.length > 0 || emailRecipients.cc.length > 0)) {
         try {
           const emailService = getEmailService();
-          await emailService.sendLeadProposalPendingUrgentEmail({
+          const emailResult = await emailService.sendLeadProposalPendingUrgentEmail({
             to: emailRecipients.to,
             cc: emailRecipients.cc,
             attachments: leadAttachments,
+            teamId,
             leadCode: input.lead.leadCode,
             leadName: input.lead.name,
             leadEmail: input.lead.email,
@@ -1939,6 +2568,12 @@ export class LeadUseCase implements ILeadUseCase {
             notes: input.lead.notes,
             actorName: input.actorName,
           });
+          if (!emailResult?.success) {
+            console.error(
+              "[LeadUseCase][handleOfferSubmissionAlert] Falha ao enviar e-mail de proposta pendente:",
+              emailResult?.error
+            );
+          }
         } catch (emailError) {
           console.error("Erro ao enviar e-mail de proposta pendente:", emailError);
         }
@@ -1981,6 +2616,168 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
+  private async ensureTransferPreSchedule(lead: any): Promise<void> {
+    if (!lead?.id || !lead?.meetingDate) return;
+
+    const meetingDate = lead.meetingDate instanceof Date ? lead.meetingDate : new Date(lead.meetingDate);
+    if (Number.isNaN(meetingDate.getTime())) return;
+
+    await prisma.leadsSchedule.upsert({
+      where: { leadId: lead.id },
+      create: {
+        leadId: lead.id,
+        date: meetingDate,
+        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
+        notes: lead.meetingNotes || lead.notes || null,
+        meetingLink: null,
+        meetingType: lead.meetingType || "online",
+        extraGuests: [],
+        publicShareTokenHash: null,
+        publicShareExpiresAt: null,
+      },
+      update: {
+        date: meetingDate,
+        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
+        notes: lead.meetingNotes || lead.notes || null,
+        meetingLink: null,
+        meetingType: lead.meetingType || "online",
+        publicShareTokenHash: null,
+        publicShareExpiresAt: null,
+      },
+    });
+  }
+
+  async enrichLeadRazaoSocial(leadId: string, cnpj: string): Promise<void> {
+    try {
+      const razaoSocial = await cnpjLookupService.lookupRazaoSocial(cnpj);
+      if (!razaoSocial) {
+        console.warn(
+          "[LeadUseCase][enrichLeadRazaoSocial] Razão social não resolvida em background",
+          { leadId }
+        );
+        return;
+      }
+
+      await this.leadRepository.update(leadId, { razaoSocial });
+      console.info(
+        "[LeadUseCase][enrichLeadRazaoSocial] Razão social atualizada em background",
+        { leadId }
+      );
+    } catch (error) {
+      console.error("[LeadUseCase][enrichLeadRazaoSocial] Background error:", error);
+    }
+  }
+
+  private async resolveTransferScheduleShareUrl(lead: any, teamId: string): Promise<string | null> {
+    void teamId;
+    void lead;
+
+    return null;
+  }
+
+  private enqueueLeadAssignedPush(
+    lead: { id: string; leadCode: string | null; name: string },
+    assigneeProfileId: string | null | undefined,
+  ): void {
+    if (!assigneeProfileId) return;
+
+    void studioBotOutboxService
+      .enqueueLeadAssigned({
+        profileId: assigneeProfileId,
+        leadId: lead.id,
+        leadCode: lead.leadCode,
+        leadName: lead.name,
+      })
+      .catch((error) => {
+        console.error("[LeadUseCase][enqueueLeadAssignedPush]", error);
+      });
+  }
+
+  private async handleTransferActivationAlert(lead: any): Promise<void> {
+    const teamId = lead.teamId as string | null;
+    if (!teamId) return;
+
+    try {
+      const [team, eligibleMembers] = await Promise.all([
+        prisma.team.findUnique({
+          where: { id: teamId },
+          select: { masterId: true },
+        }),
+        prisma.teamMember.findMany({
+          where: {
+            teamId,
+            role: { in: ["manager", "backoffice"] },
+            canTransferAccountLeads: true,
+          },
+          select: {
+            profileId: true,
+            profile: { select: { email: true } },
+          },
+        }),
+      ]);
+
+      if (!team) return;
+
+      const masterProfile = team.masterId
+        ? await prisma.profile.findUnique({
+            where: { id: team.masterId },
+            select: { id: true, email: true },
+          })
+        : null;
+
+      const recipientIds = Array.from(
+        new Set([
+          ...eligibleMembers.map((m) => m.profileId),
+          ...(masterProfile?.id ? [masterProfile.id] : []),
+        ])
+      );
+
+      const emailAddresses = [
+        ...eligibleMembers.map((m) => m.profile.email).filter((e): e is string => Boolean(e)),
+        ...(masterProfile?.email ? [masterProfile.email] : []),
+      ];
+      const uniqueEmails = Array.from(new Set(emailAddresses));
+      const scheduleShareUrl = await this.resolveTransferScheduleShareUrl(lead, teamId);
+      const sdrName =
+        lead.assignee?.fullName || lead.assignee?.email || "Não informado";
+
+      await Promise.all([
+        uniqueEmails.length > 0
+          ? getEmailService()
+              .sendLeadTransferActivatedEmail({
+                to: uniqueEmails,
+                teamId,
+                leadCode: lead.leadCode,
+                leadName: lead.name,
+                leadPhone: lead.phone,
+                leadCnpj: lead.cnpj,
+                leadCurrentHealthPlan: lead.currentHealthPlan,
+                leadCurrentValue: lead.currentValue,
+                leadNotes: lead.notes,
+                sdrName,
+                scheduleShareUrl,
+              })
+              .catch((err) => console.error("[handleTransferActivationAlert] E-mail error:", err))
+          : Promise.resolve(),
+        recipientIds.length > 0
+          ? notificationService
+              .createLeadTransferActivatedNotification({
+                teamId,
+                recipientProfileIds: recipientIds,
+                leadId: lead.id,
+                leadCode: lead.leadCode,
+                leadName: lead.name,
+                sdrName,
+                scheduleShareUrl,
+              })
+              .catch((err) => console.error("[handleTransferActivationAlert] Notification error:", err))
+          : Promise.resolve(),
+      ]);
+    } catch (error) {
+      console.error("[handleTransferActivationAlert] Erro:", error);
+    }
+  }
+
   private async buildLeadProposalAttachments(leadId: string): Promise<Attachment[]> {
     const leadAttachments = await prisma.leadAttachment.findMany({
       where: { leadId },
@@ -1999,58 +2796,58 @@ export class LeadUseCase implements ILeadUseCase {
     }
 
     const supabaseAdmin = createSupabaseAdmin();
-    const attachments: Attachment[] = [];
 
-    for (const leadAttachment of leadAttachments) {
-      try {
-        let buffer: Buffer | null = null;
+    const downloads = await Promise.all(
+      leadAttachments.map(async (leadAttachment) => {
+        try {
+          let buffer: Buffer | null = null;
 
-        const storagePath = leadAttachment.storagePath?.trim();
-        if (supabaseAdmin && storagePath) {
-          const { data, error } = await supabaseAdmin.storage
-            .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
-            .download(storagePath);
+          const storagePath = leadAttachment.storagePath?.trim();
+          if (supabaseAdmin && storagePath) {
+            const { data, error } = await supabaseAdmin.storage
+              .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
+              .download(storagePath);
 
-          if (error) {
-            console.error("Erro ao baixar anexo do storage para e-mail:", {
-              leadId,
-              attachmentId: leadAttachment.id,
-              storagePath,
-              error,
-            });
-          } else if (data) {
-            buffer = Buffer.from(await data.arrayBuffer());
-          }
-        }
-
-        if (!buffer && leadAttachment.fileUrl) {
-          const response = await fetch(leadAttachment.fileUrl);
-          if (!response.ok) {
-            throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+            if (error) {
+              console.error("Erro ao baixar anexo do storage para e-mail:", {
+                leadId,
+                attachmentId: leadAttachment.id,
+                storagePath,
+                error,
+              });
+            } else if (data) {
+              buffer = Buffer.from(await data.arrayBuffer());
+            }
           }
 
-          const arrayBuffer = await response.arrayBuffer();
-          buffer = Buffer.from(arrayBuffer);
+          if (!buffer && leadAttachment.fileUrl) {
+            const response = await fetch(leadAttachment.fileUrl);
+            if (!response.ok) {
+              throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+          }
+
+          if (!buffer) return null;
+
+          return {
+            filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
+            content: buffer,
+            ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
+          } as Attachment;
+        } catch (error) {
+          console.error("Erro ao preparar anexo de lead para e-mail:", {
+            leadId,
+            attachmentId: leadAttachment.id,
+            error,
+          });
+          return null;
         }
+      })
+    );
 
-        if (!buffer) {
-          continue;
-        }
-
-        attachments.push({
-          filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
-          content: buffer,
-          ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
-        });
-      } catch (error) {
-        console.error("Erro ao preparar anexo de lead para e-mail:", {
-          leadId,
-          attachmentId: leadAttachment.id,
-          error,
-        });
-      }
-    }
-
-    return attachments;
+    return downloads.filter((a): a is Attachment => a !== null);
   }
 }

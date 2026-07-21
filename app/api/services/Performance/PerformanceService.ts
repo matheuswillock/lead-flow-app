@@ -82,6 +82,23 @@ function calcDelta(current: number, previous: number): number {
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
+function buildOperatorLeadScope(
+  profileId: string,
+  isCloser: boolean,
+  isSdr: boolean
+): Prisma.LeadWhereInput {
+  if (isCloser && isSdr) {
+    return { OR: [{ closerId: profileId }, { assignedTo: profileId }] };
+  }
+  if (isCloser) {
+    return { closerId: profileId };
+  }
+  if (isSdr) {
+    return { assignedTo: profileId };
+  }
+  return {};
+}
+
 function resolveActivityKind(
   type: string,
   payload: Record<string, unknown> | null
@@ -105,9 +122,11 @@ export class PerformanceService implements IPerformanceService {
   async getSalesPerformance(filters: PerformanceSalesFilters): Promise<PerformanceSalesResult> {
     const {
       teamId,
+      teamIds,
       profileId,
       isManager,
       isCloser,
+      isSdr,
       startDate,
       endDate,
       sdrId,
@@ -117,11 +136,17 @@ export class PerformanceService implements IPerformanceService {
       pageSize,
     } = filters;
 
+    const viewMode = isManager ? 'team' : 'self';
+
+    const resolvedTeamIds = teamIds && teamIds.length > 0 ? teamIds : [teamId];
+    const teamFilter: Prisma.LeadWhereInput =
+      resolvedTeamIds.length === 1 ? { teamId: resolvedTeamIds[0] } : { teamId: { in: resolvedTeamIds } };
+
     const leadScope: Prisma.LeadWhereInput = {
-      teamId,
-      ...(isCloser && !isManager ? { closerId: profileId } : {}),
-      ...(sdrId ? { assignedTo: sdrId } : {}),
-      ...(closerId && (isManager || !isCloser) ? { closerId } : {}),
+      ...teamFilter,
+      ...(!isManager ? buildOperatorLeadScope(profileId, isCloser, isSdr) : {}),
+      ...(isManager && sdrId ? { assignedTo: sdrId } : {}),
+      ...(isManager && closerId ? { closerId } : {}),
       ...(search ? { name: { contains: search, mode: Prisma.QueryMode.insensitive } } : {}),
     };
 
@@ -144,7 +169,7 @@ export class PerformanceService implements IPerformanceService {
     ] = await Promise.all([
       // All team profiles
       prisma.profile.findMany({
-        where: { teamMemberships: { some: { teamId } } },
+        where: { teamMemberships: { some: { teamId: { in: resolvedTeamIds } } } },
         select: { id: true, fullName: true, email: true },
       }),
 
@@ -357,16 +382,29 @@ export class PerformanceService implements IPerformanceService {
       }
     }
 
-    const sdrRanking = Array.from(sdrMap.values())
+    let sdrRanking = Array.from(sdrMap.values())
       .map(toRankingEntry)
       .sort((a, b) => b.count - a.count || b.meetingsHeld - a.meetingsHeld || a.name.localeCompare(b.name));
 
-    const closerRanking = Array.from(closerMap.values())
+    let closerRanking = Array.from(closerMap.values())
       .map((item) => {
         const base = toRankingEntry(item);
         return { ...base, count: item.salesCount };
       })
       .sort((a, b) => b.count - a.count || b.totalSalesValue - a.totalSalesValue || a.name.localeCompare(b.name));
+
+    if (!isManager) {
+      if (isSdr) {
+        sdrRanking = sdrRanking.filter((entry) => entry.profileId === profileId);
+      } else {
+        sdrRanking = [];
+      }
+      if (isCloser) {
+        closerRanking = closerRanking.filter((entry) => entry.profileId === profileId);
+      } else {
+        closerRanking = [];
+      }
+    }
 
     const topCloser = closerRanking[0]
       ? {
@@ -393,12 +431,20 @@ export class PerformanceService implements IPerformanceService {
       : null;
 
     const drilldown: PerformanceDrilldownEntry[] = [
-      ...Array.from(closerMap.values()).map((entry) =>
-        toDrilldownEntry(entry, 'Closer', activitiesByProfile.get(entry.profileId) ?? [])
-      ),
-      ...Array.from(sdrMap.values()).map((entry) =>
-        toDrilldownEntry(entry, 'SDR', activitiesByProfile.get(entry.profileId) ?? [])
-      ),
+      ...(isManager || isCloser
+        ? Array.from(closerMap.values())
+            .filter((entry) => isManager || entry.profileId === profileId)
+            .map((entry) =>
+              toDrilldownEntry(entry, 'Closer', activitiesByProfile.get(entry.profileId) ?? [])
+            )
+        : []),
+      ...(isManager || isSdr
+        ? Array.from(sdrMap.values())
+            .filter((entry) => isManager || entry.profileId === profileId)
+            .map((entry) =>
+              toDrilldownEntry(entry, 'SDR', activitiesByProfile.get(entry.profileId) ?? [])
+            )
+        : []),
     ];
 
     const totalRows = finalizedRows.length;
@@ -485,6 +531,7 @@ export class PerformanceService implements IPerformanceService {
     });
 
     return {
+      viewMode,
       kpis: {
         closedSales: finalizedRows.length,
         closedSalesSparkline,

@@ -9,6 +9,8 @@ export interface CreateScheduleParams {
   leadAssignedTo: string | null;
   leadAssigneeEmail: string | null;
   leadCurrentCloserId: string | null;
+  /** Espelho do Meet no Lead — fallback ao preservar link na troca de closer. */
+  leadMeetingLink?: string | null;
   leadCode: string | null;
   closerId: string;
   teamId: string;
@@ -17,10 +19,12 @@ export interface CreateScheduleParams {
   meetingNotes?: string;
   meetingLink?: string;
   meetingType?: "online" | "call" | "whatsapp" | null;
+  durationMinutes?: number;
   extraGuests?: string[];
   createdByProfileId: string;
   transitionStatusToScheduled?: boolean;
   confirmNoShowSchedule?: boolean;
+  authorAsStudio?: boolean;
 }
 
 export interface ILeadScheduleService {

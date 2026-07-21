@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   calendarAvailabilityUseCase,
   CALENDAR_AVAILABILITY_ERROR_MESSAGES,
@@ -12,6 +13,7 @@ const schema = z
     closerId: z.string().uuid().optional(),
     closerIds: z.array(z.string().uuid()).optional(),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    days: z.number().int().min(1).max(60).optional(),
     excludeLeadId: z.string().uuid().optional(),
   })
   .refine((data) => data.closerId || (data.closerIds && data.closerIds.length > 0), {
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { closerId, closerIds, date, excludeLeadId } = validation.data;
+    const { closerId, closerIds, date, days, excludeLeadId } = validation.data;
     const requestedCloserIds = Array.from(
       new Set([...(closerIds ?? []), ...(closerId ? [closerId] : [])])
     );
@@ -47,6 +49,7 @@ export async function POST(request: NextRequest) {
       teamId: teamAccess.access.teamId,
       requestedCloserIds,
       date,
+      days,
       excludeLeadId,
       userTimezone: teamAccess.access.userTimezone,
     });
@@ -65,6 +68,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[CalendarAvailabilityRoute][POST] Erro ao buscar disponibilidade:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

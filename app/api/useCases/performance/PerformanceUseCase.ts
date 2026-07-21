@@ -14,9 +14,11 @@ import type { PerformanceSalesFilters, PerformanceSalesResult } from '@/app/api/
 
 async function getCachedSalesPerformance(
   teamId: string,
+  teamIdsJSON: string,
   profileId: string,
   isManager: boolean,
   isCloser: boolean,
+  isSdr: boolean,
   startDateISO: string,
   endDateISO: string,
   sdrId: string,
@@ -26,14 +28,21 @@ async function getCachedSalesPerformance(
   pageSize: number,
 ): Promise<PerformanceSalesResult> {
   "use cache";
-  cacheTag(cacheTags.teamPerformance(teamId));
+  const teamIds: string[] = JSON.parse(teamIdsJSON);
+  if (teamIds.length > 1) {
+    cacheTag(cacheTags.teamPerformance(teamIds.join(',')));
+  } else {
+    cacheTag(cacheTags.teamPerformance(teamId));
+  }
   cacheLife({ stale: 60, revalidate: 180, expire: 300 });
 
   return performanceService.getSalesPerformance({
     teamId,
+    teamIds,
     profileId,
     isManager,
     isCloser,
+    isSdr,
     startDate: new Date(startDateISO),
     endDate: new Date(endDateISO),
     sdrId: sdrId || undefined,
@@ -72,11 +81,14 @@ export class PerformanceUseCase implements IPerformanceUseCase {
 
   async getSalesPerformance(filters: PerformanceSalesFilters): Promise<Output> {
     try {
+      const teamIds = filters.teamIds ?? [filters.teamId];
       const result = await getCachedSalesPerformance(
         filters.teamId,
+        JSON.stringify(teamIds),
         filters.profileId,
         filters.isManager,
         filters.isCloser,
+        filters.isSdr,
         filters.startDate.toISOString(),
         filters.endDate.toISOString(),
         filters.sdrId ?? "",
@@ -128,6 +140,11 @@ export class PerformanceUseCase implements IPerformanceUseCase {
             contentType: 'application/zip',
           },
         ],
+        tracking: {
+          teamId: input.filters.teamId,
+          category: "transactional",
+          sourceType: "performance_export",
+        },
       });
 
       if (!sendResult.success) {

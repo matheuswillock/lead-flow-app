@@ -1155,4 +1155,59 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
       },
     ],
   },
+  {
+    id: "whatsapp-inbox", indexLabel: "20", title: "WhatsApp: conexão e Inbox", eyebrow: "WhatsApp", lead: "Conecte o número do time e atenda conversas com segurança no Inbox.", availability: "beta", audience: "all",
+    audienceNote: "Managers e masters configuram a conexão. Operadores usam o atendimento diário.",
+    blocks: [
+      { type: "steps", title: "Primeiros passos", items: [
+        { title: "Abra Configurações", description: "Manager ou master acessa WhatsApp → Configurações e cria ou reconecta a instância." },
+        { title: "Leia o QR Code", description: "No WhatsApp do celular, use Aparelhos conectados para ler o QR Code exibido." },
+        { title: "Confirme o status", description: "Conectado libera o Inbox; Processando indica sincronização de histórico; Desconectado pede reconexão." },
+      ] },
+      { type: "features", columns: 3, items: [
+        { title: "Lista e busca", description: "Use busca, não lidas, minhas e arquivadas para encontrar uma conversa." },
+        { title: "Identificação", description: "O Inbox mostra nome confiável, depois telefone formatado, ou Número não disponível." },
+        { title: "Mídia e áudio", description: "Envie arquivos e grave áudio pelo microfone; mídia é privada e aberta somente para quem tem acesso." },
+      ] },
+      { type: "table", title: "Permissões", columns: ["Ação", "Manager/master", "Operator"], rows: [
+        { cells: ["Conectar, quota e retenção", "Permitido", "Não permitido"] }, { cells: ["Atender, arquivar e gravar áudio", "Permitido", "Permitido"] }, { cells: ["Alterar regras", "Permitido", "Não permitido"] },
+      ] },
+      { type: "faq", items: [{ question: "O que significa mensagem pendente de confirmação?", answer: "O provedor não confirmou o resultado. Aguarde a atualização: o sistema não reenvia automaticamente para evitar duplicidade." }] },
+    ],
+  },
+  {
+    id: "whatsapp-regras", indexLabel: "21", title: "WhatsApp: regras de atendimento", eyebrow: "Atendimento", lead: "Organize responsáveis, handoff Bot/Humano, tags e vínculo com leads.", availability: "beta", audience: "all",
+    blocks: [
+      { type: "steps", items: [{ title: "Assuma ou atribua", description: "Use responsável para distribuir conversas não atribuídas ou assumir um atendimento." }, { title: "Escolha o handoff", description: "Humano pausa o bot nesta conversa; devolver ao bot permite as regras novamente." }, { title: "Vincule ao CRM", description: "Crie um lead pré-preenchido ou vincule um lead existente para manter as atividades no histórico." }] },
+      { type: "callout", tone: "warning", title: "Evite atendimento duplicado", content: "Antes de responder, confira o responsável e o estado Bot ativo ou Atendimento humano no cabeçalho da conversa." },
+      { type: "faq", items: [{ question: "Quem pode alterar a atribuição?", answer: "Managers e masters administram a fila; operadores atendem as conversas que têm permissão para visualizar." }] },
+    ],
+  },
+  {
+    id: "whatsapp-auto-respostas", indexLabel: "22", title: "WhatsApp: auto-respostas", eyebrow: "Automação", lead: "Configure boas-vindas, horário e palavras-chave com prioridade previsível.", availability: "beta", audience: "manager",
+    audienceNote: "A configuração é restrita a manager e master; operadores visualizam o estado da conversa.",
+    blocks: [
+      { type: "steps", items: [{ title: "Crie a regra", description: "Em Auto-respostas, escolha boas-vindas, fora do horário ou palavra-chave." }, { title: "Defina prioridade", description: "A regra com prioridade mais alta vence; use textos claros e curtos." }, { title: "Revise antes de ativar", description: "Confira gatilho, horário e resposta. A simulação assistida será identificada aqui quando estiver disponível." }] },
+      { type: "callout", tone: "info", title: "Proteções", content: "O bot não responde quando a conversa está em Atendimento humano e limites anti-loop evitam respostas em cadeia." },
+      { type: "faq", items: [{ question: "Por que o bot não respondeu?", answer: "Verifique horário, palavras-chave, prioridade, pausa da conversa e se há atendimento humano ativo." }] },
+    ],
+  },
+  {
+    id: "whatsapp-permissoes", indexLabel: "23", title: "WhatsApp: permissões e solução", eyebrow: "Ajuda", lead: "Resolva microfone, conexão, falhas de envio e recuperação do Inbox.", availability: "available", audience: "all",
+    blocks: [
+      { type: "table", columns: ["Situação", "Como resolver"], rows: [
+        { cells: ["Microfone bloqueado", "Permita o microfone nas configurações do navegador e recarregue a página em HTTPS."] }, { cells: ["Falha de envio", "Confira conexão e status; mensagens com falha podem ser revisadas antes de uma nova tentativa."] }, { cells: ["Desconectado", "Manager/master deve reconectar e ler o novo QR Code."] },
+      ] },
+      { type: "callout", tone: "warning", title: "Permissão de microfone", content: "Chrome, Edge e Safari mostram a permissão na barra de endereço. Se ela foi bloqueada, altere para Permitir e tente gravar novamente." },
+      { type: "faq", items: [{ question: "O histórico desapareceu?", answer: "O carregamento pode estar Processando. Aguarde e atualize; o cron de recuperação trata eventos pendentes." }] },
+    ],
+  },
+  {
+    id: "whatsapp-privacidade", indexLabel: "24", title: "WhatsApp: privacidade e limites", eyebrow: "Privacidade", lead: "Use dados de clientes somente para atendimento legítimo e dentro dos limites do time.", availability: "available", audience: "all",
+    blocks: [
+      { type: "features", columns: 3, items: [{ title: "Retenção", description: "A política alvo é de 90 dias para mensagens e mídias, com auditoria mínima por 365 dias. A purge automática será sinalizada quando ativada." }, { title: "Mídia privada", description: "Arquivos não são públicos e links de leitura têm curta duração." }, { title: "Quota", description: "Acompanhe o consumo mensal nas configurações para evitar bloqueios operacionais." }] },
+      { type: "callout", tone: "warning", title: "Dados de clientes", content: "Não compartilhe conversas, documentos ou números fora do atendimento autorizado. Use apenas contas e dispositivos aprovados pelo time." },
+      { type: "faq", items: [{ question: "Posso baixar mídia antiga?", answer: "A remoção automática após a retenção ainda está em implantação. Salve somente documentos necessários e autorizados nas áreas corretas do CRM." }] },
+    ],
+  },
 ]

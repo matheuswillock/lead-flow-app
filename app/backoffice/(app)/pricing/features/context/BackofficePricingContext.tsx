@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import type { IBackofficePricingService } from "../services/IBackofficePricingService"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import type {
   BackofficeAdhesionBillingCycleKey,
   BackofficeProductFormData,
@@ -17,14 +18,16 @@ interface PricingContextValue {
   products: BackofficeProductItem[]
   availableFeatureSlugs: string[]
   isLoading: boolean
+  canManage: boolean
 
   dialogOpen: boolean
-  dialogMode: "create" | "edit"
+  dialogMode: "create" | "edit" | "duplicate"
   dialogProduct: BackofficeProductItem | null
   formData: BackofficeProductFormData
   isSaving: boolean
   openCreateDialog: () => void
   openEditDialog: (product: BackofficeProductItem) => void
+  openDuplicateDialog: (product: BackofficeProductItem) => void
   closeDialog: () => void
   setFormField: (field: keyof BackofficeProductFormData, value: string | boolean) => void
   setPaymentRuleField: (
@@ -42,6 +45,45 @@ interface PricingContextValue {
   confirmDelete: () => Promise<void>
 }
 
+function productToFormData(product: BackofficeProductItem): BackofficeProductFormData {
+  function findRule(
+    cycle: BackofficeAdhesionBillingCycleKey,
+    method: "PIX" | "CREDIT_CARD"
+  ): BackofficeProductPaymentRuleItem | undefined {
+    return product.paymentRules.find((r) => r.billingCycle === cycle && r.paymentMethod === method)
+  }
+  function ruleEntry(cycle: BackofficeAdhesionBillingCycleKey, defaultMax: string): BackofficeProductPaymentRuleFormEntry {
+    const pix = findRule(cycle, "PIX")
+    const card = findRule(cycle, "CREDIT_CARD")
+    return {
+      pixPrice: pix ? String(pix.price) : "",
+      cardPrice: card ? String(card.price) : "",
+      maxInstallments: card ? String(card.maxInstallments) : defaultMax,
+    }
+  }
+
+  return {
+    name: product.name,
+    featureSlug: product.featureSlug,
+    description: product.description ?? "",
+    type: product.type,
+    billingMode: product.billingMode,
+    priceMonthly: product.priceMonthly != null ? String(product.priceMonthly) : "",
+    priceQuarterly: product.priceQuarterly != null ? String(product.priceQuarterly) : "",
+    priceSemiannual: product.priceSemiannual != null ? String(product.priceSemiannual) : "",
+    priceAnnual: product.priceAnnual != null ? String(product.priceAnnual) : "",
+    priceLifetime: product.priceLifetime != null ? String(product.priceLifetime) : "",
+    isDefault: product.isDefault,
+    isActive: product.isActive,
+    paymentRules: {
+      monthly: ruleEntry("monthly", "1"),
+      quarterly: ruleEntry("quarterly", "3"),
+      semiannual: ruleEntry("semiannual", "6"),
+      annual: ruleEntry("annual", "12"),
+    },
+  }
+}
+
 const BackofficePricingContext = createContext<PricingContextValue | undefined>(undefined)
 
 interface Props {
@@ -50,12 +92,14 @@ interface Props {
 }
 
 export function BackofficePricingProvider({ children, pricingService }: Props) {
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [products, setProducts] = useState<BackofficeProductItem[]>([])
   const [availableFeatureSlugs, setAvailableFeatureSlugs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create")
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | "duplicate">("create")
   const [dialogProduct, setDialogProduct] = useState<BackofficeProductItem | null>(null)
   const [formData, setFormData] = useState<BackofficeProductFormData>(EMPTY_PRODUCT_FORM)
   const [isSaving, setIsSaving] = useState(false)
@@ -100,39 +144,14 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
   const openEditDialog = useCallback((product: BackofficeProductItem) => {
     setDialogMode("edit")
     setDialogProduct(product)
+    setFormData(productToFormData(product))
+    setDialogOpen(true)
+  }, [])
 
-    function findRule(cycle: BackofficeAdhesionBillingCycleKey, method: "PIX" | "CREDIT_CARD"): BackofficeProductPaymentRuleItem | undefined {
-      return product.paymentRules.find((r) => r.billingCycle === cycle && r.paymentMethod === method)
-    }
-    function ruleEntry(cycle: BackofficeAdhesionBillingCycleKey, defaultMax: string): BackofficeProductPaymentRuleFormEntry {
-      const pix = findRule(cycle, "PIX")
-      const card = findRule(cycle, "CREDIT_CARD")
-      return {
-        pixPrice: pix ? String(pix.price) : "",
-        cardPrice: card ? String(card.price) : "",
-        maxInstallments: card ? String(card.maxInstallments) : defaultMax,
-      }
-    }
-
-    setFormData({
-      name: product.name,
-      slug: product.slug,
-      description: product.description ?? "",
-      type: product.type,
-      billingMode: product.billingMode,
-      priceMonthly: product.priceMonthly != null ? String(product.priceMonthly) : "",
-      priceQuarterly: product.priceQuarterly != null ? String(product.priceQuarterly) : "",
-      priceSemiannual: product.priceSemiannual != null ? String(product.priceSemiannual) : "",
-      priceAnnual: product.priceAnnual != null ? String(product.priceAnnual) : "",
-      priceLifetime: product.priceLifetime != null ? String(product.priceLifetime) : "",
-      isActive: product.isActive,
-      paymentRules: {
-        monthly: ruleEntry("monthly", "1"),
-        quarterly: ruleEntry("quarterly", "3"),
-        semiannual: ruleEntry("semiannual", "6"),
-        annual: ruleEntry("annual", "12"),
-      },
-    })
+  const openDuplicateDialog = useCallback((product: BackofficeProductItem) => {
+    setDialogMode("duplicate")
+    setDialogProduct(null)
+    setFormData({ ...productToFormData(product), isDefault: false })
     setDialogOpen(true)
   }, [])
 
@@ -168,7 +187,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
     if (isSaving) return
     setIsSaving(true)
     try {
-      if (dialogMode === "create") {
+      if (dialogMode === "create" || dialogMode === "duplicate") {
         const created = await pricingService.create(formData)
         setProducts((prev) => [...prev, created])
         toast.success("Produto criado com sucesso")
@@ -217,6 +236,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
         products,
         availableFeatureSlugs,
         isLoading,
+        canManage,
         dialogOpen,
         dialogMode,
         dialogProduct,
@@ -224,6 +244,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
         isSaving,
         openCreateDialog,
         openEditDialog,
+        openDuplicateDialog,
         closeDialog,
         setFormField,
         setPaymentRuleField,

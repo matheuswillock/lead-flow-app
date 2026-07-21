@@ -11,12 +11,16 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
+
+env:
+  SYNC_BRANCH: features/sync-main-to-develop
 
 jobs:
   sync-develop:
     name: Merge main → develop
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout develop
         uses: actions/checkout@v4
@@ -24,6 +28,11 @@ jobs:
           ref: develop
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
 
       - name: Configure git
         run: |
@@ -35,14 +44,14 @@ jobs:
 
       - name: Merge main into develop
         run: |
-          git merge origin/main --no-edit || {
+          git merge origin/main --no-ff -m "chore: sync develop ← main" || {
             CONFLICTS=$(git status --porcelain | grep "^UU")
             COUNT=$(echo "$CONFLICTS" | grep -c "^UU" || true)
 
             if [ "$COUNT" -eq 1 ] && echo "$CONFLICTS" | grep -q "^UU package.json"; then
-              git checkout --ours package.json
+              git checkout --theirs package.json
               git add package.json
-              git commit -m "chore: sync develop ← main (auto-resolved package.json version) [skip ci]"
+              git commit -m "chore: sync develop ← main (package.json version from main)"
             else
               echo "::error::Unexpected merge conflicts. Manual resolution required:"
               git status --porcelain
@@ -51,18 +60,84 @@ jobs:
             fi
           }
 
-      - name: Push develop
+      - name: Align develop package.json version with main
         run: |
-          # Ensure HEAD carries [skip ci] so ci-develop does not re-fire after a sync.
-          # A fast-forward brings main's merge commit which lacks [skip ci], triggering
-          # a spurious release PR with only a version bump — this prevents that.
-          LAST_MSG=$(git log -1 --format="%s")
-          if ! echo "$LAST_MSG" | grep -q "\[skip ci\]"; then
-            git commit --allow-empty -m "chore: sync develop ← main [skip ci]"
+          MAIN_VERSION=$(git show origin/main:package.json | node -e \
+            "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(JSON.parse(d).version))")
+          CURRENT_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
+
+          if [ "$CURRENT_VERSION" != "$MAIN_VERSION" ]; then
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              pkg.version = '$MAIN_VERSION';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            git add package.json
+            git commit -m "chore: align develop package.json to main v$MAIN_VERSION"
           fi
-          git push origin develop
+
+      - name: Push sync branch
+        run: |
+          git checkout -B "$SYNC_BRANCH"
+          git push origin "$SYNC_BRANCH" --force-with-lease
+
+      - name: Create or update PR to develop
+        uses: actions/github-script@v7
+        env:
+          SYNC_BRANCH: ${{ env.SYNC_BRANCH }}
+        with:
+          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = process.env.SYNC_BRANCH;
+            const base = 'develop';
+            const title = 'chore: sync develop ← main';
+            const body = [
+              '## Summary',
+              'Sincronização automática de `main` em `develop` após merge em produção.',
+              '',
+              '- Merge de `origin/main` aplicado sobre `develop`',
+              '- `package.json` alinhado à versão de `main`',
+              '',
+              'Aguardar CI verde e mergear este PR (branch protection exige PR + checks).',
+            ].join('\n');
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${head}`,
+              base,
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (prs.length > 0) {
+              const pr = prs[0];
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pr.number,
+                title,
+                body,
+              });
+              core.info(`PR atualizado: #${pr.number} ${pr.html_url}`);
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.create({
+              owner,
+              repo,
+              head,
+              base,
+              title,
+              body,
+            });
+            core.info(`PR criado: #${pr.number} ${pr.html_url}`);
 
       - name: Summary
         run: |
           echo "### Sync develop ← main" >> $GITHUB_STEP_SUMMARY
-          echo "- develop atualizado com os commits de main" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch \`$SYNC_BRANCH\` atualizada com merge de main" >> $GITHUB_STEP_SUMMARY
+          echo "- PR aberto/atualizado para \`develop\` (push direto bloqueado por branch protection)" >> $GITHUB_STEP_SUMMARY

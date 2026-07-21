@@ -1,6 +1,15 @@
+import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from "next";
 import path from "node:path";
 import { validateEnv } from "./lib/env";
+import { getLeadFormEmbedHeaders } from "./lib/security/lead-form-embed-headers";
+import {
+  LIVE_FRAME_HEADER_SOURCES,
+  buildLockedSiteHeaderSource,
+  getLiveFrameSecurityHeaders,
+  getLockedSiteSecurityHeaders,
+  getWhatsAppSecurityHeaders,
+} from "./lib/security/site-frame-ancestors";
 
 // Validate environment variables at build time
 // Skip in CI — secrets are not injected during the build step
@@ -25,16 +34,96 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   allowedDevOrigins: (
     process.env.NEXT_ALLOWED_DEV_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? [
+      "127.0.0.1",
+      "localhost",
       "nonzero-rodrick-mentholated.ngrok-free.dev",
     ]
   ),
   serverExternalPackages: ['unzipper'],
+  ...(process.env.NODE_ENV !== "production"
+    ? { env: { _sentryRewritesTunnelPath: "" } }
+    : {}),
   turbopack: {
     root: path.resolve(__dirname),
     resolveAlias: {
       '@aws-sdk/client-s3': { browser: './empty-module.js', default: './empty-module.js' },
     },
   },
+  async headers() {
+    return [
+      // LiveFrame: allowlist externa só em rotas públicas embutíveis (matchers exclusivos).
+      ...LIVE_FRAME_HEADER_SOURCES.map((source) => ({
+        source,
+        headers: getLiveFrameSecurityHeaders(),
+      })),
+      {
+        source: "/prime/:path*",
+        headers: getLiveFrameSecurityHeaders(),
+      },
+      {
+        source: "/recursos/:path*",
+        headers: getLiveFrameSecurityHeaders(),
+      },
+      // Demais rotas (tenant, backoffice, auth, etc.): DENY / frame-ancestors 'none'.
+      {
+        source: buildLockedSiteHeaderSource(),
+        headers: getLockedSiteSecurityHeaders(),
+      },
+      {
+        source: "/lead-form/:path*",
+        headers: getLeadFormEmbedHeaders(),
+      },
+      {
+        source: "/forms/:path*",
+        headers: getLeadFormEmbedHeaders(),
+      },
+      {
+        source: "/backoffice-lead-form",
+        headers: getLeadFormEmbedHeaders(),
+      },
+      {
+        source: "/backoffice-lead-form/:path*",
+        headers: getLeadFormEmbedHeaders(),
+      },
+      {
+        source: "/:supabaseId/whatsapp/:path*",
+        headers: getWhatsAppSecurityHeaders(),
+      },
+    ]
+  },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // For all available options, see:
+  // https://www.npmjs.com/package/@sentry/webpack-plugin#options
+
+  org: "corretor-studio",
+
+  project: "sentry-camel-flower",
+
+  // Only print logs for uploading source maps in CI
+  silent: !process.env.CI,
+
+  // For all available options, see:
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
+
+  // Upload a larger set of source maps for prettier stack traces (increases build time)
+  widenClientFileUpload: true,
+
+  // Tunnel only in production — local dev proxy to ingest often fails with ECONNRESET on Windows.
+  ...(process.env.NODE_ENV === "production" ? { tunnelRoute: "/monitoring" } : {}),
+
+  webpack: {
+    // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
+    // See the following for more information:
+    // https://docs.sentry.io/product/crons/
+    // https://vercel.com/docs/cron-jobs
+    automaticVercelMonitors: true,
+
+    // Tree-shaking options for reducing bundle size
+    treeshake: {
+      // Automatically tree-shake Sentry logger statements to reduce bundle size
+      removeDebugLogging: true,
+    },
+  }
+});

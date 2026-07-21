@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import {
   backofficeAdhesionUseCase,
   isBackofficeAdhesionStatusValue,
 } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 type ParsedAdditionalUser = {
   name: string
   email: string
@@ -24,7 +26,7 @@ type BackofficeAdhesionActivationMode = (typeof ACTIVATION_MODES)[number]
 const BILLING_TYPES = ["PIX", "CREDIT_CARD"] as const
 type BackofficeAdhesionBillingTypeValue = (typeof BILLING_TYPES)[number]
 
-const USER_TYPES = ["common", "member_pro"] as const
+const USER_TYPES = ["common", "member_pro", "associate", "guest"] as const
 type BackofficeAdhesionUserTypeValue = (typeof USER_TYPES)[number]
 
 function parseUserType(value: unknown): BackofficeAdhesionUserTypeValue | undefined {
@@ -127,6 +129,7 @@ export async function GET(request: NextRequest) {
     const output = await backofficeAdhesionUseCase.list({ page, pageSize, status, query })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -138,6 +141,8 @@ export async function POST(request: NextRequest) {
     if (access.error) {
       return NextResponse.json(access.error, { status: access.status })
     }
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== "object") {
@@ -166,6 +171,9 @@ export async function POST(request: NextRequest) {
         activationMode: parseActivationMode(data.activationMode),
         userType: parseUserType(data.userType),
         accessExpiresAt: optionalString(data, "accessExpiresAt"),
+        sponsorMasterId: optionalString(data, "sponsorMasterId"),
+        multiskillEnabled: typeof data.multiskillEnabled === "boolean" ? data.multiskillEnabled : false,
+        hasUnlimitedUsers: typeof data.hasUnlimitedUsers === "boolean" ? data.hasUnlimitedUsers : false,
         additionalUsers: parseAdditionalUsers(data),
         additionalTeams: parseAdditionalTeams(data),
       },
@@ -173,6 +181,7 @@ export async function POST(request: NextRequest) {
     )
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeAdhesionsRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

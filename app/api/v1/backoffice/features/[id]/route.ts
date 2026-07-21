@@ -2,7 +2,9 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { invalidateBackofficeFeaturesCache } from "@/lib/cache/invalidation"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeFeatureUseCase } from "@/app/api/useCases/backofficeFeature/BackofficeFeatureUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PUT(
   request: NextRequest,
@@ -13,6 +15,8 @@ export async function PUT(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireManagerAccess(result.access)
+    if (denied) return denied
 
     const { id } = await params
     const body = await request.json()
@@ -22,6 +26,7 @@ export async function PUT(
     }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeFeatureByIdRoute][PUT]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -36,6 +41,8 @@ export async function DELETE(
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireManagerAccess(result.access)
+    if (denied) return denied
 
     const { id } = await params
     const output = await backofficeFeatureUseCase.delete(id)
@@ -44,6 +51,7 @@ export async function DELETE(
     }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeFeatureByIdRoute][DELETE]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

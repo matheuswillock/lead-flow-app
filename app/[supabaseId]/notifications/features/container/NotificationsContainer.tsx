@@ -1,17 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Bell, CircleAlert, ExternalLink, Mail, RefreshCw } from "lucide-react";
+import { Bell, CircleAlert, ExternalLink, Mail, RefreshCw, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import {
+  buildNotificationPath,
+  getMeetingLink,
+  hasLeadNotificationLink,
+} from "@/lib/notifications/build-notification-url";
 import type { NotificationItem } from "../types/notification.types";
 import { useNotifications } from "../context/NotificationsHook";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates";
+import { NotificationsSettingsSheet } from "../components/NotificationsSettingsSheet";
 
 function formatCreatedAt(value: string, tz: string) {
   try {
@@ -27,23 +33,28 @@ function getLeadCode(notification: NotificationItem) {
   return typeof metadata.leadCode === "string" ? metadata.leadCode : null;
 }
 
-function getActivityId(notification: NotificationItem) {
-  const metadata = notification.metadata;
-  if (!metadata || typeof metadata !== "object") return null;
-  return typeof metadata.activityId === "string" ? metadata.activityId : null;
+function getScheduleShareUrl(notification: NotificationItem) {
+  return getMeetingLink(notification.metadata);
 }
 
 function hasLeadLink(notification: NotificationItem) {
-  return (
-    notification.type === "ACTIVITY_MENTION" ||
-    notification.type === "ACTIVITY_REACTION" ||
-    notification.type === "LEAD_SCHEDULE_CREATED" ||
-    notification.type === "LEAD_PROPOSAL_PENDING"
-  );
+  return hasLeadNotificationLink(notification.type, notification.metadata);
 }
 
 function isProposalPendingNotification(notification: NotificationItem) {
   return notification.type === "LEAD_PROPOSAL_PENDING";
+}
+
+function isTransferActivatedNotification(notification: NotificationItem) {
+  return notification.type === "LEAD_TRANSFER_ACTIVATED";
+}
+
+function getSdrName(notification: NotificationItem) {
+  const metadata = notification.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  return typeof metadata.sdrName === "string" && metadata.sdrName.trim()
+    ? metadata.sdrName.trim()
+    : null;
 }
 
 function getNotificationEvent(notification: NotificationItem) {
@@ -75,6 +86,7 @@ export function NotificationsContainer() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { tz } = useTimezone();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const {
     notifications,
     total,
@@ -132,17 +144,28 @@ export function NotificationsContainer() {
             {total > 0 ? `${total} notificação(ões)` : "Sem notificações no momento"}
           </CardDescription>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void loadNotifications({ limit: 100, offset: 0 });
-          }}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings data-icon="inline-start" />
+            Configurar
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void loadNotifications({ limit: 100, offset: 0 });
+            }}
+          >
+            <RefreshCw data-icon="inline-start" />
+            Atualizar
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoadingList && notifications.length === 0 ? (
@@ -167,9 +190,16 @@ export function NotificationsContainer() {
 
         {notifications.map((notification) => {
           const leadCode = getLeadCode(notification);
-          const activityId = getActivityId(notification);
-          const canOpenLead = hasLeadLink(notification) && !!leadCode;
+          const scheduleShareUrl = getScheduleShareUrl(notification);
+          const leadHref = buildNotificationPath({
+            supabaseId,
+            type: notification.type,
+            metadata: notification.metadata,
+          });
+          const canOpenLead = hasLeadLink(notification) && !!leadCode && !leadHref.startsWith("http");
           const isProposalPending = isProposalPendingNotification(notification);
+          const isTransferActivated = isTransferActivatedNotification(notification);
+          const sdrName = getSdrName(notification);
           const googleBadge = getGoogleNotificationBadge(notification);
           const actorName =
             notification.actor?.fullName ||
@@ -200,24 +230,55 @@ export function NotificationsContainer() {
                     </div>
                   ) : null}
                   <p className="text-sm font-medium">{notification.message}</p>
+                  {isTransferActivated && sdrName ? (
+                    <p className="text-xs text-muted-foreground">SDR: {sdrName}</p>
+                  ) : null}
                   <p className="text-xs text-muted-foreground">
                     {actorName} • {formatCreatedAt(notification.createdAt, tz)}
                   </p>
                 </div>
                 {canOpenLead ? (
-                  <Link
-                    href={`/${supabaseId}/crm?leadCode=${encodeURIComponent(leadCode as string)}${activityId ? `&activityId=${encodeURIComponent(activityId)}` : ""}`}
+                  <div className="flex flex-col items-end gap-2">
+                    <Link
+                      href={leadHref}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      Abrir lead
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                    {scheduleShareUrl ? (
+                      <a
+                        href={scheduleShareUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        Abrir agendamento
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                  </div>
+                ) : scheduleShareUrl ? (
+                  <a
+                    href={scheduleShareUrl}
+                    target="_blank"
+                    rel="noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                   >
-                    Abrir lead
+                    Abrir agendamento
                     <ExternalLink className="h-3.5 w-3.5" />
-                  </Link>
+                  </a>
                 ) : null}
               </div>
             </div>
           );
         })}
       </CardContent>
+      <NotificationsSettingsSheet
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        supabaseId={supabaseId}
+      />
     </Card>
   );
 }

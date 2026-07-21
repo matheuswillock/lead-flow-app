@@ -25,8 +25,8 @@ export interface BackofficeAccountData {
 }
 
 export interface BackofficeAccountUpdateInput {
-  fullName: string
-  email: string
+  fullName?: string
+  email?: string
   phone?: string
   cpfCnpj?: string
   postalCode?: string

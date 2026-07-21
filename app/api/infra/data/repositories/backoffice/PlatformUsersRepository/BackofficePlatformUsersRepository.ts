@@ -1,6 +1,8 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { Prisma, UserRole, UserFunction } from "@prisma/client"
+import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
+import { isActiveMemberProAssignment } from "@/app/api/shared/billing/memberProBillingRules"
 import type {
   IBackofficePlatformUsersRepository,
   MasterPlatformUserBillingRecord,
@@ -12,6 +14,24 @@ import type {
   RepositoryPaginationParams,
 } from "./IBackofficePlatformUsersRepository"
 
+function mapMasterUserType(
+  assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null
+): MasterPlatformUserDetailsRecord["userType"] {
+  const slug: "common" | "member_pro" =
+    assignment?.userType.slug === "member_pro" ? "member_pro" : "common"
+  const accessExpiresAt = assignment?.accessExpiresAt ?? null
+  const isExpired =
+    slug === "member_pro" &&
+    accessExpiresAt !== null &&
+    new Date(accessExpiresAt).getTime() <= Date.now()
+
+  return {
+    slug,
+    isExpired,
+    accessExpiresAt: accessExpiresAt ? accessExpiresAt.toISOString() : null,
+  }
+}
+
 export class BackofficePlatformUsersRepository implements IBackofficePlatformUsersRepository {
   private buildMasterFilters(filters?: PlatformUsersFilters): Prisma.ProfileWhereInput {
     // When the API receives a single query string it sets name=email=team to the same value.
@@ -22,55 +42,103 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     const base: Prisma.ProfileWhereInput = { isMaster: true, role: "manager" }
 
-    if (!q && !normalizedTeam) return base
+    const andClauses: Prisma.ProfileWhereInput[] = []
 
-    const orClauses: Prisma.ProfileWhereInput[] = []
+    if (q || normalizedTeam) {
+      const orClauses: Prisma.ProfileWhereInput[] = []
 
-    if (q) {
-      orClauses.push(
-        { fullName: { contains: q, mode: "insensitive" } },
-        { email: { contains: q, mode: "insensitive" } },
-        {
-          operators: {
-            some: {
-              OR: [
-                { fullName: { contains: q, mode: "insensitive" } },
-                { email: { contains: q, mode: "insensitive" } },
-              ],
+      if (q) {
+        orClauses.push(
+          { fullName: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+          {
+            operators: {
+              some: {
+                OR: [
+                  { fullName: { contains: q, mode: "insensitive" } },
+                  { email: { contains: q, mode: "insensitive" } },
+                ],
+              },
             },
           },
-        },
-        {
-          teamsOwned: {
-            some: {
-              members: {
-                some: {
-                  profile: {
-                    OR: [
-                      { fullName: { contains: q, mode: "insensitive" } },
-                      { email: { contains: q, mode: "insensitive" } },
-                    ],
+          {
+            teamsOwned: {
+              some: {
+                members: {
+                  some: {
+                    profile: {
+                      OR: [
+                        { fullName: { contains: q, mode: "insensitive" } },
+                        { email: { contains: q, mode: "insensitive" } },
+                      ],
+                    },
                   },
                 },
               },
             },
+          }
+        )
+      }
+
+      if (normalizedTeam && normalizedTeam !== q) {
+        orClauses.push({
+          teamsOwned: {
+            some: { name: { contains: normalizedTeam, mode: "insensitive" } },
           },
-        }
-      )
+        })
+      }
+
+      if (orClauses.length > 0) {
+        andClauses.push({ OR: orClauses })
+      }
     }
 
-    if (normalizedTeam && normalizedTeam !== q) {
-      orClauses.push({
-        teamsOwned: {
-          some: { name: { contains: normalizedTeam, mode: "insensitive" } },
-        },
-      })
+    if (filters?.plan) {
+      const plan = filters.plan
+      if (plan === "lifetime") {
+        andClauses.push({ hasPermanentSubscription: true })
+      } else if (plan === "trial") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: { subscriptionPlan: "free_trial" } },
+        })
+      } else if (plan === "monthly") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: { subscriptionPlan: { in: ["manager_base", "with_operators"] } } },
+        })
+      } else if (plan === "none") {
+        andClauses.push({
+          hasPermanentSubscription: false,
+          subscription: { is: null },
+        })
+      }
     }
 
-    return {
-      ...base,
-      ...(orClauses.length > 0 ? { OR: orClauses } : {}),
+    if (filters?.userType) {
+      if (filters.userType === "member_pro") {
+        andClauses.push({
+          userTypeAssignment: {
+            is: { userType: { is: { slug: "member_pro" } } },
+          },
+        })
+      } else {
+        andClauses.push({
+          OR: [
+            { userTypeAssignment: { is: null } },
+            {
+              userTypeAssignment: {
+                is: { userType: { is: { slug: "common" } } },
+              },
+            },
+          ],
+        })
+      }
     }
+
+    return andClauses.length > 0
+      ? { ...base, AND: andClauses }
+      : base
   }
 
   async findMasterUsersWithFilters(
@@ -91,6 +159,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           profileIconUrl: true,
           createdAt: true,
           hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
+          multiskillEnabled: true,
           subscriptionPlan: true,
           operatorCount: true,
           googleConnection: {
@@ -165,6 +235,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
+      hasUnlimitedUsers: master.hasUnlimitedUsers,
+      multiskillEnabled: master.multiskillEnabled,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
@@ -215,6 +287,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         profileIconUrl: true,
         createdAt: true,
         hasPermanentSubscription: true,
+        hasUnlimitedUsers: true,
+        multiskillEnabled: true,
         subscriptionPlan: true,
         subscriptionStatus: true,
         subscriptionId: true,
@@ -223,6 +297,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           select: {
             refreshToken: true,
             revokedAt: true,
+          },
+        },
+        userTypeAssignment: {
+          select: {
+            accessExpiresAt: true,
+            userType: { select: { slug: true } },
           },
         },
       },
@@ -275,7 +355,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     const skip = (options.page - 1) * options.pageSize
 
-    const [teams, teamsTotalItems, memberships] = await Promise.all([
+    const [teams, teamsTotalItems, allTeams, memberships] = await Promise.all([
       prisma.team.findMany({
         where: teamsWhere,
         select: {
@@ -292,10 +372,15 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
               id: true,
               role: true,
               functions: true,
+              canCreateAccountUsers: true,
+              canManageAccountTeams: true,
+              canTransferAccountLeads: true,
+              canViewAllTeams: true,
               createdAt: true,
               profile: {
                 select: {
                   id: true,
+                  supabaseId: true,
                   fullName: true,
                   email: true,
                   phone: true,
@@ -307,12 +392,16 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                     },
                   },
                   isMaster: true,
-                  canCreateAccountUsers: true,
-                  canManageAccountTeams: true,
                 },
               },
             },
             orderBy: { createdAt: "desc" },
+          },
+          transferRoutesFrom: {
+            select: {
+              targetTeamId: true,
+              targetTeam: { select: { name: true } },
+            },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -320,6 +409,15 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         take: options.pageSize,
       }),
       prisma.team.count({ where: teamsWhere }),
+      prisma.team.findMany({
+        where: { masterId: master.id },
+        select: {
+          id: true,
+          name: true,
+          _count: { select: { members: true } },
+        },
+        orderBy: { name: "asc" },
+      }),
       prisma.teamMember.findMany({
         where: {
           team: {
@@ -356,6 +454,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
+      hasUnlimitedUsers: master.hasUnlimitedUsers,
+      multiskillEnabled: master.multiskillEnabled,
       subscriptionPlan: master.subscriptionPlan,
       subscriptionStatus: master.subscriptionStatus,
       subscriptionId: master.subscriptionId,
@@ -363,6 +463,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: linkedUsers.size,
       teamsTotalItems,
+      userType: mapMasterUserType(master.userTypeAssignment),
+      allTeams: allTeams.map((team) => ({
+        id: team.id,
+        name: team.name,
+        membersCount: team._count.members,
+      })),
       teams: teams.map((team) => ({
         id: team.id,
         name: team.name,
@@ -370,6 +476,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         membersCount: team._count.members,
         members: team.members.map((member) => ({
           id: member.profile.id,
+          teamMemberId: member.id,
+          supabaseId: member.profile.supabaseId,
           fullName: member.profile.fullName,
           email: member.profile.email,
           phone: member.profile.phone,
@@ -379,8 +487,14 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           googleEmail: member.profile.googleConnection?.googleEmail ?? null,
           functions: member.functions,
           isMaster: member.profile.isMaster,
-          canCreateAccountUsers: member.profile.canCreateAccountUsers,
-          canManageAccountTeams: member.profile.canManageAccountTeams,
+          canCreateAccountUsers: member.canCreateAccountUsers,
+          canManageAccountTeams: member.canManageAccountTeams,
+          canTransferAccountLeads: member.canTransferAccountLeads,
+          canViewAllTeams: member.canViewAllTeams,
+        })),
+        transferRoutes: team.transferRoutesFrom.map((r) => ({
+          teamId: r.targetTeamId,
+          teamName: r.targetTeam.name,
         })),
       })),
     }
@@ -399,10 +513,53 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         id: true,
         fullName: true,
         email: true,
+        cpfCnpj: true,
+        phone: true,
+        postalCode: true,
+        address: true,
+        addressNumber: true,
+        neighborhood: true,
+        complement: true,
         asaasCustomerId: true,
+        asaasSubscriptionId: true,
+        subscriptionStatus: true,
+        subscriptionNextDueDate: true,
+        subscriptionEndDate: true,
+        subscriptionCycle: true,
         hasPermanentSubscription: true,
+        hasUnlimitedUsers: true,
+        timezone: true,
+        functions: true,
       },
     })
+  }
+
+  async profileBelongsToMasterAccount(
+    profileId: string,
+    masterProfileId: string
+  ): Promise<boolean> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { managerId: true },
+    })
+
+    if (!profile) {
+      return false
+    }
+
+    if (profile.managerId === masterProfileId) {
+      return true
+    }
+
+    const membership = await prisma.teamMember.findFirst({
+      where: {
+        profileId,
+        team: { masterId: masterProfileId },
+      },
+      select: { id: true },
+    })
+
+    return membership !== null
   }
 
   async updateMasterUserProfile(
@@ -420,8 +577,10 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       state?: string | null
       functions?: string[]
       hasPermanentSubscription?: boolean
+      hasUnlimitedUsers?: boolean
+      multiskillEnabled?: boolean
     }
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; hasUnlimitedUsers: boolean } | null> {
     try {
       const updateData: Record<string, unknown> = {}
       if (data.fullName !== undefined) updateData.fullName = data.fullName
@@ -435,7 +594,19 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       if (data.city !== undefined) updateData.city = data.city
       if (data.state !== undefined) updateData.state = data.state
       if (data.functions !== undefined) updateData.functions = data.functions
-      if (data.hasPermanentSubscription !== undefined) updateData.hasPermanentSubscription = data.hasPermanentSubscription
+      if (data.hasPermanentSubscription !== undefined) {
+        updateData.hasPermanentSubscription = data.hasPermanentSubscription
+        // Vitalício concede usuários ilimitados.
+        if (data.hasPermanentSubscription === true) {
+          updateData.hasUnlimitedUsers = true
+        } else if (data.hasUnlimitedUsers === undefined) {
+          // Sem grant explícito nesta requisição: recalcula com base em outras fontes
+          // (adesão anual paga, Member PRO ativo, assinatura YEARLY ativa) em vez de manter a flag antiga.
+          updateData.hasUnlimitedUsers = await this.hasOtherUnlimitedUsersGrant(masterProfileId)
+        }
+      }
+      if (data.hasUnlimitedUsers !== undefined) updateData.hasUnlimitedUsers = data.hasUnlimitedUsers
+      if (data.multiskillEnabled !== undefined) updateData.multiskillEnabled = data.multiskillEnabled
 
       if (Object.keys(updateData).length === 0) return null
 
@@ -446,11 +617,62 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           role: "manager",
         },
         data: updateData,
-        select: { id: true },
+        select: { id: true, hasUnlimitedUsers: true },
       })
     } catch {
       return null
     }
+  }
+
+  private async hasOtherUnlimitedUsersGrant(masterProfileId: string): Promise<boolean> {
+    const [annualAdhesionCount, userTypeAssignment, profileSubscription] = await Promise.all([
+      prisma.backofficeAdhesion.count({
+        where: {
+          createdProfileId: masterProfileId,
+          status: "paid",
+          cycle: "annual",
+        },
+      }),
+      prisma.profileUserTypeAssignment.findUnique({
+        where: { profileId: masterProfileId },
+        select: {
+          accessExpiresAt: true,
+          userType: { select: { slug: true } },
+        },
+      }),
+      prisma.profileSubscription.findUnique({
+        where: { profileId: masterProfileId },
+        select: {
+          subscriptionCycle: true,
+          subscriptionStatus: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
+        },
+      }),
+    ])
+
+    if (annualAdhesionCount > 0) {
+      return true
+    }
+
+    if (isActiveMemberProAssignment(
+      userTypeAssignment
+        ? { slug: userTypeAssignment.userType.slug, accessExpiresAt: userTypeAssignment.accessExpiresAt }
+        : null
+    )) {
+      return true
+    }
+
+    // Mesma regra usada pelo backfill: assinatura anual ativa dentro da janela concede ilimitado.
+    const now = new Date()
+    const isYearlyCycle = profileSubscription?.subscriptionCycle === "YEARLY"
+    const isActiveSubscriptionStatus =
+      !profileSubscription?.subscriptionStatus || profileSubscription.subscriptionStatus === "active"
+    const isWithinSubscriptionWindow =
+      (!profileSubscription?.subscriptionStartDate || profileSubscription.subscriptionStartDate <= now) &&
+      (!profileSubscription?.subscriptionEndDate || profileSubscription.subscriptionEndDate >= now)
+
+    return isYearlyCycle && isActiveSubscriptionStatus && isWithinSubscriptionWindow
   }
 
   async findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null> {
@@ -577,6 +799,34 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     })
   }
 
+  async listTeamsByMasterId(
+    masterProfileId: string
+  ): Promise<Array<{ id: string; name: string }> | null> {
+    const master = await prisma.profile.findFirst({
+      where: {
+        id: masterProfileId,
+        isMaster: true,
+        role: "manager",
+      },
+      select: { id: true },
+    })
+
+    if (!master) return null
+
+    return prisma.team.findMany({
+      where: { masterId: masterProfileId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    })
+  }
+
+  async findTeamMember(teamId: string, profileId: string): Promise<{ id: string } | null> {
+    return prisma.teamMember.findUnique({
+      where: { teamId_profileId: { teamId, profileId } },
+      select: { id: true },
+    })
+  }
+
   async findTeamByIdAndMasterId(teamId: string, masterId: string): Promise<{ id: string } | null> {
     return prisma.team.findFirst({
       where: { id: teamId, masterId },
@@ -584,10 +834,24 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     })
   }
 
-  async findProfileByEmail(email: string): Promise<{ id: string; isMaster: boolean; managerId: string | null } | null> {
+  async findProfileByEmail(email: string): Promise<{
+    id: string
+    email: string
+    fullName: string | null
+    supabaseId: string | null
+    isMaster: boolean
+    managerId: string | null
+  } | null> {
     return prisma.profile.findUnique({
       where: { email },
-      select: { id: true, isMaster: true, managerId: true },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        supabaseId: true,
+        isMaster: true,
+        managerId: true,
+      },
     })
   }
 
@@ -601,6 +865,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       functions: ("SDR" | "CLOSER")[]
       canCreateAccountUsers?: boolean
       canManageAccountTeams?: boolean
+      canTransferAccountLeads?: boolean
     },
     teamId: string
   ): Promise<{ profileId: string; teamMemberId: string }> {
@@ -614,8 +879,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           functions: data.functions as UserFunction[],
           managerId: masterProfileId,
           isMaster: false,
-          canCreateAccountUsers: data.canCreateAccountUsers ?? false,
-          canManageAccountTeams: data.canManageAccountTeams ?? false,
         },
         select: { id: true },
       })
@@ -626,6 +889,11 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           profileId: profile.id,
           role: data.role as UserRole,
           functions: data.functions as UserFunction[],
+          canCreateAccountUsers: data.role === "manager" && data.canCreateAccountUsers === true,
+          canManageAccountTeams: data.role === "manager" && data.canManageAccountTeams === true,
+          canTransferAccountLeads:
+            (data.role === "manager" || data.role === "backoffice") &&
+            data.canTransferAccountLeads === true,
         },
         select: { id: true },
       })
@@ -639,32 +907,41 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     teamId: string,
     role: "manager" | "backoffice" | "operator",
     functions: ("SDR" | "CLOSER")[],
-    permissions?: { canCreateAccountUsers: boolean; canManageAccountTeams: boolean }
+    permissions?: {
+      canCreateAccountUsers: boolean
+      canManageAccountTeams: boolean
+      canTransferAccountLeads: boolean
+    }
   ): Promise<{ teamMemberId: string }> {
-    return prisma.$transaction(async (tx) => {
-      if (permissions) {
-        await tx.profile.update({
-          where: { id: profileId },
-          data: {
-            canCreateAccountUsers: permissions.canCreateAccountUsers,
-            canManageAccountTeams: permissions.canManageAccountTeams,
-          },
-        })
-      }
-
-      const teamMember = await tx.teamMember.create({
-        data: { profileId, teamId, role: role as UserRole, functions: functions as UserFunction[] },
-        select: { id: true },
-      })
-
-      return { teamMemberId: teamMember.id }
+    const teamMember = await prisma.teamMember.create({
+      data: {
+        profileId,
+        teamId,
+        role: role as UserRole,
+        functions: functions as UserFunction[],
+        canCreateAccountUsers: role === "manager" && permissions?.canCreateAccountUsers === true,
+        canManageAccountTeams: role === "manager" && permissions?.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (role === "manager" || role === "backoffice") &&
+          permissions?.canTransferAccountLeads === true,
+      },
+      select: { id: true },
     })
+
+    return { teamMemberId: teamMember.id }
   }
 
   async createTeamForMaster(masterProfileId: string, name: string): Promise<{ id: string; name: string }> {
     return prisma.$transaction(async (tx) => {
+      const existingTeamsCount = await tx.team.count({
+        where: { masterId: masterProfileId },
+      })
       const team = await tx.team.create({
-        data: { name, masterId: masterProfileId, isDefault: false },
+        data: {
+          name,
+          masterId: masterProfileId,
+          isDefault: existingTeamsCount === 0,
+        },
         select: { id: true, name: true },
       })
 
@@ -697,6 +974,27 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     }
   }
 
+  async syncTeamTransferRoutes(
+    teamId: string,
+    masterId: string,
+    targetTeamIds: string[],
+    createdBy: string
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.teamTransferRoute.deleteMany({ where: { sourceTeamId: teamId } })
+      if (targetTeamIds.length > 0) {
+        await tx.teamTransferRoute.createMany({
+          data: targetTeamIds.map((tid) => ({
+            sourceTeamId: teamId,
+            targetTeamId: tid,
+            createdBy,
+          })),
+          skipDuplicates: true,
+        })
+      }
+    })
+  }
+
   async deleteTeam(teamId: string, masterId: string): Promise<void> {
     await prisma.$transaction(async (tx) => {
       await tx.teamMember.deleteMany({ where: { teamId } })
@@ -708,6 +1006,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     await prisma.profile.update({
       where: { id: profileId },
       data: { supabaseId },
+    })
+  }
+
+  async assertUserSubscriptionCapacity(masterProfileId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await subscriptionCreditRepository.assertCapacityAvailable(tx, masterProfileId, { users: 1 })
     })
   }
 }

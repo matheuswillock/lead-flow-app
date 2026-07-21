@@ -3,14 +3,12 @@ import { notificationService } from "@/app/api/services/notifications/Notificati
 
 type ListNotificationsInput = {
   recipientProfileId: string;
-  teamId: string;
   limit?: number;
   offset?: number;
 };
 
-type NotificationContextInput = {
+type NotificationRecipientInput = {
   recipientProfileId: string;
-  teamId: string;
 };
 
 export class NotificationUseCase {
@@ -19,9 +17,8 @@ export class NotificationUseCase {
       const limit = Math.max(1, Math.min(input.limit ?? 100, 200));
       const offset = Math.max(0, input.offset ?? 0);
 
-      const result = await notificationService.listByRecipientAndTeam({
+      const result = await notificationService.listByRecipient({
         recipientProfileId: input.recipientProfileId,
-        teamId: input.teamId,
         limit,
         offset,
       });
@@ -38,9 +35,9 @@ export class NotificationUseCase {
     }
   }
 
-  async countUnread(input: NotificationContextInput): Promise<Output> {
+  async countUnread(input: NotificationRecipientInput): Promise<Output> {
     try {
-      const unreadCount = await notificationService.countUnreadByRecipientAndTeam(input);
+      const unreadCount = await notificationService.countUnreadByRecipient(input);
       return new Output(true, [], [], { unreadCount });
     } catch (error) {
       console.error("[NotificationUseCase][countUnread] Erro ao contar notificações:", error);
@@ -48,9 +45,9 @@ export class NotificationUseCase {
     }
   }
 
-  async markAllAsRead(input: NotificationContextInput): Promise<Output> {
+  async markAllAsRead(input: NotificationRecipientInput): Promise<Output> {
     try {
-      const markedCount = await notificationService.markAllAsReadByRecipientAndTeam(input);
+      const markedCount = await notificationService.markAllAsReadByRecipient(input);
       return new Output(true, ["Notificações marcadas como vistas"], [], { markedCount });
     } catch (error) {
       console.error("[NotificationUseCase][markAllAsRead] Erro ao atualizar notificações:", error);

@@ -132,6 +132,26 @@ class PrismaProfileRepository implements IProfileRepository {
                     return null;
                 }
 
+                if (found.activeTeamId) {
+                    const activeTeamMembership = await prisma.teamMember.findUnique({
+                        where: {
+                            teamId_profileId: {
+                                teamId: found.activeTeamId,
+                                profileId: found.id,
+                            },
+                        },
+                        select: {
+                            role: true,
+                            functions: true,
+                            canCreateAccountUsers: true,
+                            canManageAccountTeams: true,
+                            canTransferAccountLeads: true,
+                        },
+                    });
+
+                    (found as any).activeTeamMembership = activeTeamMembership;
+                }
+
                 // Se o usuário é um manager não-master, buscar todos os usuários do master
                 if (isManagerLikeRole(found.role) && !found.isMaster && found.managerId) {
                     // Buscar todos os usuários associados ao master (incluindo o próprio master)
@@ -184,17 +204,35 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
-    async existingByEmailOrPhone(email: string, phone: string): Promise<boolean> {
+    async existingByEmailOrPhone(
+        email: string,
+        phone: string,
+        excludeProfileId?: string
+    ): Promise<boolean> {
         try {
+            const orFilters: Array<{ email?: string; phone?: string }> = [];
+            if (email.trim()) {
+                orFilters.push({ email: email.trim() });
+            }
+            if (phone.trim()) {
+                orFilters.push({ phone: phone.trim() });
+            }
+            if (orFilters.length === 0) {
+                return false;
+            }
+
             const profile = await prisma.profile.findFirst({
-                where: { OR: [{ email }, { phone }] },
+                where: {
+                    OR: orFilters,
+                    ...(excludeProfileId ? { NOT: { id: excludeProfileId } } : {}),
+                },
+                select: { id: true },
             });
             return !!profile;
         } catch (error) {
             console.error("Error checking existing profile:", error);
             return false;
         }
-
     }
 
     async findByEmail(email: string): Promise<Profile | null> {
@@ -677,8 +715,6 @@ class PrismaProfileRepository implements IProfileRepository {
             email?: string;
             role?: string;
             functions?: ("SDR" | "CLOSER")[];
-            canCreateAccountUsers?: boolean;
-            canManageAccountTeams?: boolean;
         }
     ): Promise<Profile | null> {
         try {
@@ -772,22 +808,6 @@ class PrismaProfileRepository implements IProfileRepository {
             if (updates.functions !== undefined) {
                 updateData.functions = updates.functions;
                 console.info("🧩 [updateProfileById] Atualizando functions:", updates.functions);
-            }
-
-            if (updates.canCreateAccountUsers !== undefined) {
-                updateData.canCreateAccountUsers = updates.canCreateAccountUsers;
-                console.info(
-                    "🔐 [updateProfileById] Atualizando canCreateAccountUsers:",
-                    updates.canCreateAccountUsers
-                );
-            }
-
-            if (updates.canManageAccountTeams !== undefined) {
-                updateData.canManageAccountTeams = updates.canManageAccountTeams;
-                console.info(
-                    "🔐 [updateProfileById] Atualizando canManageAccountTeams:",
-                    updates.canManageAccountTeams
-                );
             }
 
             const profile = await prisma.profile.update({
@@ -963,6 +983,32 @@ class PrismaProfileRepository implements IProfileRepository {
         })
         console.info("[ProfileRepository] BackofficeProfile criado:", profile.id)
         return { profileId: profile.id }
+    }
+
+    async findAsaasSyncProfileById(profileId: string) {
+        return prisma.profile.findUnique({
+            where: { id: profileId },
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                cpfCnpj: true,
+                phone: true,
+                postalCode: true,
+                address: true,
+                addressNumber: true,
+                neighborhood: true,
+                complement: true,
+                asaasCustomerId: true,
+            },
+        });
+    }
+
+    async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {
+        await prisma.profile.update({
+            where: { id: profileId },
+            data: { asaasCustomerId },
+        });
     }
 }
 

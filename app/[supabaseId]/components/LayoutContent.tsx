@@ -3,6 +3,7 @@
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { GlobalLoading } from "@/components/global-loading";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -10,7 +11,8 @@ import { SiteHeader } from "@/components/site-header";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { Users2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { getFeatureSlugForAppPath } from "@/lib/features/feature-route-access";
+import { getFeatureSlugForAppPath, isAssociadosAppPath } from "@/lib/features/feature-route-access"
+import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext";
 
 interface LayoutContentProps {
   children: React.ReactNode;
@@ -24,12 +26,15 @@ interface LayoutContentProps {
  */
 export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutContentProps) {
   const pathname = usePathname();
-  const { isLoading, error } = useUserContext();
+  const { user, isLoading, error } = useUserContext();
   const { teams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const { isLoading: featureLoading, hasAccess } = useFeatureAccess();
+  const { access: operationalAccess, isLoading: operationalAccessLoading } = useOperationalAccess();
 
-  // Enquanto carrega os dados do usuário, mostra loading global
-  if (isLoading || teamsLoading || featureLoading) {
+  const hasBootstrapData = Boolean(user) && teams.length > 0;
+  const isBootstrapping = isLoading || teamsLoading;
+
+  if (isBootstrapping && !hasBootstrapData) {
     return <GlobalLoading />;
   }
 
@@ -72,11 +77,18 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
 
   const shouldShowNoTeamsMessage = teams.length === 0;
   const requiredFeatureSlug = getFeatureSlugForAppPath(pathname);
-  const shouldBlockByFeature = !shouldShowNoTeamsMessage && !!requiredFeatureSlug && !hasAccess(requiredFeatureSlug);
+  const isAssociadosRoute = isAssociadosAppPath(pathname);
+  const shouldBlockByFeature =
+    !shouldShowNoTeamsMessage &&
+    !featureLoading &&
+    !operationalAccessLoading &&
+    ((!!requiredFeatureSlug && !hasAccess(requiredFeatureSlug)) ||
+      (isAssociadosRoute && !operationalAccess.associadosQueue));
   const canShowWhatsNewModal = !shouldShowNoTeamsMessage && !shouldBlockByFeature;
 
   // Dados carregados, renderiza o layout completo
   return (
+    <PageBreadcrumbProvider>
     <SidebarProvider
       defaultOpen={defaultOpen}
       style={
@@ -123,5 +135,6 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
         </div>
       </SidebarInset>
     </SidebarProvider>
+    </PageBreadcrumbProvider>
   );
 }

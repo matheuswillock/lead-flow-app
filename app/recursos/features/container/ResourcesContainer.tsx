@@ -13,8 +13,9 @@ export function ResourcesContainer() {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: "Recursos Corretor Studio",
+    url: getAbsoluteUrl("/recursos"),
     description:
-      "Central de conteudo sobre CRM, pipeline, gestao de equipe e integracoes para corretores de planos de saude.",
+      "Central de conteúdo sobre CRM, pipeline, gestão de equipe e integrações para corretores de planos de saúde.",
     mainEntity: {
       "@type": "ItemList",
       itemListElement: resources.map((resource, index) => ({
@@ -37,10 +38,10 @@ export function ResourcesContainer() {
         <div className="max-w-3xl">
           <p className="text-sm uppercase tracking-wide text-muted-foreground">Recursos</p>
           <h1 className="mt-3 text-4xl sm:text-5xl font-extrabold leading-[1.08] tracking-tight">
-            Conteudo estrategico para corretores de saude
+            Conteúdo estratégico para corretores de saúde
           </h1>
           <p className="mt-5 text-lg text-muted-foreground leading-relaxed">
-            Guias objetivos para elevar conversao comercial com CRM, pipeline, operacao em equipe e integracoes.
+            Guias objetivos para elevar conversão comercial com CRM, pipeline, operação em equipe e integrações.
           </p>
         </div>
 
@@ -58,7 +59,7 @@ export function ResourcesContainer() {
                 href={getPublicResourcePath(resource.slug)}
                 className="mt-6 inline-flex items-center text-sm font-semibold text-primary"
               >
-                Ler conteudo completo
+                Ler conteúdo completo
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Link>
             </article>
@@ -70,7 +71,7 @@ export function ResourcesContainer() {
             Ver assinatura
           </Link>
           <Link href="/privacy-policy" className="rounded-2xl px-6 py-3.5 text-sm font-semibold landing-secondary-cta">
-            Politica de Privacidade
+            Política de Privacidade
           </Link>
           <Link href="/terms" className="rounded-2xl px-6 py-3.5 text-sm font-semibold landing-secondary-cta">
             Termos de Uso

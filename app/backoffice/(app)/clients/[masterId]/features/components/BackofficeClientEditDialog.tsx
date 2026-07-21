@@ -1,8 +1,10 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { AlertTriangle, Trash2 } from "lucide-react"
+import { AlertTriangle, ShieldBan, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { BanUserDialog } from "@/app/backoffice/(app)/clients/all-users/features/components/BanUserDialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -14,15 +16,32 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { maskPhone, maskCEP, unmask, formatDocumentInput } from "@/lib/masks"
 import type { BackofficeClientDetails } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
+import {
+  MEMBER_PRO_DAY_MS,
+  MEMBER_PRO_MAX_DAYS,
+  MEMBER_PRO_MIN_DAYS,
+  remainingAccessDays,
+  suggestedMemberProAccessDays,
+} from "../utils/memberProAccessUtils"
 
 const FUNCTIONS = [
   { value: "SDR", label: "SDR", description: "Qualifica leads e organiza o funil." },
   { value: "CLOSER", label: "Closer", description: "Conduz reuniões e fechamento." },
 ] as const
+
+type EditableUserType = "common" | "member_pro"
 
 interface FormState {
   fullName: string
@@ -36,9 +55,12 @@ interface FormState {
   city: string
   state: string
   functions: string[]
+  userType: EditableUserType
+  memberProAccessDays: string
 }
 
 function initForm(details: BackofficeClientDetails): FormState {
+  const slug = details.userType.slug === "member_pro" ? "member_pro" : "common"
   return {
     fullName: details.fullName ?? "",
     phone: details.phone ?? "",
@@ -51,6 +73,11 @@ function initForm(details: BackofficeClientDetails): FormState {
     city: details.city ?? "",
     state: details.state ?? "",
     functions: details.functions ?? [],
+    userType: slug,
+    memberProAccessDays:
+      slug === "member_pro"
+        ? String(suggestedMemberProAccessDays(details.userType.accessExpiresAt))
+        : "",
   }
 }
 
@@ -59,12 +86,18 @@ function nullOrTrim(v: string): string | null {
   return s.length > 0 ? s : null
 }
 
+function parsePositiveInt(value: string): number | null {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   masterId: string
   details: BackofficeClientDetails
   service: IBackofficeClientDetailsService
+  canManage?: boolean
   onSuccess: () => void
   onDeleteRequest: () => void
 }
@@ -75,11 +108,14 @@ export function BackofficeClientEditDialog({
   masterId,
   details,
   service,
+  canManage = true,
   onSuccess,
   onDeleteRequest,
 }: Props) {
   const [form, setForm] = useState<FormState>(() => initForm(details))
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [banDialogOpen, setBanDialogOpen] = useState(false)
+  const [isBanning, setIsBanning] = useState(false)
   const inFlight = useRef(false)
 
   useEffect(() => {
@@ -101,7 +137,27 @@ export function BackofficeClientEditDialog({
     }))
   }
 
-  const isValid = form.fullName.trim().length >= 2
+  const memberProAccessDaysValue = parsePositiveInt(form.memberProAccessDays)
+  const memberProAccessDaysValid =
+    form.userType !== "member_pro" ||
+    (memberProAccessDaysValue !== null &&
+      memberProAccessDaysValue >= MEMBER_PRO_MIN_DAYS &&
+      memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
+
+  const isValid = form.fullName.trim().length >= 2 && memberProAccessDaysValid
+
+  const initialUserType: EditableUserType =
+    details.userType.slug === "member_pro" ? "member_pro" : "common"
+  const userTypeChanged = form.userType !== initialUserType
+  const currentRemainingDays = remainingAccessDays(details.userType.accessExpiresAt)
+  const memberProDaysChanged =
+    form.userType === "member_pro" &&
+    memberProAccessDaysValue !== null &&
+    currentRemainingDays !== null &&
+    memberProAccessDaysValue !== currentRemainingDays
+  const memberProNeedsRenewal =
+    form.userType === "member_pro" && details.userType.isExpired
+  const shouldUpdateUserType = userTypeChanged || memberProDaysChanged || memberProNeedsRenewal
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -124,6 +180,21 @@ export function BackofficeClientEditDialog({
         state: nullOrTrim(form.state),
         functions: form.functions,
       })
+
+      if (shouldUpdateUserType) {
+        if (form.userType === "common") {
+          await service.updateUserType(masterId, { userType: "common" })
+        } else {
+          const accessExpiresAt = new Date(
+            Date.now() + (memberProAccessDaysValue as number) * MEMBER_PRO_DAY_MS
+          ).toISOString()
+          await service.updateUserType(masterId, {
+            userType: "member_pro",
+            accessExpiresAt,
+          })
+        }
+      }
+
       toast.success("Dados atualizados com sucesso")
       onOpenChange(false)
       onSuccess()
@@ -134,6 +205,26 @@ export function BackofficeClientEditDialog({
       inFlight.current = false
     }
   }
+
+  async function handleBanUser(reason?: string | null) {
+    if (isBanning) return
+
+    setIsBanning(true)
+    try {
+      await service.banUser(masterId, reason)
+      toast.success("Conta banida com sucesso")
+      setBanDialogOpen(false)
+      onOpenChange(false)
+      onSuccess()
+    } catch (err) {
+      console.error("[BackofficeClientEditDialog][handleBanUser]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao banir usuário")
+    } finally {
+      setIsBanning(false)
+    }
+  }
+
+  const userLabel = details.fullName?.trim() || details.email
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -195,9 +286,76 @@ export function BackofficeClientEditDialog({
               />
             </div>
 
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium">Tipo de usuário</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Defina se o cliente é Comum ou Member PRO.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-user-type">Tipo</Label>
+                  <Select
+                    value={form.userType}
+                    onValueChange={(value) => {
+                      const next = value as EditableUserType
+                      setForm((prev) => ({
+                        ...prev,
+                        userType: next,
+                        memberProAccessDays:
+                          next === "member_pro"
+                            ? prev.memberProAccessDays || String(MEMBER_PRO_MAX_DAYS)
+                            : "",
+                      }))
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="edit-user-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="common">Comum</SelectItem>
+                        <SelectItem value="member_pro">Member PRO</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {details.userType.slug === "member_pro" && details.userType.accessExpiresAt ? (
+                    <p className="text-xs text-muted-foreground">
+                      Acesso atual expira em{" "}
+                      {new Date(details.userType.accessExpiresAt).toLocaleDateString("pt-BR")}
+                      {details.userType.isExpired ? " (expirado)" : ""}.
+                    </p>
+                  ) : null}
+                </div>
+                {form.userType === "member_pro" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-member-pro-days">Validade do acesso (dias)</Label>
+                    <Input
+                      id="edit-member-pro-days"
+                      type="number"
+                      min={MEMBER_PRO_MIN_DAYS}
+                      max={MEMBER_PRO_MAX_DAYS}
+                      value={form.memberProAccessDays}
+                      onChange={(e) => setField("memberProAccessDays", e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Entre {MEMBER_PRO_MIN_DAYS} e {MEMBER_PRO_MAX_DAYS} dias. Member PRO ativa
+                      usuários ilimitados.
+                    </p>
+                    {form.memberProAccessDays.length > 0 && !memberProAccessDaysValid ? (
+                      <p className="text-xs text-destructive">Informe um número entre 1 e 365</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
             {/* Address */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground">Endereço (opcional)</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">Endereço</h3>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -318,26 +476,59 @@ export function BackofficeClientEditDialog({
             <Separator />
 
             {/* Danger zone */}
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 space-y-3">
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 space-y-4">
               <div className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span className="text-sm font-semibold">Zona de Perigo</span>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Excluir esta conta é uma ação permanente e irreversível. Todos os times, dados e
-                acessos serão removidos.
-              </p>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full"
-                onClick={onDeleteRequest}
-                disabled={isSubmitting}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Excluir conta
-              </Button>
+
+              {canManage && !details.isBanned ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Banir esta conta bloqueia o acesso de todos os usuários vinculados à plataforma.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setBanDialogOpen(true)}
+                    disabled={isSubmitting || isBanning}
+                  >
+                    <ShieldBan data-icon="inline-start" />
+                    Banir
+                  </Button>
+                </div>
+              ) : null}
+
+              {details.isBanned ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Esta conta possui um banimento ativo.
+                  </p>
+                  <Button type="button" variant="outline" size="sm" className="w-full" asChild>
+                    <Link href="/backoffice/anatemas">Ver em Anatemas</Link>
+                  </Button>
+                </div>
+              ) : null}
+
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Excluir esta conta é uma ação permanente e irreversível. Todos os times, dados e
+                  acessos serão removidos.
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="w-full"
+                  onClick={onDeleteRequest}
+                  disabled={isSubmitting || isBanning}
+                >
+                  <Trash2 data-icon="inline-start" />
+                  Excluir conta
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -356,6 +547,15 @@ export function BackofficeClientEditDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <BanUserDialog
+        open={banDialogOpen}
+        isSubmitting={isBanning}
+        isMaster
+        userLabel={userLabel}
+        onOpenChange={setBanDialogOpen}
+        onConfirm={handleBanUser}
+      />
     </Dialog>
   )
 }

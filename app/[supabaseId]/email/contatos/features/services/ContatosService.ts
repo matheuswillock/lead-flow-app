@@ -1,6 +1,8 @@
 "use client";
 
+import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContactImportFields";
 import type { ContactList, Contact } from "../context/ContatosTypes";
+import type { EmailContactImportEnqueueResult } from "./IContatosService";
 
 export interface IContatosService {
   getLists(): Promise<ContactList[]>
@@ -22,7 +24,12 @@ export interface IContatosService {
     listId: string,
     file: File
   ): Promise<{ imported: number; updated: number; total: number }>
+  importMapped(
+    listId: string,
+    rows: EmailContactImportRow[]
+  ): Promise<EmailContactImportEnqueueResult>
   deleteContact(listId: string, contactId: string): Promise<void>
+  addContact(listId: string, email: string, name?: string): Promise<void>
 }
 
 export class ContatosService implements IContatosService {
@@ -73,12 +80,34 @@ export class ContatosService implements IContatosService {
       method: "DELETE",
     });
 
+    const data = await response.json().catch(() => null);
+
     if (!response.ok) {
-      const data = await response.json().catch(() => null);
       throw new Error(
         data?.errorMessages?.join(", ") || "Erro ao excluir lista de contatos"
       );
     }
+  }
+
+  async importMapped(
+    listId: string,
+    rows: EmailContactImportRow[]
+  ): Promise<EmailContactImportEnqueueResult> {
+    console.info("[ContatosService] importMapped", { listId, rowCount: rows.length });
+    const response = await fetch(`${this.baseUrl}/${listId}/import/mapped`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.isValid) {
+      throw new Error(
+        data.errorMessages?.join(", ") || "Erro ao enfileirar importação de contatos"
+      );
+    }
+
+    return data.result as EmailContactImportEnqueueResult;
   }
 
   async getContacts(
@@ -161,6 +190,22 @@ export class ContatosService implements IContatosService {
       const data = await response.json().catch(() => null);
       throw new Error(
         data?.errorMessages?.join(", ") || "Erro ao excluir contato"
+      );
+    }
+  }
+
+  async addContact(listId: string, email: string, name?: string): Promise<void> {
+    console.info("[ContatosService] addContact", { listId, email });
+    const response = await fetch(`${this.baseUrl}/${listId}/contacts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.isValid) {
+      throw new Error(
+        data?.errorMessages?.join(", ") || "Erro ao adicionar contato"
       );
     }
   }

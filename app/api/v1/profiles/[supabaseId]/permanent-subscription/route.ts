@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UpdatePermanentSubscriptionUseCase } from '@/app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase';
 import { profileRepository } from '@/app/api/infra/data/repositories/profile/ProfileRepository';
 import { createSupabaseServer } from '@/lib/supabase/server';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * PUT /api/v1/profiles/[supabaseId]/permanent-subscription
@@ -87,6 +88,7 @@ export async function PUT(
     return NextResponse.json(result, { status: statusCode });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [PUT /api/v1/profiles/[supabaseId]/permanent-subscription] Erro:', error);
     
     return NextResponse.json(

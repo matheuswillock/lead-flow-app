@@ -35,9 +35,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   GripVertical,
+  History,
   MoreHorizontal,
   RefreshCw,
   Settings,
+  Tag,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -96,6 +98,8 @@ import { cn } from "@/lib/utils"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
+import { BackofficeGenerateOfferDialog } from "./BackofficeGenerateOfferDialog"
+import { BackofficeLeadOffersSheet } from "./BackofficeLeadOffersSheet"
 import {
   BACKOFFICE_CRM_COLUMNS,
   BACKOFFICE_CRM_STATUS_LABELS,
@@ -135,20 +139,45 @@ function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
     lost: "border-destructive/30 bg-destructive/10 text-destructive",
     implementation: "border-border bg-secondary text-secondary-foreground",
     finalized: "border-primary/30 bg-primary/15 text-primary",
+    proposal: "border-primary/30 bg-primary/10 text-primary",
+    future_contact: "border-border bg-secondary text-secondary-foreground",
+    deal_closed: "border-primary/30 bg-primary/15 text-primary",
+    disqualified: "border-destructive/30 bg-destructive/10 text-destructive",
   }
   return classes[status]
 }
 
 function getOriginLabel(origin: BackofficeLeadItem["origin"]): string {
-  if (origin === "webhook_meta") return "Webhook Meta"
-  return "Manual"
+  switch (origin) {
+    case "webhook_meta":
+      return "Webhook Meta"
+    case "landing_page":
+      return "Landing page"
+    case "public_form":
+      return "Formulário público"
+    case "manual":
+      return "Manual"
+    default: {
+      const _exhaustive: never = origin
+      return _exhaustive
+    }
+  }
 }
 
 function getOriginBadgeClass(origin: BackofficeLeadItem["origin"]): string {
-  if (origin === "webhook_meta") {
-    return "border-primary/30 bg-primary/10 text-primary"
+  switch (origin) {
+    case "webhook_meta":
+      return "border-primary/30 bg-primary/10 text-primary"
+    case "landing_page":
+    case "public_form":
+      return "border-primary/20 bg-primary/5 text-primary"
+    case "manual":
+      return "border-border bg-muted text-muted-foreground"
+    default: {
+      const _exhaustive: never = origin
+      return _exhaustive
+    }
   }
-  return "border-border bg-muted text-muted-foreground"
 }
 
 function SortableHeader({
@@ -367,6 +396,7 @@ export function BackofficeCrmTable() {
     filteredLeads,
     users,
     closerOptions,
+    canManage,
     openEditDialog,
     updateLeadStatus,
     removeLead,
@@ -384,6 +414,9 @@ export function BackofficeCrmTable() {
   const [pendingStatusLeadId, setPendingStatusLeadId] = useState<string | null>(null)
   const [leadToSchedule, setLeadToSchedule] = useState<BackofficeLeadItem | null>(null)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [offerLead, setOfferLead] = useState<BackofficeLeadItem | null>(null)
+  const [generateOfferOpen, setGenerateOfferOpen] = useState(false)
+  const [offersHistoryOpen, setOffersHistoryOpen] = useState(false)
 
   useEffect(() => {
     setData(filteredLeads)
@@ -478,7 +511,9 @@ export function BackofficeCrmTable() {
         accessorKey: "phone",
         meta: { label: "Telefone" },
         header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
-        cell: ({ row }) => maskPhone(row.original.phone ?? "") || "-",
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap">{maskPhone(row.original.phone ?? "") || "-"}</span>
+        ),
       },
       {
         accessorKey: "cpfCnpj",
@@ -560,6 +595,8 @@ export function BackofficeCrmTable() {
           const lead = row.original
           const isStatusPending = pendingStatusLeadId === lead.id
 
+          if (!canManage) return null
+
           return (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -600,6 +637,30 @@ export function BackofficeCrmTable() {
                       </DropdownMenuGroup>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
+                  {canManage ? (
+                    <>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.stopPropagation()
+                          setOfferLead(lead)
+                          setGenerateOfferOpen(true)
+                        }}
+                      >
+                        <Tag data-icon="inline-start" />
+                        Gerar oferta
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.stopPropagation()
+                          setOfferLead(lead)
+                          setOffersHistoryOpen(true)
+                        }}
+                      >
+                        <History data-icon="inline-start" />
+                        Histórico de ofertas
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
@@ -621,7 +682,7 @@ export function BackofficeCrmTable() {
         },
       },
     ],
-    [handleStatusChange, pendingStatusLeadId, tz],
+    [canManage, handleStatusChange, pendingStatusLeadId, tz],
   )
 
   const table = useReactTable({
@@ -666,8 +727,8 @@ export function BackofficeCrmTable() {
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="cursor-pointer"
-                  onClick={() => openEditDialog(row.original)}
+                  className={canManage ? "cursor-pointer" : undefined}
+                  onClick={canManage ? () => openEditDialog(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="text-center align-middle">
@@ -798,6 +859,29 @@ export function BackofficeCrmTable() {
         }}
         onConfirm={confirmScheduleStatusChange}
         isReschedule={leadToSchedule?.status === "scheduled"}
+      />
+
+      <BackofficeGenerateOfferDialog
+        lead={offerLead}
+        open={generateOfferOpen}
+        onOpenChange={(open) => {
+          setGenerateOfferOpen(open)
+          if (!open && !offersHistoryOpen) setOfferLead(null)
+        }}
+      />
+
+      <BackofficeLeadOffersSheet
+        lead={offerLead}
+        open={offersHistoryOpen}
+        onOpenChange={(open) => {
+          setOffersHistoryOpen(open)
+          if (!open && !generateOfferOpen) setOfferLead(null)
+        }}
+        onGenerateNew={() => {
+          // Open generator first so offerLead is not cleared while history closes.
+          setGenerateOfferOpen(true)
+          setOffersHistoryOpen(false)
+        }}
       />
     </div>
   )

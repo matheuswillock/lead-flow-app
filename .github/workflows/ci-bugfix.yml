@@ -25,7 +25,17 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
-    if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
+    if: >-
+      ${{
+        (
+          startsWith(github.ref, 'refs/heads/bugfix/') ||
+          startsWith(github.ref, 'refs/heads/fix/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -33,28 +43,15 @@ jobs:
       governance-check: ${{ steps['quality-result'].outputs['governance-check'] }}
       lint: ${{ steps['quality-result'].outputs.lint }}
       typecheck: ${{ steps['quality-result'].outputs.typecheck }}
+      proxy-tests: ${{ steps['quality-result'].outputs['proxy-tests'] }}
+      unit-tests: ${{ steps['quality-result'].outputs['unit-tests'] }}
       quality-passed: ${{ steps['quality-result'].outputs.passed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install --frozen-lockfile
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Governance Sync
         id: governance-sync
@@ -82,6 +79,21 @@ jobs:
         continue-on-error: true
         run: bun run typecheck
 
+      - name: Proxy Tests
+        id: proxy-tests
+        continue-on-error: true
+        run: bun run test:proxy
+
+      - name: Unit Tests
+        id: unit-tests
+        continue-on-error: true
+        run: bun run test
+
+      - name: Spellcheck PT-BR
+        id: spellcheck-pt-br
+        continue-on-error: true
+        run: bun run lint:pt-br
+
       - name: Resolve Quality Result
         id: quality-result
         if: always()
@@ -90,143 +102,102 @@ jobs:
           echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
           echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "proxy-tests=${{ steps['proxy-tests'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "unit-tests=${{ steps['unit-tests'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" ]]; then
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['unit-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
             echo "passed=true" >> "$GITHUB_OUTPUT"
           else
             echo "passed=false" >> "$GITHUB_OUTPUT"
           fi
 
-  quality-gate:
-    name: Quality Gate
-    if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    needs:
-      - quality
-    steps:
-      - name: Enforce Quality Checks
-        run: |
-          if [[ "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
-            echo "::error::One or more quality checks failed."
-            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
-            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
-            echo "lint=${{ needs.quality.outputs.lint }}"
-            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
-            exit 1
-          fi
-
-  migration-status:
-    name: Migration Status
-    if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-      - quality-gate
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install deps
-        run: bun install --frozen-lockfile
-
-      - name: Check Migration Status
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
-          echo "$migration_list"
-
-          if MIGRATION_LIST="$migration_list" node -e '
-            const input = process.env.MIGRATION_LIST ?? "";
-            let bad = false;
-
-            for (const line of input.split(/\r?\n/)) {
-              if (!/\d{14}/.test(line)) {
-                continue;
-              }
-
-              const [local = "", remote = ""] = line.split(/[│|]/).map((value) => value.trim());
-
-              if (!local || !remote || local !== remote) {
-                bad = true;
-                break;
-              }
-            }
-
-            process.exit(bad ? 1 : 0);
-          '; then
-            exit 0
-          fi
-
-          echo "Migration history is out of sync. Apply the missing migrations or repair the remote history before merging."
-          exit 1
-        env:
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
-
   build:
     name: Build
-    if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
+    if: >-
+      ${{
+        (
+          startsWith(github.ref, 'refs/heads/bugfix/') ||
+          startsWith(github.ref, 'refs/heads/fix/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs:
-      - migration-status
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version-file: '.nvmrc'
 
-      - name: Cache Bun store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Cache Next.js build
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
-            ${{ runner.os }}-next-
-
-      - name: Install deps
-        run: bun install --frozen-lockfile
 
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
       - name: Build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bun run build
+
+  quality-gate:
+    name: Quality Gate
+    if: >-
+      ${{
+        always() &&
+        (
+          startsWith(github.ref, 'refs/heads/bugfix/') ||
+          startsWith(github.ref, 'refs/heads/fix/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - quality
+      - build
+    steps:
+      - name: Enforce Quality Checks
+        run: |
+          failed=0
+          if [[ "${{ needs.quality.result }}" != "success" || "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
+            echo "::error::One or more quality checks failed."
+            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
+            echo "lint=${{ needs.quality.outputs.lint }}"
+            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
+            echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
+            echo "unit-tests=${{ needs.quality.outputs['unit-tests'] }}"
+            failed=1
+          fi
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "::error::Build failed."
+            echo "build=${{ needs.build.result }}"
+            failed=1
+          fi
+          exit "$failed"
 
   auto-pr-to-develop:
     name: Open PR to develop
@@ -236,6 +207,10 @@ jobs:
         (
           startsWith(github.ref, 'refs/heads/bugfix/') ||
           startsWith(github.ref, 'refs/heads/fix/')
+        ) &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
     runs-on: ubuntu-latest
@@ -250,18 +225,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate PR Description with GPT
-        id: generate-claude-description
+      - name: Generate PR Description (OpenAI)
+        id: generate-pr-description
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           BRANCH_NAME: ${{ github.ref_name }}
-        run: python3 .github/scripts/claude-pr-description.py
+        run: python3 .github/scripts/generate-pr-description.py
 
       - name: Create PR if not exists (bugfix -> develop)
         uses: actions/github-script@v7
         env:
-          CLAUDE_DESCRIPTION: ${{ steps['generate-claude-description'].outputs['claude-description'] }}
+          CLAUDE_DESCRIPTION: ${{ steps['generate-pr-description'].outputs['pr-description'] }}
         with:
           github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           script: |

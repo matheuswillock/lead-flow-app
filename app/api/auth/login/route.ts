@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase/server';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * POST /api/auth/login
@@ -93,6 +94,7 @@ export async function POST(request: NextRequest) {
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('Erro no login:', error);
     
     return NextResponse.json(

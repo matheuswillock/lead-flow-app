@@ -1,17 +1,18 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from 'next-themes'
 import type * as Monaco from 'monaco-editor'
 import type { editor as MonacoEditorNamespace } from 'monaco-editor'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const MonacoEditor = dynamic(
   () => import('@monaco-editor/react').then((module) => module.default),
   {
     ssr: false,
-    loading: () => <div className="h-full w-full animate-pulse bg-[#05050A]" />,
+    loading: () => <Skeleton className="h-full w-full" />,
   }
 )
 
@@ -25,6 +26,7 @@ export interface MonacoCodeEditorProps {
   options?: MonacoEditorNamespace.IStandaloneEditorConstructionOptions
   themeVariant?: 'auto' | 'dracula' | 'resend-dark'
   placeholder?: string
+  editorKey?: string
   onMount?: (editor: MonacoEditorNamespace.IStandaloneCodeEditor, monaco: typeof Monaco) => void
 }
 
@@ -135,8 +137,14 @@ export function MonacoCodeEditor({
   options,
   themeVariant = 'auto',
   placeholder,
+  editorKey,
   onMount,
 }: MonacoCodeEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRef<MonacoEditorNamespace.IStandaloneCodeEditor | null>(null)
+  const [containerHeight, setContainerHeight] = useState(0)
+  const [containerWidth, setContainerWidth] = useState(0)
+
   const { resolvedTheme } = useTheme()
   const editorTheme =
     themeVariant === 'dracula'
@@ -168,6 +176,36 @@ export function MonacoCodeEditor({
     defineLeadFlowResendDark(monaco)
   }, [])
 
+  const handleMount = useCallback(
+    (editor: MonacoEditorNamespace.IStandaloneCodeEditor, monaco: typeof Monaco) => {
+      editorRef.current = editor
+      onMount?.(editor, monaco)
+    },
+    [onMount]
+  )
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect()
+      setContainerHeight(Math.floor(rect.height))
+      setContainerWidth(Math.floor(rect.width))
+    }
+
+    updateSize()
+    const ro = new ResizeObserver(() => updateSize())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      editorRef.current = null
+    }
+  }, [])
+
   const loadingBackgroundClass =
     themeVariant === 'dracula'
       ? 'bg-[#282A36]'
@@ -175,20 +213,30 @@ export function MonacoCodeEditor({
         ? 'bg-[#05050A]'
         : 'bg-[#111111]'
   const shouldShowPlaceholder = !readOnly && value.trim().length === 0 && Boolean(placeholder)
+  const isContainerReady = containerHeight > 0 && containerWidth > 0
+  const resolvedHeight = typeof height === 'number' ? height : containerHeight
 
   return (
-    <div className={cn('relative h-full w-full', className)}>
-      <MonacoEditor
-        beforeMount={handleBeforeMount}
-        height={height}
-        language={language}
-        value={value}
-        theme={editorTheme}
-        options={mergedOptions}
-        loading={<div className={cn('h-full w-full animate-pulse', loadingBackgroundClass)} />}
-        onChange={(nextValue) => onChange(nextValue ?? '')}
-        onMount={onMount}
-      />
+    <div ref={containerRef} className={cn('relative h-full w-full', className)}>
+      {isContainerReady ? (
+        <div className="absolute inset-0">
+          <MonacoEditor
+            key={editorKey}
+            beforeMount={handleBeforeMount}
+            height={resolvedHeight}
+            width={containerWidth}
+            language={language}
+            value={value}
+            theme={editorTheme}
+            options={mergedOptions}
+            loading={<Skeleton className={cn('h-full w-full', loadingBackgroundClass)} />}
+            onChange={(nextValue) => onChange(nextValue ?? '')}
+            onMount={handleMount}
+          />
+        </div>
+      ) : (
+        <Skeleton className={cn('h-full w-full', loadingBackgroundClass)} />
+      )}
       {shouldShowPlaceholder ? (
         <div className="pointer-events-none absolute left-[3.25rem] top-3 z-10 text-[14px] text-[#8B8B8B]">
           {placeholder}

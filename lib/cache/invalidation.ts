@@ -48,6 +48,7 @@ export function invalidateTeamCalendarCache(input: { teamId: string; leadId?: st
     cacheTags.teamCalendar(input.teamId),
     cacheTags.teamDashboard(input.teamId),
     cacheTags.teamPerformance(input.teamId),
+    input.leadId ? cacheTags.lead(input.leadId) : null,
     input.leadId ? cacheTags.leadDetails(input.leadId) : null,
     input.leadId ? cacheTags.leadSchedules(input.leadId) : null,
   ]);
@@ -60,12 +61,16 @@ export function invalidatePortfolioCache(input: { teamId: string; leadId?: strin
   ]);
 }
 
+export function invalidateAccountAccessStatusCache(input: { accountMasterId: string }) {
+  revalidateDefinedTags([cacheTags.accountAccessStatus(input.accountMasterId)]);
+}
+
 export function invalidateFeatureAccessCache(input: {
   profileId?: string | null;
   managerId?: string | null;
 }) {
   revalidateDefinedTags([
-    input.profileId ? cacheTags.featureAccess(input.profileId) : null,
+    input.profileId ? cacheTags.featureAccessProfile(input.profileId) : null,
     input.managerId ? cacheTags.featureAccessOwner(input.managerId) : null,
     cacheTags.backofficeFeatures(),
   ]);
@@ -106,6 +111,14 @@ export function invalidateDialerSubscriptionCache(input: { teamId: string }) {
   revalidateDefinedTags([cacheTags.dialerSubscription(input.teamId)]);
 }
 
+export function invalidateLeadStatusTransitionFieldRulesCache() {
+  revalidateDefinedTags([cacheTags.leadStatusTransitionFieldRules()]);
+}
+
+export function invalidateLeadStatusTransitionGatesCache() {
+  revalidateDefinedTags([cacheTags.leadStatusTransitionGates()]);
+}
+
 export function invalidateTeamLeadsCache(input: { teamId: string }) {
   revalidateDefinedTags([
     cacheTags.teamLeads(input.teamId),
@@ -116,8 +129,27 @@ export function invalidateTeamLeadsCache(input: { teamId: string }) {
 
 export function invalidateLeadActivitiesCache(input: { leadId: string }) {
   revalidateDefinedTags([
+    cacheTags.lead(input.leadId),
     cacheTags.leadActivities(input.leadId),
     cacheTags.leadDetails(input.leadId),
   ]);
+}
+
+export function invalidateTeamTasksCache(input: { teamId: string }) {
+  revalidateDefinedTags([cacheTags.teamTasks(input.teamId)]);
+}
+
+export function invalidateTeamFilterPresetsCache(input: {
+  teamId: string;
+  profileId: string;
+  scope: string;
+}) {
+  revalidateDefinedTags([cacheTags.teamFilterPresets(input.teamId, input.profileId, input.scope)]);
+}
+
+export function invalidateNotificationsCache(input: { recipientProfileIds: string[] }) {
+  revalidateDefinedTags(
+    input.recipientProfileIds.map((profileId) => cacheTags.notifications(profileId))
+  );
 }
 

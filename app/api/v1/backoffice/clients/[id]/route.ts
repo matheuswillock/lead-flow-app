@@ -4,6 +4,7 @@ import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackoffice
 import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService"
 import { BackofficeClientUseCase } from "@/app/api/useCases/backoffice/BackofficeClientUseCase"
 import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/ClientRepository/BackofficeClientRepository"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(
   request: NextRequest,
@@ -23,6 +24,7 @@ export async function GET(
     const output = await useCase.getClientById(id)
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeClientByIdRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

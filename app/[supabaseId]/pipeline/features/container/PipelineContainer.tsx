@@ -25,7 +25,6 @@ import {
   DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY,
 } from "../context/PipelineContext";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
-import { useTeamContext } from "@/app/context/TeamContext";
 
 const PIPELINE_TABLE_COLUMN_OPTIONS = [
   { key: "name", label: "Nome" },
@@ -124,13 +123,6 @@ export function PipelineContainer({
     setTableColumnOrder,
   } = usePipelineContext();
 
-  const { activeFunctions, activeRole, isTeamMaster } = useTeamContext();
-  const canAddLead =
-    !activeFunctions.includes("CLOSER") ||
-    isTeamMaster ||
-    activeRole === "manager" ||
-    activeRole === "backoffice";
-
   const sensors = useSensors(useSensor(PointerSensor));
 
   const orderedColumnOptions = (() => {
@@ -190,12 +182,10 @@ export function PipelineContainer({
         </div>
         <div className="flex items-center gap-2">
           {viewModeToggle}
-          {canAddLead && (
-            <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
-              <Plus className="mr-2 size-4" />
-              Adicionar novo lead
-            </Button>
-          )}
+          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
+            <Plus className="mr-2 size-4" />
+            Adicionar novo lead
+          </Button>
           <Sheet>
             <TooltipProvider delayDuration={0}>
               <Tooltip>
@@ -215,14 +205,14 @@ export function PipelineContainer({
                 <TooltipContent>Configuração das colunas</TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <SheetContent side="right" className="w-[420px] sm:w-[460px]">
+            <SheetContent side="right" className="flex w-105 flex-col sm:w-115">
               <SheetHeader>
                 <SheetTitle>Configuração das colunas</SheetTitle>
                 <SheetDescription>
                   Selecione quais headers devem aparecer na tabela do pipeline.
                 </SheetDescription>
               </SheetHeader>
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4 flex-1 overflow-y-auto">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -250,21 +240,23 @@ export function PipelineContainer({
                   </SortableContext>
                 </DndContext>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Isso afeta apenas a tabela do pipeline. Você pode arrastar os itens acima para definir a ordem.
-              </p>
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
-                    setTableColumnOrder(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
-                  }}
-                >
-                  Restaurar padrão
-                </Button>
+              <div className="shrink-0 border-t pt-4">
+                <p className="text-xs text-muted-foreground">
+                  Isso afeta apenas a tabela do pipeline. Você pode arrastar os itens acima para definir a ordem.
+                </p>
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
+                      setTableColumnOrder(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
+                    }}
+                  >
+                    Restaurar padrão
+                  </Button>
+                </div>
               </div>
             </SheetContent>
           </Sheet>

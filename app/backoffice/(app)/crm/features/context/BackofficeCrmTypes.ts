@@ -6,6 +6,10 @@ export type BackofficeLeadStatusKey =
   | "lost"
   | "implementation"
   | "finalized"
+  | "proposal"
+  | "future_contact"
+  | "deal_closed"
+  | "disqualified"
 
 export type BackofficeAdhesionStatusKey =
   | "pending"
@@ -14,7 +18,11 @@ export type BackofficeAdhesionStatusKey =
   | "expired"
   | "canceled"
 
-export type BackofficeLeadOriginKey = "manual" | "webhook_meta"
+export type BackofficeLeadOriginKey =
+  | "manual"
+  | "webhook_meta"
+  | "landing_page"
+  | "public_form"
 
 export interface BackofficeCrmUserOption {
   id: string
@@ -66,6 +74,49 @@ export interface BackofficeLeadItem {
   qualificationLeadOrganization: string | null
   qualificationAvgUsers: string | null
   qualificationProfileFit: string | null
+}
+
+export type BackofficeLeadOfferStatusKey = "active" | "expired" | "revoked"
+
+export interface BackofficeLeadOfferListItem {
+  id: string
+  status: BackofficeLeadOfferStatusKey
+  expiresAt: string
+  generatedAt: string
+  revokedAt: string | null
+  contactName: string
+  contactPhone: string
+  productNames: string[]
+  preContractExpiresAt: string
+  insuranceAmount: number | null
+  shareUrl: string | null
+}
+
+export interface BackofficeLeadOfferCreateInput {
+  productIds: string[]
+  contactName: string
+  contactPhone: string
+  preContractExpiresAt: string
+  insuranceAmount?: number | null
+}
+
+export interface BackofficeLeadOfferCreateResult {
+  offerId: string
+  shareUrl: string
+  expiresAt: string
+  preContractExpiresAt: string
+}
+
+export interface BackofficeOfferProductOption {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+  priceMonthly: number | null
+  priceQuarterly: number | null
+  priceSemiannual: number | null
+  priceAnnual: number | null
+  priceLifetime: number | null
 }
 
 export interface BackofficeLeadCreateInput {
@@ -147,8 +198,12 @@ export const BACKOFFICE_CRM_COLUMNS: { key: BackofficeLeadStatusKey; title: stri
   { key: "scheduled", title: "Agendado" },
   { key: "no_show", title: "No-show" },
   { key: "new_adhesion", title: "Nova adesão" },
-  { key: "lost", title: "Perdido" },
+  { key: "proposal", title: "Proposta" },
+  { key: "future_contact", title: "Contato futuro" },
   { key: "implementation", title: "Implementação" },
+  { key: "deal_closed", title: "Negócio fechado" },
+  { key: "lost", title: "Perdido" },
+  { key: "disqualified", title: "Desqualificado" },
   { key: "finalized", title: "Finalizado" },
 ]
 

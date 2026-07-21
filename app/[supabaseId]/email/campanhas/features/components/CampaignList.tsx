@@ -1,8 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Send, X, Trash2 } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   AlertDialog,
@@ -14,6 +17,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Table,
   TableBody,
@@ -27,47 +38,247 @@ import { useCampanhasContext } from "../context/CampanhasContext"
 import type { Campaign } from "../context/CampanhasTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
-function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConfirm: () => Promise<void> }) {
-  const [open, setOpen] = useState(false)
+function CampaignActionsMenu({
+  campaign,
+  canSendCampaign,
+  sendBlockReason,
+  deletingId,
+  cancelingId,
+  archivingId,
+  openView,
+  openEdit,
+  handleSend,
+  handleCancel,
+  handleDeleteDraft,
+  handleArchive,
+  onOpenAnalytics,
+}: {
+  campaign: Campaign
+  canSendCampaign: boolean
+  sendBlockReason?: string
+  deletingId: string | null
+  cancelingId: string | null
+  archivingId: string | null
+  openView: (campaign: Campaign) => void
+  openEdit: (campaign: Campaign) => void
+  handleSend: (id: string) => Promise<void>
+  handleCancel: (id: string) => Promise<void>
+  handleDeleteDraft: (id: string) => Promise<void>
+  handleArchive: (id: string) => Promise<void>
+  onOpenAnalytics: (campaign: Campaign) => void
+}) {
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
+  const isParentCampaign = Boolean(campaign.isParentCampaign || (campaign.subCampaignCount ?? 0) > 0)
+  const canSendByStatus =
+    !isParentCampaign &&
+    (campaign.status === "draft" ||
+      campaign.status === "scheduled" ||
+      campaign.status === "sent" ||
+      campaign.status === "failed")
+  const canSend = canSendCampaign && canSendByStatus
+  const sendDisabledReason =
+    sendBlockReason ??
+    (isParentCampaign
+      ? "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
+      : !canSendCampaign
+        ? "Ative um plano em Assinaturas para disparar campanhas"
+        : undefined)
+  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(campaign.status)
+  const canCancel = campaign.status === "scheduled"
+  const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
+  const canArchive = ["sent", "failed"].includes(campaign.status)
 
-  async function handleConfirm() {
+  async function handleSendConfirm() {
     setSending(true)
     try {
-      await onConfirm()
+      await handleSend(campaign.id)
     } finally {
       setSending(false)
-      setOpen(false)
+      setSendConfirmOpen(false)
     }
+  }
+
+  async function handleCancelConfirm() {
+    await handleCancel(campaign.id)
+    setCancelConfirmOpen(false)
+  }
+
+  async function handleDeleteConfirm() {
+    await handleDeleteDraft(campaign.id)
+    setDeleteConfirmOpen(false)
+  }
+
+  async function handleArchiveConfirm() {
+    await handleArchive(campaign.id)
+    setArchiveConfirmOpen(false)
   }
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => setOpen(true)}
-        disabled={sending}
-        className="h-7 px-2 text-xs"
-      >
-        <Send className="mr-1 h-3 w-3" />
-        Disparar
-      </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Abrir menu</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+
+          <DropdownMenuItem onClick={() => openView(campaign)}>
+            <Eye className="mr-2 h-4 w-4" />
+            Visualizar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setSendConfirmOpen(true)}
+            disabled={!canSend}
+            title={!canSend ? sendDisabledReason : undefined}
+          >
+            <Send className="mr-2 h-4 w-4" />
+            Disparar
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Métricas
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setCancelConfirmOpen(true)}
+            disabled={!canCancel || cancelingId === campaign.id}
+          >
+            <CalendarX className="mr-2 h-4 w-4" />
+            {cancelingId === campaign.id ? "Cancelando..." : "Cancelar agendamento"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {canDelete && (
+            <DropdownMenuItem
+              onClick={() => setDeleteConfirmOpen(true)}
+              disabled={deletingId === campaign.id}
+              className="text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
+            </DropdownMenuItem>
+          )}
+          {canArchive && (
+            <DropdownMenuItem
+              onClick={() => setArchiveConfirmOpen(true)}
+              disabled={archivingId === campaign.id}
+            >
+              <Archive className="mr-2 h-4 w-4" />
+              {archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar disparo?</AlertDialogTitle>
             <AlertDialogDescription>
               A campanha <strong>"{campaign.name}"</strong> será enviada para{" "}
-              <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong> destinatário(s).
+              <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+              destinatário(s) ativo(s).
               Os créditos correspondentes serão deduzidos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm} disabled={sending}>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleSendConfirm()
+              }}
+              disabled={sending}
+            >
               {sending ? "Disparando..." : "Sim, disparar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar agendamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A campanha <strong>"{campaign.name}"</strong> voltará para rascunho e não será
+              disparada no horário agendado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelingId === campaign.id}>
+              Manter agendamento
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleCancelConfirm()
+              }}
+              disabled={cancelingId === campaign.id}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {cancelingId === campaign.id ? "Cancelando..." : "Sim, cancelar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A campanha <strong>"{campaign.name}"</strong> será removida permanentemente. Esta
+              ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingId === campaign.id}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDeleteConfirm()
+              }}
+              disabled={deletingId === campaign.id}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arquivar campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A campanha <strong>"{campaign.name}"</strong> será arquivada e não aparecerá mais na
+              lista. Os dados e métricas serão preservados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={archivingId === campaign.id}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleArchiveConfirm()
+              }}
+              disabled={archivingId === campaign.id}
+            >
+              {archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -76,135 +287,246 @@ function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConf
   )
 }
 
-export function CampaignList() {
+export function CampaignList({
+  onOpenAnalytics,
+}: {
+  onOpenAnalytics: (campaign: Campaign) => void
+}) {
   const { tz } = useTimezone()
+  const { isBeta } = useFeatureAccess()
   const {
     campaigns,
     total,
     page,
+    pageSize,
     totalPages,
     loading,
-    cancelingId,
     deletingId,
+    cancelingId,
+    archivingId,
+    sendingId,
     handleSend,
     handleCancel,
     handleDeleteDraft,
+    handleArchive,
     handlePageChange,
+    handlePageSizeChange,
+    openWizard,
+    openView,
+    openEdit,
+    credits,
   } = useCampanhasContext()
+  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  const canSendCampaign =
+    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
+
+  function getSendBlockReason(campaign: Campaign): string | undefined {
+    if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
+    if (!credits?.hasSubscription) {
+      return "Ative um plano em Assinaturas para disparar campanhas"
+    }
+    if (credits.creditsAvailable < campaign.totalRecipients) {
+      return `Créditos insuficientes para ${campaign.totalRecipients.toLocaleString("pt-BR")} destinatários. Saldo: ${credits.creditsAvailable.toLocaleString("pt-BR")}`
+    }
+    return undefined
+  }
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-md border">
-        <Table>
+    <div className="flex flex-col gap-3">
+      <div className="overflow-hidden rounded-md border">
+        <Table className="min-w-[1180px]">
           <TableHeader>
             <TableRow>
-              <TableHead>Nome</TableHead>
-              <TableHead>Template / Lista</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Destinatários</TableHead>
-              <TableHead>Data</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead className="text-center">Nome</TableHead>
+              <TableHead className="text-center">Criado por</TableHead>
+              <TableHead className="text-center">Template / Lista</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-center">Destinatários</TableHead>
+              <TableHead className="text-center">Qtd. disparos</TableHead>
+              <TableHead className="text-center">Data de criação</TableHead>
+              <TableHead className="text-center">Último disparo</TableHead>
+              <TableHead className="text-center">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 6 }).map((__, j) => (
-                    <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                  {Array.from({ length: 9 }).map((__, j) => (
+                    <TableCell key={j}>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
-                  Nenhuma campanha encontrada
+                <TableCell colSpan={9} className="py-12">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Nenhuma campanha encontrada
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Crie uma campanha para disparar comunicações para a sua base.
+                      </p>
+                    </div>
+                    <Button type="button" size="sm" onClick={() => void openWizard()}>
+                      Criar campanha
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
-              campaigns.map((campaign) => (
-                <TableRow key={campaign.id}>
-                  <TableCell className="font-medium">{campaign.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <div>{campaign.template.name}</div>
-                    <div className="text-xs">{campaign.contactList.name}</div>
-                  </TableCell>
-                  <TableCell>
-                    <CampaignStatusBadge status={campaign.status} />
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {campaign.totalRecipients.toLocaleString("pt-BR")}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {campaign.sentAt
-                      ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy", tz)
-                      : campaign.scheduledAt
-                      ? formatIntimezone(new Date(campaign.scheduledAt), "dd/MM/yyyy", tz)
-                      : formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      {(campaign.status === "draft" || campaign.status === "scheduled") && (
-                        <SendConfirmDialog
-                          campaign={campaign}
-                          onConfirm={() => handleSend(campaign.id)}
+              campaigns.map((campaign) => {
+                const isSending =
+                  campaign.status === "sending" || sendingId === campaign.id
+
+                return (
+                  <TableRow key={campaign.id}>
+                    <TableCell className="align-middle text-center font-medium">
+                      <div className="flex flex-col items-center gap-1">
+                        <span>{campaign.name}</span>
+                        {(campaign.subCampaignCount ?? 0) > 0 ? (
+                          <Badge variant="secondary">
+                            {campaign.subCampaignCount} sub-campanhas
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      <div>{campaign.template?.name ?? "—"}</div>
+                      <div className="text-xs">{campaign.contactList?.name ?? "—"}</div>
+                    </TableCell>
+                    <TableCell className="align-middle text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <CampaignStatusBadge
+                          status={isSending ? "sending" : campaign.status}
+                          scheduledAt={campaign.scheduledAt}
                         />
-                      )}
-                      {campaign.status === "sending" && (
-                        <span className="text-xs text-muted-foreground">Enviando...</span>
-                      )}
-                      {campaign.status === "scheduled" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleCancel(campaign.id)}
-                          disabled={cancelingId === campaign.id}
-                          className="h-7 px-2 text-xs text-muted-foreground"
-                        >
-                          <X className="mr-1 h-3 w-3" />
-                          {cancelingId === campaign.id ? "..." : "Cancelar"}
-                        </Button>
-                      )}
-                      {campaign.status === "draft" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteDraft(campaign.id)}
-                          disabled={deletingId === campaign.id}
-                          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="mr-1 h-3 w-3" />
-                          {deletingId === campaign.id ? "..." : "Excluir"}
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                        {campaign.status === "failed" && campaign.errorMessage ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant="destructive"
+                                className="w-fit max-w-[220px] truncate font-normal"
+                              >
+                                {campaign.errorMessage}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-sm">{campaign.errorMessage}</TooltipContent>
+                          </Tooltip>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm">
+                      {campaign.totalRecipients.toLocaleString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {campaign.dispatchCount.toLocaleString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
+                    </TableCell>
+                    <TableCell className="align-middle text-center text-sm text-muted-foreground">
+                      {campaign.sentAt
+                        ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy HH:mm", tz)
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="align-middle text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {isSending ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-semantic-warning">
+                            <Loader2 className="size-3.5 animate-spin" />
+                            Enviando...
+                          </span>
+                        ) : (
+                          <CampaignActionsMenu
+                            campaign={campaign}
+                            canSendCampaign={canSendCampaign}
+                            sendBlockReason={getSendBlockReason(campaign)}
+                            deletingId={deletingId}
+                            cancelingId={cancelingId}
+                            archivingId={archivingId}
+                            openView={openView}
+                            openEdit={openEdit}
+                            handleSend={handleSend}
+                            handleCancel={handleCancel}
+                            handleDeleteDraft={handleDeleteDraft}
+                            handleArchive={handleArchive}
+                            onOpenAnalytics={onOpenAnalytics}
+                          />
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{total.toLocaleString("pt-BR")} campanha(s)</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <span>{total.toLocaleString("pt-BR")} campanha(s)</span>
+          <div className="flex items-center gap-2">
+            <span>Linhas por página</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => handlePageSizeChange(Number(v))}
+            >
+              <SelectTrigger className="h-7 w-16 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
           <Button
             variant="outline"
             size="sm"
+            className="h-7 w-7 p-0"
+            disabled={page <= 1 || loading}
+            onClick={() => handlePageChange(1)}
+          >
+            <ChevronFirst className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
             disabled={page <= 1 || loading}
             onClick={() => handlePageChange(page - 1)}
           >
-            Anterior
+            <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span>{page} / {totalPages || 1}</span>
+          <span className="px-2">Página {page} de {totalPages || 1}</span>
           <Button
             variant="outline"
             size="sm"
+            className="h-7 w-7 p-0"
             disabled={page >= totalPages || loading}
             onClick={() => handlePageChange(page + 1)}
           >
-            Próxima
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
+            disabled={page >= totalPages || loading}
+            onClick={() => handlePageChange(totalPages)}
+          >
+            <ChevronLast className="h-4 w-4" />
           </Button>
         </div>
       </div>

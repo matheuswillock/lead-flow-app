@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { featureAccessUseCase } from "@/app/api/useCases/featureAccess/FeatureAccessUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,10 +14,19 @@ export async function GET(request: NextRequest) {
     const output = await featureAccessUseCase.execute({
       profileId: teamAccess.access.profileId,
       managerId: teamAccess.access.managerId,
+      activeTeamId: teamAccess.access.teamId,
+      teamContext: {
+        isMaster: teamAccess.access.isMaster,
+        role: teamAccess.access.teamMember.role,
+        functions: teamAccess.access.teamMember.functions,
+        canManageAccountTeams: teamAccess.access.canManageAccountTeams,
+        canCreateAccountUsers: teamAccess.access.canCreateAccountUsers,
+      },
     })
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[FeatureAccessRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

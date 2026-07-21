@@ -4,16 +4,12 @@ import { useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { ImportDialogHeader } from "@/components/import/ImportDialogHeader";
+import { ImportProgressSummary } from "@/components/import/ImportProgressSummary";
+import { ImportRequiredFooterHint } from "@/components/import/ImportRequiredFooterHint";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import {
+  LEAD_IMPORT_FIELDS,
   LEAD_IMPORT_MAX_ROWS,
   type LeadImportFieldKey,
   type LeadImportRow,
@@ -81,6 +77,10 @@ export function LeadImportDialog({
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<LeadImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
 
   const { healthPlans } = useHealthPlans(supabaseId, teamId);
 
@@ -95,6 +95,7 @@ export function LeadImportDialog({
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
+    setImportProgress(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -259,12 +260,20 @@ export function LeadImportDialog({
     }
 
     setIsSubmitting(true);
+    setImportProgress({ processed: 0, total: mappedRows.length });
     try {
-      const importResult = await leadImportService.importMappedLeads(mappedRows, {
-        supabaseId,
-        teamId,
-      });
+      const importResult = await leadImportService.importMappedLeadsInBatches(
+        mappedRows,
+        {
+          supabaseId,
+          teamId,
+        },
+        {
+          onProgress: (processed, total) => setImportProgress({ processed, total }),
+        }
+      );
       setResult(importResult);
+      setImportProgress(null);
       toast.success(`Importação concluída. Criados: ${importResult.created}.`);
       if (onImportComplete) {
         await onImportComplete();
@@ -272,29 +281,37 @@ export function LeadImportDialog({
     } catch (error) {
       console.error("Erro ao importar leads:", error);
       toast.error(error instanceof Error ? error.message : "Erro ao importar leads");
+      setImportProgress(null);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const areRequiredFieldsMapped = Boolean(mapping.name) && Boolean(mapping.phone);
+  const requiredPendingCount =
+    (mapping.name ? 0 : 1) + (mapping.phone ? 0 : 1);
+  const areRequiredFieldsMapped = requiredPendingCount === 0;
+  const mappedFieldCount = Object.keys(mapping).length;
   const totalSteps = stepsOrder.length;
   const stepIndex = stepsOrder.indexOf(step) + 1;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            Importar leads
-            <Badge variant="secondary">
-              Etapa {stepIndex} de {totalSteps}
-            </Badge>
-          </DialogTitle>
-          <DialogDescription>
-            {STEP_TITLES[step]} — {STEP_DESCRIPTIONS[step]}
-          </DialogDescription>
-        </DialogHeader>
+        <ImportDialogHeader
+          title="Importar leads"
+          stepIndex={stepIndex}
+          totalSteps={totalSteps}
+          stepTitle={STEP_TITLES[step]}
+          stepDescription={STEP_DESCRIPTIONS[step]}
+        />
+
+        {step === "mapping" && (
+          <ImportProgressSummary
+            mapped={mappedFieldCount}
+            total={LEAD_IMPORT_FIELDS.length}
+            label="campos mapeados"
+          />
+        )}
 
         <div className="overflow-y-auto flex-1 pr-1">
           {step === "upload" && (
@@ -334,6 +351,8 @@ export function LeadImportDialog({
               mapping={mapping}
               statusMapping={statusMapping}
               planMapping={planMapping}
+              isSubmitting={isSubmitting}
+              importProgress={importProgress}
               result={result}
             />
           )}
@@ -347,13 +366,16 @@ export function LeadImportDialog({
           )}
           {step === "mapping" && (
             <>
-              <Button variant="ghost" onClick={resetState}>
+              <Button variant="ghost" onClick={resetState} className="sm:mr-auto">
                 <ArrowLeft className="mr-2 size-4" />
                 Trocar arquivo
               </Button>
-              <Button onClick={goToNextStep} disabled={!areRequiredFieldsMapped}>
-                Continuar
-              </Button>
+              <div className="flex items-center gap-3">
+                <ImportRequiredFooterHint pendingCount={requiredPendingCount} />
+                <Button onClick={goToNextStep} disabled={!areRequiredFieldsMapped}>
+                  Continuar
+                </Button>
+              </div>
             </>
           )}
           {(step === "statuses" || step === "plans") && (

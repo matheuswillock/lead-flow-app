@@ -2,6 +2,7 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import type { ITogglePermanentSubscriptionUseCase } from "./ITogglePermanentSubscriptionUseCase";
+import { auditLogService } from "@/app/api/services/audit/AuditLogService";
 
 export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubscriptionUseCase {
   /**
@@ -41,19 +42,34 @@ export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubsc
         );
       }
 
-      // Atualizar status de assinatura permanente
+      // Atualizar status de assinatura permanente (vitalício = usuários ilimitados)
       const updatedProfile = await prisma.profile.update({
         where: { id: profileId },
         data: {
           hasPermanentSubscription: enable,
+          ...(enable ? { hasUnlimitedUsers: true } : {}),
           updatedAt: new Date()
         },
         select: {
           id: true,
           email: true,
           fullName: true,
-          hasPermanentSubscription: true
+          hasPermanentSubscription: true,
+          hasUnlimitedUsers: true,
         }
+      });
+
+      await auditLogService.logAudit({
+        entityType: 'PROFILE',
+        entityId: profile.id,
+        action: 'ROLE_CHANGE',
+        actorProfileId: null,
+        before: { hasPermanentSubscription: profile.hasPermanentSubscription },
+        after: {
+          hasPermanentSubscription: updatedProfile.hasPermanentSubscription,
+          hasUnlimitedUsers: updatedProfile.hasUnlimitedUsers,
+        },
+        metadata: null,
       });
 
       const action = enable ? 'ativada' : 'desativada';

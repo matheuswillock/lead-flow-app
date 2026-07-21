@@ -1,3 +1,5 @@
+import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
+
 export interface DispatchBatchResult {
   sent: number
   failed: number
@@ -7,10 +9,22 @@ export interface DispatchBatchResult {
 export interface IEmailCampaignDispatchService {
   dispatchBatch(params: {
     from: string
-    recipients: Array<{ email: string; name?: string }>
+    replyTo?: string | null
+    recipients: Array<{
+      contactId?: string | null
+      email: string
+      name?: string | null
+      customFields?: Record<string, unknown> | null
+    }>
     subject: string
     html: string
     campaignId: string
     teamId: string
+    dispatchNumber: number
+    globalDefaults?: Record<string, string | null | undefined> | null
+    templateVariables?: EmailTemplateVariableDefinition[] | null
+    /** Chamado imediatamente após cada chunk ser aceito pelo Resend, antes do próximo chunk.
+     *  Permite salvar resendEmailIds no banco antes que os webhooks de entrega cheguem. */
+    onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
   }): Promise<DispatchBatchResult>
 }

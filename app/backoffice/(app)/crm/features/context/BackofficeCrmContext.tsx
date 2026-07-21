@@ -23,9 +23,13 @@ import {
   type BackofficeCrmUserOption,
   type BackofficeLeadCreateInput,
   type BackofficeLeadItem,
+  type BackofficeLeadOfferCreateInput,
+  type BackofficeLeadOfferCreateResult,
+  type BackofficeLeadOfferListItem,
   type BackofficeLeadScheduleInput,
   type BackofficeLeadStatusKey,
   type BackofficeLeadUpdateInput,
+  type BackofficeOfferProductOption,
   normalizeBackofficeCrmFilters,
 } from "./BackofficeCrmTypes"
 
@@ -36,6 +40,7 @@ interface UpdateLeadStatusOptions {
 interface ContextValue {
   isLoading: boolean
   error: string | null
+  canManage: boolean
   leads: BackofficeLeadItem[]
   filteredLeads: BackofficeLeadItem[]
   users: BackofficeCrmUserOption[]
@@ -67,6 +72,13 @@ interface ContextValue {
     options?: UpdateLeadStatusOptions
   ) => Promise<void>
   removeLead: (id: string) => Promise<void>
+  listActiveProducts: () => Promise<BackofficeOfferProductOption[]>
+  listOffers: (leadId: string) => Promise<BackofficeLeadOfferListItem[]>
+  createOffer: (
+    leadId: string,
+    input: BackofficeLeadOfferCreateInput
+  ) => Promise<BackofficeLeadOfferCreateResult>
+  revokeOffer: (leadId: string, offerId: string) => Promise<BackofficeLeadOfferListItem>
 }
 
 const CRM_REQUEST_KEY = "backoffice-crm-data"
@@ -147,6 +159,7 @@ function leadMatchesFilters(
 
 export function BackofficeCrmProvider({ children, service }: ProviderProps) {
   const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
   const [leads, setLeads] = useState<BackofficeLeadItem[]>([])
   const [users, setUsers] = useState<BackofficeCrmUserOption[]>([])
   const [filters, setFiltersState] = useState<BackofficeCrmFiltersState>(
@@ -422,12 +435,34 @@ export function BackofficeCrmProvider({ children, service }: ProviderProps) {
     [service]
   )
 
+  const listActiveProducts = useCallback(
+    () => service.listActiveProducts(),
+    [service]
+  )
+
+  const listOffers = useCallback(
+    (leadId: string) => service.listOffers(leadId),
+    [service]
+  )
+
+  const createOffer = useCallback(
+    (leadId: string, input: BackofficeLeadOfferCreateInput) =>
+      service.createOffer(leadId, input),
+    [service]
+  )
+
+  const revokeOffer = useCallback(
+    (leadId: string, offerId: string) => service.revokeOffer(leadId, offerId),
+    [service]
+  )
+
   const refresh = useCallback(() => loadLeads({ force: true }), [loadLeads])
 
   const value = useMemo<ContextValue>(
     () => ({
       isLoading,
       error,
+      canManage,
       leads,
       filteredLeads,
       users,
@@ -451,10 +486,15 @@ export function BackofficeCrmProvider({ children, service }: ProviderProps) {
       updateLead,
       updateLeadStatus,
       removeLead,
+      listActiveProducts,
+      listOffers,
+      createOffer,
+      revokeOffer,
     }),
     [
       isLoading,
       error,
+      canManage,
       leads,
       filteredLeads,
       users,
@@ -476,6 +516,10 @@ export function BackofficeCrmProvider({ children, service }: ProviderProps) {
       updateLead,
       updateLeadStatus,
       removeLead,
+      listActiveProducts,
+      listOffers,
+      createOffer,
+      revokeOffer,
     ]
   )
 

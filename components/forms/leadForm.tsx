@@ -15,14 +15,42 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
-import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
-import { AgeEntryInput } from "../ui/age-entry-input";
-import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
+import { SaveWithDraftButton } from "./SaveWithDraftButton";
+import { BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Loader2, Mail, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import { useTimezone } from "@/app/context/TimezoneContext";
+import {
+    canConfirmMeetingPresence,
+    getMeetingPresenceBadgeClass,
+    getMeetingPresenceBadgeLabel,
+    getMeetingPresenceAlertLabel,
+    isMeetingPresenceConfirmationDue,
+} from "@/lib/lead-meeting";
+import {
+    formatCurrencyInput,
+    MAX_CURRENCY_LABEL,
+    MAX_CURRENCY_VALUE,
+    parseCurrencyValue,
+    toCurrencyStorageValue,
+} from "@/lib/lead-form-utils";
+import { LeadAdditionalNotesField } from "./fields/LeadAdditionalNotesField";
+import { LeadCustomFieldsSection } from "./fields/LeadCustomFieldsSection";
+import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
+import type { LeadFormWithCustomFields } from "@/hooks/useForms";
+import { Separator } from "@/components/ui/separator";
+import { LeadAgeField } from "./fields/LeadAgeField";
+import { LeadCnpjField } from "./fields/LeadCnpjField";
+import { LeadRazaoSocialField } from "./fields/LeadRazaoSocialField";
+import { LeadCurrentValueField } from "./fields/LeadCurrentValueField";
+import { LeadEmailField } from "./fields/LeadEmailField";
+import { LeadHealthPlanField } from "./fields/LeadHealthPlanField";
+import { LeadNameField } from "./fields/LeadNameField";
+import { LeadOngoingTreatmentField } from "./fields/LeadOngoingTreatmentField";
+import { LeadPhoneField } from "./fields/LeadPhoneField";
+import { LeadReferenceHospitalField } from "./fields/LeadReferenceHospitalField";
 import {
     getPendingRequiredFieldsFeedback,
     LEAD_REQUIRED_FIELD_ORDER,
@@ -34,42 +62,11 @@ const formatCurrencyNumber = (value: number): string =>
         maximumFractionDigits: 2
     })}`;
 
-const MAX_CURRENCY_VALUE = 9_999_999_999.99;
-const MAX_CURRENCY_LABEL = "10.000.000.000,00";
-
-const parseCurrencyValue = (value: string): number | null => {
-    const digits = value.replace(/\D/g, '');
-    if (!digits) return null;
-    const cents = digits.slice(-2).padStart(2, '0');
-    const intPart = digits.slice(0, -2) || '0';
-    return parseFloat(`${intPart}.${cents}`);
-};
-
-const formatCurrencyInput = (value: string): string => {
-    const digits = value.replace(/\D/g, '');
-    if (!digits) return '';
-    const cents = digits.slice(-2).padStart(2, '0');
-    const intPart = digits.slice(0, -2) || '0';
-    const formattedInt = Number(intPart).toLocaleString('pt-BR');
-    return `R$ ${formattedInt},${cents}`;
-};
-
-const toCurrencyStorageValue = (value: string): string | null => {
-    const parsed = parseCurrencyValue(value);
-    if (parsed === null || isNaN(parsed)) return null;
-    return parsed.toFixed(2);
-};
-
-const normalizeLeadPhoneDigits = (value: string): string => {
-    if (!value) return "";
-    const digits = value.replace(/\D/g, "");
-    if (digits.length <= 11) return digits;
-    return digits.slice(0, 11);
-};
+export type LeadFormSaveMode = "full" | "draft";
 
 export interface ILeadFormProps {
-    form: UseFormReturn<leadFormData>;
-    onSubmit: (data: leadFormData) => void | Promise<void>;
+    form: UseFormReturn<LeadFormWithCustomFields>;
+    onSubmit: (data: LeadFormWithCustomFields, mode: LeadFormSaveMode) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
     supabaseId?: string;
@@ -87,12 +84,19 @@ export interface ILeadFormProps {
         meetingNotes?: string | null;
         meetingLink?: string | null;
         meetingHeald?: "yes" | "no" | null;
+        meetingPresenceConfirmed?: boolean;
+        isPreSchedule?: boolean;
         isOverdue?: boolean;
     };
     onManageSchedule?: () => void;
+    onShareSchedule?: () => void;
+    onResendScheduleInvite?: () => void;
     canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
+    canConfirmMeetingPresence?: boolean;
+    meetingPresenceConfirmSaving?: boolean;
+    onMeetingPresenceConfirm?: () => void | Promise<void>;
     canMarkNoShow?: boolean;
     onMarkNoShow?: () => void | Promise<void>;
     usersToAssign: UserAssociated[];
@@ -111,6 +115,10 @@ export interface ILeadFormProps {
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
     currentUserIsCloser?: boolean;
+    isFullSaveDisabled?: boolean;
+    fullSaveDisabledReason?: string;
+    isCloserSelectDisabled?: boolean;
+    customFieldDefinitions?: LeadCustomFieldDefinitionDTO[];
 }
 
 export function LeadForm({
@@ -130,6 +138,9 @@ export function LeadForm({
     canToggleMeetingHeald,
     meetingHealdSaving,
     onMeetingHealdChange,
+    canConfirmMeetingPresence: canConfirmMeetingPresenceAction = false,
+    meetingPresenceConfirmSaving = false,
+    onMeetingPresenceConfirm,
     canMarkNoShow,
     onMarkNoShow,
     usersToAssign,
@@ -144,15 +155,20 @@ export function LeadForm({
     currentProfileId,
     currentUserIsSdr = false,
     currentUserIsCloser = false,
+    isFullSaveDisabled = false,
+    fullSaveDisabledReason,
+    onShareSchedule,
+    onResendScheduleInvite,
+    closersToAssign,
+    closersLoading,
+    closersError,
+    isCloserSelectDisabled = false,
+    customFieldDefinitions = [],
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
-    const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
-    const [currentValueError, setCurrentValueError] = useState<string | null>(null);
     const [ticketError, setTicketError] = useState<string | null>(null);
-    const [cnpjDupError, setCnpjDupError] = useState<string | null>(null);
-    const [cnpjChecking, setCnpjChecking] = useState(false);
     const [referralDialogOpen, setReferralDialogOpen] = useState(false);
     const lastInvalidHashRef = useRef<string>("");
     const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
@@ -162,6 +178,10 @@ export function LeadForm({
     const sdrs = React.useMemo(
         () => sdrsToAssign ?? [],
         [sdrsToAssign]
+    );
+    const closers = React.useMemo(
+        () => closersToAssign ?? [],
+        [closersToAssign]
     );
     const responsibleUsers = React.useMemo(() => {
         const base = sdrs.length > 0 ? sdrs : usersToAssign ?? [];
@@ -188,23 +208,45 @@ export function LeadForm({
         return map;
     }, [healthPlanOptions]);
     const hasBlockingErrors = React.useMemo(() => {
-        const entries = Object.entries(form.formState.errors);
-        if (entries.length === 0) return false;
+        const errors = Object.values(form.formState.errors);
+        if (errors.length === 0) return false;
 
-        return entries.some(([error]) => {
+        return errors.some((error) => {
             const errorType = (error as { type?: string } | undefined)?.type;
-            if (errorType !== "manual") {
-                return false;
-            }
-            return true;
+            return errorType === "manual";
         });
     }, [form.formState.errors]);
     const isSchemaValid = React.useMemo(
         () => leadFormSchema.safeParse(watchedValues).success,
         [watchedValues]
     );
-    const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating || cnpjChecking || cnpjDupError !== null;
+    const isDraftDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
+    const isSaveDisabled = isDraftDisabled || isFullSaveDisabled;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
+    const isPreSchedule =
+        watchedValues.isTransfer === true || scheduleSummary?.isPreSchedule === true;
+    const scheduleSectionTitle = isPreSchedule ? "Pré-agendamento" : "Agendamento";
+    const manageScheduleLabel = scheduleSummary?.meetingDate
+        ? isPreSchedule
+            ? "Editar pré-agendamento"
+            : "Editar agendamento"
+        : "Agendar lead";
+    const canResendScheduleInvite =
+        !!onResendScheduleInvite &&
+        !!scheduleSummary?.meetingDate &&
+        scheduleSummary?.status === "scheduled" &&
+        !isPreSchedule;
+    const isPresenceConfirmed = scheduleSummary?.meetingPresenceConfirmed === true;
+    const isPresenceConfirmationDue =
+        !isPreSchedule &&
+        isMeetingPresenceConfirmationDue({
+            status: scheduleSummary?.status,
+            meetingDate: scheduleSummary?.meetingDate,
+            meetingPresenceConfirmed: scheduleSummary?.meetingPresenceConfirmed,
+            isTransfer: isPreSchedule,
+        });
+    const canEditCloserField =
+        isEditMode && !!scheduleSummary?.meetingDate && !isPreSchedule;
 
     useEffect(() => {
         if (!initialData) {
@@ -221,6 +263,7 @@ export function LeadForm({
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
                 (watchedValues.closerId && watchedValues.closerId.trim() !== '') ||
+                watchedValues.isTransfer === true ||
                 watchedValues.isReferral ||
                 (watchedValues.referrerLeadId && watchedValues.referrerLeadId.trim() !== '') ||
                 (watchedValues.referrerName && watchedValues.referrerName.trim() !== '') ||
@@ -244,6 +287,7 @@ export function LeadForm({
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
                 watchedValues.responsible !== initialData.responsible ||
                 watchedValues.closerId !== initialData.closerId ||
+                watchedValues.isTransfer !== initialData.isTransfer ||
                 watchedValues.isReferral !== initialData.isReferral ||
                 watchedValues.referrerLeadId !== initialData.referrerLeadId ||
                 watchedValues.referrerName !== initialData.referrerName ||
@@ -258,26 +302,6 @@ export function LeadForm({
             form.setValue('responsible', responsibleUsers[0].id);
         }
     }, [responsibleUsers, form]);
-
-    useEffect(() => {
-        const raw = form.getValues("currentValue");
-        if (!raw) {
-            setCurrentValueDisplay("");
-            return;
-        }
-        const parsed = parseCurrencyValue(String(raw));
-        if (parsed === null || isNaN(parsed)) {
-            setCurrentValueDisplay("");
-            return;
-        }
-        setCurrentValueDisplay(formatCurrencyNumber(parsed));
-        if (typeof raw === "string" && /[R$,]/.test(raw)) {
-            const storage = toCurrencyStorageValue(raw);
-            if (storage) {
-                form.setValue("currentValue", storage, { shouldDirty: false });
-            }
-        }
-    }, [form]);
 
     useEffect(() => {
         const raw = form.getValues("ticket");
@@ -306,9 +330,9 @@ export function LeadForm({
     }, [isSchemaValid]);
 
     const handleCnpjBlur = useCallback(async (cnpjUnmasked: string) => {
-        if (isEditMode || !supabaseId || !activeTeamId || !cnpjUnmasked || cnpjUnmasked.trim().length === 0) return;
-        setCnpjDupError(null);
-        setCnpjChecking(true);
+        if (isEditMode || !supabaseId || !activeTeamId || !cnpjUnmasked || cnpjUnmasked.trim().length === 0) {
+            return null;
+        }
         try {
             const params = new URLSearchParams({ cnpj: cnpjUnmasked.trim() });
             const res = await fetch(`/api/v1/leads/cnpj-available?${params.toString()}`, {
@@ -318,13 +342,12 @@ export function LeadForm({
                 },
             });
             if (res.status === 409) {
-                setCnpjDupError("Já existe um lead com este CNPJ neste time");
+                return "Já existe um lead com este CNPJ neste time";
             }
         } catch {
             // Ignore network errors — backend validation will catch at submit
-        } finally {
-            setCnpjChecking(false);
         }
+        return null;
     }, [isEditMode, supabaseId, activeTeamId]);
 
     const handleInvalidSubmit = useCallback(async () => {
@@ -352,6 +375,38 @@ export function LeadForm({
         }
     }, [form, isLoading, isUpdating]);
 
+    const runSubmit = useCallback(
+        (mode: LeadFormSaveMode) => {
+            void form.handleSubmit(
+                (data) => onSubmit(data, mode),
+                () => {
+                    void handleInvalidSubmit();
+                }
+            )();
+        },
+        [form, handleInvalidSubmit, onSubmit]
+    );
+
+    const handleSaveFull = useCallback(() => {
+        if (isSaveDisabled) {
+            if (isFullSaveDisabled && fullSaveDisabledReason) {
+                toast.error(fullSaveDisabledReason);
+                return;
+            }
+            void handleInvalidSubmit();
+            return;
+        }
+        runSubmit("full");
+    }, [fullSaveDisabledReason, handleInvalidSubmit, isFullSaveDisabled, isSaveDisabled, runSubmit]);
+
+    const handleSaveDraft = useCallback(() => {
+        if (isDraftDisabled) {
+            void handleInvalidSubmit();
+            return;
+        }
+        runSubmit("draft");
+    }, [handleInvalidSubmit, isDraftDisabled, runSubmit]);
+
     useEffect(() => {
         if (!hasReachedFormEnd) return;
         if (!hasChanges) return;
@@ -371,129 +426,26 @@ export function LeadForm({
     return (
       <Form {...form}>
         <form
-            onSubmit={form.handleSubmit(onSubmit, () => {
-                void handleInvalidSubmit();
-            })}
+            onSubmit={(event) => {
+                event.preventDefault();
+                handleSaveFull();
+            }}
             className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2", className)}
         >            
-            <FormField
+            <LeadNameField control={form.control} disabled={isLoading || isUpdating} />
+            <LeadPhoneField control={form.control} disabled={isLoading || isUpdating} />
+            <LeadEmailField control={form.control} disabled={isLoading || isUpdating} />
+            <LeadCnpjField
                 control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
-                    <FormLabel className="block text-sm font-medium mb-1">Nome Completo*</FormLabel>
-                    <FormControl>
-                        <Input 
-                            {...field}
-                            required
-                            autoComplete="name"
-                            placeholder="Ex: Maria da Silva" 
-                            disabled={isLoading || isUpdating}
-                        />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-
+                disabled={isLoading || isUpdating}
+                onDuplicateCheck={handleCnpjBlur}
             />
-
-            <FormField
+            <LeadRazaoSocialField
                 control={form.control}
-                name="phone"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Telefone*</FormLabel>
-                        <FormControl>
-                            <Input
-                                value={maskPhone(normalizeLeadPhoneDigits(field.value || ''))}
-                                onChange={(e) => {
-                                    const normalizedPhone = normalizeLeadPhoneDigits(e.target.value);
-                                    field.onChange(normalizedPhone);
-                                }}
-                                type="tel"
-                                placeholder="(11) 91234-1234"
-                                required
-                                disabled={isLoading || isUpdating}
-                                maxLength={20}
-                            />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )}
+                disabled={isLoading || isUpdating}
+                isLookupPending={isLoading || isUpdating}
             />
-
-            <FormField 
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">E-mail</FormLabel>
-                        <FormControl>
-                            <Input
-                                {...field}
-                                type="email"
-                                placeholder="email@exemplo.com"
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )}
-            />
-
-            <FormField
-                control={form.control}
-                name="cnpj"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">CNPJ</FormLabel>
-                        <FormControl>
-                            <Input
-                                value={formatDocumentInput(field.value || '')}
-                                onChange={(e) => {
-                                    const masked = formatDocumentInput(e.target.value);
-                                    const unmasked = unmask(masked);
-                                    field.onChange(unmasked);
-                                    if (cnpjDupError) setCnpjDupError(null);
-                                }}
-                                onBlur={() => {
-                                    field.onBlur();
-                                    void handleCnpjBlur(field.value || '');
-                                }}
-                                type="text"
-                                placeholder="00.000.000/0000-00"
-                                disabled={isLoading || isUpdating}
-                                maxLength={18}
-                            />
-                        </FormControl>
-                        <FormMessage />
-                        {cnpjDupError && (
-                            <p className="text-sm font-medium text-destructive">{cnpjDupError}</p>
-                        )}
-                        {cnpjChecking && (
-                            <p className="text-sm text-muted-foreground">Verificando CNPJ...</p>
-                        )}
-                    </FormItem>
-                )}
-            />
-
-            <FormField
-                control={form.control}
-                name="age"
-                render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">Idades dos Beneficiários</FormLabel>
-                        <FormControl>
-                            <AgeEntryInput
-                                value={field.value || ""}
-                                onChange={field.onChange}
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )}
-            />
+            <LeadAgeField control={form.control} disabled={isLoading || isUpdating} />
 
             <div className="sm:col-span-2 rounded-md border border-border p-3">
                 <FormField
@@ -542,198 +494,61 @@ export function LeadForm({
                 )}
             </div>
 
-            <div className="sm:col-span-2">
-                <FormField
-                    control={form.control}
-                    name="currentHealthPlan"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel className="block text-sm font-medium mb-1">
-                                Qual o plano de saúde?
-                            </FormLabel>
-                            <FormControl>
-                                <Select
-                                    value={field.value}
-                                    onValueChange={field.onChange}
-                                    disabled={isLoading || isUpdating || healthPlanOptionsLoading}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione o plano atual ou 'Nova Adesão' se não possui" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {healthPlanNames.map((planName) => {
-                                            const iconUrl = healthPlanIconByName.get(planName);
-                                            return (
-                                                <SelectItem key={`current-health-plan-${planName}`} value={planName}>
-                                                    <span className="flex items-center gap-2">
-                                                        {iconUrl ? (
-                                                            <img src={iconUrl} alt="" className="size-4 rounded object-cover" />
-                                                        ) : null}
-                                                        {planName}
-                                                    </span>
-                                                </SelectItem>
-                                            );
-                                        })}
-                                    </SelectContent>
-                                </Select>
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-            </div>
-
-            <FormField
+            <LeadHealthPlanField
                 control={form.control}
-                name="currentValue"
-                render={({ field }) => {
-                    // Garantir que o valor sempre seja exibido formatado
-                    return (
-                        <FormItem>
-                            <FormLabel className="block text-sm font-medium mb-1">Valor Atual</FormLabel>
-                            <FormControl>
-                                <Input
-                                    value={currentValueDisplay}
-                                    onChange={(e) => {
-                                        const raw = e.target.value;
-                                        const parsed = parseCurrencyValue(raw);
-                                        if (parsed !== null && parsed > MAX_CURRENCY_VALUE) {
-                                            const message = `Valor deve ser menor que ${MAX_CURRENCY_LABEL}`;
-                                            setCurrentValueError(message);
-                                            form.setError("currentValue", { type: "manual", message });
-                                            return;
-                                        }
-                                        setCurrentValueError(null);
-                                        form.clearErrors("currentValue");
-                                        const formatted = formatCurrencyInput(raw);
-                                        const storage = toCurrencyStorageValue(raw);
-                                        setCurrentValueDisplay(formatted);
-                                        field.onChange(storage ?? "");
-                                    }}
-                                    type="text"
-                                    placeholder="R$ 10,00"
-                                    disabled={isLoading || isUpdating}
-                                />
-                            </FormControl>
-                            {currentValueError && (
-                                <p className="text-xs text-destructive">{currentValueError}</p>
-                            )}
-                        </FormItem>
-                    );
-                }}
+                disabled={isLoading || isUpdating}
+                loading={healthPlanOptionsLoading}
+                options={healthPlanNames.map((planName) => ({
+                    id: `current-health-plan-${planName}`,
+                    name: planName,
+                    iconUrl: healthPlanIconByName.get(planName),
+                }))}
             />
-
-            <FormField
+            <LeadCurrentValueField
                 control={form.control}
-                name="referenceHospital"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">
-                            Hospital Referência (se houver)
-                        </FormLabel>
-                        <FormControl>
-                            <Input
-                                {...field}
-                                placeholder="Digite o hospital"
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )}
+                disabled={isLoading || isUpdating}
+                setValue={form.setValue}
+                setError={form.setError}
+                clearErrors={form.clearErrors}
             />
+            <LeadReferenceHospitalField control={form.control} disabled={isLoading || isUpdating} />
+            <LeadOngoingTreatmentField control={form.control} disabled={isLoading || isUpdating} />
+            <LeadAdditionalNotesField control={form.control} disabled={isLoading || isUpdating} />
 
-            <FormField
-                control={form.control}
-                name="ongoingTreatment"
-                render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">
-                            Existe algum tratamento em andamento?
-                        </FormLabel>
-                        <FormControl>
-                            <Input
-                                {...field}
-                                placeholder="Descreva brevemente"
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )}
-            />
-
-            <FormField
-                control={form.control}
-                name="additionalNotes"
-                render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">Observações Adicionais</FormLabel>
-                        <FormControl>
-                            <Textarea
-                                {...field}
-                                placeholder="Observações relevantes"
-                                disabled={isLoading || isUpdating}
-                                rows={3}
-                            />
-                        </FormControl>
-                    </FormItem>
-                )}
-            />
+            {customFieldDefinitions.length > 0 ? (
+                <div className="sm:col-span-2 flex flex-col gap-4">
+                    <Separator />
+                    <h3 className="text-sm font-semibold text-foreground">Campos personalizados</h3>
+                    <LeadCustomFieldsSection
+                        form={form as import("react-hook-form").UseFormReturn<LeadFormWithCustomFields>}
+                        definitions={customFieldDefinitions}
+                    />
+                </div>
+            ) : null}
 
             <div className="sm:col-span-2 pt-4 border-t">
-                <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">Agendamento</h3>
-                    <div className="flex items-center gap-2">
-                        {!!canToggleMeetingHeald && (
-                            <Button
-                                type="button"
-                                variant={meetingHealdValue === "yes" ? "default" : "outline"}
-                                disabled={isLoading || isUpdating || meetingHealdSaving}
-                                onClick={() => {
-                                    const next = meetingHealdValue === "yes" ? "no" : "yes";
-                                    onMeetingHealdChange?.(next);
-                                }}
-                            >
-                                {meetingHealdSaving ? (
-                                    <span className="inline-flex items-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Salvando...
-                                    </span>
-                                ) : meetingHealdValue === "yes" ? (
-                                    <>
-                                        <BadgeCheck className="h-4 w-4" />
-                                        Reunião realizada
-                                    </>
-                                ) : (
-                                    <>
-                                        <BadgeIcon className="h-4 w-4" />
-                                        Reunião realizada
-                                    </>
-                                )}
-                            </Button>
-                        )}
-                        {!!canMarkNoShow && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                disabled={isLoading || isUpdating}
-                                onClick={() => {
-                                    void onMarkNoShow?.();
-                                }}
-                            >
-                                <CalendarX2 className="h-4 w-4" />
-                                No-show
-                            </Button>
-                        )}
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-foreground">{scheduleSectionTitle}</h3>
                         <Button type="button" variant="outline" onClick={onManageSchedule} disabled={!onManageSchedule}>
                             {scheduleSummary?.meetingDate ? (
-                                <><CalendarSync className="h-4 w-4" />Editar agendamento</>
+                                <>
+                                    <CalendarSync data-icon="inline-start" />
+                                    {manageScheduleLabel}
+                                </>
                             ) : (
-                                <><CalendarClock className="h-4 w-4" />Agendar lead</>
+                                <>
+                                    <CalendarClock data-icon="inline-start" />
+                                    {manageScheduleLabel}
+                                </>
                             )}
                         </Button>
                     </div>
+                    {isPreSchedule && (
+                        <p className="text-xs text-muted-foreground">
+                            Aguardando transferência — ainda não está no status Agendado.
+                        </p>
+                    )}
                 </div>
 
                 <div className="mt-3 rounded-md border border-dashed border-border/70 bg-muted/30 p-3 grid gap-2 text-sm text-muted-foreground">
@@ -743,15 +558,61 @@ export function LeadForm({
                                 <span className="text-foreground">Data/hora</span>
                                 <span>{new Date(scheduleSummary.meetingDate).toLocaleString("pt-BR")}</span>
                             </div>
-                            {!!scheduleSummary?.closerName && (
+                            {canEditCloserField ? (
+                                <FormField
+                                    control={form.control}
+                                    name="closerId"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Closer</FormLabel>
+                                            <Select
+                                                onValueChange={field.onChange}
+                                                value={field.value || ""}
+                                                disabled={
+                                                    isLoading ||
+                                                    isUpdating ||
+                                                    closersLoading ||
+                                                    isCloserSelectDisabled ||
+                                                    closers.length === 0
+                                                }
+                                            >
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue
+                                                            placeholder={
+                                                                closersLoading
+                                                                    ? "Carregando closers..."
+                                                                    : closers.length === 0
+                                                                      ? "Nenhum closer disponível"
+                                                                      : "Selecione o closer"
+                                                            }
+                                                        />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {closers.map((closer) => (
+                                                        <SelectItem key={closer.id} value={closer.id}>
+                                                            {closer.name || closer.email}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            {closersError ? (
+                                                <p className="text-xs text-destructive">{closersError}</p>
+                                            ) : null}
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            ) : scheduleSummary?.closerName ? (
                                 <div className="grid gap-1">
                                     <span className="text-foreground">Closer</span>
                                     <span>{scheduleSummary.closerName}</span>
                                 </div>
-                            )}
+                            ) : null}
                             {!!scheduleSummary?.meetingTitle && (
                                 <div className="grid gap-1">
-                                    <span className="text-foreground">Titulo</span>
+                                    <span className="text-foreground">Título</span>
                                     <span>{scheduleSummary.meetingTitle}</span>
                                 </div>
                             )}
@@ -788,6 +649,18 @@ export function LeadForm({
                                         >
                                             <ExternalLink className="h-4 w-4" />
                                         </Button>
+                                        {!!onShareSchedule && (
+                                            <Button
+                                                type="button"
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8 shrink-0"
+                                                onClick={onShareSchedule}
+                                                aria-label="Compartilhar agendamento"
+                                            >
+                                                <Share2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -800,6 +673,127 @@ export function LeadForm({
                                         className="resize-none text-muted-foreground bg-transparent cursor-default"
                                         rows={3}
                                     />
+                                </div>
+                            )}
+                            {!isPreSchedule && scheduleSummary?.meetingDate && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {isPresenceConfirmed ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("confirmed"))}
+                                        >
+                                            <BadgeCheck data-icon="inline-start" />
+                                            {getMeetingPresenceBadgeLabel("confirmed")}
+                                        </Badge>
+                                    ) : isPresenceConfirmationDue ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("pending"))}
+                                        >
+                                            {getMeetingPresenceAlertLabel()}
+                                        </Badge>
+                                    ) : canConfirmMeetingPresence({
+                                        status: scheduleSummary?.status,
+                                        meetingDate: scheduleSummary?.meetingDate,
+                                        isTransfer: isPreSchedule,
+                                    }) ? (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(getMeetingPresenceBadgeClass("pending"))}
+                                        >
+                                            {getMeetingPresenceBadgeLabel("pending")}
+                                        </Badge>
+                                    ) : null}
+                                </div>
+                            )}
+                            {(!!canToggleMeetingHeald ||
+                                !!canMarkNoShow ||
+                                canResendScheduleInvite ||
+                                canConfirmMeetingPresenceAction) && (
+                                <div className="flex flex-wrap gap-2 pt-2">
+                                    {canConfirmMeetingPresenceAction && !isPresenceConfirmed && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={
+                                                isLoading ||
+                                                isUpdating ||
+                                                meetingPresenceConfirmSaving ||
+                                                !canConfirmMeetingPresence({
+                                                    status: scheduleSummary?.status,
+                                                    meetingDate: scheduleSummary?.meetingDate,
+                                                    isTransfer: isPreSchedule,
+                                                })
+                                            }
+                                            onClick={() => {
+                                                void onMeetingPresenceConfirm?.();
+                                            }}
+                                        >
+                                            {meetingPresenceConfirmSaving ? (
+                                                <>
+                                                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                                                    Confirmando...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BadgeCheck data-icon="inline-start" />
+                                                    Confirmar agenda
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
+                                    {!!canToggleMeetingHeald && (
+                                        <Button
+                                            type="button"
+                                            variant={meetingHealdValue === "yes" ? "default" : "outline"}
+                                            disabled={isLoading || isUpdating || meetingHealdSaving}
+                                            onClick={() => {
+                                                const next = meetingHealdValue === "yes" ? "no" : "yes";
+                                                onMeetingHealdChange?.(next);
+                                            }}
+                                        >
+                                            {meetingHealdSaving ? (
+                                                <>
+                                                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                                                    Salvando...
+                                                </>
+                                            ) : meetingHealdValue === "yes" ? (
+                                                <>
+                                                    <BadgeCheck data-icon="inline-start" />
+                                                    Reunião realizada
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BadgeIcon data-icon="inline-start" />
+                                                    Reunião realizada
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
+                                    {!!canMarkNoShow && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={isLoading || isUpdating}
+                                            onClick={() => {
+                                                void onMarkNoShow?.();
+                                            }}
+                                        >
+                                            <CalendarX2 data-icon="inline-start" />
+                                            No-show
+                                        </Button>
+                                    )}
+                                    {canResendScheduleInvite && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={onResendScheduleInvite}
+                                            disabled={isLoading || isUpdating}
+                                        >
+                                            <Mail data-icon="inline-start" />
+                                            Reenviar convite
+                                        </Button>
+                                    )}
                                 </div>
                             )}
                         </>
@@ -1110,23 +1104,14 @@ export function LeadForm({
                     Cancelar
                 </Button>
 
-                <div
-                    className="inline-flex"
-                    onClick={() => {
-                        if (isSubmitDisabled) {
-                            void handleInvalidSubmit();
-                        }
-                    }}
-                >
-                    <Button 
-                        type="submit" 
-                        className={cn("cursor-pointer", isSubmitDisabled && "pointer-events-none")} 
-                        disabled={isSubmitDisabled}
-                    >
-                        {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isUpdating ? "Salvando..." : "Salvar"}
-                    </Button>
-                </div>
+                <SaveWithDraftButton
+                    isLoading={isLoading || isUpdating}
+                    isSaveDisabled={isSaveDisabled}
+                    isDraftDisabled={isDraftDisabled}
+                    showDraftOption={!isEditMode}
+                    onSaveFull={handleSaveFull}
+                    onSaveDraft={handleSaveDraft}
+                />
             </div>
             <div
                 ref={formEndRef as React.RefObject<HTMLDivElement>}

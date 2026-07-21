@@ -15,9 +15,15 @@ import {
   Tag,
   Zap,
   Building2,
+  MessageCircle,
+  Bot,
+  ShieldBan,
   EllipsisVertical,
+  ListChecks,
   LogOut,
   UserRound,
+  FileText,
+  Megaphone,
 } from "lucide-react"
 import {
   Sidebar,
@@ -52,13 +58,18 @@ const navigationItems = [
   { title: "CRM", url: "/backoffice/crm", icon: Kanban },
   { title: "Calendário", url: "/backoffice/calendar", icon: CalendarDays },
   { title: "Clientes", url: "/backoffice/clients", icon: Users },
+  { title: "Contratos", url: "/backoffice/contracts", icon: FileText },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
   { title: "Funcionalidades", url: "/backoffice/features", icon: Zap },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
+  { title: "WhatsApp", url: "/backoffice/whatsapp", icon: MessageCircle },
+  { title: "Bethânia", url: "/backoffice/studio-bot", icon: Bot },
   { title: "Templates de E-mail", url: "/backoffice/email-templates", icon: Mail },
+  { title: "Campanhas de E-mail", url: "/backoffice/emails/campanhas", icon: Megaphone },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
+  { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },
 ]
 
 export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
@@ -117,7 +128,9 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 const isActive =
                   item.url === "/backoffice"
                     ? pathname === "/backoffice"
-                    : pathname.startsWith(item.url)
+                    : item.url === "/backoffice/emails/campanhas"
+                      ? pathname.startsWith("/backoffice/emails")
+                      : pathname.startsWith(item.url)
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive}>
@@ -147,6 +160,33 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         <SidebarMenuSubItem>
                           <SidebarMenuSubButton
                             asChild
+                            isActive={pathname.startsWith("/backoffice/anatemas")}
+                          >
+                            <Link href="/backoffice/anatemas">
+                              <ShieldBan className="h-4 w-4" />
+                              Anatemas
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/clients/authorized-sponsors")}
+                          >
+                            <Link href="/backoffice/clients/authorized-sponsors">Patrocinadores</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/clients/operational-access")}
+                          >
+                            <Link href="/backoffice/clients/operational-access">Acessos operacionais</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
                             isActive={pathname.startsWith("/backoffice/clients/adhesions")}
                           >
                             <Link href="/backoffice/clients/adhesions">Nova adesão</Link>
@@ -170,6 +210,34 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             isActive={pathname.startsWith("/backoffice/features/beta")}
                           >
                             <Link href="/backoffice/features/beta">Grupo Beta</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    ) : null}
+                    {item.url === "/backoffice/emails/campanhas" ? (
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname === "/backoffice/emails/campanhas"}
+                          >
+                            <Link href="/backoffice/emails/campanhas">Campanhas</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/emails/contatos")}
+                          >
+                            <Link href="/backoffice/emails/contatos">Contatos</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/emails/analytics")}
+                          >
+                            <Link href="/backoffice/emails/analytics">Analytics</Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       </SidebarMenuSub>

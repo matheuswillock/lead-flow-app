@@ -4,6 +4,7 @@ import { Output } from '@/lib/output';
 import { getEmailService } from '@/lib/services/EmailService';
 import { buildSetPasswordEmailAuthLink } from '@/lib/supabase/email-auth-link';
 import { getFullUrl } from '@/lib/utils/app-url';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * POST /api/v1/operators/resend-invite
@@ -101,6 +102,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [Resend Invite] Erro inesperado:', error);
     return NextResponse.json(
       new Output(false, [], ['Erro inesperado ao reenviar convite'], null),

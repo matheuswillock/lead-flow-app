@@ -8,7 +8,14 @@ import type {
 } from "@prisma/client"
 import { BackofficeFeatureRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeFeature/BackofficeFeatureRepository"
 import type { IBackofficeFeatureRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeFeature/IBackofficeFeatureRepository"
+import type { BackofficeBetaTeamScope } from "@prisma/client"
 import { toFeatureSlug } from "@/lib/features/slug"
+
+export interface AddBetaUserInput {
+  profileId: string
+  betaTeamScope: BackofficeBetaTeamScope
+  teamIds?: string[]
+}
 
 export interface CreateBackofficeFeatureInput {
   name: string
@@ -19,6 +26,7 @@ export interface CreateBackofficeFeatureInput {
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
   accessRules?: Array<{ principal: string; accessLevel: string }>
@@ -33,6 +41,7 @@ export interface UpdateBackofficeFeatureInput {
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
   accessRules?: Array<{ principal: string; accessLevel: string }>
@@ -62,7 +71,11 @@ export class BackofficeFeatureUseCase {
   async list(): Promise<Output> {
     try {
       const features = await listCachedBackofficeFeatures()
-      return new Output(true, [], [], features)
+      const mapped = features.map((feature) => ({
+        ...feature,
+        grants: feature.grants.map((grant) => this.mapBetaGrant(grant)),
+      }))
+      return new Output(true, [], [], mapped)
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][list]", error)
       return new Output(false, [], ["Erro ao listar funcionalidades"], null)
@@ -91,6 +104,19 @@ export class BackofficeFeatureUseCase {
         )
       }
 
+      const createInheritParentSettings = input.inheritParentSettings ?? false
+      const createBilledSeparately =
+        createInheritParentSettings ? false : (input.billedSeparately ?? false)
+
+      if (createInheritParentSettings && input.betaEnabled) {
+        return new Output(
+          false,
+          [],
+          ["Funcionalidades que herdam do pai não podem ter beta próprio"],
+          null
+        )
+      }
+
       if (input.productSlug) {
         const productExists = await this.featureRepo.productSlugExists(input.productSlug)
         if (!productExists) {
@@ -108,8 +134,9 @@ export class BackofficeFeatureUseCase {
         productSlug: input.productSlug ?? null,
         accessMode: input.accessMode ?? "PUBLIC",
         defaultAccessLevel: input.defaultAccessLevel ?? "FULL",
-        betaEnabled: input.betaEnabled ?? false,
-        inheritParentSettings: input.inheritParentSettings ?? false,
+        betaEnabled: createInheritParentSettings ? false : (input.betaEnabled ?? false),
+        inheritParentSettings: createInheritParentSettings,
+        billedSeparately: input.parentId ? createBilledSeparately : false,
         isActive: input.isActive ?? true,
         sortOrder: input.sortOrder ?? 0,
       })
@@ -168,7 +195,31 @@ export class BackofficeFeatureUseCase {
         )
       }
 
-      const updated = await this.featureRepo.update(id, input)
+      const effectiveBetaEnabled =
+        input.betaEnabled !== undefined ? input.betaEnabled : existing.betaEnabled
+
+      if (effectiveInheritParentSettings && effectiveBetaEnabled) {
+        return new Output(
+          false,
+          [],
+          ["Funcionalidades que herdam do pai não podem ter beta próprio"],
+          null
+        )
+      }
+
+      const effectiveBilledSeparately = effectiveInheritParentSettings
+        ? false
+        : input.billedSeparately !== undefined
+          ? input.billedSeparately
+          : existing.billedSeparately
+
+      const normalizedInput: UpdateBackofficeFeatureInput = {
+        ...input,
+        ...(effectiveInheritParentSettings ? { betaEnabled: false, billedSeparately: false } : {}),
+        ...(!effectiveParentId ? { billedSeparately: false } : { billedSeparately: effectiveBilledSeparately }),
+      }
+
+      const updated = await this.featureRepo.update(id, normalizedInput)
 
       if (input.accessRules) {
         const normalizedRules = this.normalizeAccessRules(input.accessRules)
@@ -198,12 +249,22 @@ export class BackofficeFeatureUseCase {
     }
   }
 
-  async listUsers(query: string, page: number, pageSize: number): Promise<Output> {
+  async listUsers(
+    query: string,
+    page: number,
+    pageSize: number,
+    options?: { mastersOnly?: boolean }
+  ): Promise<Output> {
     try {
       const normalizedQuery = query.trim()
       const safePage = Math.max(1, page)
       const safePageSize = Math.max(5, pageSize)
-      const { items, totalItems } = await this.featureRepo.searchUsers(normalizedQuery, safePage, safePageSize)
+      const { items, totalItems } = await this.featureRepo.searchUsers(
+        normalizedQuery,
+        safePage,
+        safePageSize,
+        options
+      )
       const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize))
       return new Output(true, [], [], {
         items,
@@ -232,23 +293,88 @@ export class BackofficeFeatureUseCase {
     }
   }
 
-  async addBetaUser(featureId: string, profileId: string): Promise<Output> {
+  async addBetaUser(featureId: string, input: AddBetaUserInput): Promise<Output> {
     try {
       const feature = await this.featureRepo.findById(featureId)
       if (!feature) {
         return new Output(false, [], ["Funcionalidade não encontrada"], null)
       }
 
-      const profileExists = await this.featureRepo.profileExists(profileId)
-      if (!profileExists) {
+      const profile = await this.featureRepo.findProfileById(input.profileId)
+      if (!profile) {
         return new Output(false, [], ["Perfil não encontrado"], null)
       }
 
-      const grant = await this.featureRepo.upsertBetaGrant({ featureId, profileId })
-      return new Output(true, ["Usuário beta vinculado com sucesso"], [], grant)
+      if (!profile.isMaster || profile.role !== "manager") {
+        return new Output(false, [], ["Apenas usuários master podem ser adicionados ao grupo beta"], null)
+      }
+
+      if (input.betaTeamScope === "SPECIFIC_TEAMS") {
+        if (!input.teamIds || input.teamIds.length === 0) {
+          return new Output(false, [], ["Selecione ao menos um time"], null)
+        }
+
+        const teamsValid = await this.featureRepo.validateTeamsBelongToMaster(
+          input.profileId,
+          input.teamIds
+        )
+        if (!teamsValid) {
+          return new Output(false, [], ["Um ou mais times não pertencem a este master"], null)
+        }
+      }
+
+      const grant = await this.featureRepo.upsertBetaGrant({
+        featureId,
+        profileId: input.profileId,
+        betaTeamScope: input.betaTeamScope,
+        teamIds: input.teamIds,
+      })
+
+      return new Output(true, ["Usuário beta vinculado com sucesso"], [], this.mapBetaGrant(grant))
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][addBetaUser]", error)
       return new Output(false, [], ["Erro ao vincular usuário beta"], null)
+    }
+  }
+
+  async updateBetaUser(
+    featureId: string,
+    profileId: string,
+    input: Pick<AddBetaUserInput, "betaTeamScope" | "teamIds">
+  ): Promise<Output> {
+    try {
+      const feature = await this.featureRepo.findById(featureId)
+      if (!feature) {
+        return new Output(false, [], ["Funcionalidade não encontrada"], null)
+      }
+
+      const profile = await this.featureRepo.findProfileById(profileId)
+      if (!profile?.isMaster || profile.role !== "manager") {
+        return new Output(false, [], ["Grant beta não encontrado para este master"], null)
+      }
+
+      if (input.betaTeamScope === "SPECIFIC_TEAMS") {
+        if (!input.teamIds || input.teamIds.length === 0) {
+          return new Output(false, [], ["Selecione ao menos um time"], null)
+        }
+
+        const teamsValid = await this.featureRepo.validateTeamsBelongToMaster(profileId, input.teamIds)
+        if (!teamsValid) {
+          return new Output(false, [], ["Um ou mais times não pertencem a este master"], null)
+        }
+      }
+
+      const grant = await this.featureRepo.upsertBetaGrant({
+        featureId,
+        profileId,
+        betaTeamScope: input.betaTeamScope,
+        teamIds: input.teamIds,
+      })
+
+      return new Output(true, ["Escopo beta atualizado com sucesso"], [], this.mapBetaGrant(grant))
+    } catch (error) {
+      console.error("[BackofficeFeatureUseCase][updateBetaUser]", error)
+      return new Output(false, [], ["Erro ao atualizar escopo beta"], null)
     }
   }
 
@@ -269,10 +395,26 @@ export class BackofficeFeatureUseCase {
         return new Output(false, [], ["Funcionalidade não encontrada"], null)
       }
       const grants = await this.featureRepo.listBetaGrants(featureId)
-      return new Output(true, [], [], grants)
+      return new Output(true, [], [], grants.map((grant) => this.mapBetaGrant(grant)))
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][listBetaUsers]", error)
       return new Output(false, [], ["Erro ao listar usuários beta"], null)
+    }
+  }
+
+  private mapBetaGrant(
+    grant: Awaited<ReturnType<IBackofficeFeatureRepository["upsertBetaGrant"]>>
+  ) {
+    return {
+      id: grant.id,
+      profileId: grant.profileId,
+      isActive: grant.isActive,
+      betaTeamScope: grant.betaTeamScope,
+      teams: grant.teams.map((item) => ({
+        id: item.team.id,
+        name: item.team.name,
+      })),
+      profile: grant.profile,
     }
   }
 

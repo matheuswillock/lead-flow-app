@@ -1,5 +1,6 @@
 export interface BackofficeClientTeamMember {
   id: string
+  teamMemberId: string
   fullName: string | null
   email: string
   phone: string | null
@@ -11,6 +12,11 @@ export interface BackofficeClientTeamMember {
   isMaster: boolean
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
+  canTransferAccountLeads: boolean
+  canViewAllTeams: boolean
+  accessStatus: "pending_first_access" | "active"
+  hasCompletedFirstAccess: boolean
+  lastSignInAt: string | null
 }
 
 export interface BackofficeClientTeam {
@@ -19,6 +25,7 @@ export interface BackofficeClientTeam {
   createdAt: string
   membersCount: number
   members: BackofficeClientTeamMember[]
+  transferRoutes: Array<{ teamId: string; teamName: string }>
 }
 
 export interface BackofficeClientDetails {
@@ -48,11 +55,24 @@ export interface BackofficeClientDetails {
     status: string | null
   }
   teams: BackofficeClientTeam[]
+  allTeams: Array<{ id: string; name: string; membersCount: number }>
   teamsPagination: BackofficePagination
+  userType: {
+    slug: "common" | "member_pro"
+    isExpired: boolean
+    accessExpiresAt: string | null
+  }
+  hasUnlimitedUsers: boolean
+  multiskillEnabled: boolean
+  isBanned?: boolean
 }
 
 export interface BackofficeClientInvoice {
   id: string
+  invoiceIdDisplay: string
+  invoiceName: string
+  invoiceKind: "subscription" | "addon_user" | "addon_team" | "other"
+  source: "asaas" | "pending_action"
   status: string
   statusGroup: "paid" | "overdue" | "upcoming" | "other"
   value: number
@@ -64,6 +84,8 @@ export interface BackofficeClientInvoice {
   invoiceUrl: string | null
   bankSlipUrl: string | null
   invoiceNumber: string | null
+  checkoutUrl: string | null
+  pendingActionId: string | null
 }
 
 export interface BackofficeClientInvoicesResult {

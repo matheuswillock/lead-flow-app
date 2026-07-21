@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Crown, Eye, MoreHorizontal, Pencil, Sparkles, Trash2, X } from "lucide-react"
+import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Send, Sparkles, Trash2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,6 +49,8 @@ import type {
   BackofficeAllUsersUserTypeFilter,
 } from "../context/BackofficeAllUsersTypes"
 import { BackofficeAllUsersDetailSheet } from "../components/BackofficeAllUsersDetailSheet"
+import { BackofficeAllUsersSchedulesDialog } from "../components/BackofficeAllUsersSchedulesDialog"
+import { BackofficeAllUsersEmailDispatchesDialog } from "../components/BackofficeAllUsersEmailDispatchesDialog"
 import { BackofficeProfileUserTypeDialog } from "../components/BackofficeProfileUserTypeDialog"
 
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
@@ -72,6 +74,8 @@ const USER_TYPE_OPTIONS: { value: BackofficeAllUsersUserTypeFilter | "all"; labe
   { value: "all", label: "Todos os tipos" },
   { value: "common", label: "Comum" },
   { value: "member_pro", label: "Member PRO" },
+  { value: "associate", label: "Associado" },
+  { value: "guest", label: "Convidado" },
 ]
 
 function formatDate(value: string, tz: string) {
@@ -117,10 +121,12 @@ export function BackofficeAllUsersContainer() {
   const { tz } = useTimezone()
   const clientDetailsService = useMemo(() => new BackofficeClientDetailsService(), [])
   const {
+    service,
     items,
     pagination,
     isLoading,
     error,
+    canManage,
     filters,
     setFilters,
     fetchUsers,
@@ -128,15 +134,19 @@ export function BackofficeAllUsersContainer() {
     setUsersPageSize,
     clearFilters,
     openUserSheet,
+    openSchedulesDialog,
+    openEmailDispatchesDialog,
   } = useBackofficeAllUsers()
 
   const [localFilters, setLocalFilters] = useState<BackofficeAllUsersFilters>(filters)
   const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
+  const [selectedMemberTeamId, setSelectedMemberTeamId] = useState<string | null>(null)
   const [selectedDetails, setSelectedDetails] = useState<BackofficeClientDetails | null>(null)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
   const [userTypeDialogItem, setUserTypeDialogItem] = useState<BackofficeAllUsersItem | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [accessActionKey, setAccessActionKey] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -230,6 +240,7 @@ export function BackofficeAllUsersContainer() {
   function buildFallbackMember(item: BackofficeAllUsersItem): BackofficeClientTeamMember {
     return {
       id: item.id,
+      teamMemberId: "",
       fullName: item.fullName,
       email: item.email,
       phone: item.phone,
@@ -241,6 +252,11 @@ export function BackofficeAllUsersContainer() {
       isMaster: item.isMaster,
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
+      canTransferAccountLeads: false,
+      canViewAllTeams: false,
+      accessStatus: item.accessStatus,
+      hasCompletedFirstAccess: item.hasCompletedFirstAccess,
+      lastSignInAt: item.lastSignInAt,
     }
   }
 
@@ -260,6 +276,7 @@ export function BackofficeAllUsersContainer() {
       const fallbackMember = buildFallbackMember(item)
       let details: BackofficeClientDetails | null = null
       let member: BackofficeClientTeamMember = fallbackMember
+      let memberTeamId: string | null = null
 
       if (options?.loadDetails) {
         const masterId = getMasterId(item)
@@ -271,12 +288,17 @@ export function BackofficeAllUsersContainer() {
               page: 1,
               pageSize: 100,
             })
-            const foundMember = details.teams
-              .flatMap((team) => team.members)
-              .find((teamMember) => teamMember.id === item.id)
-            if (foundMember) {
-              member = foundMember
-            } else {
+            for (const team of details.teams) {
+              const foundMember = team.members.find((teamMember) => teamMember.id === item.id)
+              if (foundMember) {
+                member = foundMember
+                memberTeamId = team.id
+                break
+              }
+            }
+            if (!memberTeamId && details.allTeams.length > 0) {
+              member = fallbackMember
+            } else if (!memberTeamId) {
               toast.info("Usuário sem vínculo de time no cliente. Edição/deleção disponível com dados básicos.")
             }
           } catch (err) {
@@ -288,7 +310,8 @@ export function BackofficeAllUsersContainer() {
 
       setSelectedDetails(details)
       setSelectedMember(member)
-      return { details, member }
+      setSelectedMemberTeamId(memberTeamId)
+      return { details, member, memberTeamId }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar dados do usuário")
       return null
@@ -309,12 +332,64 @@ export function BackofficeAllUsersContainer() {
     setMemberDeleteOpen(true)
   }
 
+  async function handleMemberEditSuccess() {
+    await handleActionSuccess()
+    if (!selectedDetails || !selectedMember) return
+    try {
+      const details = await clientDetailsService.getByMasterId(selectedDetails.id, {
+        page: 1,
+        pageSize: 100,
+      })
+      setSelectedDetails(details)
+      for (const team of details.teams) {
+        const foundMember = team.members.find((teamMember) => teamMember.id === selectedMember.id)
+        if (foundMember) {
+          setSelectedMember(foundMember)
+          setSelectedMemberTeamId(team.id)
+          break
+        }
+      }
+    } catch (err) {
+      console.error("[BackofficeAllUsersContainer][handleMemberEditSuccess]", err)
+    }
+  }
+
   async function handleActionSuccess() {
     await fetchUsers({
       page: pagination.page,
       pageSize: pagination.pageSize,
       filters,
     })
+  }
+
+  async function handleSendAccessEmail(
+    item: BackofficeAllUsersItem,
+    mode: "invite" | "reset_password"
+  ) {
+    if (accessActionKey) return
+
+    const key = `${item.id}:${mode}`
+    setAccessActionKey(key)
+    const toastId = toast.loading(
+      mode === "invite" ? "Reenviando convite..." : "Enviando reset de senha..."
+    )
+
+    try {
+      const result = await service.sendAccessEmail(item.id, mode)
+      toast.success(
+        mode === "invite"
+          ? `Convite reenviado para ${result.email}.`
+          : `Reset de senha enviado para ${result.email}.`,
+        { id: toastId }
+      )
+    } catch (error) {
+      console.error("[BackofficeAllUsersContainer][handleSendAccessEmail]", error)
+      toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.", {
+        id: toastId,
+      })
+    } finally {
+      setAccessActionKey(null)
+    }
   }
 
   return (
@@ -421,7 +496,12 @@ export function BackofficeAllUsersContainer() {
             ) : (
               items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.fullName || "Sem nome"}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{item.fullName || "Sem nome"}</span>
+                      {item.isBanned ? <Badge variant="destructive">Banido</Badge> : null}
+                    </div>
+                  </TableCell>
                   <TableCell>{item.email}</TableCell>
                   <TableCell>{maskPhone(item.phone ?? "") || "—"}</TableCell>
                   <TableCell>{getRoleBadge(item.role, item.isMaster)}</TableCell>
@@ -439,7 +519,11 @@ export function BackofficeAllUsersContainer() {
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" disabled={actionLoadingId === item.id}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={actionLoadingId === item.id || accessActionKey !== null}
+                        >
                           <MoreHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
@@ -448,17 +532,55 @@ export function BackofficeAllUsersContainer() {
                           <Eye />
                           Visualizar
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
-                          <Pencil />
-                          Editar
+                        <DropdownMenuItem
+                          onClick={() =>
+                            openSchedulesDialog({
+                              id: item.id,
+                              fullName: item.fullName,
+                              email: item.email,
+                            })
+                          }
+                        >
+                          <CalendarRange />
+                          Ver agendamentos
                         </DropdownMenuItem>
-                        {item.isMaster ? (
+                        <DropdownMenuItem
+                          onClick={() =>
+                            openEmailDispatchesDialog({
+                              id: item.id,
+                              fullName: item.fullName,
+                              email: item.email,
+                            })
+                          }
+                        >
+                          <Send />
+                          Ver e-mails disparados
+                        </DropdownMenuItem>
+                        {canManage && (
+                          <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
+                            <Pencil />
+                            Editar
+                          </DropdownMenuItem>
+                        )}
+                        {canManage && item.accessStatus === "pending_first_access" ? (
+                          <DropdownMenuItem onClick={() => void handleSendAccessEmail(item, "invite")}>
+                            <Mail />
+                            Reenviar convite
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canManage && item.accessStatus === "active" ? (
+                          <DropdownMenuItem onClick={() => void handleSendAccessEmail(item, "reset_password")}>
+                            <KeyRound />
+                            Enviar reset de senha
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canManage && item.isMaster ? (
                           <DropdownMenuItem onClick={() => setUserTypeDialogItem(item)}>
                             <Sparkles />
                             Gerenciar tipo de usuário
                           </DropdownMenuItem>
                         ) : null}
-                        {!item.isMaster ? (
+                        {canManage && !item.isMaster ? (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive focus:bg-destructive/10"
                             onClick={() => void handleOpenDelete(item)}
@@ -529,13 +651,17 @@ export function BackofficeAllUsersContainer() {
       </div>
 
       <BackofficeAllUsersDetailSheet />
+      <BackofficeAllUsersSchedulesDialog />
+      <BackofficeAllUsersEmailDispatchesDialog />
       <BackofficeMemberEditDialog
         open={memberEditOpen}
         onOpenChange={setMemberEditOpen}
         member={selectedMember}
+        teamId={selectedMemberTeamId}
         details={selectedDetails}
         service={clientDetailsService}
-        onSuccess={() => void handleActionSuccess()}
+        canManage={canManage}
+        onSuccess={() => void handleMemberEditSuccess()}
         onDeleteRequest={() => {
           setMemberEditOpen(false)
           setMemberDeleteOpen(true)

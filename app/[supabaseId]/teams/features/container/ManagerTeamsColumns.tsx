@@ -1,9 +1,10 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, CreditCard, ExternalLink, MoreHorizontal, Settings } from "lucide-react";
+import { ArrowUpDown, CreditCard, ExternalLink, MoreHorizontal, Settings, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,10 +19,15 @@ interface CreateColumnsProps {
   tz: string;
   activeTeamId: string | null;
   switchingTeamId: string | null;
+  cancelingPendingTeamId: string | null;
+  settingDefaultTeamId: string | null;
+  ownAccountTeamCount: number;
   onSetActiveTeam: (teamId: string) => void;
+  onSetDefaultTeam: (teamId: string) => void;
   onManageTeam: (teamId: string, teamName: string) => void;
   onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
   onEditPendingPayment: (team: ManagerTeamTableRow) => void;
+  onCancelPendingTeam: (team: ManagerTeamTableRow) => void;
   canManageTeams: boolean;
 }
 
@@ -29,13 +35,20 @@ export function createColumns({
   tz,
   activeTeamId,
   switchingTeamId,
+  cancelingPendingTeamId,
+  settingDefaultTeamId,
+  ownAccountTeamCount,
   onSetActiveTeam,
+  onSetDefaultTeam,
   onManageTeam,
   onViewPendingCheckout,
   onEditPendingPayment,
+  onCancelPendingTeam,
   canManageTeams,
 }: CreateColumnsProps): ColumnDef<ManagerTeamTableRow>[] {
-  return [
+  const showDefaultTeamColumn = ownAccountTeamCount >= 2;
+
+  const columns: ColumnDef<ManagerTeamTableRow>[] = [
     {
       accessorKey: "name",
       meta: { label: "Nome" },
@@ -49,7 +62,24 @@ export function createColumns({
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }) => <div className="font-medium">{row.getValue("name") || "—"}</div>,
+      cell: ({ row }) => (
+        <div className="flex flex-col gap-1">
+          <div className="font-medium">{row.getValue("name") || "—"}</div>
+          <div className="flex flex-wrap gap-1">
+            {row.original.isDefault ? (
+              <Badge variant="secondary">Time padrão</Badge>
+            ) : null}
+            {row.original.isAssociateAccount ? (
+              <Badge
+                variant="outline"
+                className="w-fit border-precision-border-soft bg-precision-indigo/10 text-precision-indigo"
+              >
+                Associado
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+      ),
     },
     {
       accessorKey: "role",
@@ -146,6 +176,43 @@ export function createColumns({
       },
       enableSorting: false,
     },
+  ];
+
+  if (showDefaultTeamColumn) {
+    columns.splice(1, 0, {
+      id: "isDefault",
+      meta: { label: "Time padrão" },
+      header: () => <div className="flex justify-center font-semibold">Time padrão</div>,
+      cell: ({ row }) => {
+        const team = row.original;
+        const isSettingDefault = settingDefaultTeamId === team.id;
+        const toggleDisabled =
+          !canManageTeams ||
+          team.isAssociateAccount ||
+          team.isPending ||
+          team.isDefault ||
+          isSettingDefault;
+
+        return (
+          <div className="flex justify-center">
+            <Switch
+              checked={team.isDefault}
+              disabled={toggleDisabled}
+              onCheckedChange={(checked) => {
+                if (checked && !team.isDefault) {
+                  onSetDefaultTeam(team.id);
+                }
+              }}
+              aria-label={`Definir ${team.name} como time padrão`}
+            />
+          </div>
+        );
+      },
+      enableSorting: false,
+    });
+  }
+
+  columns.push(
     {
       accessorKey: "createdAt",
       meta: { label: "Criado em" },
@@ -188,9 +255,7 @@ export function createColumns({
       cell: ({ row }) => {
         const team = row.original;
         const isActive = team.id === activeTeamId;
-        const hasPendingPayment =
-          (team.pendingPayment?.paymentStatus ?? "").toUpperCase() !== "" &&
-          ["PENDING", "FAILED"].includes((team.pendingPayment?.paymentStatus ?? "").toUpperCase());
+        const isCanceling = cancelingPendingTeamId === team.id;
 
         return (
           <div className="flex justify-center">
@@ -203,13 +268,15 @@ export function createColumns({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => onSetActiveTeam(team.id)}
-                  disabled={isActive || switchingTeamId === team.id || hasPendingPayment}
-                  className="flex items-center gap-2"
-                >
-                  {isActive ? "Time ativo" : switchingTeamId === team.id ? "Alterando..." : "Definir ativo"}
-                </DropdownMenuItem>
+                {!team.isPending && (
+                  <DropdownMenuItem
+                    onClick={() => onSetActiveTeam(team.id)}
+                    disabled={isActive || switchingTeamId === team.id}
+                    className="flex items-center gap-2"
+                  >
+                    {isActive ? "Time ativo" : switchingTeamId === team.id ? "Alterando..." : "Definir ativo"}
+                  </DropdownMenuItem>
+                )}
                 {canManageTeams && team.pendingPayment?.checkoutUrl ? (
                   <DropdownMenuItem
                     onClick={() => onViewPendingCheckout(team)}
@@ -228,14 +295,26 @@ export function createColumns({
                     Editar pagamento
                   </DropdownMenuItem>
                 ) : null}
-                <DropdownMenuItem
-                  onClick={() => onManageTeam(team.id, team.name)}
-                  disabled={!canManageTeams || hasPendingPayment}
-                  className="flex items-center gap-2"
-                >
-                  <Settings className="h-4 w-4" />
-                  Gerenciar
-                </DropdownMenuItem>
+                {!team.isPending && (
+                  <DropdownMenuItem
+                    onClick={() => onManageTeam(team.id, team.name)}
+                    disabled={!canManageTeams}
+                    className="flex items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Gerenciar
+                  </DropdownMenuItem>
+                )}
+                {team.isPending && (
+                  <DropdownMenuItem
+                    onClick={() => onCancelPendingTeam(team)}
+                    disabled={isCanceling}
+                    className="flex items-center gap-2 text-destructive focus:text-destructive"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    {isCanceling ? "Cancelando..." : "Cancelar criação"}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -243,6 +322,8 @@ export function createColumns({
       },
       enableSorting: false,
       enableHiding: false,
-    },
-  ];
+    }
+  );
+
+  return columns;
 }

@@ -1,13 +1,16 @@
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { LeadStatus, MeetingHeald, Prisma } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { TransferLeadBetweenTeamsRequest } from "../../v1/leads/DTO/requestToTransferLeadBetweenTeams";
+import type { TransferLeadBetweenTeamsResult } from "../../v1/leads/DTO/transferLeadBetweenTeamsResult";
 
 export interface LeadCreationActivityContext {
   body?: string;
   payload?: Prisma.InputJsonValue | null;
+  authorAsStudio?: boolean;
 }
 
 export interface LeadCreateOptions {
@@ -34,7 +37,7 @@ export interface ILeadUseCase {
     options?: LeadCreateOptions
   ): Promise<Output>;
   createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output>;
-  getLeadById(supabaseId: string, id: string): Promise<Output>;
+  getLeadById(supabaseId: string, id: string, resolvedProfileId?: string): Promise<Output>;
   getLeadsByManager(
     supabaseId: string,
     options?: {
@@ -45,6 +48,20 @@ export interface ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
+    }
+  ): Promise<Output>;
+  getAllLeadsByUserRoleWithCtx(
+    access: TeamAccess,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+      onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<Output>;
   getAllLeadsByUserRole(
@@ -55,6 +72,7 @@ export interface ILeadUseCase {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
       role: string;
       teamId?: string;
     }
@@ -71,5 +89,6 @@ export interface ILeadUseCase {
   assignLeadToOperator(supabaseId: string, id: string, operatorId: string): Promise<Output>;
   transferLead(supabaseId: string, id: string, data: TransferLeadRequest): Promise<Output>;
   transferLeadBetweenTeams(supabaseId: string, callerTeamId: string, id: string, data: TransferLeadBetweenTeamsRequest): Promise<Output>;
+  runDeferredTransferScheduleAfterTransfer(leadId: string, transferResult: TransferLeadBetweenTeamsResult): Promise<void>;
   getLeadsByStatus(supabaseId: string, status: LeadStatus): Promise<Output>;
 }

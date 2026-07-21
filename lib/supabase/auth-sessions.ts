@@ -7,12 +7,44 @@ function getSupabaseEnv() {
   return { url, anon };
 }
 
-function hasSupabaseAuthCookie(request: NextRequest) {
-  return request.cookies.getAll().some(({ name }) =>
+function cookiesIncludeSupabaseAuth(cookies: { name: string }[]) {
+  return cookies.some(({ name }) =>
     name === "sb-access-token" ||
     name === "sb-refresh-token" ||
     name.includes("-auth-token")
   );
+}
+
+function hasSupabaseAuthCookie(request: NextRequest) {
+  return cookiesIncludeSupabaseAuth(request.cookies.getAll());
+}
+
+function hasSupabaseAuthCookieOnResponse(response: NextResponse) {
+  return cookiesIncludeSupabaseAuth(response.cookies.getAll());
+}
+
+export function copySessionCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie);
+  });
+}
+
+export function redirectWithSession(
+  sessionResponse: NextResponse,
+  url: URL | string,
+): NextResponse {
+  const redirectResponse = NextResponse.redirect(url);
+  copySessionCookies(sessionResponse, redirectResponse);
+  return redirectResponse;
+}
+
+export function nextWithSession(
+  sessionResponse: NextResponse,
+  init?: Parameters<typeof NextResponse.next>[0],
+): NextResponse {
+  const nextResponse = NextResponse.next(init);
+  copySessionCookies(sessionResponse, nextResponse);
+  return nextResponse;
 }
 
 export async function updateSession(request: NextRequest) {
@@ -44,17 +76,63 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
+  const authCode = request.nextUrl.searchParams.get("code");
+  if (authCode) {
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
+    const callbackUrl = request.nextUrl.clone();
+
+    if (!exchangeError) {
+      callbackUrl.searchParams.delete("code");
+      if (callbackUrl.pathname !== "/auth/callback") {
+        callbackUrl.pathname = "/auth/callback";
+        if (!callbackUrl.searchParams.has("next")) {
+          callbackUrl.searchParams.set("next", "/crm");
+        }
+        const redirectResponse = NextResponse.redirect(callbackUrl);
+        copySessionCookies(response, redirectResponse);
+        return {
+          supabase,
+          response: redirectResponse,
+          user: null,
+        };
+      }
+      if (request.nextUrl.searchParams.has("code")) {
+        const redirectResponse = NextResponse.redirect(callbackUrl);
+        copySessionCookies(response, redirectResponse);
+        return {
+          supabase,
+          response: redirectResponse,
+          user: null,
+        };
+      }
+    } else if (callbackUrl.pathname !== "/auth/callback") {
+      callbackUrl.pathname = "/auth/callback";
+      if (!callbackUrl.searchParams.has("next")) {
+        callbackUrl.searchParams.set("next", "/crm");
+      }
+      const redirectResponse = NextResponse.redirect(callbackUrl);
+      copySessionCookies(response, redirectResponse);
+      return {
+        supabase,
+        response: redirectResponse,
+        user: null,
+      };
+    } else if (exchangeError && isDev) {
+      console.error("[proxy] exchangeCodeForSession:", exchangeError.message);
+    }
+  }
+
   let user = null;
   let userError: Error | null = null;
 
-  if (hasSupabaseAuthCookie(request)) {
+  if (hasSupabaseAuthCookie(request) || hasSupabaseAuthCookieOnResponse(response)) {
     const { data, error } = await supabase.auth.getUser();
     user = data.user ?? null;
     userError = error ?? null;
   }
 
   if (userError && userError.name !== "AuthSessionMissingError" && isDev) {
-    console.error("[middleware] Error fetching user:", userError)
+    console.error("[proxy] Error fetching user:", userError)
   }
 
   return {

@@ -38,7 +38,7 @@ export function BackofficeEmailTemplatesProvider({ children, templatesService }:
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
-  const canManage = user?.fullAccess === true
+  const canManage = !user?.isOperator
 
   const fetchTemplates = useCallback(async () => {
     if (inFlight.current) return

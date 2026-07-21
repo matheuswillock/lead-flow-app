@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { isManagerLikeRole } from '@/lib/roles';
+import { getDashboardTeamScopeFromRequest, resolveDashboardTeamScope } from '@/app/api/v1/utils/dashboardTeamScope';
 import { performanceSalesRequestSchema } from './DTO/performanceSalesRequestDTO';
 import { performanceUseCase, PerformanceUseCase } from '@/app/api/useCases/performance/PerformanceUseCase';
 import { endOfDayInTz, parseDateKeyToUtc } from '@/lib/dates';
@@ -17,10 +18,11 @@ export async function GET(request: NextRequest) {
   const { profileId, teamId, teamMember, userTimezone } = teamAccess.access;
   const isManager = isManagerLikeRole(teamMember.role);
   const isCloser = teamMember.functions.includes('CLOSER');
+  const isSdr = teamMember.functions.includes('SDR');
 
-  if (!isManager && !isCloser) {
+  if (!isManager && !isCloser && !isSdr) {
     return NextResponse.json(
-      new Output(false, [], ['Acesso negado: somente managers ou closers podem acessar este recurso'], null),
+      new Output(false, [], ['Acesso negado: somente managers, closers ou SDRs podem acessar este recurso'], null),
       { status: 403 }
     );
   }
@@ -38,6 +40,12 @@ export async function GET(request: NextRequest) {
 
   const { preset, startDate, endDate, sdrId, closerId, search, page, pageSize } = parsed.data;
 
+  const teamScope = getDashboardTeamScopeFromRequest(request);
+  const resolvedScope = await resolveDashboardTeamScope(teamAccess.access, teamScope);
+  if ('error' in resolvedScope) {
+    return NextResponse.json(resolvedScope.error, { status: resolvedScope.status });
+  }
+
   let resolvedStartDate: Date;
   let resolvedEndDate: Date;
 
@@ -50,17 +58,19 @@ export async function GET(request: NextRequest) {
     resolvedEndDate = dates.endDate;
   }
 
-  // CLOSER restriction: cannot override their own scope via query param
   const resolvedCloserId = isCloser && !isManager ? profileId : closerId;
+  const resolvedSdrId = isSdr && !isManager ? profileId : sdrId;
 
   const result = await performanceUseCase.getSalesPerformance({
     teamId,
+    teamIds: resolvedScope.teamIds,
     profileId,
     isManager,
     isCloser,
+    isSdr,
     startDate: resolvedStartDate,
     endDate: resolvedEndDate,
-    sdrId,
+    sdrId: resolvedSdrId,
     closerId: resolvedCloserId,
     search,
     page,

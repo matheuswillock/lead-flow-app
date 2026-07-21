@@ -1,11 +1,27 @@
+export type ContactListActiveImport = {
+  importId: string
+  processedRows: number
+  totalRows: number
+  currentBatch: number
+  totalBatches: number
+}
+
 export type ContactList = {
   id: string
   name: string
   description: string | null
   totalContacts: number
+  isSystemDefault: boolean
+  isBlocklist: boolean
   isArchived: boolean
   createdAt: string
   updatedAt: string
+  creator: {
+    id: string
+    fullName: string | null
+    email: string | null
+  } | null
+  activeImport?: ContactListActiveImport | null
 }
 
 export type Contact = {
@@ -28,6 +44,5 @@ export type ContactsState = {
   search: string
   loadingLists: boolean
   loadingContacts: boolean
-  uploadingCsv: boolean
   deletingContactId: string | null
 }

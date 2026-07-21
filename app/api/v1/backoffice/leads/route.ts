@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import {
   backofficeLeadUseCase,
   type BackofficeLeadStatusValue,
 } from "@/app/api/useCases/backofficeLead/BackofficeLeadUseCase"
 import { BACKOFFICE_LEAD_STATUS_VALUES } from "@/app/api/useCases/backofficeLead/BackofficeLeadUseCase"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function parseStatus(value: string | null): BackofficeLeadStatusValue | undefined {
   if (!value) return undefined
@@ -36,6 +38,7 @@ export async function GET(request: NextRequest) {
     const output = await backofficeLeadUseCase.listLeads({ status })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeLeadsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
@@ -47,6 +50,8 @@ export async function POST(request: NextRequest) {
     if (result.error) {
       return NextResponse.json(result.error, { status: result.status })
     }
+    const denied = requireManagerAccess(result.access)
+    if (denied) return denied
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== "object") {
@@ -102,6 +107,7 @@ export async function POST(request: NextRequest) {
     )
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeLeadsRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

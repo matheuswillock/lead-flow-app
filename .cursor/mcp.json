@@ -1,8 +1,22 @@
 {
   "mcpServers": {
+    "obsidian": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@bitbonsai/mcpvault",
+        "/run/media/matheuswillock/Armazenamento/Workspace´s Matheus Willock"
+      ]
+    },
     "shadcn": {
       "command": "npx",
       "args": ["shadcn@latest", "mcp"]
+    },
+    "Sentry": {
+      "url": "https://mcp.sentry.dev/mcp/corretor-studio/sentry-camel-flower"
+    },
+    "vercel": {
+      "url": "https://mcp.vercel.com"
     }
   }
 }

@@ -1,22 +1,39 @@
 "use client";
 
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { CalendarCheck, CircleAlert, Download } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useTeamContext } from "@/app/context/TeamContext";
+import { useUserContext } from "@/app/context/UserContext";
 import { usePerformanceContext } from "../context/PerformanceContext";
 import { PerfFiltersBar } from "./Components/PerfFiltersBar";
 import { PerfKpis } from "./Components/PerfKpis";
 import { PerfTopHighlights } from "./Components/PerfTopHighlights";
 import { PerfRankings } from "./Components/PerfRankings";
 import { ExportarRelatorioModal } from "./Components/ExportarRelatorioModal";
+import type { PerformanceTeamScope } from "../context/PerformanceTypes";
 
 export function PerformanceContainer() {
-  const { error, filters } = usePerformanceContext();
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+  const { user } = useUserContext();
+  const { activeRole, isTeamMaster } = useTeamContext();
+  const { error, filters, data, lastFetchedAt, teamScope, setTeamScope, canUseAllTeamsScope } = usePerformanceContext();
   const [isExportarOpen, setIsExportarOpen] = useState(false);
+
+  const isSelfView = data?.viewMode === "self";
+  const canAccessMeetingsHeld =
+    user?.isMaster === true ||
+    isTeamMaster ||
+    activeRole === "manager";
 
   const periodLabel = (
     {
-      "1d": "ultimas 24h",
+      "1d": "últimas 24h",
       "7d": "últimos 7 dias",
       "15d": "últimos 15 dias",
       "1m": "último mês",
@@ -31,26 +48,69 @@ export function PerformanceContainer() {
           <div className="flex items-end justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <div>
-                <h1 className="font-display text-[26px] font-bold leading-none tracking-tight">
+                <h1 className="font-display text-2xl font-bold leading-none tracking-tight">
                   Performance
                 </h1>
-                <p className="text-[12.5px] text-foreground/55 mt-1.5">
-                  Indicadores comerciais e ranking de SDRs e Closers —{" "}
-                  <span className="text-foreground/80">{periodLabel}</span>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {isSelfView ? (
+                    <>
+                      Seus indicadores comerciais no período —{" "}
+                      <span className="text-foreground/80">{periodLabel}</span>
+                    </>
+                  ) : (
+                    <>
+                      Indicadores comerciais e ranking de SDRs e Closers —{" "}
+                      <span className="text-foreground/80">{periodLabel}</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="text-[11px] text-foreground/45 px-2.5 py-1 rounded-md border border-border bg-card/40">
-                Ultima atualizacao: <span className="text-foreground/75 num">ha 2 min</span>
-              </div>
+              {canUseAllTeamsScope && (
+                <ToggleGroup
+                  type="single"
+                  value={teamScope}
+                  onValueChange={(value) => {
+                    if (value === 'active' || value === 'all') {
+                      setTeamScope(value as PerformanceTeamScope);
+                    }
+                  }}
+                  variant="outline"
+                  size="sm"
+                  aria-label="Escopo de times"
+                >
+                  <ToggleGroupItem value="active" aria-label="Time ativo">
+                    Time ativo
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="all" aria-label="Todos os times">
+                    Todos os times
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              )}
+              {canAccessMeetingsHeld && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/${supabaseId}/performance/reunioes-realizadas`}>
+                    <CalendarCheck data-icon="inline-start" size={13} />
+                    Reuniões realizadas
+                  </Link>
+                </Button>
+              )}
+              {lastFetchedAt ? (
+                <div className="text-xs text-muted-foreground px-2.5 py-1 rounded-md border border-border bg-card/40">
+                  Última atualização:{" "}
+                  <span className="text-foreground num">
+                    {lastFetchedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setIsExportarOpen(true)}
               >
                 <Download data-icon="inline-start" size={13} />
-                Exportar relatorio
+                Exportar relatório
               </Button>
               {/*
                 TODO(performance): implementar serviço de Metas e reativar o fluxo de "Nova meta".
@@ -71,17 +131,19 @@ export function PerformanceContainer() {
           </div>
 
           {error && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              {error}
-            </div>
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertTitle>Erro ao carregar os indicadores</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
           <PerfKpis />
-          <PerfTopHighlights />
+          {!isSelfView && <PerfTopHighlights />}
           <PerfRankings />
-          <div className="pb-6 pt-2 text-center text-[11px] text-foreground/35">
-            Dados sincronizados com CRM · Apenas vendas e reunioes marcadas como realizadas no
-            periodo selecionado
+          <div className="pb-6 pt-2 text-center text-xs text-muted-foreground">
+            Dados sincronizados com CRM · Apenas vendas e reuniões marcadas como realizadas no
+            período selecionado
           </div>
         </div>
       </div>

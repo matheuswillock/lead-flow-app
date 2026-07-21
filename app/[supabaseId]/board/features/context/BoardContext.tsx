@@ -1,5 +1,12 @@
 import { createContext, ReactNode, useMemo, useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
+import {
+  isAllowedStatusTransitionFromProductGates,
+} from "@/lib/leadStatusTransitionRules";
+import {
+  fetchProductTransitionGates,
+  type ProductLeadStatusTransitionGate,
+} from "@/lib/services/leadStatusTransitionGatesClient";
 import { IBoardService } from "../services/IBoardServices";
 import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
@@ -15,6 +22,7 @@ import type {
   SalesInfoInitialValues,
   SalesInfoPayload,
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
+import type { CloserRequirementPayload } from "@/app/[supabaseId]/components/CloserRequirementDialog";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
   createLeadTimeRulesVersion,
@@ -23,15 +31,21 @@ import {
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
 import { formatIntimezone, formatLocalDateValue } from "@/lib/dates"
+import { FIELD_CATALOG, apiKeyToFieldKey, mapLeadInfoPayloadForUpdate, type LeadTransitionFieldApiKey } from "@/lib/leadStatusTransitionFields";
 import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
 } from "@/lib/services/leadStatusTransitionClient";
+import type {
+  LeadInfoInitialValues,
+  LeadInfoPayload,
+} from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
 
 interface IBoardProviderProps {
   children: ReactNode;
   boardService?: IBoardService;
   externalFilters?: CrmFiltersState;
+  calendarWindow?: { start: Date; end: Date } | null;
 }
 
 export type LeadCardField = "name" | "entryDate" | "meetingInfo" | "notes" | "id";
@@ -86,12 +100,31 @@ type PendingSalesInfoGateDrop = {
   currentSalesInfo: SalesInfoInitialValues;
 };
 
+type PendingCloserGateDrop = {
+  leadId: string;
+  from: ColumnKey;
+  to: ColumnKey;
+  trigger?: LeadStatusTransitionTrigger;
+  currentCloserId: string | null;
+};
+
+type PendingLeadInfoGateDrop = {
+  leadId: string;
+  from: ColumnKey;
+  to: ColumnKey;
+  trigger?: LeadStatusTransitionTrigger;
+  missingFields: LeadTransitionFieldApiKey[];
+  currentLeadInfo: LeadInfoInitialValues;
+};
+
 interface IBoardContextState {
   isLoading: boolean;
   query: string;
   setQuery: (query: string) => void;
   onlyMeetingsHeld: boolean;
   setOnlyMeetingsHeld: (value: boolean) => void;
+  onlyTransfer: boolean;
+  setOnlyTransfer: (value: boolean) => void;
   leadCardDisplay: LeadCardDisplaySettings;
   setLeadCardDisplay: Dispatch<SetStateAction<LeadCardDisplaySettings>>;
   data: Record<ColumnKey, Lead[]>;
@@ -142,6 +175,12 @@ interface IBoardContextState {
   pendingSalesInfoGateDrop: PendingSalesInfoGateDrop | null;
   clearPendingSalesInfoGateDrop: () => void;
   applyPendingSalesInfoGateTransition: (payload: SalesInfoPayload) => Promise<boolean>;
+  pendingCloserGateDrop: PendingCloserGateDrop | null;
+  clearPendingCloserGateDrop: () => void;
+  applyPendingCloserGateTransition: (payload: CloserRequirementPayload) => Promise<boolean>;
+  pendingLeadInfoGateDrop: PendingLeadInfoGateDrop | null;
+  clearPendingLeadInfoGateDrop: () => void;
+  applyPendingLeadInfoGateTransition: (payload: LeadInfoPayload) => Promise<boolean>;
   pendingFinalizeDrop: PendingFinalizeDrop | null;
   clearPendingFinalizeDrop: () => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
@@ -180,12 +219,28 @@ function formatDateKey(iso: string, tz: string) {
   }
 }
 
+function formatMissingLeadFields(missingFields: LeadTransitionFieldApiKey[]) {
+  const labels = missingFields
+    .map((field) => {
+      try {
+        return FIELD_CATALOG[apiKeyToFieldKey(field)].label;
+      } catch {
+        return null;
+      }
+    })
+    .filter((label): label is string => !!label);
+
+  if (!labels.length) return null;
+  return labels.join(", ");
+}
+
 export const BoardContext = createContext<IBoardContextState | undefined>(undefined);
 
 export const BoardProvider: React.FC<IBoardProviderProps> = ({ 
   children, 
   boardService,
   externalFilters,
+  calendarWindow = null,
 }) => {
   const resolvedBoardService = useMemo(
     () => boardService ?? createBoardService(),
@@ -207,6 +262,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
+  const [onlyTransfer, setOnlyTransfer] = useState(false);
+  const [onlyDraft, setOnlyDraft] = useState(false);
   const [leadCardDisplay, setLeadCardDisplay] = useState<LeadCardDisplaySettings>(
     DEFAULT_LEAD_CARD_DISPLAY
   );
@@ -239,6 +296,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     useState<PendingMeetingHealdGateDrop | null>(null);
   const [pendingSalesInfoGateDrop, setPendingSalesInfoGateDrop] =
     useState<PendingSalesInfoGateDrop | null>(null);
+  const [pendingCloserGateDrop, setPendingCloserGateDrop] =
+    useState<PendingCloserGateDrop | null>(null);
+  const [pendingLeadInfoGateDrop, setPendingLeadInfoGateDrop] =
+    useState<PendingLeadInfoGateDrop | null>(null);
+  const [transitionGates, setTransitionGates] = useState<ProductLeadStatusTransitionGate[]>([]);
 
   // Sync external CRM filters into board filter state whenever they change.
   // Using useEffect (not lazy initializer) is safe because data loads asynchronously;
@@ -254,7 +316,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setScheduledPeriodStart(externalFilters.scheduledPeriodStart);
     setScheduledPeriodEnd(externalFilters.scheduledPeriodEnd);
     setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
+    setOnlyTransfer(externalFilters.onlyTransfer);
+    setOnlyDraft(externalFilters.onlyDraft);
   }, [externalFilters]);
+
+  useEffect(() => {
+    if (!supabaseId) return;
+    void fetchProductTransitionGates({ supabaseId, teamId: activeTeamId }).then(setTransitionGates);
+  }, [supabaseId, activeTeamId]);
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
@@ -357,7 +426,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
     const leadTimeRulesVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}`;
+    const calendarWindowKey = calendarWindow
+      ? `${calendarWindow.start.toISOString()}:${calendarWindow.end.toISOString()}`
+      : "";
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}:${calendarWindowKey}`;
 
     if (
       !options?.force &&
@@ -413,7 +485,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           return;
         }
         
-        const result = await resolvedBoardService.fetchLeads(supabaseId, roleToSend, activeTeamId);
+        const result = await resolvedBoardService.fetchLeads(supabaseId, roleToSend, activeTeamId, {
+          ...(calendarWindow && {
+            calendarWindowStart: calendarWindow.start,
+            calendarWindowEnd: calendarWindow.end,
+          }),
+        });
 
         if (result.isValid && result.result) {
           console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
@@ -431,6 +508,15 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           }
           
           const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
+            if (!lead.status) {
+              return {
+                ...lead,
+                statusEnteredAt: lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+                leadTimeDueAt: null,
+                isLeadTimeBreached: false,
+              };
+            }
+
             const state = resolveLeadTimeState(
               lead.status,
               lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
@@ -455,6 +541,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           
           // Distribui os leads nas colunas corretas baseado no status
           leadsWithLeadTimeState.forEach((lead: Lead) => {
+            if (!lead.status) return;
             if (leadsGroupedByStatus[lead.status]) {
               leadsGroupedByStatus[lead.status].push(lead);
             }
@@ -534,7 +621,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
+  }, [activeFunctions, activeRole, activeTeamId, calendarWindow, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     userRef.current = user;
@@ -814,6 +901,90 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
             return output;
           }
 
+          if (transition.blockerType === "closer_required") {
+            const sourceLead =
+              fallbackContext
+                ? dataRef.current[fallbackContext.from]?.find((lead) => lead.id === leadId) ?? null
+                : null;
+
+            if (fallbackContext) {
+              setPendingCloserGateDrop({
+                leadId,
+                from: fallbackContext.from,
+                to: fallbackContext.to,
+                trigger: trigger ? { ...trigger } : undefined,
+                currentCloserId: sourceLead?.closerId ?? null,
+              });
+            } else {
+              setPendingCloserGateDrop(null);
+            }
+
+            toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+            return output;
+          }
+
+          if (transition.blockerType === "lead_info_required") {
+            const sourceLead =
+              fallbackContext
+                ? dataRef.current[fallbackContext.from]?.find((lead) => lead.id === leadId) ?? null
+                : null;
+            const missingFields = Array.isArray(transition.missingLeadFields)
+              ? transition.missingLeadFields
+              : [];
+            const currentLeadInfo: LeadInfoInitialValues = {
+              age:
+                typeof transition.currentLeadInfo?.age === "string"
+                  ? transition.currentLeadInfo.age
+                  : sourceLead?.age ?? null,
+              currentHealthPlan:
+                typeof transition.currentLeadInfo?.currentHealthPlan === "string"
+                  ? transition.currentLeadInfo.currentHealthPlan
+                  : sourceLead?.currentHealthPlan ?? null,
+              referenceHospital:
+                typeof transition.currentLeadInfo?.referenceHospital === "string"
+                  ? transition.currentLeadInfo.referenceHospital
+                  : sourceLead?.referenceHospital ?? null,
+              ongoingTreatment:
+                typeof transition.currentLeadInfo?.ongoingTreatment === "string"
+                  ? transition.currentLeadInfo.ongoingTreatment
+                  : sourceLead?.currentTreatment ?? null,
+              email:
+                typeof transition.currentLeadInfo?.email === "string"
+                  ? transition.currentLeadInfo.email
+                  : sourceLead?.email ?? null,
+              phone:
+                typeof transition.currentLeadInfo?.phone === "string"
+                  ? transition.currentLeadInfo.phone
+                  : sourceLead?.phone ?? null,
+              cnpj:
+                typeof transition.currentLeadInfo?.cnpj === "string"
+                  ? transition.currentLeadInfo.cnpj
+                  : sourceLead?.cnpj ?? null,
+            };
+
+            if (fallbackContext) {
+              setPendingLeadInfoGateDrop({
+                leadId,
+                from: fallbackContext.from,
+                to: fallbackContext.to,
+                trigger: trigger ? { ...trigger } : undefined,
+                missingFields,
+                currentLeadInfo,
+              });
+            } else {
+              setPendingLeadInfoGateDrop(null);
+            }
+
+            const missingFieldsText = formatMissingLeadFields(missingFields);
+            toast.warning(
+              missingFieldsText
+                ? `${transitionMessage} Faltam: ${missingFieldsText}.`
+                : transitionMessage,
+              { id: loadingToast, duration: 6000 }
+            );
+            return output;
+          }
+
           if (
             transition.blockerType === "confirmation" ||
             transition.blockerType === "future_sale_trigger" ||
@@ -935,6 +1106,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const { leadId, from } = JSON.parse(raw) as { leadId: string; from: ColumnKey };
       if (from === to) return;
 
+      if (!isAllowedStatusTransitionFromProductGates(transitionGates, from, to)) {
+        toast.error("Esta transição de status não é permitida pelas regras configuradas.");
+        return;
+      }
+
       void (async () => {
         const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
         if (!result?.isValid) return;
@@ -947,7 +1123,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         moveLeadBetweenColumns(leadId, from, to, payload);
       })();
     },
-    [moveLeadBetweenColumns, updateLeadStatusInAPI]
+    [moveLeadBetweenColumns, updateLeadStatusInAPI, transitionGates]
   );
 
   const finalizeContract = useCallback(
@@ -1031,6 +1207,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   const clearPendingSalesInfoGateDrop = useCallback(() => {
     setPendingSalesInfoGateDrop(null);
+  }, []);
+
+  const clearPendingCloserGateDrop = useCallback(() => {
+    setPendingCloserGateDrop(null);
+  }, []);
+
+  const clearPendingLeadInfoGateDrop = useCallback(() => {
+    setPendingLeadInfoGateDrop(null);
   }, []);
 
   const clearPendingFinalizeDrop = useCallback(() => {
@@ -1125,6 +1309,124 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     [activeTeamId, moveLeadBetweenColumns, patchLead, pendingSalesInfoGateDrop, supabaseId, updateLeadStatusInAPI]
   );
 
+  const applyPendingCloserGateTransition = useCallback(
+    async (payload: CloserRequirementPayload): Promise<boolean> => {
+      if (!pendingCloserGateDrop) return false;
+
+      try {
+        const response = await fetch(`/api/v1/leads/${pendingCloserGateDrop.leadId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify({ closerId: payload.closerId }),
+        });
+
+        const closerResult = await response.json().catch(() => null);
+        if (!response.ok || !closerResult?.isValid) {
+          throw new Error(
+            closerResult?.errorMessages?.[0] || "Erro ao salvar closer do lead."
+          );
+        }
+
+        const closerPatch =
+          closerResult.result && typeof closerResult.result === "object"
+            ? (closerResult.result as Partial<Lead>)
+            : {};
+        patchLead(pendingCloserGateDrop.leadId, closerPatch);
+
+        const statusResult = await updateLeadStatusInAPI(
+          pendingCloserGateDrop.leadId,
+          pendingCloserGateDrop.to,
+          pendingCloserGateDrop.trigger,
+          { from: pendingCloserGateDrop.from, to: pendingCloserGateDrop.to }
+        );
+        if (!statusResult?.isValid) return false;
+
+        const statusPatch =
+          statusResult.result && typeof statusResult.result === "object"
+            ? (statusResult.result as Partial<Lead>)
+            : {};
+
+        moveLeadBetweenColumns(
+          pendingCloserGateDrop.leadId,
+          pendingCloserGateDrop.from,
+          pendingCloserGateDrop.to,
+          statusPatch
+        );
+        setPendingCloserGateDrop(null);
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao salvar closer do lead."
+        );
+        return false;
+      }
+    },
+    [activeTeamId, moveLeadBetweenColumns, patchLead, pendingCloserGateDrop, supabaseId, updateLeadStatusInAPI]
+  );
+
+  const applyPendingLeadInfoGateTransition = useCallback(
+    async (payload: LeadInfoPayload): Promise<boolean> => {
+      if (!pendingLeadInfoGateDrop) return false;
+
+      try {
+        const response = await fetch(`/api/v1/leads/${pendingLeadInfoGateDrop.leadId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify(mapLeadInfoPayloadForUpdate(payload)),
+        });
+
+        const leadInfoResult = await response.json().catch(() => null);
+        if (!response.ok || !leadInfoResult?.isValid) {
+          throw new Error(
+            leadInfoResult?.errorMessages?.[0] || "Erro ao salvar informações do lead."
+          );
+        }
+
+        const leadInfoPatch =
+          leadInfoResult.result && typeof leadInfoResult.result === "object"
+            ? (leadInfoResult.result as Partial<Lead>)
+            : {};
+        patchLead(pendingLeadInfoGateDrop.leadId, leadInfoPatch);
+
+        const statusResult = await updateLeadStatusInAPI(
+          pendingLeadInfoGateDrop.leadId,
+          pendingLeadInfoGateDrop.to,
+          pendingLeadInfoGateDrop.trigger,
+          { from: pendingLeadInfoGateDrop.from, to: pendingLeadInfoGateDrop.to }
+        );
+        if (!statusResult?.isValid) return false;
+
+        const statusPatch =
+          statusResult.result && typeof statusResult.result === "object"
+            ? (statusResult.result as Partial<Lead>)
+            : {};
+
+        moveLeadBetweenColumns(
+          pendingLeadInfoGateDrop.leadId,
+          pendingLeadInfoGateDrop.from,
+          pendingLeadInfoGateDrop.to,
+          statusPatch
+        );
+        setPendingLeadInfoGateDrop(null);
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao salvar informações do lead."
+        );
+        return false;
+      }
+    },
+    [activeTeamId, moveLeadBetweenColumns, patchLead, pendingLeadInfoGateDrop, supabaseId, updateLeadStatusInAPI]
+  );
+
   const applyPendingStatusTriggerTransition = useCallback(
     async (trigger: {
       followUpAt?: string;
@@ -1195,6 +1497,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     const inCloser = (l: Lead) =>
       closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
     const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
+    const inTransfer = (l: Lead) => !onlyTransfer || l.isTransfer === true;
+    const inDraft = (l: Lead) => {
+      const isDraftLeadRow = l.status === null || l.status === undefined;
+      if (onlyDraft) return isDraftLeadRow;
+      return !isDraftLeadRow;
+    };
     const inPeriod = (l: Lead) => {
       const createdKey = formatDateKey(l.createdAt, tz);
       if (!createdKey) return false;
@@ -1225,6 +1533,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               inResponsible(l) &&
               inCloser(l) &&
               inMeetingsHeld(l) &&
+              inTransfer(l) &&
+              inDraft(l) &&
               inPeriod(l) &&
               inScheduledPeriod(l)
           )
@@ -1238,6 +1548,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     assignedUsers,
     closerFilter,
     onlyMeetingsHeld,
+    onlyTransfer,
+    onlyDraft,
     periodStart,
     periodEnd,
     scheduledPeriodStart,
@@ -1267,6 +1579,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       setQuery,
       onlyMeetingsHeld,
       setOnlyMeetingsHeld,
+      onlyTransfer,
+    onlyDraft,
+      setOnlyTransfer,
       leadCardDisplay,
       setLeadCardDisplay,
       data,
@@ -1311,6 +1626,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingSalesInfoGateDrop,
       clearPendingSalesInfoGateDrop,
       applyPendingSalesInfoGateTransition,
+      pendingCloserGateDrop,
+      clearPendingCloserGateDrop,
+      applyPendingCloserGateTransition,
+      pendingLeadInfoGateDrop,
+      clearPendingLeadInfoGateDrop,
+      applyPendingLeadInfoGateTransition,
       pendingFinalizeDrop,
       clearPendingFinalizeDrop,
       finalizeContract,
@@ -1319,6 +1640,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       isLoading,
       query,
       onlyMeetingsHeld,
+      onlyTransfer,
+    onlyDraft,
       leadCardDisplay,
       data,
       filtered,
@@ -1356,6 +1679,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingSalesInfoGateDrop,
       clearPendingSalesInfoGateDrop,
       applyPendingSalesInfoGateTransition,
+      pendingCloserGateDrop,
+      clearPendingCloserGateDrop,
+      applyPendingCloserGateTransition,
+      pendingLeadInfoGateDrop,
+      clearPendingLeadInfoGateDrop,
+      applyPendingLeadInfoGateTransition,
       pendingFinalizeDrop,
       clearPendingFinalizeDrop,
       finalizeContract,

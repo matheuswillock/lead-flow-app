@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,17 +26,24 @@ function ContactListItem({ list }: { list: ContactList }) {
   const [deletingList, setDeletingList] = useState(false);
 
   const isSelected = selectedListId === list.id;
+  const creatorLabel = list.creator?.fullName?.trim() || list.creator?.email || "—";
 
   async function confirmDelete() {
+    if (deletingList) return;
     setDeletingList(true);
     try {
       await handleDeleteList(list.id);
+      setDeleteOpen(false);
     } catch {
       // error toast handled in hook
     } finally {
       setDeletingList(false);
-      setDeleteOpen(false);
     }
+  }
+
+  function handleDeleteOpenChange(open: boolean) {
+    if (deletingList) return;
+    setDeleteOpen(open);
   }
 
   return (
@@ -62,35 +69,44 @@ function ContactListItem({ list }: { list: ContactList }) {
               {list.description}
             </p>
           )}
+          <p className="truncate text-xs text-muted-foreground leading-snug mt-0.5">
+            Criado por: {creatorLabel}
+          </p>
         </div>
 
         <div className="ml-2 flex shrink-0 items-center gap-1.5">
+          {list.activeImport ? (
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+              Importando (lote {list.activeImport.currentBatch}/{list.activeImport.totalBatches})
+            </Badge>
+          ) : null}
           <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
             {list.totalContacts.toLocaleString("pt-BR")}
           </Badge>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteOpen(true);
-            }}
-            title="Arquivar lista"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {!list.isSystemDefault && !list.isBlocklist ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteOpen(true);
+              }}
+              title="Excluir lista"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog open={deleteOpen} onOpenChange={handleDeleteOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Arquivar lista?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir lista?</AlertDialogTitle>
             <AlertDialogDescription>
-              A lista <strong>"{list.name}"</strong> será arquivada e não
-              aparecerá mais nas campanhas. Os contatos não serão apagados
-              permanentemente.
+              A lista <strong>&quot;{list.name}&quot;</strong> e todos os seus contatos serão
+              excluídos permanentemente. Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -98,11 +114,21 @@ function ContactListItem({ list }: { list: ContactList }) {
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDelete();
+              }}
               disabled={deletingList}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingList ? "Arquivando..." : "Sim, arquivar"}
+              {deletingList ? (
+                <>
+                  <Loader2 className="animate-spin" data-icon="inline-start" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -116,7 +142,7 @@ export function ContactListPanel() {
 
   if (loadingLists && lists.length === 0) {
     return (
-      <div className="space-y-1.5 px-1">
+      <div className="flex flex-col gap-1.5 px-1">
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-11 w-full rounded-md" />
         ))}
@@ -133,7 +159,7 @@ export function ContactListPanel() {
   }
 
   return (
-    <div className="space-y-0.5">
+    <div className="flex flex-col gap-0.5">
       {lists.map((list) => (
         <ContactListItem key={list.id} list={list} />
       ))}

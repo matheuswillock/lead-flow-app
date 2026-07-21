@@ -1,0 +1,364 @@
+# .github/workflows/ci-claude.yml
+name: CI (claude -> develop)
+
+on:
+  push:
+    branches:
+      - "claude/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-claude-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+  deployments: write
+
+env:
+  CI: true
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  quality:
+    name: Lint & Typecheck
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      governance-sync: ${{ steps['quality-result'].outputs['governance-sync'] }}
+      governance-check: ${{ steps['quality-result'].outputs['governance-check'] }}
+      lint: ${{ steps['quality-result'].outputs.lint }}
+      typecheck: ${{ steps['quality-result'].outputs.typecheck }}
+      proxy-tests: ${{ steps['quality-result'].outputs['proxy-tests'] }}
+      unit-tests: ${{ steps['quality-result'].outputs['unit-tests'] }}
+      quality-passed: ${{ steps['quality-result'].outputs.passed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Governance Sync
+        id: governance-sync
+        continue-on-error: true
+        run: |
+          bun run governance:sync
+          git diff --exit-code
+
+      - name: Governance Check
+        id: governance-check
+        continue-on-error: true
+        run: bun run governance:check
+
+      - name: Governance Allowlist Warnings
+        continue-on-error: true
+        run: bun run governance:warn-allowlist
+
+      - name: Lint
+        id: lint
+        continue-on-error: true
+        run: bun run lint
+
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: bun run typecheck
+
+      - name: Proxy Tests
+        id: proxy-tests
+        continue-on-error: true
+        run: bun run test:proxy
+
+      - name: Unit Tests
+        id: unit-tests
+        continue-on-error: true
+        run: bun run test
+
+      - name: Spellcheck PT-BR
+        id: spellcheck-pt-br
+        continue-on-error: true
+        run: bun run lint:pt-br
+
+      - name: Resolve Quality Result
+        id: quality-result
+        if: always()
+        run: |
+          echo "governance-sync=${{ steps['governance-sync'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "proxy-tests=${{ steps['proxy-tests'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "unit-tests=${{ steps['unit-tests'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['unit-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
+
+      - name: Generate Prisma Client
+        run: bun run prisma:generate
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: bun run build
+
+  quality-gate:
+    name: Quality Gate
+    if: >-
+      ${{
+        always() &&
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - quality
+      - build
+    steps:
+      - name: Enforce Quality Checks
+        run: |
+          failed=0
+          if [[ "${{ needs.quality.result }}" != "success" || "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
+            echo "::error::One or more quality checks failed."
+            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
+            echo "lint=${{ needs.quality.outputs.lint }}"
+            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
+            echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
+            echo "unit-tests=${{ needs.quality.outputs['unit-tests'] }}"
+            failed=1
+          fi
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "::error::Build failed."
+            echo "build=${{ needs.build.result }}"
+            failed=1
+          fi
+          exit "$failed"
+
+  auto-pr-to-develop:
+    name: Open PR to develop
+    if: >-
+      ${{
+        always() &&
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - quality
+      - quality-gate
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Description (OpenAI)
+        id: generate-pr-description
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: python3 .github/scripts/generate-pr-description.py
+
+      - name: Create PR if not exists (claude -> develop)
+        uses: actions/github-script@v7
+        env:
+          CLAUDE_DESCRIPTION: ${{ steps['generate-pr-description'].outputs['pr-description'] }}
+        with:
+          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = context.ref.replace('refs/heads/', '');
+            const base = 'develop';
+            const claudeDescription = process.env.CLAUDE_DESCRIPTION || '';
+            const checks = {
+              governanceSync: '${{ needs.quality.outputs['governance-sync'] }}',
+              governanceCheck: '${{ needs.quality.outputs['governance-check'] }}',
+              lint: '${{ needs.quality.outputs.lint }}',
+              typecheck: '${{ needs.quality.outputs.typecheck }}',
+              build: '${{ needs.build.result }}',
+            };
+            const isSuccess = (status) => status === 'success';
+            const checklistLine = (status, label) => `- [${isSuccess(status) ? 'x' : ' '}] ${isSuccess(status) ? '✅' : '❌'} ${label}`;
+            const replaceChecklistLine = (template, currentLabel, status, nextLabel) => {
+              return template
+                .split('\n')
+                .map((line) => {
+                  const normalizedLabel = line
+                    .trim()
+                    .replace(/^- \[[ x]\](?: ✅| ❌)? /, '');
+
+                  return normalizedLabel === currentLabel ? checklistLine(status, nextLabel) : line;
+                })
+                .join('\n');
+            };
+            const applyChecklistStatuses = (template) => {
+              let body = template;
+              body = replaceChecklistLine(body, '`bun run governance:sync`', checks.governanceSync, '`bun run governance:sync`');
+              body = replaceChecklistLine(body, '`bun run governance:check`', checks.governanceCheck, '`bun run governance:check`');
+              body = replaceChecklistLine(body, '`bun run typecheck`', checks.typecheck, '`bun run typecheck`');
+              body = replaceChecklistLine(body, '`bun run lint`', checks.lint, '`bun run lint`');
+              body = replaceChecklistLine(body, 'Manteve adapters sincronizados (`bun run governance:sync`)?', checks.governanceSync, 'Manteve adapters sincronizados (`bun run governance:sync`)?');
+              body = replaceChecklistLine(body, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?', checks.governanceSync, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?');
+              return body;
+            };
+            const applyClaudeDescription = (body) => {
+              if (!claudeDescription.trim()) return body;
+              return body.replace(
+                /^(- Summary of changes:.*\n- Why this change is needed:.*)/m,
+                claudeDescription.trim()
+              );
+            };
+            const shouldApplyClaudeDescription = (body) =>
+              body.includes('<seus bullet points aqui>') ||
+              body.includes('<sua frase aqui>');
+            const automationSection = (message) => [
+              '<!-- ci-claude:automation:start -->',
+              '## CI Automation',
+              '',
+              `**Head:** \`${head}\``,
+              `**Base:** \`${base}\``,
+              '',
+              checklistLine(checks.build, 'Build OK'),
+              '',
+              message,
+              '<!-- ci-claude:automation:end -->'
+            ].join('\n');
+            const upsertAutomationSection = (body, message) => {
+              const startMarker = '<!-- ci-claude:automation:start -->';
+              const endMarker = '<!-- ci-claude:automation:end -->';
+              const nextSection = automationSection(message);
+
+              if (body.includes(startMarker) && body.includes(endMarker)) {
+                return body.replace(
+                  /<!-- ci-claude:automation:start -->[\s\S]*?<!-- ci-claude:automation:end -->/,
+                  nextSection
+                );
+              }
+
+              return [body.trimEnd(), '', nextSection].join('\n');
+            };
+
+            if (head === base) {
+              core.info(`Head e base são iguais (${head}). Sem PR.`);
+              return;
+            }
+
+            const prs = await github.rest.pulls.list({
+              owner, repo,
+              head: `${owner}:${head}`,
+              base,
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (prs.data.length > 0) {
+              core.info(`PR já existe: #${prs.data[0].number} ${prs.data[0].html_url}`);
+              const existingPr = prs.data[0];
+              const fallbackTemplate = fs.readFileSync('.github/pull_request_template.md', 'utf8');
+              let body = applyChecklistStatuses(existingPr.body || fallbackTemplate);
+              if (shouldApplyClaudeDescription(body)) {
+                body = applyClaudeDescription(body);
+              }
+              body = upsertAutomationSection(body, '*Atualizado automaticamente pelo GitHub Actions.*');
+
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: existingPr.number,
+                body,
+              });
+
+              core.info(`PR atualizado: #${existingPr.number} ${existingPr.html_url}`);
+              return;
+            }
+
+            const cmp = await github.rest.repos.compareCommits({
+              owner,
+              repo,
+              base,
+              head,
+            });
+
+            if ((cmp.data.ahead_by || 0) === 0) {
+              core.info(`${head} não está à frente de ${base}. Sem PR.`);
+              return;
+            }
+
+            const title = `claude: ${head.replace(/^claude\//,'')}`;
+            let body = applyChecklistStatuses(fs.readFileSync('.github/pull_request_template.md', 'utf8'));
+            body = applyClaudeDescription(body);
+            body = upsertAutomationSection(body, '*Criado automaticamente pelo GitHub Actions.*');
+
+            const res = await github.rest.pulls.create({
+              owner, repo,
+              head,
+              base,
+              title,
+              body,
+              maintainer_can_modify: true,
+            });
+
+            core.info(`PR criado: #${res.data.number} ${res.data.html_url}`);

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ logId: string }> }) {
   try {
@@ -15,6 +16,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: { id: logId, teamId: teamAccess.access.teamId },
       include: {
         campaign: { select: { id: true, name: true } },
+        dispatch: {
+          select: {
+            contactListName: true,
+            radarSegmentSlug: true,
+          },
+        },
         events: {
           orderBy: { occurredAt: "asc" },
           select: {
@@ -33,6 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(new Output(true, [], [], log), { status: 200 })
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[EmailLogByIdRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }

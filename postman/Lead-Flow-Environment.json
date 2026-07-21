@@ -122,6 +122,34 @@
       "description": "ID do time ativo para endpoints de integrações e webhook studio"
     },
     {
+      "key": "automationRuleId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma regra de automação (TeamAutomationRule)"
+    },
+    {
+      "key": "cronSecret",
+      "value": "",
+      "type": "secret",
+      "enabled": true,
+      "description": "Bearer token para rotas de cron (CRON_SECRET)"
+    },
+    {
+      "key": "whatsappConfigId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID da configuração WhatsApp (team_whatsapp_configs) para endpoints backoffice /api/v1/backoffice/whatsapp/instances/:configId"
+    },
+    {
+      "key": "senderId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um remetente de email para testes dos endpoints /api/v1/email/settings/senders/:senderId"
+    },
+    {
       "key": "presetId",
       "value": "",
       "type": "default",
@@ -178,11 +206,11 @@
       "description": "Alias legado de supabaseId"
     },
     {
-      "key": "SUPPORT_EMAIL",
-      "value": "matheuswillock@gmail.com",
+      "key": "SLACK_SUPPORT_WEBHOOK_URL",
+      "value": "",
       "type": "default",
       "enabled": true,
-      "description": "Email de destino para os pedidos de suporte (variavel do backend)"
+      "description": "Incoming Webhook do Slack para pedidos de suporte (variavel do backend)"
     },
     {
       "key": "backofficeSupabaseId",
@@ -220,6 +248,27 @@
       "description": "Token público retornado no link de nova adesão para endpoints /api/v1/public-adhesions/:token"
     },
     {
+      "key": "contractShareToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token público retornado ao gerar link de compartilhamento de contrato, para endpoints /api/v1/public-contracts/:token"
+    },
+    {
+      "key": "offerShareToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token público retornado ao gerar oferta do lead, para endpoints /api/v1/public-offers/:token"
+    },
+    {
+      "key": "backofficeLeadOfferId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma BackofficeLeadOffer para DELETE /api/v1/backoffice/leads/:id/offers/:offerId"
+    },
+    {
       "key": "backofficeMetaActiveToken",
       "value": "",
       "type": "default",
@@ -231,6 +280,48 @@
       "value": "",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "conversationId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID da conversa WhatsApp - será preenchido automaticamente"
+    },
+    {
+      "key": "profileId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID do profile a ser atribuído como responsável por uma conversa WhatsApp"
+    },
+    {
+      "key": "backofficeEmailCampaignId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma campanha de e-mail do backoffice"
+    },
+    {
+      "key": "backofficeEmailContactListId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma lista de contatos de e-mail do backoffice"
+    },
+    {
+      "key": "backofficeEmailContactId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um contato de e-mail do backoffice"
+    },
+    {
+      "key": "backofficeEmailUnsubscribeToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token de descadastro de campanha de e-mail do backoffice"
     }
   ],
   "_postman_variable_scope": "environment"

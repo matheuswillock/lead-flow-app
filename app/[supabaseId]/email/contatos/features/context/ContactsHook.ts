@@ -13,10 +13,10 @@ export type ContactsActions = {
   handleDeleteList: (id: string) => Promise<void>
   handleAddContact: (email: string, name?: string) => Promise<void>
   handleSelectList: (id: string) => void
-  handleUploadCsv: (file: File) => Promise<void>
   handleDeleteContact: (contactId: string) => Promise<void>
   handleSearch: (query: string) => void
   handlePageChange: (page: number) => void
+  refreshSelectedList: () => Promise<void>
 }
 
 export type ContactsHookReturn = ContactsState & ContactsActions
@@ -31,10 +31,11 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
   const [search, setSearch] = useState("");
   const [loadingLists, setLoadingLists] = useState(false);
   const [loadingContacts, setLoadingContacts] = useState(false);
-  const [uploadingCsv, setUploadingCsv] = useState(false);
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   const fetchingListsRef = useRef(false);
+  const fetchingContactsRef = useRef(false);
+  const lastContactsKeyRef = useRef("");
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchLists = useCallback(async () => {
@@ -56,6 +57,9 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
 
   const fetchContacts = useCallback(
     async (listId: string, nextPage: number, nextSearch: string) => {
+      const key = `${listId}|${nextPage}|${nextSearch}`;
+      if (fetchingContactsRef.current || lastContactsKeyRef.current === key) return;
+      fetchingContactsRef.current = true;
       setLoadingContacts(true);
       console.info("[useContatos] fetchContacts", { listId, nextPage, nextSearch });
       try {
@@ -69,11 +73,13 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         setTotalContacts(result.total);
         setPage(result.page);
         setTotalPages(result.totalPages);
+        lastContactsKeyRef.current = key;
       } catch (error) {
         console.error("[useContatos] fetchContacts error", error);
         toast.error("Erro ao carregar contatos");
       } finally {
         setLoadingContacts(false);
+        fetchingContactsRef.current = false;
       }
     },
     []
@@ -81,7 +87,19 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
 
   useEffect(() => {
     void fetchLists();
-  }, [supabaseId]);
+  }, [supabaseId, fetchLists]);
+
+  const hasActiveImport = lists.some((list) => list.activeImport != null);
+
+  useEffect(() => {
+    if (!hasActiveImport) return;
+
+    const intervalId = setInterval(() => {
+      void fetchLists();
+    }, 10_000);
+
+    return () => clearInterval(intervalId);
+  }, [hasActiveImport, fetchLists]);
 
   useEffect(() => {
     if (!selectedListId) {
@@ -90,8 +108,10 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       setPage(1);
       setTotalPages(1);
       setSearch("");
+      lastContactsKeyRef.current = "";
       return;
     }
+    lastContactsKeyRef.current = "";
     void fetchContacts(selectedListId, 1, "");
     setSearch("");
     setPage(1);
@@ -127,46 +147,23 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         if (selectedListId === id) {
           setSelectedListId(null);
         }
-        toast.success("Lista arquivada com sucesso");
+        toast.success("Lista excluída com sucesso");
       } catch (error) {
         console.error("[useContatos] handleDeleteList error", error);
-        toast.error("Erro ao arquivar lista");
+        const message = error instanceof Error ? error.message : "Erro ao excluir lista";
+        toast.error(message);
         throw error;
       }
     },
     [fetchLists, selectedListId]
   );
 
-  const handleAddContact = useCallback(
-    async (_email: string, _name?: string) => {
-      toast.error("Adição manual de contato ainda não está disponível");
-      throw new Error("Adição manual de contato ainda não está disponível");
-    },
-    []
-  );
-
-  const handleUploadCsv = useCallback(
-    async (file: File) => {
-      if (!selectedListId) return;
-      setUploadingCsv(true);
-      console.info("[useContatos] handleUploadCsv", file.name);
-      try {
-        const result = await service.uploadCsv(selectedListId, file);
-        toast.success(
-          `Importação concluída: ${result.imported} adicionados, ${result.updated} atualizados (total: ${result.total})`
-        );
-        await fetchLists();
-        void fetchContacts(selectedListId, 1, search);
-        setPage(1);
-      } catch (error) {
-        console.error("[useContatos] handleUploadCsv error", error);
-        toast.error("Erro ao importar arquivo CSV");
-      } finally {
-        setUploadingCsv(false);
-      }
-    },
-    [selectedListId, fetchLists, fetchContacts, search]
-  );
+  const refreshSelectedList = useCallback(async () => {
+    await fetchLists();
+    if (selectedListId) {
+      await fetchContacts(selectedListId, page, search);
+    }
+  }, [fetchLists, fetchContacts, selectedListId, page, search]);
 
   const handleDeleteContact = useCallback(
     async (contactId: string) => {
@@ -195,6 +192,25 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     [selectedListId]
   );
 
+  const handleAddContact = useCallback(
+    async (email: string, name?: string) => {
+      if (!selectedListId) return;
+      console.info("[useContatos] handleAddContact", { email });
+      try {
+        await service.addContact(selectedListId, email, name);
+        await fetchLists();
+        void fetchContacts(selectedListId, page, search);
+        toast.success("Contato adicionado com sucesso");
+      } catch (error) {
+        console.error("[useContatos] handleAddContact error", error);
+        const message = error instanceof Error ? error.message : "Erro ao adicionar contato";
+        toast.error(message);
+        throw error;
+      }
+    },
+    [selectedListId, fetchLists, fetchContacts, page, search]
+  );
+
   const handleSearch = useCallback(
     (query: string) => {
       setSearch(query);
@@ -203,6 +219,7 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       }
       searchDebounceRef.current = setTimeout(() => {
         if (selectedListId) {
+          lastContactsKeyRef.current = "";
           void fetchContacts(selectedListId, 1, query);
           setPage(1);
         }
@@ -230,15 +247,14 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     search,
     loadingLists,
     loadingContacts,
-    uploadingCsv,
     deletingContactId,
     handleCreateList,
     handleDeleteList,
     handleAddContact,
     handleSelectList,
-    handleUploadCsv,
     handleDeleteContact,
     handleSearch,
     handlePageChange,
+    refreshSelectedList,
   };
 }

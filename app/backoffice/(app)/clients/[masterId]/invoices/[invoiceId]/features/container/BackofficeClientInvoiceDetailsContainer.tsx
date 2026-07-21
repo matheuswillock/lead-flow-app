@@ -30,9 +30,12 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -91,9 +94,20 @@ function formatDate(value: string | null, tz: string) {
 
 export function BackofficeClientInvoiceDetailsContainer() {
   const { tz } = useTimezone()
-  const { invoice, isLoading, isSendingNotification, error, reload, sendStatusNotification } =
-    useBackofficeClientInvoiceDetails()
+  const {
+    invoice,
+    isLoading,
+    isSendingNotification,
+    isUpdatingInvoice,
+    error,
+    reload,
+    sendStatusNotification,
+    updateInvoice,
+  } = useBackofficeClientInvoiceDetails()
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [editValue, setEditValue] = useState("")
+  const [editDueDate, setEditDueDate] = useState("")
   const params = useParams()
   const masterId = params.masterId as string
   const backHref = `/backoffice/clients/${masterId}?tab=invoices`
@@ -129,17 +143,54 @@ export function BackofficeClientInvoiceDetailsContainer() {
     )
   }
 
-  const statusBadge = STATUS_BADGES[invoice.statusGroup]
-  const isPaidInvoice = invoice.statusGroup === "paid"
-  const hasReceipt = Boolean(invoice.transactionReceiptUrl)
-  const canSendNotification = invoice.statusGroup === "upcoming" || invoice.statusGroup === "overdue"
+  const currentInvoice = invoice
+  const statusBadge = STATUS_BADGES[currentInvoice.statusGroup]
+  const isPaidInvoice = currentInvoice.statusGroup === "paid"
+  const canEditInvoice =
+    !currentInvoice.deleted &&
+    (currentInvoice.statusGroup === "upcoming" || currentInvoice.statusGroup === "overdue")
+  const hasReceipt = Boolean(currentInvoice.transactionReceiptUrl)
+  const canSendNotification =
+    currentInvoice.statusGroup === "upcoming" || currentInvoice.statusGroup === "overdue"
   const notificationLabel =
-    invoice.statusGroup === "overdue"
+    currentInvoice.statusGroup === "overdue"
       ? "Disparar e-mail de assinatura vencida"
       : "Disparar e-mail de assinatura a vencer"
 
   function handleNoopAction() {
     return undefined
+  }
+
+  function handleOpenEditDialog() {
+    if (!invoice) return
+    setEditValue(String(invoice.value))
+    setEditDueDate(invoice.dueDate?.slice(0, 10) ?? "")
+    setIsEditOpen(true)
+  }
+
+  async function handleSaveInvoiceEdit() {
+    if (isUpdatingInvoice) return
+
+    const value = Number.parseFloat(editValue.replace(",", "."))
+    if (!Number.isFinite(value) || value <= 0) {
+      toast.error("Informe um valor válido maior que zero")
+      return
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(editDueDate)) {
+      toast.error("Informe uma data de vencimento válida")
+      return
+    }
+
+    try {
+      await updateInvoice({ value, dueDate: editDueDate })
+      toast.success("Cobrança atualizada com sucesso")
+      setIsEditOpen(false)
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error ? saveError.message : "Erro ao atualizar a cobrança"
+      toast.error(message)
+    }
   }
 
   function handleOpenReceiptModal() {
@@ -172,15 +223,23 @@ export function BackofficeClientInvoiceDetailsContainer() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <CardTitle className="flex flex-wrap items-center gap-2">
               <Receipt className="h-5 w-5 text-primary" />
-              <span>Fatura {invoice.invoiceNumber ? `#${invoice.invoiceNumber}` : invoice.id}</span>
+              <span>
+                {invoice.invoiceName} · {invoice.invoiceIdDisplay}
+              </span>
               <Badge variant={statusBadge.variant} className={statusBadge.className}>
-                {statusBadge.label}
+                {invoice.status === "WAIVED" ? "Dispensada" : statusBadge.label}
               </Badge>
             </CardTitle>
 
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Button type="button" variant="outline" size="sm" onClick={handleNoopAction}>
-                <Edit3 className="mr-2 h-4 w-4" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canEditInvoice || isUpdatingInvoice}
+                onClick={handleOpenEditDialog}
+              >
+                <Edit3 data-icon="inline-start" />
                 Editar
               </Button>
 
@@ -387,6 +446,71 @@ export function BackofficeClientInvoiceDetailsContainer() {
           </DialogContent>
         </Dialog>
       ) : null}
+
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(nextOpen) => {
+          if (isUpdatingInvoice) return
+          setIsEditOpen(nextOpen)
+        }}
+      >
+        <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar cobrança</DialogTitle>
+            <DialogDescription>
+              Altere o valor e o vencimento da fatura pendente no Asaas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="overflow-y-auto flex-1">
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="invoice-edit-value">Valor (R$)</FieldLabel>
+                <Input
+                  id="invoice-edit-value"
+                  type="number"
+                  inputMode="decimal"
+                  min={0.01}
+                  step="0.01"
+                  value={editValue}
+                  onChange={(event) => setEditValue(event.target.value)}
+                  disabled={isUpdatingInvoice}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="invoice-edit-due-date">Vencimento</FieldLabel>
+                <Input
+                  id="invoice-edit-due-date"
+                  type="date"
+                  value={editDueDate}
+                  onChange={(event) => setEditDueDate(event.target.value)}
+                  disabled={isUpdatingInvoice}
+                />
+              </Field>
+            </FieldGroup>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isUpdatingInvoice}
+              onClick={() => setIsEditOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={isUpdatingInvoice}
+              onClick={() => {
+                void handleSaveInvoiceEdit()
+              }}
+            >
+              {isUpdatingInvoice ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

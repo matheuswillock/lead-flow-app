@@ -1,4 +1,5 @@
 import type {
+  BackofficeBetaTeamScope,
   BackofficeFeature,
   BackofficeFeatureAccessLevel,
   BackofficeFeatureAccessMode,
@@ -7,18 +8,27 @@ import type {
   BackofficeFeatureGrant,
 } from "@prisma/client"
 
+export type BetaGrantTeamSummary = {
+  id: string
+  name: string
+}
+
+export type BackofficeBetaGrantWithRelations = BackofficeFeatureGrant & {
+  profile: {
+    id: string
+    fullName: string | null
+    email: string
+    isMaster: boolean
+  }
+  teams: Array<{
+    team: BetaGrantTeamSummary
+  }>
+}
+
 export type BackofficeFeatureWithRelations = BackofficeFeature & {
   parent: Pick<BackofficeFeature, "id" | "slug" | "name"> | null
   children: Pick<BackofficeFeature, "id" | "slug" | "name">[]
-  grants: Array<
-    BackofficeFeatureGrant & {
-      profile: {
-        id: string
-        fullName: string | null
-        email: string
-      }
-    }
-  >
+  grants: BackofficeBetaGrantWithRelations[]
   accessRules: BackofficeFeatureAccessRule[]
 }
 
@@ -32,6 +42,7 @@ export interface CreateBackofficeFeatureInput {
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
 }
@@ -45,6 +56,7 @@ export interface UpdateBackofficeFeatureInput {
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
   inheritParentSettings?: boolean
+  billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
 }
@@ -53,6 +65,8 @@ export interface UpsertBackofficeFeatureBetaGrantInput {
   featureId: string
   profileId: string
   accessLevel?: BackofficeFeatureAccessLevel
+  betaTeamScope: BackofficeBetaTeamScope
+  teamIds?: string[]
 }
 
 export interface ReplaceBackofficeFeatureAccessRuleInput {
@@ -72,6 +86,12 @@ export interface PlatformUserSearchResult {
   totalItems: number
 }
 
+export interface MasterProfileRecord {
+  id: string
+  isMaster: boolean
+  role: string
+}
+
 export interface IBackofficeFeatureRepository {
   findAll(): Promise<BackofficeFeatureWithRelations[]>
   findActive(): Promise<BackofficeFeature[]>
@@ -79,12 +99,19 @@ export interface IBackofficeFeatureRepository {
   findBySlug(slug: string): Promise<BackofficeFeature | null>
   productSlugExists(slug: string): Promise<boolean>
   profileExists(profileId: string): Promise<boolean>
+  findProfileById(profileId: string): Promise<MasterProfileRecord | null>
+  validateTeamsBelongToMaster(masterId: string, teamIds: string[]): Promise<boolean>
   create(data: CreateBackofficeFeatureInput): Promise<BackofficeFeature>
   update(id: string, data: UpdateBackofficeFeatureInput): Promise<BackofficeFeature>
   delete(id: string): Promise<void>
   listAvailableSlugs(): Promise<string[]>
-  searchUsers(query: string, page: number, pageSize: number): Promise<PlatformUserSearchResult>
-  upsertBetaGrant(data: UpsertBackofficeFeatureBetaGrantInput): Promise<BackofficeFeatureGrant>
+  searchUsers(
+    query: string,
+    page: number,
+    pageSize: number,
+    options?: { mastersOnly?: boolean }
+  ): Promise<PlatformUserSearchResult>
+  upsertBetaGrant(data: UpsertBackofficeFeatureBetaGrantInput): Promise<BackofficeBetaGrantWithRelations>
   upsertAccessRule(
     featureId: string,
     principal: BackofficeAccessPrincipal,
@@ -96,6 +123,6 @@ export interface IBackofficeFeatureRepository {
     rules: ReplaceBackofficeFeatureAccessRuleInput[]
   ): Promise<void>
   disableBetaGrant(featureId: string, profileId: string): Promise<void>
-  listBetaGrants(featureId: string): Promise<BackofficeFeatureWithRelations["grants"]>
+  listBetaGrants(featureId: string): Promise<BackofficeBetaGrantWithRelations[]>
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
 }

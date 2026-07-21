@@ -10,8 +10,12 @@ import { healthPlanService } from "../../services/healthPlans/HealthPlanService"
 import type { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import type { PublicLeadFormRequest } from "../../v1/integrations/lead-form/DTO/requestPublicLeadForm";
 import type { IPublicLeadFormUseCase, PublicLeadFormOriginContext } from "./IPublicLeadFormUseCase";
-import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
+import { DEFAULT_TZ, formatLocalDateValue, getBusyMinutesRangeInDay, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { getPreScheduleSlotsPayload } from "../../services/preSchedule/PreScheduleSlotService";
+import { leadCustomFieldService } from "../../services/leadCustomField/LeadCustomFieldService";
+import { mapLeadCustomFieldDefinitionToDTO } from "../../infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
+import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
 
 const SLOT_MINUTES = 30;
 
@@ -30,6 +34,7 @@ type PublicIntegrationAccess = {
   profileId: string;
   managerId: string;
   teamId: string;
+  teamName: string;
   timezone: string;
 };
 
@@ -45,6 +50,14 @@ type TeamMemberSnapshot = {
 };
 
 export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
+  private async canCreateTransferLead(teamId: string): Promise<boolean> {
+    const transferRoutesCount = await prisma.teamTransferRoute.count({
+      where: { sourceTeamId: teamId },
+    });
+
+    return transferRoutesCount > 0;
+  }
+
   private async validateMemberFunctionForTeam(
     teamId: string,
     profileId: string,
@@ -91,6 +104,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       where: { id: teamId },
       select: {
         id: true,
+        name: true,
         masterId: true,
         master: {
           select: {
@@ -153,6 +167,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
           profileId: actorProfileId,
           managerId: team.masterId,
           teamId: team.id,
+          teamName: team.name,
           timezone: resolveTimezone(team.master.timezone),
         },
       };
@@ -179,11 +194,13 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
   }
 
   private mapMembersToAssignableOptions(members: TeamMemberSnapshot[]) {
-    return members.map((member) => ({
-      id: member.profile.id,
-      name: member.profile.fullName || member.profile.email || "Membro do time",
-      avatarImageUrl: member.profile.profileIconUrl || "",
-    }));
+    return members
+      .map((member) => ({
+        id: member.profile.id,
+        name: member.profile.fullName || member.profile.email || "Membro do time",
+        avatarImageUrl: member.profile.profileIconUrl || "",
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
   }
 
   private mapMembersToGuestCandidates(members: TeamMemberSnapshot[]) {
@@ -194,7 +211,8 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         name: member.profile.fullName || member.profile.email || "Membro do time",
         email: member.profile.email as string,
         avatarImageUrl: member.profile.profileIconUrl || "",
-      }));
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
   }
 
   async createPublicLead(data: PublicLeadFormRequest, originContext?: PublicLeadFormOriginContext): Promise<Output> {
@@ -219,7 +237,46 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         }
       }
 
-      const hasMeetingData = !!(data.closerId && data.meetingDate && data.meetingTitle);
+      if (data.isTransfer === true && !data.saveAsDraft) {
+        const canTransfer = await this.canCreateTransferLead(access.teamId);
+        if (!canTransfer) {
+          return new Output(false, [], ["Transferência indisponível para este time."], null);
+        }
+
+        if (!data.meetingDate) {
+          return new Output(
+            false,
+            [],
+            ["Selecione uma data para o pré-agendamento da transferência."],
+            null
+          );
+        }
+      }
+
+      const saveAsDraft = data.saveAsDraft === true;
+      const publicCustomFieldDefinitions = await leadCustomFieldService.listActivePublicDefinitionsByTeamId(
+        access.teamId
+      );
+      const publicCustomFieldDtos = publicCustomFieldDefinitions.map(mapLeadCustomFieldDefinitionToDTO);
+      if (publicCustomFieldDtos.length > 0 || data.customFields) {
+        const customFieldsValidation = validateLeadCustomFieldsPayload(
+          publicCustomFieldDtos,
+          data.customFields ?? {},
+          !saveAsDraft
+        );
+        if (!customFieldsValidation.success) {
+          return new Output(false, [], customFieldsValidation.errors, null);
+        }
+      }
+      const allowedCustomFieldKeys = new Set(publicCustomFieldDtos.map((definition) => definition.key));
+      const sanitizedCustomFields = data.customFields
+        ? Object.fromEntries(
+            Object.entries(data.customFields).filter(([key]) => allowedCustomFieldKeys.has(key))
+          )
+        : undefined;
+
+      const hasMeetingData =
+        !saveAsDraft && !data.isTransfer && !!(data.closerId && data.meetingDate && data.meetingTitle);
       const createLeadData: CreateLeadRequest = {
         name: data.name,
         email: data.email,
@@ -232,7 +289,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         currentTreatment: data.currentTreatment,
         notes: data.notes,
         assignedTo: data.assignedTo,
-        closerId: data.closerId,
+        closerId: data.isTransfer === true ? undefined : data.closerId,
         meetingDate: data.meetingDate,
         meetingTitle: data.meetingTitle,
         meetingNotes: data.meetingNotes,
@@ -240,7 +297,17 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         ticket: undefined,
         contractDueDate: undefined,
         soldPlan: undefined,
-        status: hasMeetingData ? LeadStatus.scheduled : LeadStatus.new_opportunity,
+        isTransfer: data.isTransfer === true,
+        saveAsDraft,
+        customFields:
+          sanitizedCustomFields && Object.keys(sanitizedCustomFields).length > 0
+            ? sanitizedCustomFields
+            : undefined,
+        status: saveAsDraft
+          ? null
+          : hasMeetingData
+            ? LeadStatus.scheduled
+            : LeadStatus.new_opportunity,
       };
 
       const leadOutput = await leadUseCase.createLead(
@@ -249,6 +316,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         access.teamId,
         originContext
           ? {
+              authorAsStudio: true,
               body: "Lead criado via formulário público",
               payload: {
                 kind: "lead_creation",
@@ -303,6 +371,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
             extraGuests: data.extraGuests,
             createdByProfileId: access.profileId,
             transitionStatusToScheduled: false,
+            authorAsStudio: true,
           });
 
           if (!scheduleOutput.isValid) {
@@ -360,9 +429,12 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       }
 
       const access = accessResult.access as PublicIntegrationAccess;
-      const [healthPlanOptions, teamMembers] = await Promise.all([
+      const [healthPlanOptions, teamMembers, transferRoutesCount, publicCustomFieldDefinitions] =
+        await Promise.all([
         healthPlanService.listOptions(),
         this.listTeamMembersSnapshot(access.teamId),
+        prisma.teamTransferRoute.count({ where: { sourceTeamId: access.teamId } }),
+        leadCustomFieldService.listActivePublicDefinitionsByTeamId(access.teamId),
       ]);
 
       const healthPlans = healthPlanOptions.map((option) => ({
@@ -378,11 +450,14 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       const guestCandidates = this.mapMembersToGuestCandidates(teamMembers);
 
       return new Output(true, [], [], {
+        teamName: access.teamName,
         healthPlans,
         closers,
         sdrs,
         guestCandidates,
         timezone: access.timezone,
+        hasTransferTargets: transferRoutesCount > 0,
+        customFieldDefinitions: publicCustomFieldDefinitions.map(mapLeadCustomFieldDefinitionToDTO),
       });
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao carregar bootstrap do formulário público:", error);
@@ -414,7 +489,8 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     teamId: string,
     closerId: string,
     date: string,
-    legacySupabaseId?: string
+    legacySupabaseId?: string,
+    slotMinutes = SLOT_MINUTES,
   ): Promise<Output> {
     try {
       const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
@@ -425,6 +501,11 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return new Output(false, [], ["Formato de data inválido. Use YYYY-MM-DD."], null);
       }
+
+      const resolvedSlotMinutes =
+        Number.isFinite(slotMinutes) && slotMinutes >= 5 && slotMinutes <= 480
+          ? Math.floor(slotMinutes)
+          : SLOT_MINUTES;
 
       const access = accessResult.access as PublicIntegrationAccess;
       const closerValidationOutput = await this.validateCloserForTeam(access.teamId, closerId);
@@ -475,7 +556,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         .filter((lead) => !!lead.meetingDate)
         .map((lead) => {
           const start = lead.meetingDate as Date;
-          const end = new Date(start.getTime() + SLOT_MINUTES * 60 * 1000);
+          const end = new Date(start.getTime() + resolvedSlotMinutes * 60 * 1000);
           return { start: start.toISOString(), end: end.toISOString() };
         });
 
@@ -484,7 +565,10 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       const isToday = date === todayKey;
       const nowMinutes = getMinutesInTz(now, timezone);
 
-      const slots = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => index * SLOT_MINUTES);
+      const slots = Array.from(
+        { length: Math.floor((24 * 60) / resolvedSlotMinutes) },
+        (_, index) => index * resolvedSlotMinutes,
+      );
 
       const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile.googleConnection);
       let busyIntervals: Array<{ start: string; end: string }> = [];
@@ -515,21 +599,21 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
             return false;
           }
 
-          const slotEnd = slotStart + SLOT_MINUTES;
+          const slotEnd = slotStart + resolvedSlotMinutes;
           return !busyIntervals.some((interval) => {
             const startDate = new Date(interval.start);
             const endDate = new Date(interval.end);
 
-            if (endDate <= dayStart || startDate >= dayEnd) {
+            const busyRange = getBusyMinutesRangeInDay(
+              { start: startDate, end: endDate },
+              { start: dayStart, end: dayEnd },
+              timezone
+            );
+            if (!busyRange) {
               return false;
             }
 
-            const startClamp = startDate < dayStart ? dayStart : startDate;
-            const endClamp = endDate > dayEnd ? dayEnd : endDate;
-            const busyStart = getMinutesInTz(startClamp, timezone);
-            const busyEnd = getMinutesInTz(endClamp, timezone);
-
-            return slotStart < busyEnd && slotEnd > busyStart;
+            return slotStart < busyRange.endMinutes && slotEnd > busyRange.startMinutes;
           });
         })
         .map(formatTimeSlot);
@@ -537,6 +621,28 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       return new Output(true, [], [], { availableTimes, source });
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao buscar disponibilidade:", error);
+      return new Output(false, [], ["Erro interno do servidor"], null);
+    }
+  }
+
+  async getPreScheduleSlots(teamId: string, date: string, legacySupabaseId?: string): Promise<Output> {
+    try {
+      const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
+      if (accessResult.output) {
+        return accessResult.output;
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return new Output(false, [], ["Formato de data inválido. Use YYYY-MM-DD."], null);
+      }
+
+      const access = accessResult.access as PublicIntegrationAccess;
+
+      const payload = await getPreScheduleSlotsPayload(access.teamId, date, access.timezone);
+
+      return new Output(true, [], [], payload);
+    } catch (error) {
+      console.error("[PublicLeadFormUseCase] Erro ao buscar slots de pré-agendamento:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
     }
   }

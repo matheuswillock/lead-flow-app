@@ -57,6 +57,9 @@ export const PublicLeadFormRequestSchema = z
     notes: z.string().nullish().transform((val) => val || undefined),
     assignedTo: z.string().uuid("ID do SDR deve ser um UUID válido"),
 
+    // Transfer flag (optional)
+    isTransfer: z.boolean().nullish().transform((val) => val ?? undefined),
+
     // Scheduling fields (optional)
     closerId: z.string().uuid("ID do closer deve ser um UUID válido").nullish().transform((val) => val || undefined),
     meetingDate: z.string().datetime().nullish().transform((val) => val || undefined),
@@ -82,7 +85,20 @@ export const PublicLeadFormRequestSchema = z
     utmTerm: z.string().nullish().transform((val) => val || undefined),
     landingUrl: z.string().nullish().transform((val) => val || undefined),
     referrer: z.string().nullish().transform((val) => val || undefined),
+    saveAsDraft: z.boolean().optional(),
+    customFields: z.record(z.string(), z.unknown()).optional(),
   })
+  .refine(
+    (data) => {
+      if (data.saveAsDraft) return true;
+      if (data.isTransfer && !data.meetingDate) return false;
+      return true;
+    },
+    {
+      message: "Selecione uma data para o pré-agendamento da transferência.",
+      path: ["meetingDate"],
+    }
+  )
   .refine(
     (data) => {
       if (data.closerId && (!data.meetingDate || !data.meetingTitle)) {

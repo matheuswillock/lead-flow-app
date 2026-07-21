@@ -1,5 +1,10 @@
 /**
- * Preflight for `bun run dev:local`.
+ * Standalone preflight for local dev (clone check only).
+ *
+ * Prefer `bun run dev` or `bun run dev:local` — both use `scripts/dev-local.ts`,
+ * which starts Supabase + Evolution API + Next.js with local env overrides.
+ *
+ * This script only runs the Supabase/clone portion (no Evolution, no Next.js).
  *
  * 1. Ensures the Supabase local stack is up (starts it if needed).
  * 2. Counts rows in `auth.users` on the local DB.
@@ -13,10 +18,11 @@
 
 import { spawnSync } from "node:child_process";
 
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
 const args = process.argv.slice(2);
 const skipClone = args.includes("--skip-clone");
 const noStart = args.includes("--no-start");
+type EnvOverrides = Partial<NodeJS.ProcessEnv>;
 
 function step(label: string) {
   console.info(`\n▶ ${label}`);
@@ -34,12 +40,19 @@ function fail(msg: string): never {
 function run(
   cmd: string,
   cmdArgs: string[],
-  opts: { stdio?: "inherit" | "pipe" } = {},
+  opts: {
+    stdio?: "inherit" | "pipe";
+    env?: EnvOverrides;
+  } = {},
 ): { status: number; stdout: string; stderr: string } {
   const result = spawnSync(cmd, cmdArgs, {
     stdio: opts.stdio ?? "pipe",
     shell: process.platform === "win32",
     encoding: "utf8",
+    env: {
+      ...process.env,
+      ...opts.env,
+    },
   });
   return {
     status: result.status ?? 1,
@@ -50,7 +63,11 @@ function run(
 
 function ensureSupabaseRunning() {
   step("Checking Supabase local stack");
-  const probe = run("supabase", ["status"]);
+  const supabaseEnv: EnvOverrides = {
+    SUPABASE_DISABLE_TELEMETRY: "1",
+    DO_NOT_TRACK: "1",
+  };
+  const probe = run("supabase", ["status"], { env: supabaseEnv });
   if (probe.status === 0) {
     info("✓ Running");
     return;
@@ -59,7 +76,10 @@ function ensureSupabaseRunning() {
     fail("Supabase local stack is not running (--no-start passed).");
   }
   info("⚠ Not running — starting it (`supabase start`)…");
-  const start = run("supabase", ["start"], { stdio: "inherit" });
+  const start = run("supabase", ["start"], {
+    stdio: "inherit",
+    env: supabaseEnv,
+  });
   if (start.status !== 0) {
     fail("`supabase start` failed. Check Docker Desktop is running.");
   }
@@ -88,7 +108,9 @@ function cloneRemote() {
   info("⚠ 0 users found — running `bun run db:clone:remote`…");
   const clone = run("bun", ["run", "db:clone:remote"], { stdio: "inherit" });
   if (clone.status !== 0) {
-    fail("Clone failed. Inspect output above.");
+    info("⚠ Clone falhou — encerrando preflight sem dados remotos.");
+    info("  Confira DIRECT_URL/DATABASE_URL no .env ou use `bun run dev -- --skip-clone`.");
+    return;
   }
   info("✓ Clone done");
 }

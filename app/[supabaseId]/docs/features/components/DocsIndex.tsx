@@ -26,6 +26,10 @@ const DOCS_SECTIONS = [
     title: "Gestao & Config",
     chapterIds: ["equipe", "times", "integracoes", "assinatura"],
   },
+  {
+    title: "WhatsApp",
+    chapterIds: ["whatsapp-inbox", "whatsapp-regras", "whatsapp-auto-respostas", "whatsapp-permissoes", "whatsapp-privacidade"],
+  },
   { title: "Ajuda", chapterIds: ["faq"] },
 ] as const
 
@@ -40,7 +44,7 @@ const SIDEBAR_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   "crm-kanban": "CRM / Kanban",
   leads: "Gerenciar Leads",
-  reunioes: "Agendar Reunioes",
+  reunioes: "Agendar Reuniões",
   calendar: "Calendário",
   carteira: "Carteira",
   performance: "Performance",
@@ -48,6 +52,11 @@ const SIDEBAR_LABELS: Record<string, string> = {
   times: "Times",
   integracoes: "Integracoes",
   assinatura: "Assinatura",
+  "whatsapp-inbox": "Inbox e conexão",
+  "whatsapp-regras": "Regras de atendimento",
+  "whatsapp-auto-respostas": "Auto-respostas",
+  "whatsapp-permissoes": "Permissões e solução",
+  "whatsapp-privacidade": "Privacidade e limites",
   faq: "Perguntas Frequentes",
 }
 
@@ -92,7 +101,7 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
 
   return (
     <nav
-      aria-label="Navegacao da documentacao"
+      aria-label="Navegação da documentação"
       className={cn(
         "h-full bg-[color-mix(in_oklab,var(--primary)_4%,var(--surface-1))]",
         className,

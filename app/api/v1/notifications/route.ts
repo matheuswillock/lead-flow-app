@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { notificationUseCase } from "@/app/api/useCases/notifications/NotificationUseCase";
 import { Output } from "@/lib/output";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,13 +21,13 @@ export async function GET(request: NextRequest) {
 
     const output = await notificationUseCase.listNotifications({
       recipientProfileId: teamAccess.access.profileId,
-      teamId: teamAccess.access.teamId,
       limit,
       offset,
     });
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[NotificationsRoute][GET] Erro ao listar notificações:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao listar notificações"], null),
@@ -44,11 +45,11 @@ export async function PATCH(request: NextRequest) {
 
     const output = await notificationUseCase.markAllAsRead({
       recipientProfileId: teamAccess.access.profileId,
-      teamId: teamAccess.access.teamId,
     });
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("[NotificationsRoute][PATCH] Erro ao marcar notificações:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao atualizar notificações"], null),

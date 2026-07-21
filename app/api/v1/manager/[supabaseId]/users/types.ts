@@ -17,6 +17,8 @@ export const CreateUserSchema = z.object({
   hasPermanentSubscription: z.boolean().optional().default(false),
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
+  canTransferAccountLeads: z.boolean().optional(),
+  canViewAllTeams: z.boolean().optional(),
 });
 
 export const UpdateUserSchema = z.object({
@@ -32,6 +34,8 @@ export const UpdateUserSchema = z.object({
   profileIconUrl: z.string().url("URL do ícone deve ser válida").optional().nullable(),
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
+  canTransferAccountLeads: z.boolean().optional(),
+  canViewAllTeams: z.boolean().optional(),
 });
 
 export const AssociateOperatorSchema = z.object({

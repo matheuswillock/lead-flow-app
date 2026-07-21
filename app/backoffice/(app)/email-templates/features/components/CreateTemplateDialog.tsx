@@ -24,8 +24,6 @@ import { MonacoCodeEditor } from "@/components/editors/MonacoCodeEditor"
 import type { CreateTemplateFormData, VariableFormItem } from "../services/IBackofficeEmailTemplatesService"
 import { HtmlEmailPreview } from "./HtmlEmailPreview"
 
-const EDITOR_HEIGHT = 480
-
 const EMPTY_FORM: CreateTemplateFormData = {
   name: "",
   html: "",
@@ -46,6 +44,7 @@ interface Props {
 
 export function CreateTemplateDialog({ open, isCreating, onOpenChange, onSubmit }: Props) {
   const [form, setForm] = useState<CreateTemplateFormData>(EMPTY_FORM)
+  const [activeTab, setActiveTab] = useState("html")
 
   function handleChange(field: keyof Omit<CreateTemplateFormData, "variables">, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -79,7 +78,10 @@ export function CreateTemplateDialog({ open, isCreating, onOpenChange, onSubmit 
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next) setForm(EMPTY_FORM)
+    if (!next) {
+      setForm(EMPTY_FORM)
+      setActiveTab("html")
+    }
     onOpenChange(next)
   }
 
@@ -200,7 +202,11 @@ export function CreateTemplateDialog({ open, isCreating, onOpenChange, onSubmit 
           </div>
 
           <div className="flex-1 flex flex-col min-h-0">
-            <Tabs defaultValue="html" className="flex flex-col flex-1 min-h-0">
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="flex flex-col flex-1 min-h-0"
+            >
               <TabsList className="self-start shrink-0">
                 <TabsTrigger value="html">HTML</TabsTrigger>
                 <TabsTrigger value="preview">Preview</TabsTrigger>
@@ -209,15 +215,18 @@ export function CreateTemplateDialog({ open, isCreating, onOpenChange, onSubmit 
                 value="html"
                 className="mt-2 flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"
               >
-                <div className="flex-1 min-h-0 rounded-md overflow-hidden border">
-                  <MonacoCodeEditor
-                    value={form.html}
-                    onChange={(val) => handleChange("html", val)}
-                    language="html"
-                    height="100%"
-                    themeVariant="resend-dark"
-                    placeholder="<p>Olá, {{{NOME}}}!</p>"
-                  />
+                <div className="flex-1 min-h-[360px] rounded-md overflow-hidden border">
+                  {activeTab === "html" ? (
+                    <MonacoCodeEditor
+                      editorKey="create-template"
+                      value={form.html}
+                      onChange={(val) => handleChange("html", val)}
+                      language="html"
+                      height="100%"
+                      themeVariant="resend-dark"
+                      placeholder="<p>Olá, {{{NOME}}}!</p>"
+                    />
+                  ) : null}
                 </div>
               </TabsContent>
               <TabsContent

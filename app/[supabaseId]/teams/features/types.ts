@@ -8,6 +8,9 @@ export type ManagerTeamTableRow = {
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
   createdAt: string;
+  isAssociateAccount?: boolean;
+  associateAccountName?: string;
+  isPending?: boolean;
   pendingPayment?: {
     id: string;
     paymentId: string;

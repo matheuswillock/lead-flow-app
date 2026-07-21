@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Output } from '@/lib/output';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
  * GET /api/v1/operators/pending/[id]
@@ -66,6 +67,7 @@ export async function GET(
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [GetPendingOperator] Erro:', error);
     
     return NextResponse.json(
@@ -118,6 +120,7 @@ export async function DELETE(
     );
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error('❌ [DeletePendingOperator] Erro ao deletar:', error);
     
     return NextResponse.json(

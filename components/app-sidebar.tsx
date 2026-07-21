@@ -18,10 +18,17 @@ import {
   FileText,
   BookUser,
   Send,
-  History,
+  ArrowRightLeft,
+  Handshake,
   BarChart3,
   Calculator,
   PhoneCall,
+  Settings,
+  MessageCircle,
+  Bot,
+  Database,
+  Zap,
+  Mail,
 } from "lucide-react"
 
 import {
@@ -41,12 +48,13 @@ import { NavUser } from "./nav-user"
 import { useUserContext } from "@/app/context/UserContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { useOperationalAccess } from "@/app/context/OperationalAccessContext"
 import { TeamSwitcher } from "@/components/team-switcher"
-import { isManagerLikeRole } from "@/lib/roles"
 import { SupportRequestDialog } from "@/components/support-request-dialog"
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
 import { useTeamPresence } from "@/hooks/useTeamPresence"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { useWhatsAppUnreadCount } from "@/hooks/useWhatsAppUnreadCount"
 
 type SidebarItem = {
   title: string
@@ -57,8 +65,11 @@ type SidebarItem = {
   closerOrManager?: boolean
   sdrCloserOrManager?: boolean
   requiresIntegrationsAccess?: boolean
+  requiresTransferRoutes?: boolean
+  requiresAssociadosQueue?: boolean
   featureSlug?: string
   status?: "beta" | "comingSoon"
+  unreadCount?: number
 }
 
 function getSidebarStatusBadge(status?: SidebarItem["status"]) {
@@ -81,12 +92,12 @@ function getSidebarStatusBadge(status?: SidebarItem["status"]) {
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const pathname = usePathname();
   const { user } = useUserContext();
-  const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster } = useTeamContext();
-  const { hasAccess, isBeta } = useFeatureAccess();
-  const isMaster = user?.isMaster === true;
-  const isManager = isManagerLikeRole(user?.role);
-  const isCloser = user?.functions?.includes("CLOSER") === true;
-  const isSdr = user?.functions?.includes("SDR") === true;
+  const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster, activeRole, activeFunctions } = useTeamContext();
+  const { hasAccess, showsBetaLabel } = useFeatureAccess();
+  const { access: operationalAccess } = useOperationalAccess();
+  const isManager = activeRole === "manager" || activeRole === "backoffice";
+  const isCloser = activeFunctions.includes("CLOSER");
+  const isSdr = activeFunctions.includes("SDR");
   const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
   const teamActivityStorageKey = useMemo(
     () => `sidebar-team-activity-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
@@ -100,27 +111,57 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     () => `sidebar-email-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
   );
+  const whatsAppStorageKey = useMemo(
+    () => `sidebar-whatsapp-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
+    [supabaseId, activeTeamId]
+  );
+  const backofficeStorageKey = useMemo(
+    () => `sidebar-backoffice-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
+    [supabaseId, activeTeamId]
+  );
   const [isTeamActivityCollapsed, setIsTeamActivityCollapsed] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isEmailCollapsed, setIsEmailCollapsed] = useState(false);
+  const [isWhatsAppCollapsed, setIsWhatsAppCollapsed] = useState(false);
+  const [isBackofficeCollapsed, setIsBackofficeCollapsed] = useState(false);
+  const { unreadMessages } = useWhatsAppUnreadCount({ enabled: hasAccess(FEATURE_SLUGS.WHATSAPP) });
   const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard, featureSlug: FEATURE_SLUGS.CRM_DASHBOARD },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: Users, featureSlug: FEATURE_SLUGS.CRM },
+    { title: "Transferências", url: `/${supabaseId}/lead-transfers`, icon: ArrowRightLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_LEAD_TRANSFERS, requiresTransferRoutes: true },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
-    { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
+    { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
+    { title: "Formulários", url: `/${supabaseId}/forms`, icon: FileText, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
     { title: "Discadora", url: `/${supabaseId}/dialer`, icon: PhoneCall, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.VOICE },
+    { title: "Automações", url: `/${supabaseId}/automations`, icon: Zap, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_AUTOMATIONS },
+    { title: "Radar", url: `/${supabaseId}/radar`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.RADAR },
   ];
 
   const emailItems: SidebarItem[] = [
     { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_TEMPLATES },
     { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CONTACTS },
     { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
-    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL_HISTORY },
-    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_ANALYTICS },
+    { title: "Descadastro", url: `/${supabaseId}/email/descadastro`, icon: Mail, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_UNSUBSCRIBE },
+    { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
+  ];
+
+  const whatsAppItems: SidebarItem[] = [
+    { title: "Inbox", url: `/${supabaseId}/whatsapp`, icon: MessageCircle, featureSlug: FEATURE_SLUGS.WHATSAPP, unreadCount: unreadMessages },
+    { title: "Auto-respostas", url: `/${supabaseId}/whatsapp/auto-respostas`, icon: Bot, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES },
+    { title: "Configurações", url: `/${supabaseId}/whatsapp/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.WHATSAPP_SETTINGS },
+  ];
+
+  const backofficeItems: SidebarItem[] = [
+    {
+      title: "Associados",
+      url: `/${supabaseId}/associados`,
+      icon: Handshake,
+      requiresAssociadosQueue: true,
+    },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -128,7 +169,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       title: "Gerenciar Usuários",
       url: `/${supabaseId}/manager-users`,
       icon: Users,
-      managerOnly: true,
+      masterOnly: true,
       featureSlug: FEATURE_SLUGS.CRM_TIME_MANAGE_USERS,
     },
     {
@@ -146,6 +187,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     supabaseId,
     currentProfileId: user?.id ?? null,
     enabled: Boolean(activeTeamId && supabaseId),
+    isAssociateAccount: Boolean(activeTeam?.isAssociateAccount && activeTeam?.isOwnAccount),
+    sponsorMasterId: activeTeam?.sponsorMasterId ?? null,
   });
 
   const presenceVisualMap = {
@@ -167,19 +210,25 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   } as const;
 
   const canShowItem = (item: SidebarItem) => {
-    if (item.managerOnly && !isManager && !isMaster && !user?.canCreateAccountUsers) {
+    if (item.managerOnly && !isManager && !isTeamMaster && !activeTeam?.canCreateAccountUsers) {
       return false;
     }
-    if (item.masterOnly && !isTeamMaster && !user?.canManageAccountTeams) {
+    if (item.masterOnly && !isTeamMaster && !activeTeam?.canManageAccountTeams) {
       return false;
     }
-    if (item.closerOrManager && !isManager && !isMaster && !isCloser) {
+    if (item.closerOrManager && !isManager && !isTeamMaster && !isCloser) {
       return false;
     }
-    if (item.sdrCloserOrManager && !isManager && !isMaster && !isCloser && !isSdr) {
+    if (item.sdrCloserOrManager && !isManager && !isTeamMaster && !isCloser && !isSdr) {
       return false;
     }
     if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
+      return false;
+    }
+    if (item.requiresTransferRoutes && !activeTeam?.hasTransferRoutes && !activeTeam?.canTransferAccountLeads) {
+      return false;
+    }
+    if (item.requiresAssociadosQueue && !operationalAccess.associadosQueue) {
       return false;
     }
     if (item.featureSlug && !hasAccess(item.featureSlug)) {
@@ -195,7 +244,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     setIsTeamActivityCollapsed(window.localStorage.getItem(teamActivityStorageKey) === "true");
     setIsNavCollapsed(window.localStorage.getItem(navStorageKey) === "true");
     setIsEmailCollapsed(window.localStorage.getItem(emailStorageKey) === "true");
-  }, [teamActivityStorageKey, navStorageKey, emailStorageKey]);
+    setIsWhatsAppCollapsed(window.localStorage.getItem(whatsAppStorageKey) === "true");
+    setIsBackofficeCollapsed(window.localStorage.getItem(backofficeStorageKey) === "true");
+  }, [teamActivityStorageKey, navStorageKey, emailStorageKey, whatsAppStorageKey, backofficeStorageKey]);
 
   const toggleTeamActivityVisibility = () => {
     setIsTeamActivityCollapsed((previous) => {
@@ -221,6 +272,22 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     });
   };
 
+  const toggleWhatsAppVisibility = () => {
+    setIsWhatsAppCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") window.localStorage.setItem(whatsAppStorageKey, String(next));
+      return next;
+    });
+  };
+
+  const toggleBackofficeVisibility = () => {
+    setIsBackofficeCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") window.localStorage.setItem(backofficeStorageKey, String(next));
+      return next;
+    });
+  };
+
   const formatInitials = (fullName: string) =>
     fullName
       .split(" ")
@@ -231,12 +298,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       .slice(0, 2);
 
   const getItemBadge = (item: SidebarItem) => {
-    if (item.featureSlug && isBeta(item.featureSlug)) return getSidebarStatusBadge("beta")
+    if (item.featureSlug && showsBetaLabel(item.featureSlug)) return getSidebarStatusBadge("beta")
     return getSidebarStatusBadge(item.status)
   }
 
   const visibleNavigationItems = navigationItems.filter(canShowItem)
+  const visibleBackofficeItems = backofficeItems.filter(canShowItem)
   const visibleEmailItems = emailItems.filter(canShowItem)
+  const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)
 
   return (
@@ -259,6 +328,10 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
               teams={teams.map((team) => ({
                 id: team.id,
                 name: team.name,
+                accountName: team.accountName,
+                isOwnAccount: team.isOwnAccount,
+                isAccessible: team.isAccessible,
+                isAssociateAccount: team.isAssociateAccount,
               }))}
               activeTeamId={activeTeamId}
               onChange={setActiveTeamId}
@@ -309,7 +382,48 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
             </SidebarGroup>
             )}
-            {(isManager || isMaster || isCloser) &&
+            {visibleBackofficeItems.length > 0 &&
+              !(activeTeam?.isAssociateAccount && activeTeam?.isOwnAccount) && (
+              <SidebarGroup>
+                <SidebarGroupLabel
+                  className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors"
+                  onClick={toggleBackofficeVisibility}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    Backoffice
+                    {isBackofficeCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </span>
+                </SidebarGroupLabel>
+                {!isBackofficeCollapsed && (
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {visibleBackofficeItems.map((item) => {
+                        const statusBadge = getItemBadge(item);
+
+                        return (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                              <Link href={item.url} className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <item.icon className="size-4 shrink-0" />
+                                  <span>{item.title}</span>
+                                </span>
+                                {statusBadge && (
+                                  <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                    {statusBadge.label}
+                                  </span>
+                                )}
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
+              </SidebarGroup>
+            )}
+            {(isManager || isTeamMaster || isCloser) &&
               hasAccess(FEATURE_SLUGS.EMAIL) &&
               visibleEmailItems.length > 0 && (
               <SidebarGroup>
@@ -350,6 +464,57 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroup>
             )}
+            {hasAccess(FEATURE_SLUGS.WHATSAPP) && visibleWhatsAppItems.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel
+                  className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors"
+                  onClick={toggleWhatsAppVisibility}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    <span className="flex items-center gap-2">
+                      WhatsApp
+                      {isWhatsAppCollapsed && unreadMessages > 0 && (
+                        <span className="flex min-w-4.5 items-center justify-center rounded-full bg-destructive px-1 h-4 text-[10px] font-semibold leading-none text-destructive-foreground">
+                          {unreadMessages > 99 ? "99+" : unreadMessages}
+                        </span>
+                      )}
+                    </span>
+                    {isWhatsAppCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </span>
+                </SidebarGroupLabel>
+                {!isWhatsAppCollapsed && (
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {visibleWhatsAppItems.map((item) => {
+                        const statusBadge = getItemBadge(item)
+                        const hasUnread = (item.unreadCount ?? 0) > 0
+                        return (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                              <Link href={item.url} className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <item.icon className="size-4 shrink-0" />
+                                  <span>{item.title}</span>
+                                </span>
+                                {hasUnread ? (
+                                  <span className="flex min-w-4.5 items-center justify-center rounded-full bg-destructive px-1 h-4 text-[10px] font-semibold leading-none text-destructive-foreground">
+                                    {(item.unreadCount ?? 0) > 99 ? "99+" : item.unreadCount}
+                                  </span>
+                                ) : statusBadge ? (
+                                  <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                    {statusBadge.label}
+                                  </span>
+                                ) : null}
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        )
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
+              </SidebarGroup>
+            )}
             {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
               <SidebarGroup>
                 <SidebarGroupLabel>Integrações</SidebarGroupLabel>
@@ -360,9 +525,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                         <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
                           <span className="flex items-center gap-2">
                             <Plug className="size-4 shrink-0" />
-                            <span>Webhooks & Formulários</span>
+                            <span>Webhooks</span>
                           </span>
-                          {isBeta(FEATURE_SLUGS.CONFIGURATION) && (() => {
+                          {showsBetaLabel(FEATURE_SLUGS.CONFIGURATION) && (() => {
                             const badge = getSidebarStatusBadge("beta")
                             return badge ? (
                               <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>

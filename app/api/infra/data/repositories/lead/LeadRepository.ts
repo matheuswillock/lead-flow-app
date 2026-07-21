@@ -1,7 +1,38 @@
-import { ILeadRepository } from "./ILeadRepository";
-import { Lead, LeadStatus, Prisma } from "@prisma/client";
+import { ILeadRepository, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
+import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
+import { normalizeLeadPhoneDigits } from "@/lib/masks";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
+
+// Statuses terminais não geram eventos de lead time no calendário.
+const CALENDAR_TERMINAL_STATUSES: LeadStatus[] = [
+  "contract_finalized",
+  "opportunityLost",
+  "disqualified",
+  "operator_denied",
+];
+
+// Margem para trás no statusEnteredAt: o vencimento de lead time (statusEnteredAt + regra)
+// pode cair dentro da janela mesmo quando o status começou antes dela.
+const CALENDAR_LEAD_TIME_LOOKBACK_DAYS = 45;
+
+function buildCalendarWindowFilter(windowStart: Date, windowEnd: Date): Prisma.LeadWhereInput {
+  const leadTimeLookbackStart = new Date(
+    windowStart.getTime() - CALENDAR_LEAD_TIME_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+  );
+
+  return {
+    OR: [
+      { meetingDate: { gte: windowStart, lte: windowEnd } },
+      { status: "future_sale", followUpAt: { gte: windowStart, lte: windowEnd } },
+      {
+        status: { notIn: CALENDAR_TERMINAL_STATUSES },
+        statusEnteredAt: { gte: leadTimeLookbackStart, lte: windowEnd },
+      },
+    ],
+  };
+}
 
 const CRM_LEAD_LIST_SELECT = {
   id: true,
@@ -15,6 +46,7 @@ const CRM_LEAD_LIST_SELECT = {
   email: true,
   phone: true,
   cnpj: true,
+  razaoSocial: true,
   age: true,
   currentHealthPlan: true,
   currentValue: true,
@@ -25,7 +57,10 @@ const CRM_LEAD_LIST_SELECT = {
   meetingNotes: true,
   meetingLink: true,
   meetingHeald: true,
+  meetingPresenceConfirmed: true,
+  meetingPresenceConfirmedAt: true,
   meetingType: true,
+  isTransfer: true,
   followUpAt: true,
   followUpNotes: true,
   followUpSourceStatus: true,
@@ -67,6 +102,11 @@ const CRM_LEAD_LIST_SELECT = {
       profileIconUrl: true,
     },
   },
+  proposalReview: {
+    select: {
+      status: true,
+    },
+  },
   _count: {
     select: {
       attachments: true,
@@ -75,9 +115,9 @@ const CRM_LEAD_LIST_SELECT = {
 } satisfies Prisma.LeadSelect;
 
 export class LeadRepository implements ILeadRepository {
-  async create(data: Prisma.LeadCreateInput): Promise<Lead> {
+  async create(data: LeadCreateRepositoryInput): Promise<LeadRecord> {
     return await prisma.lead.create({
-      data,
+      data: data as Prisma.LeadCreateInput,
       include: {
         manager: {
           select: {
@@ -111,7 +151,7 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
-  async findById(id: string): Promise<Lead | null> {
+  async findById(id: string): Promise<LeadRecord | null> {
     return await prisma.lead.findUnique({
       where: { id },
       include: {
@@ -175,6 +215,89 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
+  async findLeadByPhoneInTeam(
+    teamId: string,
+    normalizedPhone: string
+  ): Promise<Pick<Lead, "id"> | null> {
+    const digits = normalizedPhone.replace(/\D/g, "")
+    const leadPhone = normalizeLeadPhoneDigits(normalizedPhone)
+    return prisma.lead.findFirst({
+      where: {
+        teamId,
+        OR: [
+          { phone: normalizedPhone },
+          ...(leadPhone ? [{ phone: leadPhone }] : []),
+          ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+        ],
+      },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+    })
+  }
+
+  async findOrCreateLeadByPhoneInTeam(params: {
+    teamId: string;
+    normalizedPhone: string;
+    leadCode: string;
+    displayName: string;
+    masterId: string;
+    conversationId: string;
+  }): Promise<{ id: string; created: boolean }> {
+    const digits = params.normalizedPhone.replace(/\D/g, "");
+    const leadPhone = normalizeLeadPhoneDigits(params.normalizedPhone);
+
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.teamId} || ':' || ${params.normalizedPhone}))`;
+
+      const existingLead = await tx.lead.findFirst({
+        where: {
+          teamId: params.teamId,
+          OR: [
+            { phone: params.normalizedPhone },
+            ...(leadPhone ? [{ phone: leadPhone }] : []),
+            ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+          ],
+        },
+        select: { id: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingLead) {
+        return { id: existingLead.id, created: false };
+      }
+
+      const lead = await tx.lead.create({
+        data: {
+          manager: { connect: { id: params.masterId } },
+          team: { connect: { id: params.teamId } },
+          leadCode: params.leadCode,
+          name: params.displayName,
+          phone: leadPhone || params.normalizedPhone,
+          status: LeadStatus.new_opportunity,
+          creator: { connect: { id: params.masterId } },
+          updater: { connect: { id: params.masterId } },
+          activities: {
+            create: buildStudioActivityData({
+              type: ActivityType.note,
+              body: "Lead criado automaticamente via WhatsApp",
+              payload: {
+                kind: "lead_creation",
+                channel: "whatsapp",
+                provider: "evolution",
+                source: "whatsapp_inbound",
+                conversationId: params.conversationId,
+                importedAt: new Date().toISOString(),
+              },
+            }),
+          },
+        },
+        select: { id: true },
+      });
+
+      return { id: lead.id, created: true };
+    });
+  }
+
   async findByManagerId(
     managerId: string,
     options?: {
@@ -185,6 +308,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[]; total: number }> {
     const {
@@ -195,12 +319,14 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const where: Prisma.LeadWhereInput = {
       managerId,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -233,10 +359,10 @@ export class LeadRepository implements ILeadRepository {
     return { leads, total };
   }
 
-  async update(id: string, data: Prisma.LeadUpdateInput): Promise<Lead> {
+  async update(id: string, data: LeadUpdateRepositoryInput): Promise<LeadRecord> {
     return await prisma.lead.update({
       where: { id },
-      data,
+      data: data as Prisma.LeadUpdateInput,
       include: {
         manager: {
           select: {
@@ -403,8 +529,10 @@ export class LeadRepository implements ILeadRepository {
         updatedAt: new Date(),
         activities: {
           create: {
-            type: 'status_change',
-            body: reason || 'Lead transferido para novo gestor',
+            ...buildStudioActivityData({
+              type: ActivityType.status_change,
+              body: reason || "Lead transferido para novo gestor",
+            }),
             createdAt: new Date(),
           },
         },
@@ -451,27 +579,49 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
-  async transferToTeam(id: string, targetTeamId: string, closerId: string, sdrId: string | null): Promise<Lead> {
-    return await prisma.lead.update({
-      where: { id },
-      data: {
-        teamId: targetTeamId,
-        closerId,
-        assignedTo: sdrId ?? null,
-        updatedAt: new Date(),
-        activities: {
-          create: {
-            type: 'status_change',
-            body: 'Lead transferido para outro time',
-            createdAt: new Date(),
+  async transferToTeam(
+    id: string,
+    targetTeamId: string,
+    closerId: string,
+    sdrId: string | null,
+    sanitizations: TransferToTeamSanitization[] = [],
+    options?: { targetManagerId?: string }
+  ): Promise<Lead> {
+    return await prisma.$transaction(async (tx) => {
+      for (const sanitization of sanitizations) {
+        const sanitizeData: Prisma.LeadUpdateInput = {};
+        if (sanitization.clearEmail) sanitizeData.email = null;
+        if (sanitization.clearCnpj) sanitizeData.cnpj = null;
+        if (Object.keys(sanitizeData).length > 0) {
+          await tx.lead.update({
+            where: { id: sanitization.leadId },
+            data: sanitizeData,
+          });
+        }
+      }
+
+      return await tx.lead.update({
+        where: { id },
+        data: {
+          teamId: targetTeamId,
+          closerId,
+          assignedTo: sdrId ?? null,
+          ...(options?.targetManagerId ? { managerId: options.targetManagerId } : {}),
+          updatedAt: new Date(),
+          activities: {
+            create: {
+              type: "status_change",
+              body: "Lead transferido para outro time",
+              createdAt: new Date(),
+            },
           },
         },
-      },
-      include: {
-        manager: { select: { id: true, fullName: true, email: true } },
-        assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-        closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-      },
+        include: {
+          manager: { select: { id: true, fullName: true, email: true } },
+          assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+          closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+        },
+      });
     });
   }
 
@@ -483,6 +633,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -491,12 +642,14 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const where: any = {
       managerId,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -532,6 +685,9 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -540,12 +696,16 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
+      calendarWindowStart,
+      calendarWindowEnd,
     } = options || {};
 
     const where: any = {
       teamId,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -559,6 +719,9 @@ export class LeadRepository implements ILeadRepository {
           gte: startDate,
           lte: endDate,
         },
+      }),
+      ...(calendarWindowStart && calendarWindowEnd && {
+        AND: [buildCalendarWindowFilter(calendarWindowStart, calendarWindowEnd)],
       }),
     };
 
@@ -580,6 +743,7 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -587,6 +751,7 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
     } = options || {};
 
     const where: Prisma.LeadWhereInput = {
@@ -595,6 +760,7 @@ export class LeadRepository implements ILeadRepository {
         { createdBy: operatorId },   // Leads criados pelo operator
       ],
       ...(status && { status }),
+      ...(onlyTransfer && { isTransfer: true }),
       ...(search && {
         OR: [
           { leadCode: { contains: search, mode: 'insensitive' } },
@@ -652,6 +818,9 @@ export class LeadRepository implements ILeadRepository {
       search?: string;
       startDate?: Date;
       endDate?: Date;
+      onlyTransfer?: boolean;
+      calendarWindowStart?: Date;
+      calendarWindowEnd?: Date;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -660,9 +829,16 @@ export class LeadRepository implements ILeadRepository {
       search,
       startDate,
       endDate,
+      onlyTransfer,
+      calendarWindowStart,
+      calendarWindowEnd,
     } = options || {};
 
     const filters: Prisma.LeadWhereInput[] = [];
+
+    if (calendarWindowStart && calendarWindowEnd) {
+      filters.push(buildCalendarWindowFilter(calendarWindowStart, calendarWindowEnd));
+    }
 
     if (status) {
       filters.push({ status });
@@ -670,6 +846,10 @@ export class LeadRepository implements ILeadRepository {
 
     if (assignedTo) {
       filters.push({ assignedTo });
+    }
+
+    if (onlyTransfer) {
+      filters.push({ isTransfer: true });
     }
 
     if (search) {
@@ -867,7 +1047,7 @@ export class LeadRepository implements ILeadRepository {
     teamId: string,
     emails: string[],
     cnpjs: string[]
-  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus }>> {
+  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }>> {
     const conflictFilters: Prisma.LeadWhereInput[] = [];
     if (emails.length) conflictFilters.push({ email: { in: emails } });
     if (cnpjs.length) conflictFilters.push({ cnpj: { in: cnpjs } });
@@ -884,6 +1064,170 @@ export class LeadRepository implements ILeadRepository {
         cnpj: true,
         status: true,
       },
+    });
+  }
+
+  private readonly duplicateCandidateSelect = {
+    id: true,
+    leadCode: true,
+    name: true,
+    phone: true,
+    email: true,
+    status: true,
+    createdAt: true,
+  } as const;
+
+  async findDuplicateDirectMatches(
+    teamId: string,
+    input: { phone?: string; email?: string; excludeLeadId?: string; limit?: number }
+  ): Promise<LeadDuplicateCandidateRecord[]> {
+    const orConditions: Prisma.LeadWhereInput[] = [];
+    if (input.phone) orConditions.push({ phone: input.phone });
+    if (input.email) orConditions.push({ email: input.email });
+    if (!orConditions.length) return [];
+
+    return prisma.lead.findMany({
+      where: {
+        teamId,
+        ...(input.excludeLeadId ? { id: { not: input.excludeLeadId } } : {}),
+        OR: orConditions,
+      },
+      select: this.duplicateCandidateSelect,
+      take: input.limit ?? 5,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async findDuplicateScanCandidates(
+    teamId: string,
+    input: { hasPhone: boolean; hasEmail: boolean; excludeLeadId?: string; limit?: number }
+  ): Promise<LeadDuplicateCandidateRecord[]> {
+    const orConditions: Prisma.LeadWhereInput[] = [];
+    if (input.hasPhone) orConditions.push({ phone: { not: null } });
+    if (input.hasEmail) orConditions.push({ email: { not: null } });
+    if (!orConditions.length) return [];
+
+    return prisma.lead.findMany({
+      where: {
+        teamId,
+        ...(input.excludeLeadId ? { id: { not: input.excludeLeadId } } : {}),
+        OR: orConditions,
+      },
+      select: this.duplicateCandidateSelect,
+      take: input.limit ?? 200,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getMergeRelationSnapshot(targetLeadId: string, sourceLeadId: string) {
+    const [
+      targetPortfolio,
+      sourcePortfolio,
+      targetProposalReview,
+      sourceProposalReview,
+      targetSchedule,
+      sourceSchedule,
+    ] = await Promise.all([
+      prisma.leadPortfolio.findUnique({ where: { leadId: targetLeadId }, select: { id: true } }),
+      prisma.leadPortfolio.findUnique({ where: { leadId: sourceLeadId }, select: { id: true } }),
+      prisma.leadProposalReview.findUnique({ where: { leadId: targetLeadId }, select: { id: true } }),
+      prisma.leadProposalReview.findUnique({ where: { leadId: sourceLeadId }, select: { id: true } }),
+      prisma.leadsSchedule.findUnique({ where: { leadId: targetLeadId }, select: { id: true } }),
+      prisma.leadsSchedule.findUnique({ where: { leadId: sourceLeadId }, select: { id: true } }),
+    ]);
+
+    return {
+      targetPortfolio: Boolean(targetPortfolio),
+      sourcePortfolio: Boolean(sourcePortfolio),
+      targetProposalReview: Boolean(targetProposalReview),
+      sourceProposalReview: Boolean(sourceProposalReview),
+      targetSchedule: Boolean(targetSchedule),
+      sourceSchedule: Boolean(sourceSchedule),
+    };
+  }
+
+  async mergeLeadsInTransaction(input: LeadMergeTransactionInput): Promise<void> {
+    const { targetLead, sourceLead, fillPatch, mergedByProfileId, migratePortfolio, migrateProposalReview } =
+      input;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.leadActivity.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.task.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadsSchedule.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadFinalized.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadTransfer.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadAttachment.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadRequiredDocument.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.whatsAppConversation.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.whatsAppMessage.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.lead.updateMany({
+        where: { referrerLeadId: sourceLead.id },
+        data: { referrerLeadId: targetLead.id },
+      });
+
+      if (migratePortfolio) {
+        await tx.leadPortfolio.update({
+          where: { leadId: sourceLead.id },
+          data: { leadId: targetLead.id },
+        });
+      }
+
+      if (migrateProposalReview) {
+        await tx.leadProposalReview.update({
+          where: { leadId: sourceLead.id },
+          data: { leadId: targetLead.id },
+        });
+      }
+
+      await tx.lead.delete({ where: { id: sourceLead.id } });
+
+      if (Object.keys(fillPatch).length > 0) {
+        await tx.lead.update({
+          where: { id: targetLead.id },
+          data: fillPatch,
+        });
+      }
+
+      await tx.leadActivity.create({
+        data: {
+          leadId: targetLead.id,
+          type: ActivityType.note,
+          body: `Lead ${sourceLead.leadCode} mesclado neste registro`,
+          createdBy: mergedByProfileId,
+          payload: {
+            mergedLeadId: sourceLead.id,
+            mergedLeadCode: sourceLead.leadCode,
+            mergedBy: mergedByProfileId,
+          },
+        },
+      });
     });
   }
 }

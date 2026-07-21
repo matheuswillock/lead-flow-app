@@ -1,8 +1,8 @@
 /* Import Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
-@import "@react-email/editor/themes/default.css";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap');
 
 @import "tailwindcss";
+@import "shadcn/tailwind.css";
 @plugin "tailwindcss-animate";
 @custom-variant dark (&:is(.dark *));
 
@@ -422,19 +422,13 @@ h1, h2, h3, h4, h5, h6 {
   .landing-hero-orbs {
     background:
       radial-gradient(55% 45% at 15% 0%, color-mix(in oklab, var(--primary) 18%, transparent) 0%, transparent 60%),
-      radial-gradient(35% 25% at 100% 5%, color-mix(in oklab, var(--brand-rose) 14%, transparent) 0%, transparent 60%),
-      radial-gradient(30% 24% at 82% 18%, color-mix(in oklab, var(--brand-pink) 12%, transparent) 0%, transparent 65%);
-  }
-
-  .landing-features-orbs {
-    background: radial-gradient(50% 30% at 80% 20%, color-mix(in oklab, var(--chart-1) 15%, transparent) 0%, transparent 60%);
+      radial-gradient(35% 25% at 100% 5%, color-mix(in oklab, var(--chart-2) 14%, transparent) 0%, transparent 60%);
   }
 
   .landing-email-orbs {
     background:
-      radial-gradient(50% 40% at 80% 50%, color-mix(in oklab, var(--brand-rose) 20%, transparent) 0%, transparent 60%),
-      radial-gradient(30% 30% at 10% 80%, color-mix(in oklab, var(--primary) 15%, transparent) 0%, transparent 60%),
-      radial-gradient(28% 24% at 72% 22%, color-mix(in oklab, var(--brand-pink) 14%, transparent) 0%, transparent 65%);
+      radial-gradient(50% 40% at 80% 50%, color-mix(in oklab, var(--chart-2) 18%, transparent) 0%, transparent 60%),
+      radial-gradient(30% 30% at 10% 80%, color-mix(in oklab, var(--primary) 15%, transparent) 0%, transparent 60%);
   }
 
   .landing-how-orbs {
@@ -445,10 +439,6 @@ h1, h2, h3, h4, h5, h6 {
     background:
       radial-gradient(45% 35% at 70% 30%, color-mix(in oklab, var(--brand-pink) 18%, transparent) 0%, transparent 60%),
       radial-gradient(28% 24% at 18% 72%, color-mix(in oklab, var(--primary) 12%, transparent) 0%, transparent 65%);
-  }
-
-  .landing-pricing-orbs {
-    background: radial-gradient(45% 45% at 50% 50%, color-mix(in oklab, var(--primary) 18%, transparent) 0%, transparent 60%);
   }
 
   .landing-footer-orb {
@@ -463,13 +453,6 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border));
     background: color-mix(in oklab, var(--primary) 8%, var(--card));
     color: var(--foreground);
-  }
-
-  .landing-primary-gradient {
-    background: linear-gradient(120deg, var(--primary) 0%, var(--brand-rose) 52%, var(--brand-pink) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
   }
 
   .landing-primary-cta {
@@ -502,10 +485,8 @@ h1, h2, h3, h4, h5, h6 {
 
   .landing-surface-card-soft {
     border: 1px solid var(--border);
-    background: color-mix(in oklab, var(--card) 70%, transparent);
-    box-shadow: 0 16px 32px -24px color-mix(in oklab, var(--primary) 18%, transparent);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
+    background: color-mix(in oklab, var(--card) 92%, var(--muted));
+    box-shadow: 0 8px 16px -14px color-mix(in oklab, var(--foreground) 24%, transparent);
   }
 
   .landing-hero-floating {
@@ -526,6 +507,705 @@ h1, h2, h3, h4, h5, h6 {
 
   .pulsing-heart {
     animation: pulse-heart 1.5s ease-in-out infinite;
+  }
+}
+
+.landing-page,
+.dark .landing-page {
+  --background: #ffffff;
+  --foreground: #141118;
+  --card: #ffffff;
+  --card-foreground: #141118;
+  --popover: #ffffff;
+  --popover-foreground: #141118;
+  --primary: #fb5c1e;
+  --primary-foreground: #ffffff;
+  --secondary: #f6f4f8;
+  --secondary-foreground: #141118;
+  --muted: #f6f4f8;
+  --muted-foreground: #57515e;
+  --accent: #fff1e8;
+  --accent-foreground: #141118;
+  --border: color-mix(in oklab, #141118 9%, transparent);
+  --input: color-mix(in oklab, #141118 14%, transparent);
+  --ring: #fb5c1e;
+  --semantic-warning: #ff8a3d;
+  --semantic-danger: #e24e0c;
+  --semantic-success: #0b9e88;
+  --semantic-info: #2b7fff;
+  --semantic-new: #5b3df5;
+  --brand-rose: #ec5199;
+  --brand-pink: #de4fb4;
+  --brand-purple: #a94fd6;
+  --precision-indigo: #5b3df5;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-semantic-success: var(--semantic-success);
+  --color-semantic-warning: var(--semantic-warning);
+  --color-semantic-danger: var(--semantic-danger);
+  --color-semantic-info: var(--semantic-info);
+  --color-semantic-new: var(--semantic-new);
+  --color-precision-indigo: var(--precision-indigo);
+  --landing-ink: #141118;
+  --landing-body: #57515e;
+  --landing-muted: #756e7b;
+  --landing-line: color-mix(in oklab, var(--landing-ink) 9%, transparent);
+  --landing-warm: color-mix(in oklab, var(--primary) 8%, var(--card));
+  --landing-invert: #ffffff;
+  --landing-panel-body: color-mix(in oklab, #ffffff 86%, transparent);
+  --landing-panel-muted: color-mix(in oklab, #ffffff 74%, transparent);
+  --landing-panel-check: color-mix(in oklab, #ffffff 16%, transparent);
+  --landing-panel-border: color-mix(in oklab, #ffffff 24%, transparent);
+  --landing-panel-control: color-mix(in oklab, #ffffff 16%, transparent);
+  --landing-footer-muted: color-mix(in oklab, #ffffff 68%, transparent);
+  --landing-footer-subtle: color-mix(in oklab, #ffffff 48%, transparent);
+  --landing-footer-line: color-mix(in oklab, #ffffff 12%, transparent);
+  background: var(--card);
+  color: var(--landing-ink);
+  color-scheme: light;
+}
+
+.landing-logo-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--semantic-warning));
+  box-shadow: 0 6px 16px -6px color-mix(in oklab, var(--primary) 70%, transparent);
+  color: var(--primary-foreground);
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.text-landing-ink {
+  color: var(--landing-ink);
+}
+
+.text-landing-body {
+  color: var(--landing-body);
+}
+
+.text-landing-muted {
+  color: var(--landing-muted);
+}
+
+.text-landing-invert {
+  color: var(--landing-invert);
+}
+
+.text-landing-panel-body {
+  color: var(--landing-panel-body);
+}
+
+.text-landing-panel-muted {
+  color: var(--landing-panel-muted);
+}
+
+.text-landing-stat {
+  color: color-mix(in oklab, #ffffff 88%, var(--primary));
+}
+
+.text-landing-stat-muted {
+  color: color-mix(in oklab, #ffffff 62%, transparent);
+}
+
+.text-landing-footer-muted {
+  color: var(--landing-footer-muted);
+}
+
+.text-landing-footer-subtle {
+  color: var(--landing-footer-subtle);
+}
+
+.bg-landing-ink {
+  background: var(--landing-ink);
+}
+
+.bg-landing-warm {
+  background: var(--landing-warm);
+}
+
+.bg-landing-panel-check {
+  background: var(--landing-panel-check);
+}
+
+.bg-landing-panel-control {
+  background: var(--landing-panel-control);
+}
+
+.border-landing-line {
+  border-color: var(--landing-line);
+}
+
+.border-landing-panel-border {
+  border-color: var(--landing-panel-border);
+}
+
+.border-landing-footer-line {
+  border-color: var(--landing-footer-line);
+}
+
+.bg-landing-step-line {
+  background: linear-gradient(90deg, var(--primary), transparent);
+}
+
+.landing-page h1,
+.landing-page h2,
+.landing-page h3 {
+  text-wrap: balance;
+}
+
+.landing-page p {
+  text-wrap: pretty;
+}
+
+.landing-nav-pill {
+  border: 1px solid var(--landing-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 76%, transparent);
+  box-shadow: 0 10px 32px -18px color-mix(in oklab, var(--landing-ink) 42%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.landing-hero {
+  background:
+    radial-gradient(120% 120% at 80% -10%, color-mix(in oklab, var(--primary) 12%, var(--card)) 0%, var(--landing-warm) 42%, var(--card) 100%);
+}
+
+.landing-hero-blob {
+  position: absolute;
+  z-index: 0;
+  border-radius: 999px;
+  pointer-events: none;
+  animation: landing-float 8s var(--motion-ease-standard) infinite;
+  will-change: transform;
+}
+
+.landing-hero-blob--primary {
+  width: 120px;
+  height: 120px;
+  top: 120px;
+  right: 8%;
+  background: linear-gradient(135deg, var(--primary), var(--semantic-warning));
+  box-shadow:
+    0 22px 46px -22px color-mix(in oklab, var(--primary) 52%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--primary) 18%, transparent);
+}
+
+.landing-hero-blob--secondary {
+  width: 64px;
+  height: 64px;
+  bottom: 56px;
+  left: 52%;
+  background: linear-gradient(135deg, var(--precision-indigo), var(--brand-pink));
+  box-shadow:
+    0 18px 38px -20px color-mix(in oklab, var(--precision-indigo) 48%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--precision-indigo) 18%, transparent);
+  animation-direction: reverse;
+}
+
+.landing-product-window {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--landing-line);
+  border-radius: 20px;
+  background: var(--card);
+  box-shadow:
+    0 40px 90px -30px color-mix(in oklab, var(--landing-ink) 40%, transparent),
+    0 8px 24px -12px color-mix(in oklab, var(--landing-ink) 22%, transparent);
+  transform: perspective(1600px) rotateY(-9deg) rotateX(3deg);
+  transition: transform 500ms var(--motion-ease-standard);
+}
+
+.landing-product-window:hover {
+  transform: perspective(1600px) rotateY(-4deg) rotateX(1deg);
+}
+
+.landing-window-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid var(--landing-line);
+  background: color-mix(in oklab, var(--muted) 42%, var(--card));
+  padding: 12px 16px;
+}
+
+.landing-window-bar span {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+}
+
+.landing-window-bar span:nth-child(1) {
+  background: var(--semantic-danger);
+}
+
+.landing-window-bar span:nth-child(2) {
+  background: var(--semantic-warning);
+}
+
+.landing-window-bar span:nth-child(3) {
+  background: var(--semantic-success);
+}
+
+.landing-window-bar p {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--landing-muted);
+}
+
+.landing-marquee {
+  width: 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.landing-marquee-track {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 56px;
+  animation: landing-marquee 42s linear infinite;
+}
+
+.landing-marquee:hover .landing-marquee-track {
+  animation-play-state: paused;
+}
+
+.landing-operator-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 56px;
+  white-space: nowrap;
+  font-family: 'Poppins', sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: color-mix(in oklab, var(--landing-muted) 50%, var(--card));
+}
+
+.landing-operator-mark::after {
+  content: "|";
+  color: color-mix(in oklab, var(--landing-muted) 24%, var(--card));
+  font-weight: 400;
+}
+
+.landing-feature-carousel {
+  position: relative;
+}
+
+.landing-feature-viewport {
+  overflow: hidden;
+  border-radius: 28px;
+}
+
+.landing-feature-track {
+  display: flex;
+  transition: transform 550ms var(--motion-ease-standard);
+}
+
+.landing-feature-panel {
+  position: relative;
+  flex: 0 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: clamp(1.5rem, 5vw, 4rem);
+  color: var(--landing-invert);
+}
+
+.landing-feature-panel--orange {
+  background: linear-gradient(155deg, var(--semantic-warning), var(--primary));
+}
+
+.landing-feature-panel--coral {
+  background: linear-gradient(155deg, var(--primary), var(--semantic-danger));
+}
+
+.landing-feature-panel--rose {
+  background: linear-gradient(155deg, var(--semantic-danger), var(--brand-rose));
+}
+
+.landing-feature-panel--magenta {
+  background: linear-gradient(155deg, var(--brand-rose), var(--brand-pink));
+}
+
+.landing-feature-panel--pink {
+  background: linear-gradient(155deg, var(--brand-pink), var(--brand-purple));
+}
+
+.landing-feature-panel--purple {
+  background: linear-gradient(155deg, var(--brand-purple), var(--precision-indigo));
+}
+
+.landing-feature-glow {
+  position: absolute;
+  width: 460px;
+  height: 460px;
+  border-radius: 999px;
+  background: radial-gradient(circle, color-mix(in oklab, #ffffff 26%, transparent), transparent 65%);
+  top: -120px;
+  right: -80px;
+  z-index: 1;
+}
+
+.landing-shot {
+  overflow: hidden;
+  border: 1px solid var(--landing-panel-border);
+  border-radius: 20px;
+  background: var(--card);
+  box-shadow: 0 30px 70px -28px color-mix(in oklab, var(--landing-ink) 58%, transparent);
+}
+
+.landing-feature-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid var(--landing-panel-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  box-shadow: 0 8px 22px color-mix(in oklab, var(--landing-ink) 18%, transparent);
+  transform: translateY(-50%);
+  transition: transform 200ms var(--motion-ease-standard), background 200ms var(--motion-ease-standard);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.landing-feature-arrow:hover {
+  transform: translateY(-50%) scale(1.06);
+}
+
+.landing-feature-arrow--prev {
+  left: -18px;
+}
+
+.landing-feature-arrow--next {
+  right: -18px;
+}
+
+.landing-feature-accent--orange {
+  --landing-feature-active-bg: var(--primary);
+  color: var(--primary);
+}
+
+.landing-feature-accent--coral {
+  --landing-feature-active-bg: var(--semantic-danger);
+  color: var(--semantic-danger);
+}
+
+.landing-feature-accent--rose {
+  --landing-feature-active-bg: var(--brand-rose);
+  color: var(--brand-rose);
+}
+
+.landing-feature-accent--magenta,
+.landing-feature-accent--pink {
+  --landing-feature-active-bg: var(--brand-pink);
+  color: var(--brand-pink);
+}
+
+.landing-feature-accent--purple {
+  --landing-feature-active-bg: var(--precision-indigo);
+  color: var(--precision-indigo);
+}
+
+.landing-feature-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  min-width: 11px;
+  min-height: 11px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--landing-ink) 16%, transparent);
+  color: transparent;
+  font-weight: 700;
+  line-height: 1;
+  transition:
+    background 280ms var(--motion-ease-standard),
+    color 280ms var(--motion-ease-standard),
+    height 280ms var(--motion-ease-standard),
+    width 280ms var(--motion-ease-standard);
+}
+
+.landing-feature-dot--active {
+  width: auto;
+  height: 32px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 16px;
+  background: var(--landing-feature-active-bg, var(--primary));
+  color: var(--landing-invert);
+  font-size: 12px;
+  box-shadow: 0 10px 22px -14px var(--landing-feature-active-bg, var(--primary));
+}
+
+.landing-feature-dot-label {
+  display: block;
+  white-space: nowrap;
+  color: var(--landing-invert);
+}
+
+.landing-stats-band,
+.landing-footer {
+  background: var(--landing-ink);
+  color: var(--landing-invert);
+}
+
+.landing-integration-card {
+  border: 1px solid var(--landing-line);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 26px;
+  transition: transform 200ms var(--motion-ease-standard), box-shadow 200ms var(--motion-ease-standard);
+}
+
+.landing-integration-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 36px -24px color-mix(in oklab, var(--landing-ink) 34%, transparent);
+}
+
+.landing-integration-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  margin-bottom: 16px;
+  border: 1px solid var(--landing-line);
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--muted) 70%, var(--card));
+}
+
+.landing-integration-icon img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.landing-integration-icon--success {
+  color: var(--semantic-success);
+}
+
+.landing-integration-icon--danger {
+  color: var(--semantic-danger);
+}
+
+.landing-integration-icon--info {
+  color: var(--semantic-info);
+}
+
+.landing-integration-icon--new {
+  color: var(--semantic-new);
+}
+
+.landing-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 28px 20px;
+}
+
+.landing-step {
+  position: relative;
+  min-height: 148px;
+  padding-top: 30px;
+}
+
+.landing-step-number {
+  position: absolute;
+  z-index: 0;
+  top: -2px;
+  left: -8px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--primary);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+.landing-faq-item {
+  overflow: hidden;
+  border: 1px solid var(--landing-line);
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.landing-faq-item summary {
+  display: flex;
+  min-height: 64px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--landing-ink);
+}
+
+.landing-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.landing-faq-item p {
+  padding: 0 24px 22px;
+  color: var(--landing-body);
+  line-height: 1.65;
+}
+
+.landing-faq-plus {
+  position: relative;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+}
+
+.landing-faq-plus::before,
+.landing-faq-plus::after {
+  content: "";
+  position: absolute;
+  border-radius: 2px;
+  background: var(--primary);
+  transition: transform 220ms var(--motion-ease-standard), opacity 220ms var(--motion-ease-standard);
+}
+
+.landing-faq-plus::before {
+  width: 14px;
+  height: 2px;
+  top: 12px;
+  left: 6px;
+}
+
+.landing-faq-plus::after {
+  width: 2px;
+  height: 14px;
+  top: 6px;
+  left: 12px;
+}
+
+.landing-faq-item[open] .landing-faq-plus::after {
+  transform: rotate(90deg);
+  opacity: 0;
+}
+
+.landing-final-cta {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  background: linear-gradient(90deg, var(--primary), var(--brand-rose));
+  color: var(--landing-invert);
+  padding: clamp(3rem, 7vw, 5rem) clamp(1.5rem, 5vw, 4rem);
+}
+
+.landing-final-cta-orb {
+  position: absolute;
+  border-radius: 999px;
+  background: color-mix(in oklab, #ffffff 14%, transparent);
+}
+
+.landing-final-cta-orb--left {
+  width: 280px;
+  height: 280px;
+  top: -120px;
+  left: -60px;
+}
+
+.landing-final-cta-orb--right {
+  width: 200px;
+  height: 200px;
+  right: -40px;
+  bottom: -100px;
+}
+
+@keyframes landing-float {
+  0%, 100% {
+    transform: translateY(0) rotate(0);
+  }
+  50% {
+    transform: translateY(-22px) rotate(8deg);
+  }
+}
+
+@keyframes landing-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 720px) {
+  .landing-product-window {
+    transform: none;
+  }
+
+  .landing-product-window:hover {
+    transform: none;
+  }
+
+  .landing-feature-arrow {
+    top: auto;
+    bottom: 52px;
+  }
+
+  .landing-feature-arrow--prev {
+    left: 18px;
+  }
+
+  .landing-feature-arrow--next {
+    right: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-blob,
+  .landing-marquee-track {
+    animation: none;
+  }
+
+  .landing-feature-track,
+  .landing-product-window,
+  .landing-feature-arrow,
+  .landing-integration-card,
+  .landing-feature-dot,
+  .landing-faq-plus::before,
+  .landing-faq-plus::after {
+    transition: none;
   }
 }
 
@@ -663,3 +1343,13 @@ h1, h2, h3, h4, h5, h6 {
 .dialog-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(220, 220, 220, 0.95);
 }
+
+/* Template card banner gradients */
+[data-banner-gradient="0"] { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+[data-banner-gradient="1"] { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
+[data-banner-gradient="2"] { background: linear-gradient(135deg, #ec4899, #f472b6); }
+[data-banner-gradient="3"] { background: linear-gradient(135deg, #10b981, #34d399); }
+[data-banner-gradient="4"] { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+[data-banner-gradient="5"] { background: linear-gradient(135deg, #06b6d4, #38bdf8); }
+[data-banner-gradient="6"] { background: linear-gradient(135deg, #ef4444, #f87171); }
+[data-banner-gradient="7"] { background: linear-gradient(135deg, #84cc16, #a3e635); }

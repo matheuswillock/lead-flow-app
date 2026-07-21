@@ -1,5 +1,6 @@
 export const FEATURE_SLUGS = {
   CRM: "crm",
+  CRM_LEAD_TRANSFERS: "crm-lead-transfers",
   CRM_DASHBOARD: "crm-dashboard",
   CRM_CALENDAR: "crm-calendar",
   CRM_PERFORMANCE: "crm-performance",
@@ -8,6 +9,7 @@ export const FEATURE_SLUGS = {
   CRM_TIME_MANAGE_TEAMS: "crm-time-manage-teams",
   CRM_TIME_MANAGE_USERS: "crm-time-manage-users",
   CRM_WALLET: "crm-wallet",
+  CRM_AUTOMATIONS: "crm-automations",
   EMAIL: "email",
   EMAIL_TEMPLATES: "email-templates",
   EMAIL_CONTACTS: "email-contacts",
@@ -16,7 +18,17 @@ export const FEATURE_SLUGS = {
   EMAIL_ANALYTICS: "email-analytics",
   VOICE: "voice",
   VOICE_CAMPAIGNS: "voice-campaigns",
+  EMAIL_SETTINGS: "email-settings",
+  EMAIL_UNSUBSCRIBE: "email-unsubscribe",
   CONFIGURATION: "integration",
+  PUBLIC_FORMS: "public-forms",
+  WHATSAPP: "whatsapp",
+  WHATSAPP_SETTINGS: "whatsapp-settings",
+  WHATSAPP_AUTO_RESPONSES: "whatsapp-auto-responses",
+  RADAR: "radar",
+  STUDIO_BOT: "studio-bot",
+  STUDIO_BOT_OPS: "studio-bot-ops",
+  STUDIO_BOT_AI: "studio-bot-ai",
 } as const
 
 export type FeatureSlug = (typeof FEATURE_SLUGS)[keyof typeof FEATURE_SLUGS]

@@ -3,6 +3,15 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
+import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import {
+  getDashboardTeamScopeFromRequest,
+  resolveDashboardTeamScope,
+} from "@/app/api/v1/utils/dashboardTeamScope";
+
+function resolveTeamFilter(teamIds: string[]) {
+  return teamIds.length === 1 ? { teamId: teamIds[0] } : { teamId: { in: teamIds } };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,30 +24,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(output, { status: 403 });
     }
 
+    const teamScope = getDashboardTeamScopeFromRequest(request);
+    const scopeResult = await resolveDashboardTeamScope(teamAccess.access, teamScope);
+    if ("error" in scopeResult) {
+      return NextResponse.json(scopeResult.error, { status: scopeResult.status });
+    }
+
+    const { teamIds } = scopeResult;
+    const teamFilter = resolveTeamFilter(teamIds);
+
     // Data de hoje (início e fim do dia)
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
     // Construir where clause baseado na role
-    let whereClause: any;
+    let whereClause: object;
 
     if (isManagerLikeRole(teamAccess.access.teamMember.role)) {
-      // Manager: buscar agendamentos do time
       whereClause = {
-        lead: {
-          teamId: teamAccess.access.teamId,
-        },
+        lead: teamFilter,
         date: {
-          gte: startOfDay, // Desde o início do dia
-          lte: endOfDay, // Até o fim do dia
+          gte: startOfDay,
+          lte: endOfDay,
         },
       };
     } else {
-      // Operator: buscar apenas agendamentos atribuídos a ele
       whereClause = {
         lead: {
-          teamId: teamAccess.access.teamId,
+          ...teamFilter,
           OR: [
             { assignedTo: teamAccess.access.profileId },
             { createdBy: teamAccess.access.profileId },
@@ -51,7 +65,6 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Buscar agendamentos com informações do lead e responsável
     const schedules = await prisma.leadsSchedule.findMany({
       where: whereClause,
       select: {
@@ -68,31 +81,45 @@ export async function GET(request: NextRequest) {
             name: true,
             email: true,
             phone: true,
+            meetingHeald: true,
+            meetingPresenceConfirmed: true,
             assignedTo: true,
             assignee: {
               select: {
                 id: true,
                 fullName: true,
                 email: true,
-              }
+              },
             },
             manager: {
               select: {
                 id: true,
                 fullName: true,
                 email: true,
-              }
-            }
-          }
-        }
+              },
+            },
+            closer: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+            team: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         date: 'asc',
       },
     });
 
-    // Formatar dados para o frontend
-    const formattedSchedules = schedules.map(schedule => ({
+    const formattedSchedules = schedules.map((schedule) => ({
       id: schedule.id,
       date: schedule.date,
       leadName: schedule.lead.name,
@@ -100,6 +127,12 @@ export async function GET(request: NextRequest) {
       leadPhone: schedule.lead.phone || '',
       responsible: schedule.lead.assignee?.fullName || schedule.lead.manager?.fullName || 'Não atribuído',
       responsibleEmail: schedule.lead.assignee?.email || schedule.lead.manager?.email || '',
+      closerName: schedule.lead.closer?.fullName || 'Não atribuído',
+      closerEmail: schedule.lead.closer?.email || '',
+      meetingHeald: schedule.lead.meetingHeald,
+      meetingPresenceConfirmed: schedule.lead.meetingPresenceConfirmed === true,
+      teamName: schedule.lead.team?.name ?? '',
+      teamId: schedule.lead.team?.id ?? '',
       meetingTitle: schedule.meetingTitle,
       notes: schedule.notes,
       meetingLink: schedule.meetingLink,
@@ -110,6 +143,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(output, { status: 200 });
 
   } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
     console.error("Erro ao buscar agendamentos:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });

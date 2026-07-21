@@ -4,11 +4,13 @@ import type {
   SdrOption,
   GuestCandidateOption,
 } from "../services/IPublicLeadFormService";
+import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
 
 export type BootstrapStatus = "loading" | "ready" | "error";
 
 export interface PublicLeadFormState {
   teamId: string;
+  teamName: string;
   legacySupabaseId?: string;
   bootstrapStatus: BootstrapStatus;
   bootstrapError: string | null;
@@ -19,14 +21,19 @@ export interface PublicLeadFormState {
   sdrs: SdrOption[];
   guestCandidates: GuestCandidateOption[];
   timezone: string;
+  hasTransferTargets: boolean;
+  customFieldDefinitions: LeadCustomFieldDefinitionDTO[];
   availableTimes: string[];
   availabilityLoading: boolean;
+  preScheduleOccupiedSlots: number[];
+  preScheduleSlotsLoading: boolean;
   isSubmitting: boolean;
   isSubmitted: boolean;
 }
 
 export interface PublicLeadFormActions {
   fetchAvailability: (closerId: string, date: string) => Promise<void>;
+  fetchPreScheduleSlots: (date: string) => Promise<void>;
   submitLead: (data: {
     name: string;
     email: string;
@@ -44,7 +51,15 @@ export interface PublicLeadFormActions {
     meetingTitle?: string;
     meetingNotes?: string;
     extraGuests?: string[];
-  }) => Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }>;
+    isTransfer?: boolean;
+    saveAsDraft?: boolean;
+    customFields?: Record<string, unknown>;
+  }) => Promise<{
+    isValid: boolean;
+    successMessages: string[];
+    errorMessages: string[];
+    lead?: { razaoSocial?: string | null } | null;
+  }>;
   retryBootstrap: () => void;
   resetForm: () => void;
 }

@@ -1,0 +1,69 @@
+{
+  "id": "a1b2c3d4-0007-4000-8000-000000000007",
+  "name": "bethania-add-note-confirm",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEAD_FLOW_API_BASE_URL }}/api/v1/bot/actions/add_note",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"userLinkId\": \"{{ $json.userLinkId }}\",\n  \"teamId\": \"{{ $json.teamId }}\",\n  \"params\": {\n    \"leadId\": \"{{ $json.leadId }}\",\n    \"body\": \"{{ $json.noteBody }}\"\n  },\n  \"flowId\": \"add_note_confirm\"\n}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-studio-bot-signature",
+              "value": "REPLACE_WITH_HMAC_SIGNATURE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "e1b2c3d4-0001-4000-8000-000000000002",
+      "name": "Confirm Add Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        280,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Confirm Add Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "a1b2c3d4-err0-4000-8000-0000000000ef"
+  },
+  "tags": [
+    {
+      "name": "bethania"
+    }
+  ]
+}

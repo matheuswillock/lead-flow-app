@@ -5,6 +5,7 @@ export type GetLogsParams = {
   pageSize: number
   search?: string
   status?: string
+  category?: string
   from?: string
   to?: string
 }

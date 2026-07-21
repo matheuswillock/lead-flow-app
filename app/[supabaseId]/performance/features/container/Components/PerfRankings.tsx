@@ -2,6 +2,8 @@
 
 import { ArrowUp, Calendar, Check, Handshake, Medal, Trophy, UserPlus, UserX } from "lucide-react";
 import { useState } from "react";
+import { useTeamContext } from "@/app/context/TeamContext";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PerfPersonModal, type PerfPersonModalPerson } from "./PerfPersonModal";
 import { RankRow } from "./RankRow";
 import { usePerformanceContext } from "../../context/PerformanceContext";
@@ -101,16 +103,18 @@ function buildPersonFromDrilldown(
 
 export function PerfRankings() {
   const { data, isLoading } = usePerformanceContext();
+  const { activeFunctions } = useTeamContext();
   const [selected, setSelected] = useState<PerfPersonModalPerson | null>(null);
+
+  const isSelfView = data?.viewMode === "self";
+  const showCloserSection = !isSelfView || activeFunctions.includes("CLOSER");
+  const showSdrSection = !isSelfView || activeFunctions.includes("SDR");
 
   if (isLoading || !data) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {[...Array(2)].map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border bg-card h-75 animate-pulse"
-          />
+          <Skeleton key={i} className="h-75 rounded-xl" />
         ))}
       </div>
     );
@@ -154,8 +158,9 @@ export function PerfRankings() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <div className={`grid grid-cols-1 gap-5 ${showCloserSection && showSdrSection ? "lg:grid-cols-2" : ""}`}>
       {/* CLOSERS — Vendas */}
+      {showCloserSection && (
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 pt-4 pb-3 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -163,21 +168,27 @@ export function PerfRankings() {
               <Trophy size={14} className="text-primary" />
             </div>
             <div>
-              <div className="text-[14px] font-semibold">Ranking de Closers</div>
-              <div className="text-[11px] text-foreground/45">por vendas fechadas no período</div>
+              <div className="text-[14px] font-semibold">
+                {isSelfView ? "Minha performance (Closer)" : "Ranking de Closers"}
+              </div>
+              <div className="text-[11px] text-foreground/45">
+                {isSelfView ? "suas vendas fechadas no período" : "por vendas fechadas no período"}
+              </div>
             </div>
           </div>
         </div>
         <div className="p-2.5">
           {closersFormatted.length === 0 ? (
             <div className="text-center text-foreground/40 text-sm py-6">
-              Nenhum closer com vendas no período
+              {isSelfView
+                ? "Nenhuma venda registrada no período"
+                : "Nenhum closer com vendas no período"}
             </div>
           ) : (
             closersFormatted.map((r, i) => (
               <RankRow
                 key={rankings.closer[i]!.profileId}
-                rank={i + 1}
+                rank={isSelfView ? 1 : i + 1}
                 {...r}
                 suffix="vendas"
                 color="var(--primary)"
@@ -187,8 +198,10 @@ export function PerfRankings() {
           )}
         </div>
       </div>
+      )}
 
       {/* SDRs — Agendamentos */}
+      {showSdrSection && (
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 pt-4 pb-3 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -196,21 +209,27 @@ export function PerfRankings() {
               <Medal size={14} className="text-(--info)" />
             </div>
             <div>
-              <div className="text-[14px] font-semibold">Ranking de SDRs</div>
-              <div className="text-[11px] text-foreground/45">por agendamentos realizados</div>
+              <div className="text-[14px] font-semibold">
+                {isSelfView ? "Minha performance (SDR)" : "Ranking de SDRs"}
+              </div>
+              <div className="text-[11px] text-foreground/45">
+                {isSelfView ? "seus agendamentos no período" : "por agendamentos realizados"}
+              </div>
             </div>
           </div>
         </div>
         <div className="p-2.5">
           {sdrsFormatted.length === 0 ? (
             <div className="text-center text-foreground/40 text-sm py-6">
-              Nenhum SDR com agendamentos no período
+              {isSelfView
+                ? "Nenhum agendamento registrado no período"
+                : "Nenhum SDR com agendamentos no período"}
             </div>
           ) : (
             sdrsFormatted.map((r, i) => (
               <RankRow
                 key={rankings.sdr[i]!.profileId}
-                rank={i + 1}
+                rank={isSelfView ? 1 : i + 1}
                 {...r}
                 suffix="agend."
                 color="var(--info)"
@@ -220,6 +239,7 @@ export function PerfRankings() {
           )}
         </div>
       </div>
+      )}
 
       <PerfPersonModal
         open={selected !== null}

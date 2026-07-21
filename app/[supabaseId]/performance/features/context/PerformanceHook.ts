@@ -1,32 +1,57 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useTeamContext } from '@/app/context/TeamContext';
+import { computeCanUseAllTeamsScope } from '@/lib/teams/canUseAllTeamsScope';
 import { performanceService } from '../services/PerformanceService';
 import {
   DEFAULT_PERFORMANCE_FILTERS,
   type PerformanceData,
   type PerformanceFiltersState,
   type PerformancePreset,
+  type PerformanceTeamScope,
 } from './PerformanceTypes';
 
 export function usePerformanceHook() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const { activeTeamId } = useTeamContext();
+  const { activeTeamId, activeTeam, teams, isTeamMaster } = useTeamContext();
 
   const [data, setData] = useState<PerformanceData | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFiltersState] = useState<PerformanceFiltersState>(DEFAULT_PERFORMANCE_FILTERS);
+  const [teamScope, setTeamScope] = useState<PerformanceTeamScope>('active');
+
+  const memberTeamsInAccount = useMemo(() => {
+    if (!activeTeam?.masterId) return 0;
+    return teams.filter((team) => team.masterId === activeTeam.masterId && !team.isPending).length;
+  }, [teams, activeTeam?.masterId]);
+
+  const canUseAllTeamsScope = useMemo(
+    () =>
+      computeCanUseAllTeamsScope({
+        isTeamMaster,
+        activeTeam,
+        memberTeamsInAccount,
+      }),
+    [isTeamMaster, activeTeam, memberTeamsInAccount]
+  );
+
+  useEffect(() => {
+    if (!canUseAllTeamsScope && teamScope === 'all') {
+      setTeamScope('active');
+    }
+  }, [canUseAllTeamsScope, teamScope]);
 
   const lastFetchKey = useRef<string>('');
 
-  const fetchData = useCallback(async (currentFilters: PerformanceFiltersState) => {
+  const fetchData = useCallback(async (currentFilters: PerformanceFiltersState, currentScope: PerformanceTeamScope) => {
     if (!supabaseId || !activeTeamId) return;
 
-    const key = `${supabaseId}|${activeTeamId}|${JSON.stringify(currentFilters)}`;
+    const key = `${supabaseId}|${activeTeamId}|${currentScope}|${JSON.stringify(currentFilters)}`;
     if (lastFetchKey.current === key) return;
     lastFetchKey.current = key;
 
@@ -34,8 +59,9 @@ export function usePerformanceHook() {
     setError(null);
 
     try {
-      const result = await performanceService.getSalesPerformance(supabaseId, activeTeamId, currentFilters);
+      const result = await performanceService.getSalesPerformance(supabaseId, activeTeamId, currentFilters, currentScope);
       setData(result);
+      setLastFetchedAt(new Date());
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao buscar performance';
       setError(message);
@@ -45,8 +71,8 @@ export function usePerformanceHook() {
   }, [supabaseId, activeTeamId]);
 
   useEffect(() => {
-    fetchData(filters);
-  }, [fetchData, filters]);
+    fetchData(filters, teamScope);
+  }, [fetchData, filters, teamScope]);
 
   const setFilter = useCallback(<K extends keyof PerformanceFiltersState>(
     key: K,
@@ -88,9 +114,13 @@ export function usePerformanceHook() {
 
   return {
     data,
+    lastFetchedAt,
     isLoading,
     error,
     filters,
+    teamScope,
+    setTeamScope,
+    canUseAllTeamsScope,
     setFilter,
     setPage,
     setPreset,
@@ -98,7 +128,7 @@ export function usePerformanceHook() {
     clearFilters,
     refetch: () => {
       lastFetchKey.current = '';
-      fetchData(filters);
+      fetchData(filters, teamScope);
     },
   };
 }
