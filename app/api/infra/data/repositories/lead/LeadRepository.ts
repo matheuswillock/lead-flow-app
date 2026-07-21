@@ -48,7 +48,7 @@ function buildCalendarWindowFilter(windowStart: Date, windowEnd: Date): Prisma.L
  * CRM/board não paginam no banco — todos os leads do filtro já estão
  * carregados, então uma segunda query só adicionaria latência sem necessidade.
  */
-function sortByCustomField<T extends { customFieldValues?: Array<{ value: Prisma.JsonValue }> }>(
+function sortByCustomField<T extends { id: string; customFieldValues?: Array<{ value: Prisma.JsonValue }> }>(
   leads: T[],
   sort: CustomFieldSortInput
 ): T[] {
