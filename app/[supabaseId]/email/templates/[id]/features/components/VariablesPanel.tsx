@@ -282,7 +282,7 @@ export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
                 label={v.key}
                 hint={
                   v.valueSource === "RADAR"
-                    ? `CDP: ${v.radarFieldKey ?? "campo não configurado"}`
+                    ? `Radar: ${v.radarFieldKey ?? "campo não configurado"}`
                     : v.description ?? undefined
                 }
               />
