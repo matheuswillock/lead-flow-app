@@ -121,6 +121,22 @@ export function PublicOfferContainer() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-3 text-sm">
+                <p>
+                  Pré-contrato válido até{" "}
+                  <span className="font-medium">
+                    {new Intl.DateTimeFormat("pt-BR", {
+                      dateStyle: "long",
+                    }).format(new Date(share.preContractExpiresAt))}
+                  </span>
+                </p>
+                {share.insuranceAmount !== null ? (
+                  <p>
+                    Valor do seguro:{" "}
+                    <span className="font-medium">{formatPrice(share.insuranceAmount)}</span>
+                  </p>
+                ) : null}
+              </div>
               <Separator />
               <div className="flex flex-col gap-3">
                 {(share.items ?? []).map((item) => (

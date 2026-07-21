@@ -19,4 +19,6 @@ export interface PublicOfferShare {
   contactPhone: string
   items?: PublicOfferItem[]
   expiresAt?: string
+  preContractExpiresAt: string
+  insuranceAmount: number | null
 }

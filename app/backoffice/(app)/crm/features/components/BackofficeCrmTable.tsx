@@ -139,6 +139,10 @@ function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
     lost: "border-destructive/30 bg-destructive/10 text-destructive",
     implementation: "border-border bg-secondary text-secondary-foreground",
     finalized: "border-primary/30 bg-primary/15 text-primary",
+    proposal: "border-primary/30 bg-primary/10 text-primary",
+    future_contact: "border-border bg-secondary text-secondary-foreground",
+    deal_closed: "border-primary/30 bg-primary/15 text-primary",
+    disqualified: "border-destructive/30 bg-destructive/10 text-destructive",
   }
   return classes[status]
 }

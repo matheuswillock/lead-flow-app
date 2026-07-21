@@ -6,6 +6,10 @@ export type BackofficeLeadStatusKey =
   | "lost"
   | "implementation"
   | "finalized"
+  | "proposal"
+  | "future_contact"
+  | "deal_closed"
+  | "disqualified"
 
 export type BackofficeAdhesionStatusKey =
   | "pending"
@@ -83,18 +87,24 @@ export interface BackofficeLeadOfferListItem {
   contactName: string
   contactPhone: string
   productNames: string[]
+  preContractExpiresAt: string
+  insuranceAmount: number | null
+  shareUrl: string | null
 }
 
 export interface BackofficeLeadOfferCreateInput {
   productIds: string[]
   contactName: string
   contactPhone: string
+  preContractExpiresAt: string
+  insuranceAmount?: number | null
 }
 
 export interface BackofficeLeadOfferCreateResult {
   offerId: string
   shareUrl: string
   expiresAt: string
+  preContractExpiresAt: string
 }
 
 export interface BackofficeOfferProductOption {
@@ -188,8 +198,12 @@ export const BACKOFFICE_CRM_COLUMNS: { key: BackofficeLeadStatusKey; title: stri
   { key: "scheduled", title: "Agendado" },
   { key: "no_show", title: "No-show" },
   { key: "new_adhesion", title: "Nova adesão" },
-  { key: "lost", title: "Perdido" },
+  { key: "proposal", title: "Proposta" },
+  { key: "future_contact", title: "Contato futuro" },
   { key: "implementation", title: "Implementação" },
+  { key: "deal_closed", title: "Negócio fechado" },
+  { key: "lost", title: "Perdido" },
+  { key: "disqualified", title: "Desqualificado" },
   { key: "finalized", title: "Finalizado" },
 ]
 

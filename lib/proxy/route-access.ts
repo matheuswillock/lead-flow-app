@@ -29,6 +29,8 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/forms/",
   "/agendamento/",
   "/addon-checkout/",
+  "/oferta/",
+  "/adesao/",
 ] as const
 
 export const TENANT_ROUTE_PREFIXES = [

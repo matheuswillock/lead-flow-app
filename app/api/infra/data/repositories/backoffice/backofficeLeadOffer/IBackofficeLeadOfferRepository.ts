@@ -19,7 +19,10 @@ export type BackofficeLeadOfferRecord = {
   contactName: string
   contactPhone: string
   itemsJson: Prisma.JsonValue
+  preContractExpiresAt: Date
+  insuranceAmount: Prisma.Decimal | null
   shareTokenHash: string
+  tokenPlain: string | null
   shareExpiresAt: Date
   shareGeneratedAt: Date
   shareGeneratedByProfileId: string | null
@@ -34,7 +37,10 @@ export type CreateBackofficeLeadOfferInput = {
   contactName: string
   contactPhone: string
   itemsJson: BackofficeLeadOfferItemSnapshot[]
+  preContractExpiresAt: Date
+  insuranceAmount: number | null
   shareTokenHash: string
+  tokenPlain: string
   shareExpiresAt: Date
   shareGeneratedByProfileId: string
 }
@@ -44,5 +50,6 @@ export interface IBackofficeLeadOfferRepository {
   findById(id: string): Promise<BackofficeLeadOfferRecord | null>
   findByLeadId(leadId: string): Promise<BackofficeLeadOfferRecord[]>
   findByShareTokenHash(shareTokenHash: string): Promise<BackofficeLeadOfferRecord | null>
+  revokeActiveByLeadId(leadId: string, revokedAt: Date): Promise<number>
   revoke(id: string, revokedAt: Date): Promise<void>
 }
