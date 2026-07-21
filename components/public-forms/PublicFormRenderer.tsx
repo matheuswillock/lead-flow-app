@@ -94,6 +94,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     return order.map((pageKey) => map.get(pageKey)!)
   }, [questions])
   const pageQuestions = pages[Math.min(index, Math.max(0, pages.length - 1))] ?? []
+  const pageHasScheduling = pageQuestions.some((item) => item.type === "scheduling")
   const pageQuestionsKey = useMemo(
     () => pageQuestions.map((item) => item.id).join("\0"),
     [pageQuestions],
@@ -458,9 +459,11 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
               <Button disabled={sending} onClick={goNext}>
                 {sending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
                 {index === pages.length - 1
-                  ? isSimulator
-                    ? "Ver minha simulação"
-                    : "Enviar"
+                  ? pageHasScheduling
+                    ? "Confirmar agendamento"
+                    : isSimulator
+                      ? "Ver minha simulação"
+                      : "Enviar"
                   : "Continuar"}
                 {!sending ? <ArrowRight data-icon="inline-end" /> : null}
               </Button>
@@ -541,30 +544,44 @@ function Question({
 
   if (question.type === "multiple_choice") {
     const selected = Array.isArray(value) ? (value as string[]) : []
+    const maxSelections =
+      typeof question.config?.maxSelections === "number" &&
+      Number.isFinite(question.config.maxSelections)
+        ? Math.floor(question.config.maxSelections)
+        : null
+    const atLimit = maxSelections != null && maxSelections > 0 && selected.length >= maxSelections
     return (
       <div className="grid gap-2.5 sm:grid-cols-2">
-        {question.options.map((option) => (
-          <label
-            key={option.value}
-            className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 text-sm ${
-              selected.includes(option.value)
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-[var(--form-line)]"
-            }`}
-          >
-            <Checkbox
-              checked={selected.includes(option.value)}
-              onCheckedChange={(checked) =>
-                onChange(
-                  checked
-                    ? [...selected, option.value]
-                    : selected.filter((item) => item !== option.value),
-                )
-              }
-            />
-            {option.label}
-          </label>
-        ))}
+        {question.options.map((option) => {
+          const isSelected = selected.includes(option.value)
+          const isDisabled = atLimit && !isSelected
+          return (
+            <label
+              key={option.value}
+              className={`flex items-center gap-3 rounded-xl border p-3.5 text-sm ${
+                isDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              } ${
+                isSelected
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-[var(--form-line)]"
+              }`}
+            >
+              <Checkbox
+                checked={isSelected}
+                disabled={isDisabled}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    if (atLimit) return
+                    onChange([...selected, option.value])
+                    return
+                  }
+                  onChange(selected.filter((item) => item !== option.value))
+                }}
+              />
+              {option.label}
+            </label>
+          )
+        })}
       </div>
     )
   }

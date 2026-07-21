@@ -80,7 +80,7 @@ export function BackofficeLeadOffersSheet({
   onOpenChange: (open: boolean) => void
   onGenerateNew: () => void
 }) {
-  const { listOffers, revokeOffer } = useBackofficeCrm()
+  const { canManage, listOffers, revokeOffer } = useBackofficeCrm()
   const [offers, setOffers] = useState<BackofficeLeadOfferListItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [pendingOfferId, setPendingOfferId] = useState<string | null>(null)
@@ -148,12 +148,14 @@ export function BackofficeLeadOffersSheet({
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex justify-end">
-            <Button type="button" onClick={onGenerateNew}>
-              <Plus data-icon="inline-start" />
-              Gerar nova oferta
-            </Button>
-          </div>
+          {canManage ? (
+            <div className="flex justify-end">
+              <Button type="button" onClick={onGenerateNew}>
+                <Plus data-icon="inline-start" />
+                Gerar nova oferta
+              </Button>
+            </div>
+          ) : null}
 
           {isLoading ? (
             <div className="flex flex-col gap-3">
@@ -181,7 +183,7 @@ export function BackofficeLeadOffersSheet({
                         Expira em {formatDateTime(offer.expiresAt)}
                       </p>
                     </div>
-                    {offer.status === "active" ? (
+                    {canManage && offer.status === "active" ? (
                       <Button
                         type="button"
                         variant="outline"

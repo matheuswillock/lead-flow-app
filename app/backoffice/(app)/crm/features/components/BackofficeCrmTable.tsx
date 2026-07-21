@@ -633,26 +633,30 @@ export function BackofficeCrmTable() {
                       </DropdownMenuGroup>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.stopPropagation()
-                      setOfferLead(lead)
-                      setGenerateOfferOpen(true)
-                    }}
-                  >
-                    <Tag data-icon="inline-start" />
-                    Gerar oferta
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.stopPropagation()
-                      setOfferLead(lead)
-                      setOffersHistoryOpen(true)
-                    }}
-                  >
-                    <History data-icon="inline-start" />
-                    Histórico de ofertas
-                  </DropdownMenuItem>
+                  {canManage ? (
+                    <>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.stopPropagation()
+                          setOfferLead(lead)
+                          setGenerateOfferOpen(true)
+                        }}
+                      >
+                        <Tag data-icon="inline-start" />
+                        Gerar oferta
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.stopPropagation()
+                          setOfferLead(lead)
+                          setOffersHistoryOpen(true)
+                        }}
+                      >
+                        <History data-icon="inline-start" />
+                        Histórico de ofertas
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
