@@ -17,6 +17,10 @@ import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/L
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { LeadsFilterPresetsSheet } from "@/app/[supabaseId]/components/leads-filters/LeadsFilterPresetsSheet";
+import { LeadsCustomFieldFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsCustomFieldFilter";
+import { sortCustomFieldFiltersForComparison } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+import { Separator } from "@/components/ui/separator";
+import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions";
 
 const STATUS_OPTIONS = [
   { value: "new_opportunity", label: "Nova oportunidade" },
@@ -56,6 +60,7 @@ export const normalizeCrmPresetFilters = (raw: unknown): CrmFiltersState => {
     statusFilter: Array.isArray(data.statusFilter) ? data.statusFilter : [],
     assignedUsers: Array.isArray(data.assignedUsers) ? data.assignedUsers : [],
     closerFilter: Array.isArray(data.closerFilter) ? data.closerFilter : [],
+    customFieldFilters: Array.isArray(data.customFieldFilters) ? data.customFieldFilters : [],
   };
 };
 
@@ -73,6 +78,7 @@ const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersStat
   onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
   onlyTransfer: filters.onlyTransfer === true,
   onlyDraft: filters.onlyDraft === true,
+  customFieldFilters: sortCustomFieldFiltersForComparison(filters.customFieldFilters) as CrmFiltersState["customFieldFilters"],
 });
 
 const areCrmFiltersEqual = (left: CrmFiltersState, right: CrmFiltersState) =>
@@ -98,6 +104,10 @@ export function CrmFiltersBar() {
   const isManager = isManagerLikeRole(activeRole ?? undefined);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
+  const { definitions: customFieldDefinitions } = useActiveLeadCustomFieldDefinitions(
+    supabaseId,
+    activeTeamId
+  );
 
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -204,6 +214,9 @@ export function CrmFiltersBar() {
     if (queryJson.onlyMeetingsHeld) parts.push("Reuniões realizadas");
     if (queryJson.onlyTransfer) parts.push("Transferência");
     if (queryJson.onlyDraft) parts.push("Rascunhos");
+    if (queryJson.customFieldFilters.length) {
+      parts.push(`Campos personalizados: ${queryJson.customFieldFilters.length}`);
+    }
     if (parts.length === 0) return "Sem filtros aplicados";
     return parts.join(" • ");
   };
@@ -255,6 +268,12 @@ export function CrmFiltersBar() {
         value={scheduledDateRange}
         onChange={handleScheduledDateChange}
         allowFutureDates
+      />
+      <Separator orientation="vertical" className="h-6" />
+      <LeadsCustomFieldFilter
+        definitions={customFieldDefinitions}
+        values={crmFilters.customFieldFilters}
+        onChange={(values) => setCrmFilter("customFieldFilters", values)}
       />
       <LeadsFilterPresetsSheet
         scope="crm"

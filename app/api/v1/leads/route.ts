@@ -8,6 +8,10 @@ import { LeadStatus } from "@prisma/client";
 import { invalidateLeadCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import {
+  parseCustomFieldFiltersQueryParam,
+  parseCustomFieldSortQueryParam,
+} from "./DTO/requestToListLeadsCustomFields";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -100,6 +104,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
+    let customFieldFilters;
+    let customFieldSort;
+    try {
+      customFieldFilters = parseCustomFieldFiltersQueryParam(searchParams.get('customFieldFilters'));
+      customFieldSort = parseCustomFieldSortQueryParam(searchParams.get('customFieldSort'));
+    } catch (parseError) {
+      console.warn('[LeadsRoute][GET] customFieldFilters/customFieldSort inválido:', parseError);
+      const output = new Output(false, [], ["Filtros de campos personalizados inválidos"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
     const options = {
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
@@ -111,6 +126,8 @@ export async function GET(request: NextRequest) {
         calendarWindowStart: new Date(calendarWindowStart),
         calendarWindowEnd: new Date(calendarWindowEnd),
       }),
+      ...(customFieldFilters && { customFieldFilters }),
+      ...(customFieldSort && { customFieldSort }),
     };
 
     const output = await leadUseCase.getAllLeadsByUserRoleWithCtx(access, options);
