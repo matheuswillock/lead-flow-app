@@ -1,12 +1,17 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react"
+import { format, parseISO } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { ArrowLeft, ArrowRight, CalendarIcon, Check, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   Select,
   SelectContent,
@@ -16,11 +21,14 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { resolveVisibleQuestionIds, validateAnswer } from "@/lib/public-forms/engine"
+import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
+import type { SimulationResult } from "@/lib/public-forms/simulation"
+import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
 import type { PublicFormMetricEventInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import { cn } from "@/lib/utils"
 
 type PublicQuestion = PublicFormSnapshot["questions"][number]
 type SchedulingAnswer = {
-  closerId?: string
   date?: string
   time?: string
   startsAt?: string
@@ -30,6 +38,7 @@ type Props = {
   snapshot: PublicFormSnapshot
   publicId?: string
   preview?: boolean
+  className?: string
 }
 
 function getOrigin() {
@@ -46,7 +55,7 @@ function getOrigin() {
   }
 }
 
-export function PublicFormRenderer({ snapshot, publicId, preview = false }: Props) {
+export function PublicFormRenderer({ snapshot, publicId, preview = false, className }: Props) {
   const [started, setStarted] = useState(false)
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
@@ -54,6 +63,8 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
   const [session, setSession] = useState<string | null>(null)
+  const [phase, setPhase] = useState<"form" | "loading" | "result" | "agenda">("form")
+  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
   const previousVisibleIds = useRef<string[]>([])
 
   const answerList = useMemo(
@@ -64,6 +75,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
     () => resolveVisibleQuestionIds(snapshot, answerList),
     [snapshot, answerList],
   )
+  const visibleIdsKey = useMemo(() => visibleIds.join("\0"), [visibleIds])
   const questions = useMemo(
     () =>
       visibleIds
@@ -71,7 +83,33 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
         .filter((question): question is PublicQuestion => Boolean(question)),
     [visibleIds, snapshot.questions],
   )
-  const question = questions[Math.min(index, Math.max(0, questions.length - 1))]
+  const pages = useMemo(() => {
+    const order: string[] = []
+    const map = new Map<string, PublicQuestion[]>()
+    for (const question of questions) {
+      const pageKey =
+        typeof question.config?.pageKey === "string" && question.config.pageKey
+          ? question.config.pageKey
+          : question.id
+      if (!map.has(pageKey)) {
+        order.push(pageKey)
+        map.set(pageKey, [])
+      }
+      map.get(pageKey)!.push(question)
+    }
+    return order.map((pageKey) => map.get(pageKey)!)
+  }, [questions])
+  const pageQuestions = pages[Math.min(index, Math.max(0, pages.length - 1))] ?? []
+  const pageHasScheduling = pageQuestions.some((item) => item.type === "scheduling")
+  const pageQuestionsKey = useMemo(
+    () => pageQuestions.map((item) => item.id).join("\0"),
+    [pageQuestions],
+  )
+  const pageIsValid = useMemo(
+    () => pageQuestions.every((item) => !validateAnswer(item, answers[item.id])),
+    [pageQuestions, answers],
+  )
+  const isSimulator = snapshot.formKind === "health_plan_simulator"
 
   useEffect(() => {
     if (preview || !publicId) return
@@ -110,28 +148,39 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
   }, [session, track])
 
   useEffect(() => {
-    if (started && question) track("question_viewed", question.id)
-  }, [started, question, track])
+    if (!started || !pageQuestionsKey) return
+    for (const questionId of pageQuestionsKey.split("\0")) {
+      track("question_viewed", questionId)
+    }
+  }, [started, pageQuestionsKey, track])
 
   useEffect(() => {
     if (!started) {
       previousVisibleIds.current = visibleIds
       return
     }
+    const previousKey = previousVisibleIds.current.join("\0")
+    if (previousKey === visibleIdsKey) return
+
     const next = new Set(visibleIds)
     for (const questionId of previousVisibleIds.current) {
       if (!next.has(questionId)) track("question_skipped", questionId)
     }
     previousVisibleIds.current = visibleIds
     setAnswers((current) => {
+      let removed = false
       const pruned: Record<string, unknown> = {}
       for (const [questionId, value] of Object.entries(current)) {
         if (next.has(questionId)) pruned[questionId] = value
+        else removed = true
+      }
+      if (!removed && Object.keys(pruned).length === Object.keys(current).length) {
+        return current
       }
       return pruned
     })
-    setIndex((current) => Math.min(current, Math.max(0, visibleIds.length - 1)))
-  }, [started, track, visibleIds])
+    setIndex((current) => Math.min(current, Math.max(0, pages.length - 1)))
+  }, [started, track, visibleIds, visibleIdsKey, pages.length])
 
   function start() {
     previousVisibleIds.current = visibleIds
@@ -140,19 +189,47 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
   }
 
   function goNext() {
-    if (!question) return
-    const validationError = validateAnswer(question, answers[question.id])
-    if (validationError) {
-      setError(validationError)
-      return
+    if (!pageQuestions.length) return
+    for (const item of pageQuestions) {
+      const validationError = validateAnswer(item, answers[item.id])
+      if (validationError) {
+        setError(validationError)
+        return
+      }
     }
     setError(null)
-    track("question_answered", question.id)
-    if (index < questions.length - 1) {
+    for (const item of pageQuestions) {
+      track("question_answered", item.id)
+    }
+    if (index < pages.length - 1) {
+      const pagesAhead = pages.slice(index + 1)
+      const onlySchedulingAhead = pagesAhead.every((page) =>
+        page.every((item) => item.type === "scheduling"),
+      )
+      if (isSimulator && phase === "form" && onlySchedulingAhead) {
+        void runSimulationFlow()
+        return
+      }
       setIndex(index + 1)
       return
     }
+    if (
+      isSimulator &&
+      phase === "form" &&
+      !pageQuestions.some((item) => item.type === "scheduling")
+    ) {
+      void runSimulationFlow()
+      return
+    }
     void submit()
+  }
+
+  async function runSimulationFlow() {
+    setPhase("loading")
+    await new Promise((resolve) => setTimeout(resolve, 2800))
+    const result = runHealthPlanSimulation(snapshot, answers)
+    setSimulationResult(result)
+    setPhase("result")
   }
 
   async function submit() {
@@ -164,7 +241,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
     const scheduleAnswer = snapshot.questions
       .filter((item) => item.type === "scheduling")
       .map((item) => answers[item.id] as SchedulingAnswer | undefined)
-      .find((item) => item?.closerId && item.startsAt)
+      .find((item) => item?.startsAt)
 
     setSending(true)
     try {
@@ -175,8 +252,8 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
           requestKey: `${session}:${crypto.randomUUID()}`,
           answers: answerList,
           origin: getOrigin(),
-          scheduling: scheduleAnswer
-            ? { closerId: scheduleAnswer.closerId, startsAt: scheduleAnswer.startsAt }
+          scheduling: scheduleAnswer?.startsAt
+            ? { startsAt: scheduleAnswer.startsAt }
             : undefined,
         }),
       })
@@ -197,99 +274,231 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false }: Prop
   }
 
   const theme = snapshot.theme
+  const progressValue =
+    phase === "result" || phase === "agenda"
+      ? 100
+      : ((index + 1) / Math.max(pages.length, 1)) * 100
+
   return (
     <div
-      className="flex min-h-[520px] w-full items-center justify-center bg-[var(--form-background)] p-4 text-[var(--form-text)] sm:p-8"
+      className={cn(
+        "flex w-full flex-col justify-center bg-background text-foreground [color-scheme:light]",
+        className ?? "min-h-[60dvh]",
+      )}
       style={
         {
           "--form-background": theme.backgroundColor,
           "--form-text": theme.textColor,
           "--form-line": theme.lineColor,
+          "--form-accent": "var(--primary)",
+          backgroundColor: "var(--form-background)",
+          color: "var(--form-text)",
         } as React.CSSProperties
       }
     >
-      <div className="w-full max-w-2xl">
-        {done ? (
-          <div className="animate-in fade-in slide-in-from-bottom-2 text-center motion-reduce:animate-none">
-            <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-full border border-[var(--form-line)]">
-              <Check aria-hidden="true" />
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight">{snapshot.successTitle}</h1>
-            {snapshot.successDescription ? (
-              <p className="mt-3 opacity-70">{snapshot.successDescription}</p>
-            ) : null}
-          </div>
-        ) : !started ? (
-          <div className="animate-in fade-in slide-in-from-bottom-2 text-center motion-reduce:animate-none">
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">
-              {snapshot.coverTitle || snapshot.name}
-            </h1>
-            <p className="mx-auto mt-4 max-w-xl text-base opacity-70 sm:text-lg">
-              {snapshot.coverDescription || snapshot.description}
-            </p>
-            <Button className="mt-8" size="lg" onClick={start}>
-              {snapshot.ctaLabel}
-              <ArrowRight data-icon="inline-end" />
-            </Button>
-          </div>
-        ) : question ? (
+      <div className="flex min-h-[60dvh] w-full max-w-[580px] flex-col overflow-hidden rounded-3xl border border-[color-mix(in_oklab,var(--form-line)_80%,transparent)] bg-card text-card-foreground shadow-[0_8px_48px_color-mix(in_oklab,var(--primary)_12%,transparent)]">
+        <div className="h-1 bg-muted">
           <div
-            key={question.id}
-            className="animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
-          >
-            <Progress
-              className="mb-10 h-1"
-              value={((index + 1) / Math.max(questions.length, 1)) * 100}
-            />
-            <p className="mb-2 text-sm opacity-60">
-              {index + 1} de {questions.length}
-            </p>
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-4xl">
-              {question.title}
-              {question.required ? <span aria-hidden="true"> *</span> : null}
-            </h2>
-            {question.description ? (
-              <p className="mt-3 opacity-70">{question.description}</p>
-            ) : null}
-            <div className="mt-8">
-              <Question
-                question={question}
-                value={answers[question.id]}
-                onChange={(value) => {
-                  setAnswers((current) => ({ ...current, [question.id]: value }))
-                  setError(null)
-                }}
-                publicId={publicId}
-                preview={preview}
-                closers={snapshot.eligibleClosers ?? []}
-              />
+            className="h-full bg-primary transition-[width] duration-500 motion-reduce:transition-none"
+            style={{ width: `${started || phase !== "form" ? progressValue : 0}%` }}
+          />
+        </div>
+        <div className="flex flex-1 flex-col justify-center overflow-y-auto p-6 sm:p-10">
+          {done ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 text-center motion-reduce:animate-none">
+              <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-full border border-[var(--form-line)] bg-primary/10">
+                <Check aria-hidden="true" />
+              </div>
+              <h1 className="text-balance text-3xl font-semibold tracking-tight">
+                {snapshot.successTitle}
+              </h1>
+              {snapshot.successDescription ? (
+                <p className="mt-3 text-pretty text-muted-foreground">
+                  {snapshot.successDescription}
+                </p>
+              ) : null}
             </div>
-            {error ? (
-              <Alert variant="destructive" className="mt-5">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-            <div className="mt-8 flex items-center justify-between">
-              <Button
-                variant="ghost"
-                disabled={index === 0 || sending}
-                onClick={() => setIndex(Math.max(0, index - 1))}
-              >
-                <ArrowLeft data-icon="inline-start" />
-                Voltar
-              </Button>
-              <Button disabled={sending} onClick={goNext}>
-                {sending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
-                {index === questions.length - 1 ? "Enviar" : "Continuar"}
-                {!sending ? <ArrowRight data-icon="inline-end" /> : null}
+          ) : phase === "loading" ? (
+            <div className="flex flex-col items-center gap-4 py-16 text-center">
+              <Loader2 className="size-10 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Analisando seu plano atual...</p>
+            </div>
+          ) : phase === "result" && simulationResult ? (
+            <div className="flex flex-col gap-5">
+              <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
+                <h2 className="text-xl font-semibold">
+                  Simulação de {simulationResult.firstName} está pronta
+                </h2>
+                <p className="mt-2 text-sm opacity-90">
+                  Em {simulationResult.tempoLabel} no plano, você acumulou em média{" "}
+                  <span className="font-semibold">{simulationResult.reajustePct}% de reajuste</span>.
+                </p>
+              </div>
+              {simulationResult.prices.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Com seu perfil, recomendamos uma análise personalizada com nosso especialista.
+                </p>
+              ) : (
+                simulationResult.prices.map((price, priceIndex) => (
+                  <div
+                    key={price.op}
+                    className={cn(
+                      "relative rounded-2xl border p-4",
+                      priceIndex === 0
+                        ? "border-primary bg-primary/5"
+                        : "border-[var(--form-line)]",
+                    )}
+                  >
+                    {priceIndex === 0 ? (
+                      <span className="absolute -top-2 right-3 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                        Melhor opção
+                      </span>
+                    ) : null}
+                    <p className="mb-3 font-semibold">{price.op}</p>
+                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                      <div>
+                        <p className="font-semibold text-primary">R$ {price.novoFmt}</p>
+                        <p className="text-[10px] text-muted-foreground">Mensalidade est.</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-primary">R$ {price.ecoFmt}</p>
+                        <p className="text-[10px] text-muted-foreground">Economia/mês</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-primary">R$ {price.ecoAFmt}</p>
+                        <p className="text-[10px] text-muted-foreground">Economia/ano</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Os valores são estimativas baseadas em médias de mercado e podem variar.
+              </p>
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 text-center">
+                <h3 className="font-semibold">Quero garantir essa economia!</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Agende uma reunião gratuita com nosso especialista.
+                </p>
+                <Button
+                  className="mt-4 w-full"
+                  onClick={() => {
+                    const scheduleIndex = pages.findIndex((page) =>
+                      page.some((item) => item.type === "scheduling"),
+                    )
+                    if (scheduleIndex >= 0) {
+                      setIndex(scheduleIndex)
+                      setPhase("form")
+                      return
+                    }
+                    void submit()
+                  }}
+                >
+                  Agendar reunião gratuita
+                  <ArrowRight data-icon="inline-end" />
+                </Button>
+              </div>
+            </div>
+          ) : !started ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none">
+              {isSimulator ? (
+                <span className="mb-4 inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  Simulador gratuito
+                </span>
+              ) : null}
+              <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+                {snapshot.coverTitle || snapshot.name}
+              </h1>
+              <p className="mt-4 max-w-xl text-pretty text-base text-muted-foreground sm:text-lg">
+                {snapshot.coverDescription || snapshot.description}
+              </p>
+              {isSimulator ? (
+                <div className="mt-8 grid grid-cols-3 gap-3">
+                  {[
+                    ["até 40%", "de economia possível"],
+                    ["2 min", "para simular"],
+                    ["100%", "gratuito"],
+                  ].map(([num, lbl]) => (
+                    <div key={num} className="rounded-xl bg-primary/10 p-3">
+                      <p className="text-lg font-semibold text-primary">{num}</p>
+                      <p className="text-[11px] text-muted-foreground">{lbl}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <Button className="mt-8" size="lg" onClick={start}>
+                {snapshot.ctaLabel}
+                <ArrowRight data-icon="inline-end" />
               </Button>
             </div>
-          </div>
-        ) : (
-          <Alert>
-            <AlertDescription>Este formulário não possui perguntas visíveis.</AlertDescription>
-          </Alert>
-        )}
+          ) : pageQuestions.length ? (
+            <div
+              key={pageQuestions.map((item) => item.id).join("-")}
+              className="animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
+            >
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                {index + 1} de {pages.length}
+              </p>
+              <FieldGroup className="gap-8">
+                {pageQuestions.map((item) => (
+                  <Field key={item.id}>
+                    <FieldLabel className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+                      {item.title}
+                      {item.required ? <span aria-hidden="true"> *</span> : null}
+                    </FieldLabel>
+                    {item.description ? (
+                      <FieldDescription className="text-pretty text-sm">
+                        {item.description}
+                      </FieldDescription>
+                    ) : null}
+                    <div className="mt-2">
+                      <Question
+                        question={item}
+                        value={answers[item.id]}
+                        onChange={(value) => {
+                          setAnswers((current) => ({ ...current, [item.id]: value }))
+                          setError(null)
+                        }}
+                        publicId={publicId}
+                        preview={preview}
+                      />
+                    </div>
+                  </Field>
+                ))}
+              </FieldGroup>
+              {error ? (
+                <Alert variant="destructive" className="mt-5">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+              <div className="mt-8 flex items-center justify-between gap-3">
+                <Button
+                  variant="ghost"
+                  disabled={index === 0 || sending}
+                  onClick={() => setIndex(Math.max(0, index - 1))}
+                >
+                  <ArrowLeft data-icon="inline-start" />
+                  Voltar
+                </Button>
+                <Button disabled={sending || !pageIsValid} onClick={goNext}>
+                  {sending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
+                  {index === pages.length - 1
+                    ? pageHasScheduling
+                      ? "Confirmar agendamento"
+                      : isSimulator
+                        ? "Ver minha simulação"
+                        : "Enviar"
+                    : "Continuar"}
+                  {!sending ? <ArrowRight data-icon="inline-end" /> : null}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Alert>
+              <AlertDescription>Este formulário não possui perguntas visíveis.</AlertDescription>
+            </Alert>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -301,14 +510,12 @@ function Question({
   onChange,
   publicId,
   preview,
-  closers,
 }: {
   question: PublicQuestion
   value: unknown
   onChange: (value: unknown) => void
   publicId?: string
   preview: boolean
-  closers: Array<{ id: string; name: string }>
 }) {
   if (question.type === "scheduling") {
     return (
@@ -317,7 +524,6 @@ function Question({
         onChange={onChange}
         publicId={publicId}
         preview={preview}
-        closers={closers}
       />
     )
   }
@@ -331,51 +537,76 @@ function Question({
           ]
         : question.options
     return (
-      <div className="grid gap-3">
+      <RadioGroup
+        value={typeof value === "string" ? value : ""}
+        onValueChange={onChange}
+        className={cn("gap-2.5", options.length > 3 && "sm:grid-cols-2 sm:grid")}
+      >
         {options.map((option) => (
-          <button
-            type="button"
+          <label
             key={option.value}
-            onClick={() => onChange(option.value)}
-            className="rounded-lg border border-[var(--form-line)] p-4 text-left transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--form-line)] motion-reduce:transition-none"
-            data-selected={value === option.value || undefined}
+            className={cn(
+              "flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 text-sm transition-colors motion-reduce:transition-none",
+              value === option.value
+                ? "border-primary bg-primary/10 font-medium text-primary"
+                : "border-input bg-background hover:border-primary hover:bg-primary/5",
+            )}
           >
+            <RadioGroupItem value={option.value} />
             {option.label}
-          </button>
+          </label>
         ))}
-      </div>
+      </RadioGroup>
     )
   }
 
   if (question.type === "multiple_choice") {
     const selected = Array.isArray(value) ? (value as string[]) : []
+    const maxSelections =
+      typeof question.config?.maxSelections === "number" &&
+      Number.isFinite(question.config.maxSelections)
+        ? Math.floor(question.config.maxSelections)
+        : null
+    const atLimit = maxSelections != null && maxSelections > 0 && selected.length >= maxSelections
     return (
-      <div className="grid gap-3">
-        {question.options.map((option) => (
-          <label
-            key={option.value}
-            className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--form-line)] p-4"
-          >
-            <Checkbox
-              checked={selected.includes(option.value)}
-              onCheckedChange={(checked) =>
-                onChange(
-                  checked
-                    ? [...selected, option.value]
-                    : selected.filter((item) => item !== option.value),
-                )
-              }
-            />
-            {option.label}
-          </label>
-        ))}
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {question.options.map((option) => {
+          const isSelected = selected.includes(option.value)
+          const isDisabled = atLimit && !isSelected
+          return (
+            <label
+              key={option.value}
+              className={cn(
+                "flex items-center gap-3 rounded-xl border p-3.5 text-sm",
+                isDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                isSelected
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-input bg-background",
+              )}
+            >
+              <Checkbox
+                checked={isSelected}
+                disabled={isDisabled}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    if (atLimit) return
+                    onChange([...selected, option.value])
+                    return
+                  }
+                  onChange(selected.filter((item) => item !== option.value))
+                }}
+              />
+              {option.label}
+            </label>
+          )
+        })}
       </div>
     )
   }
 
   if (question.type === "consent") {
     return (
-      <label className="flex items-start gap-3 rounded-lg border border-[var(--form-line)] p-4">
+      <label className="flex items-start gap-3 rounded-lg border border-input bg-background p-4">
         <Checkbox
           checked={value === true}
           onCheckedChange={(checked) => onChange(checked === true)}
@@ -385,30 +616,70 @@ function Question({
     )
   }
 
-  if (["text", "crm_field", "custom_field"].includes(question.type)) {
+  if (question.type === "text") {
+    return (
+      <Input
+        autoFocus
+        value={String(value ?? "")}
+        placeholder={question.placeholder ?? "Digite sua resposta"}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-14 border-input bg-background text-lg"
+      />
+    )
+  }
+
+  if (["textarea", "crm_field", "custom_field"].includes(question.type)) {
     return (
       <Textarea
         autoFocus
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "Digite sua resposta"}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-28 border-[var(--form-line)] bg-transparent text-lg"
+        className="min-h-28 border-input bg-background text-lg"
+      />
+    )
+  }
+
+  if (question.type === "currency") {
+    return (
+      <div className="flex items-center overflow-hidden rounded-lg border border-input bg-background">
+        <span className="px-4 text-muted-foreground">R$</span>
+        <Input
+          autoFocus
+          inputMode="decimal"
+          value={String(value ?? "")}
+          placeholder={question.placeholder ?? "0,00"}
+          onChange={(event) => onChange(formatCurrencyBR(event.target.value))}
+          className="h-14 border-0 bg-transparent text-lg shadow-none focus-visible:ring-0"
+        />
+      </div>
+    )
+  }
+
+  if (question.type === "phone") {
+    return (
+      <Input
+        autoFocus
+        type="tel"
+        inputMode="tel"
+        value={String(value ?? "")}
+        placeholder={question.placeholder ?? "(11) 99999-9999"}
+        onChange={(event) => onChange(formatPhoneBR(event.target.value))}
+        className="h-14 border-input bg-background text-lg"
       />
     )
   }
 
   const inputType =
-    question.type === "phone"
-      ? "tel"
-      : question.type === "number"
-        ? "number"
-        : question.type === "date"
-          ? "date"
-          : question.type === "url"
-            ? "url"
-            : question.type === "email"
-              ? "email"
-              : "text"
+    question.type === "number"
+      ? "number"
+      : question.type === "date"
+        ? "date"
+        : question.type === "url"
+          ? "url"
+          : question.type === "email"
+            ? "email"
+            : "text"
   return (
     <Input
       autoFocus
@@ -422,7 +693,7 @@ function Question({
             : event.target.value,
         )
       }
-      className="h-14 border-[var(--form-line)] bg-transparent text-lg"
+      className="h-14 border-input bg-background text-lg"
     />
   )
 }
@@ -432,20 +703,24 @@ function SchedulingQuestion({
   onChange,
   publicId,
   preview,
-  closers,
 }: {
   value: SchedulingAnswer
   onChange: (value: SchedulingAnswer) => void
   publicId?: string
   preview: boolean
-  closers: Array<{ id: string; name: string }>
 }) {
   const [slots, setSlots] = useState<Array<{ time: string; startsAt: string }>>([])
   const [loading, setLoading] = useState(false)
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const selectedDate = value.date ? parseISO(`${value.date}T00:00:00`) : undefined
+  const today = useMemo(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  }, [])
 
   useEffect(() => {
-    if (preview || !publicId || !value.closerId || !value.date) {
+    if (preview || !publicId || !value.date) {
       setSlots([])
       return
     }
@@ -453,7 +728,7 @@ function SchedulingQuestion({
     setLoading(true)
     setAvailabilityError(null)
     void fetch(
-      `/api/v1/public-forms/${publicId}/availability?closerId=${encodeURIComponent(value.closerId)}&date=${encodeURIComponent(value.date)}`,
+      `/api/v1/public-forms/${publicId}/availability?date=${encodeURIComponent(value.date)}`,
       { signal: controller.signal },
     )
       .then(async (response) => {
@@ -473,62 +748,65 @@ function SchedulingQuestion({
       })
       .finally(() => setLoading(false))
     return () => controller.abort()
-  }, [preview, publicId, value.closerId, value.date])
+  }, [preview, publicId, value.date])
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div className="space-y-2">
-        <label className="text-sm font-medium" htmlFor="public-form-closer">
-          Profissional
-        </label>
+    <FieldGroup className="gap-4 sm:grid sm:grid-cols-2">
+      <Field>
+        <FieldLabel htmlFor="public-form-date">Data</FieldLabel>
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              id="public-form-date"
+              type="button"
+              variant="outline"
+              className={cn(
+                "h-10 w-full justify-start border-input bg-background font-normal",
+                !value.date && "text-muted-foreground",
+              )}
+            >
+              <CalendarIcon data-icon="inline-start" />
+              {value.date
+                ? format(parseISO(`${value.date}T00:00:00`), "dd/MM/yyyy", { locale: ptBR })
+                : "Selecione a data"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              disabled={{ before: today }}
+              onSelect={(date) => {
+                if (!date) {
+                  onChange({})
+                  return
+                }
+                const nextDate = format(date, "yyyy-MM-dd")
+                onChange({ date: nextDate })
+                setCalendarOpen(false)
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="public-form-time">Horário</FieldLabel>
         <Select
-          value={value.closerId ?? ""}
-          onValueChange={(closerId) => onChange({ closerId, date: value.date })}
-        >
-          <SelectTrigger
-            id="public-form-closer"
-            className="border-[var(--form-line)] bg-transparent"
-          >
-            <SelectValue placeholder="Selecione" />
-          </SelectTrigger>
-          <SelectContent>
-            {closers.map((closer) => (
-              <SelectItem key={closer.id} value={closer.id}>
-                {closer.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium" htmlFor="public-form-date">
-          Data
-        </label>
-        <Input
-          id="public-form-date"
-          type="date"
-          min={new Date().toISOString().slice(0, 10)}
-          className="border-[var(--form-line)] bg-transparent"
-          value={value.date ?? ""}
-          onChange={(event) =>
-            onChange({ closerId: value.closerId, date: event.target.value || undefined })
-          }
-        />
-      </div>
-      <div className="space-y-2 sm:col-span-2">
-        <label className="text-sm font-medium" htmlFor="public-form-time">
-          Horário
-        </label>
-        <Select
-          disabled={loading || (!preview && slots.length === 0)}
+          disabled={loading || (!preview && (!value.date || slots.length === 0))}
           value={value.time ?? ""}
           onValueChange={(time) => {
-            const selected = slots.find((slot) => slot.time === time)
+            const selected = (
+              preview ? [{ time: "09:00", startsAt: new Date().toISOString() }] : slots
+            ).find((slot) => slot.time === time)
             onChange({ ...value, time, startsAt: selected?.startsAt })
           }}
         >
-          <SelectTrigger id="public-form-time" className="border-[var(--form-line)] bg-transparent">
-            <SelectValue placeholder={loading ? "Consultando..." : "Selecione"} />
+          <SelectTrigger id="public-form-time" className="border-input bg-background">
+            <SelectValue
+              placeholder={
+                !value.date ? "Selecione a data" : loading ? "Consultando..." : "Selecione"
+              }
+            />
           </SelectTrigger>
           <SelectContent>
             {(preview ? [{ time: "09:00", startsAt: new Date().toISOString() }] : slots).map(
@@ -541,7 +819,7 @@ function SchedulingQuestion({
           </SelectContent>
         </Select>
         {availabilityError ? <p className="text-sm text-destructive">{availabilityError}</p> : null}
-      </div>
-    </div>
+      </Field>
+    </FieldGroup>
   )
 }

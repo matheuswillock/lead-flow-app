@@ -1094,9 +1094,11 @@ rejected rejected
 
         PublicFormQuestionType {
             text text
+textarea textarea
 email email
 phone phone
 number number
+currency currency
 date date
 url url
 single_choice single_choice
@@ -1356,6 +1358,21 @@ meeting_scheduled meeting_scheduled
     String qualification_lead_organization "❓"
     String qualification_avg_users "❓"
     String qualification_profile_fit "❓"
+    }
+  
+
+  "backoffice_lead_offers" {
+    String id "🗝️"
+    String leadNameSnapshot 
+    String contactName 
+    String contactPhone 
+    Json itemsJson 
+    String shareTokenHash 
+    DateTime shareExpiresAt 
+    DateTime shareGeneratedAt 
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -3034,6 +3051,7 @@ meeting_scheduled meeting_scheduled
     Boolean schedulingEnabled 
     Int meetingDurationMinutes 
     String schedulingMessage "❓"
+    String formKind 
     String reviewComment "❓"
     DateTime reviewedAt "❓"
     DateTime createdAt 
@@ -3176,6 +3194,8 @@ meeting_scheduled meeting_scheduled
     "backoffice_leads" |o--|o backoffice_webhook_events : "sourceWebhookEvent"
     "backoffice_leads" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_leads" }o--|o backoffice_users : "closerBackofficeUser"
+    "backoffice_lead_offers" }o--|| backoffice_leads : "lead"
+    "backoffice_lead_offers" }o--|o corretor_studio_profiles : "shareGeneratedBy"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionPlan" : "enum:plan"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"

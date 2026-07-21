@@ -33,6 +33,7 @@ export const publicFormDetailSelect = {
   schedulingEnabled: true,
   meetingDurationMinutes: true,
   schedulingMessage: true,
+  formKind: true,
   reviewComment: true,
   reviewedAt: true,
   createdAt: true,

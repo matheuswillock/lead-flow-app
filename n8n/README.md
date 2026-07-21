@@ -7,7 +7,7 @@ Automação conversacional da **Bethânia** orquestrada por N8N. Os workflows de
 ## Pré-requisitos
 
 1. Docker Desktop em execução.
-2. Stack N8N ativa: `bun run n8n:up` (ou `bun run dev` com auto-start).
+2. Stack N8N ativa: `bun run n8n:up` (ou `bun dev -- n8n` com auto-start local).
 3. Next.js em `http://127.0.0.1:3000`.
 4. Evolution API com instância dedicada **`bethania`** (`EVO_BETHANIA_INSTANCE=bethania`).
 5. Arquivo `.env.n8n` (copie de `.env.n8n.example` ou deixe o `bun dev` criar).
@@ -187,7 +187,9 @@ bun run n8n:import   # importa e publica bethania-push-outbound
 bun run n8n:logs
 bun run n8n:down
 bun run n8n:reset
-bun run dev -- --skip-n8n   # dev sem N8N/Bethânia
+bun dev             # dev sem N8N/Bethânia por padrão
+bun dev -- n8n      # dev com N8N/Bethânia
+bun dev -- total    # dev com N8N + Evolution API
 ```
 
 ## Vercel → N8N local (ngrok)

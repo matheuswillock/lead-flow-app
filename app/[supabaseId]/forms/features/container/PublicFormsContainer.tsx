@@ -789,11 +789,92 @@ function AnalyticsDialog({
                 <TabsTrigger value="publications">Publicações</TabsTrigger>
                 <TabsTrigger value="origin">Origem</TabsTrigger>
               </TabsList>
-              <TabsContent
-                value="overview"
-                className="rounded-lg border p-4 text-sm text-muted-foreground"
-              >
-                O resumo considera sessões e eventos anônimos da publicação selecionada.
+              <TabsContent value="overview" className="flex flex-col gap-4 rounded-lg border p-4">
+                {views === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum dado no período selecionado.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-3">
+                      <p className="text-sm font-medium">Funil resumido</p>
+                      {[
+                        ["Visualizações", views],
+                        ["Inícios", starts],
+                        ["Conclusões", completions],
+                        ["Leads", count("lead_created") + count("lead_attached")],
+                        ["Agendamentos", count("meeting_scheduled")],
+                      ].map(([label, value]) => {
+                        const numeric = Number(value)
+                        const width = views > 0 ? Math.max(4, Math.round((numeric / views) * 100)) : 0
+                        return (
+                          <div key={String(label)} className="flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between gap-2 text-sm">
+                              <span>{label}</span>
+                              <span className="font-medium tabular-nums">{value}</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{ width: `${width}%` }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-lg border p-3">
+                          <p className="text-xs text-muted-foreground">Conversão (conclusão)</p>
+                          <p className="mt-1 text-lg font-semibold">
+                            {views ? `${((completions / views) * 100).toFixed(1)}%` : "0%"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <p className="text-xs text-muted-foreground">Início → conclusão</p>
+                          <p className="mt-1 text-lg font-semibold">
+                            {starts ? `${((completions / starts) * 100).toFixed(1)}%` : "0%"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm font-medium">Destaques</p>
+                      <p className="text-sm text-muted-foreground">
+                        {
+                          data.publications.filter((publication) => !publication.endedAt).length
+                        }{" "}
+                        ativas ·{" "}
+                        {
+                          data.publications.filter((publication) => publication.endedAt).length
+                        }{" "}
+                        encerradas
+                      </p>
+                      {(data.origins ?? []).slice(0, 3).length > 0 ? (
+                        <div className="flex flex-col gap-1.5">
+                          <p className="text-xs text-muted-foreground">Top origens</p>
+                          {(data.origins ?? []).slice(0, 3).map((origin) => (
+                            <div
+                              key={origin.source}
+                              className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                            >
+                              <span className="truncate">{origin.source}</span>
+                              <span className="shrink-0 tabular-nums text-muted-foreground">
+                                {origin.sessions} sessão{origin.sessions === 1 ? "" : "ões"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma origem registrada no período.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  O resumo considera sessões e eventos anônimos da publicação selecionada.
+                </p>
               </TabsContent>
               <TabsContent value="funnel" className="space-y-2">
                 {questions.map((question) => {
