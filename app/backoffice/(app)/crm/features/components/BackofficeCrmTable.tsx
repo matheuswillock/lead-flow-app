@@ -870,8 +870,9 @@ export function BackofficeCrmTable() {
           if (!open && !generateOfferOpen) setOfferLead(null)
         }}
         onGenerateNew={() => {
-          setOffersHistoryOpen(false)
+          // Open generator first so offerLead is not cleared while history closes.
           setGenerateOfferOpen(true)
+          setOffersHistoryOpen(false)
         }}
       />
     </div>

@@ -51,4 +51,26 @@ BEGIN
 END $$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "public"."backoffice_lead_offers" TO "service_role";
-GRANT SELECT ON TABLE "public"."backoffice_lead_offers" TO "authenticated";
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "public"."backoffice_lead_offers" TO "authenticated";
+
+ALTER TABLE "public"."backoffice_lead_offers" ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS backoffice_lead_offers_select ON public.backoffice_lead_offers;
+CREATE POLICY backoffice_lead_offers_select ON public.backoffice_lead_offers
+  FOR SELECT TO authenticated
+  USING (public.is_active_backoffice_user());
+
+DROP POLICY IF EXISTS backoffice_lead_offers_insert ON public.backoffice_lead_offers;
+CREATE POLICY backoffice_lead_offers_insert ON public.backoffice_lead_offers
+  FOR INSERT TO authenticated
+  WITH CHECK (public.is_active_backoffice_user());
+
+DROP POLICY IF EXISTS backoffice_lead_offers_update ON public.backoffice_lead_offers;
+CREATE POLICY backoffice_lead_offers_update ON public.backoffice_lead_offers
+  FOR UPDATE TO authenticated
+  USING (public.is_active_backoffice_user());
+
+DROP POLICY IF EXISTS backoffice_lead_offers_delete ON public.backoffice_lead_offers;
+CREATE POLICY backoffice_lead_offers_delete ON public.backoffice_lead_offers
+  FOR DELETE TO authenticated
+  USING (public.is_active_backoffice_user());

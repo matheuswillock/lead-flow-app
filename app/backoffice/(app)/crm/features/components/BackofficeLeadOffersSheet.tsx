@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Ban, Loader2, Plus, Tag } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -85,18 +85,28 @@ export function BackofficeLeadOffersSheet({
   const [isLoading, setIsLoading] = useState(false)
   const [pendingOfferId, setPendingOfferId] = useState<string | null>(null)
   const [offerToRevoke, setOfferToRevoke] = useState<BackofficeLeadOfferListItem | null>(null)
+  const activeLeadIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    activeLeadIdRef.current = lead?.id ?? null
+  }, [lead])
 
   const loadOffers = useCallback(async () => {
     if (!lead) return
+    const requestedLeadId = lead.id
     setIsLoading(true)
     try {
-      const items = await listOffers(lead.id)
+      const items = await listOffers(requestedLeadId)
+      if (activeLeadIdRef.current !== requestedLeadId) return
       setOffers(items)
     } catch (error) {
+      if (activeLeadIdRef.current !== requestedLeadId) return
       console.error("[BackofficeLeadOffersSheet][loadOffers]", error)
       toast.error(error instanceof Error ? error.message : "Erro ao carregar ofertas")
     } finally {
-      setIsLoading(false)
+      if (activeLeadIdRef.current === requestedLeadId) {
+        setIsLoading(false)
+      }
     }
   }, [lead, listOffers])
 
@@ -139,13 +149,7 @@ export function BackofficeLeadOffersSheet({
           </SheetHeader>
 
           <div className="flex justify-end">
-            <Button
-              type="button"
-              onClick={() => {
-                onOpenChange(false)
-                onGenerateNew()
-              }}
-            >
+            <Button type="button" onClick={onGenerateNew}>
               <Plus data-icon="inline-start" />
               Gerar nova oferta
             </Button>
