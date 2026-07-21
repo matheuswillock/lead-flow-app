@@ -10,7 +10,7 @@ export function PublicFormViewContainer() {
 
   if (error) {
     return (
-      <main className="grid min-h-dvh place-items-center p-6">
+      <main className="grid min-h-dvh place-items-center px-4 py-[20dvh]">
         <Alert className="max-w-md" variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -20,15 +20,19 @@ export function PublicFormViewContainer() {
 
   if (isLoading || !snapshot) {
     return (
-      <main className="grid min-h-dvh place-items-center p-6">
-        <Skeleton className="h-[520px] w-full max-w-2xl" />
+      <main className="grid min-h-dvh place-items-center px-4 py-[20dvh]">
+        <Skeleton className="min-h-[60dvh] w-full max-w-[580px]" />
       </main>
     )
   }
 
   return (
-    <main className="min-h-dvh">
-      <PublicFormRenderer snapshot={snapshot} publicId={publicId} />
+    <main className="grid min-h-dvh place-items-center px-4 py-[20dvh]">
+      <PublicFormRenderer
+        snapshot={snapshot}
+        publicId={publicId}
+        className="min-h-[60dvh] w-full max-w-[580px]"
+      />
     </main>
   )
 }

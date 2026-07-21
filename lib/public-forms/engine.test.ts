@@ -73,4 +73,31 @@ describe("motor dos formulários públicos", () => {
       ),
     ).toBe("Informe uma data válida")
   })
+
+  it("exige data e horário no agendamento sem closer", () => {
+    const schedulingQuestion = {
+      ...form().questions[0],
+      type: "scheduling" as const,
+      options: [],
+    }
+    expect(validateAnswer(schedulingQuestion, {})).toBe("Selecione a data e o horário")
+    expect(
+      validateAnswer(schedulingQuestion, { startsAt: "2026-07-21T12:00:00.000Z" }),
+    ).toBeNull()
+  })
+
+  it("respeita maxSelections em multiple_choice", () => {
+    const question = {
+      ...form().questions[0],
+      type: "multiple_choice" as const,
+      options: [
+        { id: "o1", value: "a", label: "A", score: 0 },
+        { id: "o2", value: "b", label: "B", score: 0 },
+        { id: "o3", value: "c", label: "C", score: 0 },
+      ],
+      config: { maxSelections: 2 },
+    }
+    expect(validateAnswer(question, ["a", "b"])).toBeNull()
+    expect(validateAnswer(question, ["a", "b", "c"])).toBe("Selecione no máximo 2 opções")
+  })
 })

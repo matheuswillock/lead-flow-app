@@ -28,7 +28,7 @@ status: implemented
 | Spec canônica | `specs/studio-bot-n8n.md` |
 | Workflows N8N | `n8n/workflows/*.json` + `n8n/README.md` |
 | Docker N8N | `docker-compose.n8n.yml`, `bun run n8n:up` |
-| Dev com N8N | `bun run dev` (auto-start) ou `bun run dev -- --skip-n8n` |
+| Dev com N8N | `bun dev -- n8n` (ou `bun dev -- total` com Evolution) |
 | UI produto (vínculo) | `app/[supabaseId]/account/` → aba Conexões → `BethaniaConnectionCard` |
 | UI backoffice | `app/backoffice/(app)/studio-bot/` (nav **Bethânia**) |
 | APIs bot | `app/api/v1/bot/*`, `app/api/v1/backoffice/bot/*` |
@@ -58,8 +58,8 @@ Corretores e gestores operam em mobilidade e precisam consultar leads, registrar
 | Minha conta / Conexões | `app/[supabaseId]/account/page.tsx` — aba `connections` (Google Calendar) |
 | Webhook de leads externos | `app/api/webhooks/studio/[teamId]/[token]/` (n8n já citado na UI de integrações) |
 | E-mail transacional | Resend |
-| Dev local Evolution (Docker) | `docker-compose.evolution.yml`, `.env.evolution.example`, scripts `evo:*`, `scripts/dev-local.ts` (`--skip-evo`) |
-| Dev local N8N (Docker) | `docker-compose.n8n.yml`, `.env.n8n.example`, scripts `n8n:*`, `dev-local.ts` (`--skip-n8n`) |
+| Dev local Evolution (Docker) | `docker-compose.evolution.yml`, `.env.evolution.example`, scripts `evo:*`, `bun dev -- evolution` |
+| Dev local N8N (Docker) | `docker-compose.n8n.yml`, `.env.n8n.example`, scripts `n8n:*`, `bun dev -- n8n` |
 
 ### Lacunas
 
@@ -306,7 +306,9 @@ bun run n8n:up      # sobe stack
 bun run n8n:logs    # acompanha logs
 bun run n8n:down    # para stack
 bun run n8n:reset   # recria volumes (postgres desatualizado)
-bun run dev -- --skip-n8n   # dev sem Bethânia/N8N
+bun dev             # dev sem Bethânia/N8N por padrão
+bun dev -- n8n      # dev com Bethânia/N8N
+bun dev -- total    # dev com N8N + Evolution API
 ```
 
 #### Troubleshooting
@@ -317,7 +319,7 @@ bun run dev -- --skip-n8n   # dev sem Bethânia/N8N
 | Container Postgres em crash-loop | `bun run n8n:reset` e reiniciar `bun dev` |
 | Webhook N8N não alcança o app | Conferir `host.docker.internal:3000` e firewall |
 | Evolution não alcança N8N | Conferir `N8N_WEBHOOK_BASE_URL` em `.env.n8n` |
-| Dev sem Bethânia | `bun run dev -- --skip-n8n` |
+| Dev sem Bethânia | `bun dev` |
 
 ### Autenticação híbrida
 
@@ -1050,7 +1052,7 @@ sequenceDiagram
 
 - [x] `docker-compose.n8n.yml` + `.env.n8n.example`
 - [x] Scripts `n8n:up`, `n8n:down`, `n8n:reset`, `n8n:logs`
-- [x] Integração `scripts/dev-local.ts` (`--skip-n8n`, bootstrap, overrides)
+- [x] Integração `scripts/dev-local.ts` (opt-in `n8n`, bootstrap, overrides)
 - [x] Documentar vars N8N/Bethânia em `.env.example`
 - [x] Migration `BackofficeBot*` + `BackofficeBotAuthChallenge` com `source`
 - [x] Enum `NotificationType.BETHANIA_AUTH_CODE` + template e-mail Resend
@@ -1109,7 +1111,7 @@ sequenceDiagram
 
 - [x] Caminho do vault Obsidian pessoal: `Corretor studio/Specs/Bethânia — Bot N8N.md`
 - [x] Provedor exato do canal em **produção**: Evolution API em v1; WhatsApp Cloud API como v1.1
-- [x] Hosting N8N em **dev local** — Docker Compose dedicado (`docker-compose.n8n.yml`), scripts `n8n:*`, auto-start em `bun run dev` (resolvido na SPEC)
+- [x] Hosting N8N em **dev local** — Docker Compose dedicado (`docker-compose.n8n.yml`), scripts `n8n:*`, opt-in em `bun dev -- n8n` (resolvido na SPEC)
 - [ ] Hosting N8N em **produção**: self-hosted vs cloud e URL base
 - [ ] Templates HSM pré-aprovados na v1
 - [ ] OPERATOR atribuir tarefa a colega em v1? (recomendação: não — só a si)
@@ -1139,7 +1141,7 @@ sequenceDiagram
 > **A:** Não — apenas automação N8N com menus e comandos fixos.
 
 > **Q:** Como rodar N8N em desenvolvimento local?
-> **A:** Docker Compose dedicado (`docker-compose.n8n.yml`), `.env.n8n.example`, scripts `n8n:*`, auto-start em `bun run dev` com `--skip-n8n`, espelhando o padrão Evolution. Topologia: WhatsApp → Evolution → N8N → Lead Flow API.
+> **A:** Docker Compose dedicado (`docker-compose.n8n.yml`), `.env.n8n.example`, scripts `n8n:*`, opt-in em `bun dev -- n8n` ou `bun dev -- total`. Topologia: WhatsApp → Evolution → N8N → Lead Flow API.
 
 > **Q:** O backoffice pode enviar mensagens manualmente em v1?
 > **A:** Não — inbox backoffice é **read-only**. Reuso visual dos componentes WhatsApp via adaptadores DTO; sem importar `WhatsAppInboxContext` nem use cases de leads.
