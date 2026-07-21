@@ -72,6 +72,43 @@ export interface BackofficeLeadItem {
   qualificationProfileFit: string | null
 }
 
+export type BackofficeLeadOfferStatusKey = "active" | "expired" | "revoked"
+
+export interface BackofficeLeadOfferListItem {
+  id: string
+  status: BackofficeLeadOfferStatusKey
+  expiresAt: string
+  generatedAt: string
+  revokedAt: string | null
+  contactName: string
+  contactPhone: string
+  productNames: string[]
+}
+
+export interface BackofficeLeadOfferCreateInput {
+  productIds: string[]
+  contactName: string
+  contactPhone: string
+}
+
+export interface BackofficeLeadOfferCreateResult {
+  offerId: string
+  shareUrl: string
+  expiresAt: string
+}
+
+export interface BackofficeOfferProductOption {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+  priceMonthly: number | null
+  priceQuarterly: number | null
+  priceSemiannual: number | null
+  priceAnnual: number | null
+  priceLifetime: number | null
+}
+
 export interface BackofficeLeadCreateInput {
   name: string
   email?: string | null
