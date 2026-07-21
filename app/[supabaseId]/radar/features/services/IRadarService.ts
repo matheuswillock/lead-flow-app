@@ -1,10 +1,10 @@
 import type {
-  CdpMetrics,
-  CdpProfileDetail,
-  CdpProfileListItem,
-  CdpSegment,
-  CdpSyncResult,
-} from "../context/CdpTypes"
+  RadarMetrics,
+  RadarProfileDetail,
+  RadarProfileListItem,
+  RadarSegment,
+  RadarSyncResult,
+} from "../context/RadarTypes"
 
 export type ListProfilesParams = {
   page: number
@@ -18,47 +18,47 @@ export type ListProfilesParams = {
   lastSeenTo?: string
 }
 
-export type CdpFieldOption = {
+export type RadarFieldOption = {
   key: string
   label: string
   sourceType: string
 }
 
-export interface ICdpService {
-  syncCrm(supabaseId: string, teamId: string, body?: { leadId?: string }): Promise<CdpSyncResult>
-  syncPortfolio(supabaseId: string, teamId: string): Promise<CdpSyncResult>
-  syncEmail(supabaseId: string, teamId: string): Promise<CdpSyncResult>
-  syncWhatsapp(supabaseId: string, teamId: string): Promise<CdpSyncResult>
+export interface IRadarService {
+  syncCrm(supabaseId: string, teamId: string, body?: { leadId?: string }): Promise<RadarSyncResult>
+  syncPortfolio(supabaseId: string, teamId: string): Promise<RadarSyncResult>
+  syncEmail(supabaseId: string, teamId: string): Promise<RadarSyncResult>
+  syncWhatsapp(supabaseId: string, teamId: string): Promise<RadarSyncResult>
   listProfiles(
     supabaseId: string,
     teamId: string,
     params: ListProfilesParams
   ): Promise<{
-    items: CdpProfileListItem[]
+    items: RadarProfileListItem[]
     total: number
     page: number
     pageSize: number
   }>
-  getProfile(supabaseId: string, teamId: string, id: string): Promise<CdpProfileDetail>
+  getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail>
   listSegments(
     supabaseId: string,
     teamId: string
-  ): Promise<{ segments: CdpSegment[]; metrics: CdpMetrics }>
+  ): Promise<{ segments: RadarSegment[]; metrics: RadarMetrics }>
   listSegmentProfiles(
     supabaseId: string,
     teamId: string,
     segment: string,
     page: number,
     pageSize: number
-  ): Promise<{ items: CdpProfileDetail[]; total: number }>
+  ): Promise<{ items: RadarProfileDetail[]; total: number }>
   listProfileEvents(
     supabaseId: string,
     teamId: string,
     profileId: string,
     page: number,
     pageSize: number
-  ): Promise<{ items: CdpProfileDetail["events"]; total: number }>
-  listAvailableFields(supabaseId: string, teamId: string): Promise<CdpFieldOption[]>
+  ): Promise<{ items: RadarProfileDetail["events"]; total: number }>
+  listAvailableFields(supabaseId: string, teamId: string): Promise<RadarFieldOption[]>
   previewInterpolation(
     supabaseId: string,
     teamId: string,

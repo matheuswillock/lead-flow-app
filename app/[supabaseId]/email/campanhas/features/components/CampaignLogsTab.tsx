@@ -72,7 +72,7 @@ const STATUS_FILTER_OPTIONS = [
 ]
 
 function getAudienceLabel(log: CampaignEmailLog): string {
-  if (log.dispatch?.radarSegmentSlug) return `Segmento CDP: ${log.dispatch.radarSegmentSlug}`
+  if (log.dispatch?.radarSegmentSlug) return `Segmento Radar: ${log.dispatch.radarSegmentSlug}`
   if (log.dispatch?.contactListName) return log.dispatch.contactListName
   return "—"
 }

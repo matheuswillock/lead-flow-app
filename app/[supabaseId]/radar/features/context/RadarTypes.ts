@@ -1,6 +1,6 @@
-export type CdpConsentStatus = "allowed" | "blocked" | "unknown"
+export type RadarConsentStatus = "allowed" | "blocked" | "unknown"
 
-export type CdpProfileListItem = {
+export type RadarProfileListItem = {
   id: string
   displayName: string
   displayPhone: string
@@ -8,25 +8,25 @@ export type CdpProfileListItem = {
   lastSeenAt: string | null
   primarySegment?: string | null
   primarySegmentName?: string | null
-  consents: Array<{ channel: string; status: CdpConsentStatus; reason: string | null }>
+  consents: Array<{ channel: string; status: RadarConsentStatus; reason: string | null }>
   sourceLinks: Array<{ sourceType: string }>
 }
 
-export type CdpSegment = {
+export type RadarSegment = {
   slug: string
   name: string
   description: string
   count: number
 }
 
-export type CdpMetrics = {
+export type RadarMetrics = {
   totalProfiles: number
   marketable: number
   blocked: number
   engaged: number
 }
 
-export type CdpProfileDetail = CdpProfileListItem & {
+export type RadarProfileDetail = RadarProfileListItem & {
   normalizedName: string
   normalizedPhone: string
   primaryDocument: string | null
@@ -48,7 +48,7 @@ export type CdpProfileDetail = CdpProfileListItem & {
   consents: Array<{
     id: string
     channel: string
-    status: CdpConsentStatus
+    status: RadarConsentStatus
     reason: string | null
     sourceType: string | null
     updatedAt: string
@@ -62,7 +62,7 @@ export type CdpProfileDetail = CdpProfileListItem & {
   }>
 }
 
-export type CdpSyncResult = {
+export type RadarSyncResult = {
   created: number
   enriched: number
   skipped: number

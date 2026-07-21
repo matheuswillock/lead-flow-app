@@ -59,29 +59,29 @@ describe("campaignCreateWizardSubmitSchema", () => {
     expect(result.success).toBe(false)
   })
 
-  it("rejects CDP segments above 2000 recipients", () => {
+  it("rejects Radar segments above 2000 recipients", () => {
     const schema = buildCampaignCreateWizardSubmitSchema({
       recipientCount: 2500,
-      recipientSource: "cdp_segment",
+      recipientSource: "radar_segment",
     })
     const result = schema.safeParse({
-      name: "Campanha CDP",
+      name: "Campanha Radar",
       templateId: "11111111-1111-4111-8111-111111111111",
-      recipientSource: "cdp_segment",
+      recipientSource: "radar_segment",
       radarSegmentSlug: "email_marketable",
     })
     expect(result.success).toBe(false)
   })
 
-  it("allows CDP segments up to 2000 recipients", () => {
+  it("allows Radar segments up to 2000 recipients", () => {
     const schema = buildCampaignCreateWizardSubmitSchema({
       recipientCount: 1500,
-      recipientSource: "cdp_segment",
+      recipientSource: "radar_segment",
     })
     const result = schema.safeParse({
-      name: "Campanha CDP",
+      name: "Campanha Radar",
       templateId: "11111111-1111-4111-8111-111111111111",
-      recipientSource: "cdp_segment",
+      recipientSource: "radar_segment",
       radarSegmentSlug: "email_marketable",
     })
     expect(result.success).toBe(true)

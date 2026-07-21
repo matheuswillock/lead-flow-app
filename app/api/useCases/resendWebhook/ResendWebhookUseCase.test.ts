@@ -31,7 +31,7 @@ mock.module("@/app/api/useCases/backofficeEmailCampaign/BackofficeEmailCampaignU
   },
 }))
 
-mock.module("@/app/api/services/cdp/RadarService", () => ({
+mock.module("@/app/api/services/radar/RadarService", () => ({
   radarService: {
     handleEmailWebhookEvent: mock(async () => {}),
   },

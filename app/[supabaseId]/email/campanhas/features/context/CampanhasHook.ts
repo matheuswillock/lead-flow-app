@@ -14,7 +14,7 @@ import type {
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import { cdpService } from "@/app/[supabaseId]/cdp/features/services/CdpService"
+import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
 
 const DEFAULT_PAGE_SIZE = 10
 const service = new CampanhasService()
@@ -42,7 +42,7 @@ export type CampanhasActions = {
   setWizardName: (v: string) => void
   setWizardTemplateId: (v: string) => void
   setWizardContactListId: (v: string) => void
-  setWizardRecipientSource: (v: "contact_list" | "cdp_segment") => void
+  setWizardRecipientSource: (v: "contact_list" | "radar_segment") => void
   setWizardRadarSegmentSlug: (v: string) => void
   setWizardScheduledAt: (v: Date | undefined) => void
   setWizardScheduleIntervalDays: (v: number) => void
@@ -81,7 +81,7 @@ export type CampanhasHookReturn = {
   wizardName: string
   wizardTemplateId: string
   wizardContactListId: string
-  wizardRecipientSource: "contact_list" | "cdp_segment"
+  wizardRecipientSource: "contact_list" | "radar_segment"
   wizardRadarSegmentSlug: string
   wizardScheduledAt: Date | undefined
   wizardScheduleIntervalDays: number
@@ -125,14 +125,14 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardName, setWizardName] = useState("")
   const [wizardTemplateId, setWizardTemplateId] = useState("")
   const [wizardContactListId, setWizardContactListId] = useState("")
-  const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "cdp_segment">("contact_list")
+  const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "radar_segment">("contact_list")
   const [wizardRadarSegmentSlug, setWizardRadarSegmentSlug] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
   const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
   const [wizardCreating, setWizardCreating] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
-  const [radarSegments, setCdpSegments] = useState<RadarSegmentOption[]>([])
+  const [radarSegments, setRadarSegments] = useState<RadarSegmentOption[]>([])
 
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null)
   const [sheetTab, setSheetTab] = useState<CampaignSheetTab>("campaign")
@@ -554,13 +554,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setContactLists(lists)
       try {
         if (activeTeamId) {
-          const segmentsRes = await cdpService.listSegments(supabaseId, activeTeamId)
-          setCdpSegments(segmentsRes.segments as RadarSegmentOption[])
+          const segmentsRes = await radarFrontendService.listSegments(supabaseId, activeTeamId)
+          setRadarSegments(segmentsRes.segments as RadarSegmentOption[])
         } else {
-          setCdpSegments([])
+          setRadarSegments([])
         }
       } catch {
-        setCdpSegments([])
+        setRadarSegments([])
       }
     } catch (err) {
       console.error("[useCampanhas] openWizard fetch error", err)
@@ -574,7 +574,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
   const handleCreateCampaign = useCallback(async () => {
     const hasContactList = wizardRecipientSource === "contact_list" && wizardContactListId
-    const hasRadarSegment = wizardRecipientSource === "cdp_segment" && wizardRadarSegmentSlug
+    const hasRadarSegment = wizardRecipientSource === "radar_segment" && wizardRadarSegmentSlug
     if (!wizardName.trim() || !wizardTemplateId || (!hasContactList && !hasRadarSegment)) {
       toast.error("Preencha o nome, template e origem dos destinatários")
       return

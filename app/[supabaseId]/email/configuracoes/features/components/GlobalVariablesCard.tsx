@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { cdpService } from "@/app/[supabaseId]/cdp/features/services/CdpService"
+import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
 import { Braces, ChevronDown, ChevronUp, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react"
 import {
   AlertDialog,
@@ -59,7 +59,7 @@ function useRadarFieldOptions() {
     if (!supabaseId || !activeTeamId) return
 
     let active = true
-    void cdpService
+    void radarFrontendService
       .listAvailableFields(supabaseId, activeTeamId)
       .then((items) => {
         if (active) setFields(items)
@@ -97,7 +97,7 @@ function useRadarProfileOptions() {
     if (!supabaseId || !activeTeamId) return
 
     let active = true
-    void cdpService
+    void radarFrontendService
       .listProfiles(supabaseId, activeTeamId, { page: 1, pageSize: 20 })
       .then((result) => {
         if (!active) return
@@ -147,7 +147,7 @@ function RadarInterpolationPreview({ variableKey }: { variableKey: string }) {
         <div className="flex flex-col gap-3">
           <Select value={profileId || "__none"} onValueChange={(value) => setProfileId(value === "__none" ? "" : value)}>
             <SelectTrigger>
-              <SelectValue placeholder="Perfil CDP" />
+              <SelectValue placeholder="Perfil Radar" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none">Selecione um perfil...</SelectItem>
@@ -166,7 +166,7 @@ function RadarInterpolationPreview({ variableKey }: { variableKey: string }) {
             onClick={() => {
               if (!supabaseId || !activeTeamId) return
               setLoading(true)
-              void cdpService
+              void radarFrontendService
                 .previewInterpolation(supabaseId, activeTeamId, {
                   profileId,
                   variableKeys: [variableKey],
@@ -295,10 +295,10 @@ function VariableForm({ initialValue, loading, submitLabel, onSubmit, onCancel }
 
         {valueSource === "RADAR" && hasRadar ? (
           <Field>
-            <FieldLabel htmlFor="variable-cdp-field">Campo do Radar</FieldLabel>
+            <FieldLabel htmlFor="variable-radar-field">Campo do Radar</FieldLabel>
             <FieldContent>
               <Select value={radarFieldKey || "__none"} onValueChange={(value) => setRadarFieldKey(value === "__none" ? "" : value)}>
-                <SelectTrigger id="variable-cdp-field" className="w-full" disabled={loading}>
+                <SelectTrigger id="variable-radar-field" className="w-full" disabled={loading}>
                   <SelectValue placeholder="Selecione o campo" />
                 </SelectTrigger>
                 <SelectContent>

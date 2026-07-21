@@ -4,21 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { cdpService } from "../services/CdpService"
-import type { CdpMetrics, CdpProfileDetail, CdpProfileListItem, CdpSegment } from "./CdpTypes"
+import { radarFrontendService } from "../services/RadarService"
+import type { RadarMetrics, RadarProfileDetail, RadarProfileListItem, RadarSegment } from "./RadarTypes"
 
-export type CdpHookReturn = ReturnType<typeof useCdp>
+export type RadarHookReturn = ReturnType<typeof useRadarHookFn>
 
-export function useCdp() {
+export function useRadarHookFn() {
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const { activeTeamId } = useTeamContext()
 
-  const [profiles, setProfiles] = useState<CdpProfileListItem[]>([])
-  const [segments, setSegments] = useState<CdpSegment[]>([])
-  const [metrics, setMetrics] = useState<CdpMetrics | null>(null)
-  const [selectedProfile, setSelectedProfile] = useState<CdpProfileDetail | null>(null)
-  const [detailEvents, setDetailEvents] = useState<CdpProfileDetail["events"]>([])
+  const [profiles, setProfiles] = useState<RadarProfileListItem[]>([])
+  const [segments, setSegments] = useState<RadarSegment[]>([])
+  const [metrics, setMetrics] = useState<RadarMetrics | null>(null)
+  const [selectedProfile, setSelectedProfile] = useState<RadarProfileDetail | null>(null)
+  const [detailEvents, setDetailEvents] = useState<RadarProfileDetail["events"]>([])
   const [detailEventsTotal, setDetailEventsTotal] = useState(0)
   const [detailEventsPage, setDetailEventsPage] = useState(1)
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = useState(false)
@@ -56,8 +56,8 @@ export function useCdp() {
 
     try {
       const [segmentsResult, profilesResult] = await Promise.all([
-        cdpService.listSegments(supabaseId, activeTeamId),
-        cdpService.listProfiles(supabaseId, activeTeamId, {
+        radarFrontendService.listSegments(supabaseId, activeTeamId),
+        radarFrontendService.listProfiles(supabaseId, activeTeamId, {
           page,
           pageSize,
           search: search || undefined,
@@ -74,8 +74,8 @@ export function useCdp() {
       setProfiles(profilesResult.items)
       setTotal(profilesResult.total)
     } catch (loadError) {
-      console.error("[useCdp][loadDashboard]", loadError)
-      setError("Não foi possível carregar os perfis CDP. Tente sincronizar novamente.")
+      console.error("[useRadarHookFn][loadDashboard]", loadError)
+      setError("Não foi possível carregar os perfis Radar. Tente sincronizar novamente.")
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -105,8 +105,8 @@ export function useCdp() {
       setDetailEventsPage(1)
       try {
         const [detail, eventsResult] = await Promise.all([
-          cdpService.getProfile(supabaseId, activeTeamId, profileId),
-          cdpService.listProfileEvents(
+          radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
+          radarFrontendService.listProfileEvents(
             supabaseId,
             activeTeamId,
             profileId,
@@ -118,7 +118,7 @@ export function useCdp() {
         setDetailEvents(eventsResult.items)
         setDetailEventsTotal(eventsResult.total)
       } catch (detailError) {
-        console.error("[useCdp][openProfile]", detailError)
+        console.error("[useRadarHookFn][openProfile]", detailError)
         toast.error("Não foi possível carregar o detalhe do perfil.")
       } finally {
         setIsDetailLoading(false)
@@ -132,7 +132,7 @@ export function useCdp() {
     const nextPage = detailEventsPage + 1
     setIsLoadingMoreEvents(true)
     try {
-      const eventsResult = await cdpService.listProfileEvents(
+      const eventsResult = await radarFrontendService.listProfileEvents(
         supabaseId,
         activeTeamId,
         selectedProfile.id,
@@ -143,7 +143,7 @@ export function useCdp() {
       setDetailEventsPage(nextPage)
       setDetailEventsTotal(eventsResult.total)
     } catch (eventsError) {
-      console.error("[useCdp][loadMoreProfileEvents]", eventsError)
+      console.error("[useRadarHookFn][loadMoreProfileEvents]", eventsError)
       toast.error("Não foi possível carregar mais eventos.")
     } finally {
       setIsLoadingMoreEvents(false)
@@ -168,17 +168,17 @@ export function useCdp() {
     if (isSyncing || !supabaseId || !activeTeamId) return
     setIsSyncing(true)
     try {
-      const crm = await cdpService.syncCrm(supabaseId, activeTeamId)
-      const portfolio = await cdpService.syncPortfolio(supabaseId, activeTeamId)
-      const email = await cdpService.syncEmail(supabaseId, activeTeamId)
+      const crm = await radarFrontendService.syncCrm(supabaseId, activeTeamId)
+      const portfolio = await radarFrontendService.syncPortfolio(supabaseId, activeTeamId)
+      const email = await radarFrontendService.syncEmail(supabaseId, activeTeamId)
       setLastSyncAt(new Date())
       toast.success(
         `Sincronização concluída. Criados: ${crm.created + portfolio.created + email.created}, enriquecidos: ${crm.enriched + portfolio.enriched + email.enriched}.`
       )
       await loadDashboard()
     } catch (syncError) {
-      console.error("[useCdp][runSync]", syncError)
-      toast.error("Falha ao sincronizar a CDP.")
+      console.error("[useRadarHookFn][runSync]", syncError)
+      toast.error("Falha ao sincronizar o Radar.")
     } finally {
       setIsSyncing(false)
     }
@@ -188,13 +188,13 @@ export function useCdp() {
     if (isSyncingWhatsapp || !supabaseId || !activeTeamId) return
     setIsSyncingWhatsapp(true)
     try {
-      await cdpService.syncWhatsapp(supabaseId, activeTeamId)
+      await radarFrontendService.syncWhatsapp(supabaseId, activeTeamId)
       setLastSyncAt(new Date())
       toast.success("Sincronização do WhatsApp concluída.")
       await loadDashboard()
     } catch (syncError) {
-      console.error("[useCdp][runWhatsappSync]", syncError)
-      toast.error("Falha ao sincronizar o WhatsApp na CDP.")
+      console.error("[useRadarHookFn][runWhatsappSync]", syncError)
+      toast.error("Falha ao sincronizar o WhatsApp no Radar.")
     } finally {
       setIsSyncingWhatsapp(false)
     }
@@ -210,13 +210,13 @@ export function useCdp() {
 
     setIsSyncingLead(true)
     try {
-      await cdpService.syncCrm(supabaseId, activeTeamId, { leadId: leadIdentity.normalizedValue })
+      await radarFrontendService.syncCrm(supabaseId, activeTeamId, { leadId: leadIdentity.normalizedValue })
       setLastSyncAt(new Date())
       toast.success("Lead sincronizado com sucesso.")
       await openProfile(selectedProfile.id)
       await loadDashboard()
     } catch (syncError) {
-      console.error("[useCdp][syncLeadProfile]", syncError)
+      console.error("[useRadarHookFn][syncLeadProfile]", syncError)
       toast.error("Falha ao sincronizar o lead.")
     } finally {
       setIsSyncingLead(false)

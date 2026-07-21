@@ -71,7 +71,7 @@ function audienceLabel(campaign: {
   contactList: { name: string } | null
   radarSegmentSlug?: string | null
 }): string {
-  if (campaign.radarSegmentSlug) return `Segmento CDP: ${campaign.radarSegmentSlug}`
+  if (campaign.radarSegmentSlug) return `Segmento Radar: ${campaign.radarSegmentSlug}`
   if (campaign.contactList?.name) return campaign.contactList.name
   return "—"
 }

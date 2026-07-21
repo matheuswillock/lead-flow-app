@@ -47,8 +47,7 @@ export async function getRadarAccess(request: NextRequest): Promise<RadarAccessR
   }
 
   const slugs = (featureOutput.result as { slugs?: string[] } | null)?.slugs ?? []
-  // FEATURE_SLUGS.CDP ainda é "cdp" até R4 — slug muda em R4
-  if (!slugs.includes(FEATURE_SLUGS.CDP)) {
+  if (!slugs.includes(FEATURE_SLUGS.RADAR)) {
     return {
       error: new Output(false, [], ["Add-on Radar não está ativo para este time"], null),
       status: 403,

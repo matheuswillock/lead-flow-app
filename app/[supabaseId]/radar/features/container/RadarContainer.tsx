@@ -39,10 +39,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { useCdpContext } from "../context/CdpContext"
-import type { CdpProfileListItem } from "../context/CdpTypes"
+import { useRadarContext } from "../context/RadarContext"
+import type { RadarProfileListItem } from "../context/RadarTypes"
 
-function eligibilityBadge(profile: CdpProfileListItem) {
+function eligibilityBadge(profile: RadarProfileListItem) {
   const emailConsent = profile.consents.find((c) => c.channel === "email")
   if (emailConsent?.status === "blocked") {
     return (
@@ -78,7 +78,7 @@ function eligibilityBadge(profile: CdpProfileListItem) {
   )
 }
 
-function whatsappBadge(profile: CdpProfileListItem) {
+function whatsappBadge(profile: RadarProfileListItem) {
   const whatsappConsent = profile.consents.find((c) => c.channel === "whatsapp")
   if (!whatsappConsent) {
     return <Badge variant="outline">WhatsApp: Indefinido</Badge>
@@ -89,11 +89,11 @@ function whatsappBadge(profile: CdpProfileListItem) {
   return <Badge variant="secondary">WhatsApp: Apto</Badge>
 }
 
-function consentBadge(profile: CdpProfileListItem) {
+function consentBadge(profile: RadarProfileListItem) {
   return eligibilityBadge(profile)
 }
 
-function sourceBadges(profile: CdpProfileListItem) {
+function sourceBadges(profile: RadarProfileListItem) {
   const types = [...new Set(profile.sourceLinks.map((l) => l.sourceType))]
   return types.map((type) => (
     <Badge key={type} variant="outline" className="text-xs">
@@ -112,7 +112,7 @@ function eventChannelBadge(eventType: string) {
   return null
 }
 
-export function CdpContainer() {
+export function RadarContainer() {
   const {
     profiles,
     segments,
@@ -153,7 +153,7 @@ export function CdpContainer() {
     syncLeadProfile,
     applySegment,
     clearSegment,
-  } = useCdpContext()
+  } = useRadarContext()
 
   const [filtersOpen, setFiltersOpen] = useState(false)
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -165,7 +165,7 @@ export function CdpContainer() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Database data-icon="inline-start" />
-            <h1 className="text-xl font-semibold">CDP</h1>
+            <h1 className="text-xl font-semibold">Radar</h1>
           </div>
           <p className="text-sm text-muted-foreground">
             Perfis unificados para campanhas de e-mail

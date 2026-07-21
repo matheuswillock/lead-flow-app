@@ -119,7 +119,7 @@ mock.module("@/lib/email/inline-email-html", () => ({
 mock.module("@/lib/email/email-rbac", () => ({
   canDispatchEmail: () => true,
 }))
-mock.module("@/lib/cdp/list-segment-recipients", () => ({
+mock.module("@/lib/radar/list-segment-recipients", () => ({
   listRadarSegmentEmailRecipients: mock(async () => []),
 }))
 

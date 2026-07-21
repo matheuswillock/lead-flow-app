@@ -1,11 +1,11 @@
-import type { ICdpService, CdpFieldOption, ListProfilesParams } from "./ICdpService"
+import type { IRadarService, RadarFieldOption, ListProfilesParams } from "./IRadarService"
 import type {
-  CdpMetrics,
-  CdpProfileDetail,
-  CdpProfileListItem,
-  CdpSegment,
-  CdpSyncResult,
-} from "../context/CdpTypes"
+  RadarMetrics,
+  RadarProfileDetail,
+  RadarProfileListItem,
+  RadarSegment,
+  RadarSyncResult,
+} from "../context/RadarTypes"
 
 async function parseOutput<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -14,7 +14,7 @@ async function parseOutput<T>(res: Response): Promise<T> {
   return json.result as T
 }
 
-export class CdpService implements ICdpService {
+export class RadarFrontendService implements IRadarService {
   private readonly baseUrl = "/api/v1/radar"
 
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
@@ -28,7 +28,7 @@ export class CdpService implements ICdpService {
     supabaseId: string,
     teamId: string,
     body?: { leadId?: string }
-  ): Promise<CdpSyncResult> {
+  ): Promise<RadarSyncResult> {
     const res = await fetch(`${this.baseUrl}/sync/crm`, {
       method: "POST",
       headers: {
@@ -37,31 +37,31 @@ export class CdpService implements ICdpService {
       },
       body: JSON.stringify(body ?? {}),
     })
-    return parseOutput<CdpSyncResult>(res)
+    return parseOutput<RadarSyncResult>(res)
   }
 
-  async syncPortfolio(supabaseId: string, teamId: string): Promise<CdpSyncResult> {
+  async syncPortfolio(supabaseId: string, teamId: string): Promise<RadarSyncResult> {
     const res = await fetch(`${this.baseUrl}/sync/portfolio`, {
       method: "POST",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<CdpSyncResult>(res)
+    return parseOutput<RadarSyncResult>(res)
   }
 
-  async syncEmail(supabaseId: string, teamId: string): Promise<CdpSyncResult> {
+  async syncEmail(supabaseId: string, teamId: string): Promise<RadarSyncResult> {
     const res = await fetch(`${this.baseUrl}/sync/email`, {
       method: "POST",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<CdpSyncResult>(res)
+    return parseOutput<RadarSyncResult>(res)
   }
 
-  async syncWhatsapp(supabaseId: string, teamId: string): Promise<CdpSyncResult> {
+  async syncWhatsapp(supabaseId: string, teamId: string): Promise<RadarSyncResult> {
     const res = await fetch(`${this.baseUrl}/sync/whatsapp`, {
       method: "POST",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<CdpSyncResult>(res)
+    return parseOutput<RadarSyncResult>(res)
   }
 
   async listProfiles(supabaseId: string, teamId: string, params: ListProfilesParams) {
@@ -77,13 +77,13 @@ export class CdpService implements ICdpService {
         headers,
       })
       const result = await parseOutput<{
-        items: CdpProfileDetail[]
+        items: RadarProfileDetail[]
         total: number
         page: number
         pageSize: number
       }>(res)
       return {
-        items: result.items as CdpProfileListItem[],
+        items: result.items as RadarProfileListItem[],
         total: result.total,
         page: result.page,
         pageSize: result.pageSize,
@@ -106,30 +106,30 @@ export class CdpService implements ICdpService {
       headers,
     })
     return parseOutput<{
-      items: CdpProfileListItem[]
+      items: RadarProfileListItem[]
       total: number
       page: number
       pageSize: number
     }>(res)
   }
 
-  async getProfile(supabaseId: string, teamId: string, id: string): Promise<CdpProfileDetail> {
+  async getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail> {
     const res = await fetch(`${this.baseUrl}/profiles/${id}`, {
       cache: "no-store",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<CdpProfileDetail>(res)
+    return parseOutput<RadarProfileDetail>(res)
   }
 
   async listSegments(
     supabaseId: string,
     teamId: string
-  ): Promise<{ segments: CdpSegment[]; metrics: CdpMetrics }> {
+  ): Promise<{ segments: RadarSegment[]; metrics: RadarMetrics }> {
     const res = await fetch(`${this.baseUrl}/segments`, {
       cache: "no-store",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<{ segments: CdpSegment[]; metrics: CdpMetrics }>(res)
+    return parseOutput<{ segments: RadarSegment[]; metrics: RadarMetrics }>(res)
   }
 
   async listSegmentProfiles(
@@ -144,7 +144,7 @@ export class CdpService implements ICdpService {
       cache: "no-store",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<{ items: CdpProfileDetail[]; total: number }>(res)
+    return parseOutput<{ items: RadarProfileDetail[]; total: number }>(res)
   }
 
   async listProfileEvents(
@@ -159,15 +159,15 @@ export class CdpService implements ICdpService {
       cache: "no-store",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<{ items: CdpProfileDetail["events"]; total: number }>(res)
+    return parseOutput<{ items: RadarProfileDetail["events"]; total: number }>(res)
   }
 
-  async listAvailableFields(supabaseId: string, teamId: string): Promise<CdpFieldOption[]> {
+  async listAvailableFields(supabaseId: string, teamId: string): Promise<RadarFieldOption[]> {
     const res = await fetch(`${this.baseUrl}/available-fields`, {
       cache: "no-store",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const result = await parseOutput<{ fields?: CdpFieldOption[] }>(res)
+    const result = await parseOutput<{ fields?: RadarFieldOption[] }>(res)
     return result.fields ?? []
   }
 
@@ -188,4 +188,4 @@ export class CdpService implements ICdpService {
   }
 }
 
-export const cdpService = new CdpService()
+export const radarFrontendService = new RadarFrontendService()

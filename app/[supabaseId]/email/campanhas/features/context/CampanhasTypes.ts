@@ -144,7 +144,7 @@ export type CampanhasState = {
   wizardName: string
   wizardTemplateId: string
   wizardContactListId: string
-  wizardRecipientSource: "contact_list" | "cdp_segment"
+  wizardRecipientSource: "contact_list" | "radar_segment"
   wizardRadarSegmentSlug: string
   wizardScheduledAt: Date | undefined
   wizardScheduleIntervalDays: number

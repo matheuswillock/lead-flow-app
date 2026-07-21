@@ -23,7 +23,7 @@ export const FEATURE_SLUGS = {
   WHATSAPP: "whatsapp",
   WHATSAPP_SETTINGS: "whatsapp-settings",
   WHATSAPP_AUTO_RESPONSES: "whatsapp-auto-responses",
-  CDP: "cdp",
+  RADAR: "radar",
   STUDIO_BOT: "studio-bot",
   STUDIO_BOT_OPS: "studio-bot-ops",
   STUDIO_BOT_AI: "studio-bot-ai",

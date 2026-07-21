@@ -84,9 +84,9 @@ describe("getRadarAccess", () => {
     expect(result.error?.errorMessages).toContain("Acesso negado ao Radar")
   })
 
-  it("returns access for manager with Radar feature slug", async () => {
+  it("returns access for manager with RADAR feature slug", async () => {
     getTeamAccessSpy.mockResolvedValue(makeTeamAccess(UserRole.manager))
-    featureSpy.mockResolvedValue(new Output(true, [], [], { slugs: [FEATURE_SLUGS.CDP] }))
+    featureSpy.mockResolvedValue(new Output(true, [], [], { slugs: [FEATURE_SLUGS.RADAR] }))
 
     const result = await getRadarAccess(
       makeRequest({ "x-supabase-user-id": "user-1", "x-team-id": "team-1" })

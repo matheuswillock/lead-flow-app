@@ -1,6 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton"
 
-export default function CdpLoading() {
+export default function RadarLoading() {
   return (
     <div className="container mx-auto flex flex-col gap-4 p-6">
       <Skeleton className="h-8 w-48" />

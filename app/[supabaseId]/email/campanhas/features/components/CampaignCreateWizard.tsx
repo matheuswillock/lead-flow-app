@@ -92,7 +92,7 @@ export function CampaignCreateWizard() {
   const selectedList = contactLists.find((list) => list.id === wizardContactListId)
   const selectedSegment = radarSegments.find((segment) => segment.slug === wizardRadarSegmentSlug)
   const recipientCount =
-    wizardRecipientSource === "cdp_segment"
+    wizardRecipientSource === "radar_segment"
       ? selectedSegment?.count ?? 0
       : selectedList?.activeContacts ?? selectedList?.totalContacts ?? 0
 
@@ -204,7 +204,7 @@ export function CampaignCreateWizard() {
                 <Select
                   value={wizardRecipientSource}
                   onValueChange={(value) =>
-                    setWizardRecipientSource(value as "contact_list" | "cdp_segment")
+                    setWizardRecipientSource(value as "contact_list" | "radar_segment")
                   }
                   disabled={wizardCreating}
                 >
@@ -214,7 +214,7 @@ export function CampaignCreateWizard() {
                   <SelectContent>
                     <SelectGroup>
                       <SelectItem value="contact_list">Lista de contatos</SelectItem>
-                      <SelectItem value="cdp_segment">Segmento CDP</SelectItem>
+                      <SelectItem value="radar_segment">Segmento Radar</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -248,14 +248,14 @@ export function CampaignCreateWizard() {
               ) : (
                 <Field data-invalid={Boolean(fieldErrorMessage(step2Issues, "radarSegmentSlug")) || undefined}>
                   <div className="flex items-center gap-1.5">
-                    <FieldLabel>Segmento CDP *</FieldLabel>
+                    <FieldLabel>Segmento Radar *</FieldLabel>
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
                             type="button"
                             className="text-muted-foreground hover:text-foreground"
-                            aria-label="O que é segmento CDP?"
+                            aria-label="O que é segmento Radar?"
                           >
                             <CircleHelp />
                           </button>
@@ -289,10 +289,10 @@ export function CampaignCreateWizard() {
                   {fieldErrorMessage(step2Issues, "radarSegmentSlug") ? (
                     <FieldError>{fieldErrorMessage(step2Issues, "radarSegmentSlug")}</FieldError>
                   ) : null}
-                  {wizardRecipientSource === "cdp_segment" &&
+                  {wizardRecipientSource === "radar_segment" &&
                   recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB ? (
                     <FieldError>
-                      Segmentos CDP com mais de {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")}{" "}
+                      Segmentos Radar com mais de {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")}{" "}
                       destinatários não são suportados. Use uma lista de contatos ou reduza o segmento.
                     </FieldError>
                   ) : null}
@@ -312,7 +312,7 @@ export function CampaignCreateWizard() {
                   disabled={
                     !step2Parse.success ||
                     wizardCreating ||
-                    (wizardRecipientSource === "cdp_segment" &&
+                    (wizardRecipientSource === "radar_segment" &&
                       recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB)
                   }
                 >
@@ -330,7 +330,7 @@ export function CampaignCreateWizard() {
                 <AlertDescription>
                   A campanha será enviada para{" "}
                   <strong>{recipientCount.toLocaleString("pt-BR")}</strong> destinatário(s){" "}
-                  {wizardRecipientSource === "cdp_segment" ? (
+                  {wizardRecipientSource === "radar_segment" ? (
                     <>
                       do segmento <strong>{selectedSegment?.name ?? "selecionado"}</strong>
                     </>
