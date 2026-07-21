@@ -17,6 +17,7 @@ import {
   resolveVisibleQuestionIds,
   validateAnswer,
 } from "@/lib/public-forms/engine"
+import { parseCurrencyBR } from "@/lib/public-forms/masks"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 
 const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
@@ -107,8 +108,17 @@ export class PublicFormSubmissionUseCase {
           question.mappingKey &&
           nativeKeys.has(question.mappingKey)
         ) {
-          native[question.mappingKey] =
-            question.mappingKey === "currentValue" ? Number(value) : valueText(value)
+          if (question.mappingKey === "currentValue" || question.type === "currency") {
+            const amount =
+              typeof value === "number" && Number.isFinite(value)
+                ? value
+                : parseCurrencyBR(String(value ?? ""))
+            if (Number.isFinite(amount) && amount >= 0) {
+              native[question.mappingKey] = amount
+            }
+          } else {
+            native[question.mappingKey] = valueText(value)
+          }
         }
         if (question.mappingTarget === "custom_field" && question.mappingKey) {
           custom[question.mappingKey] = value
