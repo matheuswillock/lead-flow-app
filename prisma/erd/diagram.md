@@ -1094,9 +1094,11 @@ rejected rejected
 
         PublicFormQuestionType {
             text text
+textarea textarea
 email email
 phone phone
 number number
+currency currency
 date date
 url url
 single_choice single_choice
@@ -3049,6 +3051,7 @@ meeting_scheduled meeting_scheduled
     Boolean schedulingEnabled 
     Int meetingDurationMinutes 
     String schedulingMessage "❓"
+    String formKind 
     String reviewComment "❓"
     DateTime reviewedAt "❓"
     DateTime createdAt 
