@@ -133,6 +133,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
+    { title: "Formulários", url: `/${supabaseId}/forms`, icon: FileText, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
     { title: "Automações", url: `/${supabaseId}/automations`, icon: Zap, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_AUTOMATIONS },
     { title: "Radar", url: `/${supabaseId}/radar`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.RADAR },
@@ -512,48 +513,29 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroup>
             )}
-            {(hasAccess(FEATURE_SLUGS.PUBLIC_FORMS) || hasAccess(FEATURE_SLUGS.CONFIGURATION)) && (
+            {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
               <SidebarGroup>
                 <SidebarGroupLabel>Integrações</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {hasAccess(FEATURE_SLUGS.PUBLIC_FORMS) && (
-                      <SidebarMenuItem>
-                        <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/forms`)}>
-                          <Link href={`/${supabaseId}/forms`} className="flex items-center justify-between gap-2">
-                            <span className="flex items-center gap-2">
-                              <FileText className="size-4 shrink-0" />
-                              <span>Formulários</span>
-                            </span>
-                            {showsBetaLabel(FEATURE_SLUGS.PUBLIC_FORMS) && (
-                              <span className="shrink-0 rounded-sm bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-600 dark:text-orange-400">
-                                Beta
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/integrations`)}>
+                        <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2">
+                            <Plug className="size-4 shrink-0" />
+                            <span>Webhooks</span>
+                          </span>
+                          {showsBetaLabel(FEATURE_SLUGS.CONFIGURATION) && (() => {
+                            const badge = getSidebarStatusBadge("beta")
+                            return badge ? (
+                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
+                                {badge.label}
                               </span>
-                            )}
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    )}
-                    {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
-                      <SidebarMenuItem>
-                        <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/integrations`)}>
-                          <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
-                            <span className="flex items-center gap-2">
-                              <Plug className="size-4 shrink-0" />
-                              <span>Webhooks</span>
-                            </span>
-                            {showsBetaLabel(FEATURE_SLUGS.CONFIGURATION) && (() => {
-                              const badge = getSidebarStatusBadge("beta")
-                              return badge ? (
-                                <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
-                                  {badge.label}
-                                </span>
-                              ) : null
-                            })()}
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    )}
+                            ) : null
+                          })()}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
