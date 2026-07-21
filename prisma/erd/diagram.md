@@ -1361,6 +1361,21 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "backoffice_lead_offers" {
+    String id "🗝️"
+    String leadNameSnapshot 
+    String contactName 
+    String contactPhone 
+    Json itemsJson 
+    String shareTokenHash 
+    DateTime shareExpiresAt 
+    DateTime shareGeneratedAt 
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_adhesions" {
     String id "🗝️"
     String fullName 
@@ -3179,6 +3194,8 @@ meeting_scheduled meeting_scheduled
     "backoffice_leads" |o--|o backoffice_webhook_events : "sourceWebhookEvent"
     "backoffice_leads" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_leads" }o--|o backoffice_users : "closerBackofficeUser"
+    "backoffice_lead_offers" }o--|| backoffice_leads : "lead"
+    "backoffice_lead_offers" }o--|o corretor_studio_profiles : "shareGeneratedBy"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionPlan" : "enum:plan"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"

@@ -24,8 +24,9 @@ Assistente conversacional do Corretor Studio (WhatsApp plataforma, orquestraçã
 
 ```bash
 bun run n8n:up          # sobe stack Docker N8N (:5678)
-bun run dev             # app + N8N (auto-start)
-bun run dev -- --skip-n8n
+bun dev                 # app sem N8N por padrão
+bun dev -- n8n          # app + N8N
+bun dev -- total        # app + N8N + Evolution API
 ```
 
 ## Onde está no produto
