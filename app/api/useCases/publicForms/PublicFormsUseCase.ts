@@ -25,7 +25,6 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
   const errors: string[] = []
   const draft = form
   if (!draft.name.trim()) errors.push("Informe o nome do formulário")
-  if (!draft.assignedSdrId) errors.push("Selecione o SDR responsável")
   if (draft.questions.length === 0) errors.push("Adicione pelo menos uma pergunta")
   const nameQuestion = draft.questions.find(
     (question) => question.mappingTarget === "native_field" && question.mappingKey === "name",

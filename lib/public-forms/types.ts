@@ -51,6 +51,7 @@ export type PublicFormDraftInput = {
   schedulingEnabled: boolean
   meetingDurationMinutes: number
   schedulingMessage?: string | null
+  formKind?: "standard" | "health_plan_simulator"
   questions: PublicFormQuestionInput[]
   rules: PublicFormRuleInput[]
   scoreBands: PublicFormScoreBandInput[]
