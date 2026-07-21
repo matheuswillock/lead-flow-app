@@ -10,10 +10,9 @@ export async function GET(
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
-  const closerId = request.nextUrl.searchParams.get("closerId")
   const date = request.nextUrl.searchParams.get("date")
-  if (!closerId || !date) {
-    return NextResponse.json(new Output(false, [], ["Informe o closer e a data"], null), {
+  if (!date) {
+    return NextResponse.json(new Output(false, [], ["Informe a data"], null), {
       status: 400,
     })
   }
@@ -23,31 +22,32 @@ export async function GET(
     teamId: string
     team: { master: { timezone: string } }
   } | null
-  if (
-    !current ||
-    !current.snapshot.schedulingEnabled ||
-    !current.snapshot.eligibleCloserIds.includes(closerId)
-  ) {
+  if (!current || !current.snapshot.schedulingEnabled || current.snapshot.eligibleCloserIds.length === 0) {
     return NextResponse.json(new Output(false, [], ["Disponibilidade não encontrada"], null), {
       status: 404,
     })
   }
-  const output = await publicLeadFormUseCase.getCloserAvailability(
-    current.teamId,
-    closerId,
-    date,
-    undefined,
-    current.snapshot.meetingDurationMinutes,
-  )
-  if (!output.isValid) return NextResponse.json(output, { status: 400 })
-  const result = output.result as { availableTimes?: string[]; source?: string }
-  return NextResponse.json(
-    new Output(true, [], [], {
-      availableSlots: (result.availableTimes ?? []).map((time) => ({
+
+  const slotMap = new Map<string, { time: string; startsAt: string }>()
+  for (const closerId of current.snapshot.eligibleCloserIds) {
+    const output = await publicLeadFormUseCase.getCloserAvailability(
+      current.teamId,
+      closerId,
+      date,
+      undefined,
+      current.snapshot.meetingDurationMinutes,
+    )
+    if (!output.isValid) continue
+    const result = output.result as { availableTimes?: string[] }
+    for (const time of result.availableTimes ?? []) {
+      if (slotMap.has(time)) continue
+      slotMap.set(time, {
         time,
         startsAt: parseDateKeyAndTimeToUtc(date, time, current.team.master.timezone).toISOString(),
-      })),
-      source: result.source,
-    }),
-  )
+      })
+    }
+  }
+
+  const availableSlots = Array.from(slotMap.values()).sort((a, b) => a.time.localeCompare(b.time))
+  return NextResponse.json(new Output(true, [], [], { availableSlots }))
 }
