@@ -1,6 +1,7 @@
 import type {
   BackofficeAccountData,
   BackofficeAccountUpdateInput,
+  BackofficeGoogleScopesResult,
 } from "../context/BackofficeAccountTypes"
 import type { IBackofficeAccountService } from "./IBackofficeAccountService"
 
@@ -69,6 +70,14 @@ export class BackofficeAccountService implements IBackofficeAccountService {
     })
     const output = await parseOutput<{ timezone: string }>(response)
     return output.result.timezone
+  }
+
+  async getGoogleScopes(): Promise<BackofficeGoogleScopesResult> {
+    const response = await fetch("/api/v1/backoffice/account/google-scopes", {
+      cache: "no-store",
+    })
+    const output = await parseOutput<BackofficeGoogleScopesResult>(response)
+    return output.result
   }
 
   async disconnectGoogle(): Promise<void> {

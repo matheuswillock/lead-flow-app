@@ -15,6 +15,7 @@ import type { IBackofficeAccountService } from "../services/IBackofficeAccountSe
 import type {
   BackofficeAccountData,
   BackofficeAccountUpdateInput,
+  BackofficeGoogleScopesResult,
 } from "./BackofficeAccountTypes"
 
 interface BackofficeAccountContextValue {
@@ -27,6 +28,7 @@ interface BackofficeAccountContextValue {
   uploadIcon: (file: File) => Promise<void>
   removeIcon: () => Promise<void>
   updateTimezone: (timezone: string) => Promise<void>
+  getGoogleScopes: () => Promise<BackofficeGoogleScopesResult>
   disconnectGoogle: () => Promise<void>
 }
 
@@ -126,6 +128,10 @@ export function BackofficeAccountProvider({
     [refreshUser, service]
   )
 
+  const getGoogleScopes = useCallback(async () => {
+    return service.getGoogleScopes()
+  }, [service])
+
   const disconnectGoogle = useCallback(async () => {
     await service.disconnectGoogle()
     setAccount((prev) =>
@@ -134,6 +140,7 @@ export function BackofficeAccountProvider({
             ...prev,
             googleCalendarConnected: false,
             googleEmail: null,
+            googleConnectionSource: null,
           }
         : prev
     )
@@ -152,6 +159,7 @@ export function BackofficeAccountProvider({
       uploadIcon,
       removeIcon,
       updateTimezone,
+      getGoogleScopes,
       disconnectGoogle,
     }),
     [
@@ -164,6 +172,7 @@ export function BackofficeAccountProvider({
       uploadIcon,
       removeIcon,
       updateTimezone,
+      getGoogleScopes,
       disconnectGoogle,
     ]
   )

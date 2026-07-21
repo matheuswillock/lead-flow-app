@@ -21,6 +21,11 @@ import { GoogleOAuthConnectionRepository } from "../../infra/data/repositories/g
 import type { IBackofficeGoogleConnectionResolverService } from "../../services/Backoffice/backofficeGoogleConnection/IBackofficeGoogleConnectionResolverService"
 import { BackofficeGoogleConnectionResolverService } from "../../services/Backoffice/backofficeGoogleConnection/BackofficeGoogleConnectionResolverService"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
+import { getScopesForGoogleConnection } from "@/lib/google/get-scopes-for-connection"
+import { fetchGoogleGrantedScopes } from "@/lib/google/scopes"
+
+export const BACKOFFICE_GOOGLE_EMAIL_CONFLICT_MESSAGE =
+  "Este e-mail Google já está vinculado a outro usuário."
 
 function trimString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined
@@ -234,6 +239,13 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
         ? await this.connectionRepo.findByGoogleEmail(googleEmail)
         : null
 
+      if (
+        connection?.ownerProfileId &&
+        connection.ownerProfileId !== profileId
+      ) {
+        return new Output(false, [], [BACKOFFICE_GOOGLE_EMAIL_CONFLICT_MESSAGE], null)
+      }
+
       if (!connection && googleEmail) {
         connection = await this.connectionRepo.create({
           googleEmail,
@@ -251,6 +263,13 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
           tokenExpiresAt: expiresAt,
           lastRefreshedAt: new Date(),
           lastRefreshError: null,
+        })
+      }
+
+      if (connection?.id) {
+        const grantedScopes = await fetchGoogleGrantedScopes(accessToken).catch(() => [])
+        connection = await this.connectionRepo.updateTokens(connection.id, {
+          scopes: grantedScopes,
         })
       }
 
@@ -273,6 +292,26 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
     } catch (error) {
       console.error("[BackofficeAccountUseCase][connectGoogle]", error)
       return new Output(false, [], ["Erro ao conectar Google Calendar"], null)
+    }
+  }
+
+  async getGoogleScopes(profileId: string): Promise<Output> {
+    try {
+      const user = await this.userRepo.findByProfileId(profileId)
+      if (!user) {
+        return new Output(false, [], ["Conta backoffice não encontrada"], null)
+      }
+
+      const organizer = await this.googleResolver.resolveForBackofficeUser(user.id)
+      if (!organizer || !isGoogleConnectionActive(organizer.connection)) {
+        return new Output(true, [], [], { connected: false, scopes: [] as string[] })
+      }
+
+      const result = await getScopesForGoogleConnection(organizer.connection)
+      return new Output(true, [], [], result)
+    } catch (error) {
+      console.error("[BackofficeAccountUseCase][getGoogleScopes]", error)
+      return new Output(false, [], ["Erro ao buscar escopos Google"], null)
     }
   }
 

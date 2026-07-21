@@ -8691,6 +8691,32 @@
           }
         },
         {
+          "name": "GET Backoffice Account Google Scopes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/account/google-scopes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "account",
+                "google-scopes"
+              ]
+            },
+            "description": "Retorna os escopos Google concedidos da conexão ativa do operador (backoffice_user ou linked_profile)."
+          }
+        },
+        {
           "name": "POST Backoffice Google Connect",
           "request": {
             "method": "POST",
@@ -8721,7 +8747,7 @@
                 "connect"
               ]
             },
-            "description": "Salva tokens Google Calendar separados para o módulo Backoffice."
+            "description": "Salva tokens Google Calendar separados para o módulo Backoffice. Retorna 409 se o e-mail Google já estiver vinculado a outro perfil."
           }
         },
         {
