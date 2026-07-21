@@ -37,6 +37,8 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     schedulingEnabled: form.schedulingEnabled,
     meetingDurationMinutes: form.meetingDurationMinutes,
     schedulingMessage: form.schedulingMessage,
+    formKind:
+      form.formKind === "health_plan_simulator" ? "health_plan_simulator" : "standard",
     questions: form.questions.map((question) => ({
       id: question.id,
       type: question.type,

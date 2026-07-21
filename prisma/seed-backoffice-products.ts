@@ -187,9 +187,9 @@ const FEATURES: Array<{
     defaultAccessLevel: BackofficeFeatureAccessLevel.FULL,
     betaEnabled: true,
     inheritParentSettings: false,
-    sortOrder: 201,
-    parentSlug: "integration",
-    productSlug: "configuration",
+    sortOrder: 97,
+    parentSlug: "crm",
+    productSlug: "crm",
   },
 
 ]

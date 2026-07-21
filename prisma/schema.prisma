@@ -786,6 +786,7 @@ model Profile {
   createdBackofficeContracts  BackofficeContract[]      @relation("BackofficeContractCreator")
   importedBackofficeContractVersions BackofficeContractVersion[] @relation("BackofficeContractVersionImporter")
   sharedBackofficeContractVersions   BackofficeContractVersion[] @relation("BackofficeContractVersionShareGenerator")
+  generatedBackofficeLeadOffers      BackofficeLeadOffer[]       @relation("BackofficeLeadOfferShareGenerator")
   receivedNotifications       Notification[]            @relation("NotificationRecipient")
   sentNotifications           Notification[]            @relation("NotificationActor")
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[] @relation("MeetingFollowUpDigestRecipient")
@@ -1155,6 +1156,7 @@ model BackofficeLead {
   schedules            BackofficeLeadSchedule[]
   adhesion             BackofficeAdhesion?
   emailContacts        BackofficeEmailContact[] @relation("BackofficeEmailContactLead")
+  offers               BackofficeLeadOffer[]
 
   @@index([status], map: "backoffice_leads_status_idx")
   @@index([origin], map: "backoffice_leads_origin_idx")
@@ -1165,6 +1167,29 @@ model BackofficeLead {
   @@index([email], map: "backoffice_leads_email_idx")
   @@index([cpfCnpj], map: "backoffice_leads_cpf_cnpj_idx")
   @@map("backoffice_leads")
+}
+
+model BackofficeLeadOffer {
+  id                        String    @id @default(uuid()) @db.Uuid
+  leadId                    String    @map("leadId") @db.Uuid
+  leadNameSnapshot          String    @map("leadNameSnapshot") @db.Text
+  contactName               String    @map("contactName") @db.Text
+  contactPhone              String    @map("contactPhone") @db.Text
+  itemsJson                 Json      @map("itemsJson")
+  shareTokenHash            String    @unique @map("shareTokenHash") @db.Text
+  shareExpiresAt            DateTime  @map("shareExpiresAt") @db.Timestamptz(6)
+  shareGeneratedAt          DateTime  @default(now()) @map("shareGeneratedAt") @db.Timestamptz(6)
+  shareGeneratedByProfileId String?   @map("shareGeneratedByProfileId") @db.Uuid
+  revokedAt                 DateTime? @map("revokedAt") @db.Timestamptz(6)
+  createdAt                 DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                 DateTime  @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  lead             BackofficeLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  shareGeneratedBy Profile?       @relation("BackofficeLeadOfferShareGenerator", fields: [shareGeneratedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([leadId], map: "backoffice_lead_offers_lead_id_idx")
+  @@index([shareExpiresAt], map: "backoffice_lead_offers_share_expires_at_idx")
+  @@map("backoffice_lead_offers")
 }
 
 model BackofficeAdhesion {
@@ -3588,7 +3613,7 @@ enum CustomerIdentityType {
   portfolio_id
   whatsapp_contact_id
 
-  @@map("customer_identity_type")
+  @@map("radar_identity_type")
 }
 
 enum CustomerSourceType {
@@ -3598,14 +3623,14 @@ enum CustomerSourceType {
   email_campaign
   whatsapp_contact
 
-  @@map("customer_source_type")
+  @@map("radar_source_type")
 }
 
 enum CustomerChannel {
   email
   whatsapp
 
-  @@map("customer_channel")
+  @@map("radar_channel")
 }
 
 enum CustomerConsentStatus {
@@ -3613,7 +3638,7 @@ enum CustomerConsentStatus {
   blocked
   unknown
 
-  @@map("customer_consent_status")
+  @@map("radar_consent_status")
 }
 
 enum CustomerConsentReason {
@@ -3625,7 +3650,7 @@ enum CustomerConsentReason {
   opt_out
   missing_identity
 
-  @@map("customer_consent_reason")
+  @@map("radar_consent_reason")
 }
 
 enum EmailVariableValueSource {
@@ -3661,7 +3686,7 @@ model CustomerProfile {
   @@index([teamId, normalizedPrimaryEmail])
   @@index([teamId, normalizedPrimaryDocument])
   @@index([teamId, lastSeenAt(sort: Desc)])
-  @@map("corretor_studio_cdp_profiles")
+  @@map("corretor_studio_radar_profiles")
 }
 
 model CustomerIdentity {
@@ -3681,7 +3706,7 @@ model CustomerIdentity {
 
   @@unique([teamId, type, normalizedValue])
   @@index([profileId, type])
-  @@map("corretor_studio_cdp_identities")
+  @@map("corretor_studio_radar_identities")
 }
 
 model CustomerSourceLink {
@@ -3699,7 +3724,7 @@ model CustomerSourceLink {
 
   @@unique([teamId, sourceType, sourceId])
   @@index([profileId, sourceType])
-  @@map("corretor_studio_cdp_source_links")
+  @@map("corretor_studio_radar_source_links")
 }
 
 model CustomerEvent {
@@ -3719,7 +3744,7 @@ model CustomerEvent {
   @@unique([teamId, sourceType, sourceId, eventType, occurredAt])
   @@index([teamId, eventType, occurredAt(sort: Desc)])
   @@index([profileId, occurredAt(sort: Desc)])
-  @@map("corretor_studio_cdp_events")
+  @@map("corretor_studio_radar_events")
 }
 
 model CustomerChannelConsent {
@@ -3739,7 +3764,7 @@ model CustomerChannelConsent {
 
   @@unique([profileId, channel])
   @@index([teamId, channel, status])
-  @@map("corretor_studio_cdp_channel_consents")
+  @@map("corretor_studio_radar_channel_consents")
 }
 
 // ==============================
@@ -4279,9 +4304,11 @@ enum PublicFormApprovalStatus {
 
 enum PublicFormQuestionType {
   text
+  textarea
   email
   phone
   number
+  currency
   date
   url
   single_choice
@@ -4380,6 +4407,7 @@ model PublicForm {
   schedulingEnabled      Boolean                    @default(false)
   meetingDurationMinutes Int                        @default(30)
   schedulingMessage      String?                    @db.Text
+  formKind               String                     @default("standard") @db.VarChar(40)
   reviewComment          String?                    @db.Text
   reviewedAt             DateTime?                  @db.Timestamptz(6)
   createdAt              DateTime                   @default(now()) @db.Timestamptz(6)
