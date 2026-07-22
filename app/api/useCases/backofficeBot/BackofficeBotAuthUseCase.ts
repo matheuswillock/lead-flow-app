@@ -1,4 +1,4 @@
-import { NotificationType } from "@prisma/client";
+import { NotificationType, type BackofficeBotChannelStatus } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { backofficeBotAuthService } from "@/app/api/services/backofficeBot/BackofficeBotAuthService";
 import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
@@ -14,6 +14,18 @@ const LINK_CONFIRMED_WHATSAPP_MESSAGE =
 
 const CHANNEL_AUTH_CODE_NOTIFICATION =
   "Seu código de verificação da Bethânia: **{code}**. Válido por 10 minutos. Informe na conversa com a Bethânia.";
+
+function mapEvoStatusToChannelStatus(
+  evoStatus: "open" | "close" | "connecting"
+): BackofficeBotChannelStatus {
+  if (evoStatus === "open") {
+    return "connected";
+  }
+  if (evoStatus === "close") {
+    return "disconnected";
+  }
+  return "pending";
+}
 
 function mapAuthError(error: string): string {
   switch (error) {
@@ -182,8 +194,58 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
     }
   }
 
+  /**
+   * Alinha status do canal com a Evolution antes de expor botAvailable na Account.
+   * Evita card indisponível por status stale após reativar o canal.
+   */
+  private async syncPrimaryChannelFromEvolution() {
+    const channel = await backofficeBotRepository.findPrimaryChannel();
+    if (!channel) {
+      return null;
+    }
+
+    const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
+    const evoStatus = await backofficeEvoApiService
+      .getInstanceConnectionState(instanceName)
+      .catch((error) => {
+        console.error("[BackofficeBotAuthUseCase][syncPrimaryChannelFromEvolution] state", error);
+        return null;
+      });
+
+    if (!evoStatus) {
+      return channel;
+    }
+
+    const nextStatus = mapEvoStatusToChannelStatus(evoStatus);
+    let phoneNumber = channel.phoneNumber;
+
+    if (evoStatus === "open") {
+      const livePhone = await backofficeEvoApiService
+        .getInstancePhoneNumber(instanceName)
+        .catch((error) => {
+          console.error("[BackofficeBotAuthUseCase][syncPrimaryChannelFromEvolution] phone", error);
+          return null;
+        });
+      if (livePhone) {
+        phoneNumber = livePhone;
+      }
+    }
+
+    const phoneChanged = (phoneNumber ?? null) !== (channel.phoneNumber ?? null);
+    const statusChanged = channel.status !== nextStatus;
+    if (!phoneChanged && !statusChanged) {
+      return channel;
+    }
+
+    return backofficeBotRepository.upsertChannel({
+      status: nextStatus,
+      phoneNumber: phoneNumber ?? null,
+    });
+  }
+
   async linkInitiate(profileId: string): Promise<Output> {
     try {
+      await this.syncPrimaryChannelFromEvolution();
       const result = await backofficeBotAuthService.linkInitiate(profileId);
       if (!result.ok) {
         const linkError = buildBethaniaLinkErrorResult(result.error);
@@ -210,6 +272,7 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
 
   async linkStatus(profileId: string): Promise<Output> {
     try {
+      await this.syncPrimaryChannelFromEvolution();
       const result = await backofficeBotAuthService.linkStatus(profileId);
       return new Output(true, [], [], result.result);
     } catch (error) {
