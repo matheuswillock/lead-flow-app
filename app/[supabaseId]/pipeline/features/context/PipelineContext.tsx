@@ -172,9 +172,11 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     () => pipelineService ?? createBoardService(),
     [pipelineService]
   );
-  // customFieldFilters é aplicado server-side (não há estado próprio no Pipeline —
-  // vem sempre de CrmFiltersState via externalFilters, mesma origem do CRM/board).
+  // customFieldFilters/customFieldSort são aplicados server-side (não há estado
+  // próprio no Pipeline — vêm sempre de CrmFiltersState via externalFilters,
+  // mesma origem do CRM/board).
   const activeCustomFieldFilters = externalFilters?.customFieldFilters ?? EMPTY_CUSTOM_FIELD_FILTERS;
+  const activeCustomFieldSort = externalFilters?.customFieldSort ?? null;
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
@@ -379,7 +381,10 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     const customFieldFiltersKey = JSON.stringify(
       activeCustomFieldFilters.map(({ definitionId, operator, value }) => ({ definitionId, operator, value }))
     );
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${customFieldFiltersKey}`;
+    const customFieldSortKey = activeCustomFieldSort
+      ? `${activeCustomFieldSort.definitionId}:${activeCustomFieldSort.direction}`
+      : "";
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${customFieldFiltersKey}:${customFieldSortKey}`;
 
     if (
       !options?.force &&
@@ -428,7 +433,15 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
               value,
             })),
           }),
+          ...(activeCustomFieldSort && { customFieldSort: activeCustomFieldSort }),
         });
+
+        // Uma chamada mais recente pode ter substituído esta antes da resposta
+        // chegar (ex.: usuário adiciona/remove filtros rapidamente) — descarta
+        // a resposta obsoleta em vez de sobrescrever o estado com dados velhos.
+        if (leadsLoadInFlightKeyRef.current !== loadKey) {
+          return;
+        }
 
         if (result.isValid && result.result) {
           console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
@@ -503,8 +516,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         if (leadsLoadInFlightKeyRef.current === loadKey) {
           leadsLoadInFlightKeyRef.current = null;
           leadsLoadInFlightPromiseRef.current = null;
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }
     })();
 
@@ -512,7 +525,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeCustomFieldFilters, activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
+  }, [activeCustomFieldFilters, activeCustomFieldSort, activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
 
   const leadTimeRulesVersionRef = useRef("");
 
