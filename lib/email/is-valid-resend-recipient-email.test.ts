@@ -15,6 +15,14 @@ describe("isValidResendRecipientEmail", () => {
       ok: true,
       email: "carol.o@example.com",
     })
+    expect(isValidResendRecipientEmail("o'connor@example.com")).toEqual({
+      ok: true,
+      email: "o'connor@example.com",
+    })
+    expect(isValidResendRecipientEmail("sales!ops@example.com")).toEqual({
+      ok: true,
+      email: "sales!ops@example.com",
+    })
   })
 
   it("rejeita os casos reais com pipe (múltiplos endereços)", () => {

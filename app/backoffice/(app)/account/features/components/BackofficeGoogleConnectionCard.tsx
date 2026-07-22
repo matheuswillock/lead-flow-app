@@ -129,19 +129,6 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
         })
       )
 
-      const params: SignInWithOAuthCredentials = {
-        provider: "google",
-        options: {
-          scopes: GOOGLE_CALENDAR_SCOPES,
-          redirectTo,
-          queryParams: {
-            access_type: "offline",
-            // Permite escolher outra conta Google (diferente da usada no Corretor Studio).
-            prompt: "select_account consent",
-          },
-        },
-      }
-
       const auth = supabase.auth as typeof supabase.auth & {
         linkIdentity?: (
           params: SignInWithOAuthCredentials
@@ -152,10 +139,21 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
       const hasGoogleIdentity =
         data.user?.identities?.some((identity) => identity.provider === "google") ?? false
 
-      const linkIdentity = auth.linkIdentity?.bind(auth)
-
+      // Já autenticado com Google: reconecta a MESMA identity (refresh de scopes/token).
+      // Sem `select_account` — escolher outra conta via signInWithOAuth troca a sessão e
+      // quebra o callback (expectedSupabaseId). Conta diferente usa linkIdentity abaixo.
       if (hasGoogleIdentity) {
-        const { error } = await supabase.auth.signInWithOAuth(params)
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            scopes: GOOGLE_CALENDAR_SCOPES,
+            redirectTo,
+            queryParams: {
+              access_type: "offline",
+              prompt: "consent",
+            },
+          },
+        })
         if (error) {
           sessionStorage.removeItem("googleConnectContext")
           toast.error(error.message || "Erro ao reconectar Google Calendar")
@@ -163,13 +161,24 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
         return
       }
 
+      const linkIdentity = auth.linkIdentity?.bind(auth)
       if (!linkIdentity) {
         sessionStorage.removeItem("googleConnectContext")
         toast.error("Não foi possível iniciar a vinculação Google nesta versão do cliente.")
         return
       }
 
-      const { error } = await linkIdentity(params)
+      const { error } = await linkIdentity({
+        provider: "google",
+        options: {
+          scopes: GOOGLE_CALENDAR_SCOPES,
+          redirectTo,
+          queryParams: {
+            access_type: "offline",
+            prompt: "select_account consent",
+          },
+        },
+      })
 
       if (error) {
         sessionStorage.removeItem("googleConnectContext")
