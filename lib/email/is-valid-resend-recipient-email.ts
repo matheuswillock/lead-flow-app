@@ -1,9 +1,13 @@
 /**
  * Valida e-mail de destinatário no formato aceito pelo Resend
  * (`email@example.com`). Rejeita múltiplos endereços colados e formatos inválidos.
+ *
+ * Local-part alinhado a `atext` (RFC 5322), exceto `|` (usado como separador
+ * de múltiplos endereços nos CSV/importações).
  */
 
-const RESEND_EMAIL_REGEX = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i
+const RESEND_EMAIL_REGEX =
+  /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}$/i
 
 export type ResendRecipientEmailValidation =
   | { ok: true; email: string }

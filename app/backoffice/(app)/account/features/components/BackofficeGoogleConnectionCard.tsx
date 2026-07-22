@@ -148,20 +148,9 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
         ) => Promise<{ error: { message: string } | null }>
       }
 
-      const { data } = await supabase.auth.getUser()
-      const hasGoogleIdentity =
-        data.user?.identities?.some((identity) => identity.provider === "google") ?? false
-
+      // Sempre vincula identidade na sessão atual. `signInWithOAuth` substituiria a sessão
+      // quando o operador escolhe outra conta Google e quebraria o fluxo de Calendar.
       const linkIdentity = auth.linkIdentity?.bind(auth)
-
-      if (hasGoogleIdentity) {
-        const { error } = await supabase.auth.signInWithOAuth(params)
-        if (error) {
-          sessionStorage.removeItem("googleConnectContext")
-          toast.error(error.message || "Erro ao reconectar Google Calendar")
-        }
-        return
-      }
 
       if (!linkIdentity) {
         sessionStorage.removeItem("googleConnectContext")
