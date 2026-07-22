@@ -33,6 +33,7 @@ export class BackofficeLeadScheduleUseCase implements IBackofficeLeadScheduleUse
       meetingTitle: (body as any)?.meetingTitle ?? null,
       meetingNotes: (body as any)?.meetingNotes ?? null,
       meetingLink: (body as any)?.meetingLink ?? null,
+      meetingType: (body as any)?.meetingType ?? null,
       meetingExtraGuests: stringArray((body as any)?.meetingExtraGuests) ??
         stringArray((body as any)?.extraGuests),
     })
@@ -60,6 +61,7 @@ export class BackofficeLeadScheduleUseCase implements IBackofficeLeadScheduleUse
         meetingTitle: null,
         meetingNotes: null,
         meetingLink: null,
+        meetingType: null,
         meetingExtraGuests: [],
       }
     )
@@ -74,6 +76,15 @@ export class BackofficeLeadScheduleUseCase implements IBackofficeLeadScheduleUse
 
   async getAttendees(leadId: string): Promise<Output> {
     return this.scheduleService.getAttendees({ leadId })
+  }
+
+  async resendInvite(params: {
+    leadId: string
+    target: "all" | "single" | "new"
+    email?: string
+    emails?: string[]
+  }): Promise<Output> {
+    return this.scheduleService.resendInvite(params)
   }
 }
 

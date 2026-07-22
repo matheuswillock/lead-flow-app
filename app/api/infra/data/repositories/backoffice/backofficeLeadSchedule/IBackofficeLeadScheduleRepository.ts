@@ -12,6 +12,7 @@ export interface CreateBackofficeLeadScheduleInput {
   meetingTitle?: string | null
   notes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   extraGuests?: string[]
   googleEventId?: string | null
   googleCalendarId?: string | null
@@ -21,6 +22,8 @@ export interface CreateBackofficeLeadScheduleInput {
   inviteDispatchLastAttemptAt?: Date | null
   inviteDispatchLastError?: string | null
   inviteDispatchLastPayload?: Prisma.InputJsonValue | null
+  publicShareTokenHash?: string | null
+  publicShareExpiresAt?: Date | null
   createdByProfileId?: string | null
 }
 
@@ -30,6 +33,7 @@ export interface UpdateBackofficeLeadScheduleInput {
   meetingTitle?: string | null
   notes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   extraGuests?: string[]
   googleEventId?: string | null
   googleCalendarId?: string | null
@@ -39,6 +43,8 @@ export interface UpdateBackofficeLeadScheduleInput {
   inviteDispatchLastAttemptAt?: Date | null
   inviteDispatchLastError?: string | null
   inviteDispatchLastPayload?: Prisma.InputJsonValue | null
+  publicShareTokenHash?: string | null
+  publicShareExpiresAt?: Date | null
   isCanceled?: boolean
   canceledAt?: Date | null
   canceledByProfileId?: string | null
@@ -66,6 +72,7 @@ export interface IBackofficeLeadScheduleRepository {
   findByLeadId(leadId: string): Promise<BackofficeLeadSchedule[]>
   findLatestByLeadId(leadId: string): Promise<BackofficeLeadSchedule | null>
   findLatestActiveByLeadId(leadId: string): Promise<BackofficeLeadSchedule | null>
+  findById(id: string): Promise<BackofficeLeadSchedule | null>
   findActiveForDay(params: {
     closerBackofficeUserIds: string[]
     dayStart: Date

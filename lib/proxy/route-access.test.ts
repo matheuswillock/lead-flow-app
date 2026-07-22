@@ -57,6 +57,8 @@ describe("isPublicPageRoute", () => {
 
   it("allows backoffice public lead form path", () => {
     expect(isPublicPageRoute("/backoffice-lead-form")).toBe(true)
+    expect(isPublicPageRoute("/backoffice-agendamento")).toBe(true)
+    expect(isPublicPageRoute("/backoffice-agendamento/token")).toBe(true)
   })
 
 

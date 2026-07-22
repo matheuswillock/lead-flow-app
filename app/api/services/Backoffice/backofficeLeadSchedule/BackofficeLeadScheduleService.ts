@@ -56,20 +56,32 @@ export class BackofficeLeadScheduleService
 
   async upsertSchedule(input: UpsertBackofficeLeadScheduleInput): Promise<Output> {
     try {
+      const resolvedMeetingType = input.meetingType ?? "online"
+      const isOnlineMeeting = resolvedMeetingType === "online"
+
       const closer = await this.userRepo.findById(input.closerBackofficeUserId)
       if (!closer?.isActive || !closer.isCloser) {
         return new Output(false, [], ["Closer informado não está ativo"], null)
+      }
+
+      if (isOnlineMeeting && !input.leadEmail?.trim()) {
+        return new Output(
+          false,
+          [],
+          ["Lead precisa de um e-mail para agendamento online."],
+          null
+        )
       }
 
       const existingSchedule = await this.scheduleRepo.findLatestActiveByLeadId(input.leadId)
       const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
       const canUseGoogleCalendar = !!organizer
       const meetingLinkValidation = validateMeetingLinkValue(input.meetingLink, {
-        required: !canUseGoogleCalendar,
+        required: isOnlineMeeting && !canUseGoogleCalendar,
       })
 
       if (!meetingLinkValidation.isValid) {
-        if (!canUseGoogleCalendar && !input.meetingLink?.trim()) {
+        if (isOnlineMeeting && !canUseGoogleCalendar && !input.meetingLink?.trim()) {
           return new Output(
             false,
             [],
@@ -97,7 +109,7 @@ export class BackofficeLeadScheduleService
       let finalMeetingLink = normalizedMeetingLink
       let dispatchPayload: Prisma.InputJsonValue | null = null
 
-      if (organizer) {
+      if (isOnlineMeeting && organizer) {
         try {
           const calendarResult = await this.googleCalendarService.upsertEvent({
             organizer,
@@ -137,7 +149,7 @@ export class BackofficeLeadScheduleService
         }
       }
 
-      if (status !== BackofficeInviteDispatchStatus.sent_google) {
+      if (isOnlineMeeting && status !== BackofficeInviteDispatchStatus.sent_google) {
         if (!finalMeetingLink?.trim()) {
           return new Output(
             false,
@@ -175,12 +187,46 @@ export class BackofficeLeadScheduleService
         }
       }
 
+      if (!isOnlineMeeting) {
+        status = BackofficeInviteDispatchStatus.sent_resend
+        provider = "resend"
+        dispatchError = null
+        dispatchPayload = {
+          provider,
+          meetingType: resolvedMeetingType,
+        }
+
+        if (input.leadEmail?.trim() || (input.extraGuests ?? []).length > 0) {
+          const resendOutput = await this.inviteService.sendInvite({
+            leadName: input.leadName,
+            leadEmail: input.leadEmail,
+            closerName: closer.email,
+            closerEmail,
+            meetingDate: input.meetingDate,
+            meetingTitle: input.meetingTitle,
+            meetingNotes: input.meetingNotes,
+            meetingLink: finalMeetingLink ?? "",
+            extraGuests: input.extraGuests ?? [],
+            eventUid: existingSchedule?.id ?? input.leadId,
+            timezone: closer.timezone,
+          })
+          if (resendOutput.isValid) {
+            dispatchPayload = {
+              provider,
+              meetingType: resolvedMeetingType,
+              resend: toInputJsonValue(resendOutput.result),
+            }
+          }
+        }
+      }
+
       const scheduleData = {
         closerBackofficeUserId: input.closerBackofficeUserId,
         date: input.meetingDate,
         meetingTitle: input.meetingTitle,
         notes: input.meetingNotes ?? null,
         meetingLink: finalMeetingLink,
+        meetingType: resolvedMeetingType,
         extraGuests: input.extraGuests ?? [],
         googleEventId,
         googleCalendarId,
@@ -282,6 +328,110 @@ export class BackofficeLeadScheduleService
     } catch (error) {
       console.error("[BackofficeLeadScheduleService][cancelSchedule]", error)
       return new Output(false, [], ["Erro ao cancelar agendamento do backoffice"], null)
+    }
+  }
+
+  async resendInvite(input: {
+    leadId: string
+    target: "all" | "single" | "new"
+    email?: string
+    emails?: string[]
+  }): Promise<Output> {
+    try {
+      const schedule = await this.scheduleRepo.findLatestActiveByLeadId(input.leadId)
+      if (!schedule) {
+        return new Output(false, [], ["Agendamento não encontrado"], null)
+      }
+
+      const lead = await this.leadRepo.findById(input.leadId)
+      if (!lead) {
+        return new Output(false, [], ["Lead não encontrado"], null)
+      }
+
+      const closer = schedule.closerBackofficeUserId
+        ? await this.userRepo.findById(schedule.closerBackofficeUserId)
+        : null
+      if (!closer?.email) {
+        return new Output(false, [], ["Closer do agendamento sem e-mail válido"], null)
+      }
+
+      const closerEmail = normalizeEmail(closer.email)
+      if (!closerEmail) {
+        return new Output(false, [], ["Closer do agendamento sem e-mail válido"], null)
+      }
+
+      let recipients: string[] = []
+      if (input.target === "all") {
+        recipients = [
+          ...(lead.email ? [lead.email] : []),
+          closerEmail,
+          ...schedule.extraGuests,
+        ]
+      } else if (input.target === "single") {
+        if (!input.email?.trim()) {
+          return new Output(false, [], ["Informe o e-mail para reenvio"], null)
+        }
+        recipients = [input.email]
+      } else {
+        const emails = input.emails?.filter((item) => !!item.trim()) ?? []
+        if (emails.length === 0) {
+          return new Output(false, [], ["Informe ao menos um e-mail para reenvio"], null)
+        }
+        recipients = emails
+      }
+
+      const uniqueRecipients = Array.from(
+        new Set(recipients.map((email) => email.trim().toLowerCase()).filter(Boolean))
+      )
+      if (uniqueRecipients.length === 0) {
+        return new Output(false, [], ["Nenhum destinatário válido para reenvio"], null)
+      }
+
+      const meetingLink = schedule.meetingLink ?? lead.meetingLink ?? ""
+      if (!meetingLink.trim() && (schedule.meetingType ?? lead.meetingType ?? "online") === "online") {
+        return new Output(false, [], ["Agendamento online sem link para reenvio"], null)
+      }
+      const attemptedAt = new Date()
+      const resendOutput = await this.inviteService.sendInvite({
+        leadName: lead.name,
+        leadEmail: uniqueRecipients[0],
+        closerName: closer.email,
+        closerEmail,
+        meetingDate: schedule.date,
+        meetingTitle: schedule.meetingTitle ?? lead.meetingTitle ?? `Reunião — ${lead.name}`,
+        meetingNotes: schedule.notes ?? lead.meetingNotes,
+        meetingLink,
+        extraGuests: uniqueRecipients.slice(1),
+        eventUid: schedule.id,
+        timezone: closer.timezone,
+      })
+
+      if (!resendOutput.isValid) {
+        await this.scheduleRepo.update(schedule.id, {
+          inviteDispatchStatus: BackofficeInviteDispatchStatus.failed,
+          inviteDispatchProvider: "resend",
+          inviteDispatchLastAttemptAt: attemptedAt,
+          inviteDispatchLastError: resendOutput.errorMessages.join("; ") || "Falha no reenvio",
+          inviteDispatchLastPayload: toInputJsonValue(resendOutput.result),
+        })
+        return resendOutput
+      }
+
+      await this.scheduleRepo.update(schedule.id, {
+        inviteDispatchStatus: BackofficeInviteDispatchStatus.sent_resend,
+        inviteDispatchProvider: "resend",
+        inviteDispatchLastAttemptAt: attemptedAt,
+        inviteDispatchLastError: null,
+        inviteDispatchLastPayload: toInputJsonValue(resendOutput.result),
+      })
+
+      return new Output(true, ["Convite reenviado com sucesso"], [], {
+        recipients: uniqueRecipients,
+        inviteDispatch: resendOutput.result,
+      })
+    } catch (error) {
+      console.error("[BackofficeLeadScheduleService][resendInvite]", error)
+      return new Output(false, [], ["Erro ao reenviar convite do agendamento"], null)
     }
   }
 

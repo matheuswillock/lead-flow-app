@@ -6,6 +6,7 @@ export type BackofficeLeadSchedulePayload = {
   meetingTitle?: unknown
   meetingNotes?: unknown
   meetingLink?: unknown
+  meetingType?: unknown
   meetingExtraGuests?: unknown
   extraGuests?: unknown
 }
@@ -22,5 +23,11 @@ export interface IBackofficeLeadScheduleUseCase {
     reason: unknown
   }): Promise<Output>
   getAttendees(leadId: string): Promise<Output>
+  resendInvite(params: {
+    leadId: string
+    target: "all" | "single" | "new"
+    email?: string
+    emails?: string[]
+  }): Promise<Output>
 }
 

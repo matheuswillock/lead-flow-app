@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Image from "next/image"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { CheckCircle2, Loader2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
+import { DateTimePicker } from "@/components/ui/date-time-picker"
 import {
   Form,
   FormControl,
@@ -16,10 +17,20 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import { formatLocalDateValue } from "@/lib/dates"
 import { formatDocumentInput, isValidCNPJ, isValidCPF, sanitizeDocumentDigits } from "@/lib/masks"
 import { useBackofficePublicLeadFormContext } from "../context/BackofficePublicLeadFormContext"
+import { backofficePublicLeadFormService } from "../services/BackofficePublicLeadFormService"
+import type { BackofficePublicCloserOption } from "../services/IBackofficePublicLeadFormService"
 
 function formatPhoneInput(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 11)
@@ -68,10 +79,37 @@ const formSchema = z
     qualificationLeadOrganization: z.string().trim(),
     qualificationAvgUsers: z.string().trim(),
     qualificationProfileFit: z.string().trim(),
+    wantSchedule: z.boolean(),
+    closerBackofficeUserId: z.string().trim(),
+    meetingDateIso: z.string().trim(),
   })
   .refine((data) => Boolean(data.email.trim() || data.phone.trim()), {
     message: "Informe e-mail ou telefone.",
     path: ["email"],
+  })
+  .superRefine((data, ctx) => {
+    if (!data.wantSchedule) return
+    if (!data.email.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["email"],
+        message: "E-mail é obrigatório para agendar.",
+      })
+    }
+    if (!data.closerBackofficeUserId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["closerBackofficeUserId"],
+        message: "Selecione um profissional.",
+      })
+    }
+    if (!data.meetingDateIso) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["meetingDateIso"],
+        message: "Selecione data e horário.",
+      })
+    }
   })
 
 type FormValues = z.infer<typeof formSchema>
@@ -85,6 +123,9 @@ const emptyValues: FormValues = {
   qualificationLeadOrganization: "",
   qualificationAvgUsers: "",
   qualificationProfileFit: "",
+  wantSchedule: false,
+  closerBackofficeUserId: "",
+  meetingDateIso: "",
 }
 
 function nullIfEmpty(value: string): string | undefined {
@@ -93,15 +134,67 @@ function nullIfEmpty(value: string): string | undefined {
 }
 
 export function BackofficePublicLeadForm() {
-  const { isSubmitting, isSubmitted, submitLead, resetForm } =
+  const { isSubmitting, isSubmitted, scheduledMeetingDate, submitLead, resetForm } =
     useBackofficePublicLeadFormContext()
   const [locked, setLocked] = useState(false)
+  const [closers, setClosers] = useState<BackofficePublicCloserOption[]>([])
+  const [availableTimes, setAvailableTimes] = useState<string[]>([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     mode: "onChange",
     defaultValues: emptyValues,
   })
+
+  const wantSchedule = form.watch("wantSchedule")
+  const closerId = form.watch("closerBackofficeUserId")
+  const meetingDateIso = form.watch("meetingDateIso")
+  const selectedCloser = closers.find((closer) => closer.id === closerId) ?? null
+  const closerTimezone = selectedCloser?.timezone ?? "America/Sao_Paulo"
+  const meetingDate = meetingDateIso ? new Date(meetingDateIso) : undefined
+  const meetingDateKey = meetingDate
+    ? formatLocalDateValue(meetingDate, closerTimezone)
+    : null
+
+  useEffect(() => {
+    let cancelled = false
+    void backofficePublicLeadFormService
+      .fetchClosers()
+      .then((items) => {
+        if (!cancelled) setClosers(items)
+      })
+      .catch(() => {
+        if (!cancelled) setClosers([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!wantSchedule || !closerId || !meetingDateKey) {
+      setAvailableTimes([])
+      return
+    }
+    let cancelled = false
+    setAvailabilityLoading(true)
+    void backofficePublicLeadFormService
+      .fetchAvailability({
+        closerId,
+        date: meetingDateKey,
+        timezone: closerTimezone,
+      })
+      .then((times) => {
+        if (!cancelled) setAvailableTimes(times)
+      })
+      .finally(() => {
+        if (!cancelled) setAvailabilityLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [wantSchedule, closerId, meetingDateKey, closerTimezone])
 
   async function onSubmit(values: FormValues) {
     if (isSubmitting || locked) return
@@ -117,6 +210,14 @@ export function BackofficePublicLeadForm() {
         qualificationLeadOrganization: nullIfEmpty(values.qualificationLeadOrganization),
         qualificationAvgUsers: nullIfEmpty(values.qualificationAvgUsers),
         qualificationProfileFit: nullIfEmpty(values.qualificationProfileFit),
+        ...(values.wantSchedule
+          ? {
+              closerBackofficeUserId: values.closerBackofficeUserId,
+              meetingDate: values.meetingDateIso,
+              meetingTitle: `Demonstração Corretor Studio - ${values.name.trim()}`,
+              meetingType: "online" as const,
+            }
+          : {}),
       })
 
       if (ok) {
@@ -136,7 +237,9 @@ export function BackofficePublicLeadForm() {
             <CheckCircle2 className="size-16 text-primary" />
             <h2 className="text-xl font-semibold">Cadastro enviado com sucesso</h2>
             <p className="text-sm text-muted-foreground">
-              Recebemos suas informações. Nossa equipe entrará em contato em breve.
+              {scheduledMeetingDate
+                ? `Recebemos suas informações e agendamos para ${new Date(scheduledMeetingDate).toLocaleString("pt-BR")}.`
+                : "Recebemos suas informações. Nossa equipe entrará em contato em breve."}
             </p>
             <Button
               variant="outline"
@@ -346,6 +449,102 @@ export function BackofficePublicLeadForm() {
                     </FormItem>
                   )}
                 />
+              </section>
+
+              <Separator />
+
+              <section className="flex flex-col gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold">Agendamento (opcional)</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Escolha um horário para a demonstração com nosso time.
+                  </p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="wantSchedule"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Deseja agendar agora?</FormLabel>
+                      <Select
+                        value={field.value ? "yes" : "no"}
+                        onValueChange={(value) => field.onChange(value === "yes")}
+                        disabled={pending}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="no">Não, só enviar cadastro</SelectItem>
+                          <SelectItem value="yes">Sim, agendar demonstração</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {wantSchedule ? (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="closerBackofficeUserId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Profissional</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={pending || closers.length === 0}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione o closer" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {closers.map((closer) => (
+                                <SelectItem key={closer.id} value={closer.id}>
+                                  {closer.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="meetingDateIso"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <DateTimePicker
+                              date={field.value ? new Date(field.value) : undefined}
+                              onDateChange={(date) =>
+                                field.onChange(date ? date.toISOString() : "")
+                              }
+                              label="Data e horário"
+                              required
+                              disabled={pending || !closerId}
+                              disablePastDates
+                              tz={closerTimezone}
+                              availableTimes={closerId ? availableTimes : undefined}
+                              timeLoading={availabilityLoading}
+                              timeLoadingText="Carregando horários..."
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                ) : null}
               </section>
 
               <Button

@@ -32,14 +32,48 @@ export class BackofficeCalendarAvailabilityUseCase
         return new Output(false, [], ["Data inválida"], null)
       }
 
-      const result = await this.service.getAvailability({
-        closerIds,
-        date: input.date,
-        excludeLeadId: input.excludeLeadId,
-        userTimezone: input.userTimezone,
-      })
+      const days = Math.min(Math.max(input.days ?? 1, 1), 30)
+      if (days === 1) {
+        const result = await this.service.getAvailability({
+          closerIds,
+          date: input.date,
+          excludeLeadId: input.excludeLeadId,
+          userTimezone: input.userTimezone,
+        })
+        return new Output(true, [], [], result)
+      }
 
-      return new Output(true, [], [], result)
+      const availableDateKeys: string[] = []
+      const availabilityByDay: Record<
+        string,
+        Awaited<ReturnType<typeof this.service.getAvailability>>
+      > = {}
+      const baseDate = new Date(`${input.date}T12:00:00.000Z`)
+
+      for (let offset = 0; offset < days; offset += 1) {
+        const cursor = new Date(baseDate)
+        cursor.setUTCDate(baseDate.getUTCDate() + offset)
+        const dateKey = cursor.toISOString().slice(0, 10)
+        const dayResult = await this.service.getAvailability({
+          closerIds,
+          date: dateKey,
+          excludeLeadId: input.excludeLeadId,
+          userTimezone: input.userTimezone,
+        })
+        availabilityByDay[dateKey] = dayResult
+        if (dayResult.availableTimes.length > 0) {
+          availableDateKeys.push(dateKey)
+        }
+      }
+
+      const firstDay = availabilityByDay[input.date]
+      return new Output(true, [], [], {
+        availableTimes: firstDay?.availableTimes ?? [],
+        source: firstDay?.source ?? "internal",
+        perCloser: firstDay?.perCloser ?? {},
+        availableDateKeys,
+        availabilityByDay,
+      })
     } catch (error) {
       if (error instanceof Error && error.message === "CLOSERS_NOT_FOUND") {
         return new Output(false, [], ["Closers não encontrados"], null)

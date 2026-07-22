@@ -217,6 +217,20 @@ function parseOptionalDate(value: unknown): ParsedDate {
   return { isValid: true, isProvided: true, value: date }
 }
 
+const VALID_MEETING_TYPES = new Set(["online", "call", "whatsapp"])
+
+function normalizeMeetingType(
+  value: unknown
+): { isValid: true; value: "online" | "call" | "whatsapp" | null } | { isValid: false; errorMessage: string } {
+  if (value === undefined || value === null || value === "") {
+    return { isValid: true, value: null }
+  }
+  if (typeof value !== "string" || !VALID_MEETING_TYPES.has(value)) {
+    return { isValid: false, errorMessage: "Tipo de reunião inválido" }
+  }
+  return { isValid: true, value: value as "online" | "call" | "whatsapp" }
+}
+
 function mapCompactUser(user: BackofficeLeadUserRelation | null) {
   if (!user) return null
 
@@ -247,6 +261,7 @@ function mapLead(lead: BackofficeLeadWithRelations) {
     meetingTitle: lead.meetingTitle,
     meetingNotes: lead.meetingNotes,
     meetingLink: lead.meetingLink,
+    meetingType: lead.meetingType,
     meetingExtraGuests: lead.meetingExtraGuests,
     qualificationLeadOrganization: lead.qualificationLeadOrganization,
     qualificationAvgUsers: lead.qualificationAvgUsers,
@@ -346,6 +361,10 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
 
       const closerBackofficeUserId = trimOrNull(data.closerBackofficeUserId)
       const normalizedMeetingLink = trimOrNull(data.meetingLink)
+      const meetingTypeResult = normalizeMeetingType(data.meetingType)
+      if (!meetingTypeResult.isValid) {
+        return new Output(false, [], [meetingTypeResult.errorMessage], null)
+      }
       const roleValidation = await this.validateAssignees({
         sdrBackofficeUserId,
         closerBackofficeUserId,
@@ -382,6 +401,10 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         meetingTitle: trimOrNull(data.meetingTitle),
         meetingNotes: trimOrNull(data.meetingNotes),
         meetingLink: normalizedMeetingLink,
+        meetingType:
+          status === BackofficeLeadStatus.scheduled
+            ? meetingTypeResult.value ?? "online"
+            : meetingTypeResult.value,
         meetingExtraGuests: meetingExtraGuests.value,
         createdByProfileId,
         qualificationLeadOrganization: trimOrNull(data.qualificationLeadOrganization),
@@ -399,6 +422,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           meetingTitle: trimOrNull(data.meetingTitle) ?? `Demonstração Corretor Studio - ${name}`,
           meetingNotes: trimOrNull(data.meetingNotes),
           meetingLink: normalizedMeetingLink,
+          meetingType: meetingTypeResult.value ?? "online",
           extraGuests: meetingExtraGuests.value,
           createdByProfileId,
         })
@@ -416,6 +440,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
             meetingTitle: scheduleResult.schedule.meetingTitle,
             meetingNotes: scheduleResult.schedule.notes,
             meetingLink: scheduleResult.meetingLink ?? null,
+            meetingType: scheduleResult.schedule.meetingType ?? meetingTypeResult.value ?? "online",
           })
         }
       }
@@ -509,6 +534,14 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         data.meetingLink !== undefined ? trimOrNull(data.meetingLink) : existing.meetingLink
       let normalizedMeetingLinkForUpdate =
         data.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined
+      const meetingTypeResult = normalizeMeetingType(
+        data.meetingType !== undefined ? data.meetingType : existing.meetingType
+      )
+      if (!meetingTypeResult.isValid) {
+        return new Output(false, [], [meetingTypeResult.errorMessage], null)
+      }
+      const finalMeetingType =
+        data.meetingType !== undefined ? meetingTypeResult.value : existing.meetingType
       const finalMeetingTitle =
         data.meetingTitle !== undefined
           ? trimOrNull(data.meetingTitle)
@@ -538,6 +571,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           (data.meetingTitle !== undefined && finalMeetingTitle !== existing.meetingTitle) ||
           (data.meetingNotes !== undefined && finalMeetingNotes !== existing.meetingNotes) ||
           (data.meetingLink !== undefined && finalMeetingLink !== existing.meetingLink) ||
+          (data.meetingType !== undefined && finalMeetingType !== existing.meetingType) ||
           (data.meetingExtraGuests !== undefined &&
             !areStringArraysEqual(finalMeetingExtraGuests ?? [], existing.meetingExtraGuests))
 
@@ -553,6 +587,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
               `Demonstração Corretor Studio - ${nextName ?? existing.name}`,
             meetingNotes: finalMeetingNotes,
             meetingLink: finalMeetingLink,
+            meetingType: (finalMeetingType as "online" | "call" | "whatsapp" | null) ?? "online",
             extraGuests: finalMeetingExtraGuests ?? [],
             createdByProfileId: existing.createdByProfileId,
           })
@@ -581,6 +616,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         meetingNotes:
           data.meetingNotes !== undefined ? trimOrNull(data.meetingNotes) : undefined,
         meetingLink: normalizedMeetingLinkForUpdate,
+        meetingType: data.meetingType !== undefined ? finalMeetingType : undefined,
         meetingExtraGuests:
           data.meetingExtraGuests !== undefined ? meetingExtraGuestsValue : undefined,
         qualificationLeadOrganization: data.qualificationLeadOrganization !== undefined ? trimOrNull(data.qualificationLeadOrganization) : undefined,
@@ -656,6 +692,18 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         data?.meetingLink !== undefined ? trimOrNull(data.meetingLink) : existing.meetingLink
       let normalizedMeetingLinkForStatus =
         data?.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined
+      const meetingTypeResult = normalizeMeetingType(
+        data?.meetingType !== undefined ? data.meetingType : existing.meetingType
+      )
+      if (!meetingTypeResult.isValid) {
+        return new Output(false, [], [meetingTypeResult.errorMessage], null)
+      }
+      const finalMeetingType =
+        data?.meetingType !== undefined
+          ? meetingTypeResult.value
+          : existing.meetingType
+      let normalizedMeetingTypeForStatus =
+        data?.meetingType !== undefined ? meetingTypeResult.value : undefined
       const finalMeetingExtraGuests =
         data?.meetingExtraGuests !== undefined
           ? meetingExtraGuestsValue
@@ -687,6 +735,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           (data?.meetingTitle !== undefined && finalMeetingTitle !== existing.meetingTitle) ||
           (data?.meetingNotes !== undefined && finalMeetingNotes !== existing.meetingNotes) ||
           (data?.meetingLink !== undefined && finalMeetingLink !== existing.meetingLink) ||
+          (data?.meetingType !== undefined && finalMeetingType !== existing.meetingType) ||
           (data?.meetingExtraGuests !== undefined &&
             !areStringArraysEqual(finalMeetingExtraGuests ?? [], existing.meetingExtraGuests))
 
@@ -701,6 +750,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
               finalMeetingTitle ?? `Demonstração Corretor Studio - ${existing.name}`,
             meetingNotes: finalMeetingNotes,
             meetingLink: finalMeetingLink,
+            meetingType: (finalMeetingType as "online" | "call" | "whatsapp" | null) ?? "online",
             extraGuests: finalMeetingExtraGuests ?? [],
             createdByProfileId: existing.createdByProfileId,
           })
@@ -709,6 +759,18 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           const scheduleResult = getScheduleResult(scheduleOutput)
           if (scheduleResult) {
             normalizedMeetingLinkForStatus = scheduleResult.meetingLink
+            const scheduleMeetingType = scheduleResult.schedule.meetingType
+            const resolvedType: "online" | "call" | "whatsapp" =
+              scheduleMeetingType === "call" ||
+              scheduleMeetingType === "whatsapp" ||
+              scheduleMeetingType === "online"
+                ? scheduleMeetingType
+                : finalMeetingType === "call" ||
+                    finalMeetingType === "whatsapp" ||
+                    finalMeetingType === "online"
+                  ? finalMeetingType
+                  : "online"
+            normalizedMeetingTypeForStatus = resolvedType
           }
         }
       }
@@ -719,6 +781,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         data?.meetingTitle !== undefined ||
         data?.meetingNotes !== undefined ||
         data?.meetingLink !== undefined ||
+        data?.meetingType !== undefined ||
         data?.meetingExtraGuests !== undefined
 
       if (existing.status === status && !hasSchedulePayload) {
@@ -737,6 +800,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         meetingNotes:
           data?.meetingNotes !== undefined ? trimOrNull(data.meetingNotes) : undefined,
         meetingLink: normalizedMeetingLinkForStatus,
+        meetingType: normalizedMeetingTypeForStatus,
         meetingExtraGuests:
           data?.meetingExtraGuests !== undefined ? meetingExtraGuestsValue : undefined,
       })

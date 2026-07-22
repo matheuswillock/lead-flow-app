@@ -1,20 +1,14 @@
+import type { SubmitBackofficePublicLeadPayload } from "../services/IBackofficePublicLeadFormService"
+
 export interface IBackofficePublicLeadFormState {
   isSubmitting: boolean
   isSubmitted: boolean
   submitError: string | null
+  scheduledMeetingDate: string | null
 }
 
 export interface IBackofficePublicLeadFormActions {
-  submitLead: (payload: {
-    name: string
-    email?: string
-    phone?: string
-    cpfCnpj?: string
-    notes?: string
-    qualificationLeadOrganization?: string
-    qualificationAvgUsers?: string
-    qualificationProfileFit?: string
-  }) => Promise<boolean>
+  submitLead: (payload: SubmitBackofficePublicLeadPayload) => Promise<boolean>
   resetForm: () => void
 }
 

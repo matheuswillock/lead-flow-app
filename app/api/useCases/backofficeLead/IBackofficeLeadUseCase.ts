@@ -17,6 +17,7 @@ export interface CreateBackofficeLeadDTO {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[] | null
   qualificationLeadOrganization?: string | null
   qualificationAvgUsers?: string | null
@@ -35,6 +36,7 @@ export interface UpdateBackofficeLeadDTO {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[] | null
   qualificationLeadOrganization?: string | null
   qualificationAvgUsers?: string | null
@@ -47,6 +49,7 @@ export interface UpdateBackofficeLeadStatusDTO {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[] | null
 }
 

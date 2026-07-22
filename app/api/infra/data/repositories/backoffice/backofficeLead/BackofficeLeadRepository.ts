@@ -63,6 +63,7 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         meetingTitle: data.meetingTitle ?? null,
         meetingNotes: data.meetingNotes ?? null,
         meetingLink: data.meetingLink ?? null,
+        meetingType: data.meetingType ?? null,
         meetingExtraGuests: data.meetingExtraGuests ?? [],
         createdByProfileId: data.createdByProfileId ?? null,
         qualificationLeadOrganization: data.qualificationLeadOrganization ?? null,
@@ -119,6 +120,7 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         ...(data.meetingTitle !== undefined ? { meetingTitle: data.meetingTitle } : {}),
         ...(data.meetingNotes !== undefined ? { meetingNotes: data.meetingNotes } : {}),
         ...(data.meetingLink !== undefined ? { meetingLink: data.meetingLink } : {}),
+        ...(data.meetingType !== undefined ? { meetingType: data.meetingType } : {}),
         ...(data.meetingExtraGuests !== undefined
           ? { meetingExtraGuests: data.meetingExtraGuests }
           : {}),
@@ -146,6 +148,7 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         ...(data.meetingTitle !== undefined ? { meetingTitle: data.meetingTitle } : {}),
         ...(data.meetingNotes !== undefined ? { meetingNotes: data.meetingNotes } : {}),
         ...(data.meetingLink !== undefined ? { meetingLink: data.meetingLink } : {}),
+        ...(data.meetingType !== undefined ? { meetingType: data.meetingType } : {}),
         ...(data.meetingExtraGuests !== undefined
           ? { meetingExtraGuests: data.meetingExtraGuests }
           : {}),
