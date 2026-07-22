@@ -776,13 +776,6 @@ dialer_unlimited dialer_unlimited
     
 
 
-        dialer_3cplus_mode {
-            master master
-own_account own_account
-        }
-    
-
-
         dialer_subscription_status {
             pending pending
 active active
@@ -1950,9 +1943,6 @@ meeting_scheduled meeting_scheduled
     String twilioAppSid "❓"
     String twilioNumberSid "❓"
     String twilioPhoneNumber "❓"
-    Dialer3cPlusMode dialer3cplusMode 
-    String dialer3cplusAccountId "❓"
-    String dialer3cplusApiToken "❓"
     }
   
 
@@ -3457,7 +3447,6 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_pending_operators" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_pending_operators" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_pending_operators" }o--|o corretor_studio_teams : "team"
-    "corretor_studio_teams" |o--|| "Dialer3cPlusMode" : "enum:dialer3cplusMode"
     "corretor_studio_teams" }o--|| corretor_studio_profiles : "master"
     "corretor_studio_team_filter_presets" |o--|| "FilterPresetScope" : "enum:scope"
     "corretor_studio_team_filter_presets" |o--|| "FilterPresetVisibility" : "enum:visibility"

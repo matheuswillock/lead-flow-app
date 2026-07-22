@@ -279,7 +279,22 @@
       "key": "dialerCampaignId",
       "value": "",
       "type": "default",
-      "enabled": true
+      "enabled": true,
+      "description": "ID da campanha de discagem para endpoints /api/v1/dialer/campaigns/:campaignId"
+    },
+    {
+      "key": "dialerToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Access Token Twilio Client — preenchido automaticamente pelo request GET /api/v1/dialer/token"
+    },
+    {
+      "key": "dialerCallId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma DialerCall para endpoints /api/v1/dialer/calls/:callId"
     },
     {
       "key": "conversationId",

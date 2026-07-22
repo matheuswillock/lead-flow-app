@@ -50,7 +50,21 @@ export type CreateDialerContactData = {
   metadata?: Prisma.InputJsonValue;
 };
 
+export type TeamDialerConfig = {
+  dialerEnabled: boolean
+  twilioSubaccountSid: string | null
+  twilioApiKeySid: string | null
+  twilioApiKeySecret: string | null
+  twilioAppSid: string | null
+}
+
+export type TeamTwilioToken = {
+  twilioSubaccountToken: string | null
+}
+
 export interface IDialerRepository {
+  findTeamDialerConfig(teamId: string): Promise<TeamDialerConfig | null>
+  findTeamTwilioToken(teamId: string): Promise<TeamTwilioToken | null>
   findCampaignsWithCtx(ctx: DialerTeamContext): Promise<DialerCampaignListItem[]>;
   findCampaignByIdWithCtx(
     ctx: DialerTeamContext,

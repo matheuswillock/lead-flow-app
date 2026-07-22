@@ -8,6 +8,8 @@ import type {
   DialerContactListItem,
   DialerTeamContext,
   IDialerRepository,
+  TeamDialerConfig,
+  TeamTwilioToken,
   UpdateDialerCampaignData,
 } from "./IDialerRepository";
 
@@ -33,6 +35,26 @@ const CAMPAIGN_DETAIL_SELECT = {
 } as const;
 
 export class DialerRepository implements IDialerRepository {
+  async findTeamDialerConfig(teamId: string): Promise<TeamDialerConfig | null> {
+    return prisma.team.findUnique({
+      where: { id: teamId },
+      select: {
+        dialerEnabled: true,
+        twilioSubaccountSid: true,
+        twilioApiKeySid: true,
+        twilioApiKeySecret: true,
+        twilioAppSid: true,
+      },
+    })
+  }
+
+  async findTeamTwilioToken(teamId: string): Promise<TeamTwilioToken | null> {
+    return prisma.team.findUnique({
+      where: { id: teamId },
+      select: { twilioSubaccountToken: true },
+    })
+  }
+
   async findCampaignsWithCtx(ctx: DialerTeamContext): Promise<DialerCampaignListItem[]> {
     return prisma.dialerCampaign.findMany({
       where: { teamId: ctx.teamId },

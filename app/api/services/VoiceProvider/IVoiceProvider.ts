@@ -1,57 +1,96 @@
-export type VoiceProviderContact = {
-  name: string;
-  phone: string;
-  email?: string | null;
-};
+export interface ISubaccountResult {
+  subaccountSid: string
+  authToken: string
+}
 
-export type VoiceProviderAgent = {
-  id: string;
-  extensionNumber: number;
-};
+export interface ICallParams {
+  to: string
+  from: string
+  twimlUrl: string
+  statusCallbackUrl: string
+  machineDetection?: "Enable" | "DetectMessageEnd"
+  timeout?: number
+  subaccountSid: string
+  authToken: string
+}
 
-export type VoiceProviderCallRange = {
-  startDate: string;
-  endDate: string;
-};
+export interface ICallStatus {
+  status:
+    | "queued"
+    | "ringing"
+    | "in-progress"
+    | "completed"
+    | "busy"
+    | "failed"
+    | "no-answer"
+    | "canceled"
+  duration?: number
+  answeredBy?: "human" | "machine_start" | "fax" | "unknown"
+}
 
-export type VoiceProviderCampaignStatus = {
-  id: string;
-  paused: boolean;
-  answeredCalls: number;
-  notAnsweredCalls: number;
-  abandonedCalls: number;
-  failedCalls: number;
-};
-
-export type VoiceProviderCallSummary = {
-  providerCallId: string;
-  campaignId: string | null;
-  agentName: string | null;
-  phone: string;
-  speakingTime: string;
-  billedTime: string;
-  billedValue: string;
-  hasAgent: boolean;
-  recordingUrl: string | null;
-  callDateRfc3339: string;
-};
-
-export type VoiceProviderRecording = {
-  url: string;
-  expiresAt: string | null;
-};
+export interface IRecordingResult {
+  recordingSid: string
+  mediaUrl: string
+}
 
 export interface IVoiceProvider {
-  createTeam(name: string): Promise<{ id: string }>;
-  createAgent(name: string, extensionNumber: number, email?: string | null): Promise<VoiceProviderAgent>;
-  assignAgentToTeam(agentId: string, teamId: string): Promise<void>;
-  syncCampaignContacts(
-    campaignId: string,
-    contacts: VoiceProviderContact[]
-  ): Promise<{ listId: string; syncedCount: number }>;
-  startCampaign(campaignId: string): Promise<void>;
-  pauseCampaign(campaignId: string): Promise<void>;
-  getCampaignStatus(campaignId: string, range: VoiceProviderCallRange): Promise<VoiceProviderCampaignStatus>;
-  listCallsForCampaign(campaignId: string, range: VoiceProviderCallRange): Promise<VoiceProviderCallSummary[]>;
-  getRecording(callId: string): Promise<VoiceProviderRecording>;
+  // Provisionamento (1x por time na ativação do add-on)
+  createSubaccount(name: string): Promise<ISubaccountResult>
+  provisionNumber(
+    subaccountSid: string,
+    authToken: string,
+    bundleSid: string,
+    addressSid: string,
+  ): Promise<{ numberSid: string; phoneNumber: string }>
+  createApiKey(
+    subaccountSid: string,
+    authToken: string,
+  ): Promise<{ apiKeySid: string; apiKeySecret: string }>
+  createTwimlApp(
+    subaccountSid: string,
+    authToken: string,
+    voiceUrl: string,
+    statusCallbackUrl: string,
+  ): Promise<{ appSid: string }>
+  suspendSubaccount(subaccountSid: string, authToken: string): Promise<void>
+  reactivateSubaccount(subaccountSid: string, authToken: string): Promise<void>
+
+  // Token efêmero para o browser SDK (@twilio/voice-sdk) — nunca persistir
+  generateAccessToken(
+    identity: string,
+    subaccountSid: string,
+    apiKeySid: string,
+    apiKeySecret: string,
+    appSid: string,
+  ): string
+
+  // Controle de chamada (durante discagem)
+  initiateCall(params: ICallParams): Promise<{ callSid: string }>
+  fetchCall(
+    callSid: string,
+    subaccountSid: string,
+    authToken: string,
+  ): Promise<ICallStatus>
+  hangupCall(
+    callSid: string,
+    subaccountSid: string,
+    authToken: string,
+  ): Promise<void>
+
+  // Gravação (pós-chamada via DialerJob)
+  fetchRecording(
+    recordingSid: string,
+    subaccountSid: string,
+    authToken: string,
+  ): Promise<IRecordingResult>
+  downloadRecordingBuffer(
+    recordingSid: string,
+    subaccountSid: string,
+    authToken: string,
+  ): Promise<Buffer>
+  deleteRecording(
+    recordingSid: string,
+    subaccountSid: string,
+    authToken: string,
+  ): Promise<void>
 }

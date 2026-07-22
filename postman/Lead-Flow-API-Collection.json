@@ -14762,6 +14762,53 @@
       "name": "Discadora (Studio Voice)",
       "item": [
         {
+          "name": "GET Token (Twilio Client)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dialer/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dialer",
+                "token"
+              ]
+            },
+            "description": "Gera um Access Token Twilio Client efêmero (3600s) para o operador autenticar o @twilio/voice-sdk no browser. Retorna { token, identity }."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.result && body.result.token) {",
+                  "    pm.environment.set('dialerToken', body.result.token);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
           "name": "Campanhas",
           "item": [
             {
@@ -16730,8 +16777,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "settings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "settings"
+              ]
             },
             "description": "MASTER: configurações do agente Ops (URL, env mascarado)."
           },
@@ -16741,15 +16797,29 @@
           "name": "PATCH Backoffice Bot Host Settings",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agentBaseUrl\": \"https://ops.corretorstudio.com\",\n  \"n8nEnv\": {\n    \"LEAD_FLOW_API_BASE_URL\": \"https://app.corretorstudio.com\"\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "settings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "settings"
+              ]
             }
           },
           "response": []
@@ -16761,8 +16831,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/rotate-token",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "rotate-token"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "rotate-token"
+              ]
             },
             "description": "MASTER: gera novo OPS_AGENT_TOKEN (plain só nesta resposta)."
           },
@@ -16775,8 +16854,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/jobs",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "jobs"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "jobs"
+              ]
             }
           },
           "response": []
@@ -16788,8 +16876,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "health"
+              ]
             }
           },
           "response": []
@@ -16801,8 +16898,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/apply",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "apply"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "apply"
+              ]
             },
             "description": "MASTER: materializa .env.n8n/.env.evolution na VPS e recria containers."
           },
@@ -16812,15 +16918,29 @@
           "name": "POST Backoffice Bot Host Restart",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"target\": \"n8n\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/restart",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "restart"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "restart"
+              ]
             }
           },
           "response": []
@@ -16832,8 +16952,18 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/workflows/import",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "workflows", "import"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "workflows",
+                "import"
+              ]
             }
           },
           "response": []
@@ -16845,8 +16975,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/sync",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "sync"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "sync"
+              ]
             },
             "description": "MASTER: unpack host-pack + pull/up na VPS."
           },
@@ -16859,8 +16998,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/metrics",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "metrics"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "metrics"
+              ]
             }
           },
           "response": []
@@ -16872,8 +17020,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/configuration",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "configuration"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "configuration"
+              ]
             }
           },
           "response": []
@@ -16882,15 +17039,29 @@
           "name": "PATCH Backoffice Bot AI Configuration",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"enabled\": false,\n  \"shadowMode\": true,\n  \"rolloutPercentage\": 0\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/configuration",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "configuration"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "configuration"
+              ]
             }
           },
           "response": []
@@ -16902,8 +17073,18 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/provider/test",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "provider", "test"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "provider",
+                "test"
+              ]
             },
             "description": "MASTER: teste sintético Groq (persiste interaction+attempt)."
           },
@@ -16916,8 +17097,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/usage?page=1&pageSize=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "usage"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "usage"
+              ]
             }
           },
           "response": []
@@ -16929,8 +17119,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/export",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "export"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "export"
+              ]
             }
           },
           "response": []

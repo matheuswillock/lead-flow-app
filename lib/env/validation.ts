@@ -139,10 +139,12 @@ export const envSchema = z.object({
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional().describe('Google OAuth client ID (optional)'),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional().describe('Google OAuth client secret (optional)'),
 
-  // Dialer (Studio Voice) — 3C Plus
-  THREECPLUS_API_BASE_URL: urlSchema.optional().describe('3C Plus API base URL (optional, defaults to https://app.3c.plus/api/v1)'),
-  THREECPLUS_API_TOKEN: z.string().optional().describe('3C Plus master account API token (required only for teams in "master" mode)'),
-  DIALER_ENCRYPTION_KEY: z.string().optional().describe('Encryption key for Dialer 3C Plus credentials (optional in non-production, falls back to a dev key)'),
+  // Dialer (Studio Voice) — Twilio
+  TWILIO_ACCOUNT_SID: z.string().optional().describe('Twilio master account SID'),
+  TWILIO_AUTH_TOKEN: z.string().optional().describe('Twilio master account auth token'),
+  TWILIO_BUNDLE_SID: z.string().optional().describe('Regulatory Bundle SID aprovado para números BR (reutilizado em todas as subcontas)'),
+  TWILIO_ADDRESS_SID: z.string().optional().describe('Address SID registrado para números BR'),
+  DIALER_ENCRYPTION_KEY: z.string().optional().describe('Chave de cifra (AES-256-GCM) para credenciais Twilio das subcontas — opcional em não-produção, usa fallback de dev'),
 
   // Web Push (optional — notifications still work in-app without these)
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional().describe('VAPID public key for Web Push'),
