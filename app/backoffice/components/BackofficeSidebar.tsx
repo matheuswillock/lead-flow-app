@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState, type ComponentType } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
@@ -24,6 +25,7 @@ import {
   UserRound,
   FileText,
   Megaphone,
+  ChevronRight,
 } from "lucide-react"
 import {
   Sidebar,
@@ -41,6 +43,11 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -52,25 +59,167 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
+import { cn } from "@/lib/utils"
 
-const navigationItems = [
+type NavChild = {
+  title: string
+  url: string
+  icon?: ComponentType<{ className?: string }>
+  match?: (pathname: string) => boolean
+}
+
+type NavItem = {
+  title: string
+  url: string
+  icon: ComponentType<{ className?: string }>
+  match?: (pathname: string) => boolean
+  children?: NavChild[]
+}
+
+const navigationItems: NavItem[] = [
   { title: "Dashboard", url: "/backoffice", icon: LayoutDashboard },
   { title: "CRM", url: "/backoffice/crm", icon: Kanban },
   { title: "Calendário", url: "/backoffice/calendar", icon: CalendarDays },
-  { title: "Clientes", url: "/backoffice/clients", icon: Users },
+  {
+    title: "Clientes",
+    url: "/backoffice/clients",
+    icon: Users,
+    match: (pathname) =>
+      pathname.startsWith("/backoffice/clients") || pathname.startsWith("/backoffice/anatemas"),
+    children: [
+      { title: "Clientes", url: "/backoffice/clients", match: (pathname) => pathname === "/backoffice/clients" },
+      {
+        title: "Todos os usuários",
+        url: "/backoffice/clients/all-users",
+        match: (pathname) => pathname.startsWith("/backoffice/clients/all-users"),
+      },
+      {
+        title: "Anatemas",
+        url: "/backoffice/anatemas",
+        icon: ShieldBan,
+        match: (pathname) => pathname.startsWith("/backoffice/anatemas"),
+      },
+      {
+        title: "Patrocinadores",
+        url: "/backoffice/clients/authorized-sponsors",
+        match: (pathname) => pathname.startsWith("/backoffice/clients/authorized-sponsors"),
+      },
+      {
+        title: "Acessos operacionais",
+        url: "/backoffice/clients/operational-access",
+        match: (pathname) => pathname.startsWith("/backoffice/clients/operational-access"),
+      },
+      {
+        title: "Nova adesão",
+        url: "/backoffice/clients/adhesions",
+        match: (pathname) => pathname.startsWith("/backoffice/clients/adhesions"),
+      },
+    ],
+  },
   { title: "Contratos", url: "/backoffice/contracts", icon: FileText },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
-  { title: "Funcionalidades", url: "/backoffice/features", icon: Zap },
+  {
+    title: "Funcionalidades",
+    url: "/backoffice/features",
+    icon: Zap,
+    match: (pathname) => pathname.startsWith("/backoffice/features"),
+    children: [
+      { title: "Funcionalidades", url: "/backoffice/features", match: (pathname) => pathname === "/backoffice/features" },
+      {
+        title: "Grupo Beta",
+        url: "/backoffice/features/beta",
+        match: (pathname) => pathname.startsWith("/backoffice/features/beta"),
+      },
+    ],
+  },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
   { title: "WhatsApp", url: "/backoffice/whatsapp", icon: MessageCircle },
   { title: "Bethânia", url: "/backoffice/studio-bot", icon: Bot },
   { title: "Templates de E-mail", url: "/backoffice/email-templates", icon: Mail },
-  { title: "Campanhas de E-mail", url: "/backoffice/emails/campanhas", icon: Megaphone },
+  {
+    title: "Campanhas de E-mail",
+    url: "/backoffice/emails/campanhas",
+    icon: Megaphone,
+    match: (pathname) => pathname.startsWith("/backoffice/emails"),
+    children: [
+      {
+        title: "Campanhas",
+        url: "/backoffice/emails/campanhas",
+        match: (pathname) => pathname === "/backoffice/emails/campanhas",
+      },
+      {
+        title: "Contatos",
+        url: "/backoffice/emails/contatos",
+        match: (pathname) => pathname.startsWith("/backoffice/emails/contatos"),
+      },
+      {
+        title: "Analytics",
+        url: "/backoffice/emails/analytics",
+        match: (pathname) => pathname.startsWith("/backoffice/emails/analytics"),
+      },
+    ],
+  },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
   { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },
 ]
+
+function isItemActive(item: NavItem, pathname: string) {
+  if (item.match) return item.match(pathname)
+  if (item.url === "/backoffice") return pathname === "/backoffice"
+  return pathname.startsWith(item.url)
+}
+
+function isChildActive(child: NavChild, pathname: string) {
+  if (child.match) return child.match(pathname)
+  return pathname === child.url || pathname.startsWith(`${child.url}/`)
+}
+
+function CollapsibleNavItem({ item, pathname }: { item: NavItem; pathname: string }) {
+  const sectionActive = isItemActive(item, pathname)
+  const [open, setOpen] = useState(sectionActive)
+
+  useEffect(() => {
+    if (sectionActive) setOpen(true)
+  }, [sectionActive])
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton isActive={sectionActive}>
+            <item.icon className="size-4" />
+            <span>{item.title}</span>
+            <ChevronRight
+              className={cn(
+                "ml-auto size-4 transition-transform",
+                open && "rotate-90"
+              )}
+            />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {(item.children ?? []).map((child) => {
+              const Icon = child.icon
+              return (
+                <SidebarMenuSubItem key={child.url}>
+                  <SidebarMenuSubButton asChild isActive={isChildActive(child, pathname)}>
+                    <Link href={child.url}>
+                      {Icon ? <Icon className="size-4" /> : null}
+                      <span>{child.title}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              )
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
+  )
+}
 
 export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
@@ -125,123 +274,19 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationItems.map((item) => {
-                const isActive =
-                  item.url === "/backoffice"
-                    ? pathname === "/backoffice"
-                    : item.url === "/backoffice/emails/campanhas"
-                      ? pathname.startsWith("/backoffice/emails")
-                      : pathname.startsWith(item.url)
+                if (item.children?.length) {
+                  return <CollapsibleNavItem key={item.title} item={item} pathname={pathname} />
+                }
+
+                const active = isItemActive(item, pathname)
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive}>
+                    <SidebarMenuButton asChild isActive={active}>
                       <Link href={item.url}>
-                        <item.icon className="h-4 w-4" />
+                        <item.icon className="size-4" />
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
-                    {item.url === "/backoffice/clients" ? (
-                      <SidebarMenuSub>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname === "/backoffice/clients"}
-                          >
-                            <Link href="/backoffice/clients">Clientes</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/clients/all-users")}
-                          >
-                            <Link href="/backoffice/clients/all-users">Todos os usuários</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/anatemas")}
-                          >
-                            <Link href="/backoffice/anatemas">
-                              <ShieldBan className="h-4 w-4" />
-                              Anatemas
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/clients/authorized-sponsors")}
-                          >
-                            <Link href="/backoffice/clients/authorized-sponsors">Patrocinadores</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/clients/operational-access")}
-                          >
-                            <Link href="/backoffice/clients/operational-access">Acessos operacionais</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/clients/adhesions")}
-                          >
-                            <Link href="/backoffice/clients/adhesions">Nova adesão</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      </SidebarMenuSub>
-                    ) : null}
-                    {item.url === "/backoffice/features" ? (
-                      <SidebarMenuSub>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname === "/backoffice/features"}
-                          >
-                            <Link href="/backoffice/features">Funcionalidades</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/features/beta")}
-                          >
-                            <Link href="/backoffice/features/beta">Grupo Beta</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      </SidebarMenuSub>
-                    ) : null}
-                    {item.url === "/backoffice/emails/campanhas" ? (
-                      <SidebarMenuSub>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname === "/backoffice/emails/campanhas"}
-                          >
-                            <Link href="/backoffice/emails/campanhas">Campanhas</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/emails/contatos")}
-                          >
-                            <Link href="/backoffice/emails/contatos">Contatos</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname.startsWith("/backoffice/emails/analytics")}
-                          >
-                            <Link href="/backoffice/emails/analytics">Analytics</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      </SidebarMenuSub>
-                    ) : null}
                   </SidebarMenuItem>
                 )
               })}
@@ -259,13 +304,13 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   size="lg"
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
-                  <Avatar className="h-8 w-8 rounded-lg">
+                  <Avatar className="size-8 rounded-lg">
                     <AvatarImage src={user?.profileIconUrl ?? undefined} alt={user?.fullName ?? "Backoffice"} />
                     <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                   </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
+                  <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{user?.fullName ?? "Backoffice"}</span>
-                    <span className="text-muted-foreground truncate text-xs">{user?.email}</span>
+                    <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
                   </div>
                   <EllipsisVertical className="ml-auto size-4" />
                 </SidebarMenuButton>
@@ -278,13 +323,13 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
               >
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                    <Avatar className="h-8 w-8 rounded-lg">
+                    <Avatar className="size-8 rounded-lg">
                       <AvatarImage src={user?.profileIconUrl ?? undefined} alt={user?.fullName ?? "Backoffice"} />
                       <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
                       <span className="truncate font-medium">{user?.fullName ?? "Backoffice"}</span>
-                      <span className="text-muted-foreground truncate text-xs">{user?.email}</span>
+                      <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
                     </div>
                   </div>
                 </DropdownMenuLabel>

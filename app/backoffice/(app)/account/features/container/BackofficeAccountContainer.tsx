@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useBackofficeAccount } from "../context/BackofficeAccountHook"
 import type { BackofficeAccountUpdateInput } from "../context/BackofficeAccountTypes"
 import { BackofficeGoogleConnectionCard } from "../components/BackofficeGoogleConnectionCard"
+import { BackofficeProfileIconCard } from "../components/BackofficeProfileIconCard"
 
 interface ProfileForm {
   fullName: string
@@ -160,6 +161,10 @@ export function BackofficeAccountContainer() {
             </TabsList>
 
             <TabsContent value="profile" className="flex flex-col gap-6">
+              <BackofficeProfileIconCard account={account} />
+
+              <Separator />
+
               <form onSubmit={(event) => void handleSaveProfile(event)} className="flex flex-col gap-6">
                 <FieldGroup>
                   <Field>

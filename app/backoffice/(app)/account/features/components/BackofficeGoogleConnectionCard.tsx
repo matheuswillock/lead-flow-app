@@ -136,7 +136,8 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
           redirectTo,
           queryParams: {
             access_type: "offline",
-            prompt: "consent",
+            // Permite escolher outra conta Google (diferente da usada no Corretor Studio).
+            prompt: "select_account consent",
           },
         },
       }
@@ -188,7 +189,7 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
   }
 
   async function handleDisconnectGoogle() {
-    if (isDisconnectingGoogle || !isOwnConnection) return
+    if (isDisconnectingGoogle || !isConnected) return
     setIsDisconnectingGoogle(true)
     try {
       await disconnectGoogle()
@@ -208,7 +209,7 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
         <div>
           <h2 className="text-base font-medium">Google Calendar</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Conecte sua conta Google para criar reuniões automaticamente.
+            Conecte uma conta Google dedicada ao backoffice para criar reuniões automaticamente.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
@@ -223,8 +224,9 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
 
       {isLinkedProfile ? (
         <div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
-          Conexão herdada do perfil Corretor Studio. Conecte uma conta própria neste backoffice
-          para usar um token dedicado.
+          Conexão herdada do perfil Corretor Studio. Desconecte para parar de usar essa conta no
+          backoffice e, em seguida, conecte uma conta Google própria (pode ser diferente da do
+          Corretor Studio). A conexão do Corretor Studio não será revogada.
         </div>
       ) : null}
 
@@ -240,55 +242,76 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
           <p className="text-xs text-muted-foreground">
             {isConnected
               ? `Conectado como ${account.googleEmail || account.email}.`
-              : "Necessário para enviar convites e criar eventos."}
+              : "Necessário para enviar convites e criar eventos. Você pode escolher outra conta Google."}
           </p>
         </div>
 
-        {isOwnConnection ? (
-          <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
-            <AlertDialogTrigger asChild>
+        {isConnected ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {isLinkedProfile ? (
               <Button
                 type="button"
-                className="h-9 border border-foreground/20 bg-transparent font-medium text-red-500/90 hover:border-red-400 hover:bg-red-500 hover:text-white"
-                disabled={isDisconnectingGoogle}
+                variant="outline"
+                className="h-10 gap-2"
+                onClick={() => void handleConnectGoogle()}
+                disabled={isConnectingGoogle || isDisconnectingGoogle}
               >
-                {isDisconnectingGoogle ? "Desconectando..." : "Desconectar Google"}
+                <Link2 data-icon="inline-start" />
+                {isConnectingGoogle ? "Conectando..." : "Conectar conta própria"}
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent className="border-red-600/40">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-500">
-                  <AlertTriangle className="size-5" />
-                  Desconectar conta Google?
-                </AlertDialogTitle>
-                <AlertDialogDescription asChild>
-                  <div className="flex flex-col gap-2">
-                    <p>
-                      Você deixará de criar eventos automaticamente no Google Calendar deste
-                      backoffice.
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Esta ação não remove eventos já criados e não revoga a conexão do perfil
-                      Corretor Studio, se existir.
-                    </p>
-                  </div>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="cursor-pointer" disabled={isDisconnectingGoogle}>
-                  Cancelar
-                </AlertDialogCancel>
+            ) : null}
+            <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
+              <AlertDialogTrigger asChild>
                 <Button
-                  variant="destructive"
-                  onClick={() => void handleDisconnectGoogle()}
-                  disabled={isDisconnectingGoogle}
-                  className="cursor-pointer bg-red-600 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-600 dark:hover:bg-red-700"
+                  type="button"
+                  className="h-9 border border-foreground/20 bg-transparent font-medium text-red-500/90 hover:border-red-400 hover:bg-red-500 hover:text-white"
+                  disabled={isDisconnectingGoogle || isConnectingGoogle}
                 >
                   {isDisconnectingGoogle ? "Desconectando..." : "Desconectar Google"}
                 </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="border-red-600/40">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-500">
+                    <AlertTriangle className="size-5" />
+                    Desconectar conta Google?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="flex flex-col gap-2">
+                      <p>
+                        {isLinkedProfile
+                          ? "O backoffice deixará de usar a conexão herdada do Corretor Studio."
+                          : "Você deixará de criar eventos automaticamente no Google Calendar deste backoffice."}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Esta ação não remove eventos já criados e não revoga a conexão Google do
+                        perfil Corretor Studio.
+                      </p>
+                      {isLinkedProfile ? (
+                        <p className="text-sm text-muted-foreground">
+                          Depois, você poderá conectar uma conta Google diferente só para o
+                          backoffice.
+                        </p>
+                      ) : null}
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="cursor-pointer" disabled={isDisconnectingGoogle}>
+                    Cancelar
+                  </AlertDialogCancel>
+                  <Button
+                    variant="destructive"
+                    onClick={() => void handleDisconnectGoogle()}
+                    disabled={isDisconnectingGoogle}
+                    className="cursor-pointer bg-red-600 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-600 dark:hover:bg-red-700"
+                  >
+                    {isDisconnectingGoogle ? "Desconectando..." : "Desconectar Google"}
+                  </Button>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         ) : (
           <Button
             type="button"
@@ -298,11 +321,7 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
             disabled={isConnectingGoogle}
           >
             <Link2 data-icon="inline-start" />
-            {isConnectingGoogle
-              ? "Conectando..."
-              : isLinkedProfile
-                ? "Conectar conta própria"
-                : "Conectar Google"}
+            {isConnectingGoogle ? "Conectando..." : "Conectar Google"}
           </Button>
         )}
       </div>

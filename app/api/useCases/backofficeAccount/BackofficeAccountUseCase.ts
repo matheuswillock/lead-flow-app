@@ -322,8 +322,11 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
         return new Output(false, [], ["Conta backoffice não encontrada"], null)
       }
 
+      // Limpa conexão própria e o vínculo legado com o perfil CS usado como fallback de Google.
+      // A conexão Google do Corretor Studio (Profile) permanece intacta.
       await this.userRepo.update(user.id, {
         googleConnectionId: null,
+        linkedCorretorStudioProfileId: null,
       })
       await this.connectionRepo.detachFromBackofficeUser(user.id)
 
