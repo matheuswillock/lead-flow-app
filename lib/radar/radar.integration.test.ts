@@ -76,7 +76,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
         managerId: profile.id,
         teamId: team.id,
         name: "Lead Radar",
-        phone: `1199999${suffix.slice(0, 4)}`,
+        phone: `1199999${String(Date.now()).slice(-4)}`,
         email: `lead-${suffix}@example.com`,
         status: "new_opportunity",
       },
