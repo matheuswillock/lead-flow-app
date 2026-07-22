@@ -162,14 +162,6 @@ export class EmailContactImportUseCase {
     }
   }
 
-  private mergeSkippedIssues(
-    existing: Prisma.JsonValue | null | undefined,
-    incoming: SkippedImportIssue[]
-  ): SkippedImportIssue[] {
-    const previous = Array.isArray(existing) ? (existing as SkippedImportIssue[]) : []
-    return [...previous, ...incoming].slice(0, SKIPPED_ISSUES_PERSIST_LIMIT)
-  }
-
   private formatSkippedNotificationSuffix(skippedCount: number, issues: SkippedImportIssue[]): string {
     if (skippedCount <= 0) return ""
     const samples = issues.slice(0, 5).map((issue) => {
@@ -451,8 +443,9 @@ export class EmailContactImportUseCase {
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount
       let updatedCount = claimed.updatedCount
-      const skippedCount = claimed.skippedCount + initialSkipped
-      const skippedIssues = this.mergeSkippedIssues(claimed.skippedIssues, initialSkippedIssues)
+      // Validação é refeita no arquivo completo a cada claim — não somar de novo no resume.
+      const skippedCount = initialSkipped
+      const skippedIssues = initialSkippedIssues
       const failedBatches = this.parseFailedBatches(claimed.failedBatches)
       const attemptsByBatch = this.parseAttemptsByBatch(claimed.attemptsByBatch)
 
