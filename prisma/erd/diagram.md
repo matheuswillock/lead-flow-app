@@ -2796,6 +2796,18 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_radar_segments" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    Json rulesJson 
+    Boolean isSystem 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_bot_channels" {
     String id "🗝️"
     String displayName 
@@ -3534,6 +3546,8 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_radar_channel_consents" |o--|o "RadarConsentReason" : "enum:reason"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_segments" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_segments" }o--|| corretor_studio_profiles : "creator"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
     "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"
