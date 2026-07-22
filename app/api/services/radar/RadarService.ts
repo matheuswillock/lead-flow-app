@@ -64,6 +64,13 @@ export type SyncCounters = {
   created: number
   enriched: number
   skipped: number
+  /**
+   * Leads sem telefone válido mas com e-mail para o qual ainda não existe
+   * perfil Radar — o perfil segue exigindo telefone para nascer (D8), então
+   * esses leads não geram perfil nem identidade; ficam "adiados" até que um
+   * perfil com aquele e-mail exista (via outra fonte) ou o lead ganhe telefone.
+   */
+  deferred: number
   errors: string[]
 }
 
@@ -102,7 +109,7 @@ const SEGMENT_META: Record<RadarSegmentSlug, { name: string; description: string
 }
 
 function emptyCounters(): SyncCounters {
-  return { created: 0, enriched: 0, skipped: 0, errors: [] }
+  return { created: 0, enriched: 0, skipped: 0, deferred: 0, errors: [] }
 }
 
 function consentFromEmailFlags(flags: {
@@ -124,7 +131,57 @@ export class RadarService {
     for (const lead of leads) {
       try {
         if (!isValidRadarPrimaryIdentity(lead.phone, lead.name)) {
-          counters.skipped += 1
+          const normalizedEmail = lead.email ? normalizeRadarEmail(lead.email) : null
+          if (!normalizedEmail) {
+            counters.skipped += 1
+            continue
+          }
+
+          // Lead só-com-e-mail: o perfil segue exigindo telefone para nascer
+          // (D8). Resolve o dono pela identidade email (chave única
+          // [teamId, type, normalizedValue]), não por RadarProfile.
+          // normalizedPrimaryEmail — esse campo não é único, então dois
+          // perfis podem compartilhar o mesmo e-mail e um findFirst
+          // arbitrário poderia anexar o lead ao perfil errado. Sem uma
+          // identidade email inequívoca, o lead fica "adiado" (nunca
+          // adivinha um perfil ambíguo).
+          const existingByEmailIdentity = await radarRepository.findProfileByIdentity(
+            scope.teamId,
+            "email",
+            normalizedEmail
+          )
+          if (!existingByEmailIdentity) {
+            counters.deferred += 1
+            continue
+          }
+
+          await radarRepository.upsertIdentity({
+            profileId: existingByEmailIdentity.profileId,
+            teamId: scope.teamId,
+            type: "lead_id",
+            value: lead.id,
+            normalizedValue: lead.id,
+            source: "crm",
+          })
+
+          await radarRepository.upsertSourceLink({
+            profileId: existingByEmailIdentity.profileId,
+            teamId: scope.teamId,
+            sourceType: "crm_lead",
+            sourceId: lead.id,
+            sourceMetadata: { status: lead.status },
+          })
+
+          await radarRepository.appendEventIfNew({
+            profileId: existingByEmailIdentity.profileId,
+            teamId: scope.teamId,
+            eventType: "lead.created",
+            sourceType: "crm_lead",
+            sourceId: lead.id,
+            occurredAt: lead.createdAt,
+          })
+
+          counters.enriched += 1
           continue
         }
 
@@ -133,18 +190,14 @@ export class RadarService {
         const normalizedEmail = lead.email ? normalizeRadarEmail(lead.email) : null
         const normalizedDocument = lead.cnpj ? normalizeRadarDocument(lead.cnpj) : null
 
-        const existing = await radarRepository.findProfileByPrimaryKey(
-          scope.teamId,
-          normalizedPhone,
-          normalizedName
-        )
-
-        const profile = await radarRepository.upsertProfile({
+        const { profile, wasExisting } = await radarRepository.resolveProfileForPhone({
           teamId: scope.teamId,
           displayName: lead.name.trim(),
           normalizedName,
           displayPhone: formatDisplayPhone(lead.phone),
           normalizedPhone,
+          phoneValue: lead.phone,
+          phoneSource: "crm",
           primaryEmail: lead.email,
           normalizedPrimaryEmail: normalizedEmail,
           primaryDocument: lead.cnpj,
@@ -152,18 +205,8 @@ export class RadarService {
           lastSeenAt: lead.updatedAt,
         })
 
-        if (existing) counters.enriched += 1
+        if (wasExisting) counters.enriched += 1
         else counters.created += 1
-
-        await radarRepository.upsertIdentity({
-          profileId: profile.id,
-          teamId: scope.teamId,
-          type: "phone",
-          value: lead.phone,
-          normalizedValue: normalizedPhone,
-          source: "crm",
-          isPrimary: true,
-        })
 
         if (normalizedEmail) {
           await radarRepository.upsertIdentity({
@@ -245,18 +288,15 @@ export class RadarService {
 
         const normalizedPhone = normalizeRadarPhone(lead.phone)
         const normalizedName = normalizeRadarName(lead.name)
-        const existing = await radarRepository.findProfileByPrimaryKey(
-          scope.teamId,
-          normalizedPhone,
-          normalizedName
-        )
 
-        const profile = await radarRepository.upsertProfile({
+        const { profile, wasExisting } = await radarRepository.resolveProfileForPhone({
           teamId: scope.teamId,
           displayName: lead.name.trim(),
           normalizedName,
           displayPhone: formatDisplayPhone(lead.phone),
           normalizedPhone,
+          phoneValue: lead.phone,
+          phoneSource: "portfolio",
           primaryEmail: lead.email,
           normalizedPrimaryEmail: lead.email ? normalizeRadarEmail(lead.email) : null,
           primaryDocument: lead.cnpj,
@@ -264,7 +304,7 @@ export class RadarService {
           lastSeenAt: entry.updatedAt,
         })
 
-        if (existing) counters.enriched += 1
+        if (wasExisting) counters.enriched += 1
         else counters.created += 1
 
         await radarRepository.upsertSourceLink({
@@ -454,23 +494,15 @@ export class RadarService {
     const normalizedPhone = normalizeRadarPhone(input.conversation.contactPhone)
     const normalizedName = normalizeRadarName(displayName)
 
-    const profile = await radarRepository.upsertProfile({
+    const { profile } = await radarRepository.resolveProfileForPhone({
       teamId: input.teamId,
       displayName: displayName.trim(),
       normalizedName,
       displayPhone: formatDisplayPhone(input.conversation.contactPhone),
       normalizedPhone,
+      phoneValue: input.conversation.contactPhone,
+      phoneSource: "whatsapp",
       lastSeenAt: input.message.sentAt ?? input.message.createdAt,
-    })
-
-    await radarRepository.upsertIdentity({
-      profileId: profile.id,
-      teamId: input.teamId,
-      type: "phone",
-      value: input.conversation.contactPhone,
-      normalizedValue: normalizedPhone,
-      source: "whatsapp",
-      isPrimary: true,
     })
 
     await radarRepository.upsertIdentity({
@@ -532,23 +564,15 @@ export class RadarService {
     const normalizedPhone = normalizeRadarPhone(conversation.contactPhone)
     const normalizedName = normalizeRadarName(displayName)
 
-    const profile = await radarRepository.upsertProfile({
+    const { profile } = await radarRepository.resolveProfileForPhone({
       teamId,
       displayName: displayName.trim(),
       normalizedName,
       displayPhone: formatDisplayPhone(conversation.contactPhone),
       normalizedPhone,
+      phoneValue: conversation.contactPhone,
+      phoneSource: "whatsapp",
       lastSeenAt: conversation.lastMessageAt ?? conversation.updatedAt,
-    })
-
-    await radarRepository.upsertIdentity({
-      profileId: profile.id,
-      teamId,
-      type: "phone",
-      value: conversation.contactPhone,
-      normalizedValue: normalizedPhone,
-      source: "whatsapp",
-      isPrimary: true,
     })
 
     await radarRepository.upsertIdentity({

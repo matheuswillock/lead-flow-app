@@ -133,6 +133,161 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Lookup por identidade — usado para resolver o dono de uma identidade
+   * (ex.: email) através da chave única `[teamId, type, normalizedValue]`
+   * em vez de campos não-únicos do perfil (ver `findProfileByEmail`, que
+   * pode ser ambíguo quando dois perfis compartilham o mesmo e-mail).
+   */
+  async findProfileByIdentity(teamId: string, type: RadarIdentityType, normalizedValue: string) {
+    return prisma.radarIdentity.findUnique({
+      where: {
+        teamId_type_normalizedValue: { teamId, type, normalizedValue },
+      },
+      select: { profileId: true },
+    })
+  }
+
+  /**
+   * Resolve (ou cria) o perfil dono de um telefone de forma atômica — lock
+   * advisory por (teamId, phone) fecha a corrida em que duas syncs
+   * concorrentes (ex.: CRM + WhatsApp) para o mesmo telefone com nomes
+   * diferentes veem "sem identidade" ao mesmo tempo, cada uma cria um
+   * perfil via a chave natural `[teamId, normalizedPhone, normalizedName]`
+   * (que diverge por nome), e a identidade phone acaba migrando
+   * silenciosamente entre eles no upsert seguinte. A identidade phone é
+   * reivindicada dentro da MESMA transação que resolve/cria o perfil (D8).
+   * Quando o perfil já existe (dono da identidade), displayName/
+   * normalizedName NÃO são sobrescritos — o perfil mantém seu nome
+   * original mesmo que a fonte atual traga um nome diferente.
+   */
+  async resolveProfileForPhone(input: {
+    teamId: string
+    normalizedPhone: string
+    normalizedName: string
+    displayName: string
+    displayPhone: string
+    phoneValue: string | null
+    phoneSource: string
+    primaryEmail?: string | null
+    normalizedPrimaryEmail?: string | null
+    primaryDocument?: string | null
+    normalizedPrimaryDocument?: string | null
+    lastSeenAt?: Date
+  }) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedPhone}))`
+
+      const existingByIdentity = await tx.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: "phone",
+            normalizedValue: input.normalizedPhone,
+          },
+        },
+        select: { profileId: true },
+      })
+
+      if (existingByIdentity) {
+        const existingProfile = await tx.radarProfile.findUnique({
+          where: { id: existingByIdentity.profileId },
+          select: {
+            primaryEmail: true,
+            normalizedPrimaryEmail: true,
+            primaryDocument: true,
+            normalizedPrimaryDocument: true,
+          },
+        })
+
+        const profile = await tx.radarProfile.update({
+          where: { id: existingByIdentity.profileId },
+          data: {
+            displayPhone: input.displayPhone || undefined,
+            primaryEmail: input.primaryEmail ?? existingProfile?.primaryEmail ?? undefined,
+            normalizedPrimaryEmail:
+              input.normalizedPrimaryEmail ?? existingProfile?.normalizedPrimaryEmail ?? undefined,
+            primaryDocument: input.primaryDocument ?? existingProfile?.primaryDocument ?? undefined,
+            normalizedPrimaryDocument:
+              input.normalizedPrimaryDocument ?? existingProfile?.normalizedPrimaryDocument ?? undefined,
+            lastSeenAt: input.lastSeenAt ?? new Date(),
+          },
+        })
+
+        return { profile, wasExisting: true }
+      }
+
+      const existingByKey = await tx.radarProfile.findUnique({
+        where: {
+          teamId_normalizedPhone_normalizedName: {
+            teamId: input.teamId,
+            normalizedPhone: input.normalizedPhone,
+            normalizedName: input.normalizedName,
+          },
+        },
+        select: { id: true },
+      })
+
+      const profile = await tx.radarProfile.upsert({
+        where: {
+          teamId_normalizedPhone_normalizedName: {
+            teamId: input.teamId,
+            normalizedPhone: input.normalizedPhone,
+            normalizedName: input.normalizedName,
+          },
+        },
+        create: {
+          teamId: input.teamId,
+          displayName: input.displayName,
+          normalizedName: input.normalizedName,
+          displayPhone: input.displayPhone,
+          normalizedPhone: input.normalizedPhone,
+          primaryEmail: input.primaryEmail ?? null,
+          normalizedPrimaryEmail: input.normalizedPrimaryEmail ?? null,
+          primaryDocument: input.primaryDocument ?? null,
+          normalizedPrimaryDocument: input.normalizedPrimaryDocument ?? null,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+        update: {
+          displayName: input.displayName || undefined,
+          displayPhone: input.displayPhone || undefined,
+          primaryEmail: input.primaryEmail ?? undefined,
+          normalizedPrimaryEmail: input.normalizedPrimaryEmail ?? undefined,
+          primaryDocument: input.primaryDocument ?? undefined,
+          normalizedPrimaryDocument: input.normalizedPrimaryDocument ?? undefined,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      await tx.radarIdentity.upsert({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: "phone",
+            normalizedValue: input.normalizedPhone,
+          },
+        },
+        create: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          type: "phone",
+          value: input.phoneValue,
+          normalizedValue: input.normalizedPhone,
+          source: input.phoneSource,
+          isPrimary: true,
+        },
+        update: {
+          profileId: profile.id,
+          value: input.phoneValue ?? undefined,
+          source: input.phoneSource,
+          isPrimary: true,
+        },
+      })
+
+      return { profile, wasExisting: Boolean(existingByKey) }
+    })
+  }
+
   async upsertIdentity(input: UpsertIdentityInput) {
     return prisma.radarIdentity.upsert({
       where: {
