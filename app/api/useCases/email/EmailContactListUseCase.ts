@@ -7,6 +7,12 @@ import {
   EMAIL_BLOCKLIST_NAME,
   ensureTeamEmailBlocklist,
 } from "@/lib/email/email-contact-blocklist"
+import {
+  attachUnsubscribeSourceToContacts,
+  mapUnsubscribeSourcesByEmail,
+  type UnsubscribeSourceCandidate,
+} from "@/lib/email/resolve-contact-unsubscribe-source"
+import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
 
 export interface CreateContactListInput {
   name: string
@@ -487,20 +493,20 @@ export class EmailContactListUseCase {
       }> = []
 
       for (const row of rows) {
-        const normalizedEmail = this.normalizeEmail(row.email ?? "")
-        if (!normalizedEmail || !normalizedEmail.includes("@")) {
+        const validation = isValidResendRecipientEmail(row.email ?? "")
+        if (!validation.ok) {
           skipped += 1
           issues.push({
             line: row.line,
             email: row.email,
             name: row.name,
-            reason: "E-mail inválido ou ausente",
+            reason: validation.reason,
           })
           continue
         }
         validRows.push({
           line: row.line,
-          email: normalizedEmail,
+          email: validation.email,
           name: row.name?.trim() || undefined,
           customFields: row.customFields,
         })
@@ -688,8 +694,48 @@ export class EmailContactListUseCase {
         prisma.emailContact.count({ where }),
       ])
 
+      let enrichedContacts = attachUnsubscribeSourceToContacts(contacts, new Map())
+
+      if (existing.isBlocklist && contacts.length > 0) {
+        const emails = contacts.map((contact) => contact.email.toLowerCase())
+        const unsubscribeEvents = await prisma.emailEvent.findMany({
+          where: {
+            type: "unsubscribed",
+            log: {
+              teamId: ctx.teamId,
+              recipientEmail: { in: emails },
+            },
+          },
+          orderBy: { occurredAt: "desc" },
+          select: {
+            occurredAt: true,
+            log: {
+              select: {
+                recipientEmail: true,
+                subject: true,
+                campaignId: true,
+                campaign: { select: { id: true, name: true } },
+              },
+            },
+          },
+        })
+
+        const candidates: UnsubscribeSourceCandidate[] = unsubscribeEvents.map((event) => ({
+          recipientEmail: event.log.recipientEmail,
+          campaignId: event.log.campaignId ?? event.log.campaign?.id ?? null,
+          campaignName: event.log.campaign?.name ?? null,
+          subject: event.log.subject,
+          occurredAt: event.occurredAt,
+        }))
+
+        enrichedContacts = attachUnsubscribeSourceToContacts(
+          contacts,
+          mapUnsubscribeSourcesByEmail(candidates)
+        )
+      }
+
       return new Output(true, [], [], {
-        contacts,
+        contacts: enrichedContacts,
         total,
         page: options.page,
         pageSize: options.pageSize,

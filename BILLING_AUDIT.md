@@ -19,6 +19,7 @@
 | — | **Crítico** | `POST /api/v1/backoffice/payments` sem `requireManagerAccess` | Qualquer operador do Backoffice pode criar cobranças reais no Asaas contra qualquer cliente; a única barreira é ocultar o botão no frontend. |
 | — | **Alto** | Refund/chargeback (`PAYMENT_REFUNDED`, `PAYMENT_CHARGEBACK_*`) não têm handler — confirmado contra a doc oficial | Conta permanece `active` depois de estorno/contestação vencida pelo cliente. |
 | — | **Alto** | Preço hardcoded em ~15 arquivos + 2 sistemas de cobrança coexistindo (legado R$59,90 vs. catálogo `BackofficeProduct` R$89,90) | Risco de cobrar um valor e exibir outro; decisão do owner (banco como fonte única) ainda não implementada. |
+| — | **Alto** | Assinatura não expõe entitlements por slug de forma unificada | `FeatureAccessService` já calcula `slugs`, mas `SubscriptionCheckService` ainda responde quase só `hasActiveSubscription`; cobrança, capacidade e acesso podem divergir sem um contrato único de `productSlugs`/`featureSlugs`/capacidades. |
 | — | **Alto** | Início de cobrança pós-Member PRO depende só de cron diário, sem checkout explícito, sem validação prévia | Cliente pode ficar até 24h sem cobrança corrigida, ou nunca ser cobrado se faltar dado cadastral — falha só loga no console. |
 | — | **Alto** | `SubscriptionManagementUseCase`: cancelamento, troca de cartão e retry de pagamento têm chamada ao Asaas comentada (`TODO`) mas retornam `success:true` | Usuário recebe confirmação de uma ação que não aconteceu de verdade. |
 | — | **Médio** | Duas definições divergentes de "assinatura ativa" (`FeatureAccessService` vs. `SubscriptionCheckService`) | Sidebar liberada + página bloqueada simultaneamente para contas `trial`/`past_due` — bug de UX reproduzível. |
@@ -73,6 +74,19 @@ Além da linha `isDefault:true` do CRM (R$89,90/79,90/69,90/69,90), o banco de p
 ### 2.6 Demais inconsistências de precificação
 
 Já catalogadas em detalhe em `PRICING_MODEL.md` §6 (6 itens) e `PRICING_TABLE.md` §7 (8 pendências) — não duplicadas aqui. Resumo dos pontos que mais interagem com o restante desta auditoria: acréscimo de cartão inconsistente entre produtos (CRM/WhatsApp cobram mais, CDP/email/extra-* não); `email` a R$29,90 pode canibalizar os futuros tiers de Radar; CDP segue `isActive:true` enquanto é tratado como "substituído" na documentação comercial.
+
+### 2.7 Entitlements por assinatura — novo achado de modelagem
+
+O estado desejado para a próxima SPEC é que a assinatura carregue explicitamente o que ela libera: `productSlugs` contratados, `featureSlugs` liberados, capacidades pagas e itens cobrados. Hoje isso existe de forma parcial e espalhada:
+
+- `FeatureAccessService.resolveAllowedSlugs()` já calcula `slugs` de features a partir de `backoffice_features`, `productSlug`, herança pai/filho, grants beta e assinaturas ativas em `BackofficeUserSubscription`/`ProfileSubscription`.
+- `SubscriptionCheckService.checkActiveSubscription()` ainda é essencialmente binário (`hasActiveSubscription`) e retorna uma assinatura simples com `id/status/plan/operatorCount`, sem carregar `productSlugs`, `featureSlugs`, capacidades ou composição de cobrança.
+- `ProfileSubscriptionCapacity` modela capacidade de `extra-team`/`extra-user`, mas o gate de slugs não exige explicitamente capacidade positiva para liberar filhos add-on como `crm-time-manage-teams`/`crm-time-manage-users`.
+- `BackofficeUserSubscription` representa produtos contratados, mas não modela quantidade; para add-ons multiplicáveis, a quantidade vive em `BackofficeAdhesion.extraTeams/extraUsers` e em `ProfileSubscriptionCapacity`, criando mais de uma fonte operacional.
+
+**Risco:** a UI pode liberar um slug porque o produto existe, enquanto a operação bloqueia por falta de capacidade; ou a cobrança pode incluir uma capacidade sem que a assinatura exponha o slug correspondente. Para a SPEC, o contrato de assinatura deve responder, no mínimo, "quais produtos foram pagos?", "quais features estão liberadas?", "quais capacidades multiplicáveis estão disponíveis?" e "quais itens compõem o valor cobrado?".
+
+**Regra auditada para add-ons filhos:** slugs filhos que funcionam como add-on devem exigir produto ativo **e** capacidade/quantidade paga quando o add-on for multiplicável. Exemplos: `extra-team` libera gestão/criação de times adicionais só se houver capacidade de times; `extra-user` libera gestão/criação de usuários adicionais só se houver capacidade de usuários. Add-ons booleanos como `whatsapp` e tiers de `email-dispatch-*`/`radar-*` dependem do produto ativo; `radar-setup` é taxa única e não libera feature sozinho.
 
 ---
 
@@ -236,3 +250,7 @@ Nenhum `unstable_cache`, cache em memória ou Redis foi encontrado na frente de 
 4. **Grants efetivos de `anon`/`authenticated`** em `asaas_webhook_events`/`profile_user_type_assignments`/`profile_user_types` — necessário para calibrar a severidade final do achado C-1 (exposição confirmada vs. em potencial).
 5. Reaproveitadas de `BILLING_ENGINE_AUDIT.md` (ainda sem resposta): confirmação de dados de produção Asaas (só sandbox foi verificado até hoje), origem das 3 assinaturas sandbox com `value: 5990`, comportamento desejado quando o crédito de e-mail estoura sem `autoChargeOverage`.
 6. **Confirmar violação de reuso de `TeamContext`** no bootstrap autenticado (§8.2) — a estrutura do código é candidata à violação, mas não foi confirmado lendo os três caminhos internos (`getTeamsRouteHandler`, `CheckSubscriptionUseCase`, `featureAccessUseCase`) ponta a ponta.
+7. **Contrato de entitlements da assinatura:** definir se o retorno oficial deve expor `productSlugs`, `featureSlugs`, `addonSlugs`, capacidades e itens cobrados no próprio `/api/v1/subscriptions/check`, no bootstrap autenticado, ou em um endpoint dedicado reutilizado por ambos.
+8. **Produto vendável vs. feature navegável:** confirmar a regra operacional de que preço sempre mora em `BackofficeProduct.featureSlug`, enquanto navegação/acesso mora em `BackofficeFeature.slug`; `radar-setup` e outros fees entram só como itens cobrados, não como feature liberável.
+9. **Filhos herdados vs. cobrados separadamente:** confirmar que `inheritParentSettings=true` herda acesso do pai, enquanto filhos add-on exigem `productSlug` próprio e, quando multiplicáveis, capacidade positiva.
+10. **Clientes legados:** definir como preservar System A (R$59,90/19,90/29,90) sem misturar automaticamente esses valores com o catálogo System B no momento em que a assinatura passar a expor itens por slug.

@@ -21,7 +21,13 @@ export interface BackofficeAccountData {
   isCloser: boolean
   googleCalendarConnected: boolean
   googleEmail: string | null
+  googleConnectionSource: "backoffice_user" | "linked_profile" | null
   timezone: string
+}
+
+export interface BackofficeGoogleScopesResult {
+  connected: boolean
+  scopes: string[]
 }
 
 export interface BackofficeAccountUpdateInput {

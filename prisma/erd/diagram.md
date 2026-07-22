@@ -2168,6 +2168,7 @@ meeting_scheduled meeting_scheduled
     Int importedCount 
     Int updatedCount 
     Int skippedCount 
+    Json skippedIssues "❓"
     Json failedBatches "❓"
     Int batchSize 
     Json attemptsByBatch "❓"

@@ -13,7 +13,12 @@ export function ContactImportPreviewCard({
   preview,
   variant = "compact",
 }: ContactImportPreviewCardProps) {
-  const { importableCount, skippedCount, preview: sampleContacts } = preview;
+  const {
+    importableCount,
+    skippedCount,
+    skippedIssues,
+    preview: sampleContacts,
+  } = preview;
 
   if (importableCount === 0 && skippedCount === 0) {
     return null;
@@ -31,8 +36,8 @@ export function ContactImportPreviewCard({
           {skippedCount > 0 ? (
             <p className="text-xs text-muted-foreground">
               {skippedCount}{" "}
-              {skippedCount === 1 ? "linha ignorada" : "linhas ignoradas"} por e-mail inválido ou
-              ausente
+              {skippedCount === 1 ? "linha não será importada" : "linhas não serão importadas"}{" "}
+              por e-mail inválido ou ausente
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
@@ -46,11 +51,43 @@ export function ContactImportPreviewCard({
           </Badge>
           {skippedCount > 0 ? (
             <Badge variant="outline" className="text-[11px]">
-              {skippedCount} ignorados
+              {skippedCount} recusados
             </Badge>
           ) : null}
         </div>
       </div>
+
+      {variant === "detailed" && skippedIssues.length > 0 ? (
+        <div className="flex flex-col gap-1.5 border-t border-border/60 pt-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Linhas recusadas (não serão importadas)
+          </p>
+          <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+            {skippedIssues.map((issue) => (
+              <div
+                key={`${issue.line ?? "row"}-${issue.email}-${issue.reason}`}
+                className="flex flex-col gap-0.5 rounded-md bg-destructive/5 px-2.5 py-1.5 text-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{issue.email}</span>
+                  {typeof issue.line === "number" ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      Linha {issue.line}
+                    </span>
+                  ) : null}
+                </div>
+                <span className="text-xs text-muted-foreground">{issue.reason}</span>
+              </div>
+            ))}
+          </div>
+          {skippedCount > skippedIssues.length ? (
+            <p className="text-xs text-muted-foreground">
+              e mais {skippedCount - skippedIssues.length}{" "}
+              {skippedCount - skippedIssues.length === 1 ? "linha" : "linhas"}...
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {variant === "detailed" && sampleContacts.length > 0 ? (
         <div className="flex flex-col gap-1.5 border-t border-border/60 pt-3">

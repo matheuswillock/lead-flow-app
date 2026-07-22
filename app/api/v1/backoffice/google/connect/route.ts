@@ -2,7 +2,10 @@ import { z } from "zod"
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { backofficeAccountUseCase } from "@/app/api/useCases/backofficeAccount/BackofficeAccountUseCase"
+import {
+  BACKOFFICE_GOOGLE_EMAIL_CONFLICT_MESSAGE,
+  backofficeAccountUseCase,
+} from "@/app/api/useCases/backofficeAccount/BackofficeAccountUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const connectSchema = z.object({
@@ -37,7 +40,13 @@ export async function POST(request: NextRequest) {
       accessResult.access.profileId,
       validation.data
     )
-    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+
+    if (!output.isValid) {
+      const isConflict = output.errorMessages.includes(BACKOFFICE_GOOGLE_EMAIL_CONFLICT_MESSAGE)
+      return NextResponse.json(output, { status: isConflict ? 409 : 400 })
+    }
+
+    return NextResponse.json(output, { status: 200 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeGoogleConnectRoute][POST]", error)

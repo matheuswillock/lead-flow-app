@@ -172,14 +172,14 @@ const FEATURES: Array<{
   { slug: "whatsapp-auto-responses", name: "Auto-respostas",         accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 172, parentSlug: "whatsapp", productSlug: "whatsapp" },
   { slug: "whatsapp-settings",       name: "Configurações WhatsApp", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 175, parentSlug: "whatsapp", productSlug: "whatsapp" },
 
+  // ── Radar guarda-chuva ────────────────────────────────────────────────────
   { slug: "radar", name: "Radar", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, inheritParentSettings: false, sortOrder: 180, productSlug: "radar" },
 
   { slug: "studio-bot", name: "Bethânia", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 185, productSlug: "crm" },
   { slug: "studio-bot-ops", name: "Ops / Host", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 186, parentSlug: "studio-bot", productSlug: "crm" },
   { slug: "studio-bot-ai", name: "IA", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, inheritParentSettings: false, sortOrder: 187, parentSlug: "studio-bot", productSlug: "crm" },
 
-  // ── Integração guarda-chuva ───────────────────────────────────────────────
-  { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
+  // ── Formulários públicos guarda-chuva ─────────────────────────────────────
   {
     slug: "public-forms",
     name: "Formulários públicos",
@@ -187,11 +187,12 @@ const FEATURES: Array<{
     defaultAccessLevel: BackofficeFeatureAccessLevel.FULL,
     betaEnabled: true,
     inheritParentSettings: false,
-    sortOrder: 97,
-    parentSlug: "crm",
-    productSlug: "crm",
+    sortOrder: 190,
+    productSlug: null,
   },
 
+  // ── Integração guarda-chuva ───────────────────────────────────────────────
+  { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
 ]
 
 const WHATSAPP_PAYMENT_RULES: Array<{
@@ -498,9 +499,21 @@ async function main() {
     console.info(`[seed:backoffice-products] Feature pronta: ${feature.slug}`)
   }
 
-  // 3. Set parentId for child features
+  // 3. Set parentId for child features; clear parentId for top-level umbrellas
   for (const feature of FEATURES) {
-    if (!feature.parentSlug) continue
+    if (!feature.parentSlug) {
+      await prisma.backofficeFeature.update({
+        where: { slug: feature.slug },
+        data: {
+          parentId: null,
+          inheritParentSettings: false,
+          billedSeparately: false,
+        },
+      })
+      console.info(`[seed:backoffice-products] parentId limpo (top-level): ${feature.slug}`)
+      continue
+    }
+
     const parent = await prisma.backofficeFeature.findUnique({ where: { slug: feature.parentSlug } })
     if (!parent) {
       console.info(`[seed:backoffice-products] AVISO: pai não encontrado para ${feature.slug} (parentSlug=${feature.parentSlug})`)

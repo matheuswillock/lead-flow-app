@@ -35,6 +35,22 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
     >
   }
 
+  async exportEnvFile() {
+    const res = await fetch("/api/v1/backoffice/bot/host/settings/env-file", {
+      cache: "no-store",
+    })
+    return res.json() as Promise<
+      ApiOutput<{
+        content: string
+        fileName: string
+        agentBaseUrl: string | null
+        desiredHostVersion: string | null
+        n8nEnv: Record<string, string>
+        evolutionEnv: Record<string, string>
+      }>
+    >
+  }
+
   async rotateToken() {
     const res = await fetch("/api/v1/backoffice/bot/host/rotate-token", { method: "POST" })
     return res.json() as Promise<ApiOutput<{ agentToken: string; settingsId: string }>>

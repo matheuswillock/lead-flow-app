@@ -1,6 +1,6 @@
 # PRICING_TABLE.md — Tabela oficial de precificação do Corretor Studio
 
-**Data:** 2026-07-19 (rev. 2 — inclui E-mail Disparo avulso, excedentes e tabela consolidada)
+**Data:** 2026-07-19 (rev. 3 — inclui E-mail Disparo avulso, excedentes, tabela consolidada e status de implementação por slug)
 **Complementa:** `PRICING_MODEL.md` (regra de cálculo e modelo de dados) e `RADAR_BUSINESS_MODEL.md` (racional comercial do Radar).
 **Legenda de status dos valores:**
 
@@ -11,6 +11,21 @@
 | 📋 | Proposto no `RADAR_BUSINESS_MODEL.md` — aguardando validação |
 
 Valores **por mês** salvo indicação de cobrança única. PIX é o preço de referência; cartão carrega acréscimo de ~15% (padrão CRM/WhatsApp). Piso de margem: **nenhum item pode operar abaixo de 60% de margem bruta em nenhuma cadência**.
+
+## 0. Leitura correta desta tabela para a SPEC
+
+Esta tabela inteira entra como **contexto-alvo comercial** para a próxima SPEC de billing por slugs. Ela não significa que todos os produtos abaixo já estejam implementados no seed, no banco, no Asaas ou no gate de features.
+
+| Grupo | Status de implementação auditado | Regra para a SPEC |
+|---|---|---|
+| `crm`, `extra-team`, `extra-user`, `whatsapp` | Vigentes no catálogo/backoffice atual, com lacunas de payment rules em `extra-*` | Manter como produtos recorrentes e expor em entitlements por slug. |
+| `email` | Vigente como add-on no estado atual, mas marcado comercialmente para descontinuação | Migrar features `email-*` para o CRM quando aprovado; até lá, não assumir que já está embutido. |
+| `email-dispatch-*` | Estado-alvo sugerido, ainda pendente | Cadastrar como produtos recorrentes/tier de disparo quando a SPEC implementar a tabela completa. |
+| `radar-*` | Estado-alvo proposto, substitui `cdp` | Cadastrar tiers recorrentes, setup único e pacote multiplicável; não tratar como vigente antes da migration/seed. |
+| `radar-setup` | Fee/taxa única de primeiro ciclo | Cobrar na primeira fatura, sem liberar feature sozinho. |
+| `cdp` | Vigente tecnicamente, mas comercialmente descontinuável | Marcar inativo quando Radar for efetivado, sem deletar dados históricos. |
+
+**Regra de entitlement:** produtos recorrentes liberam features; taxas únicas apenas compõem cobrança. Add-ons multiplicáveis (`extra-team`, `extra-user`, `radar-dispatch-pack`) exigem produto ativo + quantidade/capacidade paga. Add-ons booleanos/tier (`whatsapp`, `email-dispatch-*`, `radar-*`) exigem produto ativo.
 
 ---
 
@@ -222,3 +237,5 @@ Excedentes (por uso, fora do Total): Disparo Starter R$0,25 · Plus R$0,20 · Pr
 | 6 | Cadastrar slugs `email-dispatch-*` (produto + feature + access rules + excedente) | `lib/features/feature-slugs.ts` + `bun run db:migrate:new` + seed |
 | 7 | Cadastrar produtos/features Radar (`radar-*`, `radar-setup`, `radar-dispatch-pack`) e desativar `cdp`; **incluir** o tier recorrente, setup único e dispatch-pack em `calculateBackofficeAdhesionPricing` e na ativação de adesão para que o Asaas gere as cobranças corretas | `feature-slugs.ts` + migration + seed + `BackofficeAdhesionService` + Asaas billing |
 | 8 | Definir mecânica de medição/cobrança do excedente (fatura do mês seguinte via Asaas) | Spec técnica futura |
+| 9 | Definir contrato de assinatura por slugs: `productSlugs`, `featureSlugs`, capacidades e itens cobrados no check/bootstrap | SPEC de billing por slugs |
+| 10 | Preservar clientes legados do System A sem aplicar automaticamente os preços do catálogo novo | SPEC de billing por slugs + migração de dados futura |
