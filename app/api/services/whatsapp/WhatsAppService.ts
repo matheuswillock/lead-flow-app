@@ -215,10 +215,35 @@ class WhatsAppService implements IWhatsAppService {
     return toConfigOutput(synced)
   }
 
+  private async ensureWebhookConfigured(config: WhatsAppConfigSelect): Promise<void> {
+    if (!config.webhookSecret || !config.instanceName) return
+
+    const webhookUrl = `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/evolution/${config.webhookSecret}`
+    try {
+      await this.provider.setWebhook({
+        instanceName: config.instanceName,
+        webhookUrl,
+        hostBaseUrl: config.hostBaseUrl ?? undefined,
+      })
+      console.info("[WhatsAppService][ensureWebhookConfigured] webhook reaplicado", {
+        configId: config.id,
+        instanceName: config.instanceName,
+      })
+    } catch (error) {
+      console.error("[WhatsAppService][ensureWebhookConfigured]", {
+        configId: config.id,
+        instanceName: config.instanceName,
+        error,
+      })
+    }
+  }
+
   private async syncConfigWithEvolution(
     config: WhatsAppConfigSelect
   ): Promise<WhatsAppConfigSelect> {
     try {
+      await this.ensureWebhookConfigured(config)
+
       const { state } = await this.provider.getConnectionState(
         config.instanceName,
         config.hostBaseUrl ?? undefined
@@ -308,6 +333,8 @@ class WhatsAppService implements IWhatsAppService {
     }
 
     console.info("[WhatsAppService][reconnect] Fetching QR code for", existing.instanceName)
+
+    await this.ensureWebhookConfigured(existing)
 
     const qr = await this.provider.getQrCode(existing.instanceName, existing.hostBaseUrl ?? undefined)
 

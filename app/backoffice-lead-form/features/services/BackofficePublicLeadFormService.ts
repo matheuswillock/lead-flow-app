@@ -1,4 +1,5 @@
 import type {
+  BackofficePublicCloserOption,
   IBackofficePublicLeadFormService,
   SubmitBackofficePublicLeadPayload,
   SubmitBackofficePublicLeadResult,
@@ -37,6 +38,34 @@ class BackofficePublicLeadFormService implements IBackofficePublicLeadFormServic
     }
   }
 
+  async fetchClosers(): Promise<BackofficePublicCloserOption[]> {
+    const response = await fetch("/api/v1/backoffice/public-lead-form/bootstrap", {
+      cache: "no-store",
+    })
+    const result = await response.json()
+    if (!response.ok || !result?.isValid) {
+      throw new Error("Não foi possível carregar os closers disponíveis.")
+    }
+    return (result.result?.closers ?? []) as BackofficePublicCloserOption[]
+  }
+
+  async fetchAvailability(input: {
+    closerId: string
+    date: string
+    timezone?: string
+  }): Promise<string[]> {
+    const response = await fetch("/api/v1/backoffice/public-lead-form/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+    const result = await response.json()
+    if (!response.ok || !result?.isValid) {
+      return []
+    }
+    return (result.result?.availableTimes ?? []) as string[]
+  }
+
   async submitLead(
     payload: SubmitBackofficePublicLeadPayload,
   ): Promise<SubmitBackofficePublicLeadResult> {
@@ -63,6 +92,8 @@ class BackofficePublicLeadFormService implements IBackofficePublicLeadFormServic
     return {
       id: result.result?.id ?? "",
       duplicated: Boolean(result.result?.duplicated),
+      scheduled: Boolean(result.result?.scheduled),
+      meetingDate: result.result?.meetingDate ?? null,
     }
   }
 }

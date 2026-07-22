@@ -25,6 +25,7 @@ export class BackofficeLeadScheduleRepository
         meetingTitle: data.meetingTitle ?? null,
         notes: data.notes ?? null,
         meetingLink: data.meetingLink ?? null,
+        meetingType: data.meetingType ?? null,
         extraGuests: data.extraGuests ?? [],
         googleEventId: data.googleEventId ?? null,
         googleCalendarId: data.googleCalendarId ?? null,
@@ -34,6 +35,8 @@ export class BackofficeLeadScheduleRepository
         inviteDispatchLastAttemptAt: data.inviteDispatchLastAttemptAt ?? null,
         inviteDispatchLastError: data.inviteDispatchLastError ?? null,
         inviteDispatchLastPayload: toJsonValue(data.inviteDispatchLastPayload),
+        publicShareTokenHash: data.publicShareTokenHash ?? null,
+        publicShareExpiresAt: data.publicShareExpiresAt ?? null,
         createdByProfileId: data.createdByProfileId ?? null,
       },
     })
@@ -57,6 +60,12 @@ export class BackofficeLeadScheduleRepository
     return prisma.backofficeLeadSchedule.findFirst({
       where: { leadId, isCanceled: false },
       orderBy: { date: "desc" },
+    })
+  }
+
+  async findById(id: string) {
+    return prisma.backofficeLeadSchedule.findUnique({
+      where: { id },
     })
   }
 
@@ -104,6 +113,7 @@ export class BackofficeLeadScheduleRepository
         ...(data.meetingTitle !== undefined ? { meetingTitle: data.meetingTitle } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
         ...(data.meetingLink !== undefined ? { meetingLink: data.meetingLink } : {}),
+        ...(data.meetingType !== undefined ? { meetingType: data.meetingType } : {}),
         ...(data.extraGuests !== undefined ? { extraGuests: data.extraGuests } : {}),
         ...(data.googleEventId !== undefined ? { googleEventId: data.googleEventId } : {}),
         ...(data.googleCalendarId !== undefined
@@ -126,6 +136,12 @@ export class BackofficeLeadScheduleRepository
           : {}),
         ...(data.inviteDispatchLastPayload !== undefined
           ? { inviteDispatchLastPayload: toJsonValue(data.inviteDispatchLastPayload) }
+          : {}),
+        ...(data.publicShareTokenHash !== undefined
+          ? { publicShareTokenHash: data.publicShareTokenHash }
+          : {}),
+        ...(data.publicShareExpiresAt !== undefined
+          ? { publicShareExpiresAt: data.publicShareExpiresAt }
           : {}),
         ...(data.isCanceled !== undefined ? { isCanceled: data.isCanceled } : {}),
         ...(data.canceledAt !== undefined ? { canceledAt: data.canceledAt } : {}),

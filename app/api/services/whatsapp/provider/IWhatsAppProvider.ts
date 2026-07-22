@@ -101,6 +101,12 @@ export interface IWhatsAppProvider {
     hostBaseUrl?: string
   }): Promise<WhatsAppProviderConnectResult>
 
+  setWebhook(params: {
+    instanceName: string
+    webhookUrl: string
+    hostBaseUrl?: string
+  }): Promise<void>
+
   getQrCode(instanceName: string, hostBaseUrl?: string): Promise<WhatsAppProviderQrCode>
 
   getConnectionState(

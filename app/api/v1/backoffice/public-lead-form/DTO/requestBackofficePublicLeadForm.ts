@@ -72,11 +72,26 @@ export const BackofficePublicLeadFormRequestSchema = z
     utmTerm: optionalTrimmed,
     landingUrl: optionalTrimmed,
     referrer: optionalTrimmed,
+    closerBackofficeUserId: z.string().uuid().optional(),
+    meetingDate: z.string().datetime().optional(),
+    meetingTitle: optionalTrimmed,
+    meetingNotes: optionalTrimmed,
+    meetingType: z.enum(["online", "call", "whatsapp"]).optional(),
   })
   .refine((data) => Boolean(data.email || data.phone), {
     message: "Informe e-mail ou telefone.",
     path: ["email"],
   })
+  .refine(
+    (data) => {
+      if (!data.meetingDate && !data.closerBackofficeUserId) return true
+      return Boolean(data.meetingDate && data.closerBackofficeUserId)
+    },
+    {
+      message: "Para agendar, informe closer e data/hora.",
+      path: ["meetingDate"],
+    }
+  )
 
 export type BackofficePublicLeadFormRequest = z.infer<
   typeof BackofficePublicLeadFormRequestSchema
