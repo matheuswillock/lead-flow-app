@@ -61,6 +61,8 @@ export const normalizeCrmPresetFilters = (raw: unknown): CrmFiltersState => {
     assignedUsers: Array.isArray(data.assignedUsers) ? data.assignedUsers : [],
     closerFilter: Array.isArray(data.closerFilter) ? data.closerFilter : [],
     customFieldFilters: Array.isArray(data.customFieldFilters) ? data.customFieldFilters : [],
+    customFieldSort:
+      data.customFieldSort && typeof data.customFieldSort === "object" ? data.customFieldSort : null,
   };
 };
 
@@ -79,6 +81,7 @@ const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersStat
   onlyTransfer: filters.onlyTransfer === true,
   onlyDraft: filters.onlyDraft === true,
   customFieldFilters: sortCustomFieldFiltersForComparison(filters.customFieldFilters) as CrmFiltersState["customFieldFilters"],
+  customFieldSort: filters.customFieldSort ?? null,
 });
 
 const areCrmFiltersEqual = (left: CrmFiltersState, right: CrmFiltersState) =>
@@ -217,6 +220,9 @@ export function CrmFiltersBar() {
     if (queryJson.customFieldFilters.length) {
       parts.push(`Campos personalizados: ${queryJson.customFieldFilters.length}`);
     }
+    if (queryJson.customFieldSort) {
+      parts.push(`Ordenado por campo personalizado (${queryJson.customFieldSort.direction})`);
+    }
     if (parts.length === 0) return "Sem filtros aplicados";
     return parts.join(" • ");
   };
@@ -274,6 +280,8 @@ export function CrmFiltersBar() {
         definitions={customFieldDefinitions}
         values={crmFilters.customFieldFilters}
         onChange={(values) => setCrmFilter("customFieldFilters", values)}
+        sort={crmFilters.customFieldSort}
+        onSortChange={(sort) => setCrmFilter("customFieldSort", sort)}
       />
       <LeadsFilterPresetsSheet
         scope="crm"
