@@ -1,3 +1,8 @@
+import type {
+  CustomFieldFilterState,
+  CustomFieldSortState,
+} from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+
 export type CrmViewMode = "pipeline" | "kanban";
 
 export interface CrmFiltersState {
@@ -12,6 +17,8 @@ export interface CrmFiltersState {
   onlyMeetingsHeld: boolean;
   onlyTransfer: boolean;
   onlyDraft: boolean;
+  customFieldFilters: CustomFieldFilterState[];
+  customFieldSort: CustomFieldSortState | null;
 }
 
 export const DEFAULT_CRM_FILTERS: CrmFiltersState = {
@@ -26,6 +33,8 @@ export const DEFAULT_CRM_FILTERS: CrmFiltersState = {
   onlyMeetingsHeld: false,
   onlyTransfer: false,
   onlyDraft: false,
+  customFieldFilters: [],
+  customFieldSort: null,
 };
 
 export const isCrmFiltersEmpty = (filters: CrmFiltersState): boolean =>
@@ -39,7 +48,9 @@ export const isCrmFiltersEmpty = (filters: CrmFiltersState): boolean =>
   !filters.scheduledPeriodEnd &&
   !filters.onlyMeetingsHeld &&
   !filters.onlyTransfer &&
-  !filters.onlyDraft;
+  !filters.onlyDraft &&
+  filters.customFieldFilters.length === 0 &&
+  !filters.customFieldSort;
 
 export const CRM_DEFAULT_VIEW_MODE: CrmViewMode = "pipeline";
 

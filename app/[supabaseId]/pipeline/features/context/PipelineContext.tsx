@@ -22,6 +22,11 @@ import {
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
 import { formatIntimezone, formatLocalDateValue } from "@/lib/dates";
+import type { CustomFieldFilterState } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+
+// Referência estável — evita recriar `loadLeads` (e a instabilidade em cascata
+// no efeito que o dispara) a cada render quando externalFilters está ausente.
+const EMPTY_CUSTOM_FIELD_FILTERS: CustomFieldFilterState[] = [];
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -167,6 +172,11 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     () => pipelineService ?? createBoardService(),
     [pipelineService]
   );
+  // customFieldFilters/customFieldSort são aplicados server-side (não há estado
+  // próprio no Pipeline — vêm sempre de CrmFiltersState via externalFilters,
+  // mesma origem do CRM/board).
+  const activeCustomFieldFilters = externalFilters?.customFieldFilters ?? EMPTY_CUSTOM_FIELD_FILTERS;
+  const activeCustomFieldSort = externalFilters?.customFieldSort ?? null;
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
@@ -368,7 +378,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   // Função para carregar leads da API
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
+    const customFieldFiltersKey = JSON.stringify(
+      activeCustomFieldFilters.map(({ definitionId, operator, value }) => ({ definitionId, operator, value }))
+    );
+    const customFieldSortKey = activeCustomFieldSort
+      ? `${activeCustomFieldSort.definitionId}:${activeCustomFieldSort.direction}`
+      : "";
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${customFieldFiltersKey}:${customFieldSortKey}`;
 
     if (
       !options?.force &&
@@ -409,7 +425,23 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           return;
         }
         
-        const result = await resolvedPipelineService.fetchLeads(supabaseId, roleToSend, activeTeamId);
+        const result = await resolvedPipelineService.fetchLeads(supabaseId, roleToSend, activeTeamId, {
+          ...(activeCustomFieldFilters.length > 0 && {
+            customFieldFilters: activeCustomFieldFilters.map(({ definitionId, operator, value }) => ({
+              definitionId,
+              operator,
+              value,
+            })),
+          }),
+          ...(activeCustomFieldSort && { customFieldSort: activeCustomFieldSort }),
+        });
+
+        // Uma chamada mais recente pode ter substituído esta antes da resposta
+        // chegar (ex.: usuário adiciona/remove filtros rapidamente) — descarta
+        // a resposta obsoleta em vez de sobrescrever o estado com dados velhos.
+        if (leadsLoadInFlightKeyRef.current !== loadKey) {
+          return;
+        }
 
         if (result.isValid && result.result) {
           console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
@@ -484,8 +516,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         if (leadsLoadInFlightKeyRef.current === loadKey) {
           leadsLoadInFlightKeyRef.current = null;
           leadsLoadInFlightPromiseRef.current = null;
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }
     })();
 
@@ -493,7 +525,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
+  }, [activeCustomFieldFilters, activeCustomFieldSort, activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
 
   const leadTimeRulesVersionRef = useRef("");
 

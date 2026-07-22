@@ -43,6 +43,12 @@ export class BoardService implements IBoardService {
                 searchParams.append('calendarWindowStart', options.calendarWindowStart.toISOString());
                 searchParams.append('calendarWindowEnd', options.calendarWindowEnd.toISOString());
             }
+            if (options?.customFieldFilters && options.customFieldFilters.length > 0) {
+                searchParams.append('customFieldFilters', JSON.stringify(options.customFieldFilters));
+            }
+            if (options?.customFieldSort) {
+                searchParams.append('customFieldSort', JSON.stringify(options.customFieldSort));
+            }
 
             const url = `${API_BASE_URL}/leads?${searchParams.toString()}`;
 

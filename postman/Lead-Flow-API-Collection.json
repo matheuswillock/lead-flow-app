@@ -1279,6 +1279,113 @@
               }
             },
             {
+              "name": "7b. Listar Leads com Filtro de Campo Personalizado",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status code é 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test('Retorna apenas leads que combinam com o filtro', function () {",
+                      "    const response = pm.response.json();",
+                      "    pm.expect(response.isValid).to.be.true;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads?role=manager&customFieldFilters=[{\"definitionId\":\"{{leadCustomFieldDefinitionId}}\",\"operator\":\"eq\",\"value\":\"Plano Ouro\"}]",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads"
+                  ],
+                  "query": [
+                    {
+                      "key": "role",
+                      "value": "manager"
+                    },
+                    {
+                      "key": "customFieldFilters",
+                      "value": "[{\"definitionId\":\"{{leadCustomFieldDefinitionId}}\",\"operator\":\"eq\",\"value\":\"Plano Ouro\"}]",
+                      "description": "JSON array, máx. 3 itens. Operadores: eq | neq | contains | is_empty | not_empty"
+                    }
+                  ]
+                },
+                "description": "Filtra leads pelo valor de um custom field. `value` é omitido para os operadores is_empty/not_empty."
+              }
+            },
+            {
+              "name": "7c. Listar Leads Ordenados por Campo Personalizado",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status code é 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads?role=manager&customFieldSort={\"definitionId\":\"{{leadCustomFieldDefinitionId}}\",\"direction\":\"desc\"}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads"
+                  ],
+                  "query": [
+                    {
+                      "key": "role",
+                      "value": "manager"
+                    },
+                    {
+                      "key": "customFieldSort",
+                      "value": "{\"definitionId\":\"{{leadCustomFieldDefinitionId}}\",\"direction\":\"desc\"}",
+                      "description": "Leads sem valor para a definição sempre aparecem por último."
+                    }
+                  ]
+                },
+                "description": "Ordena os leads retornados pelo valor de um custom field (nulls sempre por último, independente da direção)."
+              }
+            },
+            {
               "name": "8. Excluir Lead",
               "event": [
                 {

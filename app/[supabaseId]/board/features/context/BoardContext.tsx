@@ -24,6 +24,11 @@ import type {
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 import type { CloserRequirementPayload } from "@/app/[supabaseId]/components/CloserRequirementDialog";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
+import type {
+  CustomFieldFilterState,
+  CustomFieldSortState,
+} from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+import type { CustomFieldFilterInput } from "@/lib/leadCustomFields/customFieldQuery";
 import {
   createLeadTimeRulesVersion,
   EMPTY_TEAM_STATUS_RULES,
@@ -139,6 +144,10 @@ interface IBoardContextState {
   setStatusFilter: (statuses: ColumnKey[]) => void;
   closerFilter: string[];
   setCloserFilter: (closers: string[]) => void;
+  customFieldFilters: CustomFieldFilterState[];
+  setCustomFieldFilters: (filters: CustomFieldFilterState[]) => void;
+  customFieldSort: CustomFieldSortState | null;
+  setCustomFieldSort: (sort: CustomFieldSortState | null) => void;
   taskOwners: TaskOwner[];
   statusLabels: Record<ColumnKey, string>;
   errors: Record<string, string>;
@@ -286,6 +295,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [assignedUsers, setAssignedUsers] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<ColumnKey[]>([]);
   const [closerFilter, setCloserFilter] = useState<string[]>([]);
+  const [customFieldFilters, setCustomFieldFilters] = useState<CustomFieldFilterState[]>([]);
+  const [customFieldSort, setCustomFieldSort] = useState<CustomFieldSortState | null>(null);
   const [teamStatusRules, setTeamStatusRules] =
     useState<TeamStatusRulesResponse>(EMPTY_TEAM_STATUS_RULES);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -318,6 +329,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
     setOnlyTransfer(externalFilters.onlyTransfer);
     setOnlyDraft(externalFilters.onlyDraft);
+    setCustomFieldFilters(externalFilters.customFieldFilters);
+    setCustomFieldSort(externalFilters.customFieldSort);
   }, [externalFilters]);
 
   useEffect(() => {
@@ -429,7 +442,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     const calendarWindowKey = calendarWindow
       ? `${calendarWindow.start.toISOString()}:${calendarWindow.end.toISOString()}`
       : "";
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}:${calendarWindowKey}`;
+    const customFieldFiltersKey = JSON.stringify(
+      customFieldFilters.map(({ definitionId, operator, value }) => ({ definitionId, operator, value }))
+    );
+    const customFieldSortKey = customFieldSort ? `${customFieldSort.definitionId}:${customFieldSort.direction}` : "";
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}:${calendarWindowKey}:${customFieldFiltersKey}:${customFieldSortKey}`;
 
     if (
       !options?.force &&
@@ -490,7 +507,20 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
             calendarWindowStart: calendarWindow.start,
             calendarWindowEnd: calendarWindow.end,
           }),
+          ...(customFieldFilters.length > 0 && {
+            customFieldFilters: customFieldFilters.map(
+              ({ definitionId, operator, value }): CustomFieldFilterInput => ({ definitionId, operator, value })
+            ),
+          }),
+          ...(customFieldSort && { customFieldSort }),
         });
+
+        // Uma chamada mais recente pode ter substituído esta antes da resposta
+        // chegar (ex.: usuário adiciona/remove filtros rapidamente) — descarta
+        // a resposta obsoleta em vez de sobrescrever o estado com dados velhos.
+        if (leadsLoadInFlightKeyRef.current !== loadKey) {
+          return;
+        }
 
         if (result.isValid && result.result) {
           console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
@@ -612,8 +642,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         if (leadsLoadInFlightKeyRef.current === loadKey) {
           leadsLoadInFlightKeyRef.current = null;
           leadsLoadInFlightPromiseRef.current = null;
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }
     })();
 
@@ -621,7 +651,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, calendarWindow, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
+  }, [activeFunctions, activeRole, activeTeamId, calendarWindow, customFieldFilters, customFieldSort, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     userRef.current = user;
@@ -1596,6 +1626,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       setStatusFilter,
       closerFilter,
       setCloserFilter,
+      customFieldFilters,
+      setCustomFieldFilters,
+      customFieldSort,
+      setCustomFieldSort,
       taskOwners: responsaveis,
       statusLabels,
       errors,
@@ -1650,6 +1684,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       assignedUsers,
       statusFilter,
       closerFilter,
+      customFieldFilters,
+      customFieldSort,
       responsaveis,
       statusLabels,
       errors,

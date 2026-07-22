@@ -38,6 +38,11 @@ import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
+import {
+  MAX_CUSTOM_FIELD_FILTERS,
+  type CustomFieldFilterInput,
+  type CustomFieldSortInput,
+} from "@/lib/leadCustomFields/customFieldQuery";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import {
   resolveTransferScheduleInput,
@@ -673,9 +678,20 @@ export class LeadUseCase implements ILeadUseCase {
       onlyTransfer?: boolean;
       calendarWindowStart?: Date;
       calendarWindowEnd?: Date;
+      customFieldFilters?: CustomFieldFilterInput[];
+      customFieldSort?: CustomFieldSortInput;
     }
   ): Promise<Output> {
     try {
+      if ((options?.customFieldFilters?.length ?? 0) > MAX_CUSTOM_FIELD_FILTERS) {
+        return new Output(
+          false,
+          [],
+          [`Máximo de ${MAX_CUSTOM_FIELD_FILTERS} filtros de campos personalizados por consulta`],
+          null
+        );
+      }
+
       const teamId = access.teamId;
       const teamRole = access.teamMember.role;
       let leads: Awaited<ReturnType<ILeadRepository["findAllByTeamId"]>>["leads"] = [];
@@ -690,6 +706,8 @@ export class LeadUseCase implements ILeadUseCase {
           onlyTransfer: options?.onlyTransfer,
           calendarWindowStart: options?.calendarWindowStart,
           calendarWindowEnd: options?.calendarWindowEnd,
+          customFieldFilters: options?.customFieldFilters,
+          customFieldSort: options?.customFieldSort,
         });
         leads = result.leads;
       } else if (teamRole === "operator") {
@@ -702,6 +720,8 @@ export class LeadUseCase implements ILeadUseCase {
           onlyTransfer: options?.onlyTransfer,
           calendarWindowStart: options?.calendarWindowStart,
           calendarWindowEnd: options?.calendarWindowEnd,
+          customFieldFilters: options?.customFieldFilters,
+          customFieldSort: options?.customFieldSort,
         });
         leads = result.leads;
       } else {
