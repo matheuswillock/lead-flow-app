@@ -4,7 +4,8 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
 @plugin "tailwindcss-animate";
-@custom-variant dark (&:is(.dark *));
+/* Opt-out: subárvores light (landing / forms públicos) não herdam dark: do html.dark */
+@custom-variant dark (&:is(.dark *):not(.landing-page, .landing-page *, .public-form-page, .public-form-page *));
 
 /* Managed by bun run design:sync from DESIGN.md */
 /* TOKENS:THEME_INLINE:START */
@@ -528,6 +529,8 @@ h1, h2, h3, h4, h5, h6 {
   --muted-foreground: #57515e;
   --accent: #fff1e8;
   --accent-foreground: #141118;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: #ffffff;
   --border: color-mix(in oklab, #141118 9%, transparent);
   --input: color-mix(in oklab, #141118 14%, transparent);
   --ring: #fb5c1e;
@@ -553,6 +556,8 @@ h1, h2, h3, h4, h5, h6 {
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);

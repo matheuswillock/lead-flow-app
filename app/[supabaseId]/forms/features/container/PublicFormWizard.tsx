@@ -380,7 +380,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
                   Abrir preview
                 </Button>
               </DrawerTrigger>
-              <DrawerContent className="public-form-page max-h-[90vh] overflow-y-auto">
+              <DrawerContent className="public-form-page light max-h-[90vh] overflow-y-auto">
                 <DrawerHeader>
                   <DrawerTitle>Preview do formulário</DrawerTitle>
                 </DrawerHeader>
