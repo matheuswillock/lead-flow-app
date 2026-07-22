@@ -133,6 +133,54 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Lookup por identidade — usado antes de `upsertProfile` para garantir que
+   * uma identidade (ex.: phone) nunca migre silenciosamente de perfil quando
+   * a chave natural `[teamId, normalizedPhone, normalizedName]` divergir
+   * (mesmo telefone, nome diferente entre fontes).
+   */
+  async findProfileByIdentity(teamId: string, type: RadarIdentityType, normalizedValue: string) {
+    return prisma.radarIdentity.findUnique({
+      where: {
+        teamId_type_normalizedValue: { teamId, type, normalizedValue },
+      },
+      select: { profileId: true },
+    })
+  }
+
+  /**
+   * Atualiza um perfil já resolvido por identidade (não pela chave natural
+   * name+phone) — evita que `upsertProfile` crie um segundo perfil quando o
+   * nome da fonte atual diverge do nome já registrado para aquele telefone.
+   * Não atualiza displayName/normalizedName: o perfil dono da identidade
+   * mantém seu nome original.
+   */
+  async enrichProfileById(profileId: string, input: Omit<UpsertProfileInput, "teamId" | "displayName" | "normalizedName" | "normalizedPhone">) {
+    const existing = await prisma.radarProfile.findUnique({
+      where: { id: profileId },
+      select: {
+        primaryEmail: true,
+        normalizedPrimaryEmail: true,
+        primaryDocument: true,
+        normalizedPrimaryDocument: true,
+      },
+    })
+
+    return prisma.radarProfile.update({
+      where: { id: profileId },
+      data: {
+        displayPhone: input.displayPhone || undefined,
+        primaryEmail: input.primaryEmail ?? existing?.primaryEmail ?? undefined,
+        normalizedPrimaryEmail:
+          input.normalizedPrimaryEmail ?? existing?.normalizedPrimaryEmail ?? undefined,
+        primaryDocument: input.primaryDocument ?? existing?.primaryDocument ?? undefined,
+        normalizedPrimaryDocument:
+          input.normalizedPrimaryDocument ?? existing?.normalizedPrimaryDocument ?? undefined,
+        lastSeenAt: input.lastSeenAt ?? new Date(),
+      },
+    })
+  }
+
   async upsertIdentity(input: UpsertIdentityInput) {
     return prisma.radarIdentity.upsert({
       where: {
