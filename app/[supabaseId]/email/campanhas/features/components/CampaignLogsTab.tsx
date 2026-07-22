@@ -348,14 +348,25 @@ export function CampaignLogsTab({ campaignId }: CampaignLogsTabProps) {
                 {selectedLog.events.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhum evento registrado</p>
                 ) : (
-                  selectedLog.events.map((event) => (
-                    <div key={event.id} className="flex justify-between gap-2 text-sm">
-                      <span>{EVENT_LABELS[event.type] ?? event.type}</span>
-                      <span className="text-muted-foreground">
-                        {formatIntimezone(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", tz)}
-                      </span>
-                    </div>
-                  ))
+                  selectedLog.events.map((event) => {
+                    const errorMessage =
+                      typeof event.metadata?.errorMessage === "string"
+                        ? event.metadata.errorMessage
+                        : null
+                    return (
+                      <div key={event.id} className="flex flex-col gap-1 text-sm">
+                        <div className="flex justify-between gap-2">
+                          <span>{EVENT_LABELS[event.type] ?? event.type}</span>
+                          <span className="text-muted-foreground">
+                            {formatIntimezone(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", tz)}
+                          </span>
+                        </div>
+                        {errorMessage ? (
+                          <p className="text-xs text-destructive">{errorMessage}</p>
+                        ) : null}
+                      </div>
+                    )
+                  })
                 )}
               </div>
             </div>

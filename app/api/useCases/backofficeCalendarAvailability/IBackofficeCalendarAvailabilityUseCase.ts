@@ -3,6 +3,7 @@ import type { Output } from "@/lib/output"
 export interface GetBackofficeCalendarAvailabilityUseCaseInput {
   closerIds: string[]
   date: string
+  days?: number
   excludeLeadId?: string | null
   userTimezone?: string | null
 }

@@ -17,6 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useBackofficeAccount } from "../context/BackofficeAccountHook"
 import type { BackofficeAccountUpdateInput } from "../context/BackofficeAccountTypes"
+import { BackofficeGoogleConnectionCard } from "../components/BackofficeGoogleConnectionCard"
+import { BackofficeProfileIconCard } from "../components/BackofficeProfileIconCard"
 
 interface ProfileForm {
   fullName: string
@@ -147,17 +149,22 @@ export function BackofficeAccountContainer() {
         <CardHeader className="flex flex-col gap-2">
           <CardTitle className="text-2xl">Minha conta</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Gerencie seu perfil e configurações de segurança.
+            Gerencie seu perfil, segurança e conexões.
           </p>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="profile" className="flex w-full flex-col gap-6">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="profile">Perfil</TabsTrigger>
               <TabsTrigger value="security">Segurança</TabsTrigger>
+              <TabsTrigger value="connections">Conexões</TabsTrigger>
             </TabsList>
 
             <TabsContent value="profile" className="flex flex-col gap-6">
+              <BackofficeProfileIconCard account={account} />
+
+              <Separator />
+
               <form onSubmit={(event) => void handleSaveProfile(event)} className="flex flex-col gap-6">
                 <FieldGroup>
                   <Field>
@@ -315,6 +322,10 @@ export function BackofficeAccountContainer() {
                   </Button>
                 </div>
               </form>
+            </TabsContent>
+
+            <TabsContent value="connections" className="flex flex-col gap-6">
+              <BackofficeGoogleConnectionCard account={account} />
             </TabsContent>
           </Tabs>
         </CardContent>

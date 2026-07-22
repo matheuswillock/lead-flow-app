@@ -1,9 +1,16 @@
 import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
 
+export type DispatchProviderError = {
+  message: string
+  emails: string[]
+  statusCode?: number
+}
+
 export interface DispatchBatchResult {
   sent: number
   failed: number
   dispatched: Array<{ email: string; resendId: string }>
+  providerErrors: DispatchProviderError[]
 }
 
 export interface IEmailCampaignDispatchService {

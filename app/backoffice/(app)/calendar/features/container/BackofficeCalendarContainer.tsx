@@ -170,12 +170,15 @@ export function BackofficeCalendarContainer() {
         ? parseDateKeyAndTimeToUtc(dateKey, selectedTime, timezone).toISOString()
         : leadToSchedule.meetingDate
     return {
+      id: leadToSchedule.id,
       name: leadToSchedule.name,
+      email: leadToSchedule.email,
       closerBackofficeUserId: leadToSchedule.closerBackofficeUserId,
       meetingDate: preferredDate,
       meetingTitle: leadToSchedule.meetingTitle,
       meetingNotes: leadToSchedule.meetingNotes,
       meetingLink: leadToSchedule.meetingLink,
+      meetingType: leadToSchedule.meetingType,
       meetingExtraGuests: leadToSchedule.meetingExtraGuests,
     }
   }, [dateKey, leadToSchedule, selectedTime, timezone])
@@ -290,9 +293,45 @@ export function BackofficeCalendarContainer() {
       })
       setIsCancelDialogOpen(false)
       setLeadToCancel(null)
+      toast.success("Agendamento cancelado. Lead voltou para Nova oportunidade.")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao cancelar agendamento")
     }
+  }
+
+  async function handleResendInvite(leadId: string) {
+    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/schedule/resend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: "all" }),
+    })
+    const output = await response.json()
+    if (!response.ok || !output?.isValid) {
+      throw new Error(
+        Array.isArray(output?.errorMessages)
+          ? output.errorMessages.join(", ")
+          : "Não foi possível reenviar o convite"
+      )
+    }
+    toast.success("Convite reenviado")
+  }
+
+  async function handleCopyPublicShareLink(leadId: string) {
+    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/schedule/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+    const output = await response.json()
+    if (!response.ok || !output?.isValid || !output?.result?.publicUrl) {
+      throw new Error(
+        Array.isArray(output?.errorMessages)
+          ? output.errorMessages.join(", ")
+          : "Não foi possível gerar o link público"
+      )
+    }
+    await navigator.clipboard.writeText(String(output.result.publicUrl))
+    toast.success("Link público copiado")
   }
 
   return (
@@ -556,6 +595,34 @@ export function BackofficeCalendarContainer() {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => {
+                            void handleCopyPublicShareLink(lead.id).catch((err) => {
+                              toast.error(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Erro ao copiar link público"
+                              )
+                            })
+                          }}
+                        >
+                          Copiar link público
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            void handleResendInvite(lead.id).catch((err) => {
+                              toast.error(
+                                err instanceof Error ? err.message : "Erro ao reenviar convite"
+                              )
+                            })
+                          }}
+                        >
+                          Reenviar convite
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => openRescheduleDialog(lead)}
                         >
                           Reagendar reunião
@@ -637,6 +704,30 @@ export function BackofficeCalendarContainer() {
             if (!nextOpen) setLeadToSchedule(null)
           }}
           onConfirm={handleScheduleConfirm}
+          isReschedule={!!leadToSchedule?.meetingDate || leadToSchedule?.status === "scheduled"}
+          onResendInvite={
+            leadToSchedule
+              ? async () => {
+                  const response = await fetch(
+                    `/api/v1/backoffice/leads/${leadToSchedule.id}/schedule/resend`,
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ target: "all" }),
+                    }
+                  )
+                  const output = await response.json()
+                  if (!response.ok || !output?.isValid) {
+                    throw new Error(
+                      Array.isArray(output?.errorMessages)
+                        ? output.errorMessages.join(", ")
+                        : "Não foi possível reenviar o convite"
+                    )
+                  }
+                  toast.success("Convite reenviado")
+                }
+              : undefined
+          }
         />
       )}
 
@@ -652,7 +743,8 @@ export function BackofficeCalendarContainer() {
           <DialogHeader>
             <DialogTitle>Cancelar agenda</DialogTitle>
             <DialogDescription>
-              Deseja cancelar a agenda atual ou reagendar a reunião?
+              Cancelar remove o agendamento e devolve o lead para Nova oportunidade.
+              Você também pode reagendar a reunião.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap justify-end gap-2">

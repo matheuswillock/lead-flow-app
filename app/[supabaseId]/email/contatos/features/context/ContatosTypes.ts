@@ -24,6 +24,13 @@ export type ContactList = {
   activeImport?: ContactListActiveImport | null
 }
 
+export type ContactUnsubscribeSource = {
+  campaignId: string | null
+  campaignName: string | null
+  subject: string | null
+  unsubscribedAt: string
+}
+
 export type Contact = {
   id: string
   email: string
@@ -32,6 +39,7 @@ export type Contact = {
   isBounced: boolean
   isComplained: boolean
   createdAt: string
+  unsubscribeSource?: ContactUnsubscribeSource | null
 }
 
 export type ContactsState = {

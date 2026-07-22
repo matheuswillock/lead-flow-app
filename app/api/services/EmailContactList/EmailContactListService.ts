@@ -1,5 +1,6 @@
 import Papa from "papaparse"
 import type { IEmailContactListService, ParsedContact } from "./IEmailContactListService"
+import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
 
 const EMAIL_COLUMN_ALIASES = ["email", "e-mail", "e_mail", "mail", "email_address"]
 const NAME_COLUMN_ALIASES = ["name", "nome", "full_name", "nome_completo", "fullname"]
@@ -24,8 +25,11 @@ export class EmailContactListService implements IEmailContactListService {
     const contacts: ParsedContact[] = []
 
     for (const row of result.data) {
-      const email = row[emailColumn]?.trim()
-      if (!email || !email.includes("@")) continue
+      const rawEmail = row[emailColumn]?.trim()
+      if (!rawEmail) continue
+
+      const validation = isValidResendRecipientEmail(rawEmail)
+      if (!validation.ok) continue
 
       const reservedColumns = new Set([emailColumn, nameColumn].filter(Boolean) as string[])
       const customFields: Record<string, string> = {}
@@ -36,7 +40,7 @@ export class EmailContactListService implements IEmailContactListService {
       }
 
       contacts.push({
-        email: email.toLowerCase(),
+        email: validation.email,
         name: nameColumn ? row[nameColumn]?.trim() || undefined : undefined,
         customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
       })

@@ -1,6 +1,8 @@
 import type { BackofficeLeadSchedule } from "@prisma/client"
 import type { Output } from "@/lib/output"
 
+export type BackofficeMeetingType = "online" | "call" | "whatsapp"
+
 export interface UpsertBackofficeLeadScheduleInput {
   leadId: string
   leadName: string
@@ -10,6 +12,7 @@ export interface UpsertBackofficeLeadScheduleInput {
   meetingTitle: string
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: BackofficeMeetingType | null
   extraGuests?: string[]
   createdByProfileId?: string | null
 }
@@ -40,4 +43,10 @@ export interface IBackofficeLeadScheduleService {
   upsertSchedule(input: UpsertBackofficeLeadScheduleInput): Promise<Output>
   cancelSchedule(input: CancelBackofficeLeadScheduleInput): Promise<Output>
   getAttendees(input: GetBackofficeLeadScheduleAttendeesInput): Promise<Output>
+  resendInvite(input: {
+    leadId: string
+    target: "all" | "single" | "new"
+    email?: string
+    emails?: string[]
+  }): Promise<Output>
 }

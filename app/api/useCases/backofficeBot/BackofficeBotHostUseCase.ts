@@ -9,6 +9,7 @@ import {
 import {
   EVOLUTION_HOST_ENV_KEYS,
   N8N_HOST_ENV_KEYS,
+  buildOpsHostEnvFileContent,
   filterAllowedEnv,
   maskEnvMap,
   mergeEnvMaps,
@@ -108,6 +109,37 @@ class BackofficeBotHostUseCase implements IBackofficeBotHostUseCase {
       id: updated.id,
       agentBaseUrl: updated.agentBaseUrl,
       desiredHostVersion: updated.desiredHostVersion,
+    });
+  }
+
+  async exportEnvFile(access: { profileId: string; fullAccess: boolean }) {
+    const denied = requireMaster(access.fullAccess);
+    if (denied) return denied;
+
+    const settings = await this.repo.getOrCreateSettings();
+    const n8nEnv = decryptHostEnvMap(settings.n8nEnvEncrypted);
+    const evolutionEnv = decryptHostEnvMap(settings.evolutionEnvEncrypted);
+    const agent = {
+      agentBaseUrl: settings.agentBaseUrl,
+      desiredHostVersion: settings.desiredHostVersion,
+    };
+    const content = buildOpsHostEnvFileContent({ agent, n8nEnv, evolutionEnv });
+
+    console.info("[BackofficeBotHostUseCase][exportEnvFile]", {
+      profileId: access.profileId,
+      n8nKeys: Object.keys(n8nEnv).length,
+      evolutionKeys: Object.keys(evolutionEnv).length,
+      hasAgentBaseUrl: Boolean(agent.agentBaseUrl),
+      hasDesiredHostVersion: Boolean(agent.desiredHostVersion),
+    });
+
+    return new Output(true, ["Arquivo de variáveis exportado"], [], {
+      content,
+      fileName: "bethania-ops-host-env.txt",
+      agentBaseUrl: agent.agentBaseUrl,
+      desiredHostVersion: agent.desiredHostVersion,
+      n8nEnv,
+      evolutionEnv,
     });
   }
 

@@ -6,7 +6,6 @@ import { CalendarClock, UserRound } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
-import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,7 +36,6 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { useTimezone } from "@/app/context/TimezoneContext"
 import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import {
   BACKOFFICE_CRM_STATUS_LABELS,
@@ -131,6 +129,7 @@ const leadFormSchema = z
     meetingTitle: z.string().trim(),
     meetingNotes: z.string().trim(),
     meetingLink: z.string().trim(),
+    meetingType: z.enum(["online", "call", "whatsapp"]),
     meetingExtraGuests: z.array(z.string().email()),
     qualificationLeadOrganization: z.string().trim(),
     qualificationAvgUsers: z.string().trim(),
@@ -187,6 +186,7 @@ const EMPTY_FORM_VALUES: LeadFormValues = {
   meetingTitle: "",
   meetingNotes: "",
   meetingLink: "",
+  meetingType: "online",
   meetingExtraGuests: [],
   qualificationLeadOrganization: "",
   qualificationAvgUsers: "",
@@ -209,6 +209,10 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     meetingTitle: lead.meetingTitle ?? "",
     meetingNotes: lead.meetingNotes ?? "",
     meetingLink: lead.meetingLink ?? "",
+    meetingType:
+      lead.meetingType === "call" || lead.meetingType === "whatsapp"
+        ? lead.meetingType
+        : "online",
     meetingExtraGuests: lead.meetingExtraGuests ?? [],
     qualificationLeadOrganization: lead.qualificationLeadOrganization ?? "",
     qualificationAvgUsers: lead.qualificationAvgUsers ?? "",
@@ -234,8 +238,15 @@ function buildScheduleInput(values: LeadFormValues): BackofficeLeadScheduleInput
     meetingTitle: nullIfEmpty(values.meetingTitle),
     meetingNotes: nullIfEmpty(values.meetingNotes),
     meetingLink: nullIfEmpty(values.meetingLink),
+    meetingType: values.meetingType,
     extraGuests: values.meetingExtraGuests,
   }
+}
+
+function formatMeetingTypeLabel(value?: string | null): string {
+  if (value === "call") return "Ligação"
+  if (value === "whatsapp") return "WhatsApp"
+  return "Online"
 }
 
 function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
@@ -287,8 +298,9 @@ export function BackofficeLeadFormDialog() {
     sdrOptions,
     closerOptions,
   } = useBackofficeCrm()
-  const { tz } = useTimezone()
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [shareLoading, setShareLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
   const isEdit = selectedLead !== null
 
   const form = useForm<LeadFormValues>({
@@ -313,34 +325,102 @@ export function BackofficeLeadFormDialog() {
     () => ({
       id: selectedLead?.id ?? null,
       name: watchedValues.name || selectedLead?.name || "Lead",
+      email: watchedValues.email || selectedLead?.email || null,
       closerBackofficeUserId: watchedValues.closerBackofficeUserId || null,
       meetingDate: watchedValues.meetingDate || null,
       meetingTitle: watchedValues.meetingTitle || null,
       meetingNotes: watchedValues.meetingNotes || null,
       meetingLink: watchedValues.meetingLink || null,
+      meetingType: watchedValues.meetingType || null,
       meetingExtraGuests: watchedValues.meetingExtraGuests,
     }),
     [
+      selectedLead?.id,
       selectedLead?.name,
+      selectedLead?.email,
       watchedValues.closerBackofficeUserId,
+      watchedValues.email,
       watchedValues.meetingDate,
       watchedValues.meetingLink,
       watchedValues.meetingNotes,
       watchedValues.meetingTitle,
+      watchedValues.meetingType,
       watchedValues.meetingExtraGuests,
       watchedValues.name,
     ],
   )
 
+  async function handleShareSchedule() {
+    if (!selectedLead) return
+    setShareLoading(true)
+    try {
+      const response = await fetch(
+        `/api/v1/backoffice/leads/${selectedLead.id}/schedule/share`,
+        { method: "POST" }
+      )
+      const output = await response.json()
+      if (!response.ok || !output?.isValid || !output?.result?.publicUrl) {
+        throw new Error(
+          Array.isArray(output?.errorMessages)
+            ? output.errorMessages.join(", ")
+            : "Não foi possível gerar o link público"
+        )
+      }
+      await navigator.clipboard.writeText(output.result.publicUrl)
+      toast.success("Link público copiado")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao gerar link público")
+    } finally {
+      setShareLoading(false)
+    }
+  }
+
+  async function handleResendInvite() {
+    if (!selectedLead) return
+    setResendLoading(true)
+    try {
+      const response = await fetch(
+        `/api/v1/backoffice/leads/${selectedLead.id}/schedule/resend`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: "all" }),
+        }
+      )
+      const output = await response.json()
+      if (!response.ok || !output?.isValid) {
+        throw new Error(
+          Array.isArray(output?.errorMessages)
+            ? output.errorMessages.join(", ")
+            : "Não foi possível reenviar o convite"
+        )
+      }
+      toast.success("Convite reenviado")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao reenviar convite")
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
   async function handleScheduleConfirm(input: BackofficeLeadScheduleInput) {
-    if (isEdit && isScheduled && selectedLead) {
-      // Reagendamento: dispara imediatamente via API (Google Calendar + convite)
-      await updateLeadStatus(selectedLead.id, "scheduled", input)
-      // selectedLead é atualizado no context → useEffect reseta o form com os novos dados
+    if (isEdit && selectedLead) {
+      if (input.leadEmail && input.leadEmail !== selectedLead.email) {
+        await updateLead(selectedLead.id, { email: input.leadEmail })
+      }
+      await updateLeadStatus(selectedLead.id, "scheduled", {
+        closerBackofficeUserId: input.closerBackofficeUserId,
+        meetingDate: input.meetingDate,
+        meetingTitle: input.meetingTitle,
+        meetingNotes: input.meetingNotes,
+        meetingLink: input.meetingLink,
+        meetingType: input.meetingType,
+        extraGuests: input.extraGuests,
+      })
       return
     }
 
-    // Primeiro agendamento (novo lead ou mudança de status): apenas seta valores no form
+    // Lead ainda não persistido: mantém no form até o submit
     form.setValue("status", "scheduled", { shouldDirty: true, shouldValidate: true })
     form.setValue("closerBackofficeUserId", input.closerBackofficeUserId ?? "", {
       shouldDirty: true,
@@ -353,7 +433,11 @@ export function BackofficeLeadFormDialog() {
     form.setValue("meetingTitle", input.meetingTitle ?? "", { shouldDirty: true })
     form.setValue("meetingNotes", input.meetingNotes ?? "", { shouldDirty: true })
     form.setValue("meetingLink", input.meetingLink ?? "", { shouldDirty: true })
+    form.setValue("meetingType", input.meetingType ?? "online", { shouldDirty: true })
     form.setValue("meetingExtraGuests", input.extraGuests ?? [], { shouldDirty: true })
+    if (input.leadEmail) {
+      form.setValue("email", input.leadEmail, { shouldDirty: true })
+    }
   }
 
   async function handleSubmit(values: LeadFormValues) {
@@ -734,103 +818,85 @@ export function BackofficeLeadFormDialog() {
                       <div>
                         <h3 className="text-sm font-semibold">Agendamento</h3>
                         <p className="text-xs text-muted-foreground">
-                          Obrigatório quando o status for Agendado.
+                          Resumo do agendamento. Use o modal para criar ou alterar.
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setScheduleDialogOpen(true)}
-                        disabled={isSubmitting || !isEdit}
-                        title={!isEdit ? "Salve o lead primeiro para agendar" : undefined}
-                      >
-                        <CalendarClock data-icon="inline-start" />
-                        {isScheduled ? "Reagendar lead" : "Agendar lead"}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setScheduleDialogOpen(true)}
+                          disabled={isSubmitting || !isEdit}
+                          title={!isEdit ? "Salve o lead primeiro para agendar" : undefined}
+                        >
+                          <CalendarClock data-icon="inline-start" />
+                          {isScheduled ? "Editar agendamento" : "Agendar lead"}
+                        </Button>
+                      </div>
                     </div>
 
-                    {isScheduled ? (
-                      <div className="flex flex-col gap-4">
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <FormField
-                            control={form.control}
-                            name="meetingDate"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <DateTimePicker
-                                    date={parseMeetingDate(field.value)}
-                                    onDateChange={(date) =>
-                                      field.onChange(date ? date.toISOString() : "")
-                                    }
-                                    label="Data do agendamento"
-                                    required
-                                    disabled={isSubmitting}
-                                    invalid={Boolean(form.formState.errors.meetingDate)}
-                                    disablePastDates
-                                    tz={tz}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="meetingTitle"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Título</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    {...field}
-                                    placeholder="Título do agendamento"
-                                    disabled={isSubmitting}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                    {isScheduled && watchedValues.meetingDate ? (
+                      <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-sm">
+                        <div className="grid gap-1">
+                          <span className="text-muted-foreground">Data/hora</span>
+                          <span>
+                            {parseMeetingDate(watchedValues.meetingDate)?.toLocaleString("pt-BR") ??
+                              watchedValues.meetingDate}
+                          </span>
                         </div>
-                        <FormField
-                          control={form.control}
-                          name="meetingLink"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Link</FormLabel>
-                              <FormControl>
-                                <Input
-                                  {...field}
-                                  value={field.value ?? ""}
-                                  type="url"
-                                  placeholder="https://meet..."
-                                  disabled={isSubmitting}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="meetingNotes"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Notas do agendamento</FormLabel>
-                              <FormControl>
-                                <Textarea
-                                  {...field}
-                                  placeholder="Notas internas do agendamento"
-                                  rows={3}
-                                  disabled={isSubmitting}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                        <div className="grid gap-1">
+                          <span className="text-muted-foreground">Closer</span>
+                          <span>
+                            {closerOptions.find((c) => c.id === watchedValues.closerBackofficeUserId)
+                              ?.name ?? "Não atribuído"}
+                          </span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-muted-foreground">Tipo</span>
+                          <span>{formatMeetingTypeLabel(watchedValues.meetingType)}</span>
+                        </div>
+                        {watchedValues.meetingTitle ? (
+                          <div className="grid gap-1">
+                            <span className="text-muted-foreground">Título</span>
+                            <span>{watchedValues.meetingTitle}</span>
+                          </div>
+                        ) : null}
+                        {watchedValues.meetingLink ? (
+                          <div className="grid gap-1">
+                            <span className="text-muted-foreground">Link</span>
+                            <a
+                              href={watchedValues.meetingLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="break-all text-primary underline-offset-2 hover:underline"
+                            >
+                              {watchedValues.meetingLink}
+                            </a>
+                          </div>
+                        ) : null}
+                        {isEdit && selectedLead ? (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isSubmitting || shareLoading || resendLoading}
+                              onClick={() => void handleShareSchedule()}
+                            >
+                              {shareLoading ? "Gerando link..." : "Copiar link público"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isSubmitting || shareLoading || resendLoading}
+                              onClick={() => void handleResendInvite()}
+                            >
+                              {resendLoading ? "Reenviando..." : "Reenviar convite"}
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -867,6 +933,13 @@ export function BackofficeLeadFormDialog() {
         onOpenChange={setScheduleDialogOpen}
         onConfirm={handleScheduleConfirm}
         isReschedule={isEdit && isScheduled}
+        onResendInvite={
+          isEdit && selectedLead
+            ? async () => {
+                await handleResendInvite()
+              }
+            : undefined
+        }
       />
     </>
   )

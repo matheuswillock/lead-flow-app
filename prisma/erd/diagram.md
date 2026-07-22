@@ -1355,6 +1355,7 @@ meeting_scheduled meeting_scheduled
     String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
+    String meetingType "❓"
     String meetingExtraGuests 
     DateTime statusEnteredAt 
     DateTime createdAt 
@@ -1443,6 +1444,7 @@ meeting_scheduled meeting_scheduled
     String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
+    String meetingType "❓"
     String extraGuests 
     String googleEventId "❓"
     String googleCalendarId "❓"
@@ -1452,6 +1454,8 @@ meeting_scheduled meeting_scheduled
     DateTime inviteDispatchLastAttemptAt "❓"
     String inviteDispatchLastError "❓"
     Json inviteDispatchLastPayload "❓"
+    String publicShareTokenHash "❓"
+    DateTime publicShareExpiresAt "❓"
     Boolean isCanceled 
     DateTime canceledAt "❓"
     String canceledByProfileId "❓"
@@ -2168,6 +2172,7 @@ meeting_scheduled meeting_scheduled
     Int importedCount 
     Int updatedCount 
     Int skippedCount 
+    Json skippedIssues "❓"
     Json failedBatches "❓"
     Int batchSize 
     Json attemptsByBatch "❓"

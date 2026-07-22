@@ -1,7 +1,7 @@
 # PRICING_MODEL.md — Precificação do Corretor Studio por slug
 
 **Data:** 2026-07-19
-**Fontes:** `prisma/seed-backoffice-products.ts` (fonte de verdade dos valores em produção), `lib/features/feature-slugs.ts` (slugs de feature), `RADAR_AUDIT.md` e `RADAR_SPEC.md` (spec e auditoria do Radar rastreadas no repositório — a proposta comercial de pivot está condensada em `PRICING_TABLE.md` §4 deste repositório).
+**Fontes:** tabelas `BackofficeProduct`/`BackofficeProductPaymentRule` (fonte de verdade operacional), `prisma/seed-backoffice-products.ts` e migrations (reprodução versionada ainda incompleta), `lib/features/feature-slugs.ts` (slugs de feature), `RADAR_AUDIT.md` e `RADAR_SPEC.md` (spec e auditoria do Radar rastreadas no repositório — a proposta comercial de pivot está condensada em `PRICING_TABLE.md` §4 deste repositório).
 **Escopo:** consolida (1) toda a precificação vigente por `featureSlug` de produto, (2) o mapa completo de features → produto que as cobra, e (3) a regra de cálculo correta do valor de uma assinatura a partir dos slugs contratados.
 
 ---
@@ -16,6 +16,8 @@ A precificação vive em três entidades do backoffice:
 | `BackofficeProductPaymentRule` | `productId` + `paymentMethod` + `billingCycle` | Preço efetivo por forma de pagamento (PIX vs cartão) e cadência, com regra de parcelamento (`canInstallment`, `maxInstallments`). **Quando existe, prevalece sobre o preço base do produto.** |
 | `BackofficeFeature` | `slug` (+ `productSlug`, `parentId`) | Feature visível no produto. `productSlug` aponta para o `BackofficeProduct.featureSlug` que a cobra. Filhas com `inheritParentSettings: true` herdam acesso do pai; `inheritParentSettings: false` + `parentSlug` ⇒ `billedSeparately: true`. |
 
+> Nota de auditoria: o schema atual de `BackofficeProductType` ainda comporta `PLAN` e `ADDON`. A tabela comercial já usa `FEE` para itens como `radar-setup`; isso deve ser tratado na SPEC como evolução de modelagem ou como item de cobrança única sem entitlement recorrente.
+
 **Regra de resolução de preço de um item (ordem):**
 
 1. Buscar `BackofficeProductPaymentRule` para (produto, método de pagamento, cadência). Se existir, esse é o preço/mês.
@@ -23,6 +25,13 @@ A precificação vive em três entidades do backoffice:
 3. `billingMode = LIFETIME` ⇒ usar `priceLifetime` (pagamento único).
 
 **Regra de resolução de acesso (o que o cliente enxerga):** `hasAccess(slug)` exige que a feature exista em `backoffice_features` com `isActive`, que o principal tenha regra de acesso ≠ NONE, e que o produto apontado por `productSlug` esteja ativo na assinatura do cliente. Feature sem linha no banco = invisível para todos (por isso todo `featureSlug` novo exige migration de seed + atualização do `seed-backoffice-products.ts`).
+
+**Vocabulário obrigatório para a SPEC:**
+
+- **Produto vendável**: `BackofficeProduct.featureSlug` — é o slug que tem preço, ciclo, método de pagamento e aparece como item cobrado.
+- **Feature navegável**: `BackofficeFeature.slug` — é o slug que libera menu, rota ou capacidade de uso no produto.
+- **Entitlement de assinatura**: conjunto derivado de assinatura ativa + produtos contratados + capacidades pagas. Deve expor `productSlugs`, `featureSlugs`, add-ons e capacidades de forma única para backend e frontend.
+- **Fee/taxa única**: item cobrado uma vez, como `radar-setup`; entra na fatura, mas não libera feature sozinho.
 
 ---
 
@@ -106,6 +115,15 @@ Todos os slugs de `FEATURE_SLUGS` (`lib/features/feature-slugs.ts`) e o produto 
 | `cdp` | Produto próprio `cdp` (R$29,90) — **será substituído pelas linhas Radar do §5** |
 | `integration` | `accessMode: PUBLIC`, `productSlug: null` — não é cobrada |
 
+### 3.5 Regras explícitas de pai, filho e add-on
+
+1. **Slug pai libera filhos herdados:** uma assinatura do produto do pai libera os filhos com `inheritParentSettings: true`, desde que as regras por principal permitam o papel do usuário.
+2. **Filho cobrado separadamente não herda preço:** quando um filho aponta para `productSlug` próprio ou funciona como add-on, o acesso exige esse produto ativo; o pai serve só como organização da navegação.
+3. **Add-on multiplicável exige capacidade:** `extra-team`, `extra-user` e `radar-dispatch-pack` não devem liberar capacidade operacional só por existir um produto no catálogo. O entitlement correto exige produto ativo + quantidade/capacidade paga maior que zero.
+4. **Add-on booleano exige produto ativo:** `whatsapp`, tiers `email-dispatch-*` e tiers `radar-*` liberam seus slugs quando o produto recorrente correspondente está ativo.
+5. **Taxa única não é acesso:** `radar-setup` compõe a cobrança do primeiro ciclo, mas não deve aparecer como `featureSlug` liberado nem permitir acesso sem um tier Radar recorrente.
+6. **Email embutido no CRM é mudança de catálogo:** enquanto `email` estiver cadastrado como add-on ativo, o gate continua exigindo produto `email`; a migração alvo deve mover features `email-*` para `productSlug: "crm"` e desativar a cobrança separada.
+
 ---
 
 ## 4. Cálculo correto de uma assinatura
@@ -113,21 +131,25 @@ Todos os slugs de `FEATURE_SLUGS` (`lib/features/feature-slugs.ts`) e o produto 
 **Fórmula do valor mensal recorrente:**
 
 ```
-total/mês = preço(plano base, método, cadência)
-          + Σ preço(add-on ativo com quantidade = 1, método, cadência)   -- NÃO inclui extra-team/extra-user aqui
-          + (qtd times extras   × preço(extra-team, método, cadência))
-          + (qtd usuários extras × preço(extra-user, método, cadência))
+total recorrente/mês = preço(plano base, método, cadência)
+                     + Σ preço(add-on booleano ativo, método, cadência)
+                     + Σ (quantidade de add-on multiplicável × preço(add-on, método, cadência))
+
+primeira fatura = total recorrente do ciclo
+                + Σ taxas únicas do contrato
 ```
 
-> ⚠️ **`extra-team` e `extra-user` são tratados separadamente** (última linha) e **não entram** no `Σ add-ons`; contá-los nos dois lugares geraria cobrança duplicada.
+> ⚠️ **Add-ons multiplicáveis são tratados separadamente** e **não entram** no `Σ add-ons booleanos`; contá-los nos dois lugares geraria cobrança duplicada.
 
 Regras que o cálculo DEVE respeitar:
 
 1. **Payment rule primeiro** — se existir `BackofficeProductPaymentRule` para (produto, método, cadência), ela é o preço. Só cair no preço base do produto na ausência de regra.
 2. **Cadência é da assinatura, não do item** — todos os itens seguem a mesma cadência contratada (trimestral, semestral…). Não misturar cadências entre plano e add-ons.
-3. **Add-ons multiplicáveis** — `extra-team` e `extra-user` são os únicos itens que multiplicam por quantidade; todos os demais são 0 ou 1 (presentes ou ausentes).
-4. **Lifetime não entra na recorrência** — `crm-lifetime` (e futura `radar-setup`) são cobranças únicas, somadas apenas na primeira fatura.
+3. **Add-ons multiplicáveis** — no catálogo vigente, `extra-team` e `extra-user` multiplicam por quantidade; no estado-alvo da tabela completa, `radar-dispatch-pack` também multiplica. Todos os demais add-ons recorrentes são 0 ou 1 (presentes ou ausentes).
+4. **Cobrança única não entra na recorrência** — `crm-lifetime` e fees como `radar-setup` são cobranças únicas, somadas apenas à fatura correspondente.
 5. **Feature ≠ preço** — features nunca têm preço próprio; o preço vem sempre do `BackofficeProduct` apontado por `productSlug`. `crm-time-manage-teams`/`crm-time-manage-users` são o exemplo canônico: vivem sob o CRM na navegação, mas cobram pelos add-ons.
+6. **Entitlement ≠ item cobrado bruto** — a assinatura deve expor tanto os itens cobrados quanto os slugs liberados derivados deles. Um fee como `radar-setup` aparece nos itens cobrados, mas não nos slugs liberados.
+7. **Capacidade governa uso de add-ons multiplicáveis** — o produto `extra-user` pago com quantidade 3 deve liberar capacidade para 3 usuários extras, não apenas um booleano "tem extra-user".
 
 ### Exemplos (PIX)
 
@@ -140,9 +162,9 @@ Regras que o cálculo DEVE respeitar:
 
 ---
 
-## 5. Radar — linhas propostas (NÃO cadastradas — aguardam validação, ver `RADAR_BUSINESS_MODEL.md` §6)
+## 5. Radar — linhas propostas (estado-alvo para SPEC, NÃO cadastradas)
 
-O Radar substitui o produto `cdp`. Contratação mínima de 3 meses (sem mensal avulso), sempre com CRM ativo (bundle obrigatório, CRM cobrado à parte no preço cheio — decisão em aberto).
+O Radar substitui o produto `cdp`. Contratação mínima de 3 meses (sem mensal avulso), sempre com CRM ativo (bundle obrigatório, CRM cobrado à parte no preço cheio — decisão em aberto). Nesta auditoria, a tabela inteira entra como contexto-alvo para a SPEC, mas nada abaixo deve ser lido como implementação já aplicada no seed, no banco ou no `FeatureAccessService`.
 
 | featureSlug proposto | Nome | Tipo | Cobrança | Trimestral | Semestral | Anual |
 |---|---|---|---|---|---|---|

@@ -858,7 +858,32 @@ export function BackofficeCrmTable() {
           if (!open) setLeadToSchedule(null)
         }}
         onConfirm={confirmScheduleStatusChange}
-        isReschedule={leadToSchedule?.status === "scheduled"}
+        isReschedule={
+          leadToSchedule?.status === "scheduled" || !!leadToSchedule?.meetingDate
+        }
+        onResendInvite={
+          leadToSchedule
+            ? async () => {
+                const response = await fetch(
+                  `/api/v1/backoffice/leads/${leadToSchedule.id}/schedule/resend`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ target: "all" }),
+                  }
+                )
+                const output = await response.json()
+                if (!response.ok || !output?.isValid) {
+                  throw new Error(
+                    Array.isArray(output?.errorMessages)
+                      ? output.errorMessages.join(", ")
+                      : "Não foi possível reenviar o convite"
+                  )
+                }
+                toast.success("Convite reenviado")
+              }
+            : undefined
+        }
       />
 
       <BackofficeGenerateOfferDialog

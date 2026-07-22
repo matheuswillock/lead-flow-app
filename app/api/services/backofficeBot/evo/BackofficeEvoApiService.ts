@@ -4,6 +4,11 @@ import type {
 } from "./IBackofficeEvoApiService";
 import { phoneDigitsFromOwnerJid } from "@/lib/studio-bot/phone";
 import { resolveEvoApiConfig } from "@/lib/studio-bot/resolve-host-secrets";
+import {
+  deriveWebhookHeaderSecret,
+  extractWebhookSecretFromUrl,
+  WHATSAPP_WEBHOOK_HEADER_NAME,
+} from "@/lib/whatsapp/webhook-header-auth";
 
 /**
  * Cliente Evolution API dedicado ao módulo backoffice (Bethânia).
@@ -80,10 +85,13 @@ function isInstanceNameAlreadyInUseError(error: unknown): boolean {
 }
 
 function buildWebhookPayload(webhookUrl: string) {
+  const webhookSecret = extractWebhookSecretFromUrl(webhookUrl);
+  const headerSecret = webhookSecret ? deriveWebhookHeaderSecret(webhookSecret) : null;
   return {
     enabled: true,
     url: webhookUrl,
     events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+    ...(headerSecret ? { headers: { [WHATSAPP_WEBHOOK_HEADER_NAME]: headerSecret } } : {}),
   };
 }
 

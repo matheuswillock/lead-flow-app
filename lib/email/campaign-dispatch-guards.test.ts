@@ -42,4 +42,10 @@ describe("resolveCampaignStatusAfterDispatch", () => {
     expect(resolveCampaignStatusAfterDispatch(0).campaignStatus).toBe("failed")
     expect(resolveCampaignStatusAfterDispatch(0).errorMessage).toBeTruthy()
   })
+
+  it("usa detalhe de falha quando enviado", () => {
+    expect(resolveCampaignStatusAfterDispatch(0, "422 — Invalid `to`").errorMessage).toBe(
+      "422 — Invalid `to`"
+    )
+  })
 })

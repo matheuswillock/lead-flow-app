@@ -7,6 +7,7 @@ import type {
   MarkSentEntry,
 } from "./IEmailLogRepository"
 import type { EmailEventType } from "@prisma/client"
+import { withDeadlockRetry } from "@/lib/email/with-deadlock-retry"
 
 export class EmailLogRepository implements IEmailLogRepository {
   async findByResendEmailId(resendEmailId: string) {
@@ -60,77 +61,80 @@ export class EmailLogRepository implements IEmailLogRepository {
     const shouldUpdateStatus = newStatusIdx !== -1 && (currentStatusIdx === -1 || newStatusIdx < currentStatusIdx)
 
     try {
-      await prisma.$transaction(async (tx) => {
-        await tx.emailEvent.create({
-          data: {
-            id: eventId,
-            logId: log.id,
-            type: eventType,
-            occurredAt,
-            metadata: Object.keys(metadata).length > 0 ? (metadata as Prisma.InputJsonValue) : undefined,
-          },
-        })
-
-        await tx.emailLog.update({
-          where: { id: log.id },
-          data: {
-            ...(shouldUpdateStatus && { status: eventType as never }),
-            ...timestampUpdate,
-          },
-        })
-
-        if (eventType === "bounced") {
-          // Endereço inválido é global — suprime em todas as listas.
-          await tx.emailContact.updateMany({
-            where: { email: log.recipientEmail },
-            data: { isBounced: true },
-          })
-        }
-        if (eventType === "complained") {
-          // Reclamação é por time: só listas de times que já enviaram para este destinatário.
-          const teamIdsWithLogs = await tx.emailLog.findMany({
-            where: { recipientEmail: log.recipientEmail },
-            select: { teamId: true },
-            distinct: ["teamId"],
+      await withDeadlockRetry(async () => {
+        await prisma.$transaction(async (tx) => {
+          await tx.emailEvent.create({
+            data: {
+              id: eventId,
+              logId: log.id,
+              type: eventType,
+              occurredAt,
+              metadata: Object.keys(metadata).length > 0 ? (metadata as Prisma.InputJsonValue) : undefined,
+            },
           })
 
-          for (const { teamId } of teamIdsWithLogs) {
+          await tx.emailLog.update({
+            where: { id: log.id },
+            data: {
+              ...(shouldUpdateStatus && { status: eventType as never }),
+              ...timestampUpdate,
+            },
+          })
+
+          if (eventType === "bounced") {
+            // Endereço inválido é global — suprime em todas as listas.
             await tx.emailContact.updateMany({
-              where: {
-                email: log.recipientEmail,
-                list: { teamId },
-              },
-              data: { isComplained: true, isUnsubscribed: true },
+              where: { email: log.recipientEmail },
+              data: { isBounced: true },
             })
           }
-        }
-
-        if (log.campaignId) {
-          const campaignIncrements: Record<string, number> = {}
-          if (eventType === "delivered" && !log.deliveredAt) campaignIncrements.totalDelivered = 1
-          if (eventType === "opened" && !log.openedAt) campaignIncrements.totalOpened = 1
-          if (eventType === "clicked" && !log.clickedAt) campaignIncrements.totalClicked = 1
-          if (eventType === "bounced" && !log.bouncedAt) campaignIncrements.totalBounced = 1
-          if (eventType === "complained" && !log.complainedAt) campaignIncrements.totalComplained = 1
-
-          if (Object.keys(campaignIncrements).length > 0) {
-            await tx.emailCampaign.update({
-              where: { id: log.campaignId },
-              data: Object.fromEntries(
-                Object.entries(campaignIncrements).map(([k, v]) => [k, { increment: v }])
-              ),
+          if (eventType === "complained") {
+            // Reclamação é por time: só listas de times que já enviaram para este destinatário.
+            const teamIdsWithLogs = await tx.emailLog.findMany({
+              where: { recipientEmail: log.recipientEmail },
+              select: { teamId: true },
+              distinct: ["teamId"],
             })
 
-            if (log.dispatchId) {
-              await tx.emailCampaignDispatch.update({
-                where: { id: log.dispatchId },
+            for (const { teamId } of teamIdsWithLogs) {
+              await tx.emailContact.updateMany({
+                where: {
+                  email: log.recipientEmail,
+                  list: { teamId },
+                },
+                data: { isComplained: true, isUnsubscribed: true },
+              })
+            }
+          }
+
+          if (log.campaignId) {
+            const campaignIncrements: Record<string, number> = {}
+            if (eventType === "delivered" && !log.deliveredAt) campaignIncrements.totalDelivered = 1
+            if (eventType === "opened" && !log.openedAt) campaignIncrements.totalOpened = 1
+            if (eventType === "clicked" && !log.clickedAt) campaignIncrements.totalClicked = 1
+            if (eventType === "bounced" && !log.bouncedAt) campaignIncrements.totalBounced = 1
+            if (eventType === "complained" && !log.complainedAt) campaignIncrements.totalComplained = 1
+
+            if (Object.keys(campaignIncrements).length > 0) {
+              // lock order: campaign then dispatch (must match EmailCampaignUseCase completion)
+              await tx.emailCampaign.update({
+                where: { id: log.campaignId },
                 data: Object.fromEntries(
                   Object.entries(campaignIncrements).map(([k, v]) => [k, { increment: v }])
                 ),
               })
+
+              if (log.dispatchId) {
+                await tx.emailCampaignDispatch.update({
+                  where: { id: log.dispatchId },
+                  data: Object.fromEntries(
+                    Object.entries(campaignIncrements).map(([k, v]) => [k, { increment: v }])
+                  ),
+                })
+              }
             }
           }
-        }
+        })
       })
     } catch (error) {
       if (

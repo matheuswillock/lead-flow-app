@@ -11,6 +11,7 @@ export interface IBackofficeBotHostUseCase {
     },
     access: { profileId: string; fullAccess: boolean }
   ): Promise<Output>;
+  exportEnvFile(access: { profileId: string; fullAccess: boolean }): Promise<Output>;
   rotateAgentToken(access: { profileId: string; fullAccess: boolean }): Promise<Output>;
   listJobs(): Promise<Output>;
   health(access: { profileId: string; fullAccess: boolean }): Promise<Output>;

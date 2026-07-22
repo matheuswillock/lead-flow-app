@@ -8798,6 +8798,32 @@
           }
         },
         {
+          "name": "GET Backoffice Account Google Scopes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/account/google-scopes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "account",
+                "google-scopes"
+              ]
+            },
+            "description": "Retorna os escopos Google concedidos da conexão ativa do operador (backoffice_user ou linked_profile)."
+          }
+        },
+        {
           "name": "POST Backoffice Google Connect",
           "request": {
             "method": "POST",
@@ -8828,7 +8854,7 @@
                 "connect"
               ]
             },
-            "description": "Salva tokens Google Calendar separados para o módulo Backoffice."
+            "description": "Salva tokens Google Calendar separados para o módulo Backoffice. Retorna 409 se o e-mail Google já estiver vinculado a outro perfil."
           }
         },
         {
@@ -9118,7 +9144,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Demonstração Corretor Studio\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n  \"extraGuests\": [\"convidado@example.com\"]\n}"
+              "raw": "{\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Demonstração Corretor Studio\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n  \"meetingType\": \"online\",\n  \"extraGuests\": [\"convidado@example.com\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/schedule",
@@ -9183,6 +9209,118 @@
               ]
             },
             "description": "Cancela o agendamento ativo do lead e limpa o snapshot de reunião no BackofficeLead."
+          }
+        },
+
+        {
+          "name": "POST Backoffice Lead Schedule Resend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target\": \"all\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/schedule/resend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "leads",
+                ":id",
+                "schedule",
+                "resend"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{backofficeLeadId}}"
+                }
+              ]
+            },
+            "description": "Reenvia o convite do agendamento ativo do lead (target: all | single | new)."
+          }
+        },
+        {
+          "name": "POST Backoffice Lead Schedule Share",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/schedule/share",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "leads",
+                ":id",
+                "schedule",
+                "share"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{backofficeLeadId}}"
+                }
+              ]
+            },
+            "description": "Gera link público do agendamento online (/backoffice-agendamento/{token})."
+          }
+        },
+        {
+          "name": "GET Backoffice Public Schedule By Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/public-schedules/:token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "public-schedules",
+                ":token"
+              ],
+              "variable": [
+                {
+                  "key": "token",
+                  "value": "{{backofficeScheduleShareToken}}"
+                }
+              ]
+            },
+            "description": "Retorna o resumo público do agendamento Backoffice pelo token de compartilhamento."
           }
         },
         {
@@ -16657,6 +16795,20 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "backoffice", "bot", "host", "settings"]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "GET Backoffice Bot Host Env File",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings/env-file",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "settings", "env-file"]
+            },
+            "description": "MASTER: exporta .txt com agentBaseUrl, desiredHostVersion e variáveis N8N/Evolution (inclui secrets) salvas no host settings."
           },
           "response": []
         },

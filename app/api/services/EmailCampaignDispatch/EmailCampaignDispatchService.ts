@@ -9,7 +9,15 @@ import {
   interpolateEmailTemplate,
   type EmailTemplateVariableDefinition,
 } from "@/lib/email/interpolate"
-import type { IEmailCampaignDispatchService, DispatchBatchResult } from "./IEmailCampaignDispatchService"
+import {
+  formatInvalidRecipientFailureMessage,
+  isValidResendRecipientEmail,
+} from "@/lib/email/is-valid-resend-recipient-email"
+import type {
+  DispatchBatchResult,
+  DispatchProviderError,
+  IEmailCampaignDispatchService,
+} from "./IEmailCampaignDispatchService"
 
 const BATCH_SIZE = 100
 
@@ -45,8 +53,34 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
     }
 
-    const result: DispatchBatchResult = { sent: 0, failed: 0, dispatched: [] }
-    const chunks = this.chunkArray(params.recipients, BATCH_SIZE)
+    const result: DispatchBatchResult = {
+      sent: 0,
+      failed: 0,
+      dispatched: [],
+      providerErrors: [],
+    }
+
+    const sendable: typeof params.recipients = []
+    const invalidLocalErrors: DispatchProviderError[] = []
+
+    for (const recipient of params.recipients) {
+      const validation = isValidResendRecipientEmail(recipient.email)
+      if (!validation.ok) {
+        result.failed += 1
+        invalidLocalErrors.push({
+          message: formatInvalidRecipientFailureMessage(recipient.email, validation.reason),
+          emails: [recipient.email],
+        })
+        continue
+      }
+      sendable.push({ ...recipient, email: validation.email })
+    }
+
+    if (invalidLocalErrors.length > 0) {
+      result.providerErrors.push(...invalidLocalErrors)
+    }
+
+    const chunks = this.chunkArray(sendable, BATCH_SIZE)
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex]
@@ -108,6 +142,14 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         if (batchResult.error) {
           console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
           result.failed += chunk.length
+          result.providerErrors.push({
+            message: batchResult.error.message || "Erro no envio via Resend",
+            statusCode:
+              typeof batchResult.error.statusCode === "number"
+                ? batchResult.error.statusCode
+                : undefined,
+            emails: chunk.map((recipient) => recipient.email),
+          })
         } else {
           const items = parseResendBatchSendItems(batchResult.data)
           if (items.length === 0 && chunk.length > 0) {
@@ -125,15 +167,30 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
               result.sent++
             } else {
               result.failed++
+              result.providerErrors.push({
+                message: "Resposta do Resend sem ID de e-mail",
+                emails: [recipient.email],
+              })
             }
           })
           if (items.length < chunk.length) {
-            result.failed += chunk.length - items.length
+            const missing = chunk.slice(items.length)
+            result.failed += missing.length
+            if (missing.length > 0) {
+              result.providerErrors.push({
+                message: "Resposta do Resend incompleta para o lote",
+                emails: missing.map((recipient) => recipient.email),
+              })
+            }
           }
         }
       } catch (error) {
         console.error("[EmailCampaignDispatchService][dispatchBatch] Erro no batch:", error)
         result.failed += chunk.length
+        result.providerErrors.push({
+          message: error instanceof Error ? error.message : "Erro no envio via Resend",
+          emails: chunk.map((recipient) => recipient.email),
+        })
         chunkDispatched = []
         continue
       }

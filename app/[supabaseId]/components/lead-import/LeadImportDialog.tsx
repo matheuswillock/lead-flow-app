@@ -42,7 +42,7 @@ const STEP_TITLES: Record<LeadImportStep, string> = {
 };
 
 const STEP_DESCRIPTIONS: Record<LeadImportStep, string> = {
-  upload: "Envie uma planilha Excel (.xlsx) ou um arquivo JSON com os seus leads.",
+  upload: "Envie uma planilha Excel (.xlsx), CSV (.csv) ou um arquivo JSON com os seus leads.",
   mapping:
     "Relacione as colunas do seu arquivo com os campos do Corretor Studio. Cada campo explica para que serve.",
   statuses:

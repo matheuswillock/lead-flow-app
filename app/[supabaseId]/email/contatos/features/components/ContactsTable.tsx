@@ -52,14 +52,34 @@ function ContactStatusBadge({ contact, isBlocklist }: { contact: Contact; isBloc
   return <Badge className="border-semantic-success-border bg-semantic-success-surface text-semantic-success hover:bg-semantic-success-surface">Ativo</Badge>
 }
 
+function UnsubscribeSourceCell({ contact }: { contact: Contact }) {
+  const source = contact.unsubscribeSource
+  if (!source) {
+    return <span className="text-sm text-muted-foreground">—</span>
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="truncate text-sm font-medium">
+        {source.campaignName ?? "Campanha não identificada"}
+      </span>
+      <span className="truncate text-xs text-muted-foreground">
+        {source.subject ?? "Assunto indisponível"}
+      </span>
+    </div>
+  )
+}
+
 function DeleteContactDialog({
   contact,
   onConfirm,
   readOnly,
+  showUnsubscribeSource,
 }: {
   contact: Contact
   onConfirm: () => Promise<void>
   readOnly?: boolean
+  showUnsubscribeSource?: boolean
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [viewOpen, setViewOpen] = useState(false)
@@ -114,7 +134,7 @@ function DeleteContactDialog({
           <DialogHeader>
             <DialogTitle>Detalhes do contato</DialogTitle>
           </DialogHeader>
-          <div className="overflow-y-auto flex-1 space-y-3 text-sm">
+          <div className="overflow-y-auto flex-1 flex flex-col gap-3 text-sm">
             <div>
               <p className="text-muted-foreground">E-mail</p>
               <p className="font-medium">{contact.email}</p>
@@ -129,6 +149,22 @@ function DeleteContactDialog({
                 <ContactStatusBadge contact={contact} isBlocklist={readOnly} />
               </div>
             </div>
+            {showUnsubscribeSource ? (
+              <>
+                <div>
+                  <p className="text-muted-foreground">Campanha do descadastro</p>
+                  <p className="font-medium">
+                    {contact.unsubscribeSource?.campaignName ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">E-mail enviado</p>
+                  <p className="font-medium">
+                    {contact.unsubscribeSource?.subject ?? "—"}
+                  </p>
+                </div>
+              </>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>
@@ -177,11 +213,12 @@ export function ContactsTable() {
 
   const selectedList = lists.find((list) => list.id === selectedListId) ?? null
   const isBlocklist = Boolean(selectedList?.isBlocklist)
+  const columnCount = isBlocklist ? 6 : 5
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Buscar por e-mail ou nome..."
           value={search}
@@ -197,6 +234,7 @@ export function ContactsTable() {
               <TableHead>E-mail</TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Status</TableHead>
+              {isBlocklist ? <TableHead>Campanha / e-mail</TableHead> : null}
               <TableHead>Adicionado em</TableHead>
               <TableHead className="w-10 text-right">Ações</TableHead>
             </TableRow>
@@ -208,13 +246,16 @@ export function ContactsTable() {
                   <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                  {isBlocklist ? (
+                    <TableCell><Skeleton className="h-8 w-40" /></TableCell>
+                  ) : null}
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell />
                 </TableRow>
               ))
             ) : contacts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={columnCount} className="py-12 text-center text-sm text-muted-foreground">
                   {search ? "Nenhum contato encontrado para esta busca" : "Nenhum contato nesta lista ainda"}
                 </TableCell>
               </TableRow>
@@ -226,6 +267,11 @@ export function ContactsTable() {
                   <TableCell>
                     <ContactStatusBadge contact={contact} isBlocklist={isBlocklist} />
                   </TableCell>
+                  {isBlocklist ? (
+                    <TableCell className="max-w-64">
+                      <UnsubscribeSourceCell contact={contact} />
+                    </TableCell>
+                  ) : null}
                   <TableCell className="text-sm text-muted-foreground">
                     {formatIntimezone(new Date(contact.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
@@ -233,6 +279,7 @@ export function ContactsTable() {
                     <DeleteContactDialog
                       contact={contact}
                       readOnly={isBlocklist}
+                      showUnsubscribeSource={isBlocklist}
                       onConfirm={() => handleDeleteContact(contact.id)}
                     />
                   </TableCell>

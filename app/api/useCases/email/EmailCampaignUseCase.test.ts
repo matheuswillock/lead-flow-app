@@ -10,6 +10,7 @@ const dispatchBatchMock = mock(async (_params: unknown) => ({
   sent: 0,
   failed: 0,
   dispatched: [] as Array<{ email: string; resendId: string }>,
+  providerErrors: [] as Array<{ message: string; emails: string[]; statusCode?: number }>,
 }))
 mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService", () => ({
   EmailCampaignDispatchService: class {
@@ -272,6 +273,7 @@ describe("EmailCampaignUseCase.send", () => {
       sent: 0,
       failed: 0,
       dispatched: [],
+      providerErrors: [],
     }))
     setupTemplateMock()
   })
@@ -401,6 +403,7 @@ describe("EmailCampaignUseCase.send", () => {
       sent: 5,
       failed: 0,
       dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+      providerErrors: [],
     }))
 
     const uc = new EmailCampaignUseCase()
@@ -423,16 +426,117 @@ describe("EmailCampaignUseCase.send", () => {
       sent: 0,
       failed: 10,
       dispatched: [],
+      providerErrors: [
+        {
+          message: "Invalid `to` field",
+          statusCode: 422,
+          emails: recipients.map((r) => r.email),
+        },
+      ],
     }))
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages.length).toBeGreaterThan(0)
+    expect(output.errorMessages[0]).toContain("422")
+    expect(output.errorMessages[0]).toContain("Invalid `to` field")
+    expect(output.errorMessages[0]).toContain("r0@test.com")
+    expect(markTeamEmailLogFailedMock).toHaveBeenCalled()
+    const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
+      (call) => (call as unknown as [string, string])[1]
+    )
+    expect(failedReasons.every((reason) => reason.includes("422") || reason.includes("Invalid `to`"))).toBe(
+      true
+    )
     // unused = max(0, 10 - 0) = 10 → releaseCredits("team-1", 10)
     expect(releaseCreditsMock).toHaveBeenCalledTimes(1)
     expect((releaseCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(10)
+  })
+
+  // ---------------------------------------------------------------------------
+  // C12 — e-mails pipe (casos reais) filtrados antes do Resend
+  // ---------------------------------------------------------------------------
+  it("C12 — destinatários com pipe: não chama dispatchBatch; marca failed com motivo local; campanha failed", async () => {
+    const recipients = [
+      {
+        email: "carol.ocipriani@gmail.com|hugopoli@gmail.com",
+        name: "Carol/Hugo",
+        contactId: "c-pipe-1",
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "financeiro@newcorban.com.br|financeiro@grupodigital.com.br",
+        name: "Financeiro",
+        contactId: "c-pipe-2",
+        customFields: null as Record<string, unknown> | null,
+      },
+    ]
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+    expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(2)
+    expect(output.errorMessages[0]).toContain("carol.ocipriani@gmail.com|hugopoli@gmail.com")
+    expect(output.errorMessages[0]).toContain("múltiplos endereços")
+
+    const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
+      (call) => (call as unknown as [string, string])[1]
+    )
+    expect(
+      failedReasons.every((reason) => reason.includes("E-mail inválido para o Resend"))
+    ).toBe(true)
+  })
+
+  // ---------------------------------------------------------------------------
+  // C13 — mix: válidos enviados + pipe filtrado localmente
+  // ---------------------------------------------------------------------------
+  it("C13 — mix válido + pipe: dispatchBatch só recebe válidos; pipe falha localmente", async () => {
+    const recipients = [
+      {
+        email: "ok@example.com",
+        name: "Ok",
+        contactId: "c-ok",
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "carol.ocipriani@gmail.com|hugopoli@gmail.com",
+        name: "Pipe",
+        contactId: "c-pipe",
+        customFields: null as Record<string, unknown> | null,
+      },
+    ]
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(async (params: unknown) => {
+      const typed = params as { recipients: Array<{ email: string }> }
+      expect(typed.recipients).toHaveLength(1)
+      expect(typed.recipients[0]?.email).toBe("ok@example.com")
+      return {
+        sent: 1,
+        failed: 0,
+        dispatched: [{ email: "ok@example.com", resendId: "re_ok" }],
+        providerErrors: [],
+      }
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.sent).toBe(1)
+    expect(output.result.failed).toBe(1)
+    expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+    expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(1)
+    expect((markTeamEmailLogFailedMock.mock.calls[0] as unknown as [string, string])[1]).toContain(
+      "carol.ocipriani@gmail.com|hugopoli@gmail.com"
+    )
   })
 
   // ---------------------------------------------------------------------------
@@ -459,6 +563,7 @@ describe("EmailCampaignUseCase.send", () => {
         sent: 2000,
         failed: 0,
         dispatched: recipients2000.map((r, k) => ({ email: r.email, resendId: `re_${k}` })),
+        providerErrors: [],
       }
     })
 
@@ -519,6 +624,13 @@ describe("EmailCampaignUseCase.send", () => {
         sent: 1900,
         failed: 100,
         dispatched: dispatchedEntries,
+        providerErrors: [
+          {
+            message: "Too many requests",
+            statusCode: 429,
+            emails: Array.from({ length: 100 }, (_, j) => `r${4 * 100 + j}@test.com`),
+          },
+        ],
       }
     })
 
