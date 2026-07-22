@@ -16,6 +16,8 @@ export const FEATURE_SLUGS = {
   EMAIL_CAMPAIGNS: "email-campaigns",
   EMAIL_HISTORY: "email-history",
   EMAIL_ANALYTICS: "email-analytics",
+  VOICE: "voice",
+  VOICE_CAMPAIGNS: "voice-campaigns",
   EMAIL_SETTINGS: "email-settings",
   EMAIL_UNSUBSCRIBE: "email-unsubscribe",
   CONFIGURATION: "integration",

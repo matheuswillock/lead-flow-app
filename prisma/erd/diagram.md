@@ -742,6 +742,49 @@ skipped skipped
     
 
 
+        dialer_campaign_status {
+            draft draft
+ready ready
+running running
+paused paused
+completed completed
+canceled canceled
+limit_reached limit_reached
+        }
+    
+
+
+        dialer_call_status {
+            pending pending
+calling calling
+answered answered
+transferred transferred
+completed completed
+no_answer no_answer
+busy busy
+failed failed
+machine machine
+        }
+    
+
+
+        dialer_plan {
+            dialer_basic dialer_basic
+dialer_pro dialer_pro
+dialer_unlimited dialer_unlimited
+        }
+    
+
+
+        dialer_subscription_status {
+            pending pending
+active active
+suspended suspended
+canceled canceled
+        }
+    
+
+
         WhatsAppProvider {
             EVOLUTION EVOLUTION
         }
@@ -1842,6 +1885,7 @@ meeting_scheduled meeting_scheduled
     String storagePath 
     String fileType 
     Int fileSize 
+    Boolean isProtected 
     DateTime uploadedAt 
     }
   
@@ -1891,6 +1935,14 @@ meeting_scheduled meeting_scheduled
     Boolean isDefault 
     DateTime createdAt 
     DateTime updatedAt 
+    Boolean dialerEnabled 
+    String twilioSubaccountSid "❓"
+    String twilioSubaccountToken "❓"
+    String twilioApiKeySid "❓"
+    String twilioApiKeySecret "❓"
+    String twilioAppSid "❓"
+    String twilioNumberSid "❓"
+    String twilioPhoneNumber "❓"
     }
   
 
@@ -2525,6 +2577,75 @@ meeting_scheduled meeting_scheduled
     String id "🗝️"
     DateTime accessStartsAt "❓"
     DateTime accessExpiresAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_dialer_campaigns" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    DialerCampaignStatus status 
+    Int totalContacts 
+    Int contactsProcessed 
+    Int contactsAnswered 
+    Decimal minutesUsed 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_dialer_contacts" {
+    String id "🗝️"
+    String name 
+    String phone 
+    String email "❓"
+    Json metadata "❓"
+    Boolean processed 
+    Int position 
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_dialer_calls" {
+    String id "🗝️"
+    String twilioCallSid "❓"
+    DialerCallStatus status 
+    Int durationSeconds "❓"
+    String recordingSid "❓"
+    String recordingUrl "❓"
+    String recordingPath "❓"
+    DateTime startedAt "❓"
+    DateTime answeredAt "❓"
+    DateTime transferredAt "❓"
+    DateTime endedAt "❓"
+    String notes "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_dialer_usage" {
+    String id "🗝️"
+    String billingMonth 
+    Decimal minutesUsed 
+    Decimal minutesLimit 
+    Int callsCount 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_dialer_subscriptions" {
+    String id "🗝️"
+    DialerPlan plan 
+    DialerSubscriptionStatus status 
+    String asaasSubscriptionId "❓"
+    Int monthlyMinutes 
+    DateTime currentPeriodStart "❓"
+    DateTime currentPeriodEnd "❓"
+    DateTime canceledAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3467,6 +3588,19 @@ meeting_scheduled meeting_scheduled
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
+    "corretor_studio_dialer_campaigns" |o--|| "DialerCampaignStatus" : "enum:status"
+    "corretor_studio_dialer_campaigns" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_dialer_campaigns" }o--|| corretor_studio_profiles : "manager"
+    "corretor_studio_dialer_contacts" }o--|| corretor_studio_dialer_campaigns : "campaign"
+    "corretor_studio_dialer_calls" |o--|| "DialerCallStatus" : "enum:status"
+    "corretor_studio_dialer_calls" }o--|| corretor_studio_dialer_campaigns : "campaign"
+    "corretor_studio_dialer_calls" }o--|| corretor_studio_dialer_contacts : "contact"
+    "corretor_studio_dialer_calls" }o--|| corretor_studio_profiles : "operator"
+    "corretor_studio_dialer_calls" }o--|o corretor_studio_leads : "lead"
+    "corretor_studio_dialer_usage" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_dialer_subscriptions" |o--|| "DialerPlan" : "enum:plan"
+    "corretor_studio_dialer_subscriptions" |o--|| "DialerSubscriptionStatus" : "enum:status"
+    "corretor_studio_dialer_subscriptions" |o--|| corretor_studio_teams : "team"
     "team_whatsapp_contacts" |o--|| "TeamWhatsAppContactSource" : "enum:source"
     "team_whatsapp_contacts" }o--|| corretor_studio_teams : "team"
     "team_whatsapp_configs" |o--|| "WhatsAppProvider" : "enum:provider"

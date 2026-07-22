@@ -139,6 +139,13 @@ export const envSchema = z.object({
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional().describe('Google OAuth client ID (optional)'),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional().describe('Google OAuth client secret (optional)'),
 
+  // Dialer (Studio Voice) — Twilio
+  TWILIO_ACCOUNT_SID: z.string().optional().describe('Twilio master account SID'),
+  TWILIO_AUTH_TOKEN: z.string().optional().describe('Twilio master account auth token'),
+  TWILIO_BUNDLE_SID: z.string().optional().describe('Regulatory Bundle SID aprovado para números BR (reutilizado em todas as subcontas)'),
+  TWILIO_ADDRESS_SID: z.string().optional().describe('Address SID registrado para números BR'),
+  DIALER_ENCRYPTION_KEY: z.string().optional().describe('Chave de cifra (AES-256-GCM) para credenciais Twilio das subcontas — opcional em não-produção, usa fallback de dev'),
+
   // Web Push (optional — notifications still work in-app without these)
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional().describe('VAPID public key for Web Push'),
   WEB_PUSH_VAPID_PRIVATE_KEY: z.string().optional().describe('VAPID private key for Web Push'),

@@ -29,6 +29,7 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
   "/email/configuracoes": FEATURE_SLUGS.EMAIL_SETTINGS,
   "/email/descadastro": FEATURE_SLUGS.EMAIL_UNSUBSCRIBE,
   "/email": FEATURE_SLUGS.EMAIL,
+  "/dialer": FEATURE_SLUGS.VOICE,
 }
 
 const routeMatchers: RouteMatcher[] = [...TENANT_ROUTE_PREFIXES]
