@@ -1,4 +1,6 @@
+import type { BackofficeBotChannelStatus } from "@prisma/client";
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
+import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
 import {
   generateAuthCode,
   getAuthCodeExpiresAt,
@@ -7,6 +9,18 @@ import {
   verifyAuthCode,
 } from "@/lib/studio-bot/auth-code";
 import { normalizePhoneE164, phoneDigitsEqual } from "@/lib/studio-bot/phone";
+
+function mapEvoStatusToChannelStatus(
+  evoStatus: "open" | "close" | "connecting"
+): BackofficeBotChannelStatus {
+  if (evoStatus === "open") {
+    return "connected";
+  }
+  if (evoStatus === "close") {
+    return "disconnected";
+  }
+  return "pending";
+}
 
 const GENERIC_EMAIL_RESPONSE = {
   challengeId: null as string | null,
@@ -193,7 +207,7 @@ export class BackofficeBotAuthService {
   }
 
   async linkInitiate(profileId: string) {
-    const channel = await backofficeBotRepository.findPrimaryChannel();
+    const channel = await this.syncPrimaryChannelFromEvolution();
     const botAvailable = Boolean(channel?.isActive && channel.status === "connected");
     if (!botAvailable) {
       return { ok: false as const, error: "BOT_UNAVAILABLE" };
@@ -238,8 +252,57 @@ export class BackofficeBotAuthService {
     };
   }
 
-  async linkStatus(profileId: string) {
+  /**
+   * Alinha status do canal com a Evolution antes de expor botAvailable na Account.
+   * Evita card “sumido”/indisponível por status stale após reativar o canal.
+   */
+  private async syncPrimaryChannelFromEvolution() {
     const channel = await backofficeBotRepository.findPrimaryChannel();
+    if (!channel) {
+      return null;
+    }
+
+    const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
+    const evoStatus = await backofficeEvoApiService
+      .getInstanceConnectionState(instanceName)
+      .catch((error) => {
+        console.error("[BackofficeBotAuthService][syncPrimaryChannelFromEvolution] state", error);
+        return null;
+      });
+
+    if (!evoStatus) {
+      return channel;
+    }
+
+    const nextStatus = mapEvoStatusToChannelStatus(evoStatus);
+    let phoneNumber = channel.phoneNumber;
+
+    if (evoStatus === "open") {
+      const livePhone = await backofficeEvoApiService
+        .getInstancePhoneNumber(instanceName)
+        .catch((error) => {
+          console.error("[BackofficeBotAuthService][syncPrimaryChannelFromEvolution] phone", error);
+          return null;
+        });
+      if (livePhone) {
+        phoneNumber = livePhone;
+      }
+    }
+
+    const phoneChanged = (phoneNumber ?? null) !== (channel.phoneNumber ?? null);
+    const statusChanged = channel.status !== nextStatus;
+    if (!phoneChanged && !statusChanged) {
+      return channel;
+    }
+
+    return backofficeBotRepository.upsertChannel({
+      status: nextStatus,
+      phoneNumber: phoneNumber ?? null,
+    });
+  }
+
+  async linkStatus(profileId: string) {
+    const channel = await this.syncPrimaryChannelFromEvolution();
     const botAvailable = Boolean(channel?.isActive && channel.status === "connected");
     const botStatus = channel?.status ?? ("unavailable" as const);
     const assistantPhone = resolveAssistantPhoneDigits(channel?.phoneNumber);

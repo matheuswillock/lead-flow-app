@@ -224,6 +224,7 @@ export function BethaniaConnectionCard({ supabaseId, teamId }: BethaniaConnectio
 
   const linked = status?.linked ?? false;
   const botAvailable = status?.botAvailable ?? false;
+  const botStatus = status?.botStatus ?? "unavailable";
   const assistantPhone = status?.assistantPhone ?? null;
   const canLink =
     !isLoadingStatus && status !== null && botAvailable && Boolean(assistantPhone);
@@ -236,17 +237,42 @@ export function BethaniaConnectionCard({ supabaseId, teamId }: BethaniaConnectio
     : null;
   const linkCommand = pendingOtp ? bethaniaLinkService.buildLinkCommand(pendingOtp.code) : null;
 
+  const unavailableReason = (() => {
+    if (!status || linked || canLink) {
+      return null;
+    }
+
+    switch (botStatus) {
+      case "disconnected":
+        return "A Bethânia está desconectada do WhatsApp. Reconecte o QR da instância bethania no Evolution (ou Canal no backoffice) e atualize esta página.";
+      case "pending":
+        return "A Bethânia está conectando. Aguarde alguns segundos e atualize a página.";
+      case "error":
+        return "O canal da Bethânia está com erro. Verifique a instância no Evolution e tente novamente.";
+      case "connected":
+        if (!assistantPhone) {
+          return "Número WhatsApp da Bethânia ainda não está configurado no canal.";
+        }
+        return "Não é possível conectar ao bot no momento.";
+      case "unavailable":
+        return "A Bethânia está desativada ou indisponível no momento. Ative o canal no backoffice e confirme o WhatsApp conectado.";
+      default: {
+        const _exhaustive: never = botStatus;
+        return _exhaustive;
+      }
+    }
+  })();
+
   const statusBadgeLabel = (() => {
     if (isLoadingStatus) return "Carregando...";
-    if (cannotLink) return "Assistente indisponível";
+    if (cannotLink) {
+      if (botStatus === "disconnected") return "Desconectada";
+      if (botStatus === "pending") return "Conectando...";
+      return "Assistente indisponível";
+    }
     if (linked) return "Vinculado";
     return "Não vinculado";
   })();
-
-  // Bot desabilitado no backoffice: não mostrar opção de vincular em Conexões.
-  if (!isLoadingStatus && status !== null && !botAvailable && !linked) {
-    return null;
-  }
 
   return (
     <section className="flex flex-col gap-4">
@@ -325,14 +351,24 @@ export function BethaniaConnectionCard({ supabaseId, teamId }: BethaniaConnectio
       ) : cannotLink ? (
         <div className="flex gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             <p className="text-sm font-medium text-destructive">
               Não é possível conectar ao bot no momento
             </p>
             <p className="text-xs text-muted-foreground">
-              A Bethânia precisa estar conectada e com número WhatsApp configurado. Tente novamente
-              mais tarde.
+              {unavailableReason ??
+                "A Bethânia precisa estar conectada e com número WhatsApp configurado."}
             </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              disabled={isLoadingStatus}
+              onClick={() => void loadStatus({ force: true })}
+            >
+              Atualizar status
+            </Button>
           </div>
         </div>
       ) : canLink ? (
