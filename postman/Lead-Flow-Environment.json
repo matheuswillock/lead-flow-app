@@ -122,6 +122,13 @@
       "description": "ID do time ativo para endpoints de integrações e webhook studio"
     },
     {
+      "key": "leadCustomFieldDefinitionId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma LeadCustomFieldDefinition — usado em customFieldFilters/customFieldSort na listagem de leads"
+    },
+    {
       "key": "automationRuleId",
       "value": "",
       "type": "default",

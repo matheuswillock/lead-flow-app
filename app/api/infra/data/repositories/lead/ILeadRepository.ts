@@ -1,5 +1,6 @@
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
+import type { CustomFieldFilterInput, CustomFieldSortInput } from "@/lib/leadCustomFields/customFieldQuery";
 
 export type LeadRecord = Lead & {
   razaoSocial: string | null;
@@ -73,6 +74,8 @@ export interface ILeadRepository {
       onlyTransfer?: boolean;
       calendarWindowStart?: Date;
       calendarWindowEnd?: Date;
+      customFieldFilters?: CustomFieldFilterInput[];
+      customFieldSort?: CustomFieldSortInput;
     }
   ): Promise<{ leads: Lead[] }>;
   findAllByOperatorId(
@@ -97,6 +100,8 @@ export interface ILeadRepository {
       onlyTransfer?: boolean;
       calendarWindowStart?: Date;
       calendarWindowEnd?: Date;
+      customFieldFilters?: CustomFieldFilterInput[];
+      customFieldSort?: CustomFieldSortInput;
     }
   ): Promise<{ leads: Lead[] }>;
   update(id: string, data: LeadUpdateRepositoryInput): Promise<LeadRecord>;

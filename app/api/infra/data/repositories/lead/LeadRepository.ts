@@ -4,6 +4,12 @@ import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import { normalizeLeadPhoneDigits } from "@/lib/masks";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
+import {
+  buildCustomFieldWhereFilter,
+  compareCustomFieldSortValues,
+  type CustomFieldFilterInput,
+  type CustomFieldSortInput,
+} from "@/lib/leadCustomFields/customFieldQuery";
 
 // Statuses terminais não geram eventos de lead time no calendário.
 const CALENDAR_TERMINAL_STATUSES: LeadStatus[] = [
@@ -32,6 +38,31 @@ function buildCalendarWindowFilter(windowStart: Date, windowEnd: Date): Prisma.L
       },
     ],
   };
+}
+
+/**
+ * Ordena leads pelo valor de um custom field carregado via select condicional
+ * (ver `withCustomFieldSortSelect`) e remove o campo temporário antes de
+ * retornar, para não vazar `customFieldValues` no shape público de `Lead`.
+ * Escolhido em memória (não `$queryRaw`) porque as listagens atuais de
+ * CRM/board não paginam no banco — todos os leads do filtro já estão
+ * carregados, então uma segunda query só adicionaria latência sem necessidade.
+ */
+function sortByCustomField<T extends { id: string; customFieldValues?: Array<{ value: Prisma.JsonValue }> }>(
+  leads: T[],
+  sort: CustomFieldSortInput
+): T[] {
+  const sorted = [...leads].sort((a, b) =>
+    compareCustomFieldSortValues(
+      a.customFieldValues?.[0]?.value ?? null,
+      b.customFieldValues?.[0]?.value ?? null,
+      sort.direction
+    )
+  );
+  return sorted.map((lead) => {
+    const { customFieldValues: _customFieldValues, ...rest } = lead;
+    return rest as T;
+  });
 }
 
 const CRM_LEAD_LIST_SELECT = {
@@ -688,6 +719,8 @@ export class LeadRepository implements ILeadRepository {
       onlyTransfer?: boolean;
       calendarWindowStart?: Date;
       calendarWindowEnd?: Date;
+      customFieldFilters?: CustomFieldFilterInput[];
+      customFieldSort?: CustomFieldSortInput;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -699,7 +732,17 @@ export class LeadRepository implements ILeadRepository {
       onlyTransfer,
       calendarWindowStart,
       calendarWindowEnd,
+      customFieldFilters,
+      customFieldSort,
     } = options || {};
+
+    const andClauses: Prisma.LeadWhereInput[] = [];
+    if (calendarWindowStart && calendarWindowEnd) {
+      andClauses.push(buildCalendarWindowFilter(calendarWindowStart, calendarWindowEnd));
+    }
+    for (const filter of customFieldFilters ?? []) {
+      andClauses.push(buildCustomFieldWhereFilter(filter));
+    }
 
     const where: any = {
       teamId,
@@ -720,18 +763,28 @@ export class LeadRepository implements ILeadRepository {
           lte: endDate,
         },
       }),
-      ...(calendarWindowStart && calendarWindowEnd && {
-        AND: [buildCalendarWindowFilter(calendarWindowStart, calendarWindowEnd)],
-      }),
+      ...(andClauses.length > 0 && { AND: andClauses }),
     };
 
-    const leads = await prisma.lead.findMany({
+    const select = customFieldSort
+      ? {
+          ...CRM_LEAD_LIST_SELECT,
+          customFieldValues: {
+            where: { definitionId: customFieldSort.definitionId },
+            select: { value: true },
+          },
+        }
+      : CRM_LEAD_LIST_SELECT;
+
+    const rawLeads = await prisma.lead.findMany({
       where,
-      select: CRM_LEAD_LIST_SELECT,
+      select,
       orderBy: {
         createdAt: 'desc',
       },
     });
+
+    const leads = customFieldSort ? sortByCustomField(rawLeads, customFieldSort) : rawLeads;
 
     return { leads: leads as unknown as Lead[] };
   }
@@ -821,6 +874,8 @@ export class LeadRepository implements ILeadRepository {
       onlyTransfer?: boolean;
       calendarWindowStart?: Date;
       calendarWindowEnd?: Date;
+      customFieldFilters?: CustomFieldFilterInput[];
+      customFieldSort?: CustomFieldSortInput;
     }
   ): Promise<{ leads: Lead[] }> {
     const {
@@ -832,6 +887,8 @@ export class LeadRepository implements ILeadRepository {
       onlyTransfer,
       calendarWindowStart,
       calendarWindowEnd,
+      customFieldFilters,
+      customFieldSort,
     } = options || {};
 
     const filters: Prisma.LeadWhereInput[] = [];
@@ -872,6 +929,10 @@ export class LeadRepository implements ILeadRepository {
       });
     }
 
+    for (const filter of customFieldFilters ?? []) {
+      filters.push(buildCustomFieldWhereFilter(filter));
+    }
+
     const visibilityFilter: Prisma.LeadWhereInput = {
       OR: [
         {
@@ -887,9 +948,15 @@ export class LeadRepository implements ILeadRepository {
       AND: [visibilityFilter, ...filters],
     };
 
-    const leads = await prisma.lead.findMany({
+    const rawLeads = await prisma.lead.findMany({
       where,
       include: {
+        ...(customFieldSort && {
+          customFieldValues: {
+            where: { definitionId: customFieldSort.definitionId },
+            select: { value: true },
+          },
+        }),
         manager: {
           select: {
             id: true,
@@ -924,7 +991,9 @@ export class LeadRepository implements ILeadRepository {
       },
     });
 
-    return { leads };
+    const leads = customFieldSort ? sortByCustomField(rawLeads, customFieldSort) : rawLeads;
+
+    return { leads: leads as unknown as Lead[] };
   }
 
   async reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number> {

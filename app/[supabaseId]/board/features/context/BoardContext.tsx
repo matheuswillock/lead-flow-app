@@ -24,6 +24,8 @@ import type {
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 import type { CloserRequirementPayload } from "@/app/[supabaseId]/components/CloserRequirementDialog";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
+import type { CustomFieldFilterState } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+import type { CustomFieldFilterInput } from "@/lib/leadCustomFields/customFieldQuery";
 import {
   createLeadTimeRulesVersion,
   EMPTY_TEAM_STATUS_RULES,
@@ -139,6 +141,8 @@ interface IBoardContextState {
   setStatusFilter: (statuses: ColumnKey[]) => void;
   closerFilter: string[];
   setCloserFilter: (closers: string[]) => void;
+  customFieldFilters: CustomFieldFilterState[];
+  setCustomFieldFilters: (filters: CustomFieldFilterState[]) => void;
   taskOwners: TaskOwner[];
   statusLabels: Record<ColumnKey, string>;
   errors: Record<string, string>;
@@ -286,6 +290,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [assignedUsers, setAssignedUsers] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<ColumnKey[]>([]);
   const [closerFilter, setCloserFilter] = useState<string[]>([]);
+  const [customFieldFilters, setCustomFieldFilters] = useState<CustomFieldFilterState[]>([]);
   const [teamStatusRules, setTeamStatusRules] =
     useState<TeamStatusRulesResponse>(EMPTY_TEAM_STATUS_RULES);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -318,6 +323,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
     setOnlyTransfer(externalFilters.onlyTransfer);
     setOnlyDraft(externalFilters.onlyDraft);
+    setCustomFieldFilters(externalFilters.customFieldFilters);
   }, [externalFilters]);
 
   useEffect(() => {
@@ -429,7 +435,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     const calendarWindowKey = calendarWindow
       ? `${calendarWindow.start.toISOString()}:${calendarWindow.end.toISOString()}`
       : "";
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}:${calendarWindowKey}`;
+    const customFieldFiltersKey = JSON.stringify(
+      customFieldFilters.map(({ definitionId, operator, value }) => ({ definitionId, operator, value }))
+    );
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}:${calendarWindowKey}:${customFieldFiltersKey}`;
 
     if (
       !options?.force &&
@@ -489,6 +498,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           ...(calendarWindow && {
             calendarWindowStart: calendarWindow.start,
             calendarWindowEnd: calendarWindow.end,
+          }),
+          ...(customFieldFilters.length > 0 && {
+            customFieldFilters: customFieldFilters.map(
+              ({ definitionId, operator, value }): CustomFieldFilterInput => ({ definitionId, operator, value })
+            ),
           }),
         });
 
@@ -621,7 +635,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, calendarWindow, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
+  }, [activeFunctions, activeRole, activeTeamId, calendarWindow, customFieldFilters, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     userRef.current = user;
@@ -1596,6 +1610,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       setStatusFilter,
       closerFilter,
       setCloserFilter,
+      customFieldFilters,
+      setCustomFieldFilters,
       taskOwners: responsaveis,
       statusLabels,
       errors,
@@ -1650,6 +1666,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       assignedUsers,
       statusFilter,
       closerFilter,
+      customFieldFilters,
       responsaveis,
       statusLabels,
       errors,

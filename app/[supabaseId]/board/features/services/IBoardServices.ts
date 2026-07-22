@@ -1,5 +1,6 @@
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { Output } from "@/lib/output";
+import type { CustomFieldFilterInput, CustomFieldSortInput } from "@/lib/leadCustomFields/customFieldQuery";
 
 export type ResendScheduleInvitePayload = {
     target: "all" | "single" | "new";
@@ -10,6 +11,8 @@ export type ResendScheduleInvitePayload = {
 export type FetchLeadsOptions = {
     calendarWindowStart?: Date;
     calendarWindowEnd?: Date;
+    customFieldFilters?: CustomFieldFilterInput[];
+    customFieldSort?: CustomFieldSortInput;
 };
 
 export interface IBoardService {
