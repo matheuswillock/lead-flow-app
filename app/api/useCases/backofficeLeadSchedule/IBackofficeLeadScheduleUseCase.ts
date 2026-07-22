@@ -9,6 +9,7 @@ export type BackofficeLeadSchedulePayload = {
   meetingType?: unknown
   meetingExtraGuests?: unknown
   extraGuests?: unknown
+  leadEmail?: unknown
 }
 
 export interface IBackofficeLeadScheduleUseCase {

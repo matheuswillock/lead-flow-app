@@ -1,4 +1,6 @@
-const DEADLOCK_CODE = "40P01"
+const POSTGRES_DEADLOCK_CODE = "40P01"
+/** Prisma wraps transaction conflicts/deadlocks as P2034 (Prisma 6+). */
+const PRISMA_TRANSACTION_CONFLICT_CODE = "P2034"
 const DEFAULT_MAX_ATTEMPTS = 3
 const DEFAULT_BASE_DELAY_MS = 40
 
@@ -6,7 +8,12 @@ export function isDeadlockError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false
 
   const withCode = error as { code?: unknown; message?: unknown; meta?: { code?: unknown } }
-  if (withCode.code === DEADLOCK_CODE || withCode.meta?.code === DEADLOCK_CODE) {
+  if (
+    withCode.code === POSTGRES_DEADLOCK_CODE ||
+    withCode.code === PRISMA_TRANSACTION_CONFLICT_CODE ||
+    withCode.meta?.code === POSTGRES_DEADLOCK_CODE ||
+    withCode.meta?.code === PRISMA_TRANSACTION_CONFLICT_CODE
+  ) {
     return true
   }
 
@@ -17,7 +24,12 @@ export function isDeadlockError(error: unknown): boolean {
         ? error.message
         : String(error)
 
-  return message.includes("deadlock detected") || message.includes(DEADLOCK_CODE)
+  return (
+    message.includes("deadlock detected") ||
+    message.includes(POSTGRES_DEADLOCK_CODE) ||
+    message.includes(PRISMA_TRANSACTION_CONFLICT_CODE) ||
+    message.includes("Transaction failed due to a write conflict")
+  )
 }
 
 function sleep(ms: number): Promise<void> {

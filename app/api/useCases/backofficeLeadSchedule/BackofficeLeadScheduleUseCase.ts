@@ -27,6 +27,16 @@ export class BackofficeLeadScheduleUseCase implements IBackofficeLeadScheduleUse
 
   async scheduleLead(params: { leadId: string; payload: BackofficeLeadSchedulePayload }) {
     const body = params.payload ?? {}
+    const leadEmail =
+      typeof (body as { leadEmail?: unknown }).leadEmail === "string"
+        ? ((body as { leadEmail: string }).leadEmail.trim() || null)
+        : null
+
+    if (leadEmail) {
+      const emailUpdate = await this.leadUseCase.updateLead(params.leadId, { email: leadEmail })
+      if (!emailUpdate.isValid) return emailUpdate
+    }
+
     return this.leadUseCase.updateLeadStatus(params.leadId, BackofficeLeadStatus.scheduled, {
       closerBackofficeUserId: (body as any)?.closerBackofficeUserId ?? null,
       meetingDate: (body as any)?.meetingDate ?? null,

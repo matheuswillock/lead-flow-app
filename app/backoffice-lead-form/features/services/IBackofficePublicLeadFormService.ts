@@ -1,7 +1,6 @@
 export interface BackofficePublicCloserOption {
   id: string
   name: string
-  email: string
   timezone: string
   googleCalendarConnected: boolean
 }

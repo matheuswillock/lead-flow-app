@@ -7,6 +7,14 @@ describe("isDeadlockError", () => {
     expect(isDeadlockError({ meta: { code: "40P01" } })).toBe(true)
   })
 
+  it("detecta código Prisma P2034", () => {
+    expect(isDeadlockError({ code: "P2034" })).toBe(true)
+    expect(isDeadlockError({ meta: { code: "P2034" } })).toBe(true)
+    expect(
+      isDeadlockError(new Error("Transaction failed due to a write conflict or a deadlock"))
+    ).toBe(true)
+  })
+
   it("detecta mensagem de deadlock", () => {
     expect(isDeadlockError(new Error("deadlock detected"))).toBe(true)
     expect(isDeadlockError(new Error("Error: 40P01"))).toBe(true)

@@ -56,10 +56,8 @@ export class BackofficeScheduleShareService implements IBackofficeScheduleShareS
       lead.meetingTitle?.trim() ||
       `Reunião com ${lead.name}`
 
-    const shareExpiresAt =
-      schedule.publicShareExpiresAt && !isScheduleShareExpired(schedule.publicShareExpiresAt)
-        ? schedule.publicShareExpiresAt
-        : getScheduleShareExpiry(resolvedMeetingDate)
+    // Sempre recalcula a partir da data atual do agendamento (reagendamento invalida TTL antigo).
+    const shareExpiresAt = getScheduleShareExpiry(resolvedMeetingDate)
     const shareToken = generateScheduleShareToken(schedule.id, shareExpiresAt)
     const shareTokenHash = hashScheduleShareToken(shareToken)
 

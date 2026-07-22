@@ -21,18 +21,20 @@ export class BackofficePublicLeadFormBootstrapUseCase
       const users = await this.userRepo.findMany({ isActive: true })
       const closers = users.filter((user) => user.isCloser)
 
-      const options = await Promise.all(
-        closers.map(async (closer) => {
-          const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
-          return {
-            id: closer.id,
-            name: closer.profile.fullName || closer.email,
-            email: closer.email,
-            timezone: closer.timezone,
-            googleCalendarConnected: !!organizer,
-          }
-        })
-      )
+      const options = (
+        await Promise.all(
+          closers.map(async (closer) => {
+            const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
+            if (!organizer) return null
+            return {
+              id: closer.id,
+              name: closer.profile.fullName || closer.email,
+              timezone: closer.timezone,
+              googleCalendarConnected: true as const,
+            }
+          })
+        )
+      ).filter((option): option is NonNullable<typeof option> => option !== null)
 
       return new Output(true, [], [], { closers: options })
     } catch (error) {
