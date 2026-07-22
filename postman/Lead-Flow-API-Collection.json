@@ -16574,6 +16574,189 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Radar Segments",
+          "item": [
+            {
+              "name": "Listar segmentos custom",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Criar segmento custom",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Abriu e não clicou (30 dias)\",\n  \"description\": \"Segmento custom de teste\",\n  \"rules\": {\n    \"match\": \"all\",\n    \"conditions\": [\n      { \"kind\": \"event\", \"eventType\": \"email.opened\", \"occurrence\": \"occurred\", \"windowDays\": 30 },\n      { \"kind\": \"consent\", \"channel\": \"email\", \"status\": \"allowed\" }\n    ]\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Atualizar segmento custom",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Novo nome do segmento\",\n  \"isActive\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    ":segmentId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "segmentId",
+                      "value": "{{radarCustomSegmentId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Excluir segmento custom",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    ":segmentId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "segmentId",
+                      "value": "{{radarCustomSegmentId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Perfis do segmento custom",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId/profiles?page=1&pageSize=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    ":segmentId",
+                    "profiles"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "segmentId",
+                      "value": "{{radarCustomSegmentId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
         }
       ]
     },
