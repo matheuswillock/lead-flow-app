@@ -39,16 +39,16 @@ export const OPS_HOST_REFERENCE_LINKS = [
     hint: "Mesmo path, host público. GET pode falhar; o fluxo real é POST da Evolution.",
   },
   {
+    id: "evolution-manager",
+    label: "Evolution manager",
+    href: "https://evo.corretorstudio.com/manager/",
+    hint: "Abra a instância bethania → engrenagem → Webhook.",
+  },
+  {
     id: "n8n-editor",
     label: "Editor N8N",
     href: "https://n8n.corretorstudio.com",
-    hint: null,
-  },
-  {
-    id: "evolution-manager",
-    label: "Evolution manager",
-    href: "https://evo.corretorstudio.com/manager",
-    hint: null,
+    hint: "Workflows bethania-router / push-outbound / error-notifier.",
   },
   {
     id: "ops-agent",
