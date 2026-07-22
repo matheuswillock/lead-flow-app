@@ -33,6 +33,7 @@ export interface ITeamRadarSegmentRepository {
   create(data: Prisma.TeamRadarSegmentCreateInput): Promise<TeamRadarSegmentSelect>
   update(segmentId: string, data: Prisma.TeamRadarSegmentUpdateInput): Promise<TeamRadarSegmentSelect>
   delete(segmentId: string): Promise<void>
+  countReferencingCampaigns(teamId: string, segmentId: string): Promise<number>
 }
 
 export class TeamRadarSegmentRepository implements ITeamRadarSegmentRepository {
@@ -61,6 +62,21 @@ export class TeamRadarSegmentRepository implements ITeamRadarSegmentRepository {
 
   async delete(segmentId: string) {
     await prisma.teamRadarSegment.delete({ where: { id: segmentId } })
+  }
+
+  /**
+   * `custom:` deve ficar em sincronia com CUSTOM_RADAR_SEGMENT_PREFIX
+   * (lib/radar/segment-audience.ts) — não importado aqui para evitar
+   * dependência circular (aquele módulo já importa este repositório).
+   */
+  async countReferencingCampaigns(teamId: string, segmentId: string): Promise<number> {
+    return prisma.emailCampaign.count({
+      where: {
+        teamId,
+        radarSegmentSlug: `custom:${segmentId}`,
+        status: { notIn: ["canceled", "archived"] },
+      },
+    })
   }
 }
 

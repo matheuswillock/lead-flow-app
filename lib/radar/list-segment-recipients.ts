@@ -6,6 +6,7 @@ import type { RadarSegmentSlug } from "@/lib/radar/segment-config"
 import { isRadarSegmentSlug, RECENT_CAMPAIGN_WINDOW_DAYS } from "@/lib/radar/segment-config"
 import { profileMatchesRadarSegment, type RadarSegmentProfileInput } from "@/lib/radar/segment-rules"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
+import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 
 export type RadarSegmentEmailRecipient = {
   email: string
@@ -80,8 +81,13 @@ export async function listRadarSegmentEmailRecipients(
   const now = Date.now()
   const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
 
-  if (segmentSlug.startsWith("custom:")) {
-    return listCustomSegmentEmailRecipients(teamId, segmentSlug.slice("custom:".length), now, recentMs)
+  if (segmentSlug.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)) {
+    return listCustomSegmentEmailRecipients(
+      teamId,
+      segmentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length),
+      now,
+      recentMs
+    )
   }
 
   if (!isRadarSegmentSlug(segmentSlug)) return []

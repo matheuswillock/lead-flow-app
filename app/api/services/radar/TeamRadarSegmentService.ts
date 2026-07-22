@@ -21,8 +21,8 @@ function isUniqueConstraintError(error: unknown): boolean {
 }
 
 export class TeamRadarSegmentService implements ITeamRadarSegmentService {
-  async listByTeam(teamId: string) {
-    return teamRadarSegmentRepository.listByTeam(teamId, { onlyActive: true })
+  async listByTeam(teamId: string, options?: { onlyActive?: boolean }) {
+    return teamRadarSegmentRepository.listByTeam(teamId, options)
   }
 
   async findById(teamId: string, segmentId: string) {
@@ -70,9 +70,16 @@ export class TeamRadarSegmentService implements ITeamRadarSegmentService {
 
   async remove(teamId: string, segmentId: string) {
     const existing = await teamRadarSegmentRepository.findById(teamId, segmentId)
-    if (!existing) return false
+    if (!existing) return { removed: false, softDeleted: false }
+
+    const referencingCampaigns = await teamRadarSegmentRepository.countReferencingCampaigns(teamId, segmentId)
+    if (referencingCampaigns > 0) {
+      await teamRadarSegmentRepository.update(segmentId, { isActive: false })
+      return { removed: true, softDeleted: true }
+    }
+
     await teamRadarSegmentRepository.delete(segmentId)
-    return true
+    return { removed: true, softDeleted: false }
   }
 }
 

@@ -47,6 +47,25 @@ const profileFieldConditionSchema = z
       }
       if (data.value === undefined) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value é obrigatório", path: ["value"] })
+        return
+      }
+      if (data.operator === "within_days") {
+        const days = Number(data.value)
+        if (!Number.isFinite(days) || days <= 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "value deve ser um número de dias positivo",
+            path: ["value"],
+          })
+        }
+        return
+      }
+      if (Number.isNaN(Date.parse(String(data.value)))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "value deve ser uma data válida (ISO 8601)",
+          path: ["value"],
+        })
       }
       return
     }
