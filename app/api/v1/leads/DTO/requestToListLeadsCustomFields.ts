@@ -2,12 +2,23 @@ import { z } from "zod";
 import { MAX_CUSTOM_FIELD_FILTERS } from "@/lib/leadCustomFields/customFieldQuery";
 
 const customFieldFilterOperatorSchema = z.enum(["eq", "neq", "contains", "is_empty", "not_empty"]);
+const OPERATORS_REQUIRING_VALUE = new Set(["eq", "neq", "contains"]);
 
-export const CustomFieldFilterQuerySchema = z.object({
-  definitionId: z.string().uuid("definitionId deve ser um UUID válido"),
-  operator: customFieldFilterOperatorSchema,
-  value: z.unknown().optional(),
-});
+export const CustomFieldFilterQuerySchema = z
+  .object({
+    definitionId: z.string().uuid("definitionId deve ser um UUID válido"),
+    operator: customFieldFilterOperatorSchema,
+    value: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (OPERATORS_REQUIRING_VALUE.has(data.operator) && data.value === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `O operador "${data.operator}" exige um valor`,
+        path: ["value"],
+      });
+    }
+  });
 
 export const CustomFieldFiltersQuerySchema = z
   .array(CustomFieldFilterQuerySchema)

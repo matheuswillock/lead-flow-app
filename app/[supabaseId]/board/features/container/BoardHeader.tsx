@@ -65,6 +65,8 @@ export default function BoardHeader({
     setCloserFilter,
     customFieldFilters,
     setCustomFieldFilters,
+    customFieldSort,
+    setCustomFieldSort,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
     onlyTransfer,
@@ -118,11 +120,13 @@ export default function BoardHeader({
       periodStart,
       periodEnd,
       customFieldFilters,
+      customFieldSort,
     }),
     [
       assignedUsers,
       closerFilter,
       customFieldFilters,
+      customFieldSort,
       onlyMeetingsHeld,
       onlyTransfer,
       periodEnd,
@@ -148,6 +152,7 @@ export default function BoardHeader({
     setPeriodStart(filters.periodStart);
     setPeriodEnd(filters.periodEnd);
     setCustomFieldFilters(filters.customFieldFilters);
+    setCustomFieldSort(filters.customFieldSort);
     if (!filters.periodStart) {
       setDateRange(undefined);
       return;
@@ -204,7 +209,8 @@ export default function BoardHeader({
     onlyTransfer ||
     Boolean(periodStart) ||
     Boolean(periodEnd) ||
-    customFieldFilters.length > 0;
+    customFieldFilters.length > 0 ||
+    Boolean(customFieldSort);
 
   const clearFilters = () => {
     setQuery("");
@@ -217,6 +223,7 @@ export default function BoardHeader({
     setPeriodEnd("");
     setDateRange(undefined);
     setCustomFieldFilters([]);
+    setCustomFieldSort(null);
   };
 
   return (
@@ -345,6 +352,8 @@ export default function BoardHeader({
             definitions={customFieldDefinitions}
             values={customFieldFilters}
             onChange={setCustomFieldFilters}
+            sort={customFieldSort}
+            onSortChange={setCustomFieldSort}
           />
           <LeadsFilterPresetsSheet
             scope="board"
