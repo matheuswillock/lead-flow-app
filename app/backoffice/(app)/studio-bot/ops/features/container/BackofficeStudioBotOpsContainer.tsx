@@ -1,8 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Loader2, RefreshCw, KeyRound, Upload, ScrollText } from "lucide-react"
+import {
+  Download,
+  FileUp,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+  ScrollText,
+  Upload,
+} from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,8 +32,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   EVOLUTION_HOST_ENV_KEYS,
   N8N_HOST_ENV_KEYS,
+  OPS_HOST_REFERENCE_LINKS,
   SECRET_HOST_ENV_KEYS,
+  parseOpsHostEnvFileContent,
 } from "@/lib/studio-bot/host-env"
+import { HostCopyableLink } from "../components/HostCopyableLink"
+import { HostEnvField } from "../components/HostEnvField"
 import { useBackofficeStudioBotOps } from "../context/BackofficeStudioBotOpsHook"
 
 function emptyEnvRecord(keys: readonly string[]): Record<string, string> {
@@ -46,6 +58,7 @@ export function BackofficeStudioBotOpsContainer() {
     actionLock,
     loadAll,
     saveSettings,
+    exportEnvFile,
     rotateToken,
     runHealth,
     runFetchLogs,
@@ -68,6 +81,7 @@ export function BackofficeStudioBotOpsContainer() {
   const [packBase64, setPackBase64] = useState("")
   const [logService, setLogService] = useState<"n8n" | "api">("n8n")
   const [logTail, setLogTail] = useState("200")
+  const envFileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void loadAll()
@@ -77,16 +91,28 @@ export function BackofficeStudioBotOpsContainer() {
     if (!settings) return
     setAgentBaseUrl(settings.agentBaseUrl ?? "")
     setDesiredHostVersion(settings.desiredHostVersion ?? "")
-    const nextN8n = emptyEnvRecord(N8N_HOST_ENV_KEYS)
-    for (const field of settings.n8nEnv) {
-      if (!field.isSecret && field.value) nextN8n[field.key] = field.value
-    }
-    setN8nEnv(nextN8n)
-    const nextEvo = emptyEnvRecord(EVOLUTION_HOST_ENV_KEYS)
-    for (const field of settings.evolutionEnv) {
-      if (!field.isSecret && field.value) nextEvo[field.key] = field.value
-    }
-    setEvolutionEnv(nextEvo)
+    setN8nEnv((prev) => {
+      const next = emptyEnvRecord(N8N_HOST_ENV_KEYS)
+      for (const field of settings.n8nEnv) {
+        if (field.isSecret) {
+          next[field.key] = prev[field.key] ?? ""
+        } else if (field.value) {
+          next[field.key] = field.value
+        }
+      }
+      return next
+    })
+    setEvolutionEnv((prev) => {
+      const next = emptyEnvRecord(EVOLUTION_HOST_ENV_KEYS)
+      for (const field of settings.evolutionEnv) {
+        if (field.isSecret) {
+          next[field.key] = prev[field.key] ?? ""
+        } else if (field.value) {
+          next[field.key] = field.value
+        }
+      }
+      return next
+    })
   }, [settings])
 
   const locked = Boolean(actionLock)
@@ -131,6 +157,75 @@ export function BackofficeStudioBotOpsContainer() {
       if (match?.[1]) setPackVersion(match[1])
     }
     toast.success("Pack carregado")
+  }
+
+  const downloadTextFile = (fileName: string, content: string) => {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = fileName
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const mergeEnvIntoForm = (
+    nextN8n: Record<string, string>,
+    nextEvo: Record<string, string>
+  ) => {
+    setN8nEnv((prev) => {
+      const merged = { ...prev }
+      for (const key of N8N_HOST_ENV_KEYS) {
+        if (nextN8n[key]?.trim()) merged[key] = nextN8n[key]
+      }
+      return merged
+    })
+    setEvolutionEnv((prev) => {
+      const merged = { ...prev }
+      for (const key of EVOLUTION_HOST_ENV_KEYS) {
+        if (nextEvo[key]?.trim()) merged[key] = nextEvo[key]
+      }
+      return merged
+    })
+  }
+
+  const handleExportEnvFile = async () => {
+    const result = await exportEnvFile()
+    if (!result) return
+    downloadTextFile(result.fileName, result.content)
+    if (result.agentBaseUrl?.trim()) setAgentBaseUrl(result.agentBaseUrl.trim())
+    if (result.desiredHostVersion?.trim()) {
+      setDesiredHostVersion(result.desiredHostVersion.trim())
+    }
+    mergeEnvIntoForm(result.n8nEnv, result.evolutionEnv)
+  }
+
+  const handleImportEnvFile = async (file: File | null) => {
+    if (!file) return
+    try {
+      const text = await file.text()
+      const parsed = parseOpsHostEnvFileContent(text)
+      const n8nCount = Object.keys(parsed.n8nEnv).length
+      const evoCount = Object.keys(parsed.evolutionEnv).length
+      const agentCount =
+        (parsed.agent.agentBaseUrl ? 1 : 0) + (parsed.agent.desiredHostVersion ? 1 : 0)
+      if (n8nCount === 0 && evoCount === 0 && agentCount === 0) {
+        toast.error("Nenhuma variável allowlisted encontrada no arquivo")
+        return
+      }
+      if (parsed.agent.agentBaseUrl) setAgentBaseUrl(parsed.agent.agentBaseUrl)
+      if (parsed.agent.desiredHostVersion) {
+        setDesiredHostVersion(parsed.agent.desiredHostVersion)
+      }
+      mergeEnvIntoForm(parsed.n8nEnv, parsed.evolutionEnv)
+      toast.success(
+        `Formulário preenchido (${agentCount} agente, ${n8nCount} N8N, ${evoCount} Evolution)`
+      )
+    } catch {
+      toast.error("Falha ao ler o arquivo de variáveis")
+    } finally {
+      if (envFileInputRef.current) envFileInputRef.current.value = ""
+    }
   }
 
   const handleRefreshLogs = () => {
@@ -188,24 +283,22 @@ export function BackofficeStudioBotOpsContainer() {
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="agentBaseUrl">agentBaseUrl</FieldLabel>
-                    <Input
-                      id="agentBaseUrl"
-                      value={agentBaseUrl}
-                      onChange={(e) => setAgentBaseUrl(e.target.value)}
-                      placeholder="https://ops.corretorstudio.com"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="desiredHostVersion">desiredHostVersion</FieldLabel>
-                    <Input
-                      id="desiredHostVersion"
-                      value={desiredHostVersion}
-                      onChange={(e) => setDesiredHostVersion(e.target.value)}
-                      placeholder="git sha / tag"
-                    />
-                  </Field>
+                  <HostEnvField
+                    id="agentBaseUrl"
+                    label="agentBaseUrl"
+                    value={agentBaseUrl}
+                    isSecret={false}
+                    placeholder="https://ops.corretorstudio.com"
+                    onChange={setAgentBaseUrl}
+                  />
+                  <HostEnvField
+                    id="desiredHostVersion"
+                    label="desiredHostVersion"
+                    value={desiredHostVersion}
+                    isSecret={false}
+                    placeholder="git sha / tag"
+                    onChange={setDesiredHostVersion}
+                  />
                 </FieldGroup>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={settings?.agentTokenConfigured ? "default" : "secondary"}>
@@ -365,65 +458,109 @@ export function BackofficeStudioBotOpsContainer() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Variáveis N8N</CardTitle>
+              <CardTitle className="text-base">Links de referência</CardTitle>
               <CardDescription>
-                Secrets só são gravados se você preencher um valor novo (não são exibidos).
+                Copie o webhook interno para a Evolution. Hostnames Docker não abrem no navegador.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <FieldGroup className="grid gap-3 md:grid-cols-2">
-                {N8N_HOST_ENV_KEYS.map((key) => (
-                  <Field key={key}>
-                    <FieldLabel htmlFor={`n8n-${key}`}>
-                      {key}
-                      {SECRET_HOST_ENV_KEYS.has(key) ? " (secret)" : ""}
-                    </FieldLabel>
-                    <Input
-                      id={`n8n-${key}`}
-                      type={SECRET_HOST_ENV_KEYS.has(key) ? "password" : "text"}
-                      value={n8nEnv[key] ?? ""}
-                      placeholder={
-                        settings?.n8nEnv.find((f) => f.key === key)?.isSet
-                          ? "•••• (já definido)"
-                          : undefined
-                      }
-                      onChange={(e) => setN8nEnv((prev) => ({ ...prev, [key]: e.target.value }))}
-                    />
-                  </Field>
+                {OPS_HOST_REFERENCE_LINKS.map((link) => (
+                  <HostCopyableLink
+                    key={link.id}
+                    id={`ops-link-${link.id}`}
+                    label={link.label}
+                    href={link.href}
+                    hint={link.hint}
+                    openInBrowser={link.id !== "bethania-inbound-internal"}
+                    className={
+                      link.id === "bethania-inbound-internal" ||
+                      link.id === "bethania-inbound-public"
+                        ? "md:col-span-2"
+                        : undefined
+                    }
+                  />
                 ))}
               </FieldGroup>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Variáveis Evolution</CardTitle>
-              <CardDescription>Allowlist operacional (sem connection string Supabase).</CardDescription>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-1.5">
+                <CardTitle className="text-base">Variáveis N8N / Evolution</CardTitle>
+                <CardDescription>
+                  Exporte o .txt de produção (MASTER), importe para preencher agente + envs, use
+                  copiar/olho nos campos. Secrets só são gravados se você preencher um valor novo.
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={locked}
+                  onClick={() => void handleExportEnvFile()}
+                >
+                  <Download data-icon="inline-start" />
+                  Exportar .txt
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={locked}
+                  onClick={() => envFileInputRef.current?.click()}
+                >
+                  <FileUp data-icon="inline-start" />
+                  Importar .txt
+                </Button>
+                <input
+                  ref={envFileInputRef}
+                  type="file"
+                  accept=".txt,.env,text/plain"
+                  className="hidden"
+                  onChange={(e) => void handleImportEnvFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
             </CardHeader>
-            <CardContent>
-              <FieldGroup className="grid gap-3 md:grid-cols-2">
-                {EVOLUTION_HOST_ENV_KEYS.map((key) => (
-                  <Field key={key}>
-                    <FieldLabel htmlFor={`evo-${key}`}>
-                      {key}
-                      {SECRET_HOST_ENV_KEYS.has(key) ? " (secret)" : ""}
-                    </FieldLabel>
-                    <Input
-                      id={`evo-${key}`}
-                      type={SECRET_HOST_ENV_KEYS.has(key) ? "password" : "text"}
-                      value={evolutionEnv[key] ?? ""}
-                      placeholder={
-                        settings?.evolutionEnv.find((f) => f.key === key)?.isSet
-                          ? "•••• (já definido)"
-                          : undefined
+            <CardContent className="flex flex-col gap-6">
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-medium">N8N</p>
+                <FieldGroup className="grid gap-3 md:grid-cols-2">
+                  {N8N_HOST_ENV_KEYS.map((key) => (
+                    <HostEnvField
+                      key={key}
+                      id={`n8n-${key}`}
+                      label={key}
+                      value={n8nEnv[key] ?? ""}
+                      isSecret={SECRET_HOST_ENV_KEYS.has(key)}
+                      isSet={settings?.n8nEnv.find((f) => f.key === key)?.isSet}
+                      className={
+                        key === "BETHANIA_SLACK_WEBHOOK_URL" ? "md:col-span-2" : undefined
                       }
-                      onChange={(e) =>
-                        setEvolutionEnv((prev) => ({ ...prev, [key]: e.target.value }))
+                      onChange={(value) => setN8nEnv((prev) => ({ ...prev, [key]: value }))}
+                    />
+                  ))}
+                </FieldGroup>
+              </div>
+              <Separator />
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-medium">Evolution</p>
+                <FieldGroup className="grid gap-3 md:grid-cols-2">
+                  {EVOLUTION_HOST_ENV_KEYS.map((key) => (
+                    <HostEnvField
+                      key={key}
+                      id={`evo-${key}`}
+                      label={key}
+                      value={evolutionEnv[key] ?? ""}
+                      isSecret={SECRET_HOST_ENV_KEYS.has(key)}
+                      isSet={settings?.evolutionEnv.find((f) => f.key === key)?.isSet}
+                      onChange={(value) =>
+                        setEvolutionEnv((prev) => ({ ...prev, [key]: value }))
                       }
                     />
-                  </Field>
-                ))}
-              </FieldGroup>
+                  ))}
+                </FieldGroup>
+              </div>
             </CardContent>
           </Card>
 

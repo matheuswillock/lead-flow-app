@@ -117,7 +117,7 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.failed).toBe(0)
   })
 
-  it("D4 — batchResult.error set → failed += chunk.length; onChunkDispatched NÃO chamado", async () => {
+  it("D4 — batchResult.error set → failed += chunk.length; onChunkDispatched NÃO chamado; providerErrors preenchido", async () => {
     batchSendMock.mockResolvedValueOnce({
       data: null as unknown as Array<{ id?: string }>,
       error: { name: "rate_limit_exceeded", message: "Too many requests", statusCode: 429 },
@@ -129,6 +129,94 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.failed).toBe(3)
     expect(result.sent).toBe(0)
     expect(onChunkDispatched).not.toHaveBeenCalled()
+    expect(result.providerErrors).toHaveLength(1)
+    expect(result.providerErrors[0]?.statusCode).toBe(429)
+    expect(result.providerErrors[0]?.message).toBe("Too many requests")
+    expect(result.providerErrors[0]?.emails).toHaveLength(3)
+  })
+
+  it("D10 — destinatário com e-mail inválido não vai ao Resend e entra em providerErrors", async () => {
+    batchSendMock.mockResolvedValueOnce({
+      data: [{ id: "re_0" }, { id: "re_1" }],
+      error: null,
+    })
+
+    const recipients = [
+      ...makeRecipients(2),
+      {
+        email: "carol.ocipriani@gmail.com|hugopoli@gmail.com",
+        name: "Inválido",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+    ]
+
+    const result = await service.dispatchBatch({
+      ...makeBaseParams(recipients),
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    expect(batchSendMock).toHaveBeenCalledTimes(1)
+    expect(result.sent).toBe(2)
+    expect(result.failed).toBe(1)
+    expect(result.providerErrors.some((error) => error.emails.includes("carol.ocipriani@gmail.com|hugopoli@gmail.com"))).toBe(true)
+  })
+
+  it("D11 — Resend 422 Invalid `to` (mensagem real): providerErrors com statusCode e e-mails do chunk", async () => {
+    const resendMessage =
+      "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format."
+    batchSendMock.mockResolvedValueOnce({
+      data: null as unknown as Array<{ id?: string }>,
+      error: {
+        name: "validation_error",
+        message: resendMessage,
+        statusCode: 422,
+      },
+    })
+
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
+
+    expect(result.sent).toBe(0)
+    expect(result.failed).toBe(3)
+    expect(onChunkDispatched).not.toHaveBeenCalled()
+    expect(result.providerErrors).toEqual([
+      {
+        message: resendMessage,
+        statusCode: 422,
+        emails: ["r0@test.com", "r1@test.com", "r2@test.com"],
+      },
+    ])
+  })
+
+  it("D12 — lote só com e-mails pipe: não chama Resend e falha todos localmente", async () => {
+    const recipients = [
+      {
+        email: "carol.ocipriani@gmail.com|hugopoli@gmail.com",
+        name: "A",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "financeiro@newcorban.com.br|financeiro@grupodigital.com.br",
+        name: "B",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+    ]
+
+    const result = await service.dispatchBatch({
+      ...makeBaseParams(recipients),
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    expect(batchSendMock).not.toHaveBeenCalled()
+    expect(result.sent).toBe(0)
+    expect(result.failed).toBe(2)
+    expect(result.providerErrors).toHaveLength(2)
+    expect(result.providerErrors.every((error) => error.message.includes("E-mail inválido para o Resend"))).toBe(
+      true
+    )
   })
 
   it("D5 — resposta parcial: items.length < chunk.length → failed conta o gap", async () => {

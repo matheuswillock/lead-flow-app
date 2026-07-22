@@ -10,6 +10,7 @@ const schema = z
     closerId: z.string().uuid().optional(),
     closerIds: z.array(z.string().uuid()).optional(),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    days: z.number().int().min(1).max(30).optional(),
     excludeLeadId: z.string().uuid().nullish(),
     timezone: z.string().optional(),
   })
@@ -39,13 +40,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { closerId, closerIds, date, excludeLeadId, timezone } = validation.data
+    const { closerId, closerIds, date, days, excludeLeadId, timezone } = validation.data
     const requestedCloserIds = Array.from(
       new Set([...(closerIds ?? []), ...(closerId ? [closerId] : [])])
     )
     const output = await backofficeCalendarAvailabilityUseCase.getAvailability({
       closerIds: requestedCloserIds,
       date,
+      days: days ?? 1,
       excludeLeadId,
       userTimezone: timezone,
     })

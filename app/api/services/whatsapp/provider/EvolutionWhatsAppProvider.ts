@@ -41,6 +41,14 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     }
   }
 
+  async setWebhook(params: {
+    instanceName: string
+    webhookUrl: string
+    hostBaseUrl?: string
+  }): Promise<void> {
+    await this.evo.setWebhook(params)
+  }
+
   async getQrCode(instanceName: string, hostBaseUrl?: string): Promise<WhatsAppProviderQrCode> {
     return this.evo.getQrCode(instanceName, hostBaseUrl)
   }

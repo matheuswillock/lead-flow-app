@@ -18,6 +18,7 @@ export const PUBLIC_PAGE_ROUTES = [
   "/lead-form",
   "/backoffice-lead-form",
   "/agendamento",
+  "/backoffice-agendamento",
   "/addon-checkout",
   "/sentry-example-page",
 ] as const
@@ -28,6 +29,7 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/lead-form/",
   "/forms/",
   "/agendamento/",
+  "/backoffice-agendamento/",
   "/addon-checkout/",
   "/oferta/",
   "/adesao/",

@@ -133,10 +133,10 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
-    { title: "Formulários", url: `/${supabaseId}/forms`, icon: FileText, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
     { title: "Automações", url: `/${supabaseId}/automations`, icon: Zap, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_AUTOMATIONS },
     { title: "Radar", url: `/${supabaseId}/radar`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.RADAR },
+    { title: "Formulários", url: `/${supabaseId}/forms`, icon: FileText, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
   ];
 
   const emailItems: SidebarItem[] = [

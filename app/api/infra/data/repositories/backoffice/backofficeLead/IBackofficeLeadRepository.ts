@@ -37,6 +37,7 @@ export interface CreateBackofficeLeadInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[]
   createdByProfileId?: string | null
   qualificationLeadOrganization?: string | null
@@ -56,6 +57,7 @@ export interface UpdateBackofficeLeadInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[]
   qualificationLeadOrganization?: string | null
   qualificationAvgUsers?: string | null
@@ -69,6 +71,7 @@ export interface UpdateBackofficeLeadStatusInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[]
 }
 

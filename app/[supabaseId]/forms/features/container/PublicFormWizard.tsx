@@ -255,7 +255,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
         </header>
         <div className="flex min-h-0 flex-1 justify-center overflow-y-auto p-4">
           <div
-            className="light h-[calc(100dvh-4.5rem)] w-full max-w-[580px] overflow-hidden rounded-2xl border bg-background shadow-sm [color-scheme:light]"
+            className="public-form-page light h-[calc(100dvh-4.5rem)] w-full max-w-[580px] overflow-hidden rounded-2xl border bg-background shadow-sm [color-scheme:light]"
           >
             <PublicFormRenderer snapshot={snapshot} preview className="h-full min-h-[60dvh]" />
           </div>
@@ -380,11 +380,15 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
                   Abrir preview
                 </Button>
               </DrawerTrigger>
-              <DrawerContent className="max-h-[90vh] overflow-y-auto">
+              <DrawerContent className="public-form-page light max-h-[90vh] overflow-y-auto">
                 <DrawerHeader>
                   <DrawerTitle>Preview do formulário</DrawerTitle>
                 </DrawerHeader>
-                <PublicFormRenderer snapshot={snapshot} preview className="light [color-scheme:light]" />
+                <PublicFormRenderer
+                  snapshot={snapshot}
+                  preview
+                  className="public-form-page light [color-scheme:light]"
+                />
               </DrawerContent>
             </Drawer>
           </div>
@@ -393,7 +397,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Preview ao vivo
           </p>
-          <div className="light mx-auto h-[calc(100%-1.5rem)] w-full max-w-[580px] overflow-y-auto rounded-2xl border bg-background shadow-sm [color-scheme:light]">
+          <div className="public-form-page light mx-auto h-[calc(100%-1.5rem)] w-full max-w-[580px] overflow-y-auto rounded-2xl border bg-background shadow-sm [color-scheme:light]">
             <PublicFormRenderer snapshot={snapshot} preview className="min-h-full" />
           </div>
         </aside>

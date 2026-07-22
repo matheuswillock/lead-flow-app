@@ -28,4 +28,5 @@ export interface IBackofficeAccountUseCase {
   updateTimezone(profileId: string, timezone: string): Promise<Output>
   connectGoogle(profileId: string, data: UpdateBackofficeGoogleConnectionDTO): Promise<Output>
   disconnectGoogle(profileId: string): Promise<Output>
+  getGoogleScopes(profileId: string): Promise<Output>
 }

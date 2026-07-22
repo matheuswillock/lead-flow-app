@@ -282,7 +282,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   return (
     <div
       className={cn(
-        "flex w-full flex-col justify-center bg-background text-foreground [color-scheme:light]",
+        "public-form-page light flex w-full flex-col justify-center bg-background text-foreground [color-scheme:light]",
         className ?? "min-h-[60dvh]",
       )}
       style={
@@ -771,7 +771,7 @@ function SchedulingQuestion({
                 : "Selecione a data"}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
+          <PopoverContent className="public-form-page light w-auto p-0" align="start">
             <Calendar
               mode="single"
               selected={selectedDate}
@@ -808,7 +808,7 @@ function SchedulingQuestion({
               }
             />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="public-form-page light">
             {(preview ? [{ time: "09:00", startsAt: new Date().toISOString() }] : slots).map(
               (slot) => (
                 <SelectItem key={slot.startsAt} value={slot.time}>

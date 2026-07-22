@@ -25,6 +25,14 @@ type BackofficeStudioBotOpsContextValue = {
     n8nEnv?: Record<string, string>
     evolutionEnv?: Record<string, string>
   }) => Promise<boolean>
+  exportEnvFile: () => Promise<{
+    content: string
+    fileName: string
+    agentBaseUrl: string | null
+    desiredHostVersion: string | null
+    n8nEnv: Record<string, string>
+    evolutionEnv: Record<string, string>
+  } | null>
   rotateToken: () => Promise<string | null>
   runHealth: () => Promise<void>
   runFetchLogs: (input: { service: "n8n" | "api"; tail?: number }) => Promise<void>
@@ -111,6 +119,27 @@ export function BackofficeStudioBotOpsProvider({
     },
     [loadAll, service, withLock]
   )
+
+  const exportEnvFile = useCallback(async () => {
+    let result: {
+      content: string
+      fileName: string
+      agentBaseUrl: string | null
+      desiredHostVersion: string | null
+      n8nEnv: Record<string, string>
+      evolutionEnv: Record<string, string>
+    } | null = null
+    await withLock("export-env", async () => {
+      const output = await service.exportEnvFile()
+      if (!output.isValid || !output.result?.content) {
+        toast.error(output.errorMessages[0] ?? "Falha ao exportar variáveis")
+        return
+      }
+      result = output.result
+      toast.success(output.successMessages[0] ?? "Variáveis exportadas")
+    })
+    return result
+  }, [service, withLock])
 
   const rotateToken = useCallback(async () => {
     let token: string | null = null
@@ -225,6 +254,7 @@ export function BackofficeStudioBotOpsProvider({
       actionLock,
       loadAll,
       saveSettings,
+      exportEnvFile,
       rotateToken,
       runHealth,
       runFetchLogs,
@@ -243,6 +273,7 @@ export function BackofficeStudioBotOpsProvider({
       actionLock,
       loadAll,
       saveSettings,
+      exportEnvFile,
       rotateToken,
       runHealth,
       runFetchLogs,

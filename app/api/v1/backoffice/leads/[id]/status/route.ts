@@ -55,6 +55,7 @@ export async function PUT(
         meetingTitle: optionalStringOrNull(data, "meetingTitle"),
         meetingNotes: optionalStringOrNull(data, "meetingNotes"),
         meetingLink: optionalStringOrNull(data, "meetingLink"),
+        meetingType: optionalStringOrNull(data, "meetingType"),
         meetingExtraGuests:
           optionalStringArray(data, "meetingExtraGuests") ?? optionalStringArray(data, "extraGuests"),
       }

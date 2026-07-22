@@ -1145,6 +1145,7 @@ model BackofficeLead {
   meetingTitle           String?              @map("meetingTitle") @db.Text
   meetingNotes           String?              @map("meetingNotes") @db.Text
   meetingLink            String?              @map("meetingLink") @db.Text
+  meetingType            String?              @map("meetingType") @db.Text
   meetingExtraGuests     String[]             @default([]) @map("meetingExtraGuests")
   statusEnteredAt        DateTime             @default(now()) @map("statusEnteredAt") @db.Timestamptz(6)
   createdByProfileId     String?              @map("createdByProfileId") @db.Uuid
@@ -1285,6 +1286,7 @@ model BackofficeLeadSchedule {
   meetingTitle                String?                         @map("meetingTitle") @db.Text
   notes                       String?                         @db.Text
   meetingLink                 String?                         @map("meetingLink") @db.Text
+  meetingType                 String?                         @map("meetingType") @db.Text
   extraGuests                 String[]                        @default([]) @map("extraGuests")
   googleEventId               String?                         @map("googleEventId") @db.Text
   googleCalendarId            String?                         @map("googleCalendarId") @db.Text
@@ -1294,6 +1296,8 @@ model BackofficeLeadSchedule {
   inviteDispatchLastAttemptAt DateTime?                       @map("inviteDispatchLastAttemptAt") @db.Timestamptz(6)
   inviteDispatchLastError     String?                         @map("inviteDispatchLastError") @db.Text
   inviteDispatchLastPayload   Json?                           @map("inviteDispatchLastPayload")
+  publicShareTokenHash        String?                         @map("publicShareTokenHash") @db.Text
+  publicShareExpiresAt        DateTime?                       @map("publicShareExpiresAt") @db.Timestamptz(6)
   isCanceled                  Boolean                         @default(false) @map("isCanceled")
   canceledAt                  DateTime?                       @map("canceledAt") @db.Timestamptz(6)
   canceledByProfileId         String?                         @map("canceledByProfileId") @db.Uuid
@@ -1308,6 +1312,7 @@ model BackofficeLeadSchedule {
   @@index([leadId], map: "backoffice_leads_schedule_lead_id_idx")
   @@index([closerBackofficeUserId], map: "backoffice_leads_schedule_closer_user_id_idx")
   @@index([date], map: "backoffice_leads_schedule_date_idx")
+  @@index([publicShareTokenHash], map: "backoffice_leads_schedule_public_share_token_hash_idx")
   @@index([isCanceled], map: "backoffice_leads_schedule_is_canceled_idx")
   @@map("backoffice_leads_schedule")
 }
@@ -2613,6 +2618,7 @@ model EmailImportJob {
   importedCount   Int      @default(0)
   updatedCount    Int      @default(0)
   skippedCount    Int      @default(0)
+  skippedIssues   Json?
   failedBatches   Json?
   batchSize       Int      @default(500)
   attemptsByBatch Json?

@@ -61,6 +61,7 @@ export interface BackofficeLeadItem {
   meetingTitle: string | null
   meetingNotes: string | null
   meetingLink: string | null
+  meetingType: string | null
   meetingExtraGuests: string[]
   adhesion: {
     id: string
@@ -132,6 +133,7 @@ export interface BackofficeLeadCreateInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[] | null
   qualificationLeadOrganization?: string | null
   qualificationAvgUsers?: string | null
@@ -150,6 +152,7 @@ export interface BackofficeLeadUpdateInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: string | null
   meetingExtraGuests?: string[] | null
   qualificationLeadOrganization?: string | null
   qualificationAvgUsers?: string | null
@@ -162,6 +165,8 @@ export interface BackofficeLeadScheduleInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingType?: "online" | "call" | "whatsapp" | null
+  leadEmail?: string | null
   extraGuests?: string[]
 }
 

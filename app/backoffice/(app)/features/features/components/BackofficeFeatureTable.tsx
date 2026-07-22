@@ -214,14 +214,13 @@ export function BackofficeFeatureTable({ features }: Props) {
     }
   }
 
-  // Features that have children → accordion groups
-  // Umbrella features without children (and no parentId) → plain table
-  const groups = umbrellas.filter((f) => (childrenByParent.get(f.id)?.length ?? 0) > 0)
-  const standalone = umbrellas.filter((f) => (childrenByParent.get(f.id)?.length ?? 0) === 0)
+  // All top-level features render as accordion containers (ready for child features),
+  // matching CRM / Email even when they still have zero children.
+  const groups = [...umbrellas].sort((a, b) => a.sortOrder - b.sortOrder)
 
   return (
     <div className="flex flex-col gap-3">
-      {groups.length > 0 && (
+      {groups.length > 0 ? (
         <Accordion type="multiple" defaultValue={groups.map((g) => g.id)} className="flex flex-col gap-2">
           {groups.map((umbrella) => (
             <FeatureGroup
@@ -231,19 +230,10 @@ export function BackofficeFeatureTable({ features }: Props) {
             />
           ))}
         </Accordion>
-      )}
-
-      {standalone.length > 0 && (
-        <div className="rounded-md border overflow-hidden">
-          <Table>
-            {TABLE_HEADER}
-            <TableBody>
-              {standalone.map((f) => (
-                <FeatureRow key={f.id} feature={f} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+      ) : (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          Nenhuma funcionalidade de topo cadastrada.
+        </p>
       )}
     </div>
   )

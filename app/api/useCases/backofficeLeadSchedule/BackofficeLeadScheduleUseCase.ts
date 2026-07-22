@@ -27,12 +27,23 @@ export class BackofficeLeadScheduleUseCase implements IBackofficeLeadScheduleUse
 
   async scheduleLead(params: { leadId: string; payload: BackofficeLeadSchedulePayload }) {
     const body = params.payload ?? {}
+    const leadEmail =
+      typeof (body as { leadEmail?: unknown }).leadEmail === "string"
+        ? ((body as { leadEmail: string }).leadEmail.trim() || null)
+        : null
+
+    if (leadEmail) {
+      const emailUpdate = await this.leadUseCase.updateLead(params.leadId, { email: leadEmail })
+      if (!emailUpdate.isValid) return emailUpdate
+    }
+
     return this.leadUseCase.updateLeadStatus(params.leadId, BackofficeLeadStatus.scheduled, {
       closerBackofficeUserId: (body as any)?.closerBackofficeUserId ?? null,
       meetingDate: (body as any)?.meetingDate ?? null,
       meetingTitle: (body as any)?.meetingTitle ?? null,
       meetingNotes: (body as any)?.meetingNotes ?? null,
       meetingLink: (body as any)?.meetingLink ?? null,
+      meetingType: (body as any)?.meetingType ?? null,
       meetingExtraGuests: stringArray((body as any)?.meetingExtraGuests) ??
         stringArray((body as any)?.extraGuests),
     })
@@ -60,6 +71,7 @@ export class BackofficeLeadScheduleUseCase implements IBackofficeLeadScheduleUse
         meetingTitle: null,
         meetingNotes: null,
         meetingLink: null,
+        meetingType: null,
         meetingExtraGuests: [],
       }
     )
@@ -74,6 +86,15 @@ export class BackofficeLeadScheduleUseCase implements IBackofficeLeadScheduleUse
 
   async getAttendees(leadId: string): Promise<Output> {
     return this.scheduleService.getAttendees({ leadId })
+  }
+
+  async resendInvite(params: {
+    leadId: string
+    target: "all" | "single" | "new"
+    email?: string
+    emails?: string[]
+  }): Promise<Output> {
+    return this.scheduleService.resendInvite(params)
   }
 }
 
