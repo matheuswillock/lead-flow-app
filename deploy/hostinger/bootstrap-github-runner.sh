@@ -170,11 +170,49 @@ EOF
 }
 
 install_cleanup_cron() {
+  local cleanup_script="/usr/local/sbin/github-runner-cleanup.sh"
   local cron_file="/etc/cron.d/github-runner-cleanup"
-  log "Configurando limpeza diária de ${RUNNER_WORKDIR} (arquivos >7 dias)..."
+
+  log "Instalando limpeza segura de workdirs (só com runner idle)..."
+  cat > "${cleanup_script}" <<EOF
+#!/usr/bin/env bash
+# Limpa workdirs antigos do self-hosted runner sem tocar em job ativo
+# nem em caches compartilhados (_actions, _tool).
+set -euo pipefail
+
+WORKDIR="${RUNNER_WORKDIR}"
+
+# Abortar se um job estiver em execução (Worker ativo)
+if pgrep -f 'Runner.Worker' >/dev/null 2>&1; then
+  echo "[github-runner-cleanup] Runner.Worker ativo — pulando limpeza"
+  exit 0
+fi
+
+if [[ ! -d "\${WORKDIR}" ]]; then
+  exit 0
+fi
+
+# Remove apenas diretórios de checkout/job na raiz de _work (ex.: lead-flow-app),
+# preservando _actions, _tool, _PipelineMapping e metadados do runner.
+find "\${WORKDIR}" -mindepth 1 -maxdepth 1 -type d \\
+  ! -name '_actions' \\
+  ! -name '_tool' \\
+  ! -name '_temp' \\
+  ! -name '_PipelineMapping' \\
+  ! -name '_update' \\
+  -mtime +7 \\
+  -print -exec rm -rf {} +
+
+# Limpa leftovers em _temp com mais de 1 dia (sempre regeneráveis)
+find "\${WORKDIR}/_temp" -mindepth 1 -mtime +1 -delete 2>/dev/null || true
+
+echo "[github-runner-cleanup] OK"
+EOF
+  chmod 755 "${cleanup_script}"
+
   cat > "${cron_file}" <<EOF
-# Limpa workdirs antigos do self-hosted runner (evita disco cheio)
-15 3 * * * ${RUNNER_USER} find ${RUNNER_WORKDIR} -mindepth 1 -mtime +7 -delete 2>/dev/null || true
+# Limpa workdirs antigos do self-hosted runner (idle-only; preserva _actions/_tool)
+15 3 * * * root ${cleanup_script} >> /var/log/github-runner-cleanup.log 2>&1
 EOF
   chmod 644 "${cron_file}"
 }

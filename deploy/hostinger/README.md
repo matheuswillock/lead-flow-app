@@ -248,8 +248,13 @@ O script [`bootstrap-github-runner.sh`](bootstrap-github-runner.sh):
 - instala Bun + Node 24 + runner em `/home/github-runner/actions-runner`
 - registra labels `self-hosted,linux,x64,lead-flow-ci`
 - sobe systemd (`actions.runner.*`) com `NODE_OPTIONS=--max-old-space-size=3072`
-- agenda limpeza diária de workdirs `>7 dias`
+- agenda limpeza diária **idle-only** via `/usr/local/sbin/github-runner-cleanup.sh` (pula se `Runner.Worker` estiver ativo; preserva `_actions`/`_tool`)
 - **não** dá acesso a `/opt/lead-flow-bot/.env*`
+
+### Isolamento de PRs (`ci-main.yml`)
+
+Jobs disparados por `pull_request` → `main` rodam em **`ubuntu-latest`** (hosted).  
+Só `push` em `main` usa o runner persistente da VPS. Assim código de PR não executa no agente long-lived (evita persistir alterações no worker/`_work` entre jobs).
 
 ### Saúde
 

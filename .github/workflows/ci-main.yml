@@ -22,9 +22,11 @@ env:
   NEXT_TELEMETRY_DISABLED: 1
 
 jobs:
+  # pull_request: hosted (código externo não roda no runner persistente da VPS).
+  # push (main): self-hosted — branch já mergeada/confiável.
   quality:
     name: Lint & Typecheck
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "linux", "x64", "lead-flow-ci"]') }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -110,7 +112,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "linux", "x64", "lead-flow-ci"]') }}
     timeout-minutes: 15
     steps:
       - name: Checkout
