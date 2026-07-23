@@ -29,7 +29,7 @@ jobs:
   quality:
     name: Lint & Typecheck
     if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     outputs:
       governance-sync: ${{ steps['quality-result'].outputs['governance-sync'] }}
@@ -107,8 +107,9 @@ jobs:
 
   build:
     name: Build
+    # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
     if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-build]
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -145,7 +146,7 @@ jobs:
   quality-gate:
     name: Quality Gate
     if: ${{ always() && github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 2
     needs:
       - quality
@@ -177,7 +178,7 @@ jobs:
       always() &&
       needs.quality-gate.result == 'success' &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
       - quality-gate
@@ -244,7 +245,7 @@ jobs:
       !cancelled() &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.migration-check.outputs.has_pending == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
       - migration-check
@@ -285,7 +286,7 @@ jobs:
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.quality-gate.result == 'success' &&
       needs.migration-check.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 8
     needs:
       - quality-gate
@@ -434,7 +435,7 @@ jobs:
       needs.build.result == 'success' &&
       needs.migration-check.result == 'success' &&
       needs.migration-check.outputs.has_pending == 'false'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     needs:
       - build
@@ -473,7 +474,7 @@ jobs:
   auto-pr-develop-to-main:
     name: Open PR develop -> main
     if: ${{ github.event_name == 'push' && always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
       - quality
@@ -520,7 +521,9 @@ jobs:
           # branch since we last read it (e.g. a manual hotfix on the release PR).
           # Overwriting it silently is how commits used to disappear from release.
           # Fail loudly instead so a human reconciles it.
-          git push origin release/develop-to-main --force-with-lease
+          # --no-verify: este job não instala deps; quality gate já validou o commit.
+          # (pre-push também pula em CI=true; belt-and-suspenders no self-hosted.)
+          git push origin release/develop-to-main --force-with-lease --no-verify
 
       - name: Create or update PR
         id: release-pr

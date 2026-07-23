@@ -1,0 +1,26 @@
+# Smoke do runner self-hosted (VPS). Não consome minutos hosted.
+name: CI (self-hosted smoke)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Self-hosted smoke
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 5
+    steps:
+      - name: Runner identity
+        run: |
+          set -euo pipefail
+          echo "host=$(hostname)"
+          echo "user=$(whoami)"
+          echo "pwd=$(pwd)"
+          uname -a
+          free -h | head -3
+          command -v bun && bun --version
+          command -v node && node --version
+          command -v git && git --version
