@@ -9,6 +9,7 @@ import {
 import {
   EVOLUTION_HOST_ENV_KEYS,
   N8N_HOST_ENV_KEYS,
+  BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL,
   buildOpsHostEnvFileContent,
   filterAllowedEnv,
   maskEnvMap,
@@ -19,6 +20,7 @@ import {
   studioBotHostAgentClient,
   type IStudioBotHostAgentClient,
 } from "@/app/api/services/backofficeBot/StudioBotHostAgentClient";
+import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
 import type { IBackofficeBotHostUseCase } from "./IBackofficeBotHostUseCase";
 
 type AgentAuth = { baseUrl: string; token: string };
@@ -31,6 +33,22 @@ function requireMaster(fullAccess: boolean): Output | null {
     return new Output(false, [], ["Apenas MASTER pode executar esta ação"], null);
   }
   return null;
+}
+
+function resolveBethaniaWebhookUrl(n8nEnv: Record<string, string>): string {
+  const base = n8nEnv.N8N_WEBHOOK_BASE_URL?.trim().replace(/\/$/, "");
+  if (base) {
+    return `${base}/webhook/bethania-inbound`;
+  }
+  return BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL;
+}
+
+function resolveBethaniaInstanceName(n8nEnv: Record<string, string>): string {
+  return (
+    n8nEnv.EVO_BETHANIA_INSTANCE?.trim() ||
+    process.env.EVO_BETHANIA_INSTANCE?.trim() ||
+    "bethania"
+  );
 }
 
 class BackofficeBotHostUseCase implements IBackofficeBotHostUseCase {
@@ -351,6 +369,54 @@ class BackofficeBotHostUseCase implements IBackofficeBotHostUseCase {
       result.ok ? [] : [result.error ?? "Falha ao importar workflows"],
       { jobId: job.id, detail: result.detail }
     );
+  }
+
+  async resyncBethaniaWebhook(
+    input: { confirm: boolean },
+    access: { profileId: string; fullAccess: boolean }
+  ) {
+    const denied = requireMaster(access.fullAccess);
+    if (denied) return denied;
+
+    const settings = await this.repo.getOrCreateSettings();
+    const n8nEnv = decryptHostEnvMap(settings.n8nEnvEncrypted);
+    const instanceName = resolveBethaniaInstanceName(n8nEnv);
+    const webhookUrl = resolveBethaniaWebhookUrl(n8nEnv);
+
+    if (!input.confirm) {
+      return new Output(true, ["Pré-visualização do webhook Bethânia"], [], {
+        mode: "dry-run" as const,
+        instanceName,
+        webhookUrl,
+        ok: true,
+      });
+    }
+
+    console.info("[BackofficeBotHostUseCase][resyncBethaniaWebhook]", {
+      profileId: access.profileId,
+      instanceName,
+      webhookUrl,
+    });
+
+    try {
+      await backofficeEvoApiService.setWebhook({ instanceName, webhookUrl });
+      return new Output(true, ["Webhook Bethânia reaplicado"], [], {
+        mode: "apply" as const,
+        instanceName,
+        webhookUrl,
+        ok: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao reaplicar webhook";
+      console.error("[BackofficeBotHostUseCase][resyncBethaniaWebhook]", error);
+      return new Output(false, [], [message], {
+        mode: "apply" as const,
+        instanceName,
+        webhookUrl,
+        ok: false,
+        error: message,
+      });
+    }
   }
 
   async syncHost(

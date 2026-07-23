@@ -29,7 +29,6 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
   async connectInstance(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderConnectResult> {
     const result = await this.evo.adoptOrCreateInstance(params)
     return {
@@ -44,41 +43,36 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
   async setWebhook(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<void> {
     await this.evo.setWebhook(params)
   }
 
-  async getQrCode(instanceName: string, hostBaseUrl?: string): Promise<WhatsAppProviderQrCode> {
-    return this.evo.getQrCode(instanceName, hostBaseUrl)
+  async getQrCode(instanceName: string): Promise<WhatsAppProviderQrCode> {
+    return this.evo.getQrCode(instanceName)
   }
 
   async getConnectionState(
-    instanceName: string,
-    hostBaseUrl?: string
+    instanceName: string
   ): Promise<WhatsAppProviderConnectionInfo> {
-    return this.evo.getConnectionState(instanceName, hostBaseUrl)
+    return this.evo.getConnectionState(instanceName)
   }
 
   async getInstanceInfo(
-    instanceName: string,
-    hostBaseUrl?: string
+    instanceName: string
   ): Promise<WhatsAppProviderInstanceInfo | null> {
-    return this.evo.fetchInstance(instanceName, hostBaseUrl)
+    return this.evo.fetchInstance(instanceName)
   }
 
   async fetchChats(
-    instanceName: string,
-    hostBaseUrl?: string
+    instanceName: string
   ): Promise<WhatsAppProviderChatSummary[]> {
-    return this.evo.findChats(instanceName, hostBaseUrl)
+    return this.evo.findChats(instanceName)
   }
 
   async fetchMessagesSince(params: {
     instanceName: string
     remoteJid: string
     since: Date
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderHistoryMessage[]> {
     const messages = await this.evo.findMessages(params)
     return messages.map((item) => this.normalizeHistoryMessage(item))
@@ -110,7 +104,6 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
   async fetchProfilePictureUrl(params: {
     instanceName: string
     remoteJid: string
-    hostBaseUrl?: string
   }): Promise<string | null> {
     return this.evo.fetchProfilePictureUrl(params)
   }
@@ -121,7 +114,6 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderSendResult> {
     return this.evo.sendTextMessage(params)
   }
@@ -134,7 +126,6 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     fileName: string
     base64: string
     caption?: string
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderSendResult> {
     return this.evo.sendMediaMessage(params)
   }
@@ -142,22 +133,19 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
   async resolveMediaBase64(params: {
     instanceName: string
     messageKey: Record<string, unknown>
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderMediaContent | null> {
     return this.evo.getBase64FromMediaMessage(params)
   }
 
   async fetchContacts(
-    instanceName: string,
-    hostBaseUrl?: string
+    instanceName: string
   ): Promise<WhatsAppProviderContact[]> {
-    return this.evo.findContacts(instanceName, hostBaseUrl)
+    return this.evo.findContacts(instanceName)
   }
 
   async fetchGroupParticipants(params: {
     instanceName: string
     groupJid: string
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderGroupParticipant[]> {
     return this.evo.findGroupParticipants(params)
   }
@@ -165,13 +153,12 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
   async markMessagesAsRead(params: {
     instanceName: string
     readMessages: Array<{ remoteJid: string; fromMe: boolean; id: string }>
-    hostBaseUrl?: string
   }): Promise<void> {
     return this.evo.markMessagesAsRead(params)
   }
 
-  async disconnect(instanceName: string, hostBaseUrl?: string): Promise<void> {
-    return this.evo.disconnectInstance(instanceName, hostBaseUrl)
+  async disconnect(instanceName: string): Promise<void> {
+    return this.evo.disconnectInstance(instanceName)
   }
 }
 

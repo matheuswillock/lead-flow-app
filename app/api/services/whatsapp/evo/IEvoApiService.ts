@@ -56,40 +56,35 @@ export interface IEvoApiService {
   createInstance(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<EvoCreateInstanceResult>
 
   adoptOrCreateInstance(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<EvoCreateInstanceResult & { adopted: boolean }>
 
   setWebhook(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<void>
 
-  getQrCode(instanceName: string, hostBaseUrl?: string): Promise<{ text: string; base64: string }>
+  getQrCode(instanceName: string): Promise<{ text: string; base64: string }>
 
-  getConnectionState(instanceName: string, hostBaseUrl?: string): Promise<EvoConnectionState>
+  getConnectionState(instanceName: string): Promise<EvoConnectionState>
 
-  fetchInstance(instanceName: string, hostBaseUrl?: string): Promise<EvoInstanceInfo | null>
+  fetchInstance(instanceName: string): Promise<EvoInstanceInfo | null>
 
-  findChats(instanceName: string, hostBaseUrl?: string): Promise<EvoChatSummary[]>
+  findChats(instanceName: string): Promise<EvoChatSummary[]>
 
   findMessages(params: {
     instanceName: string
     remoteJid: string
     since: Date
-    hostBaseUrl?: string
   }): Promise<EvoHistoryMessage[]>
 
   fetchProfilePictureUrl(params: {
     instanceName: string
     remoteJid: string
-    hostBaseUrl?: string
   }): Promise<string | null>
 
   sendTextMessage(params: {
@@ -98,7 +93,6 @@ export interface IEvoApiService {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
-    hostBaseUrl?: string
   }): Promise<EvoSendTextResult>
 
   sendMediaMessage(params: {
@@ -109,30 +103,26 @@ export interface IEvoApiService {
     fileName: string
     base64: string
     caption?: string
-    hostBaseUrl?: string
   }): Promise<EvoSendTextResult>
 
   getBase64FromMediaMessage(params: {
     instanceName: string
     messageKey: Record<string, unknown>
-    hostBaseUrl?: string
   }): Promise<{ base64: string; mimeType: string } | null>
 
-  findContacts(instanceName: string, hostBaseUrl?: string): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null }>>
+  findContacts(instanceName: string): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null }>>
 
   findGroupParticipants(params: {
     instanceName: string
     groupJid: string
-    hostBaseUrl?: string
   }): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null; admin: string | null }>>
 
   markMessagesAsRead(params: {
     instanceName: string
     readMessages: Array<{ remoteJid: string; fromMe: boolean; id: string }>
-    hostBaseUrl?: string
   }): Promise<void>
 
-  disconnectInstance(instanceName: string, hostBaseUrl?: string): Promise<void>
+  disconnectInstance(instanceName: string): Promise<void>
 
-  deleteInstance(instanceName: string, hostBaseUrl?: string): Promise<void>
+  deleteInstance(instanceName: string): Promise<void>
 }

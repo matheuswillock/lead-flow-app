@@ -30,8 +30,20 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import {
   EVOLUTION_HOST_ENV_KEYS,
   N8N_HOST_ENV_KEYS,
+  BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL,
   OPS_HOST_REFERENCE_LINKS,
   SECRET_HOST_ENV_KEYS,
   parseOpsHostEnvFileContent,
@@ -46,13 +58,19 @@ function emptyEnvRecord(keys: readonly string[]): Record<string, string> {
 
 export function BackofficeStudioBotOpsContainer() {
   const searchParams = useSearchParams()
-  const initialTab = searchParams.get("tab") === "logs" ? "logs" : "host"
+  const initialTab =
+    searchParams.get("tab") === "logs"
+      ? "logs"
+      : searchParams.get("tab") === "atualizacoes"
+        ? "atualizacoes"
+        : "host"
 
   const {
     settings,
     jobs,
     health,
     logs,
+    bethaniaWebhookResync,
     isLoading,
     isLoadingLogs,
     actionLock,
@@ -65,6 +83,8 @@ export function BackofficeStudioBotOpsContainer() {
     runApplyEnv,
     runRestart,
     runImportWorkflows,
+    previewResyncBethaniaWebhook,
+    confirmResyncBethaniaWebhook,
     runSyncHost,
   } = useBackofficeStudioBotOps()
 
@@ -86,6 +106,12 @@ export function BackofficeStudioBotOpsContainer() {
   useEffect(() => {
     void loadAll()
   }, [loadAll])
+
+  useEffect(() => {
+    if (tab === "atualizacoes" && !bethaniaWebhookResync) {
+      void previewResyncBethaniaWebhook()
+    }
+  }, [tab, bethaniaWebhookResync, previewResyncBethaniaWebhook])
 
   useEffect(() => {
     if (!settings) return
@@ -269,6 +295,7 @@ export function BackofficeStudioBotOpsContainer() {
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
         <TabsList>
           <TabsTrigger value="host">Host</TabsTrigger>
+          <TabsTrigger value="atualizacoes">Atualizações</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
         </TabsList>
 
@@ -589,6 +616,95 @@ export function BackofficeStudioBotOpsContainer() {
                     ) : null}
                   </div>
                 ))
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="atualizacoes" className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Reaplicar webhook Bethânia → N8N</CardTitle>
+              <CardDescription>
+                Configura na Evolution o webhook da instância Bethânia apontando para{" "}
+                <code className="text-xs">{BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL}</code>{" "}
+                (ou a URL montada a partir de <code className="text-xs">N8N_WEBHOOK_BASE_URL</code>).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  disabled={locked}
+                  onClick={() => void previewResyncBethaniaWebhook()}
+                >
+                  {actionLock === "preview-bethania-webhook" ? (
+                    <Loader2 className="animate-spin" data-icon="inline-start" />
+                  ) : (
+                    <RefreshCw data-icon="inline-start" />
+                  )}
+                  Atualizar prévia
+                </Button>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button disabled={locked || !bethaniaWebhookResync}>
+                      Reaplicar webhook
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="max-h-[90vh] flex flex-col">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Confirmar reaplicação</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        A instância{" "}
+                        <strong>{bethaniaWebhookResync?.instanceName ?? "bethania"}</strong> terá o
+                        webhook atualizado para{" "}
+                        <code className="text-xs">
+                          {bethaniaWebhookResync?.webhookUrl ?? BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL}
+                        </code>
+                        .
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={locked}>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={locked}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          void confirmResyncBethaniaWebhook()
+                        }}
+                      >
+                        {actionLock === "resync-bethania-webhook" ? "Aplicando…" : "Confirmar"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+
+              {bethaniaWebhookResync ? (
+                <div className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">modo: {bethaniaWebhookResync.mode}</Badge>
+                    <Badge variant={bethaniaWebhookResync.ok ? "outline" : "destructive"}>
+                      {bethaniaWebhookResync.ok ? "ok" : "falhou"}
+                    </Badge>
+                  </div>
+                  <p>
+                    <span className="text-muted-foreground">Instância: </span>
+                    {bethaniaWebhookResync.instanceName}
+                  </p>
+                  <p className="break-all">
+                    <span className="text-muted-foreground">Webhook: </span>
+                    {bethaniaWebhookResync.webhookUrl}
+                  </p>
+                  {bethaniaWebhookResync.error ? (
+                    <p className="text-destructive">{bethaniaWebhookResync.error}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Abra esta aba ou clique em Atualizar prévia para carregar o alvo.
+                </p>
               )}
             </CardContent>
           </Card>

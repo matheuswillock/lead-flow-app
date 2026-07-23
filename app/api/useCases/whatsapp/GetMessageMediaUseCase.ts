@@ -108,7 +108,6 @@ class GetMessageMediaUseCase {
       const media = await this.provider.resolveMediaBase64({
         instanceName: effectiveConfig.instanceName,
         messageKey,
-        hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
       })
 
       if (!media) {

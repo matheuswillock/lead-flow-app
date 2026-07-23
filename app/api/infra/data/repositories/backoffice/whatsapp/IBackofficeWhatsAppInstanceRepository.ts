@@ -25,7 +25,6 @@ export interface BackofficeWhatsAppInstanceRow {
   qrCodeText: string | null
   qrCodeImageUrl: string | null
   webhookSecret: string
-  hostBaseUrl: string | null
   lastConnectedAt: Date | null
   lastDisconnectedAt: Date | null
   lastSyncAt: Date | null
@@ -46,6 +45,14 @@ export interface BackofficeWhatsAppTeamWithoutInstance {
   master: BackofficeWhatsAppInstanceMaster
 }
 
+export interface BackofficeWhatsAppWebhookResyncTarget {
+  id: string
+  teamId: string
+  instanceName: string
+  webhookSecret: string
+  status: WhatsAppConnectionStatus
+}
+
 export interface ListInstancesFilters {
   q?: string
   status?: WhatsAppConnectionStatus
@@ -58,12 +65,12 @@ export interface IBackofficeWhatsAppInstanceRepository {
   ): Promise<{ items: BackofficeWhatsAppInstanceRow[]; totalItems: number }>
   findInstanceById(configId: string): Promise<BackofficeWhatsAppInstanceRow | null>
   findInstanceByTeamId(teamId: string): Promise<BackofficeWhatsAppInstanceRow | null>
+  listPrimaryWebhookResyncTargets(): Promise<BackofficeWhatsAppWebhookResyncTarget[]>
   updateInstanceAdminFields(
     configId: string,
     data: {
       usageLimitMonthly?: number
       billingEnabled?: boolean
-      hostBaseUrl?: string | null
       updatedByProfileId: string
     }
   ): Promise<BackofficeWhatsAppInstanceRow>

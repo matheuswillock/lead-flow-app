@@ -38,24 +38,12 @@ import {
   type ContactNameSource,
 } from "@/lib/whatsapp/contact-name"
 import { shouldWipeInboxOnPhoneChange } from "@/lib/whatsapp/should-wipe-inbox-on-phone-change"
+import { shouldApplyOutboundMessageStatus } from "@/lib/whatsapp/outbound-message-status"
+import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
+import { logSafeWhatsAppError } from "@/lib/whatsapp/safe-observability"
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
-}
-
-const MESSAGE_STATUS_RANK: Record<string, number> = {
-  FAILED: 0,
-  PENDING: 1,
-  RECEIVED: 1,
-  SENT: 2,
-  DELIVERED: 3,
-  READ: 4,
-}
-
-function shouldApplyMessageStatus(current: string, next: string): boolean {
-  const currentRank = MESSAGE_STATUS_RANK[current] ?? 0
-  const nextRank = MESSAGE_STATUS_RANK[next] ?? 0
-  return nextRank >= currentRank
 }
 
 const CONTACTS_LOOKUP_CHUNK_SIZE = 500
@@ -143,14 +131,14 @@ class ProcessEvoWebhookUseCase {
         eventType === "CONTACTS_UPSERT" || eventType === "CONTACTS.UPSERT" ||
         eventType === "CONTACTS_UPDATE" || eventType === "CONTACTS.UPDATE"
       ) {
-        await this.handleContactsUpsert(input.teamId, data)
+        await this.handleContactsUpsert(input.teamId, input.configId, data)
       } else {
         console.info("[ProcessEvoWebhookUseCase][execute] Unhandled event type:", eventType)
       }
 
       return new Output(true, [], [], { processed: true })
     } catch (error) {
-      console.error("[ProcessEvoWebhookUseCase][execute]", error)
+      logSafeWhatsAppError("[ProcessEvoWebhookUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao processar webhook Evolution"
       return new Output(false, [], [message], { processed: false, retryable: isRetryableWebhookError(error) })
     }
@@ -576,7 +564,7 @@ class ProcessEvoWebhookUseCase {
               configId: config.id,
             })
           } catch (error) {
-            console.error("[ProcessEvoWebhookUseCase][handleConnectionUpdate] Phone policy rejected", error)
+            logSafeWhatsAppError("[ProcessEvoWebhookUseCase][handleConnectionUpdate] Phone policy rejected", error)
             return
           }
 
@@ -647,8 +635,12 @@ class ProcessEvoWebhookUseCase {
 
     if (state === "open" && config && (phoneChangedWipe || config.historySyncStatus !== "COMPLETED")) {
       void syncWhatsAppHistoryUseCase.execute({ teamId: config.teamId }).catch((error) => {
-        console.error("[ProcessEvoWebhookUseCase][handleConnectionUpdate] History sync failed", error)
+        logSafeWhatsAppError("[ProcessEvoWebhookUseCase][handleConnectionUpdate] History sync failed", error)
       })
+    }
+
+    if (state === "open" && config && isWhatsAppV3Enabled("sync", config.teamId)) {
+      await this.repository.enqueueContactSyncJob({ teamId: config.teamId, configId })
     }
   }
 
@@ -719,6 +711,7 @@ class ProcessEvoWebhookUseCase {
       )
       return
     }
+    if (existing.direction !== "OUTBOUND") return
 
     const now = new Date()
     let status: WhatsAppMessageStatus | undefined
@@ -731,15 +724,18 @@ class ProcessEvoWebhookUseCase {
     } else if (rawStatus === "DELIVERY_ACK" || rawStatus === "DELIVERED") {
       status = "DELIVERED"
       updateData.deliveredAt = now
-    } else if (rawStatus === "READ" || rawStatus === "PLAYED") {
+    } else if (rawStatus === "READ") {
       status = "READ"
       updateData.readAt = now
+    } else if (rawStatus === "PLAYED" && existing.messageType === "AUDIO") {
+      status = "PLAYED" as WhatsAppMessageStatus
+      updateData.playedAt = now
     } else if (rawStatus === "FAILED" || rawStatus === "ERROR") {
       status = "FAILED"
       updateData.failedAt = now
     }
 
-    if (status && shouldApplyMessageStatus(existing.status, status)) {
+    if (status && shouldApplyOutboundMessageStatus(existing.status, status)) {
       updateData.status = status
       console.info(
         "[ProcessEvoWebhookUseCase][applyOutboundMessageStatus] Updating message status to",
@@ -816,7 +812,10 @@ class ProcessEvoWebhookUseCase {
     return pushUpdate ?? lastUpdate
   }
 
-  private async handleContactsUpsert(teamId: string, data: unknown): Promise<void> {
+  private async handleContactsUpsert(teamId: string, configId: string, data: unknown): Promise<void> {
+    if (isWhatsAppV3Enabled("sync", teamId)) {
+      await this.repository.enqueueContactSyncJob({ teamId, configId })
+    }
     const contacts = asRecordArray(data)
     if (contacts.length === 0) return
 

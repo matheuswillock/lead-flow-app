@@ -104,7 +104,6 @@ class MarkConversationReadUseCase {
         await this.provider.markMessagesAsRead({
           instanceName: effectiveConfig.instanceName,
           readMessages,
-          hostBaseUrl: effectiveConfig.hostBaseUrl ?? undefined,
         })
         await this.repository.bulkSetInboundBrokerReadAt(messageIds, new Date())
         readReceiptSent = true

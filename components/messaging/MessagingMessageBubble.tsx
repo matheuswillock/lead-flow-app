@@ -63,6 +63,12 @@ function StatusIndicator({ status }: { status: string }) {
   if (normalized === "READ") {
     return <CheckCheck className="size-3 text-semantic-info" aria-label="Lida" />
   }
+  if (normalized === "PLAYED") {
+    return <CheckCheck className="size-3 text-semantic-info" aria-label="Reproduzida" />
+  }
+  if (normalized === "UNKNOWN") {
+    return <Clock className="size-3 text-muted-foreground" aria-label="Confirmação indisponível" />
+  }
   if (normalized === "FAILED") {
     return <AlertCircle className="size-3 text-destructive" aria-label="Falha no envio" />
   }

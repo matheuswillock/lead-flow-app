@@ -35,14 +35,12 @@ export function BackofficeWhatsAppProvisionDialog() {
 
   const [teamId, setTeamId] = useState("")
   const [usageLimitMonthly, setUsageLimitMonthly] = useState("2000")
-  const [hostBaseUrl, setHostBaseUrl] = useState("")
   const [teamSearch, setTeamSearch] = useState("")
 
   useEffect(() => {
     if (!isProvisionOpen) return
     setTeamId("")
     setUsageLimitMonthly("2000")
-    setHostBaseUrl("")
     setTeamSearch("")
     void loadEligibleTeams()
   }, [isProvisionOpen, loadEligibleTeams])
@@ -61,7 +59,6 @@ export function BackofficeWhatsAppProvisionDialog() {
     await provisionInstance({
       teamId,
       usageLimitMonthly: Number.isFinite(limit) ? limit : undefined,
-      hostBaseUrl: hostBaseUrl.trim() || undefined,
     })
   }
 
@@ -123,16 +120,6 @@ export function BackofficeWhatsAppProvisionDialog() {
                 min={0}
                 value={usageLimitMonthly}
                 onChange={(event) => setUsageLimitMonthly(event.target.value)}
-                disabled={isProvisioning}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="provision-host">Host Evolution (opcional)</FieldLabel>
-              <Input
-                id="provision-host"
-                value={hostBaseUrl}
-                onChange={(event) => setHostBaseUrl(event.target.value)}
-                placeholder="https://evolution.exemplo.com"
                 disabled={isProvisioning}
               />
             </Field>

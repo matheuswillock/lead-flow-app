@@ -19,7 +19,6 @@ const INSTANCE_SELECT = {
   qrCodeText: true,
   qrCodeImageUrl: true,
   webhookSecret: true,
-  hostBaseUrl: true,
   lastConnectedAt: true,
   lastDisconnectedAt: true,
   lastSyncAt: true,
@@ -119,12 +118,29 @@ class BackofficeWhatsAppInstanceRepository implements IBackofficeWhatsAppInstanc
     })
   }
 
+  async listPrimaryWebhookResyncTargets() {
+    return prisma.teamWhatsAppConfig.findMany({
+      where: {
+        primaryConfigId: null,
+        webhookSecret: { not: "" },
+        instanceName: { not: "" },
+      },
+      select: {
+        id: true,
+        teamId: true,
+        instanceName: true,
+        webhookSecret: true,
+        status: true,
+      },
+      orderBy: { createdAt: "asc" },
+    })
+  }
+
   async updateInstanceAdminFields(
     configId: string,
     data: {
       usageLimitMonthly?: number
       billingEnabled?: boolean
-      hostBaseUrl?: string | null
       updatedByProfileId: string
     }
   ): Promise<BackofficeWhatsAppInstanceRow> {
@@ -135,7 +151,6 @@ class BackofficeWhatsAppInstanceRepository implements IBackofficeWhatsAppInstanc
           ? { usageLimitMonthly: data.usageLimitMonthly }
           : {}),
         ...(data.billingEnabled !== undefined ? { billingEnabled: data.billingEnabled } : {}),
-        ...(data.hostBaseUrl !== undefined ? { hostBaseUrl: data.hostBaseUrl } : {}),
         updatedBy: { connect: { id: data.updatedByProfileId } },
       },
       select: INSTANCE_SELECT,

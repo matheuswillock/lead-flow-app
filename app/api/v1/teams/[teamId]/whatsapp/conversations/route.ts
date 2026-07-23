@@ -6,9 +6,11 @@ import { listConversationsUseCase } from "@/app/api/useCases/whatsapp/ListConver
 import { createConversationUseCase } from "@/app/api/useCases/whatsapp/CreateConversationUseCase"
 
 const createConversationSchema = z.object({
-  phone: z.string().min(8),
+  phone: z.string().min(8).optional(),
   contactName: z.string().trim().min(1).optional(),
-  initialMessage: z.string().trim().min(1).optional(),
+  contactId: z.string().uuid().optional(),
+}).refine((value) => Boolean(value.phone || value.contactId), {
+  message: "phone ou contactId é obrigatório",
 })
 
 export async function GET(
@@ -103,7 +105,7 @@ export async function POST(
     profileId: teamAccess.access.profileId,
     phone: parsed.data.phone,
     contactName: parsed.data.contactName,
-    initialMessage: parsed.data.initialMessage,
+    contactId: parsed.data.contactId,
   })
 
   if (!output.isValid) {
