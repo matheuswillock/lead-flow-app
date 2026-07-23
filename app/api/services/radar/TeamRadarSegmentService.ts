@@ -69,17 +69,7 @@ export class TeamRadarSegmentService implements ITeamRadarSegmentService {
   }
 
   async remove(teamId: string, segmentId: string) {
-    const existing = await teamRadarSegmentRepository.findById(teamId, segmentId)
-    if (!existing) return { removed: false, softDeleted: false }
-
-    const referencingCampaigns = await teamRadarSegmentRepository.countReferencingCampaigns(teamId, segmentId)
-    if (referencingCampaigns > 0) {
-      await teamRadarSegmentRepository.update(segmentId, { isActive: false })
-      return { removed: true, softDeleted: true }
-    }
-
-    await teamRadarSegmentRepository.delete(segmentId)
-    return { removed: true, softDeleted: false }
+    return teamRadarSegmentRepository.removeWithLock(teamId, segmentId)
   }
 }
 

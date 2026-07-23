@@ -34,7 +34,7 @@ describe("segment-dsl", () => {
       })
     ).not.toThrow()
 
-    for (const value of ["abc", 0, -5]) {
+    for (const value of ["abc", 0, -5, true, [30]]) {
       expect(() =>
         parseRadarSegmentRules({
           match: "all",
@@ -44,7 +44,7 @@ describe("segment-dsl", () => {
     }
   })
 
-  it("before/after exigem uma data válida", () => {
+  it("before/after exigem uma data ISO válida com calendário correto", () => {
     expect(() =>
       parseRadarSegmentRules({
         match: "all",
@@ -55,9 +55,18 @@ describe("segment-dsl", () => {
     expect(() =>
       parseRadarSegmentRules({
         match: "all",
-        conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "after", value: "invalid-date" }],
+        conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "before", value: "2026-01-01" }],
       })
-    ).toThrow()
+    ).not.toThrow()
+
+    for (const value of ["invalid-date", "1", "2026-02-30", "2026-13-01"]) {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "after", value }],
+        })
+      ).toThrow()
+    }
   })
 
   it("profile_field exige value quando operador precisa de valor", () => {

@@ -800,6 +800,40 @@ describe.skipIf(!RUN_INTEGRATION)("Fixes de review C4 (visibilidade, delete guar
     expect(gone).toBeNull()
   })
 
+  it("criação de campanha e exclusão concorrentes do mesmo segmento nunca deixam custom:{id} órfão", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const segment = await teamRadarSegmentService.create(teamId, ctx.profileId, {
+      name: `Segmento concorrência ${suffix}`,
+      rules: { match: "all", conditions: [{ kind: "lead_status", statuses: ["scheduled"] }] },
+    })
+
+    const useCase = new EmailCampaignUseCase()
+    const [createResult, removeResult] = await Promise.all([
+      useCase.create(
+        { name: `Campanha concorrência ${suffix}`, templateId, radarSegmentSlug: `custom:${segment.id}` },
+        ctx
+      ),
+      teamRadarSegmentService.remove(teamId, segment.id),
+    ])
+
+    if (createResult.isValid) {
+      // create venceu o pg_advisory_xact_lock primeiro: a exclusão, ao rodar
+      // depois, encontra a campanha recém-criada referenciando o segmento e
+      // desativa em vez de excluir.
+      expect(removeResult.softDeleted).toBe(true)
+      const stillThere = await prisma.teamRadarSegment.findUnique({ where: { id: segment.id } })
+      expect(stillThere?.isActive).toBe(false)
+    } else {
+      // remove venceu o lock primeiro: excluiu o segmento antes do insert da
+      // campanha, que é rejeitada na revalidação — nunca fica órfã.
+      expect(createResult.errorMessages).toContain("Segmento Radar inválido")
+      const campaign = await prisma.emailCampaign.findFirst({
+        where: { teamId, radarSegmentSlug: `custom:${segment.id}` },
+      })
+      expect(campaign).toBeNull()
+    }
+  })
+
   it("listCustomSegmentProfiles pagina no banco (total correto, páginas sem sobreposição)", async () => {
     const suffix = randomUUID().slice(0, 8)
     const MATCH_COUNT = 5
