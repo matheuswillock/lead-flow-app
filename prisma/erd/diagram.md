@@ -1113,6 +1113,7 @@ crm_field crm_field
 custom_field custom_field
 scheduling scheduling
 consent consent
+calculation calculation
         }
     
 
@@ -3092,6 +3093,8 @@ meeting_scheduled meeting_scheduled
     PublicFormApprovalStatus approvalStatus 
     String coverTitle "❓"
     String coverDescription "❓"
+    String coverBadge "❓"
+    Json coverHighlights "❓"
     String ctaLabel 
     String successTitle 
     String successDescription "❓"
@@ -3148,6 +3151,7 @@ meeting_scheduled meeting_scheduled
     PublicFormRuleOperator operator 
     Json comparisonValue "❓"
     PublicFormRuleAction action 
+    PublicFormRuleAction elseAction 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3606,6 +3610,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_form_options" }o--|| corretor_studio_public_form_questions : "question"
     "corretor_studio_public_form_rules" |o--|| "PublicFormRuleOperator" : "enum:operator"
     "corretor_studio_public_form_rules" |o--|| "PublicFormRuleAction" : "enum:action"
+    "corretor_studio_public_form_rules" |o--|| "PublicFormRuleAction" : "enum:elseAction"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "sourceQuestion"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "targetQuestion"

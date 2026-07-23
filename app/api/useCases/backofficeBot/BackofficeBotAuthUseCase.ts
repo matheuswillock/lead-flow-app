@@ -1,4 +1,4 @@
-import { NotificationType } from "@prisma/client";
+import { NotificationType, type BackofficeBotChannelStatus } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { backofficeBotAuthService } from "@/app/api/services/backofficeBot/BackofficeBotAuthService";
 import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
@@ -14,6 +14,32 @@ const LINK_CONFIRMED_WHATSAPP_MESSAGE =
 
 const CHANNEL_AUTH_CODE_NOTIFICATION =
   "Seu código de verificação da Bethânia: **{code}**. Válido por 10 minutos. Informe na conversa com a Bethânia.";
+
+function mapEvoStatusToChannelStatus(
+  evoStatus: "open" | "close" | "connecting"
+): BackofficeBotChannelStatus {
+  if (evoStatus === "open") {
+    return "connected";
+  }
+  if (evoStatus === "close") {
+    return "disconnected";
+  }
+  return "pending";
+}
+
+/** TTL do sync Evolution no poll de linkStatus (BethaniaConnectionCard a cada 3s). */
+const CHANNEL_SYNC_TTL_MS = 15_000;
+
+type SyncedChannel = Awaited<ReturnType<typeof backofficeBotRepository.findPrimaryChannel>>;
+
+let lastChannelSyncAtMs = 0;
+let channelSyncInFlight: Promise<SyncedChannel> | null = null;
+
+/** Só para testes — zera TTL/in-flight do sync Evolution. */
+export function resetBethaniaChannelSyncCacheForTests() {
+  lastChannelSyncAtMs = 0;
+  channelSyncInFlight = null;
+}
 
 function mapAuthError(error: string): string {
   switch (error) {
@@ -182,8 +208,91 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
     }
   }
 
+  /**
+   * Alinha status do canal com a Evolution antes de expor botAvailable na Account.
+   * Evita card indisponível por status stale após reativar o canal.
+   *
+   * @param force — bypass do TTL (usar em linkInitiate / ações explícitas)
+   */
+  private async syncPrimaryChannelFromEvolution(options?: {
+    force?: boolean;
+  }): Promise<SyncedChannel> {
+    const force = options?.force === true;
+    const now = Date.now();
+
+    if (!force && channelSyncInFlight) {
+      return channelSyncInFlight;
+    }
+
+    if (!force && now - lastChannelSyncAtMs < CHANNEL_SYNC_TTL_MS) {
+      return backofficeBotRepository.findPrimaryChannel();
+    }
+
+    const run = this.doSyncPrimaryChannelFromEvolution().finally(() => {
+      channelSyncInFlight = null;
+    });
+
+    channelSyncInFlight = run;
+    return run;
+  }
+
+  private async doSyncPrimaryChannelFromEvolution(): Promise<SyncedChannel> {
+    const channel = await backofficeBotRepository.findPrimaryChannel();
+    if (!channel) {
+      lastChannelSyncAtMs = Date.now();
+      return null;
+    }
+
+    const instanceName = process.env.EVO_BETHANIA_INSTANCE?.trim() || "bethania";
+    const evoStatus = await backofficeEvoApiService
+      .getInstanceConnectionState(instanceName)
+      .catch((error) => {
+        console.error("[BackofficeBotAuthUseCase][syncPrimaryChannelFromEvolution] state", error);
+        return null;
+      });
+
+    if (!evoStatus) {
+      lastChannelSyncAtMs = Date.now();
+      return channel;
+    }
+
+    let phoneNumber = channel.phoneNumber;
+
+    if (evoStatus === "open") {
+      const livePhone = await backofficeEvoApiService
+        .getInstancePhoneNumber(instanceName)
+        .catch((error) => {
+          console.error("[BackofficeBotAuthUseCase][syncPrimaryChannelFromEvolution] phone", error);
+          return null;
+        });
+
+      // Não promover a connected com telefone stale se o lookup live falhou.
+      if (!livePhone) {
+        lastChannelSyncAtMs = Date.now();
+        return channel;
+      }
+      phoneNumber = livePhone;
+    }
+
+    const nextStatus = mapEvoStatusToChannelStatus(evoStatus);
+    const phoneChanged = (phoneNumber ?? null) !== (channel.phoneNumber ?? null);
+    const statusChanged = channel.status !== nextStatus;
+    if (!phoneChanged && !statusChanged) {
+      lastChannelSyncAtMs = Date.now();
+      return channel;
+    }
+
+    const updated = await backofficeBotRepository.upsertChannel({
+      status: nextStatus,
+      phoneNumber: phoneNumber ?? null,
+    });
+    lastChannelSyncAtMs = Date.now();
+    return updated;
+  }
+
   async linkInitiate(profileId: string): Promise<Output> {
     try {
+      await this.syncPrimaryChannelFromEvolution({ force: true });
       const result = await backofficeBotAuthService.linkInitiate(profileId);
       if (!result.ok) {
         const linkError = buildBethaniaLinkErrorResult(result.error);
@@ -210,6 +319,7 @@ export class BackofficeBotAuthUseCase implements IBackofficeBotAuthUseCase {
 
   async linkStatus(profileId: string): Promise<Output> {
     try {
+      await this.syncPrimaryChannelFromEvolution();
       const result = await backofficeBotAuthService.linkStatus(profileId);
       return new Output(true, [], [], result.result);
     } catch (error) {

@@ -1,4 +1,5 @@
 "use client"
+
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
@@ -10,16 +11,24 @@ import { useUserContext } from "@/app/context/UserContext"
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext"
 import { publicFormsService } from "../services/PublicFormsService"
 import { PublicFormRenderer } from "@/components/public-forms/PublicFormRenderer"
+import { ThemeProvider } from "@/components/theme-provider"
 import {
   applyHealthPlanCatalogToDraft,
   createHealthPlanSimulatorDraft,
 } from "@/lib/public-forms/templates/health-plan-simulator"
 import type {
+  PublicFormCoverHighlight,
   PublicFormDraftInput,
   PublicFormQuestionInput,
+  PublicFormRuleInput,
   PublicFormSnapshot,
 } from "@/lib/public-forms/types"
-import { getPageKey, getQuestionStepErrors, QUESTION_TYPE_OPTIONS } from "@/lib/public-forms/pages"
+import {
+  getPageKey,
+  getQuestionStepErrors,
+  groupQuestionsByPage,
+  QUESTION_TYPE_OPTIONS,
+} from "@/lib/public-forms/pages"
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
 import type {
   PublicFormMappingTarget,
@@ -32,6 +41,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Slider } from "@/components/ui/slider"
 import {
   Select,
   SelectContent,
@@ -67,16 +77,35 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import type { PublicFormSettings } from "../context/PublicFormsTypes"
 import { publicFormsClientService } from "../services/PublicFormsService"
-const steps = ["Básico", "Perguntas", "Regras", "Pontuação", "Aparência", "Revisar"] as const
+
+const steps = [
+  "Básico",
+  "Capa",
+  "Perguntas",
+  "Regras",
+  "Pontuação",
+  "Aparência",
+  "Revisar",
+] as const
+
 const emptyDraft: PublicFormDraftInput = {
   name: "",
-  description: "",
+  description: null,
   assignedSdrId: null,
   eligibleCloserIds: [],
   coverTitle: "",
   coverDescription: "",
+  coverBadge: null,
+  coverHighlights: [],
   ctaLabel: "Começar",
   successTitle: "Respostas enviadas",
   successDescription: "Obrigado pelo seu interesse.",
@@ -92,31 +121,126 @@ const emptyDraft: PublicFormDraftInput = {
   rules: [],
   scoreBands: [],
 }
+
 type Member = { profileId: string; name: string; functions: ("SDR" | "CLOSER")[] }
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
+function inverseRuleAction(action: PublicFormRuleAction): PublicFormRuleAction {
+  return action === "show" ? "skip" : "show"
+}
+
+function ruleOperatorLabel(operator: PublicFormRuleOperator): string {
+  switch (operator) {
+    case "equals":
+      return "é igual a"
+    case "not_equals":
+      return "não é igual a"
+    case "contains":
+      return "contém"
+    case "selected":
+      return "está selecionado"
+    case "not_selected":
+      return "não está selecionado"
+    default: {
+      const _exhaustive: never = operator
+      return String(_exhaustive)
+    }
+  }
+}
+
+function ruleActionLabel(action: PublicFormRuleAction): string {
+  return action === "show" ? "Exibir" : "Pular"
+}
+
+function questionTitleById(questions: PublicFormQuestionInput[], id: string): string {
+  return questions.find((q) => q.id === id)?.title?.trim() || "pergunta"
+}
+
+function buildRuleSentence(rule: PublicFormRuleInput, questions: PublicFormQuestionInput[]): string {
+  const source = questionTitleById(questions, rule.sourceQuestionId)
+  const target = questionTitleById(questions, rule.targetQuestionId)
+  const value =
+    rule.comparisonValue === undefined || rule.comparisonValue === null || rule.comparisonValue === ""
+      ? "…"
+      : String(rule.comparisonValue)
+  const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
+  return `Se ${source} ${ruleOperatorLabel(rule.operator)} ${value}, então ${ruleActionLabel(rule.action).toLowerCase()} ${target}; senão ${ruleActionLabel(elseAction).toLowerCase()} ${target}.`
+}
+
+function flattenPages(pages: Array<{ pageKey: string; questions: PublicFormQuestionInput[] }>) {
+  return pages.flatMap((page) => page.questions)
+}
+
+function reorderPages(
+  questions: PublicFormQuestionInput[],
+  sourceIndex: number,
+  destinationIndex: number,
+): PublicFormQuestionInput[] {
+  const pages = groupQuestionsByPage(questions)
+  const [moved] = pages.splice(sourceIndex, 1)
+  if (!moved) return questions
+  pages.splice(destinationIndex, 0, moved)
+  return flattenPages(pages)
+}
+
+function buildSavePayload(draft: PublicFormDraftInput): PublicFormDraftInput {
+  const coverDescription = draft.coverDescription?.trim() || null
+  return {
+    ...draft,
+    description: coverDescription,
+  }
+}
+
+function PreviewLight({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <ThemeProvider forcedTheme="light" attribute="class" enableSystem={false}>
+      <div className={className}>{children}</div>
+    </ThemeProvider>
+  )
+}
+
 export function PublicFormWizard({ formId }: { formId?: string }) {
-  const { activeTeam } = useTeamContext(),
-    { user } = useUserContext(),
-    params = useParams<{ supabaseId: string }>(),
-    router = useRouter(),
-    searchParams = useSearchParams(),
-    { setOverride } = usePageBreadcrumb(),
-    [draft, setDraft] = useState<PublicFormDraftInput>(() =>
-      formId ? emptyDraft : createHealthPlanSimulatorDraft(),
-    ),
-    [step, setStep] = useState(0),
-    [members, setMembers] = useState<Member[]>([]),
-    [loading, setLoading] = useState(Boolean(formId)),
-    [saving, setSaving] = useState(false),
-    [dirty, setDirty] = useState(false),
-    [currentId, setCurrentId] = useState(formId),
-    [customFields, setCustomFields] = useState<LeadCustomFieldDefinitionDTO[]>([]),
-    [healthPlans, setHealthPlans] = useState<Array<{ id: string; name: string }>>([]),
-    [settings, setSettings] = useState<PublicFormSettings | null>(null),
-    [confirmExit, setConfirmExit] = useState(false)
+  const { activeTeam } = useTeamContext()
+  const { user } = useUserContext()
+  const params = useParams<{ supabaseId: string }>()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { setOverride } = usePageBreadcrumb()
+  const isHealthPlanTemplate =
+    !formId && searchParams.get("template") === "health_plan_simulator"
+
+  const [draft, setDraft] = useState<PublicFormDraftInput>(() => {
+    if (formId) return emptyDraft
+    if (isHealthPlanTemplate) return createHealthPlanSimulatorDraft()
+    return emptyDraft
+  })
+  const [step, setStep] = useState(0)
+  const [members, setMembers] = useState<Member[]>([])
+  const [loading, setLoading] = useState(Boolean(formId))
+  const [saving, setSaving] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [currentId, setCurrentId] = useState(formId)
+  const [customFields, setCustomFields] = useState<LeadCustomFieldDefinitionDTO[]>([])
+  const [healthPlans, setHealthPlans] = useState<Array<{ id: string; name: string }>>([])
+  const [settings, setSettings] = useState<PublicFormSettings | null>(null)
+  const [confirmExit, setConfirmExit] = useState(false)
+
   useEffect(() => {
     setOverride({ label: formId ? draft.name || "Editar formulário" : "Novo formulário" })
     return () => setOverride(null)
   }, [setOverride, formId, draft.name])
+
   useEffect(() => {
     if (!activeTeam?.id || !user?.id) return
     const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
@@ -137,7 +261,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
       .then((o) => {
         const plans = Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []
         setHealthPlans(plans)
-        if (!formId && plans.length > 0) {
+        if (isHealthPlanTemplate && plans.length > 0) {
           setDraft((current) =>
             applyHealthPlanCatalogToDraft(
               current,
@@ -150,13 +274,14 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
       .getSettings({ supabaseId: user.id, teamId: activeTeam.id })
       .then(setSettings)
       .catch(() => null)
-    if (formId)
+    if (formId) {
       void publicFormsService
         .get(user.id, activeTeam.id, formId)
         .then((f) =>
           setDraft({
             ...emptyDraft,
             ...f,
+            coverHighlights: f.coverHighlights ?? [],
             questions: f.questions ?? [],
             rules: f.rules ?? [],
             scoreBands: f.scoreBands ?? [],
@@ -164,7 +289,9 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
         )
         .catch((e) => toast.error(e.message))
         .finally(() => setLoading(false))
-  }, [activeTeam?.id, user?.id, formId])
+    }
+  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate])
+
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {
       if (dirty) e.preventDefault()
@@ -172,15 +299,18 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
     addEventListener("beforeunload", h)
     return () => removeEventListener("beforeunload", h)
   }, [dirty])
+
   const change = (patch: Partial<PublicFormDraftInput>) => {
-    setDraft({ ...draft, ...patch })
+    setDraft((prev) => ({ ...prev, ...patch }))
     setDirty(true)
   }
+
   async function save() {
     if (!activeTeam?.id || !user?.id) return null
     setSaving(true)
     try {
-      const f = await publicFormsService.save(user.id, activeTeam.id, currentId ?? null, draft)
+      const payload = buildSavePayload(draft)
+      const f = await publicFormsService.save(user.id, activeTeam.id, currentId ?? null, payload)
       setCurrentId(f.id)
       setDirty(false)
       toast.success("Rascunho salvo")
@@ -193,17 +323,22 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
       setSaving(false)
     }
   }
+
   async function publish() {
-    const f = await save()
-    if (!f || !activeTeam?.id || !user?.id) return
+    setPublishing(true)
     try {
+      const f = await save()
+      if (!f || !activeTeam?.id || !user?.id) return
       await publicFormsService.action(user.id, activeTeam.id, f.id, "publish")
       toast.success("Formulário publicado")
       router.push(`/${params.supabaseId}/forms`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível publicar")
+    } finally {
+      setPublishing(false)
     }
   }
+
   async function openPreview() {
     const form = await save()
     if (form) {
@@ -214,9 +349,10 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
       )
     }
   }
+
   const snapshot = useMemo<PublicFormSnapshot>(
     () => ({
-      ...draft,
+      ...buildSavePayload(draft),
       formId: currentId ?? "preview",
       publicId: "preview",
       version: 0,
@@ -241,7 +377,9 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
     }),
     [draft, currentId, members, settings],
   )
+
   if (loading) return <div className="p-6">Carregando formulário...</div>
+
   if (searchParams.get("preview") === "1") {
     return (
       <main className="flex min-h-dvh flex-col bg-muted/40">
@@ -253,16 +391,15 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
             </Link>
           </Button>
         </header>
-        <div className="flex min-h-0 flex-1 justify-center overflow-y-auto p-4">
-          <div
-            className="public-form-page light h-[calc(100dvh-4.5rem)] w-full max-w-[580px] overflow-hidden rounded-2xl border bg-background shadow-sm [color-scheme:light]"
-          >
+        <PreviewLight className="flex min-h-0 flex-1 justify-center overflow-y-auto p-4">
+          <div className="public-form-page light h-[calc(100dvh-4.5rem)] w-full max-w-[580px] overflow-hidden rounded-2xl border bg-background shadow-sm [color-scheme:light]">
             <PublicFormRenderer snapshot={snapshot} preview className="h-full min-h-[60dvh]" />
           </div>
-        </div>
+        </PreviewLight>
       </main>
     )
   }
+
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 md:px-6">
@@ -281,11 +418,11 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
           </Link>
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => void save()} disabled={saving}>
+          <Button variant="outline" onClick={() => void save()} disabled={saving || publishing}>
             <Save data-icon="inline-start" />
             {saving ? "Salvando..." : "Salvar rascunho"}
           </Button>
-          <Button variant="outline" onClick={() => void openPreview()}>
+          <Button variant="outline" onClick={() => void openPreview()} disabled={publishing}>
             <Eye data-icon="inline-start" />
             Preview
           </Button>
@@ -332,8 +469,9 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
               </Badge>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">{steps[step]}</h1>
             </div>
-            {step === 0 && <Basic draft={draft} change={change} members={members} />}{" "}
-            {step === 1 && (
+            {step === 0 && <Basic draft={draft} change={change} members={members} />}
+            {step === 1 && <Cover draft={draft} change={change} />}
+            {step === 2 && (
               <Questions
                 draft={draft}
                 change={change}
@@ -341,13 +479,14 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
                 healthPlans={healthPlans}
                 members={members}
               />
-            )}{" "}
-            {step === 2 && <Rules draft={draft} change={change} />}{" "}
-            {step === 3 && <Scores draft={draft} change={change} />}{" "}
-            {step === 4 && <Appearance draft={draft} change={change} />}{" "}
-            {step === 5 && (
+            )}
+            {step === 3 && <Rules draft={draft} change={change} />}
+            {step === 4 && <Scores draft={draft} change={change} />}
+            {step === 5 && <Appearance draft={draft} change={change} />}
+            {step === 6 && (
               <Review
                 draft={draft}
+                publishing={publishing}
                 onPublish={() => void publish()}
                 onGoToStep={setStep}
               />
@@ -359,7 +498,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
               {step < steps.length - 1 ? (
                 <Button
                   onClick={() => {
-                    if (step === 1) {
+                    if (step === 2) {
                       const errors = getQuestionStepErrors(draft)
                       if (errors.length > 0) {
                         toast.error(errors[0])
@@ -380,15 +519,17 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
                   Abrir preview
                 </Button>
               </DrawerTrigger>
-              <DrawerContent className="public-form-page light max-h-[90vh] overflow-y-auto">
+              <DrawerContent className="max-h-[90vh] overflow-y-auto">
                 <DrawerHeader>
                   <DrawerTitle>Preview do formulário</DrawerTitle>
                 </DrawerHeader>
-                <PublicFormRenderer
-                  snapshot={snapshot}
-                  preview
-                  className="public-form-page light [color-scheme:light]"
-                />
+                <PreviewLight>
+                  <PublicFormRenderer
+                    snapshot={snapshot}
+                    preview
+                    className="public-form-page light [color-scheme:light]"
+                  />
+                </PreviewLight>
               </DrawerContent>
             </Drawer>
           </div>
@@ -397,9 +538,9 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Preview ao vivo
           </p>
-          <div className="public-form-page light mx-auto h-[calc(100%-1.5rem)] w-full max-w-[580px] overflow-y-auto rounded-2xl border bg-background shadow-sm [color-scheme:light]">
+          <PreviewLight className="public-form-page light mx-auto h-[calc(100%-1.5rem)] w-full max-w-[580px] overflow-y-auto rounded-2xl border bg-background shadow-sm [color-scheme:light]">
             <PublicFormRenderer snapshot={snapshot} preview className="min-h-full" />
-          </div>
+          </PreviewLight>
         </aside>
       </div>
       <AlertDialog open={confirmExit} onOpenChange={setConfirmExit}>
@@ -419,6 +560,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
     </main>
   )
 }
+
 function Basic({
   draft: d,
   change,
@@ -429,63 +571,165 @@ function Basic({
   members: Member[]
 }) {
   return (
-    <div className="flex flex-col gap-5">
-      <Field label="Nome do formulário">
-        <Input value={d.name} onChange={(e) => change({ name: e.target.value })} />
+    <FieldGroup>
+      <Field>
+        <FieldLabel>Nome do formulário</FieldLabel>
+        <FieldContent>
+          <Input value={d.name} onChange={(e) => change({ name: e.target.value })} />
+        </FieldContent>
       </Field>
-      <Field label="Título da capa">
-        <Input
-          value={d.coverTitle ?? ""}
-          onChange={(e) => change({ coverTitle: e.target.value })}
-        />
+      <Field>
+        <FieldLabel>Título de conclusão</FieldLabel>
+        <FieldContent>
+          <Input value={d.successTitle} onChange={(e) => change({ successTitle: e.target.value })} />
+        </FieldContent>
       </Field>
-      <Field label="Descrição da capa">
-        <Textarea
-          value={d.coverDescription ?? ""}
-          onChange={(e) => change({ coverDescription: e.target.value })}
-        />
+      <Field>
+        <FieldLabel>Mensagem de conclusão</FieldLabel>
+        <FieldContent>
+          <Textarea
+            value={d.successDescription ?? ""}
+            onChange={(e) => change({ successDescription: e.target.value })}
+          />
+        </FieldContent>
       </Field>
-      <Field label="Descrição">
-        <Textarea
-          value={d.description ?? ""}
-          onChange={(e) => change({ description: e.target.value })}
-        />
+      <Field>
+        <FieldLabel>SDR responsável (opcional)</FieldLabel>
+        <FieldContent>
+          <Select
+            value={d.assignedSdrId ?? "__none__"}
+            onValueChange={(v) => change({ assignedSdrId: v === "__none__" ? null : v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Nenhum (opcional)</SelectItem>
+              {members
+                .filter((m) => m.functions.includes("SDR"))
+                .map((m) => (
+                  <SelectItem key={m.profileId} value={m.profileId}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </FieldContent>
       </Field>
-      <Field label="Texto do botão">
-        <Input value={d.ctaLabel} onChange={(e) => change({ ctaLabel: e.target.value })} />
-      </Field>
-      <Field label="Título de conclusão">
-        <Input value={d.successTitle} onChange={(e) => change({ successTitle: e.target.value })} />
-      </Field>
-      <Field label="Mensagem de conclusão">
-        <Textarea
-          value={d.successDescription ?? ""}
-          onChange={(e) => change({ successDescription: e.target.value })}
-        />
-      </Field>
-      <Field label="SDR responsável (opcional)">
-        <Select
-          value={d.assignedSdrId ?? "__none__"}
-          onValueChange={(v) => change({ assignedSdrId: v === "__none__" ? null : v })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Nenhum (opcional)</SelectItem>
-            {members
-              .filter((m) => m.functions.includes("SDR"))
-              .map((m) => (
-                <SelectItem key={m.profileId} value={m.profileId}>
-                  {m.name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      </Field>
-    </div>
+    </FieldGroup>
   )
 }
+
+function Cover({
+  draft: d,
+  change,
+}: {
+  draft: PublicFormDraftInput
+  change: (p: Partial<PublicFormDraftInput>) => void
+}) {
+  const highlights = d.coverHighlights ?? []
+
+  function updateHighlight(id: string, patch: Partial<PublicFormCoverHighlight>) {
+    change({
+      coverHighlights: highlights.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    })
+  }
+
+  return (
+    <FieldGroup>
+      <Field>
+        <FieldLabel>Título</FieldLabel>
+        <FieldContent>
+          <Input
+            value={d.coverTitle ?? ""}
+            onChange={(e) => change({ coverTitle: e.target.value })}
+          />
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel>Subtítulo</FieldLabel>
+        <FieldContent>
+          <Textarea
+            value={d.coverDescription ?? ""}
+            onChange={(e) => change({ coverDescription: e.target.value })}
+          />
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel>Conteúdo do botão</FieldLabel>
+        <FieldContent>
+          <Input value={d.ctaLabel} onChange={(e) => change({ ctaLabel: e.target.value })} />
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel>Badge</FieldLabel>
+        <FieldContent>
+          <Input
+            value={d.coverBadge ?? ""}
+            placeholder="Opcional"
+            onChange={(e) => change({ coverBadge: e.target.value.trim() || null })}
+          />
+        </FieldContent>
+      </Field>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <FieldLabel>Destaques da capa</FieldLabel>
+          <Badge variant="secondary">Até 3 blocos</Badge>
+        </div>
+        {highlights.map((item, index) => (
+          <div className="grid gap-2 rounded-lg border p-4 sm:grid-cols-[1fr_1fr_auto]" key={item.id}>
+            <Field>
+              <FieldLabel>Valor</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={item.value}
+                  onChange={(e) => updateHighlight(item.id, { value: e.target.value })}
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>Rótulo</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={item.label}
+                  onChange={(e) => updateHighlight(item.id, { label: e.target.value })}
+                />
+              </FieldContent>
+            </Field>
+            <Button
+              type="button"
+              variant="ghost"
+              className="self-end"
+              aria-label={`Remover destaque ${index + 1}`}
+              onClick={() =>
+                change({ coverHighlights: highlights.filter((h) => h.id !== item.id) })
+              }
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={highlights.length >= 3}
+          onClick={() =>
+            change({
+              coverHighlights: [
+                ...highlights,
+                { id: crypto.randomUUID(), value: "", label: "" },
+              ],
+            })
+          }
+        >
+          <Plus data-icon="inline-start" />
+          Adicionar destaque
+        </Button>
+      </div>
+    </FieldGroup>
+  )
+}
+
 function Questions({
   draft: d,
   change,
@@ -500,22 +744,58 @@ function Questions({
   members: Member[]
 }) {
   const stepErrors = getQuestionStepErrors(d)
+  const pages = groupQuestionsByPage(d.questions)
+
   function updateQuestion(id: string, patch: Partial<PublicFormQuestionInput>) {
     change({
       questions: d.questions.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     })
   }
-  function add(pageKey?: string) {
-    const key = pageKey ?? crypto.randomUUID()
-    const samePage = d.questions.filter((question) => getPageKey(question) === key)
-    if (pageKey && samePage.length >= 3) {
+
+  function removeQuestion(id: string) {
+    const used = d.rules.some((r) => r.sourceQuestionId === id || r.targetQuestionId === id)
+    if (used) {
+      toast.error("Remova as regras que usam esta pergunta")
+      return
+    }
+    const nextQuestions = d.questions.filter((x) => x.id !== id)
+    change({
+      questions: nextQuestions,
+      schedulingEnabled: nextQuestions.some((item) => item.type === "scheduling"),
+    })
+  }
+
+  function addSubQuestion(pageKey: string) {
+    const samePage = d.questions.filter((question) => getPageKey(question) === pageKey)
+    if (samePage.length >= 3) {
       toast.error("Cada página pode ter no máximo 3 campos")
       return
     }
-    if (pageKey && samePage.some((question) => question.type === "scheduling")) {
-      toast.error("A pergunta de agendamento deve ficar sozinha na página")
+    if (
+      samePage.some(
+        (question) => question.type === "scheduling" || question.type === "calculation",
+      )
+    ) {
+      toast.error("Esta página deve ficar com uma única pergunta especial")
       return
     }
+    change({
+      questions: [
+        ...d.questions,
+        {
+          id: crypto.randomUUID(),
+          type: "text",
+          title: "Nova sub-pergunta",
+          required: false,
+          options: [],
+          mappingTarget: "history",
+          config: { pageKey },
+        },
+      ],
+    })
+  }
+
+  function addPage() {
     change({
       questions: [
         ...d.questions,
@@ -526,18 +806,19 @@ function Questions({
           required: false,
           options: [],
           mappingTarget: "history",
-          config: { pageKey: key },
+          config: { pageKey: crypto.randomUUID() },
         },
       ],
     })
   }
-  function drop(r: DropResult) {
-    if (!r.destination) return
-    const q = [...d.questions],
-      [m] = q.splice(r.source.index, 1)
-    q.splice(r.destination.index, 0, m)
-    change({ questions: q })
+
+  function onPageDragEnd(result: DropResult) {
+    if (!result.destination) return
+    change({
+      questions: reorderPages(d.questions, result.source.index, result.destination.index),
+    })
   }
+
   function setQuestionType(question: PublicFormQuestionInput, nextType: PublicFormQuestionType) {
     if (nextType === "scheduling") {
       if (d.questions.some((item) => item.type === "scheduling" && item.id !== question.id)) {
@@ -560,6 +841,28 @@ function Questions({
       })
       return
     }
+
+    if (nextType === "calculation") {
+      if (d.questions.some((item) => item.type === "calculation" && item.id !== question.id)) {
+        toast.error("Só é permitido uma pergunta de cálculo")
+        return
+      }
+      change({
+        questions: d.questions.map((item) =>
+          item.id === question.id
+            ? {
+                ...item,
+                type: nextType,
+                required: true,
+                options: [],
+                config: { pageKey: crypto.randomUUID() },
+              }
+            : item,
+        ),
+      })
+      return
+    }
+
     const wasScheduling = question.type === "scheduling"
     const options =
       nextType === "health_plan"
@@ -582,6 +885,256 @@ function Questions({
         : d.schedulingEnabled,
     })
   }
+
+  function renderQuestionFields(q: PublicFormQuestionInput, isSub: boolean) {
+    return (
+      <>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Input
+            className="sm:col-span-2"
+            value={q.title}
+            placeholder={isSub ? "Sub-pergunta" : "Título da pergunta"}
+            onChange={(e) => updateQuestion(q.id!, { title: e.target.value })}
+          />
+          <Input
+            className="sm:col-span-2"
+            value={q.description ?? ""}
+            placeholder="Descrição opcional"
+            onChange={(event) => updateQuestion(q.id!, { description: event.target.value })}
+          />
+          <Input
+            className="sm:col-span-2"
+            value={q.placeholder ?? ""}
+            placeholder="Placeholder opcional"
+            onChange={(event) => updateQuestion(q.id!, { placeholder: event.target.value })}
+          />
+          <Select
+            value={q.type}
+            onValueChange={(v) => setQuestionType(q, v as PublicFormQuestionType)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {QUESTION_TYPE_OPTIONS.map(({ value, label }) => (
+                <SelectItem value={value} key={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={q.mappingTarget ?? "history"}
+            onValueChange={(v) =>
+              updateQuestion(q.id!, {
+                mappingTarget: v as PublicFormMappingTarget,
+              })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="history">Somente histórico</SelectItem>
+              <SelectItem value="native_field">Campo nativo</SelectItem>
+              <SelectItem value="custom_field">Campo personalizado</SelectItem>
+              <SelectItem value="notes">Observações</SelectItem>
+            </SelectContent>
+          </Select>
+          {q.mappingTarget === "native_field" && (
+            <Select
+              value={q.mappingKey ?? ""}
+              onValueChange={(v) => updateQuestion(q.id!, { mappingKey: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Campo do lead" />
+              </SelectTrigger>
+              <SelectContent>
+                {[
+                  ["age", "Idade"],
+                  ["cnpj", "CNPJ"],
+                  ["email", "E-mail"],
+                  ["referenceHospital", "Hospital de referência"],
+                  ["name", "Nome"],
+                  ["currentHealthPlan", "Plano atual"],
+                  ["phone", "Telefone"],
+                  ["currentTreatment", "Tratamento atual"],
+                  ["currentValue", "Valor atual"],
+                ]
+                  .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+                  .map(([value, label]) => (
+                    <SelectItem value={value} key={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          )}
+          {q.mappingTarget === "custom_field" && (
+            <Select
+              value={q.mappingKey ?? ""}
+              onValueChange={(value) => updateQuestion(q.id!, { mappingKey: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Campo personalizado" />
+              </SelectTrigger>
+              <SelectContent>
+                {[...customFields]
+                  .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
+                  .map((field) => (
+                    <SelectItem key={field.id} value={field.key}>
+                      {field.label}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <Switch
+              checked={q.required}
+              onCheckedChange={(v) => updateQuestion(q.id!, { required: v })}
+            />
+            Obrigatória
+          </label>
+        </div>
+        {q.type === "scheduling" ? (
+          <div className="mt-4">
+            <ScheduleInline draft={d} change={change} members={members} />
+          </div>
+        ) : null}
+        {["single_choice", "multiple_choice", "health_plan"].includes(q.type) && (
+          <div className="mt-4 flex flex-col gap-3">
+            {q.options.map((o) => (
+              <div className="flex flex-col gap-2 rounded-md border p-3" key={o.id}>
+                <div className="flex gap-2">
+                  <Input
+                    className="flex-1"
+                    value={o.label}
+                    onChange={(e) =>
+                      change({
+                        questions: d.questions.map((x) =>
+                          x.id === q.id
+                            ? {
+                                ...x,
+                                options: x.options.map((y) =>
+                                  y.id === o.id
+                                    ? {
+                                        ...y,
+                                        label: e.target.value,
+                                        value: e.target.value
+                                          .toLowerCase()
+                                          .replace(/\W+/g, "_"),
+                                      }
+                                    : y,
+                                ),
+                              }
+                            : x,
+                        ),
+                      })
+                    }
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    type="button"
+                    onClick={() =>
+                      change({
+                        questions: d.questions.map((x) =>
+                          x.id === q.id
+                            ? { ...x, options: x.options.filter((y) => y.id !== o.id) }
+                            : x,
+                        ),
+                      })
+                    }
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+                <Field>
+                  <FieldLabel>Peso</FieldLabel>
+                  <FieldDescription>contribui para o % final</FieldDescription>
+                  <FieldContent className="flex flex-col gap-3">
+                    <Slider
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={[clampPercent(o.score)]}
+                      onValueChange={(values) => {
+                        const score = clampPercent(values[0] ?? 0)
+                        change({
+                          questions: d.questions.map((x) =>
+                            x.id === q.id
+                              ? {
+                                  ...x,
+                                  options: x.options.map((y) =>
+                                    y.id === o.id ? { ...y, score } : y,
+                                  ),
+                                }
+                              : x,
+                          ),
+                        })
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      className="w-24"
+                      value={clampPercent(o.score)}
+                      onChange={(e) => {
+                        const score = clampPercent(Number(e.target.value))
+                        change({
+                          questions: d.questions.map((x) =>
+                            x.id === q.id
+                              ? {
+                                  ...x,
+                                  options: x.options.map((y) =>
+                                    y.id === o.id ? { ...y, score } : y,
+                                  ),
+                                }
+                              : x,
+                          ),
+                        })
+                      }}
+                    />
+                  </FieldContent>
+                </Field>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() =>
+                change({
+                  questions: d.questions.map((x) =>
+                    x.id === q.id
+                      ? {
+                          ...x,
+                          options: [
+                            ...x.options,
+                            {
+                              id: crypto.randomUUID(),
+                              label: `Opção ${x.options.length + 1}`,
+                              value: `option_${x.options.length + 1}`,
+                              score: 0,
+                            },
+                          ],
+                        }
+                      : x,
+                  ),
+                })
+              }
+            >
+              <Plus data-icon="inline-start" />
+              Opção
+            </Button>
+          </div>
+        )}
+      </>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {stepErrors.length > 0 ? (
@@ -595,270 +1148,78 @@ function Questions({
           </AlertDescription>
         </Alert>
       ) : null}
-      <DragDropContext onDragEnd={drop}>
-        <Droppable droppableId="questions">
-          {(p) => (
-            <div ref={p.innerRef} {...p.droppableProps} className="flex flex-col gap-3">
-              {d.questions.map((q, i) => {
-                const pageKey = getPageKey(q)
-                const pageSize = d.questions.filter((item) => getPageKey(item) === pageKey).length
+      <DragDropContext onDragEnd={onPageDragEnd}>
+        <Droppable droppableId="pages">
+          {(provided) => (
+            <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-3">
+              {pages.map((page, pageIndex) => {
+                const [main, ...subs] = page.questions
+                if (!main?.id) return null
+                const soloSpecial = page.questions.some(
+                  (item) => item.type === "scheduling" || item.type === "calculation",
+                )
                 return (
-                  <Draggable draggableId={q.id!} index={i} key={q.id}>
-                    {(p) => (
+                  <Draggable draggableId={page.pageKey} index={pageIndex} key={page.pageKey}>
+                    {(dragProvided) => (
                       <div
-                        ref={p.innerRef}
-                        {...p.draggableProps}
+                        ref={dragProvided.innerRef}
+                        {...dragProvided.draggableProps}
                         className="rounded-lg border bg-card p-4"
                       >
                         <div className="mb-4 flex items-center gap-2">
-                          <button type="button" {...p.dragHandleProps} aria-label="Reordenar pergunta">
+                          <button
+                            type="button"
+                            {...dragProvided.dragHandleProps}
+                            aria-label="Reordenar página"
+                          >
                             <GripVertical className="text-muted-foreground" />
                           </button>
-                          <span className="font-medium">Pergunta {i + 1}</span>
+                          <span className="font-medium">Página {pageIndex + 1}</span>
                           <Badge variant="secondary">
-                            Página · {pageSize} campo{pageSize === 1 ? "" : "s"}
+                            {page.questions.length} campo{page.questions.length === 1 ? "" : "s"}
                           </Badge>
                           <Button
                             variant="ghost"
                             size="icon"
+                            type="button"
                             className="ml-auto"
-                            onClick={() => {
-                              const used = d.rules.some(
-                                (r) => r.sourceQuestionId === q.id || r.targetQuestionId === q.id,
-                              )
-                              if (used) {
-                                toast.error("Remova as regras que usam esta pergunta")
-                                return
-                              }
-                              const nextQuestions = d.questions.filter((x) => x.id !== q.id)
-                              change({
-                                questions: nextQuestions,
-                                schedulingEnabled: nextQuestions.some(
-                                  (item) => item.type === "scheduling",
-                                ),
-                              })
-                            }}
+                            onClick={() => removeQuestion(main.id!)}
                           >
                             <Trash2 />
                           </Button>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Input
-                            className="sm:col-span-2"
-                            value={q.title}
-                            onChange={(e) => updateQuestion(q.id!, { title: e.target.value })}
-                          />
-                          <Input
-                            className="sm:col-span-2"
-                            value={q.description ?? ""}
-                            placeholder="Descrição opcional"
-                            onChange={(event) =>
-                              updateQuestion(q.id!, { description: event.target.value })
-                            }
-                          />
-                          <Input
-                            className="sm:col-span-2"
-                            value={q.placeholder ?? ""}
-                            placeholder="Placeholder opcional"
-                            onChange={(event) =>
-                              updateQuestion(q.id!, { placeholder: event.target.value })
-                            }
-                          />
-                          <Select
-                            value={q.type}
-                            onValueChange={(v) => setQuestionType(q, v as PublicFormQuestionType)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {QUESTION_TYPE_OPTIONS.map(({ value, label }) => (
-                                <SelectItem value={value} key={value}>
-                                  {label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={q.mappingTarget ?? "history"}
-                            onValueChange={(v) =>
-                              updateQuestion(q.id!, {
-                                mappingTarget: v as PublicFormMappingTarget,
-                              })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="history">Somente histórico</SelectItem>
-                              <SelectItem value="native_field">Campo nativo</SelectItem>
-                              <SelectItem value="custom_field">Campo personalizado</SelectItem>
-                              <SelectItem value="notes">Observações</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {q.mappingTarget === "native_field" && (
-                            <Select
-                              value={q.mappingKey ?? ""}
-                              onValueChange={(v) => updateQuestion(q.id!, { mappingKey: v })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Campo do lead" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {[
-                                  ["age", "Idade"],
-                                  ["cnpj", "CNPJ"],
-                                  ["email", "E-mail"],
-                                  ["referenceHospital", "Hospital de referência"],
-                                  ["name", "Nome"],
-                                  ["currentHealthPlan", "Plano atual"],
-                                  ["phone", "Telefone"],
-                                  ["currentTreatment", "Tratamento atual"],
-                                  ["currentValue", "Valor atual"],
-                                ]
-                                  .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
-                                  .map(([value, label]) => (
-                                    <SelectItem value={value} key={value}>
-                                      {label}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          {q.mappingTarget === "custom_field" && (
-                            <Select
-                              value={q.mappingKey ?? ""}
-                              onValueChange={(value) => updateQuestion(q.id!, { mappingKey: value })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Campo personalizado" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {[...customFields]
-                                  .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
-                                  .map((field) => (
-                                    <SelectItem key={field.id} value={field.key}>
-                                      {field.label}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          <label className="flex items-center gap-2 text-sm">
-                            <Switch
-                              checked={q.required}
-                              onCheckedChange={(v) => updateQuestion(q.id!, { required: v })}
-                            />
-                            Obrigatória
-                          </label>
-                        </div>
-                        {q.type === "scheduling" ? (
-                          <div className="mt-4">
-                            <ScheduleInline draft={d} change={change} members={members} />
-                          </div>
-                        ) : null}
-                        {["single_choice", "multiple_choice"].includes(q.type) && (
-                          <div className="mt-4 flex flex-col gap-2">
-                            {q.options.map((o) => (
-                              <div className="flex gap-2" key={o.id}>
-                                <Input
-                                  value={o.label}
-                                  onChange={(e) =>
-                                    change({
-                                      questions: d.questions.map((x) =>
-                                        x.id === q.id
-                                          ? {
-                                              ...x,
-                                              options: x.options.map((y) =>
-                                                y.id === o.id
-                                                  ? {
-                                                      ...y,
-                                                      label: e.target.value,
-                                                      value: e.target.value
-                                                        .toLowerCase()
-                                                        .replace(/\W+/g, "_"),
-                                                    }
-                                                  : y,
-                                              ),
-                                            }
-                                          : x,
-                                      ),
-                                    })
-                                  }
-                                />
-                                <Input
-                                  aria-label="Pontuação"
-                                  className="w-24"
-                                  type="number"
-                                  value={o.score}
-                                  onChange={(e) =>
-                                    change({
-                                      questions: d.questions.map((x) =>
-                                        x.id === q.id
-                                          ? {
-                                              ...x,
-                                              options: x.options.map((y) =>
-                                                y.id === o.id
-                                                  ? { ...y, score: Number(e.target.value) }
-                                                  : y,
-                                              ),
-                                            }
-                                          : x,
-                                      ),
-                                    })
-                                  }
-                                />
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    change({
-                                      questions: d.questions.map((x) =>
-                                        x.id === q.id
-                                          ? { ...x, options: x.options.filter((y) => y.id !== o.id) }
-                                          : x,
-                                      ),
-                                    })
-                                  }
-                                >
-                                  <Trash2 />
-                                </Button>
+                        {renderQuestionFields(main, false)}
+                        {subs.length > 0 ? (
+                          <div className="mt-6 flex flex-col gap-4 border-t pt-4">
+                            <p className="text-sm font-medium text-muted-foreground">Sub-perguntas</p>
+                            {subs.map((sub) => (
+                              <div className="rounded-md border border-dashed p-3" key={sub.id}>
+                                <div className="mb-3 flex items-center justify-between gap-2">
+                                  <Badge variant="outline">Sub-pergunta</Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    type="button"
+                                    onClick={() => removeQuestion(sub.id!)}
+                                  >
+                                    <Trash2 />
+                                  </Button>
+                                </div>
+                                {renderQuestionFields(sub, true)}
                               </div>
                             ))}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                change({
-                                  questions: d.questions.map((x) =>
-                                    x.id === q.id
-                                      ? {
-                                          ...x,
-                                          options: [
-                                            ...x.options,
-                                            {
-                                              id: crypto.randomUUID(),
-                                              label: `Opção ${x.options.length + 1}`,
-                                              value: `option_${x.options.length + 1}`,
-                                              score: 0,
-                                            },
-                                          ],
-                                        }
-                                      : x,
-                                  ),
-                                })
-                              }
-                            >
-                              <Plus data-icon="inline-start" />
-                              Opção
-                            </Button>
                           </div>
-                        )}
-                        {q.type !== "scheduling" && pageSize < 3 ? (
-                          <Button className="mt-3" variant="ghost" size="sm" onClick={() => add(pageKey)}>
+                        ) : null}
+                        {!soloSpecial && page.questions.length < 3 ? (
+                          <Button
+                            className="mt-4"
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            onClick={() => addSubQuestion(page.pageKey)}
+                          >
                             <Plus data-icon="inline-start" />
-                            Adicionar campo nesta página
+                            Adicionar sub-pergunta
                           </Button>
                         ) : null}
                       </div>
@@ -866,18 +1227,19 @@ function Questions({
                   </Draggable>
                 )
               })}
-              {p.placeholder}
+              {provided.placeholder}
             </div>
           )}
         </Droppable>
       </DragDropContext>
-      <Button variant="outline" onClick={() => add()}>
+      <Button variant="outline" type="button" onClick={addPage}>
         <Plus data-icon="inline-start" />
         Adicionar pergunta
       </Button>
     </div>
   )
 }
+
 function Rules({
   draft: d,
   change,
@@ -885,111 +1247,242 @@ function Rules({
   draft: PublicFormDraftInput
   change: (p: Partial<PublicFormDraftInput>) => void
 }) {
+  function updateRule(id: string, patch: Partial<PublicFormRuleInput>) {
+    change({
+      rules: d.rules.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)),
+    })
+  }
+
+  function sourceQuestion(rule: PublicFormRuleInput) {
+    return d.questions.find((q) => q.id === rule.sourceQuestionId)
+  }
+
+  function choiceOptions(question: PublicFormQuestionInput | undefined) {
+    if (!question) return []
+    if (!["single_choice", "multiple_choice", "health_plan"].includes(question.type)) return []
+    return question.options
+  }
+
   return (
-    <div className="flex flex-col gap-3">
-      {d.rules.map((r) => (
-        <div className="grid gap-2 rounded-lg border p-4 sm:grid-cols-2" key={r.id}>
-          <Select
-            value={r.sourceQuestionId}
-            onValueChange={(v) =>
-              change({
-                rules: d.rules.map((x) => (x.id === r.id ? { ...x, sourceQuestionId: v } : x)),
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {d.questions.map((q) => (
-                <SelectItem key={q.id} value={q.id!}>
-                  {q.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={r.targetQuestionId}
-            onValueChange={(v) =>
-              change({
-                rules: d.rules.map((x) => (x.id === r.id ? { ...x, targetQuestionId: v } : x)),
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {d.questions.map((q) => (
-                <SelectItem key={q.id} value={q.id!}>
-                  {q.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={r.operator}
-            onValueChange={(v) =>
-              change({
-                rules: d.rules.map((x) =>
-                  x.id === r.id ? { ...x, operator: v as PublicFormRuleOperator } : x,
-                ),
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="equals">É igual a</SelectItem>
-              <SelectItem value="not_equals">Não é igual a</SelectItem>
-              <SelectItem value="contains">Contém</SelectItem>
-              <SelectItem value="selected">Selecionado</SelectItem>
-              <SelectItem value="not_selected">Não selecionado</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Valor comparado"
-            value={String(r.comparisonValue ?? "")}
-            onChange={(e) =>
-              change({
-                rules: d.rules.map((x) =>
-                  x.id === r.id ? { ...x, comparisonValue: e.target.value } : x,
-                ),
-              })
-            }
-          />
-          <Select
-            value={r.action}
-            onValueChange={(v) =>
-              change({
-                rules: d.rules.map((x) =>
-                  x.id === r.id ? { ...x, action: v as PublicFormRuleAction } : x,
-                ),
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="show">Exibir destino</SelectItem>
-              <SelectItem value="skip">Pular destino</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="ghost"
-            onClick={() => change({ rules: d.rules.filter((x) => x.id !== r.id) })}
-          >
-            <Trash2 data-icon="inline-start" />
-            Remover
-          </Button>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          Controle o fluxo com condições Se / Então / Senão entre perguntas.
+        </p>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button type="button" variant="outline" size="icon" aria-label="Como funcionam as regras">
+              <HelpCircle />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="flex max-h-[90vh] flex-col">
+            <DialogHeader>
+              <DialogTitle>Regras condicionais</DialogTitle>
+              <DialogDescription>
+                Defina o que acontece quando uma resposta atende (ou não) a uma condição.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto text-sm text-muted-foreground">
+              <p>
+                <strong>Se</strong> a resposta da pergunta de origem satisfizer o operador e o valor,
+                a ação <strong>Então</strong> é aplicada ao destino (exibir ou pular).
+              </p>
+              <p>
+                Caso contrário, usa-se a ação <strong>Senão</strong> — normalmente o oposto de Então,
+                para cobrir os dois caminhos do fluxo.
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+      {d.rules.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          Nenhuma regra ainda. Adicione uma regra para personalizar o fluxo do formulário.
         </div>
-      ))}
+      ) : null}
+      {d.rules.map((rule) => {
+        const source = sourceQuestion(rule)
+        const options = choiceOptions(source)
+        const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
+        return (
+          <div className="flex flex-col gap-3 rounded-lg border p-4" key={rule.id}>
+            <p className="text-sm text-muted-foreground">{buildRuleSentence(rule, d.questions)}</p>
+            <div className="grid gap-3">
+              <Field>
+                <FieldLabel>Se — pergunta</FieldLabel>
+                <FieldContent>
+                  <Select
+                    value={rule.sourceQuestionId}
+                    onValueChange={(v) => updateRule(rule.id!, { sourceQuestionId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pergunta de origem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {d.questions.map((q) => (
+                        <SelectItem key={q.id} value={q.id!}>
+                          {q.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FieldContent>
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>Operador</FieldLabel>
+                  <FieldContent>
+                    <Select
+                      value={rule.operator}
+                      onValueChange={(v) =>
+                        updateRule(rule.id!, { operator: v as PublicFormRuleOperator })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="equals">É igual a</SelectItem>
+                        <SelectItem value="not_equals">Não é igual a</SelectItem>
+                        <SelectItem value="contains">Contém</SelectItem>
+                        <SelectItem value="selected">Selecionado</SelectItem>
+                        <SelectItem value="not_selected">Não selecionado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
+                <Field>
+                  <FieldLabel>Valor</FieldLabel>
+                  <FieldContent>
+                    {options.length > 0 ? (
+                      <Select
+                        value={String(rule.comparisonValue ?? "")}
+                        onValueChange={(v) => updateRule(rule.id!, { comparisonValue: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {options.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="Valor comparado"
+                        value={String(rule.comparisonValue ?? "")}
+                        onChange={(e) =>
+                          updateRule(rule.id!, { comparisonValue: e.target.value })
+                        }
+                      />
+                    )}
+                  </FieldContent>
+                </Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>Então — ação</FieldLabel>
+                  <FieldContent>
+                    <Select
+                      value={rule.action}
+                      onValueChange={(v) => {
+                        const action = v as PublicFormRuleAction
+                        updateRule(rule.id!, {
+                          action,
+                          elseAction: rule.elseAction ?? inverseRuleAction(action),
+                        })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="show">Exibir</SelectItem>
+                        <SelectItem value="skip">Pular</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
+                <Field>
+                  <FieldLabel>Então — destino</FieldLabel>
+                  <FieldContent>
+                    <Select
+                      value={rule.targetQuestionId}
+                      onValueChange={(v) => updateRule(rule.id!, { targetQuestionId: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {d.questions.map((q) => (
+                          <SelectItem key={q.id} value={q.id!}>
+                            {q.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>Senão — ação</FieldLabel>
+                  <FieldContent>
+                    <Select
+                      value={elseAction}
+                      onValueChange={(v) =>
+                        updateRule(rule.id!, { elseAction: v as PublicFormRuleAction })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="show">Exibir</SelectItem>
+                        <SelectItem value="skip">Pular</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
+                <Field>
+                  <FieldLabel>Senão — destino</FieldLabel>
+                  <FieldContent>
+                    <Select value={rule.targetQuestionId} disabled>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {d.questions.map((q) => (
+                          <SelectItem key={q.id} value={q.id!}>
+                            {q.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => change({ rules: d.rules.filter((x) => x.id !== rule.id) })}
+            >
+              <Trash2 data-icon="inline-start" />
+              Remover regra
+            </Button>
+          </div>
+        )
+      })}
       <Button
         variant="outline"
+        type="button"
         disabled={d.questions.length < 2}
-        onClick={() =>
+        onClick={() => {
+          const defaultAction: PublicFormRuleAction = "skip"
           change({
             rules: [
               ...d.rules,
@@ -999,11 +1492,12 @@ function Rules({
                 targetQuestionId: d.questions[1].id!,
                 operator: "equals",
                 comparisonValue: "",
-                action: "skip",
+                action: defaultAction,
+                elseAction: inverseRuleAction(defaultAction),
               },
             ],
           })
-        }
+        }}
       >
         <Plus data-icon="inline-start" />
         Adicionar regra
@@ -1011,6 +1505,41 @@ function Rules({
     </div>
   )
 }
+
+function ScoreCoverageBar({ bands }: { bands: PublicFormDraftInput["scoreBands"] }) {
+  const cells = useMemo(() => {
+    const covered = new Array(101).fill(false)
+    for (const band of bands) {
+      const min = clampPercent(band.minScore)
+      const max = clampPercent(band.maxScore)
+      if (min > max) continue
+      for (let i = min; i <= max; i += 1) {
+        covered[i] = true
+      }
+    }
+    return covered
+  }, [bands])
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>0%</span>
+        <span>Cobertura das faixas</span>
+        <span>100%</span>
+      </div>
+      <div className="flex h-3 overflow-hidden rounded-full border bg-muted">
+        {cells.map((hit, index) => (
+          <div
+            key={index}
+            className={hit ? "flex-1 bg-primary" : "flex-1 bg-transparent"}
+            title={`${index}%`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Scores({
   draft: d,
   change,
@@ -1019,10 +1548,10 @@ function Scores({
   change: (p: Partial<PublicFormDraftInput>) => void
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Defina faixas de pontuação com base na soma das opções respondidas.
+          Defina faixas em porcentagem (0–100) com base nos pesos das opções respondidas.
         </p>
         <Dialog>
           <DialogTrigger asChild>
@@ -1030,90 +1559,130 @@ function Scores({
               <HelpCircle />
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] flex flex-col">
+          <DialogContent className="flex max-h-[90vh] flex-col">
             <DialogHeader>
               <DialogTitle>Como funciona a pontuação</DialogTitle>
               <DialogDescription>
-                Use pontuação para classificar leads automaticamente após o envio.
+                Classifique leads automaticamente com faixas percentuais após o envio.
               </DialogDescription>
             </DialogHeader>
-            <div className="overflow-y-auto flex-1 flex flex-col gap-3 text-sm text-muted-foreground">
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto text-sm text-muted-foreground">
               <p>
-                Em perguntas de escolha (única ou múltipla), cada opção pode ter uma pontuação.
-                Ao responder, a soma das opções selecionadas gera o score do lead.
+                Em perguntas de escolha, cada opção tem um <strong>peso</strong> de 0 a 100. A soma
+                normalizada gera o percentual final do lead.
               </p>
               <p>
-                As faixas (ex.: 0–10 Qualificado) interpretam esse total. O resumo da faixa fica
-                disponível no CRM/histórico para o time comercial.
+                As faixas (ex.: De 0% Até 40% = Qualificado) interpretam esse percentual. O resumo
+                fica disponível no CRM para o time comercial.
               </p>
               <p>
-                Regras condicionais não alteram o cálculo: só controlam quais perguntas aparecem.
-                Configure scores nas opções da etapa Perguntas e as faixas aqui.
+                Regras condicionais não alteram o cálculo — só controlam quais perguntas aparecem.
               </p>
             </div>
           </DialogContent>
         </Dialog>
       </div>
-      {d.scoreBands.map((b) => (
-        <div
-          className="grid gap-2 rounded-lg border p-4 sm:grid-cols-[1fr_100px_100px_auto]"
-          key={b.id}
-        >
-          <Input
-            value={b.label}
-            onChange={(e) =>
-              change({
-                scoreBands: d.scoreBands.map((x) =>
-                  x.id === b.id ? { ...x, label: e.target.value } : x,
-                ),
-              })
-            }
-          />
-          <Input
-            type="number"
-            value={b.minScore}
-            onChange={(e) =>
-              change({
-                scoreBands: d.scoreBands.map((x) =>
-                  x.id === b.id ? { ...x, minScore: Number(e.target.value) } : x,
-                ),
-              })
-            }
-          />
-          <Input
-            type="number"
-            value={b.maxScore}
-            onChange={(e) =>
-              change({
-                scoreBands: d.scoreBands.map((x) =>
-                  x.id === b.id ? { ...x, maxScore: Number(e.target.value) } : x,
-                ),
-              })
-            }
-          />
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => change({ scoreBands: d.scoreBands.filter((x) => x.id !== b.id) })}
-          >
-            <Trash2 />
-          </Button>
-          <Textarea
-            className="sm:col-span-4"
-            value={b.summary ?? ""}
-            placeholder="Resumo interno da qualificação"
-            onChange={(event) =>
-              change({
-                scoreBands: d.scoreBands.map((item) =>
-                  item.id === b.id ? { ...item, summary: event.target.value } : item,
-                ),
-              })
-            }
-          />
-        </div>
-      ))}
+      <ScoreCoverageBar bands={d.scoreBands} />
+      {d.scoreBands.map((b) => {
+        const min = clampPercent(b.minScore)
+        const max = clampPercent(b.maxScore)
+        const invalidRange = min > max
+        return (
+          <div className="flex flex-col gap-3 rounded-lg border p-4" key={b.id}>
+            <p className="text-sm text-muted-foreground">
+              Lead com {min}% a {max}% = {b.label.trim() || "…"}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel>Nome da faixa</FieldLabel>
+                <FieldContent>
+                  <Input
+                    value={b.label}
+                    onChange={(e) =>
+                      change({
+                        scoreBands: d.scoreBands.map((x) =>
+                          x.id === b.id ? { ...x, label: e.target.value } : x,
+                        ),
+                      })
+                    }
+                  />
+                </FieldContent>
+              </Field>
+              <Field>
+                <FieldLabel>Resumo</FieldLabel>
+                <FieldContent>
+                  <Input
+                    value={b.summary ?? ""}
+                    placeholder="Resumo interno"
+                    onChange={(event) =>
+                      change({
+                        scoreBands: d.scoreBands.map((item) =>
+                          item.id === b.id ? { ...item, summary: event.target.value } : item,
+                        ),
+                      })
+                    }
+                  />
+                </FieldContent>
+              </Field>
+              <Field>
+                <FieldLabel>De (%)</FieldLabel>
+                <FieldContent>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={min}
+                    onChange={(e) =>
+                      change({
+                        scoreBands: d.scoreBands.map((x) =>
+                          x.id === b.id
+                            ? { ...x, minScore: clampPercent(Number(e.target.value)) }
+                            : x,
+                        ),
+                      })
+                    }
+                  />
+                </FieldContent>
+              </Field>
+              <Field>
+                <FieldLabel>Até (%)</FieldLabel>
+                <FieldContent>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={max}
+                    onChange={(e) =>
+                      change({
+                        scoreBands: d.scoreBands.map((x) =>
+                          x.id === b.id
+                            ? { ...x, maxScore: clampPercent(Number(e.target.value)) }
+                            : x,
+                        ),
+                      })
+                    }
+                  />
+                </FieldContent>
+              </Field>
+            </div>
+            {invalidRange ? (
+              <p className="text-sm text-destructive">“De” deve ser menor ou igual a “Até”.</p>
+            ) : null}
+            <Button
+              size="icon"
+              variant="ghost"
+              type="button"
+              className="self-start"
+              onClick={() => change({ scoreBands: d.scoreBands.filter((x) => x.id !== b.id) })}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        )
+      })}
       <Button
         variant="outline"
+        type="button"
         onClick={() =>
           change({
             scoreBands: [
@@ -1122,7 +1691,7 @@ function Scores({
                 id: crypto.randomUUID(),
                 label: "Qualificado",
                 minScore: 0,
-                maxScore: 10,
+                maxScore: 40,
                 summary: "",
               },
             ],
@@ -1135,6 +1704,7 @@ function Scores({
     </div>
   )
 }
+
 function ScheduleInline({
   draft: d,
   change,
@@ -1150,18 +1720,24 @@ function ScheduleInline({
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-dashed p-4">
       <p className="text-sm font-medium">Configuração do agendamento</p>
-      <Field label="Duração em minutos">
-        <Input
-          type="number"
-          value={d.meetingDurationMinutes}
-          onChange={(e) => change({ meetingDurationMinutes: Number(e.target.value) })}
-        />
+      <Field>
+        <FieldLabel>Duração em minutos</FieldLabel>
+        <FieldContent>
+          <Input
+            type="number"
+            value={d.meetingDurationMinutes}
+            onChange={(e) => change({ meetingDurationMinutes: Number(e.target.value) })}
+          />
+        </FieldContent>
       </Field>
-      <Field label="Mensagem da reunião">
-        <Textarea
-          value={d.schedulingMessage ?? ""}
-          onChange={(e) => change({ schedulingMessage: e.target.value })}
-        />
+      <Field>
+        <FieldLabel>Mensagem da reunião</FieldLabel>
+        <FieldContent>
+          <Textarea
+            value={d.schedulingMessage ?? ""}
+            onChange={(e) => change({ schedulingMessage: e.target.value })}
+          />
+        </FieldContent>
       </Field>
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -1199,6 +1775,7 @@ function ScheduleInline({
     </div>
   )
 }
+
 function Appearance({
   draft: d,
   change,
@@ -1207,7 +1784,7 @@ function Appearance({
   change: (p: Partial<PublicFormDraftInput>) => void
 }) {
   return (
-    <div className="flex flex-col gap-5">
+    <FieldGroup>
       <label className="flex items-center justify-between rounded-lg border p-4">
         <div>
           <p className="font-medium">Usar estilo padrão do time</p>
@@ -1236,36 +1813,39 @@ function Appearance({
             />
           </div>
         ))}
-    </div>
+    </FieldGroup>
   )
 }
+
 function Review({
   draft: d,
+  publishing,
   onPublish,
   onGoToStep,
 }: {
   draft: PublicFormDraftInput
+  publishing: boolean
   onPublish: () => void
   onGoToStep: (step: number) => void
 }) {
   const questionErrors = getQuestionStepErrors(d)
   const checks = [
-    { ok: Boolean(d.name), text: "Nome definido", step: 0 },
-    { ok: d.questions.length > 0, text: "Ao menos uma pergunta", step: 1 },
+    { ok: Boolean(d.name.trim()), text: "Nome definido", step: 0 },
+    { ok: d.questions.length > 0, text: "Ao menos uma pergunta", step: 2 },
     {
       ok: d.questions.some((q) => q.mappingTarget === "native_field" && q.mappingKey === "name"),
       text: "Nome do lead mapeado",
-      step: 1,
+      step: 2,
     },
     {
       ok: !d.schedulingEnabled || d.eligibleCloserIds.length > 0,
       text: "Closer selecionado para agenda",
-      step: 1,
+      step: 2,
     },
     {
       ok: questionErrors.length === 0,
       text: "Perguntas configuradas corretamente",
-      step: 1,
+      step: 2,
     },
   ]
   const ready = checks.every((c) => c.ok)
@@ -1275,7 +1855,11 @@ function Review({
         <ul className="flex flex-col gap-2 text-sm">
           {checks.map((c) => (
             <li key={c.text} className="flex items-center justify-between gap-2">
-              <button type="button" className="text-left hover:underline" onClick={() => onGoToStep(c.step)}>
+              <button
+                type="button"
+                className="text-left hover:underline"
+                onClick={() => onGoToStep(c.step)}
+              >
                 {c.text}
               </button>
               <Badge variant={c.ok ? "secondary" : "destructive"}>{c.ok ? "Ok" : "Pendente"}</Badge>
@@ -1288,17 +1872,9 @@ function Review({
           <AlertDescription>Conclua os itens pendentes antes de publicar.</AlertDescription>
         </Alert>
       ) : null}
-      <Button disabled={!ready} onClick={onPublish}>
-        Publicar formulário
+      <Button disabled={!ready || publishing} onClick={onPublish}>
+        {publishing ? "Publicando..." : "Publicar formulário"}
       </Button>
-    </div>
-  )
-}
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <Label>{label}</Label>
-      {children}
     </div>
   )
 }

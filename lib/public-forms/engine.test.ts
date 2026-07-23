@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import type { PublicFormDraftInput } from "./types"
 import {
   calculatePublicFormScore,
+  calculatePublicFormScorePercent,
   resolveVisibleQuestionIds,
   validateAnswer,
 } from "./engine"
@@ -26,8 +27,8 @@ function form(): PublicFormDraftInput {
         title: "Tem interesse?",
         required: true,
         options: [
-          { value: "sim", label: "Sim", score: 10 },
-          { value: "nao", label: "Não", score: -2 },
+          { value: "sim", label: "Sim", score: 100 },
+          { value: "nao", label: "Não", score: 0 },
         ],
       },
       {
@@ -45,6 +46,7 @@ function form(): PublicFormDraftInput {
         operator: "equals",
         comparisonValue: "sim",
         action: "show",
+        elseAction: "skip",
       },
     ],
     scoreBands: [],
@@ -60,7 +62,16 @@ describe("motor dos formulários públicos", () => {
   })
 
   it("calcula pontos apenas pelas opções respondidas", () => {
-    expect(calculatePublicFormScore(form(), [{ questionId: sourceId, value: "sim" }])).toBe(10)
+    expect(calculatePublicFormScore(form(), [{ questionId: sourceId, value: "sim" }])).toBe(100)
+  })
+
+  it("normaliza pontuação em percentual 0–100", () => {
+    expect(
+      calculatePublicFormScorePercent(form(), [{ questionId: sourceId, value: "sim" }]),
+    ).toBe(100)
+    expect(
+      calculatePublicFormScorePercent(form(), [{ questionId: sourceId, value: "nao" }]),
+    ).toBe(0)
   })
 
   it("rejeita opções manipuladas e formatos inválidos", () => {

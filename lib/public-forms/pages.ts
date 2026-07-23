@@ -1,8 +1,14 @@
 import type { PublicFormDraftInput, PublicFormQuestionInput } from "./types"
 
-export function getPageKey(question: PublicFormQuestionInput): string {
-  const key = question.config?.pageKey
-  if (typeof key === "string" && key.length > 0) return key
+export function getPageKey(question: {
+  id?: string | null
+  config?: unknown
+}): string {
+  const config = question.config
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    const key = (config as Record<string, unknown>).pageKey
+    if (typeof key === "string" && key.length > 0) return key
+  }
   return question.id ?? ""
 }
 
@@ -68,6 +74,16 @@ export function getQuestionStepErrors(draft: PublicFormDraftInput): string[] {
       errors.push("A pergunta de agendamento deve ficar sozinha na página")
       break
     }
+    const hasCalculation = page.questions.some((question) => question.type === "calculation")
+    if (hasCalculation && page.questions.length > 1) {
+      errors.push("A pergunta de cálculo deve ficar sozinha na página")
+      break
+    }
+  }
+
+  const calculationQuestions = draft.questions.filter((question) => question.type === "calculation")
+  if (calculationQuestions.length > 1) {
+    errors.push("Só é permitido uma pergunta de cálculo por formulário")
   }
 
   return [...new Set(errors)]
@@ -75,6 +91,7 @@ export function getQuestionStepErrors(draft: PublicFormDraftInput): string[] {
 
 export const QUESTION_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "scheduling", label: "Agendamento" },
+  { value: "calculation", label: "Cálculo / Simulação" },
   { value: "crm_field", label: "Campo CRM" },
   { value: "custom_field", label: "Campo personalizado" },
   { value: "consent", label: "Consentimento" },

@@ -273,6 +273,36 @@ export function BackofficeStudioBotOpsContainer() {
         </TabsList>
 
         <TabsContent value="host" className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Links de referência</CardTitle>
+              <CardDescription>
+                Atalhos para N8N, Evolution e webhook. Hostnames Docker (ex.: n8n:5678) não abrem no
+                navegador — use só na configuração da Evolution.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup className="grid gap-3 md:grid-cols-2">
+                {OPS_HOST_REFERENCE_LINKS.map((link) => (
+                  <HostCopyableLink
+                    key={link.id}
+                    id={`ops-link-${link.id}`}
+                    label={link.label}
+                    href={link.href}
+                    hint={link.hint}
+                    openInBrowser={link.id !== "bethania-inbound-internal"}
+                    className={
+                      link.id === "bethania-inbound-internal" ||
+                      link.id === "bethania-inbound-public"
+                        ? "md:col-span-2"
+                        : undefined
+                    }
+                  />
+                ))}
+              </FieldGroup>
+            </CardContent>
+          </Card>
+
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader>
@@ -455,35 +485,6 @@ export function BackofficeStudioBotOpsContainer() {
               </CardContent>
             </Card>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Links de referência</CardTitle>
-              <CardDescription>
-                Copie o webhook interno para a Evolution. Hostnames Docker não abrem no navegador.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FieldGroup className="grid gap-3 md:grid-cols-2">
-                {OPS_HOST_REFERENCE_LINKS.map((link) => (
-                  <HostCopyableLink
-                    key={link.id}
-                    id={`ops-link-${link.id}`}
-                    label={link.label}
-                    href={link.href}
-                    hint={link.hint}
-                    openInBrowser={link.id !== "bethania-inbound-internal"}
-                    className={
-                      link.id === "bethania-inbound-internal" ||
-                      link.id === "bethania-inbound-public"
-                        ? "md:col-span-2"
-                        : undefined
-                    }
-                  />
-                ))}
-              </FieldGroup>
-            </CardContent>
-          </Card>
 
           <Card>
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
