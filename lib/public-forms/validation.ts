@@ -73,7 +73,7 @@ export const publicFormDraftSchema = z.object({
         operator: z.enum(["equals", "not_equals", "contains", "selected", "not_selected"]),
         comparisonValue: z.unknown().optional(),
         action: z.enum(["show", "skip"]),
-        elseAction: z.enum(["show", "skip"]).default("show"),
+        elseAction: z.enum(["show", "skip"]).optional(),
       }),
     )
     .max(500)

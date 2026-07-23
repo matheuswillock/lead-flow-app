@@ -25,6 +25,7 @@ let teamRadarSegmentService: typeof import("@/app/api/services/radar/TeamRadarSe
 let EmailCampaignUseCase: typeof import("@/app/api/useCases/email/EmailCampaignUseCase").EmailCampaignUseCase
 let EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB: typeof import("@/lib/email/campaign-limits").EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 let customerDataPlatformUseCase: typeof import("@/app/api/useCases/radar/RadarUseCase").customerDataPlatformUseCase
+let listRadarSegmentEmailRecipients: typeof import("@/lib/radar/list-segment-recipients").listRadarSegmentEmailRecipients
 
 if (RUN_INTEGRATION) {
   ;({ prisma } = await import("@/app/api/infra/data/prisma"))
@@ -38,6 +39,7 @@ if (RUN_INTEGRATION) {
   ;({ EmailCampaignUseCase } = await import("@/app/api/useCases/email/EmailCampaignUseCase"))
   ;({ EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } = await import("@/lib/email/campaign-limits"))
   ;({ customerDataPlatformUseCase } = await import("@/app/api/useCases/radar/RadarUseCase"))
+  ;({ listRadarSegmentEmailRecipients } = await import("@/lib/radar/list-segment-recipients"))
 }
 
   const scope = {
@@ -816,6 +818,83 @@ describe.skipIf(!RUN_INTEGRATION)("Fixes de review C4 (visibilidade, delete guar
 
     const gone = await prisma.teamRadarSegment.findUnique({ where: { id: segment.id } })
     expect(gone).toBeNull()
+  })
+
+  it("segmento desativado (referenciado por campanha) continua resolvendo destinatários — só some quando excluído de fato", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const lead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `RadarFixRecipients-${suffix}`,
+        managerId: ctx.profileId,
+        teamId,
+        name: "Lead Recipients Fix",
+        phone: `977${suffix}${String(Date.now()).slice(-4)}`,
+        email: `recipients-fix-${suffix}@example.com`,
+        // Status distinto de "scheduled" para não vazar na contagem do
+        // teste de paginação (mesmo time, mesma condição lead_status).
+        status: "no_show",
+      },
+    })
+    const profile = await prisma.radarProfile.create({
+      data: {
+        id: randomUUID(),
+        teamId,
+        displayName: lead.name,
+        normalizedName: `lead recipients fix ${suffix}`,
+        displayPhone: lead.phone!,
+        normalizedPhone: normalizeRadarPhone(lead.phone),
+        primaryEmail: lead.email,
+        normalizedPrimaryEmail: normalizeRadarEmail(lead.email),
+      },
+    })
+    await prisma.radarIdentity.create({
+      data: {
+        id: randomUUID(),
+        profileId: profile.id,
+        teamId,
+        type: "lead_id",
+        value: lead.id,
+        normalizedValue: lead.id,
+        source: "crm",
+        isPrimary: true,
+      },
+    })
+
+    const segment = await teamRadarSegmentService.create(teamId, ctx.profileId, {
+      name: `Segmento resolução pós-delete ${suffix}`,
+      rules: { match: "all", conditions: [{ kind: "lead_status", statuses: ["no_show"] }] },
+    })
+    const slug = `custom:${segment.id}`
+
+    const beforeDelete = await listRadarSegmentEmailRecipients(teamId, slug)
+    expect(beforeDelete.map((r) => r.email)).toEqual([normalizeRadarEmail(lead.email)])
+
+    const campaign = await prisma.emailCampaign.create({
+      data: {
+        id: randomUUID(),
+        teamId,
+        createdBy: ctx.profileId,
+        name: `Campanha resolução pós-delete ${suffix}`,
+        templateId,
+        radarSegmentSlug: slug,
+        status: "scheduled",
+      },
+    })
+
+    const removed = await teamRadarSegmentService.remove(teamId, segment.id)
+    expect(removed).toEqual({ removed: true, softDeleted: true })
+
+    // Desativado, mas ainda referenciado por uma campanha pendente — a
+    // resolução de destinatários precisa continuar funcionando.
+    const afterSoftDelete = await listRadarSegmentEmailRecipients(teamId, slug)
+    expect(afterSoftDelete.map((r) => r.email)).toEqual([normalizeRadarEmail(lead.email)])
+
+    await prisma.emailCampaign.update({ where: { id: campaign.id }, data: { status: "archived" } })
+    await teamRadarSegmentService.remove(teamId, segment.id)
+
+    const afterHardDelete = await listRadarSegmentEmailRecipients(teamId, slug)
+    expect(afterHardDelete).toEqual([])
   })
 
   it("criação de campanha e exclusão concorrentes do mesmo segmento nunca deixam custom:{id} órfão", async () => {
