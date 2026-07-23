@@ -13,3 +13,7 @@ export const updateTeamRadarSegmentSchema = z.object({
   rules: radarSegmentRulesSchema.optional(),
   isActive: z.boolean().optional(),
 })
+
+export const previewCustomSegmentRulesSchema = z.object({
+  rules: radarSegmentRulesSchema,
+})
