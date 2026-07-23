@@ -43,7 +43,7 @@ const EVO_SEND_REQUEST_TIMEOUT_MS = 60_000
 
 export class EvoProviderError extends Error {
   constructor(
-    readonly code: "provider_timeout" | "provider_http" | "instance_name_in_use" | "invalid_provider_response",
+    readonly code: "provider_timeout" | "provider_network" | "provider_http" | "instance_name_in_use" | "invalid_provider_response",
     readonly correlationId: string,
     readonly httpStatus?: number
   ) {
@@ -79,7 +79,10 @@ async function fetchEvo<T>(
     })
   } catch (error) {
     logWhatsAppProviderFailure({ operation: label, correlationId, error })
-    throw new EvoProviderError(toWhatsAppSafeErrorCode(error) === "provider_timeout" ? "provider_timeout" : "provider_http", correlationId)
+    throw new EvoProviderError(
+      toWhatsAppSafeErrorCode(error) === "provider_timeout" ? "provider_timeout" : "provider_network",
+      correlationId
+    )
   }
 
   if (!response.ok) {

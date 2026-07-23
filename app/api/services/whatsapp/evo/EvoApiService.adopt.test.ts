@@ -169,4 +169,17 @@ describe("EvoApiService.adoptOrCreateInstance", () => {
       })
     ).rejects.toMatchObject({ code: "provider_http", httpStatus: 500 })
   })
+
+  it("preserva falha de rede como entrega incerta", async () => {
+    globalThis.fetch = mock(async () => {
+      throw new TypeError("fetch failed")
+    }) as unknown as typeof fetch
+
+    await expect(
+      service.adoptOrCreateInstance({
+        instanceName: INSTANCE,
+        webhookUrl: WEBHOOK_URL,
+      })
+    ).rejects.toMatchObject({ code: "provider_network" })
+  })
 })

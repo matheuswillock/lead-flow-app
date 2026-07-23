@@ -17,7 +17,15 @@ class ProcessWhatsAppContactSyncJobsUseCase {
     for (let index = 0; index < limit; index += 1) {
       const job = await whatsAppRepository.claimNextContactSyncJob(workerId)
       if (!job) break
-      if (!isWhatsAppV3Enabled("sync", job.teamId)) break
+      if (!isWhatsAppV3Enabled("sync", job.teamId)) {
+        // The job was claimed before this team was removed from the allowlist.
+        // Finish it explicitly so its lease cannot block the queue.
+        await whatsAppRepository.completeContactSyncJob({
+          jobId: job.id,
+          error: "Sincronização V3 desabilitada para este time.",
+        })
+        continue
+      }
       try {
         await whatsAppService.syncContacts(job.teamId)
         await whatsAppRepository.completeContactSyncJob({ jobId: job.id })

@@ -5,6 +5,7 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { getMessagesUseCase } from "@/app/api/useCases/whatsapp/GetMessagesUseCase"
 import { sendMessageUseCase } from "@/app/api/useCases/whatsapp/SendMessageUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
 
 const conversationIdSchema = z.string().uuid("ID da conversa inválido")
 
@@ -114,6 +115,12 @@ export async function POST(
     const { teamId } = await params
     const accessResult = await assertTeamAccess(request, teamId)
     if ("error" in accessResult) return accessResult.error
+    if (!isWhatsAppV3Enabled("send", teamId)) {
+      return NextResponse.json(
+        new Output(false, [], ["Envio V3 ainda não está habilitado para este time."], null),
+        { status: 404 }
+      )
+    }
 
     let body: unknown
     try {
