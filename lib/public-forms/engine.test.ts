@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { PublicFormDraftInput } from "./types"
 import {
+  calculatePublicFormMaxPossibleScore,
   calculatePublicFormScore,
   calculatePublicFormScorePercent,
   resolveVisibleQuestionIds,
@@ -110,5 +111,42 @@ describe("motor dos formulários públicos", () => {
     }
     expect(validateAnswer(question, ["a", "b"])).toBeNull()
     expect(validateAnswer(question, ["a", "b", "c"])).toBe("Selecione no máximo 2 opções")
+  })
+
+  it("máximo possível de multiple_choice soma só as maxSelections maiores pontuações, não todas as opções", () => {
+    const question = {
+      id: sourceId,
+      type: "multiple_choice" as const,
+      title: "Hospital de referência",
+      required: false,
+      options: [
+        { value: "a", label: "A", score: 150 },
+        { value: "b", label: "B", score: 150 },
+        { value: "c", label: "C", score: 150 },
+      ],
+      config: { maxSelections: 1 },
+    }
+    const draft: PublicFormDraftInput = { ...form(), questions: [question], rules: [] }
+
+    expect(calculatePublicFormMaxPossibleScore(draft)).toBe(150)
+    expect(
+      calculatePublicFormScorePercent(draft, [{ questionId: sourceId, value: ["a"] }]),
+    ).toBe(100)
+  })
+
+  it("sem maxSelections, o máximo de multiple_choice ainda soma todas as opções positivas", () => {
+    const question = {
+      id: sourceId,
+      type: "multiple_choice" as const,
+      title: "Sem limite",
+      required: false,
+      options: [
+        { value: "a", label: "A", score: 50 },
+        { value: "b", label: "B", score: 50 },
+      ],
+    }
+    const draft: PublicFormDraftInput = { ...form(), questions: [question], rules: [] }
+
+    expect(calculatePublicFormMaxPossibleScore(draft)).toBe(100)
   })
 })
