@@ -72,6 +72,40 @@ class WhatsAppContactRepository implements IWhatsAppContactRepository {
     })
   }
 
+  async findOrCreateProvisional(input: {
+    teamId: string
+    remoteJid: string
+    displayName?: string | null
+  }): Promise<CanonicalWhatsAppContact> {
+    const existing = await prisma.teamWhatsAppContact.findUnique({
+      where: { teamId_remoteJid: { teamId: input.teamId, remoteJid: input.remoteJid } },
+      select: CANONICAL_CONTACT_SELECT,
+    })
+    if (existing) {
+      return prisma.teamWhatsAppContact.update({
+        where: { id: existing.id },
+        data: { syncState: "UNRESOLVED", lastSeenAt: new Date() },
+        select: CANONICAL_CONTACT_SELECT,
+      })
+    }
+    return prisma.teamWhatsAppContact.create({
+      data: {
+        teamId: input.teamId,
+        remoteJid: input.remoteJid,
+        opaqueId: input.remoteJid.split("@")[0] ?? input.remoteJid,
+        displayName: input.displayName?.trim() || null,
+        pushName: input.displayName?.trim() || null,
+        source: "PHONE_CONTACTS",
+        name: input.displayName?.trim() || null,
+        nameSource: input.displayName ? "PUSH_NAME" : "PHONE_NUMBER",
+        searchText: (input.displayName ?? "").trim().toLowerCase(),
+        syncState: "UNRESOLVED",
+        lastSeenAt: new Date(),
+      },
+      select: CANONICAL_CONTACT_SELECT,
+    })
+  }
+
   async updateCanonical(input: {
     teamId: string
     contactId: string
@@ -105,15 +139,23 @@ class WhatsAppContactRepository implements IWhatsAppContactRepository {
     }
   }
 
-  async searchCanonical(teamId: string, query: string, limit = 20): Promise<CanonicalWhatsAppContact[]> {
+  async searchCanonical(
+    teamId: string,
+    query: string,
+    limit = 20,
+    extraWhere?: Prisma.TeamWhatsAppContactWhereInput
+  ): Promise<CanonicalWhatsAppContact[]> {
     const term = query.trim().toLowerCase()
+    const digits = term.replace(/\D/g, "")
+    const searchFilters: Prisma.TeamWhatsAppContactWhereInput[] = [
+      { searchText: { contains: term, mode: "insensitive" } },
+    ]
+    if (digits) searchFilters.push({ phoneE164: { contains: digits } })
     return prisma.teamWhatsAppContact.findMany({
       where: {
         teamId,
-        ...(term ? { OR: [
-          { searchText: { contains: term, mode: "insensitive" } },
-          { phoneE164: { contains: term.replace(/\D/g, "") } },
-        ] } : {}),
+        ...(extraWhere ? { AND: [extraWhere] } : {}),
+        ...(term ? { OR: searchFilters } : {}),
       },
       select: CANONICAL_CONTACT_SELECT,
       orderBy: [{ name: "asc" }, { phoneE164: "asc" }],
@@ -128,6 +170,9 @@ class WhatsAppContactRepository implements IWhatsAppContactRepository {
     remoteJid: string
     identityType: "PHONE" | "LID" | "GROUP" | "UNKNOWN"
     phoneE164?: string | null
+    mappingSource: "CONTACT_SYNC" | "WEBHOOK" | "HISTORY" | "PROVIDER_MAPPING" | "MANUAL_LINK"
+    verifiedAt?: Date | null
+    sendable: boolean
   }): Promise<void> {
     await prisma.whatsAppContactIdentity.upsert({
       where: { teamId_configId_remoteJid: {
@@ -142,8 +187,19 @@ class WhatsAppContactRepository implements IWhatsAppContactRepository {
         remoteJid: input.remoteJid,
         identityType: input.identityType,
         phoneE164: input.phoneE164 ?? null,
+        mappingSource: input.mappingSource,
+        verifiedAt: input.verifiedAt ?? null,
+        sendable: input.sendable,
       },
-      update: { contactId: input.contactId, identityType: input.identityType, phoneE164: input.phoneE164 ?? null },
+      update: {
+        contactId: input.contactId,
+        identityType: input.identityType,
+        phoneE164: input.phoneE164 ?? null,
+        mappingSource: input.mappingSource,
+        verifiedAt: input.verifiedAt ?? null,
+        sendable: input.sendable,
+        lastSeenAt: new Date(),
+      },
     })
   }
   async upsertMany(contacts: UpsertWhatsAppContactInput[]): Promise<number> {

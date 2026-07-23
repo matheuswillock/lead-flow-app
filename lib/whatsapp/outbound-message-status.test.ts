@@ -12,6 +12,11 @@ describe("outbound message status reducer", () => {
     expect(shouldApplyOutboundMessageStatus("DELIVERED", "SENT")).toBe(false)
   })
 
+  it("only promotes an audio receipt to PLAYED after READ", () => {
+    expect(shouldApplyOutboundMessageStatus("READ", "PLAYED")).toBe(true)
+    expect(shouldApplyOutboundMessageStatus("PLAYED", "READ")).toBe(false)
+  })
+
   it("keeps UNKNOWN until a reliable receipt arrives", () => {
     expect(shouldApplyOutboundMessageStatus("UNKNOWN", "SENT")).toBe(false)
     expect(shouldApplyOutboundMessageStatus("UNKNOWN", "DELIVERED")).toBe(true)

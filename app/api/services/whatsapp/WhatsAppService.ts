@@ -185,7 +185,6 @@ class WhatsAppService implements IWhatsAppService {
       instanceId: primaryConfig.instanceId,
       phoneNumber: primaryConfig.phoneNumber,
       normalizedPhone,
-      hostBaseUrl: primaryConfig.hostBaseUrl,
       usageLimitMonthly: input.usageLimitMonthly ?? primaryConfig.usageLimitMonthly,
       status: primaryConfig.status as WhatsAppConnectionStatus,
       webhookSecret,
@@ -222,7 +221,6 @@ class WhatsAppService implements IWhatsAppService {
       await this.provider.setWebhook({
         instanceName: config.instanceName,
         webhookUrl,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
       })
       console.info("[WhatsAppService][ensureWebhookConfigured] webhook reaplicado", {
         configId: config.id,
@@ -243,20 +241,14 @@ class WhatsAppService implements IWhatsAppService {
     try {
       await this.ensureWebhookConfigured(config)
 
-      const { state } = await this.provider.getConnectionState(
-        config.instanceName,
-        config.hostBaseUrl ?? undefined
-      )
+      const { state } = await this.provider.getConnectionState(config.instanceName)
       const now = new Date()
 
       if (state === "open") {
         let phoneNumber = config.phoneNumber
         if (!phoneNumber) {
           try {
-            const instance = await this.provider.getInstanceInfo(
-              config.instanceName,
-              config.hostBaseUrl ?? undefined
-            )
+            const instance = await this.provider.getInstanceInfo(config.instanceName)
             if (instance?.owner) {
               phoneNumber = normalizeRemoteJid(instance.owner)
             }
@@ -335,7 +327,7 @@ class WhatsAppService implements IWhatsAppService {
 
     await this.ensureWebhookConfigured(existing)
 
-    const qr = await this.provider.getQrCode(existing.instanceName, existing.hostBaseUrl ?? undefined)
+    const qr = await this.provider.getQrCode(existing.instanceName)
 
     const updated = await whatsAppRepository.updateConfig(existing.id, {
       status: "QR_READY",
@@ -375,7 +367,6 @@ class WhatsAppService implements IWhatsAppService {
         return this.promoteConfigToQrReady(
           existing.id,
           existing.instanceName,
-          existing.hostBaseUrl,
           profileId,
           "disconnect-idempotent"
         )
@@ -386,10 +377,7 @@ class WhatsAppService implements IWhatsAppService {
     let needsLogout = existing.status === "CONNECTED"
     if (!needsLogout) {
       try {
-        const { state } = await this.provider.getConnectionState(
-          existing.instanceName,
-          existing.hostBaseUrl ?? undefined
-        )
+        const { state } = await this.provider.getConnectionState(existing.instanceName)
         needsLogout = state === "open"
       } catch (error) {
         console.error("[WhatsAppService][disconnect] getConnectionState failed", error)
@@ -398,10 +386,7 @@ class WhatsAppService implements IWhatsAppService {
 
     if (needsLogout) {
       console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
-      await this.provider.disconnect(
-        existing.instanceName,
-        existing.hostBaseUrl ?? undefined
-      )
+      await this.provider.disconnect(existing.instanceName)
     }
 
     const mirrors = await whatsAppRepository.findMirroredConfigs(existing.id)
@@ -417,7 +402,6 @@ class WhatsAppService implements IWhatsAppService {
     return this.promoteConfigToQrReady(
       existing.id,
       existing.instanceName,
-      existing.hostBaseUrl,
       profileId,
       "disconnect"
     )
@@ -426,12 +410,11 @@ class WhatsAppService implements IWhatsAppService {
   private async promoteConfigToQrReady(
     configId: string,
     instanceName: string,
-    hostBaseUrl: string | null,
     profileId: string,
     label: string
   ): Promise<ConfigOutput> {
     try {
-      const qr = await this.provider.getQrCode(instanceName, hostBaseUrl ?? undefined)
+      const qr = await this.provider.getQrCode(instanceName)
       const updated = await whatsAppRepository.updateConfig(configId, {
         status: "QR_READY",
         qrCodeText: qr.text,
@@ -668,7 +651,6 @@ class WhatsAppService implements IWhatsAppService {
         instanceName: config.instanceName,
         recipientJid,
         text,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao enviar mensagem via WhatsApp"
@@ -812,7 +794,7 @@ class WhatsAppService implements IWhatsAppService {
     let messageCount = 0
 
     try {
-      const chats = await this.provider.fetchChats(config.instanceName, config.hostBaseUrl ?? undefined)
+      const chats = await this.provider.fetchChats(config.instanceName)
 
       for (const chat of chats) {
         const phoneRaw = normalizeRemoteJid(chat.remoteJid)
@@ -824,7 +806,6 @@ class WhatsAppService implements IWhatsAppService {
           contactAvatarUrl = await this.provider.fetchProfilePictureUrl({
             instanceName: config.instanceName,
             remoteJid: chat.remoteJid,
-            hostBaseUrl: config.hostBaseUrl ?? undefined,
           })
         }
 
@@ -849,7 +830,6 @@ class WhatsAppService implements IWhatsAppService {
           instanceName: config.instanceName,
           remoteJid: chat.remoteJid,
           since,
-          hostBaseUrl: config.hostBaseUrl ?? undefined,
         })
 
         let lastMessageAt: Date | null = conversation.lastMessageAt
@@ -963,7 +943,9 @@ class WhatsAppService implements IWhatsAppService {
     const contacts = await this.provider.fetchContacts(config.instanceName)
 
     const now = new Date()
-    const upsertInputs = contacts.map((contact) => ({
+    const upsertInputs = contacts
+      .filter((contact) => resolveContactIdentity(contact.remoteJid).kind !== "GROUP")
+      .map((contact) => ({
       teamId,
       remoteJid: contact.remoteJid,
       opaqueId: extractOpaqueId(contact.remoteJid),
@@ -972,7 +954,7 @@ class WhatsAppService implements IWhatsAppService {
       pushName: contact.pushName?.trim() || null,
       source: "PHONE_CONTACTS" as const,
       lastSyncedAt: now,
-    }))
+      }))
 
     const imported = await whatsAppContactRepository.upsertMany(upsertInputs)
 
@@ -981,13 +963,19 @@ class WhatsAppService implements IWhatsAppService {
     // merged to a phone contact by a heuristic.
     for (const contact of contacts) {
       const identity = resolveContactIdentity(contact.remoteJid)
-      if (identity.kind !== "PHONE" || !identity.phoneE164) continue
-      const canonical = await whatsAppContactRepository.findOrCreateCanonical({
-        teamId,
-        phoneE164: identity.phoneE164,
-        name: contact.pushName,
-        nameSource: contact.pushName ? "PUSH_NAME" : "PHONE_NUMBER",
-      })
+      if (identity.kind === "GROUP") continue
+      const canonical = identity.kind === "PHONE" && identity.phoneE164
+        ? await whatsAppContactRepository.findOrCreateCanonical({
+            teamId,
+            phoneE164: identity.phoneE164,
+            name: contact.pushName,
+            nameSource: contact.pushName ? "PUSH_NAME" : "PHONE_NUMBER",
+          })
+        : await whatsAppContactRepository.findOrCreateProvisional({
+            teamId,
+            remoteJid: identity.remoteJid,
+            displayName: contact.pushName,
+          })
       await whatsAppContactRepository.upsertIdentity({
         teamId,
         configId: config.id,
@@ -995,6 +983,9 @@ class WhatsAppService implements IWhatsAppService {
         remoteJid: identity.remoteJid,
         identityType: identity.kind,
         phoneE164: identity.phoneE164,
+        mappingSource: "CONTACT_SYNC",
+        verifiedAt: identity.kind === "PHONE" ? now : null,
+        sendable: identity.kind === "PHONE",
       })
     }
 
@@ -1083,13 +1074,9 @@ class WhatsAppService implements IWhatsAppService {
     const participants = await this.provider.fetchGroupParticipants({
       instanceName: config.instanceName,
       groupJid,
-      hostBaseUrl: config.hostBaseUrl ?? undefined,
     })
 
-    const phoneContacts = await this.provider.fetchContacts(
-      config.instanceName,
-      config.hostBaseUrl ?? undefined
-    )
+    const phoneContacts = await this.provider.fetchContacts(config.instanceName)
     const phoneContactByJid = new Map(phoneContacts.map((c) => [c.remoteJid, c]))
 
     const now = new Date()
@@ -1172,6 +1159,37 @@ class WhatsAppService implements IWhatsAppService {
       formattedPhone: formatPhoneE164(row.phoneE164),
       syncState: row.syncState,
     }))
+  }
+
+  async searchInbox(teamId: string, query: string, limit = 20, visibility?: {
+    contactWhere?: Prisma.TeamWhatsAppContactWhereInput
+    conversationWhere?: Prisma.WhatsAppConversationWhereInput
+  }): Promise<{
+    conversations: WhatsAppConversationSelect[]
+    contacts: Array<CanonicalWhatsAppContactOutput & { existingConversationId: string | null; isProvisional: boolean }>
+    startNumber: { normalizedPhone: string; displayPhone: string } | null
+  }> {
+    const [conversations, contacts] = await Promise.all([
+      whatsAppRepository.searchConversations(teamId, query, limit, visibility?.conversationWhere),
+      whatsAppContactRepository.searchCanonical(teamId, query, 50, visibility?.contactWhere).then((rows) => rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        phoneE164: row.phoneE164,
+        formattedPhone: formatPhoneE164(row.phoneE164),
+        syncState: row.syncState,
+      }))),
+    ])
+    const enriched = await Promise.all(contacts.slice(0, limit).map(async (contact) => {
+      const conversation = await whatsAppRepository.findConversationByContactId(teamId, contact.id, visibility?.conversationWhere)
+      return { ...contact, existingConversationId: conversation?.id ?? null, isProvisional: contact.syncState === "UNRESOLVED" }
+    }))
+    const digits = query.replace(/\D/g, "")
+    const normalizedPhone = digits.length >= 8 && digits.length <= 15 ? `+${normalizePhone(digits)}` : null
+    return {
+      conversations,
+      contacts: enriched,
+      startNumber: normalizedPhone ? { normalizedPhone, displayPhone: formatPhoneE164(normalizedPhone) ?? normalizedPhone } : null,
+    }
   }
 
   async getUsageSummary(teamId: string): Promise<UsageSummaryOutput> {

@@ -119,5 +119,13 @@ export interface IWhatsAppService {
   createOrGetContact(input: { teamId: string; phone: string; name?: string }): Promise<CanonicalWhatsAppContactOutput>
   updateContact(input: { teamId: string; contactId: string; phone?: string; name?: string | null }): Promise<CanonicalWhatsAppContactOutput>
   searchContacts(teamId: string, query: string): Promise<CanonicalWhatsAppContactOutput[]>
+  searchInbox(teamId: string, query: string, limit?: number, visibility?: {
+    contactWhere?: Prisma.TeamWhatsAppContactWhereInput
+    conversationWhere?: Prisma.WhatsAppConversationWhereInput
+  }): Promise<{
+    conversations: WhatsAppConversationSelect[]
+    contacts: Array<CanonicalWhatsAppContactOutput & { existingConversationId: string | null; isProvisional: boolean }>
+    startNumber: { normalizedPhone: string; displayPhone: string } | null
+  }>
   getUsageSummary(teamId: string): Promise<UsageSummaryOutput>
 }

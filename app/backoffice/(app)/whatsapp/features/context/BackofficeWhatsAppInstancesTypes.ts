@@ -28,7 +28,6 @@ export interface BackofficeWhatsAppInstanceListItem {
   phoneNumber: string | null
   displayName: string | null
   status: WhatsAppConnectionStatus
-  hostBaseUrl: string | null
   lastConnectedAt: string | null
   lastDisconnectedAt: string | null
   lastSyncAt: string | null
@@ -82,11 +81,9 @@ export interface BackofficeWhatsAppInstancesPagination {
 export interface UpdateWhatsAppInstanceFormData {
   usageLimitMonthly: number
   billingEnabled: boolean
-  hostBaseUrl: string
 }
 
 export interface ProvisionWhatsAppInstanceFormData {
   teamId: string
   usageLimitMonthly?: number
-  hostBaseUrl?: string
 }

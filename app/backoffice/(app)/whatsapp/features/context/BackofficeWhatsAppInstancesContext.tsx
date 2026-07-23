@@ -187,7 +187,6 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
                 status: detail.status,
                 phoneNumber: detail.phoneNumber,
                 displayName: detail.displayName,
-                hostBaseUrl: detail.hostBaseUrl,
                 lastConnectedAt: detail.lastConnectedAt,
                 lastDisconnectedAt: detail.lastDisconnectedAt,
                 lastSyncAt: detail.lastSyncAt,

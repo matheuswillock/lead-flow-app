@@ -12248,7 +12248,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"usageLimitMonthly\": 2000,\n  \"hostBaseUrl\": null\n}"
+                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"usageLimitMonthly\": 2000\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances",
@@ -12300,7 +12300,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"usageLimitMonthly\": 3000,\n  \"billingEnabled\": true,\n  \"hostBaseUrl\": null\n}"
+                  "raw": "{\n  \"usageLimitMonthly\": 3000,\n  \"billingEnabled\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}",

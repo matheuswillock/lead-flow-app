@@ -61,6 +61,11 @@ export interface IWhatsAppContactRepository {
     name?: string | null
     nameSource?: "MANUAL" | "LEAD" | "PHONE_BOOK" | "PUSH_NAME" | "PHONE_NUMBER"
   }): Promise<CanonicalWhatsAppContact>
+  findOrCreateProvisional(input: {
+    teamId: string
+    remoteJid: string
+    displayName?: string | null
+  }): Promise<CanonicalWhatsAppContact>
   findCanonicalById(teamId: string, contactId: string): Promise<CanonicalWhatsAppContact | null>
   updateCanonical(input: {
     teamId: string
@@ -68,7 +73,12 @@ export interface IWhatsAppContactRepository {
     phoneE164?: string
     name?: string | null
   }): Promise<CanonicalWhatsAppContact>
-  searchCanonical(teamId: string, query: string, limit?: number): Promise<CanonicalWhatsAppContact[]>
+  searchCanonical(
+    teamId: string,
+    query: string,
+    limit?: number,
+    extraWhere?: Prisma.TeamWhatsAppContactWhereInput
+  ): Promise<CanonicalWhatsAppContact[]>
   upsertIdentity(input: {
     teamId: string
     configId: string
@@ -76,5 +86,8 @@ export interface IWhatsAppContactRepository {
     remoteJid: string
     identityType: "PHONE" | "LID" | "GROUP" | "UNKNOWN"
     phoneE164?: string | null
+    mappingSource: "CONTACT_SYNC" | "WEBHOOK" | "HISTORY" | "PROVIDER_MAPPING" | "MANUAL_LINK"
+    verifiedAt?: Date | null
+    sendable: boolean
   }): Promise<void>
 }

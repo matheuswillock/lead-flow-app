@@ -15,7 +15,6 @@ export interface WhatsAppConfigSelect {
   qrCodeText: string | null
   qrCodeImageUrl: string | null
   webhookSecret: string
-  hostBaseUrl: string | null
   lastConnectedAt: Date | null
   lastDisconnectedAt: Date | null
   lastSyncAt: Date | null
@@ -42,6 +41,7 @@ export interface WhatsAppConversationSelect {
   configId: string
   leadId: string | null
   externalChatId: string | null
+  contactId?: string | null
   contactPhone: string
   contactName: string | null
   contactNameSource: string
@@ -91,6 +91,7 @@ export interface WhatsAppMessageSelect {
   sentAt: Date | null
   deliveredAt: Date | null
   readAt: Date | null
+  playedAt: Date | null
   failedAt: Date | null
   isAutoResponse: boolean
   autoResponseRuleId: string | null
@@ -110,6 +111,7 @@ export interface WhatsAppOutboundCommandRecord {
   conversationId: string
   messageId: string | null
   status: WhatsAppOutboundCommandStatus
+  requestHash: string | null
 }
 
 export interface WhatsAppWebhookOutboxEvent {
@@ -187,6 +189,17 @@ export interface IWhatsAppRepository {
   ): Promise<WhatsAppConversationSelect>
 
   findConversationById(id: string): Promise<WhatsAppConversationSelect | null>
+  searchConversations(
+    teamId: string,
+    query: string,
+    limit: number,
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  ): Promise<WhatsAppConversationSelect[]>
+  findConversationByContactId(
+    teamId: string,
+    contactId: string,
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  ): Promise<WhatsAppConversationSelect | null>
 
   /**
    * Tenta reivindicar atomicamente o envio da mensagem de boas-vindas de uma
@@ -225,6 +238,7 @@ export interface IWhatsAppRepository {
       status: WhatsAppMessageStatus
       deliveredAt?: Date
       readAt?: Date
+      playedAt?: Date
       failedAt?: Date
     }
   ): Promise<WhatsAppMessageSelect>
@@ -249,6 +263,7 @@ export interface IWhatsAppRepository {
     teamId: string
     conversationId: string
     clientMessageId: string
+    requestHash: string
     sentByProfileId: string
     contentText?: string
     messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO"
@@ -256,6 +271,11 @@ export interface IWhatsAppRepository {
     mediaFileName?: string
     caption?: string
   }): Promise<{ created: boolean; messageId: string | null }>
+  retryFailedOutboundCommand(input: {
+    teamId: string
+    clientMessageId: string
+    requestHash: string
+  }): Promise<{ messageId: string | null; claimed: boolean }>
   confirmOutboundMessage(input: {
     messageId: string
     providerMessageId: string
@@ -279,6 +299,10 @@ export interface IWhatsAppRepository {
   listPendingWebhookEventIds(limit: number): Promise<string[]>
   requeueDeadLetterEvent(input: { eventId: string; teamId: string; actorProfileId: string }): Promise<boolean>
   reconcileStaleOutboundCommands(olderThan: Date): Promise<number>
+  listConnectedContactSyncTargets(): Promise<Array<{ teamId: string; configId: string }>>
+  enqueueContactSyncJob(input: { teamId: string; configId: string }): Promise<string>
+  claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string } | null>
+  completeContactSyncJob(input: { jobId: string; error?: string }): Promise<void>
 
   // Usage
   createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }>

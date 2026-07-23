@@ -20,6 +20,7 @@ import type {
   WhatsAppConfig,
   WhatsAppConversation,
   WhatsAppConversationTag,
+  WhatsAppInboxSearchResult,
   WhatsAppMessage,
   WhatsAppTeamContact,
 } from './WhatsAppInboxTypes'
@@ -1672,6 +1673,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [activeTeamId, supabaseId, isCreatingConversation, loadMessages, currentProfileId]
   )
 
+  const searchInbox = useCallback(async (query: string, signal?: AbortSignal): Promise<WhatsAppInboxSearchResult> => {
+    if (!activeTeamId) return { conversations: [], contacts: [], startNumber: null }
+    return whatsAppInboxService.searchInbox(activeTeamId, supabaseId, query, signal)
+  }, [activeTeamId, supabaseId])
+
   const loadContacts = useCallback(
     async (groupJid?: string) => {
       if (!activeTeamId) {
@@ -1837,5 +1843,6 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     syncPhoneContacts,
     syncGroupParticipants,
     loadContacts,
+    searchInbox,
   }
 }

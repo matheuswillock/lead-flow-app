@@ -55,7 +55,6 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
       body: JSON.stringify({
         usageLimitMonthly: form.usageLimitMonthly,
         billingEnabled: form.billingEnabled,
-        hostBaseUrl: form.hostBaseUrl.trim() || null,
       }),
     })
     return res.json()
@@ -70,7 +69,6 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
       body: JSON.stringify({
         teamId: form.teamId,
         usageLimitMonthly: form.usageLimitMonthly,
-        hostBaseUrl: form.hostBaseUrl?.trim() || undefined,
       }),
     })
     return res.json()

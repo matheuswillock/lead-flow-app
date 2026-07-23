@@ -46,20 +46,20 @@ Esse é o **P0** da auditoria.
 
 ## Atualização de implementação — 2026-07-23
 
-Implementação local das Fases 0–2 iniciada, ainda sem migration aplicada em produção e sem PR/commit de implementação. Evidências desta rodada: 11 testes focados verdes (webhook, reducer de status e resolução JID/LID), `tsc --noEmit` e `design:check` verdes.
+Implementação local das Fases 0–2 avançada, ainda sem migration aplicada em produção e sem PR/commit de implementação. Evidências desta rodada: migration reset local, 21 testes focados verdes (provider, webhook/reducer de status e resolução JID/LID), `typecheck`, `lint`, `governance:check` e `design:check` verdes. O gate read-only de produção permanece bloqueado porque o MCP Supabase não está exposto nesta sessão.
 
 | Achado | Estado após implementação local | Evidência / limite |
 | --- | --- | --- |
 | WA-001 | **parcialmente mitigado** | Mensagem `PENDING` + comando são criados na mesma transação antes do provider; confirmação atualiza a mesma mensagem. Faltam teste de integração e reconciliação completa após timeout. |
 | WA-002 | **parcialmente mitigado** | `clientMessageId` passa a existir na mensagem e o reducer é monotônico; dedupe HTTP×Realtime ainda precisa E2E. |
-| WA-006 | **parcialmente mitigado** | Provider efetivamente usa só `EVO_API_BASE_URL`, valida HTTPS em produção e bloqueia redirects; campos/parâmetros legados ainda requerem remoção completa antes de encerrar o achado. |
-| WA-007 | **parcialmente mitigado** | Erros HTTP/network da Evolution não registram body, URL ou segredo e recebem correlation ID. Auditoria dos demais logs e propagação ponta a ponta continuam pendentes. |
-| WA-008 | **parcialmente mitigado** | Header derivado e pepper de no mínimo 32 caracteres passaram a ser obrigatórios em produção. Rotação operacional ainda precisa ser aplicada. |
+| WA-006 | **parcialmente mitigado** | Provider, interfaces, selects, DTOs, forms e collection não leem/aceitam mais `hostBaseUrl`; `EVO_API_BASE_URL` valida HTTPS em produção e bloqueia redirects. A coluna persiste somente como legado até a Fase 4; falta validação e rotação operacional no banco vivo. |
+| WA-007 | **parcialmente mitigado** | Erros HTTP/network da Evolution registram código/correlation ID sem body, URL ou segredo; caminhos críticos de QR/mídia/webhook usam redaction. A auditoria e substituição de todos os logs remanescentes continuam pendentes. |
+| WA-008 | **parcialmente mitigado** | Header HMAC e pepper de no mínimo 32 caracteres foram declarados nos templates de ambiente. O enforcement ocorre somente depois da flag explícita, preservando o webhook existente até o provisionamento/redeploy; a ativação e rotação operacional ainda precisam ser aplicadas. |
 | WA-009 | **não verificado** | Migration nova declara RLS/revokes server-only, mas Advisors/grants/publication de produção continuam bloqueados. |
-| WA-022 | **parcialmente mitigado** | Estados `UNKNOWN` e transições monotônicas cobertos em unidade; os indicadores visuais, Realtime e acessibilidade continuam na próxima fase visual. |
-| WA-025 | **parcialmente mitigado** | Schema canônico/identidades e resolver sem merge heurístico iniciados; faltam backfill, sync com checkpoint, UI de busca unificada e remoção integral de JID de todos os caminhos existentes. |
+| WA-022 | **parcialmente mitigado** | Estados `PENDING`, `SENT`, `DELIVERED`, `READ`, `PLAYED`, `UNKNOWN` e `FAILED` têm reducer monotônico e representação visual inicial; `PLAYED` só é aceito em áudio. Faltam Realtime/E2E, contraste e labels assistivos completos. |
+| WA-025 | **parcialmente mitigado** | Schema canônico/identities e resolver sem merge heurístico estão ativos; LID é provisório, grupo não cria pessoa e a UI busca Conversas/Contatos/Número sem expor JID. Cron, conexão e evento de contato enfileiram sync com lease. Faltam backfill, checkpoint real por lote, dual-write integral e testes de concorrência. |
 
-**Impeccable pós-alteração do frontend:** o detector automático do diálogo de nova conversa retornou zero padrões. A revisão `audit`/`critique` confirmou que o ajuste de 44 px dos controles desse diálogo é suficiente para a alteração local, mas preservou como P1 de produto: busca única, redução do cabeçalho da conversa, preview de anexos e recuperação acionável da permissão de microfone.
+**Impeccable pós-alteração do frontend:** o detector automático do diálogo de nova conversa retornou zero padrões. O audit técnico local deu **17/20 (bom)**: acessibilidade 3/4, performance 3/4, responsividade 3/4, theming 4/4 e anti-patterns 4/4. O cancelamento da busca foi implementado após o audit. A `critique` não foi simulada: a skill exige dois avaliadores independentes e aguarda autorização explícita para essa delegação. Permanecem como P1 de produto o cabeçalho reduzido, preview de anexos e recuperação acionável da permissão de microfone.
 
 ### Cinco riscos que devem orientar a implementação
 

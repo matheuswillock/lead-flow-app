@@ -2109,6 +2109,7 @@ model Team {
   whatsappConversationTags WhatsAppConversationTag[]
   whatsappOutboundCommands WhatsAppOutboundCommand[]
   whatsappWebhookEvents WhatsAppWebhookEvent[]
+  whatsappSyncJobs      WhatsAppSyncJob[]
   whatsappAuditEvents   WhatsAppAuditEvent[]
   whatsappSendRateLimitWindows WhatsAppSendRateLimitWindow[]
 
@@ -3257,6 +3258,7 @@ enum WhatsAppMessageStatus {
   SENT
   DELIVERED
   READ
+  PLAYED
   UNKNOWN
   FAILED
   RECEIVED
@@ -3368,6 +3370,11 @@ model WhatsAppContactIdentity {
   remoteJid   String   @db.Text
   identityType String  @db.Text
   phoneE164   String?  @db.Text
+  mappingSource String @default("CONTACT_SYNC") @db.Text
+  verifiedAt DateTime? @db.Timestamptz(6)
+  sendable Boolean @default(false)
+  firstSeenAt DateTime @default(now()) @db.Timestamptz(6)
+  lastSeenAt DateTime @default(now()) @db.Timestamptz(6)
   createdAt   DateTime @default(now()) @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @db.Timestamptz(6)
 
@@ -3377,6 +3384,7 @@ model WhatsAppContactIdentity {
 
   @@unique([teamId, configId, remoteJid])
   @@index([teamId, contactId])
+  @@index([configId, identityType, lastSeenAt])
   @@map("whatsapp_contact_identities")
 }
 
@@ -3422,6 +3430,7 @@ model TeamWhatsAppConfig {
   autoResponseRules WhatsAppAutoResponseRule[]
   webhookEvents WhatsAppWebhookEvent[]
   contactIdentities WhatsAppContactIdentity[]
+  syncJobs WhatsAppSyncJob[]
 
   @@index([normalizedPhone])
   @@index([primaryConfigId])
@@ -3505,6 +3514,7 @@ model WhatsAppMessage {
   sentAt            DateTime?                @db.Timestamptz(6)
   deliveredAt       DateTime?                @db.Timestamptz(6)
   readAt            DateTime?                @db.Timestamptz(6)
+  playedAt          DateTime?                @db.Timestamptz(6)
   failedAt          DateTime?                @db.Timestamptz(6)
   isAutoResponse    Boolean                  @default(false)
   autoResponseRuleId String?                 @db.Uuid
@@ -3541,6 +3551,9 @@ model WhatsAppOutboundCommand {
   messageId       String?                       @db.Uuid
   status          WhatsAppOutboundCommandStatus @default(PENDING)
   attemptCount    Int                           @default(0)
+  requestHash     String?                       @db.Text
+  claimedAt       DateTime?                     @db.Timestamptz(6)
+  nextReconcileAt DateTime?                     @db.Timestamptz(6)
   lastError       String?                       @db.Text
   reconciledAt    DateTime?                     @db.Timestamptz(6)
   createdAt       DateTime                      @default(now()) @db.Timestamptz(6)
@@ -3552,6 +3565,28 @@ model WhatsAppOutboundCommand {
   @@unique([teamId, clientMessageId])
   @@index([status, updatedAt])
   @@map("whatsapp_outbound_commands")
+}
+
+model WhatsAppSyncJob {
+  id            String   @id @default(uuid()) @db.Uuid
+  teamId        String   @db.Uuid
+  configId      String   @db.Uuid
+  status        String   @default("PENDING") @db.Text
+  checkpoint    Json     @default("{}")
+  leaseOwner    String?  @db.Text
+  leaseExpiresAt DateTime? @db.Timestamptz(6)
+  startedAt     DateTime? @db.Timestamptz(6)
+  completedAt   DateTime? @db.Timestamptz(6)
+  lastError     String?  @db.Text
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@index([status, leaseExpiresAt, createdAt])
+  @@index([teamId, configId, status])
+  @@map("whatsapp_sync_jobs")
 }
 
 model WhatsAppWebhookEvent {

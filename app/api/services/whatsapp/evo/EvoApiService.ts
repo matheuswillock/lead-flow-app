@@ -7,6 +7,7 @@ import type {
   EvoSendTextResult,
   IEvoApiService,
 } from "./IEvoApiService"
+import { logSafeWhatsAppError } from "@/lib/whatsapp/safe-observability"
 import { WHATSAPP_EVO_WEBHOOK_EVENTS } from "./IEvoApiService"
 import { normalizePhone, normalizeRemoteJid } from "../phoneUtils"
 import { deriveWebhookHeaderSecret, extractWebhookSecretFromUrl, WHATSAPP_WEBHOOK_HEADER_NAME } from "@/lib/whatsapp/webhook-header-auth"
@@ -40,6 +41,29 @@ function getApiKey(): string {
 const EVO_REQUEST_TIMEOUT_MS = 10_000
 const EVO_SEND_REQUEST_TIMEOUT_MS = 60_000
 
+export class EvoProviderError extends Error {
+  constructor(
+    readonly code: "provider_timeout" | "provider_http" | "instance_name_in_use" | "invalid_provider_response",
+    readonly correlationId: string,
+    readonly httpStatus?: number
+  ) {
+    super(`[EvoApiService] ${code} (${correlationId})`)
+    this.name = "EvoProviderError"
+  }
+}
+
+async function classifyProviderFailure(response: Response): Promise<"instance_name_in_use" | "provider_http"> {
+  if (response.status !== 403) return "provider_http"
+  try {
+    const body = await response.clone().text()
+    return /already in use|nome.*uso|instance.*exist/i.test(body)
+      ? "instance_name_in_use"
+      : "provider_http"
+  } catch {
+    return "provider_http"
+  }
+}
+
 async function fetchEvo<T>(
   url: string,
   options: RequestInit,
@@ -55,19 +79,19 @@ async function fetchEvo<T>(
     })
   } catch (error) {
     logWhatsAppProviderFailure({ operation: label, correlationId, error })
-    throw new Error(`[EvoApiService][${label}] ${toWhatsAppSafeErrorCode(error)} (${correlationId})`)
+    throw new EvoProviderError(toWhatsAppSafeErrorCode(error) === "provider_timeout" ? "provider_timeout" : "provider_http", correlationId)
   }
 
   if (!response.ok) {
     logWhatsAppProviderFailure({ operation: label, correlationId, status: response.status })
-    throw new Error(`[EvoApiService][${label}] provider_http_${response.status} (${correlationId})`)
+    throw new EvoProviderError(await classifyProviderFailure(response), correlationId, response.status)
   }
 
   try {
     return (await response.json()) as T
   } catch (error) {
     logWhatsAppProviderFailure({ operation: label, correlationId, error })
-    throw new Error(`[EvoApiService][${label}] invalid_provider_response (${correlationId})`)
+    throw new EvoProviderError("invalid_provider_response", correlationId)
   }
 }
 
@@ -79,9 +103,7 @@ function buildHeaders(apiKey: string): HeadersInit {
 }
 
 export function isInstanceNameAlreadyInUseError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const message = error.message.toLowerCase()
-  return message.includes("403") && message.includes("already in use")
+  return error instanceof EvoProviderError && error.code === "instance_name_in_use"
 }
 
 function buildWebhookPayload(webhookUrl: string) {
@@ -264,7 +286,6 @@ export class EvoApiService implements IEvoApiService {
   async createInstance(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<EvoCreateInstanceResult> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
@@ -309,7 +330,6 @@ export class EvoApiService implements IEvoApiService {
   async setWebhook(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<void> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
@@ -333,7 +353,6 @@ export class EvoApiService implements IEvoApiService {
   async adoptOrCreateInstance(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<EvoCreateInstanceResult & { adopted: boolean }> {
     try {
       const created = await this.createInstance(params)
@@ -362,7 +381,7 @@ export class EvoApiService implements IEvoApiService {
         try {
           qrCode = await this.getQrCode(params.instanceName)
         } catch (qrError) {
-          console.error("[EvoApiService][adoptOrCreateInstance] QR fetch failed", qrError)
+          logSafeWhatsAppError("[EvoApiService][adoptOrCreateInstance] QR fetch failed", qrError)
         }
       }
 
@@ -376,10 +395,7 @@ export class EvoApiService implements IEvoApiService {
     }
   }
 
-  async getQrCode(
-    instanceName: string,
-    _hostBaseUrl?: string
-  ): Promise<{ text: string; base64: string }> {
+  async getQrCode(instanceName: string): Promise<{ text: string; base64: string }> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/instance/connect/${encodeURIComponent(instanceName)}`
@@ -404,10 +420,7 @@ export class EvoApiService implements IEvoApiService {
     return { text: data.code, base64: data.base64 }
   }
 
-  async getConnectionState(
-    instanceName: string,
-    _hostBaseUrl?: string
-  ): Promise<EvoConnectionState> {
+  async getConnectionState(instanceName: string): Promise<EvoConnectionState> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/instance/connectionState/${encodeURIComponent(instanceName)}`
@@ -434,7 +447,7 @@ export class EvoApiService implements IEvoApiService {
     }
   }
 
-  async fetchInstance(instanceName: string, _hostBaseUrl?: string): Promise<EvoInstanceInfo | null> {
+  async fetchInstance(instanceName: string): Promise<EvoInstanceInfo | null> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`
@@ -472,7 +485,7 @@ export class EvoApiService implements IEvoApiService {
     }
   }
 
-  async findChats(instanceName: string, _hostBaseUrl?: string): Promise<EvoChatSummary[]> {
+  async findChats(instanceName: string): Promise<EvoChatSummary[]> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/chat/findChats/${encodeURIComponent(instanceName)}`
@@ -498,7 +511,6 @@ export class EvoApiService implements IEvoApiService {
     instanceName: string
     remoteJid: string
     since: Date
-    _hostBaseUrl?: string
   }): Promise<EvoHistoryMessage[]> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
@@ -554,7 +566,6 @@ export class EvoApiService implements IEvoApiService {
   async fetchProfilePictureUrl(params: {
     instanceName: string
     remoteJid: string
-    hostBaseUrl?: string
   }): Promise<string | null> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
@@ -574,8 +585,8 @@ export class EvoApiService implements IEvoApiService {
         "fetchProfilePictureUrl"
       )
       return data.profilePictureUrl ?? data.url ?? null
-    } catch (error) {
-      console.info("[EvoApiService][fetchProfilePictureUrl] No picture for", params.remoteJid, error)
+    } catch (_error) {
+      console.info("[EvoApiService][fetchProfilePictureUrl] imagem indisponível")
       return null
     }
   }
@@ -586,18 +597,12 @@ export class EvoApiService implements IEvoApiService {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
-    hostBaseUrl?: string
   }): Promise<EvoSendTextResult> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/message/sendText/${encodeURIComponent(params.instanceName)}`
 
-    console.info(
-      "[EvoApiService][sendTextMessage] Sending text to",
-      params.recipientJid,
-      "via",
-      params.instanceName
-    )
+    console.info("[EvoApiService][sendTextMessage] enviando texto")
 
     const body: Record<string, unknown> = {
       number: params.recipientJid,
@@ -646,18 +651,12 @@ export class EvoApiService implements IEvoApiService {
     fileName: string
     base64: string
     caption?: string
-    hostBaseUrl?: string
   }): Promise<EvoSendTextResult> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/message/sendMedia/${encodeURIComponent(params.instanceName)}`
 
-    console.info(
-      "[EvoApiService][sendMediaMessage] Sending",
-      params.mediatype,
-      "to",
-      params.recipientJid
-    )
+    console.info("[EvoApiService][sendMediaMessage] enviando mídia", { mediatype: params.mediatype })
 
     const data = await fetchEvo<EvoSendTextResponse>(
       url,
@@ -695,7 +694,6 @@ export class EvoApiService implements IEvoApiService {
   async getBase64FromMediaMessage(params: {
     instanceName: string
     messageKey: Record<string, unknown>
-    hostBaseUrl?: string
   }): Promise<{ base64: string; mimeType: string } | null> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
@@ -722,15 +720,12 @@ export class EvoApiService implements IEvoApiService {
         mimeType: data.mimetype ?? "application/octet-stream",
       }
     } catch (error) {
-      console.error("[EvoApiService][getBase64FromMediaMessage]", error)
+      logSafeWhatsAppError("[EvoApiService][getBase64FromMediaMessage]", error)
       return null
     }
   }
 
-  async findContacts(
-    instanceName: string,
-    _hostBaseUrl?: string
-  ): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null }>> {
+  async findContacts(instanceName: string): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null }>> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/chat/findContacts/${encodeURIComponent(instanceName)}`
@@ -767,16 +762,12 @@ export class EvoApiService implements IEvoApiService {
   async findGroupParticipants(params: {
     instanceName: string
     groupJid: string
-    hostBaseUrl?: string
   }): Promise<Array<{ remoteJid: string; pushName: string | null; phoneNumber: string | null; admin: string | null }>> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/group/participants/${encodeURIComponent(params.instanceName)}?groupJid=${encodeURIComponent(params.groupJid)}`
 
-    console.info(
-      "[EvoApiService][findGroupParticipants] Listing participants for",
-      params.groupJid
-    )
+    console.info("[EvoApiService][findGroupParticipants] listando participantes")
 
     const data = await fetchEvo<unknown>(
       url,
@@ -813,7 +804,6 @@ export class EvoApiService implements IEvoApiService {
   async markMessagesAsRead(params: {
     instanceName: string
     readMessages: Array<{ remoteJid: string; fromMe: boolean; id: string }>
-    hostBaseUrl?: string
   }): Promise<void> {
     if (params.readMessages.length === 0) return
 
@@ -839,7 +829,7 @@ export class EvoApiService implements IEvoApiService {
     )
   }
 
-  async disconnectInstance(instanceName: string, _hostBaseUrl?: string): Promise<void> {
+  async disconnectInstance(instanceName: string): Promise<void> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/instance/logout/${encodeURIComponent(instanceName)}`
@@ -877,7 +867,7 @@ export class EvoApiService implements IEvoApiService {
     }
   }
 
-  async deleteInstance(instanceName: string, _hostBaseUrl?: string): Promise<void> {
+  async deleteInstance(instanceName: string): Promise<void> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
     const url = `${base}/instance/delete/${encodeURIComponent(instanceName)}`

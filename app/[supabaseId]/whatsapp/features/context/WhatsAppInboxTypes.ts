@@ -23,6 +23,22 @@ export interface WhatsAppTeamContact {
   source: string
 }
 
+export interface WhatsAppInboxSearchContact {
+  id: string
+  name: string | null
+  phoneE164: string | null
+  formattedPhone: string | null
+  syncState: 'FRESH' | 'STALE' | 'UNRESOLVED' | 'CONFLICT'
+  existingConversationId: string | null
+  isProvisional: boolean
+}
+
+export interface WhatsAppInboxSearchResult {
+  conversations: WhatsAppConversation[]
+  contacts: WhatsAppInboxSearchContact[]
+  startNumber: { normalizedPhone: string; displayPhone: string } | null
+}
+
 export type WhatsAppContactLookup = Record<string, string>
 
 export type WhatsAppContactNameSource = 'MANUAL' | 'LEAD' | 'PHONE_BOOK' | 'PUSH_NAME'
@@ -62,6 +78,7 @@ export type WhatsAppMessageStatus =
   | 'SENT'
   | 'DELIVERED'
   | 'READ'
+  | 'PLAYED'
   | 'UNKNOWN'
   | 'FAILED'
   | 'RECEIVED'
@@ -84,6 +101,7 @@ export interface WhatsAppMessage {
   sentAt: string | null
   deliveredAt: string | null
   readAt: string | null
+  playedAt?: string | null
   failedAt: string | null
   isAutoResponse: boolean
   createdAt: string
@@ -186,7 +204,7 @@ export interface InboxActions {
   unarchiveConversation: (conversationId: string) => void
   deleteConversation: (conversationId: string) => void
   createConversation: (input: {
-    phone: string
+    phone?: string
     contactName?: string
     contactId?: string
   }) => Promise<WhatsAppConversation | void>
@@ -195,4 +213,5 @@ export interface InboxActions {
   ) => Promise<{ imported: number; updatedConversations: number; totalContacts: number }>
   syncGroupParticipants: (conversationId: string) => Promise<{ imported: number; totalParticipants: number }>
   loadContacts: (groupJid?: string) => Promise<void>
+  searchInbox: (query: string, signal?: AbortSignal) => Promise<WhatsAppInboxSearchResult>
 }

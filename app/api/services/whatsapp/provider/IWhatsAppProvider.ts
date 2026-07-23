@@ -98,40 +98,34 @@ export interface IWhatsAppProvider {
   connectInstance(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderConnectResult>
 
   setWebhook(params: {
     instanceName: string
     webhookUrl: string
-    hostBaseUrl?: string
   }): Promise<void>
 
-  getQrCode(instanceName: string, hostBaseUrl?: string): Promise<WhatsAppProviderQrCode>
+  getQrCode(instanceName: string): Promise<WhatsAppProviderQrCode>
 
   getConnectionState(
-    instanceName: string,
-    hostBaseUrl?: string
+    instanceName: string
   ): Promise<WhatsAppProviderConnectionInfo>
 
   getInstanceInfo(
-    instanceName: string,
-    hostBaseUrl?: string
+    instanceName: string
   ): Promise<WhatsAppProviderInstanceInfo | null>
 
-  fetchChats(instanceName: string, hostBaseUrl?: string): Promise<WhatsAppProviderChatSummary[]>
+  fetchChats(instanceName: string): Promise<WhatsAppProviderChatSummary[]>
 
   fetchMessagesSince(params: {
     instanceName: string
     remoteJid: string
     since: Date
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderHistoryMessage[]>
 
   fetchProfilePictureUrl(params: {
     instanceName: string
     remoteJid: string
-    hostBaseUrl?: string
   }): Promise<string | null>
 
   sendText(params: {
@@ -140,7 +134,6 @@ export interface IWhatsAppProvider {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderSendResult>
 
   sendMedia(params: {
@@ -151,28 +144,24 @@ export interface IWhatsAppProvider {
     fileName: string
     base64: string
     caption?: string
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderSendResult>
 
   resolveMediaBase64(params: {
     instanceName: string
     messageKey: Record<string, unknown>
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderMediaContent | null>
 
-  fetchContacts(instanceName: string, hostBaseUrl?: string): Promise<WhatsAppProviderContact[]>
+  fetchContacts(instanceName: string): Promise<WhatsAppProviderContact[]>
 
   fetchGroupParticipants(params: {
     instanceName: string
     groupJid: string
-    hostBaseUrl?: string
   }): Promise<WhatsAppProviderGroupParticipant[]>
 
   markMessagesAsRead(params: {
     instanceName: string
     readMessages: WhatsAppProviderReadMessage[]
-    hostBaseUrl?: string
   }): Promise<void>
 
-  disconnect(instanceName: string, hostBaseUrl?: string): Promise<void>
+  disconnect(instanceName: string): Promise<void>
 }

@@ -30,7 +30,6 @@ const CONFIG_SELECT = {
   qrCodeText: true,
   qrCodeImageUrl: true,
   webhookSecret: true,
-  hostBaseUrl: true,
   lastConnectedAt: true,
   lastDisconnectedAt: true,
   lastSyncAt: true,
@@ -51,6 +50,7 @@ const CONVERSATION_SELECT = {
   configId: true,
   leadId: true,
   externalChatId: true,
+  contactId: true,
   contactPhone: true,
   contactName: true,
   contactNameSource: true,
@@ -111,6 +111,7 @@ const MESSAGE_SELECT = {
   sentAt: true,
   deliveredAt: true,
   readAt: true,
+  playedAt: true,
   failedAt: true,
   isAutoResponse: true,
   autoResponseRuleId: true,
@@ -221,6 +222,43 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return prisma.whatsAppConversation.findFirst({
       where: { id: conversationId, deletedAt: null },
       select: CONVERSATION_SELECT,
+    })
+  }
+
+  async searchConversations(
+    teamId: string,
+    query: string,
+    limit: number,
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  ): Promise<WhatsAppConversationSelect[]> {
+    const term = query.trim()
+    const digits = term.replace(/\D/g, "")
+    return prisma.whatsAppConversation.findMany({
+      where: {
+        teamId,
+        deletedAt: null,
+        ...(visibilityWhere ? { AND: [visibilityWhere] } : {}),
+        ...(term ? { OR: [
+          { contactName: { contains: term, mode: "insensitive" } },
+          { contactPhone: { contains: digits || term } },
+          { normalizedPhone: { contains: digits || term } },
+        ] } : {}),
+      },
+      select: CONVERSATION_SELECT,
+      orderBy: { lastMessageAt: "desc" },
+      take: Math.min(limit, 50),
+    })
+  }
+
+  async findConversationByContactId(
+    teamId: string,
+    contactId: string,
+    visibilityWhere?: Prisma.WhatsAppConversationWhereInput
+  ): Promise<WhatsAppConversationSelect | null> {
+    return prisma.whatsAppConversation.findFirst({
+      where: { teamId, contactId, deletedAt: null, ...(visibilityWhere ? { AND: [visibilityWhere] } : {}) },
+      select: CONVERSATION_SELECT,
+      orderBy: { lastMessageAt: "desc" },
     })
   }
 
@@ -533,7 +571,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
   async findOutboundCommand(teamId: string, clientMessageId: string): Promise<WhatsAppOutboundCommandRecord | null> {
     const [command] = await prisma.$queryRaw<WhatsAppOutboundCommandRecord[]>`
-      select "conversationId", "messageId", status::text as status
+      select "conversationId", "messageId", status::text as status, "requestHash"
       from whatsapp_outbound_commands
       where "teamId" = ${teamId}::uuid and "clientMessageId" = ${clientMessageId}
     `
@@ -553,6 +591,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
     teamId: string
     conversationId: string
     clientMessageId: string
+    requestHash: string
     sentByProfileId: string
     contentText?: string
     messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO"
@@ -598,12 +637,48 @@ class WhatsAppRepository implements IWhatsAppRepository {
           teamId: input.teamId,
           conversationId: input.conversationId,
           clientMessageId: input.clientMessageId,
+          requestHash: input.requestHash,
           messageId: message.id,
           status: "PENDING",
           attemptCount: 1,
+          claimedAt: new Date(),
+          nextReconcileAt: new Date(Date.now() + 10 * 60_000),
         },
       })
       return { created: true, messageId: message.id }
+    })
+  }
+
+  async retryFailedOutboundCommand(input: {
+    teamId: string
+    clientMessageId: string
+    requestHash: string
+  }): Promise<{ messageId: string | null; claimed: boolean }> {
+    return prisma.$transaction(async (tx) => {
+      const command = await tx.whatsAppOutboundCommand.findUnique({
+        where: { teamId_clientMessageId: { teamId: input.teamId, clientMessageId: input.clientMessageId } },
+        select: { id: true, messageId: true, status: true, requestHash: true },
+      })
+      if (!command || command.status !== "FAILED" || command.requestHash !== input.requestHash) {
+        return { messageId: command?.messageId ?? null, claimed: false }
+      }
+      await tx.whatsAppOutboundCommand.update({
+        where: { id: command.id },
+        data: {
+          status: "PENDING",
+          attemptCount: { increment: 1 },
+          claimedAt: new Date(),
+          nextReconcileAt: new Date(Date.now() + 10 * 60_000),
+          lastError: null,
+        },
+      })
+      if (command.messageId) {
+        await tx.whatsAppMessage.update({
+          where: { id: command.messageId },
+          data: { status: "PENDING", failedAt: null },
+        })
+      }
+      return { messageId: command.messageId, claimed: true }
     })
   }
 
@@ -733,6 +808,63 @@ class WhatsAppRepository implements IWhatsAppRepository {
       where status = 'PENDING' and "createdAt" < ${olderThan}
     `
     return updated
+  }
+
+  async enqueueContactSyncJob(input: { teamId: string; configId: string }): Promise<string> {
+    const existing = await prisma.whatsAppSyncJob.findFirst({
+      where: { teamId: input.teamId, configId: input.configId, status: { in: ["PENDING", "RUNNING"] } },
+      select: { id: true },
+    })
+    if (existing) return existing.id
+    const job = await prisma.whatsAppSyncJob.create({
+      data: { teamId: input.teamId, configId: input.configId },
+      select: { id: true },
+    })
+    return job.id
+  }
+
+  async listConnectedContactSyncTargets(): Promise<Array<{ teamId: string; configId: string }>> {
+    return prisma.teamWhatsAppConfig.findMany({
+      where: { status: "CONNECTED", primaryConfigId: null },
+      select: { teamId: true, id: true },
+    }).then((configs) => configs.map((config) => ({ teamId: config.teamId, configId: config.id })))
+  }
+
+  async claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string } | null> {
+    const candidate = await prisma.whatsAppSyncJob.findFirst({
+      where: {
+        OR: [
+          { status: "PENDING" },
+          { status: "RUNNING", leaseExpiresAt: { lt: new Date() } },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, teamId: true, configId: true },
+    })
+    if (!candidate) return null
+    const claimed = await prisma.whatsAppSyncJob.updateMany({
+      where: {
+        id: candidate.id,
+        OR: [{ status: "PENDING" }, { status: "RUNNING", leaseExpiresAt: { lt: new Date() } }],
+      },
+      data: {
+        status: "RUNNING",
+        leaseOwner: workerId,
+        leaseExpiresAt: new Date(Date.now() + 45_000),
+        startedAt: new Date(),
+        lastError: null,
+      },
+    })
+    return claimed.count ? candidate : null
+  }
+
+  async completeContactSyncJob(input: { jobId: string; error?: string }): Promise<void> {
+    await prisma.whatsAppSyncJob.update({
+      where: { id: input.jobId },
+      data: input.error
+        ? { status: "FAILED", lastError: input.error.slice(0, 500), leaseOwner: null, leaseExpiresAt: null, completedAt: new Date() }
+        : { status: "COMPLETED", leaseOwner: null, leaseExpiresAt: null, completedAt: new Date() },
+    })
   }
 
   async createUsageEvent(data: Prisma.WhatsAppUsageEventCreateInput): Promise<{ id: string }> {
@@ -983,7 +1115,6 @@ class WhatsAppRepository implements IWhatsAppRepository {
         qrCodeText: true,
         qrCodeImageUrl: true,
         webhookSecret: true,
-        hostBaseUrl: true,
         lastConnectedAt: true,
         lastDisconnectedAt: true,
         lastSyncAt: true,
