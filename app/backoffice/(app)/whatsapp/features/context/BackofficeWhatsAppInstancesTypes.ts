@@ -28,7 +28,6 @@ export interface BackofficeWhatsAppInstanceListItem {
   phoneNumber: string | null
   displayName: string | null
   status: WhatsAppConnectionStatus
-  hostBaseUrl: string | null
   lastConnectedAt: string | null
   lastDisconnectedAt: string | null
   lastSyncAt: string | null
@@ -82,11 +81,27 @@ export interface BackofficeWhatsAppInstancesPagination {
 export interface UpdateWhatsAppInstanceFormData {
   usageLimitMonthly: number
   billingEnabled: boolean
-  hostBaseUrl: string
 }
 
 export interface ProvisionWhatsAppInstanceFormData {
   teamId: string
   usageLimitMonthly?: number
-  hostBaseUrl?: string
+}
+
+export interface BackofficeWhatsAppWebhookResyncItem {
+  configId: string
+  teamId: string
+  instanceName: string
+  status: WhatsAppConnectionStatus
+  webhookUrl: string
+  ok: boolean
+  error?: string
+}
+
+export interface BackofficeWhatsAppWebhookResyncResult {
+  mode: "dry-run" | "apply"
+  total: number
+  ok: number
+  failed: number
+  results: BackofficeWhatsAppWebhookResyncItem[]
 }

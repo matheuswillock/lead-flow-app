@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { listWhatsAppContactsUseCase } from "@/app/api/useCases/whatsapp/ListWhatsAppContactsUseCase"
+import { createOrGetWhatsAppContactUseCase } from "@/app/api/useCases/whatsapp/CreateOrGetWhatsAppContactUseCase"
+import { z } from "zod"
+import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
+
+const createContactSchema = z.object({ phone: z.string().min(8), name: z.string().trim().min(1).max(120).optional() })
 
 function resolveStatus(output: Output): number {
   const msg = output.errorMessages.join(" ")
@@ -43,4 +48,28 @@ export async function GET(
   }
 
   return NextResponse.json(output)
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ teamId: string }> }
+) {
+  const { teamId } = await params
+  const teamAccess = await getTeamAccess(request)
+  if ("error" in teamAccess) return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+  if (teamAccess.access.teamId !== teamId) {
+    return NextResponse.json(new Output(false, [], ["Acesso negado a este time"], null), { status: 403 })
+  }
+  if (!isWhatsAppV3Enabled("contacts", teamId)) {
+    return NextResponse.json(new Output(false, [], ["Contatos V1 ainda não estão habilitados para este time."], null), { status: 404 })
+  }
+  const parsed = createContactSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json(new Output(false, [], ["Payload inválido"], null), { status: 400 })
+  const output = await createOrGetWhatsAppContactUseCase.execute({
+    teamId,
+    access: teamAccess.access,
+    phone: parsed.data.phone,
+    name: parsed.data.name,
+  })
+  return NextResponse.json(output, { status: output.isValid ? 200 : resolveStatus(output) })
 }

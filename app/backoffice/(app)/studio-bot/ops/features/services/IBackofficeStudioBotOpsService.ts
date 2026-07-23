@@ -2,6 +2,7 @@ import type {
   ApiOutput,
   BackofficeBotHostJob,
   BackofficeBotHostSettings,
+  BethaniaWebhookResyncResult,
   HostHealth,
   HostLogsResult,
 } from "../context/BackofficeStudioBotOpsTypes"
@@ -34,6 +35,8 @@ export interface IBackofficeStudioBotOpsService {
   applyEnv(): Promise<ApiOutput<{ jobId: string }>>
   restart(service: "n8n" | "api" | "all"): Promise<ApiOutput<{ jobId: string }>>
   importWorkflows(): Promise<ApiOutput<{ jobId: string }>>
+  previewResyncBethaniaWebhook(): Promise<ApiOutput<BethaniaWebhookResyncResult>>
+  confirmResyncBethaniaWebhook(): Promise<ApiOutput<BethaniaWebhookResyncResult>>
   syncHost(input: {
     version: string
     packBase64: string

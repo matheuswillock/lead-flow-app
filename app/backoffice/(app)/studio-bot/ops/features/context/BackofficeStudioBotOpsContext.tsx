@@ -6,6 +6,7 @@ import type { IBackofficeStudioBotOpsService } from "../services/IBackofficeStud
 import type {
   BackofficeBotHostJob,
   BackofficeBotHostSettings,
+  BethaniaWebhookResyncResult,
   HostHealth,
   HostLogsResult,
 } from "./BackofficeStudioBotOpsTypes"
@@ -15,6 +16,7 @@ type BackofficeStudioBotOpsContextValue = {
   jobs: BackofficeBotHostJob[]
   health: HostHealth | null
   logs: HostLogsResult | null
+  bethaniaWebhookResync: BethaniaWebhookResyncResult | null
   isLoading: boolean
   isLoadingLogs: boolean
   actionLock: string | null
@@ -39,6 +41,8 @@ type BackofficeStudioBotOpsContextValue = {
   runApplyEnv: () => Promise<void>
   runRestart: (service: "n8n" | "api" | "all") => Promise<void>
   runImportWorkflows: () => Promise<void>
+  previewResyncBethaniaWebhook: () => Promise<void>
+  confirmResyncBethaniaWebhook: () => Promise<void>
   runSyncHost: (input: {
     version: string
     packBase64: string
@@ -60,6 +64,8 @@ export function BackofficeStudioBotOpsProvider({
   const [jobs, setJobs] = useState<BackofficeBotHostJob[]>([])
   const [health, setHealth] = useState<HostHealth | null>(null)
   const [logs, setLogs] = useState<HostLogsResult | null>(null)
+  const [bethaniaWebhookResync, setBethaniaWebhookResync] =
+    useState<BethaniaWebhookResyncResult | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingLogs, setIsLoadingLogs] = useState(false)
   const [actionLock, setActionLock] = useState<string | null>(null)
@@ -228,6 +234,31 @@ export function BackofficeStudioBotOpsProvider({
     })
   }, [loadAll, service, withLock])
 
+  const previewResyncBethaniaWebhook = useCallback(async () => {
+    await withLock("preview-bethania-webhook", async () => {
+      const output = await service.previewResyncBethaniaWebhook()
+      if (!output.isValid || !output.result) {
+        toast.error(output.errorMessages[0] ?? "Prévia do webhook falhou")
+        return
+      }
+      setBethaniaWebhookResync(output.result)
+    })
+  }, [service, withLock])
+
+  const confirmResyncBethaniaWebhook = useCallback(async () => {
+    await withLock("resync-bethania-webhook", async () => {
+      const output = await service.confirmResyncBethaniaWebhook()
+      if (output.result) {
+        setBethaniaWebhookResync(output.result)
+      }
+      if (!output.isValid) {
+        toast.error(output.errorMessages[0] ?? "Reaplicar webhook falhou")
+        return
+      }
+      toast.success(output.successMessages[0] ?? "Webhook Bethânia reaplicado")
+    })
+  }, [service, withLock])
+
   const runSyncHost = useCallback(
     async (input: { version: string; packBase64: string; packSha256: string }) => {
       await withLock("sync", async () => {
@@ -249,6 +280,7 @@ export function BackofficeStudioBotOpsProvider({
       jobs,
       health,
       logs,
+      bethaniaWebhookResync,
       isLoading,
       isLoadingLogs,
       actionLock,
@@ -261,6 +293,8 @@ export function BackofficeStudioBotOpsProvider({
       runApplyEnv,
       runRestart,
       runImportWorkflows,
+      previewResyncBethaniaWebhook,
+      confirmResyncBethaniaWebhook,
       runSyncHost,
     }),
     [
@@ -268,6 +302,7 @@ export function BackofficeStudioBotOpsProvider({
       jobs,
       health,
       logs,
+      bethaniaWebhookResync,
       isLoading,
       isLoadingLogs,
       actionLock,
@@ -280,6 +315,8 @@ export function BackofficeStudioBotOpsProvider({
       runApplyEnv,
       runRestart,
       runImportWorkflows,
+      previewResyncBethaniaWebhook,
+      confirmResyncBethaniaWebhook,
       runSyncHost,
     ]
   )

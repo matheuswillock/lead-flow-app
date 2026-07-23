@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
-import { EvoApiService, isInstanceNameAlreadyInUseError } from "./EvoApiService"
+import { EvoApiService, EvoProviderError, isInstanceNameAlreadyInUseError } from "./EvoApiService"
 
 const INSTANCE = "team_32ccdbe1627f4fe3"
 const WEBHOOK_URL = "http://localhost:3000/api/webhooks/whatsapp/evolution/secret"
@@ -23,9 +23,7 @@ function errorResponse(body: unknown, status: number): Response {
 
 describe("isInstanceNameAlreadyInUseError", () => {
   it("detecta 403 com nome já em uso", () => {
-    const error = new Error(
-      '[EvoApiService][createInstance] HTTP 403: {"response":{"message":["already in use"]}}'
-    )
+    const error = new EvoProviderError("instance_name_in_use", "correlation-id", 403)
     expect(isInstanceNameAlreadyInUseError(error)).toBe(true)
   })
 
@@ -150,7 +148,7 @@ describe("EvoApiService.adoptOrCreateInstance", () => {
         instanceName: INSTANCE,
         webhookUrl: WEBHOOK_URL,
       })
-    ).rejects.toThrow("already in use")
+    ).rejects.toMatchObject({ code: "instance_name_in_use", httpStatus: 403 })
   })
 
   it("propaga erro HTTP 500 sem tentar adopt", async () => {
@@ -169,6 +167,19 @@ describe("EvoApiService.adoptOrCreateInstance", () => {
         instanceName: INSTANCE,
         webhookUrl: WEBHOOK_URL,
       })
-    ).rejects.toThrow("HTTP 500")
+    ).rejects.toMatchObject({ code: "provider_http", httpStatus: 500 })
+  })
+
+  it("preserva falha de rede como entrega incerta", async () => {
+    globalThis.fetch = mock(async () => {
+      throw new TypeError("fetch failed")
+    }) as unknown as typeof fetch
+
+    await expect(
+      service.adoptOrCreateInstance({
+        instanceName: INSTANCE,
+        webhookUrl: WEBHOOK_URL,
+      })
+    ).rejects.toMatchObject({ code: "provider_network" })
   })
 })

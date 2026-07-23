@@ -62,6 +62,14 @@ export type HostLogsResult = {
   fetchedAt: string
 }
 
+export type BethaniaWebhookResyncResult = {
+  mode: "dry-run" | "apply"
+  instanceName: string
+  webhookUrl: string
+  ok: boolean
+  error?: string
+}
+
 export type ApiOutput<T = unknown> = {
   isValid: boolean
   successMessages: string[]

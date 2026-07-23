@@ -1,4 +1,4 @@
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppInboxSearchResult, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 export interface IWhatsAppInboxService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
@@ -28,12 +28,13 @@ export interface IWhatsAppInboxService {
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[]
-  ): Promise<{ messageId: string }>
+  ): Promise<{ messageId: string; status: WhatsAppMessage['status'] }>
   fetchContacts(
     teamId: string,
     supabaseId: string,
     params?: { q?: string; groupJid?: string }
   ): Promise<WhatsAppTeamContact[]>
+  searchInbox(teamId: string, supabaseId: string, query: string, signal?: AbortSignal): Promise<WhatsAppInboxSearchResult>
   syncPhoneContacts(
     teamId: string,
     supabaseId: string,
@@ -79,6 +80,6 @@ export interface IWhatsAppInboxService {
   createConversation(
     teamId: string,
     supabaseId: string,
-    input: { phone: string; contactName?: string; initialMessage?: string }
+    input: { phone?: string; contactName?: string; contactId?: string }
   ): Promise<WhatsAppConversation>
 }

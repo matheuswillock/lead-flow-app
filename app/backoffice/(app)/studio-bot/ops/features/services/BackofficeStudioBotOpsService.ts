@@ -2,6 +2,7 @@ import type {
   ApiOutput,
   BackofficeBotHostJob,
   BackofficeBotHostSettings,
+  BethaniaWebhookResyncResult,
   HostHealth,
   HostLogsResult,
 } from "../context/BackofficeStudioBotOpsTypes"
@@ -98,6 +99,24 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   async importWorkflows() {
     const res = await fetch("/api/v1/backoffice/bot/host/workflows/import", { method: "POST" })
     return res.json() as Promise<ApiOutput<{ jobId: string }>>
+  }
+
+  async previewResyncBethaniaWebhook() {
+    const res = await fetch("/api/v1/backoffice/bot/host/resync-bethania-webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: false }),
+    })
+    return res.json() as Promise<ApiOutput<BethaniaWebhookResyncResult>>
+  }
+
+  async confirmResyncBethaniaWebhook() {
+    const res = await fetch("/api/v1/backoffice/bot/host/resync-bethania-webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    })
+    return res.json() as Promise<ApiOutput<BethaniaWebhookResyncResult>>
   }
 
   async syncHost(input: { version: string; packBase64: string; packSha256: string }) {

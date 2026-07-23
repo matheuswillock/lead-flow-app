@@ -8,6 +8,7 @@ const SOURCE_RANK: Record<ContactNameSource, number> = {
   LEAD: 3,
   PHONE_BOOK: 2,
   PUSH_NAME: 1,
+  PHONE_NUMBER: 0,
 }
 
 export function getContactNameSourceRank(source: ContactNameSource): number {

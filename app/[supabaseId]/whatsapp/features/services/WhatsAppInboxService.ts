@@ -1,5 +1,5 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppInboxSearchResult, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 class WhatsAppInboxService implements IWhatsAppInboxService {
   private async parseJsonResponse(response: Response): Promise<unknown> {
@@ -121,7 +121,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[]
-  ): Promise<{ messageId: string }> {
+  ): Promise<{ messageId: string; status: WhatsAppMessage['status'] }> {
     const body: Record<string, unknown> = media
       ? {
           conversationId,
@@ -154,7 +154,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível enviar a mensagem'))
     }
 
-    return (output as Record<string, unknown>).result as { messageId: string }
+    return (output as Record<string, unknown>).result as { messageId: string; status: WhatsAppMessage['status'] }
   }
 
   async fetchContacts(
@@ -184,6 +184,18 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
     const result = (output as Record<string, unknown>).result as { contacts: WhatsAppTeamContact[] }
     return result.contacts ?? []
+  }
+
+  async searchInbox(teamId: string, supabaseId: string, query: string, signal?: AbortSignal): Promise<WhatsAppInboxSearchResult> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/search?q=${encodeURIComponent(query)}`,
+      { headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId }, signal }
+    )
+    const output = await this.parseJsonResponse(response)
+    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível buscar contatos e conversas'))
+    }
+    return (output as Record<string, unknown>).result as WhatsAppInboxSearchResult
   }
 
   async syncPhoneContacts(
@@ -505,7 +517,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   async createConversation(
     teamId: string,
     supabaseId: string,
-    input: { phone: string; contactName?: string; initialMessage?: string }
+    input: { phone?: string; contactName?: string; contactId?: string }
   ): Promise<WhatsAppConversation> {
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations`,

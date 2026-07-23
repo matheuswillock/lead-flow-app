@@ -42,7 +42,8 @@ export function normalizeRemoteJid(remoteJid: string): string {
 export function resolveNormalizedPhone(remoteJid: string, phoneRaw: string): string {
   const kind = getChatKind(remoteJid)
   if (kind === "group" || kind === "lid") {
-    return phoneRaw
+    // LIDs and group IDs are technical identifiers, never phones.
+    return ""
   }
   return normalizePhone(phoneRaw)
 }

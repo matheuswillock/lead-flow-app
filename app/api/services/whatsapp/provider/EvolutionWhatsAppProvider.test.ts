@@ -42,13 +42,11 @@ describe("EvolutionWhatsAppProvider", () => {
     const result = await provider.connectInstance({
       instanceName: "team_abc",
       webhookUrl: "https://app.test/webhook/x",
-      hostBaseUrl: "https://evo.test",
     })
 
     expect(adoptOrCreateInstance).toHaveBeenCalledWith({
       instanceName: "team_abc",
       webhookUrl: "https://app.test/webhook/x",
-      hostBaseUrl: "https://evo.test",
     })
     expect(result).toEqual({
       instanceName: "team_abc",
@@ -106,7 +104,7 @@ describe("EvolutionWhatsAppProvider", () => {
       })
     )
 
-    await expect(provider.getInstanceInfo("team_abc", "https://evo.test")).resolves.toMatchObject({
+    await expect(provider.getInstanceInfo("team_abc")).resolves.toMatchObject({
       profileName: "Time",
     })
     await expect(provider.fetchChats("team_abc")).resolves.toEqual([])
@@ -120,7 +118,7 @@ describe("EvolutionWhatsAppProvider", () => {
       provider.resolveMediaBase64({ instanceName: "team_abc", messageKey: { id: "m1" } })
     ).resolves.toEqual({ base64: "b64", mimeType: "image/jpeg" })
     await provider.disconnect("team_abc")
-    expect(disconnectInstance).toHaveBeenCalledWith("team_abc", undefined)
+    expect(disconnectInstance).toHaveBeenCalledWith("team_abc")
   })
 
   it("markMessagesAsRead delega para Evo com readMessages", async () => {
@@ -134,13 +132,11 @@ describe("EvolutionWhatsAppProvider", () => {
     await provider.markMessagesAsRead({
       instanceName: "team_abc",
       readMessages,
-      hostBaseUrl: "https://evo.test",
     })
 
     expect(markMessagesAsRead).toHaveBeenCalledWith({
       instanceName: "team_abc",
       readMessages,
-      hostBaseUrl: "https://evo.test",
     })
   })
 })

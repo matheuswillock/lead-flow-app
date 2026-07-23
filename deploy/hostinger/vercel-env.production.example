@@ -3,6 +3,10 @@
 
 EVO_API_BASE_URL=https://evo.corretorstudio.com
 EVO_API_KEY=<mesmo AUTHENTICATION_API_KEY de .env.evolution na VPS>
+# Gere um valor aleatório de no mínimo 32 caracteres. Configure este valor e
+# faça redeploy antes de alterar WHATSAPP_WEBHOOK_HEADER_ENFORCE para true.
+WHATSAPP_WEBHOOK_HEADER_SECRET=<segredo-aleatorio-com-no-minimo-32-caracteres>
+WHATSAPP_WEBHOOK_HEADER_ENFORCE=false
 
 BACKOFFICE_N8N_OUTBOUND_URL=https://n8n.corretorstudio.com/webhook/bethania-outbound
 BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET=<mesmo valor de .env.n8n na VPS>

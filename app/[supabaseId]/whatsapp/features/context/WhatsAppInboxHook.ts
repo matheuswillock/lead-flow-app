@@ -20,6 +20,7 @@ import type {
   WhatsAppConfig,
   WhatsAppConversation,
   WhatsAppConversationTag,
+  WhatsAppInboxSearchResult,
   WhatsAppMessage,
   WhatsAppTeamContact,
 } from './WhatsAppInboxTypes'
@@ -847,19 +848,25 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         )
         // Promote the optimistic bubble to the real message id so the realtime
         // INSERT for the same id is de-duplicated by handleMessageInserted.
-        setMessages((prev) =>
-          prev.map((m) =>
+        setMessages((prev) => {
+          // A Realtime INSERT can win the race against this HTTP response.
+          // In that case the persisted row is more authoritative, so remove
+          // only the optimistic bubble instead of overwriting its receipt.
+          if (prev.some((m) => m.id === result.messageId)) {
+            return prev.filter((m) => m.id !== optimisticId)
+          }
+          return prev.map((m) =>
             m.id === optimisticId
               ? {
                   ...m,
                   id: result.messageId,
-                  status: 'SENT',
+                  status: result.status,
                   sentAt: m.sentAt ?? new Date().toISOString(),
                   sentByProfileId: m.sentByProfileId ?? currentProfileId,
                 }
               : m
           )
-        )
+        })
       } catch (error) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -1641,7 +1648,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   )
 
   const createConversation = useCallback(
-    async (input: { phone: string; contactName?: string; initialMessage?: string }) => {
+    async (input: { phone?: string; contactName?: string; contactId?: string }) => {
       if (!activeTeamId || isCreatingConversation) return
       setIsCreatingConversation(true)
       try {
@@ -1671,6 +1678,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     },
     [activeTeamId, supabaseId, isCreatingConversation, loadMessages, currentProfileId]
   )
+
+  const searchInbox = useCallback(async (query: string, signal?: AbortSignal): Promise<WhatsAppInboxSearchResult> => {
+    if (!activeTeamId) return { conversations: [], contacts: [], startNumber: null }
+    return whatsAppInboxService.searchInbox(activeTeamId, supabaseId, query, signal)
+  }, [activeTeamId, supabaseId])
 
   const loadContacts = useCallback(
     async (groupJid?: string) => {
@@ -1837,5 +1849,6 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     syncPhoneContacts,
     syncGroupParticipants,
     loadContacts,
+    searchInbox,
   }
 }

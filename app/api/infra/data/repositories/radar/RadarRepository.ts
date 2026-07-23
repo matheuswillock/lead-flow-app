@@ -413,6 +413,15 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * C6 EXPLAIN (50k rows / 16 teams): the `teamId` + `lastSeenAt` range + `ORDER BY
+   * lastSeenAt DESC` combination is served by a Bitmap Index Scan on one of the
+   * `@@index([teamId, ...])` composites — no seq scan at this scale. The free-text
+   * `search` OR (`displayName`/`displayPhone`/`primaryEmail` `contains`) necessarily
+   * seq-scans the team's rows regardless of indexing — a leading-wildcard match
+   * can't use a plain btree index (would need `pg_trgm`), which isn't justified by
+   * current team sizes; no additional index proven necessary today.
+   */
   async listProfilesWithCtx(
     scope: RadarTeamScope,
     params: {
@@ -657,6 +666,9 @@ export class RadarRepository {
     return new Map(leads.map((lead) => [lead.id, lead.status]))
   }
 
+  // C6 EXPLAIN: see doc comment on RadarSegmentQueryService — teamId-scoped filter
+  // uses an existing composite index; consent/event relation filters seq-scan their
+  // own tables, naturally bounded by profile count per team.
   async countProfilesByWhere(where: Prisma.RadarProfileWhereInput): Promise<number> {
     return prisma.radarProfile.count({ where })
   }

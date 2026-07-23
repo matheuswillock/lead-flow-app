@@ -12248,7 +12248,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"usageLimitMonthly\": 2000,\n  \"hostBaseUrl\": null\n}"
+                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"usageLimitMonthly\": 2000\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances",
@@ -12300,7 +12300,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"usageLimitMonthly\": 3000,\n  \"billingEnabled\": true,\n  \"hostBaseUrl\": null\n}"
+                  "raw": "{\n  \"usageLimitMonthly\": 3000,\n  \"billingEnabled\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}",
@@ -12422,6 +12422,37 @@
                   ]
                 },
                 "description": "Lista times elegíveis sem instância provisionada."
+              }
+            },
+            {
+              "name": "POST Resync WhatsApp Webhooks (Ops)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"confirm\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/ops/resync-webhooks",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "ops",
+                    "resync-webhooks"
+                  ]
+                },
+                "description": "Prévia (confirm:false) ou aplica (confirm:true) webhooks Evolution das instâncias primárias do produto."
               }
             }
           ]
@@ -16518,7 +16549,7 @@
           "response": []
         },
         {
-          "name": "Campos CDP disponíveis",
+          "name": "Campos Radar disponíveis",
           "request": {
             "method": "GET",
             "header": [
@@ -16543,7 +16574,7 @@
           "response": []
         },
         {
-          "name": "Preview interpolação CDP",
+          "name": "Preview interpolação Radar",
           "request": {
             "method": "POST",
             "header": [
@@ -16570,6 +16601,124 @@
                 "v1",
                 "cdp",
                 "interpolation-preview"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhe do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eventos do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/events?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Perfis do segmento do sistema",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/profiles?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                ":segment",
+                "profiles"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "segment",
+                  "value": "email_marketable"
+                }
               ]
             }
           },
@@ -16792,6 +16941,161 @@
               "response": []
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "Lead Custom Fields",
+      "item": [
+        {
+          "name": "Listar definições de campos personalizados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/lead-custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "lead-custom-fields"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Criar definição de campo personalizado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Plano\",\n  \"type\": \"select\",\n  \"options\": [\n    { \"value\": \"ouro\", \"label\": \"Ouro\" },\n    { \"value\": \"prata\", \"label\": \"Prata\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/lead-custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "lead-custom-fields"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar definição de campo personalizado",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Plano atualizado\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/lead-custom-fields/:definitionId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "lead-custom-fields",
+                ":definitionId"
+              ],
+              "variable": [
+                {
+                  "key": "definitionId",
+                  "value": "{{leadCustomFieldDefinitionId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Excluir definição de campo personalizado",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/lead-custom-fields/:definitionId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "lead-custom-fields",
+                ":definitionId"
+              ],
+              "variable": [
+                {
+                  "key": "definitionId",
+                  "value": "{{leadCustomFieldDefinitionId}}"
+                }
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -17111,6 +17415,29 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "backoffice", "bot", "host", "workflows", "import"]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Resync Bethania Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/resync-bethania-webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "resync-bethania-webhook"]
+            },
+            "description": "MASTER: prévia/aplica webhook Evolution da instância Bethânia → N8N inbound."
           },
           "response": []
         },

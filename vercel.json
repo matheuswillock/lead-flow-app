@@ -26,6 +26,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/whatsapp/cron/sync-contacts",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/v1/notifications/cron/task-overdue",
       "schedule": "0 8 * * *"
     },

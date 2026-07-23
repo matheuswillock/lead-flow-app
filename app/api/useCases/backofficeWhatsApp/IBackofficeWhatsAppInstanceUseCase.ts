@@ -12,7 +12,6 @@ export interface IBackofficeWhatsAppInstanceUseCase {
     data: {
       usageLimitMonthly?: number
       billingEnabled?: boolean
-      hostBaseUrl?: string | null
       updatedByProfileId: string
     }
   ): Promise<Output>
@@ -20,7 +19,6 @@ export interface IBackofficeWhatsAppInstanceUseCase {
     teamId: string
     profileId: string
     usageLimitMonthly?: number
-    hostBaseUrl?: string
   }): Promise<Output>
   reconnectInstance(configId: string, profileId: string): Promise<Output>
   disconnectInstance(configId: string, profileId: string): Promise<Output>
@@ -29,4 +27,5 @@ export interface IBackofficeWhatsAppInstanceUseCase {
     filters: { q?: string },
     pagination: { page: number; pageSize: number }
   ): Promise<Output>
+  resyncWebhooks(input: { confirm: boolean; profileId: string }): Promise<Output>
 }

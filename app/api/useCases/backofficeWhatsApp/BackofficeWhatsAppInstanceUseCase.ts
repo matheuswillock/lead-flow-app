@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { backofficeWhatsAppInstanceRepository } from "@/app/api/infra/data/repositories/backoffice/whatsapp/BackofficeWhatsAppInstanceRepository"
 import type { BackofficeWhatsAppInstanceRow } from "@/app/api/infra/data/repositories/backoffice/whatsapp/IBackofficeWhatsAppInstanceRepository"
 import { whatsAppService } from "@/app/api/services/whatsapp/WhatsAppService"
+import { evoApiService } from "@/app/api/services/whatsapp/evo/EvoApiService"
 import { toQrCodeImageUrl } from "@/app/api/services/whatsapp/qrCodeUtils"
 import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature"
 import type { IBackofficeWhatsAppInstanceUseCase } from "./IBackofficeWhatsAppInstanceUseCase"
@@ -29,7 +30,6 @@ function toListItem(row: BackofficeWhatsAppInstanceRow) {
     phoneNumber: row.phoneNumber,
     displayName: row.displayName,
     status: row.status,
-    hostBaseUrl: row.hostBaseUrl,
     lastConnectedAt: row.lastConnectedAt,
     lastDisconnectedAt: row.lastDisconnectedAt,
     lastSyncAt: row.lastSyncAt,
@@ -114,7 +114,6 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
     data: {
       usageLimitMonthly?: number
       billingEnabled?: boolean
-      hostBaseUrl?: string | null
       updatedByProfileId: string
     }
   ): Promise<Output> {
@@ -154,7 +153,6 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
     teamId: string
     profileId: string
     usageLimitMonthly?: number
-    hostBaseUrl?: string
   }): Promise<Output> {
     try {
       const existing = await backofficeWhatsAppInstanceRepository.findInstanceByTeamId(data.teamId)
@@ -171,7 +169,6 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
         teamId: data.teamId,
         profileId: data.profileId,
         usageLimitMonthly: data.usageLimitMonthly,
-        hostBaseUrl: data.hostBaseUrl,
       })
 
       const row = await backofficeWhatsAppInstanceRepository.findInstanceByTeamId(data.teamId)
@@ -309,6 +306,102 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
     } catch (error) {
       console.error("[BackofficeWhatsAppInstanceUseCase][listTeamsWithoutInstance]", error)
       return new Output(false, [], ["Erro ao listar times elegíveis"], null)
+    }
+  }
+
+  async resyncWebhooks(input: { confirm: boolean; profileId: string }): Promise<Output> {
+    try {
+      const targets =
+        await backofficeWhatsAppInstanceRepository.listPrimaryWebhookResyncTargets()
+
+      const preview = targets.map((target) => ({
+        configId: target.id,
+        teamId: target.teamId,
+        instanceName: target.instanceName,
+        status: target.status,
+        webhookUrl: buildWebhookUrl(target.webhookSecret),
+      }))
+
+      if (!input.confirm) {
+        return new Output(true, ["Pré-visualização de reaplicação de webhooks"], [], {
+          mode: "dry-run" as const,
+          total: preview.length,
+          ok: preview.length,
+          failed: 0,
+          results: preview.map((item) => ({ ...item, ok: true })),
+        })
+      }
+
+      console.info("[BackofficeWhatsAppInstanceUseCase][resyncWebhooks]", {
+        profileId: input.profileId,
+        total: targets.length,
+      })
+
+      const results: Array<{
+        configId: string
+        teamId: string
+        instanceName: string
+        status: WhatsAppConnectionStatus
+        webhookUrl: string
+        ok: boolean
+        error?: string
+      }> = []
+
+      let ok = 0
+      let failed = 0
+
+      for (const target of targets) {
+        const webhookUrl = buildWebhookUrl(target.webhookSecret)
+        try {
+          await evoApiService.setWebhook({
+            instanceName: target.instanceName,
+            webhookUrl,
+          })
+          ok += 1
+          results.push({
+            configId: target.id,
+            teamId: target.teamId,
+            instanceName: target.instanceName,
+            status: target.status,
+            webhookUrl,
+            ok: true,
+          })
+        } catch (error) {
+          failed += 1
+          const message = error instanceof Error ? error.message : "Erro desconhecido"
+          console.error("[BackofficeWhatsAppInstanceUseCase][resyncWebhooks] falhou", {
+            instanceName: target.instanceName,
+            error,
+          })
+          results.push({
+            configId: target.id,
+            teamId: target.teamId,
+            instanceName: target.instanceName,
+            status: target.status,
+            webhookUrl,
+            ok: false,
+            error: message,
+          })
+        }
+      }
+
+      return new Output(
+        failed === 0,
+        failed === 0
+          ? [`Webhooks reaplicados: ok=${ok}`]
+          : [`Webhooks reaplicados com falhas: ok=${ok} failed=${failed}`],
+        failed > 0 ? [`${failed} instância(s) falharam ao reaplicar webhook`] : [],
+        {
+          mode: "apply" as const,
+          total: targets.length,
+          ok,
+          failed,
+          results,
+        }
+      )
+    } catch (error) {
+      console.error("[BackofficeWhatsAppInstanceUseCase][resyncWebhooks]", error)
+      return new Output(false, [], ["Erro ao reaplicar webhooks WhatsApp"], null)
     }
   }
 

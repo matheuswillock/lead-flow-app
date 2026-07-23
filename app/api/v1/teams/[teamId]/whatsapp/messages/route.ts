@@ -5,6 +5,7 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { getMessagesUseCase } from "@/app/api/useCases/whatsapp/GetMessagesUseCase"
 import { sendMessageUseCase } from "@/app/api/useCases/whatsapp/SendMessageUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
 
 const conversationIdSchema = z.string().uuid("ID da conversa inválido")
 
@@ -20,6 +21,7 @@ const sendMessageSchema = z.union([
   z.object({
     conversationId: conversationIdSchema,
     clientMessageId: z.string().uuid("clientMessageId inválido"),
+    retryFailed: z.boolean().optional(),
     contentText: z.string().max(4096).optional(),
     mentionedJids: z.array(z.string().min(1)).optional(),
     media: mediaSchema,
@@ -27,17 +29,19 @@ const sendMessageSchema = z.union([
   z.object({
     conversationId: conversationIdSchema,
     clientMessageId: z.string().uuid("clientMessageId inválido"),
+    retryFailed: z.boolean().optional(),
     contentText: z.string().min(1, "Mensagem não pode ser vazia").max(4096),
     mentionedJids: z.array(z.string().min(1)).optional(),
   }),
 ])
 
 function resolveStatus(output: Output): number {
-  const msg = output.errorMessages.join(" ")
-  if (msg.includes("não encontrad")) return 404
-  if (msg.includes("Acesso negado")) return 403
-  if (msg.includes("não está conectado")) return 409
-  if (msg.includes("Erro interno") || msg.includes("inesperado")) return 500
+  const code = (output.result as { code?: string } | null)?.code
+  if (code === "ACCESS_DENIED") return 403
+  if (code === "CONVERSATION_NOT_FOUND") return 404
+  if (code === "RATE_LIMITED" || code === "QUOTA_EXCEEDED") return 429
+  if (code === "PROVIDER_OFFLINE" || code === "IDEMPOTENCY_CONFLICT") return 409
+  if (code === "INTERNAL_ERROR") return 500
   return 400
 }
 
@@ -111,6 +115,12 @@ export async function POST(
     const { teamId } = await params
     const accessResult = await assertTeamAccess(request, teamId)
     if ("error" in accessResult) return accessResult.error
+    if (!isWhatsAppV3Enabled("send", teamId)) {
+      return NextResponse.json(
+        new Output(false, [], ["Envio V3 ainda não está habilitado para este time."], null),
+        { status: 404 }
+      )
+    }
 
     let body: unknown
     try {
@@ -133,6 +143,7 @@ export async function POST(
     const output = await sendMessageUseCase.execute({
       conversationId: parsed.data.conversationId,
       clientMessageId: parsed.data.clientMessageId,
+      retryFailed: parsed.data.retryFailed,
       teamId,
       sentByProfileId: accessResult.access.profileId,
       access: accessResult.access,
@@ -145,7 +156,11 @@ export async function POST(
       return NextResponse.json(output, { status: resolveStatus(output) })
     }
 
-    return NextResponse.json(output, { status: 201 })
+    const result = output.result as { status?: string; idempotentReplay?: boolean } | null
+    if (result?.status === "PENDING" || result?.status === "UNKNOWN") {
+      return NextResponse.json(output, { status: 202 })
+    }
+    return NextResponse.json(output, { status: result?.idempotentReplay ? 200 : 201 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
     console.error("[WhatsAppMessagesRoute][POST]", error)

@@ -25,7 +25,7 @@ export class SendWhatsAppMessageExecutor implements IAutomationActionExecutor {
 
     const config = await prisma.teamWhatsAppConfig.findUnique({
       where: { teamId: ctx.lead.teamId },
-      select: { instanceName: true, hostBaseUrl: true, status: true },
+      select: { instanceName: true, status: true },
     });
 
     if (!config?.instanceName || config.status !== "CONNECTED") {
@@ -41,7 +41,6 @@ export class SendWhatsAppMessageExecutor implements IAutomationActionExecutor {
         instanceName: config.instanceName,
         recipientJid,
         text,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
       });
       return {
         status: "success",

@@ -1,10 +1,22 @@
-import type { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { resolveContactNameUpdate } from "@/lib/whatsapp/contact-name"
 import type {
+  CanonicalWhatsAppContact,
   IWhatsAppContactRepository,
   TeamWhatsAppContactSelect,
   UpsertWhatsAppContactInput,
 } from "./IWhatsAppContactRepository"
+
+const CANONICAL_CONTACT_SELECT = {
+  id: true,
+  teamId: true,
+  phoneE164: true,
+  name: true,
+  nameSource: true,
+  syncState: true,
+  lastSyncedAt: true,
+} as const
 
 const CONTACT_SELECT = {
   id: true,
@@ -21,6 +33,195 @@ const CONTACT_SELECT = {
 } as const
 
 class WhatsAppContactRepository implements IWhatsAppContactRepository {
+  async findOrCreateCanonical(input: {
+    teamId: string
+    phoneE164: string
+    name?: string | null
+    nameSource?: "MANUAL" | "LEAD" | "PHONE_BOOK" | "PUSH_NAME" | "PHONE_NUMBER"
+  }): Promise<CanonicalWhatsAppContact> {
+    const existing = await prisma.teamWhatsAppContact.findFirst({
+      where: { teamId: input.teamId, phoneE164: input.phoneE164 },
+      select: CANONICAL_CONTACT_SELECT,
+    })
+    if (existing) {
+      const nameUpdate = resolveContactNameUpdate({
+        currentName: existing.name,
+        currentSource: existing.nameSource,
+        incomingName: input.name,
+        incomingSource: input.nameSource ?? "PHONE_NUMBER",
+      })
+      if (!nameUpdate) return existing
+      return prisma.teamWhatsAppContact.update({
+        where: { id: existing.id },
+        data: {
+          name: nameUpdate.contactName,
+          displayName: nameUpdate.contactName,
+          nameSource: nameUpdate.contactNameSource,
+          searchText: `${nameUpdate.contactName} ${existing.phoneE164 ?? ""}`.trim().toLowerCase(),
+          lastSeenAt: new Date(),
+        },
+        select: CANONICAL_CONTACT_SELECT,
+      })
+    }
+
+    // Legacy columns remain non-null while old readers coexist. A deterministic
+    // technical key is never returned through the API.
+    const created = await prisma.teamWhatsAppContact.create({
+      data: {
+        teamId: input.teamId,
+        remoteJid: `canonical:${input.phoneE164}`,
+        opaqueId: input.phoneE164.replace(/\D/g, ""),
+        phoneNumber: input.phoneE164.replace(/\D/g, ""),
+        source: "PHONE_CONTACTS",
+        phoneE164: input.phoneE164,
+        name: input.name?.trim() || null,
+        displayName: input.name?.trim() || null,
+        nameSource: input.nameSource ?? "PHONE_NUMBER",
+        searchText: `${input.name ?? ""} ${input.phoneE164}`.trim().toLowerCase(),
+        syncState: "FRESH",
+      },
+      select: CANONICAL_CONTACT_SELECT,
+    })
+    return created
+  }
+
+  async findCanonicalById(teamId: string, contactId: string): Promise<CanonicalWhatsAppContact | null> {
+    return prisma.teamWhatsAppContact.findFirst({
+      where: { id: contactId, teamId },
+      select: CANONICAL_CONTACT_SELECT,
+    })
+  }
+
+  async findOrCreateProvisional(input: {
+    teamId: string
+    remoteJid: string
+    displayName?: string | null
+  }): Promise<CanonicalWhatsAppContact> {
+    const existing = await prisma.teamWhatsAppContact.findUnique({
+      where: { teamId_remoteJid: { teamId: input.teamId, remoteJid: input.remoteJid } },
+      select: CANONICAL_CONTACT_SELECT,
+    })
+    if (existing) {
+      return prisma.teamWhatsAppContact.update({
+        where: { id: existing.id },
+        data: { syncState: "UNRESOLVED", lastSeenAt: new Date() },
+        select: CANONICAL_CONTACT_SELECT,
+      })
+    }
+    return prisma.teamWhatsAppContact.create({
+      data: {
+        teamId: input.teamId,
+        remoteJid: input.remoteJid,
+        opaqueId: input.remoteJid.split("@")[0] ?? input.remoteJid,
+        displayName: input.displayName?.trim() || null,
+        pushName: input.displayName?.trim() || null,
+        source: "PHONE_CONTACTS",
+        name: input.displayName?.trim() || null,
+        nameSource: input.displayName ? "PUSH_NAME" : "PHONE_NUMBER",
+        searchText: (input.displayName ?? "").trim().toLowerCase(),
+        syncState: "UNRESOLVED",
+        lastSeenAt: new Date(),
+      },
+      select: CANONICAL_CONTACT_SELECT,
+    })
+  }
+
+  async updateCanonical(input: {
+    teamId: string
+    contactId: string
+    phoneE164?: string
+    name?: string | null
+  }): Promise<CanonicalWhatsAppContact> {
+    const existing = await this.findCanonicalById(input.teamId, input.contactId)
+    if (!existing) throw new Error("Contato não encontrado")
+    const phoneE164 = input.phoneE164 ?? existing.phoneE164
+    if (!phoneE164) throw new Error("Contato sem telefone não pode ser atualizado")
+    const name = input.name === undefined ? existing.name : input.name?.trim() || null
+    try {
+      return await prisma.teamWhatsAppContact.update({
+        where: { id: input.contactId },
+        data: {
+          phoneE164,
+          phoneNumber: phoneE164.replace(/\D/g, ""),
+          name,
+          displayName: name,
+          nameSource: "MANUAL",
+          searchText: `${name ?? ""} ${phoneE164}`.trim().toLowerCase(),
+          syncState: "FRESH",
+        },
+        select: CANONICAL_CONTACT_SELECT,
+      })
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new Error("Já existe um contato deste time com este telefone")
+      }
+      throw error
+    }
+  }
+
+  async searchCanonical(
+    teamId: string,
+    query: string,
+    limit = 20,
+    extraWhere?: Prisma.TeamWhatsAppContactWhereInput
+  ): Promise<CanonicalWhatsAppContact[]> {
+    const term = query.trim().toLowerCase()
+    const digits = term.replace(/\D/g, "")
+    const searchFilters: Prisma.TeamWhatsAppContactWhereInput[] = [
+      { searchText: { contains: term, mode: "insensitive" } },
+    ]
+    if (digits) searchFilters.push({ phoneE164: { contains: digits } })
+    return prisma.teamWhatsAppContact.findMany({
+      where: {
+        teamId,
+        ...(extraWhere ? { AND: [extraWhere] } : {}),
+        ...(term ? { OR: searchFilters } : {}),
+      },
+      select: CANONICAL_CONTACT_SELECT,
+      orderBy: [{ name: "asc" }, { phoneE164: "asc" }],
+      take: Math.min(limit, 50),
+    })
+  }
+
+  async upsertIdentity(input: {
+    teamId: string
+    configId: string
+    contactId: string
+    remoteJid: string
+    identityType: "PHONE" | "LID" | "GROUP" | "UNKNOWN"
+    phoneE164?: string | null
+    mappingSource: "CONTACT_SYNC" | "WEBHOOK" | "HISTORY" | "PROVIDER_MAPPING" | "MANUAL_LINK"
+    verifiedAt?: Date | null
+    sendable: boolean
+  }): Promise<void> {
+    await prisma.whatsAppContactIdentity.upsert({
+      where: { teamId_configId_remoteJid: {
+        teamId: input.teamId,
+        configId: input.configId,
+        remoteJid: input.remoteJid,
+      } },
+      create: {
+        teamId: input.teamId,
+        configId: input.configId,
+        contactId: input.contactId,
+        remoteJid: input.remoteJid,
+        identityType: input.identityType,
+        phoneE164: input.phoneE164 ?? null,
+        mappingSource: input.mappingSource,
+        verifiedAt: input.verifiedAt ?? null,
+        sendable: input.sendable,
+      },
+      update: {
+        contactId: input.contactId,
+        identityType: input.identityType,
+        phoneE164: input.phoneE164 ?? null,
+        mappingSource: input.mappingSource,
+        verifiedAt: input.verifiedAt ?? null,
+        sendable: input.sendable,
+        lastSeenAt: new Date(),
+      },
+    })
+  }
   async upsertMany(contacts: UpsertWhatsAppContactInput[]): Promise<number> {
     if (contacts.length === 0) return 0
 

@@ -40,7 +40,7 @@ describe("EvoApiService.sendTextMessage", () => {
         recipientJid: "5511999999999@s.whatsapp.net",
         text: "Olá",
       })
-    ).rejects.toThrow("Network request failed")
+    ).rejects.toMatchObject({ code: "provider_timeout" })
 
     expect(fetchCallCount).toBe(1)
   })

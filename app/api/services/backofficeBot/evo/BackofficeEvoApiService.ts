@@ -181,7 +181,7 @@ export class BackofficeEvoApiService implements IBackofficeEvoApiService {
     };
   }
 
-  private async setWebhook(params: { instanceName: string; webhookUrl: string }): Promise<void> {
+  async setWebhook(params: { instanceName: string; webhookUrl: string }): Promise<void> {
     const credentials = await resolveCredentials();
     const url = `${credentials.baseUrl}/webhook/set/${encodeURIComponent(params.instanceName)}`;
 
