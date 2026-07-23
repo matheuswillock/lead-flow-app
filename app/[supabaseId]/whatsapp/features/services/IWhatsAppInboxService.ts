@@ -28,7 +28,7 @@ export interface IWhatsAppInboxService {
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[]
-  ): Promise<{ messageId: string }>
+  ): Promise<{ messageId: string; status: WhatsAppMessage['status'] }>
   fetchContacts(
     teamId: string,
     supabaseId: string,

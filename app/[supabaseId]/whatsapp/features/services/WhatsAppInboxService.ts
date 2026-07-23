@@ -121,7 +121,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[]
-  ): Promise<{ messageId: string }> {
+  ): Promise<{ messageId: string; status: WhatsAppMessage['status'] }> {
     const body: Record<string, unknown> = media
       ? {
           conversationId,
@@ -154,7 +154,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível enviar a mensagem'))
     }
 
-    return (output as Record<string, unknown>).result as { messageId: string }
+    return (output as Record<string, unknown>).result as { messageId: string; status: WhatsAppMessage['status'] }
   }
 
   async fetchContacts(
