@@ -1,6 +1,7 @@
 "use client"
 
 import { Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -15,6 +16,7 @@ type RadarSegmentCardProps = {
   description: string | null
   count: number
   variant: "system" | "custom"
+  isInactive?: boolean
   mutationLock?: boolean
   onViewProfiles?: () => void
   onEdit?: () => void
@@ -26,6 +28,7 @@ export function RadarSegmentCard({
   description,
   count,
   variant,
+  isInactive,
   mutationLock,
   onViewProfiles,
   onEdit,
@@ -44,6 +47,7 @@ export function RadarSegmentCard({
         <div className="flex items-center gap-2">
           {isSystem ? <Lock className="size-4 text-muted-foreground" /> : null}
           <h3 className="font-medium">{name}</h3>
+          {isInactive ? <Badge variant="outline">Inativo</Badge> : null}
         </div>
         {!isSystem ? (
           <DropdownMenu>

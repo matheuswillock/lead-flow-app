@@ -44,14 +44,34 @@ export function conditionNeedsValueInput(condition: RadarSegmentCondition): bool
   return false
 }
 
+/** Espelha lib/radar/segment-dsl.ts's isValidWithinDaysValue — number ou string puramente numérica, sempre positivo. */
+function isValidPositiveDaysValue(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value) && value > 0
+  if (typeof value === "string") {
+    if (!/^\d+(\.\d+)?$/.test(value.trim())) return false
+    const parsed = Number(value)
+    return Number.isFinite(parsed) && parsed > 0
+  }
+  return false
+}
+
 function isConditionCompleteForSave(condition: RadarSegmentCondition): boolean {
   switch (condition.kind) {
     case "profile_field":
-      return !conditionNeedsValueInput(condition) || condition.value !== undefined
+      if (!conditionNeedsValueInput(condition)) return true
+      if (condition.field === "lastSeenAt" && condition.operator === "within_days") {
+        return isValidPositiveDaysValue(condition.value)
+      }
+      return condition.value !== undefined
     case "consent":
       return Boolean(condition.channel && condition.status)
     case "event":
-      return condition.eventType.trim().length > 0
+      if (condition.eventType.trim().length === 0) return false
+      // windowDays é opcional — servidor exige inteiro positivo quando informado (z.number().int().positive()).
+      if (condition.windowDays !== undefined) {
+        return Number.isInteger(condition.windowDays) && condition.windowDays > 0
+      }
+      return true
     case "lead_custom_field":
       return Boolean(condition.definitionId) && (!conditionNeedsValueInput(condition) || condition.value !== undefined)
     case "lead_status":

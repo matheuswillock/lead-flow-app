@@ -96,6 +96,41 @@ describe("isRulesValidForSave", () => {
     ).toBe(true)
   })
 
+  it("event: windowDays inválido (zero, negativo ou não inteiro) invalida a regra", () => {
+    for (const windowDays of [0, -1, 1.5]) {
+      expect(
+        isRulesValidForSave(
+          rulesWith([{ kind: "event", eventType: "email.opened", occurrence: "occurred", windowDays }])
+        )
+      ).toBe(false)
+    }
+    expect(
+      isRulesValidForSave(
+        rulesWith([{ kind: "event", eventType: "email.opened", occurrence: "occurred", windowDays: 7 }])
+      )
+    ).toBe(true)
+  })
+
+  it("profile_field (lastSeenAt/within_days): valor inválido (zero, negativo, não numérico) invalida a regra", () => {
+    for (const value of [0, -1, "abc", true, undefined]) {
+      expect(
+        isRulesValidForSave(
+          rulesWith([{ kind: "profile_field", field: "lastSeenAt", operator: "within_days", value }])
+        )
+      ).toBe(false)
+    }
+    expect(
+      isRulesValidForSave(
+        rulesWith([{ kind: "profile_field", field: "lastSeenAt", operator: "within_days", value: 7 }])
+      )
+    ).toBe(true)
+    expect(
+      isRulesValidForSave(
+        rulesWith([{ kind: "profile_field", field: "lastSeenAt", operator: "within_days", value: "7" }])
+      )
+    ).toBe(true)
+  })
+
   it("lead_custom_field: incompleto sem definitionId ou sem value quando exigido", () => {
     expect(
       isRulesValidForSave(rulesWith([{ kind: "lead_custom_field", definitionId: "", operator: "eq", value: "x" }]))
