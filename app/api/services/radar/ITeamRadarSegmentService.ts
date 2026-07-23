@@ -15,7 +15,7 @@ export type TeamRadarSegmentUpdateInput = {
 }
 
 export interface ITeamRadarSegmentService {
-  listByTeam(teamId: string): Promise<TeamRadarSegmentSelect[]>
+  listByTeam(teamId: string, options?: { onlyActive?: boolean }): Promise<TeamRadarSegmentSelect[]>
   findById(teamId: string, segmentId: string): Promise<TeamRadarSegmentSelect | null>
   create(teamId: string, createdBy: string, input: TeamRadarSegmentInput): Promise<TeamRadarSegmentSelect>
   update(
@@ -23,5 +23,5 @@ export interface ITeamRadarSegmentService {
     segmentId: string,
     input: TeamRadarSegmentUpdateInput
   ): Promise<TeamRadarSegmentSelect | null>
-  remove(teamId: string, segmentId: string): Promise<boolean>
+  remove(teamId: string, segmentId: string): Promise<{ removed: boolean; softDeleted: boolean }>
 }

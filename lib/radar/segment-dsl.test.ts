@@ -26,6 +26,49 @@ describe("segment-dsl", () => {
     ).toThrow()
   })
 
+  it("within_days exige um número de dias positivo", () => {
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "within_days", value: "30" }],
+      })
+    ).not.toThrow()
+
+    for (const value of ["abc", 0, -5, true, [30]]) {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "within_days", value }],
+        })
+      ).toThrow()
+    }
+  })
+
+  it("before/after exigem uma data ISO válida com calendário correto", () => {
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "before", value: "2026-01-01T00:00:00.000Z" }],
+      })
+    ).not.toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "before", value: "2026-01-01" }],
+      })
+    ).not.toThrow()
+
+    for (const value of ["invalid-date", "1", "2026-02-30", "2026-13-01"]) {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "profile_field", field: "lastSeenAt", operator: "after", value }],
+        })
+      ).toThrow()
+    }
+  })
+
   it("profile_field exige value quando operador precisa de valor", () => {
     expect(() =>
       parseRadarSegmentRules({

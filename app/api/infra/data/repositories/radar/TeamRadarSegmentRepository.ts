@@ -33,6 +33,7 @@ export interface ITeamRadarSegmentRepository {
   create(data: Prisma.TeamRadarSegmentCreateInput): Promise<TeamRadarSegmentSelect>
   update(segmentId: string, data: Prisma.TeamRadarSegmentUpdateInput): Promise<TeamRadarSegmentSelect>
   delete(segmentId: string): Promise<void>
+  removeWithLock(teamId: string, segmentId: string): Promise<{ removed: boolean; softDeleted: boolean }>
 }
 
 export class TeamRadarSegmentRepository implements ITeamRadarSegmentRepository {
@@ -61,6 +62,42 @@ export class TeamRadarSegmentRepository implements ITeamRadarSegmentRepository {
 
   async delete(segmentId: string) {
     await prisma.teamRadarSegment.delete({ where: { id: segmentId } })
+  }
+
+  /**
+   * Atômico via `pg_advisory_xact_lock` (mesma chave de
+   * lib/radar/segment-audience.ts#radarSegmentLockKey — não importada aqui
+   * para evitar dependência circular, já que esse módulo importa este
+   * repositório) para serializar contra EmailCampaignUseCase.create: sem o
+   * lock, uma campanha pode validar o segmento como ativo, e este método
+   * excluí-lo fisicamente antes do insert da campanha completar, deixando
+   * `custom:{id}` órfão.
+   *
+   * `custom:` deve ficar em sincronia com CUSTOM_RADAR_SEGMENT_PREFIX.
+   */
+  async removeWithLock(teamId: string, segmentId: string): Promise<{ removed: boolean; softDeleted: boolean }> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${teamId}:segment:${segmentId}`}))`
+
+      const existing = await tx.teamRadarSegment.findFirst({ where: { id: segmentId, teamId } })
+      if (!existing) return { removed: false, softDeleted: false }
+
+      const referencingCampaigns = await tx.emailCampaign.count({
+        where: {
+          teamId,
+          radarSegmentSlug: `custom:${segmentId}`,
+          status: { notIn: ["canceled", "archived"] },
+        },
+      })
+
+      if (referencingCampaigns > 0) {
+        await tx.teamRadarSegment.update({ where: { id: segmentId }, data: { isActive: false } })
+        return { removed: true, softDeleted: true }
+      }
+
+      await tx.teamRadarSegment.delete({ where: { id: segmentId } })
+      return { removed: true, softDeleted: false }
+    })
   }
 }
 

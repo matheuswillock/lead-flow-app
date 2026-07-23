@@ -1,19 +1,44 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "crypto"
-import { prisma } from "@/app/api/infra/data/prisma"
-import { radarService } from "@/app/api/services/radar/RadarService"
-import { profileMatchesRadarSegment } from "@/lib/radar/segment-rules"
-import { normalizeRadarEmail, normalizeRadarPhone } from "@/lib/radar/normalization"
 import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
-import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
-import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
-import { radarSegmentQueryService } from "@/app/api/services/radar/RadarSegmentQueryService"
-import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
-import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseCase"
-import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 
 const RUN_INTEGRATION = process.env.RADAR_INTEGRATION_TEST === "1" && Boolean(process.env.DATABASE_URL)
+
+/**
+ * Importados dinamicamente (só quando RUN_INTEGRATION) para que `bun run test`
+ * (sem RADAR_INTEGRATION_TEST) nunca carregue módulos reais como
+ * EmailCampaignUseCase — um import estático aqui já bastaria para disputar,
+ * fora de ordem, com o `mock.module("@/app/api/infra/data/prisma", ...)` de
+ * outros arquivos de teste (ex.: EmailCreditService.test.ts) rodando no mesmo
+ * processo do bun test, quebrando testes completamente não relacionados.
+ */
+let prisma: typeof import("@/app/api/infra/data/prisma").prisma
+let radarService: typeof import("@/app/api/services/radar/RadarService").radarService
+let profileMatchesRadarSegment: typeof import("@/lib/radar/segment-rules").profileMatchesRadarSegment
+let normalizeRadarEmail: typeof import("@/lib/radar/normalization").normalizeRadarEmail
+let normalizeRadarPhone: typeof import("@/lib/radar/normalization").normalizeRadarPhone
+let syncLeadToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncLeadToRadarUseCase").syncLeadToRadarUseCase
+let teamHasRadarFeature: typeof import("@/lib/radar/team-has-radar-feature").teamHasRadarFeature
+let radarSegmentQueryService: typeof import("@/app/api/services/radar/RadarSegmentQueryService").radarSegmentQueryService
+let teamRadarSegmentService: typeof import("@/app/api/services/radar/TeamRadarSegmentService").teamRadarSegmentService
+let EmailCampaignUseCase: typeof import("@/app/api/useCases/email/EmailCampaignUseCase").EmailCampaignUseCase
+let EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB: typeof import("@/lib/email/campaign-limits").EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+let customerDataPlatformUseCase: typeof import("@/app/api/useCases/radar/RadarUseCase").customerDataPlatformUseCase
+
+if (RUN_INTEGRATION) {
+  ;({ prisma } = await import("@/app/api/infra/data/prisma"))
+  ;({ radarService } = await import("@/app/api/services/radar/RadarService"))
+  ;({ profileMatchesRadarSegment } = await import("@/lib/radar/segment-rules"))
+  ;({ normalizeRadarEmail, normalizeRadarPhone } = await import("@/lib/radar/normalization"))
+  ;({ syncLeadToRadarUseCase } = await import("@/app/api/useCases/radar/SyncLeadToRadarUseCase"))
+  ;({ teamHasRadarFeature } = await import("@/lib/radar/team-has-radar-feature"))
+  ;({ radarSegmentQueryService } = await import("@/app/api/services/radar/RadarSegmentQueryService"))
+  ;({ teamRadarSegmentService } = await import("@/app/api/services/radar/TeamRadarSegmentService"))
+  ;({ EmailCampaignUseCase } = await import("@/app/api/useCases/email/EmailCampaignUseCase"))
+  ;({ EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } = await import("@/lib/email/campaign-limits"))
+  ;({ customerDataPlatformUseCase } = await import("@/app/api/useCases/radar/RadarUseCase"))
+}
 
   const scope = {
     teamId: "",
@@ -641,5 +666,231 @@ describe.skipIf(!RUN_INTEGRATION)("Custom segment como audiência de campanha (D
 
     const campaign = await prisma.emailCampaign.findFirst({ where: { teamId, radarSegmentSlug: `custom:${oversizedSegmentId}` } })
     expect(campaign).toBeNull()
+  })
+})
+
+describe.skipIf(!RUN_INTEGRATION)("Fixes de review C4 (visibilidade, delete guard, paginação)", () => {
+  let teamId = ""
+  let ctx: TeamAccess
+  let templateId = ""
+
+  beforeAll(async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const supabaseId = randomUUID()
+    const profile = await prisma.profile.create({
+      data: {
+        id: randomUUID(),
+        email: `radar-fix-${suffix}@example.com`,
+        supabaseId,
+        fullName: "Radar Fix Tester",
+        isMaster: true,
+      },
+    })
+    const team = await prisma.team.create({
+      data: { id: randomUUID(), name: `Radar Fix Test ${suffix}`, masterId: profile.id },
+    })
+    await prisma.teamMember.create({
+      data: { id: randomUUID(), teamId: team.id, profileId: profile.id, role: "manager" },
+    })
+    teamId = team.id
+    ctx = {
+      supabaseId,
+      teamId: team.id,
+      profileId: profile.id,
+      profileEmail: profile.email,
+      profileName: profile.fullName,
+      isMaster: true,
+      managerId: profile.id,
+      canCreateAccountUsers: false,
+      canManageAccountTeams: false,
+      canTransferAccountLeads: false,
+      canViewAllTeams: false,
+      userTimezone: "America/Sao_Paulo",
+      teamMember: { role: "manager", functions: [] },
+    }
+
+    const templateGroupId = randomUUID()
+    const template = await prisma.emailTemplate.create({
+      data: {
+        id: templateGroupId,
+        teamId: team.id,
+        createdBy: profile.id,
+        name: "Template Radar Fix Test",
+        subject: "Assunto de teste",
+        html: "<p>Olá</p>",
+        editorMode: "html",
+        versionGroupId: templateGroupId,
+        versionNumber: 1,
+        status: "published",
+        isCurrentPublished: true,
+        approvalStatus: "approved",
+      },
+    })
+    templateId = template.id
+  })
+
+  afterAll(async () => {
+    if (!teamId) return
+    await prisma.emailCampaign.deleteMany({ where: { teamId } })
+    await prisma.emailTemplate.deleteMany({ where: { teamId } })
+    await prisma.teamRadarSegment.deleteMany({ where: { teamId } })
+    await prisma.radarIdentity.deleteMany({ where: { teamId } })
+    await prisma.radarProfile.deleteMany({ where: { teamId } })
+    await prisma.lead.deleteMany({ where: { teamId } })
+    await prisma.teamMember.deleteMany({ where: { teamId } })
+    await prisma.team.deleteMany({ where: { id: teamId } })
+  })
+
+  it("segmento desativado some da listagem de audiência mas continua visível na gestão", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const segment = await teamRadarSegmentService.create(teamId, ctx.profileId, {
+      name: `Segmento visibilidade ${suffix}`,
+      rules: { match: "all", conditions: [{ kind: "lead_status", statuses: ["scheduled"] }] },
+    })
+
+    await teamRadarSegmentService.update(teamId, segment.id, { isActive: false })
+
+    const allSegments = await teamRadarSegmentService.listByTeam(teamId)
+    expect(allSegments.some((s) => s.id === segment.id)).toBe(true)
+
+    const activeOnly = await teamRadarSegmentService.listByTeam(teamId, { onlyActive: true })
+    expect(activeOnly.some((s) => s.id === segment.id)).toBe(false)
+
+    const managementList = await customerDataPlatformUseCase.listCustomSegments(teamId, ctx)
+    expect(managementList.isValid).toBe(true)
+    const managementItems = managementList.result as Array<{ id: string }>
+    expect(managementItems.some((s) => s.id === segment.id)).toBe(true)
+
+    const audienceOverview = await customerDataPlatformUseCase.listSegments(teamId, ctx)
+    const audienceSegments = (audienceOverview.result as { segments: Array<{ slug: string }> }).segments
+    expect(audienceSegments.some((s) => s.slug === `custom:${segment.id}`)).toBe(false)
+  })
+
+  it("excluir segmento referenciado por campanha ativa desativa em vez de excluir; sem referência exclui de fato", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const segment = await teamRadarSegmentService.create(teamId, ctx.profileId, {
+      name: `Segmento delete guard ${suffix}`,
+      rules: { match: "all", conditions: [{ kind: "lead_status", statuses: ["scheduled"] }] },
+    })
+
+    const campaign = await prisma.emailCampaign.create({
+      data: {
+        id: randomUUID(),
+        teamId,
+        createdBy: ctx.profileId,
+        name: `Campanha delete guard ${suffix}`,
+        templateId,
+        radarSegmentSlug: `custom:${segment.id}`,
+        status: "sent",
+      },
+    })
+
+    const firstAttempt = await teamRadarSegmentService.remove(teamId, segment.id)
+    expect(firstAttempt).toEqual({ removed: true, softDeleted: true })
+
+    const stillExists = await prisma.teamRadarSegment.findUnique({ where: { id: segment.id } })
+    expect(stillExists?.isActive).toBe(false)
+
+    await prisma.emailCampaign.update({ where: { id: campaign.id }, data: { status: "archived" } })
+
+    const secondAttempt = await teamRadarSegmentService.remove(teamId, segment.id)
+    expect(secondAttempt).toEqual({ removed: true, softDeleted: false })
+
+    const gone = await prisma.teamRadarSegment.findUnique({ where: { id: segment.id } })
+    expect(gone).toBeNull()
+  })
+
+  it("criação de campanha e exclusão concorrentes do mesmo segmento nunca deixam custom:{id} órfão", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const segment = await teamRadarSegmentService.create(teamId, ctx.profileId, {
+      name: `Segmento concorrência ${suffix}`,
+      rules: { match: "all", conditions: [{ kind: "lead_status", statuses: ["scheduled"] }] },
+    })
+
+    const useCase = new EmailCampaignUseCase()
+    const [createResult, removeResult] = await Promise.all([
+      useCase.create(
+        { name: `Campanha concorrência ${suffix}`, templateId, radarSegmentSlug: `custom:${segment.id}` },
+        ctx
+      ),
+      teamRadarSegmentService.remove(teamId, segment.id),
+    ])
+
+    if (createResult.isValid) {
+      // create venceu o pg_advisory_xact_lock primeiro: a exclusão, ao rodar
+      // depois, encontra a campanha recém-criada referenciando o segmento e
+      // desativa em vez de excluir.
+      expect(removeResult.softDeleted).toBe(true)
+      const stillThere = await prisma.teamRadarSegment.findUnique({ where: { id: segment.id } })
+      expect(stillThere?.isActive).toBe(false)
+    } else {
+      // remove venceu o lock primeiro: excluiu o segmento antes do insert da
+      // campanha, que é rejeitada na revalidação — nunca fica órfã.
+      expect(createResult.errorMessages).toContain("Segmento Radar inválido")
+      const campaign = await prisma.emailCampaign.findFirst({
+        where: { teamId, radarSegmentSlug: `custom:${segment.id}` },
+      })
+      expect(campaign).toBeNull()
+    }
+  })
+
+  it("listCustomSegmentProfiles pagina no banco (total correto, páginas sem sobreposição)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const MATCH_COUNT = 5
+    const PAGE_SIZE = 3
+
+    const leads = Array.from({ length: MATCH_COUNT }, (_, index) => ({
+      id: randomUUID(),
+      leadCode: `RadarFixPage-${suffix}-${index}`,
+      managerId: ctx.profileId,
+      teamId,
+      name: `Lead Pagination ${index}`,
+      status: "scheduled" as const,
+    }))
+    await prisma.lead.createMany({ data: leads })
+
+    const profiles = leads.map((lead, index) => ({
+      id: randomUUID(),
+      teamId,
+      displayName: lead.name,
+      normalizedName: `lead pagination ${suffix} ${index}`,
+      displayPhone: "",
+      normalizedPhone: `988${suffix}${String(index).padStart(5, "0")}`,
+    }))
+    await prisma.radarProfile.createMany({ data: profiles })
+    await prisma.radarIdentity.createMany({
+      data: profiles.map((profile, index) => ({
+        id: randomUUID(),
+        profileId: profile.id,
+        teamId,
+        type: "lead_id" as const,
+        value: leads[index].id,
+        normalizedValue: leads[index].id,
+        source: "crm",
+        isPrimary: true,
+      })),
+    })
+
+    const segment = await teamRadarSegmentService.create(teamId, ctx.profileId, {
+      name: `Segmento paginação ${suffix}`,
+      rules: { match: "all", conditions: [{ kind: "lead_status", statuses: ["scheduled"] }] },
+    })
+
+    const page1 = await customerDataPlatformUseCase.listCustomSegmentProfiles(teamId, ctx, segment.id, 1, PAGE_SIZE)
+    const page2 = await customerDataPlatformUseCase.listCustomSegmentProfiles(teamId, ctx, segment.id, 2, PAGE_SIZE)
+
+    const result1 = page1.result as { items: Array<{ id: string }>; total: number }
+    const result2 = page2.result as { items: Array<{ id: string }>; total: number }
+
+    expect(result1.total).toBe(MATCH_COUNT)
+    expect(result2.total).toBe(MATCH_COUNT)
+    expect(result1.items).toHaveLength(PAGE_SIZE)
+    expect(result2.items).toHaveLength(MATCH_COUNT - PAGE_SIZE)
+
+    const ids1 = new Set(result1.items.map((item) => item.id))
+    const ids2 = new Set(result2.items.map((item) => item.id))
+    for (const id of ids2) {
+      expect(ids1.has(id)).toBe(false)
+    }
   })
 })

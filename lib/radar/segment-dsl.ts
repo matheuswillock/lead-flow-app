@@ -10,6 +10,52 @@ const profileTextFieldSchema = z.enum(["primaryEmail", "primaryDocument"])
 const profileTextOperatorSchema = z.enum(["eq", "neq", "contains", "is_empty", "not_empty"])
 const profileDateOperatorSchema = z.enum(["before", "after", "within_days"])
 
+/** Aceita number ou string puramente numérica — rejeita boolean, array, objeto. */
+function isValidWithinDaysValue(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value) && value > 0
+  if (typeof value === "string") {
+    if (!/^\d+(\.\d+)?$/.test(value.trim())) return false
+    const parsed = Number(value)
+    return Number.isFinite(parsed) && parsed > 0
+  }
+  return false
+}
+
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
+}
+
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12) return false
+  const daysInMonth = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return day >= 1 && day <= daysInMonth[month - 1]
+}
+
+const ISO_DATE_VALUE_RE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})?)?$/
+
+/**
+ * Valida formato ISO 8601 (data ou data+hora) e o calendário informado —
+ * `Date.parse` sozinho aceita entradas soltas como "1" e rola datas
+ * inexistentes (ex.: 2026-02-30 vira 2026-03-02) sem erro.
+ */
+function isValidIsoDateValue(value: unknown): boolean {
+  if (typeof value !== "string") return false
+  const match = value.trim().match(ISO_DATE_VALUE_RE)
+  if (!match) return false
+
+  const [raw, yearStr, monthStr, dayStr, hourStr, minuteStr, secondStr] = match
+  if (!isValidCalendarDate(Number(yearStr), Number(monthStr), Number(dayStr))) return false
+
+  if (hourStr !== undefined) {
+    if (Number(hourStr) > 23 || Number(minuteStr) > 59 || (secondStr !== undefined && Number(secondStr) > 59)) {
+      return false
+    }
+  }
+
+  return !Number.isNaN(Date.parse(raw))
+}
+
 const radarChannelSchema = z.enum(["email", "whatsapp"])
 const radarConsentStatusSchema = z.enum(["allowed", "blocked", "unknown"])
 const leadStatusSchema = z.enum([
@@ -47,6 +93,24 @@ const profileFieldConditionSchema = z
       }
       if (data.value === undefined) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value é obrigatório", path: ["value"] })
+        return
+      }
+      if (data.operator === "within_days") {
+        if (!isValidWithinDaysValue(data.value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "value deve ser um número de dias positivo",
+            path: ["value"],
+          })
+        }
+        return
+      }
+      if (!isValidIsoDateValue(data.value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "value deve ser uma data válida (ISO 8601)",
+          path: ["value"],
+        })
       }
       return
     }

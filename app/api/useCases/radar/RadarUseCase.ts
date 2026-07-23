@@ -20,6 +20,7 @@ import type {
 } from "@/app/api/services/radar/ITeamRadarSegmentService"
 import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
+import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 
 const SEGMENT_LABELS: Record<string, string> = {
@@ -154,7 +155,7 @@ export class RadarUseCase {
     const fixedSegments = await this.service.countSegments(scope)
     const metrics = await this.service.getMetrics(scope)
 
-    const customSegments = await this.segmentService.listByTeam(teamId)
+    const customSegments = await this.segmentService.listByTeam(teamId, { onlyActive: true })
     const customSegmentCounts = await Promise.all(
       customSegments.map((segment) =>
         this.segmentQueryService.countProfiles(scope, parseRadarSegmentRules(segment.rulesJson))
@@ -164,7 +165,7 @@ export class RadarUseCase {
     const segments = [
       ...fixedSegments.map((segment) => ({ ...segment, isSystem: true })),
       ...customSegments.map((segment, index) => ({
-        slug: `custom:${segment.id}`,
+        slug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}`,
         name: segment.name,
         description: segment.description,
         count: customSegmentCounts[index] ?? 0,
@@ -271,11 +272,19 @@ export class RadarUseCase {
 
   async deleteCustomSegment(teamId: string, ctx: TeamContext, segmentId: string) {
     try {
-      const removed = await this.segmentService.remove(teamId, segmentId)
-      if (!removed) {
+      const result = await this.segmentService.remove(teamId, segmentId)
+      if (!result.removed) {
         return new Output(false, [], ["Segmento não encontrado"], null)
       }
-      return new Output(true, ["Segmento removido com sucesso"], [], { id: segmentId })
+      if (result.softDeleted) {
+        return new Output(
+          true,
+          ["Segmento em uso por campanhas — desativado em vez de excluído"],
+          [],
+          { id: segmentId, softDeleted: true }
+        )
+      }
+      return new Output(true, ["Segmento removido com sucesso"], [], { id: segmentId, softDeleted: false })
     } catch (error) {
       console.error("[RadarUseCase][deleteCustomSegment]", error)
       return new Output(false, [], ["Erro ao remover segmento"], null)
@@ -295,17 +304,19 @@ export class RadarUseCase {
       if (!segment || !segment.isActive) {
         return new Output(false, [], ["Segmento não encontrado"], null)
       }
-      const ids = await this.segmentQueryService.listProfileIds(scope, parseRadarSegmentRules(segment.rulesJson))
-
+      const rules = parseRadarSegmentRules(segment.rulesJson)
       const skip = (page - 1) * pageSize
-      const pageIds = ids.slice(skip, skip + pageSize)
+      const [total, pageIds] = await Promise.all([
+        this.segmentQueryService.countProfiles(scope, rules),
+        this.segmentQueryService.listProfileIds(scope, rules, { skip, take: pageSize }),
+      ])
       const items = await Promise.all(
         pageIds.map((id) => radarRepository.getProfileDetailWithCtx(scope, id))
       )
 
       return new Output(true, [], [], {
         items: items.filter(Boolean),
-        total: ids.length,
+        total,
         page,
         pageSize,
         segmentId,
