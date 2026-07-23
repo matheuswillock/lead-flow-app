@@ -8,10 +8,11 @@ Method: dual-agent (A: `/root/impeccable_critique_a` · B: `/root/impeccable_cri
 **Branch:** `bugfix/ci-skip-pre-push-on-actions`  
 **Produto:** Corretor Studio — Inbox de WhatsApp por time  
 **Provider:** Evolution API self-hosted  
-**Documento canônico de implementação relacionado:** [`WHATSAPP_SPEC.md`](WHATSAPP_SPEC.md)  
+**Documento canônico de implementação relacionado:** [`WHATSAPP_INBOX_SPEC.md`](WHATSAPP_INBOX_SPEC.md)
+**SPEC-base preservada:** [`WHATSAPP_SPEC.md`](WHATSAPP_SPEC.md)
 **Auditoria anterior preservada:** [`WHATSAPP_AUDIT.md`](WHATSAPP_AUDIT.md)
 
-> Este documento não altera código, API, schema ou migration. Ele registra o estado atual e será a entrada da próxima SPEC de implementação.
+> Este documento não altera código, API, schema ou migration. Ele registra o estado atual e é a fonte factual da `WHATSAPP_INBOX_SPEC.md`.
 
 ## 1. Veredito executivo
 
@@ -32,10 +33,10 @@ Esse é o **P0** da auditoria.
 
 | Indicador                        |                         Resultado |
 | -------------------------------- | --------------------------------: |
-| Achados                          |                            **21** |
+| Achados                          |                            **25** |
 | P0 — bloqueadores                |                             **1** |
-| P1 — maiores                     |                            **11** |
-| P2 — menores                     |                             **9** |
+| P1 — maiores                     |                            **12** |
+| P2 — menores                     |                            **12** |
 | P3 — polimento                   |                             **0** |
 | Impeccable Audit Health Score    |             **12/20 — Aceitável** |
 | Impeccable/Nielsen Design Health |             **22/40 — Aceitável** |
@@ -43,11 +44,11 @@ Esse é o **P0** da auditoria.
 | Testes focados                   |       **66 passaram, 0 falharam** |
 | Supabase produção                |   **Não verificado nesta sessão** |
 
-### Cinco riscos que devem orientar a próxima SPEC
+### Cinco riscos que devem orientar a implementação
 
 1. **Divergência provider × banco no primeiro envio:** mensagem entregue sem registro local ou conversa selecionável.
 2. **Idempotência incompleta no cliente:** retry e corrida HTTP × Realtime podem duplicar ou esconder mensagens.
-3. **Busca e sincronização desconectadas:** contatos importados não participam do fluxo de iniciar conversa e telefone formatado pode não casar.
+3. **Identidade de contato instável:** contato, telefone e JID são tratados como a mesma entidade; `@lid` pode duplicar pessoas, contaminar telefone e tornar busca/nome dependentes da agenda do provider.
 4. **Superfície de segurança:** `hostBaseUrl` arbitrário pode provocar SSRF e enviar a chave global da Evolution a um host controlado.
 5. **Privacidade/observabilidade:** logs de produção carregam JIDs/telefones e URLs temporárias completas de mídia.
 
@@ -56,6 +57,7 @@ Esse é o **P0** da auditoria.
 ### 2.1 Incluído
 
 - Inbox web, lista de conversas, painel de mensagens, composer, mídia e áudio.
+- Ações contextuais sobre a bolha por mouse, teclado e toque.
 - Criação de conversa, envio outbound, retry, idempotência e reconciliação.
 - Webhook Evolution, outbox, cron, persistência e efeitos laterais.
 - Sincronização de histórico, agenda, nomes, telefone e grupos.
@@ -83,6 +85,8 @@ Erros de Bethânia encontrados nos logs foram descartados. Infraestrutura compar
 - Export Vercel `/home/matheuswillock/Downloads/corretor-studio-log-export-2026-07-23T17-02-42.json`.
 - Vercel Runtime Errors/Logs, janelas de 24 horas e 7 dias.
 - Supabase Docs e changelog consultados em 2026-07-23.
+- Releases e changelog oficiais da Evolution API consultados em 2026-07-23.
+- Documentação oficial do shadcn/Radix `ContextMenu`, consultada em 2026-07-23.
 - Duas avaliações Impeccable independentes.
 
 ### 2.4 Convenção de evidência
@@ -225,13 +229,16 @@ A fundação durável é positiva. O risco restante está na autenticação opci
 ```mermaid
 flowchart TD
     EVO[Evolution findChats/findContacts] --> S[Sync server-side]
-    S --> C[team_whatsapp_contacts]
+    S --> C[team_whatsapp_contacts por remoteJid]
     S --> V[whatsapp_conversations]
     S --> M[whatsapp_messages]
     V --> R[RLS/Reatime por time e conversa]
     R --> L[Lista da Inbox]
     Q[Busca digitada] --> V
     C -. não participa do fluxo atual .-> Q
+    LID[JID @lid] --> N[normalizeRemoteJid]
+    N --> P[normalizedPhone com identificador opaco]
+    P -. pode divergir do mesmo contato @s.whatsapp.net .-> C
     Q --> F[Filtros, arquivamento e RBAC]
     F --> Z[Resultado vazio sem explicar a causa]
 ```
@@ -261,6 +268,10 @@ flowchart TD
 | WA-019 |   P2 | Origem/licença dos wallpapers não está documentada               | Repositório       | Média     |
 | WA-020 |   P2 | Arquivos monolíticos e cobertura insuficiente elevam regressão   | Código + testes   | Alta      |
 | WA-021 |   P2 | Lacunas funcionais reduzem paridade com mensageiros maduros      | Clone + crítica   | Alta      |
+| WA-022 |   P2 | Recibos de envio existem, mas não têm contrato visual testado    | Código + crítica  | Alta      |
+| WA-023 |   P2 | Composer desalinha controles e waveform não ocupa a largura      | Captura + código  | Alta      |
+| WA-024 |   P2 | Bolha não possui menu contextual nem ações equivalentes          | Captura + código  | Alta      |
+| WA-025 |   P1 | Contato canônico, telefone e aliases JID estão misturados        | Código + provider | Alta      |
 
 ## 6. Achados detalhados
 
@@ -590,6 +601,135 @@ Faltam busca dentro da conversa, resposta citada, encaminhamento, separadores de
 
 **Recomendação:** implementar depois das fases de confiabilidade; presença só entra se a Evolution fornecer sinal confiável.
 
+### WA-022 — P2 — Recibos de envio existem, mas não têm contrato visual testado
+
+**Categoria:** confiança operacional, feedback de status e acessibilidade.
+**Localização:** [`MessagingMessageBubble.tsx:50`](components/messaging/MessagingMessageBubble.tsx#L50), [`ProcessEvoWebhookUseCase.ts:709`](app/api/useCases/whatsapp/ProcessEvoWebhookUseCase.ts#L709).
+
+**Fatos:**
+
+- a UI atual usa relógio para `PENDING`, um check para `SENT`, dois checks para `DELIVERED`, dois checks em `semantic-info` para `READ` e alerta destrutivo para `FAILED`;
+- os ícones possuem labels “Enviando”, “Enviada”, “Entregue”, “Lida” e “Falha no envio”;
+- o webhook converte `SERVER_ACK/SENT`, `DELIVERY_ACK/DELIVERED`, `READ/PLAYED` e `FAILED/ERROR`;
+- `PLAYED` é hoje colapsado em `READ`;
+- não há teste de componente, visual ou E2E que proteja o mapeamento, contraste, exclusividade outbound ou atualização via Realtime.
+
+**Impacto:** uma regressão pode mostrar ao operador que o destinatário recebeu ou visualizou uma mensagem sem evidência confiável, ou pode deixar o status tecnicamente correto sem sinal visual/acessível. Isso atinge o mesmo momento de confiança do primeiro envio.
+
+**Contrato recomendado:**
+
+| Estado      | Sinal visual                | Significado                                       |
+| ----------- | --------------------------- | ------------------------------------------------- |
+| `SENT`      | 1 check neutro              | aceita pela Evolution, ainda sem prova de entrega |
+| `DELIVERED` | 2 checks neutros            | entregue ao dispositivo do destinatário           |
+| `READ`      | 2 checks em `semantic-info` | visualizada pelo destinatário                     |
+| `UNKNOWN`   | relógio/alerta neutro       | confirmação indisponível; não reenviar            |
+| `FAILED`    | alerta destrutivo           | envio definitivamente falhou                      |
+
+Os checks aparecem apenas em mensagens outbound. Cor nunca é a única diferença: ícone, estado acessível e texto anunciado preservam o significado. `READ` só pode ser mostrado após evento confiável ligado ao `providerMessageId`. O sinal `PLAYED` de áudio deve ser preservado separadamente para futura distinção entre “lido” e “reproduzido”.
+
+**Aceite:** testes cobrem `SENT → DELIVERED → READ`, eventos atrasados, Realtime, outbound-only, labels, contraste claro/escuro, ausência de read receipt sem evento confiável e preservação de `PLAYED`.
+
+### WA-023 — P2 — Composer desalinha controles e waveform não ocupa a largura
+
+**Categoria:** layout, responsividade, áudio e qualidade visual.
+**Localização:** [`WhatsAppMessageInputShell.tsx:53`](app/[supabaseId]/whatsapp/features/components/WhatsAppMessageInputShell.tsx#L53), [`MessageComposer.tsx:411`](app/[supabaseId]/whatsapp/features/components/MessageComposer.tsx#L411), [`WhatsAppAudioRecordingBar.tsx:31`](app/[supabaseId]/whatsapp/features/components/WhatsAppAudioRecordingBar.tsx#L31), [`useWhatsAppAudioRecorder.ts:10`](app/[supabaseId]/whatsapp/features/hooks/useWhatsAppAudioRecorder.ts#L10).
+
+**Fatos:**
+
+- a captura mostra o campo de mensagem e o microfone fora do mesmo eixo visual;
+- o shell usa `items-end`, controles de anexar/emoji com 32 px, microfone com 44 px e textarea com outra altura/padding;
+- em gravação, o container da waveform é flexível, mas recebe exatamente 56 barras fixas de 2 px com gaps fixos e `shrink-0`;
+- em telas largas, as barras ocupam apenas o trecho esquerdo e deixam grande área vazia antes do controle de pausa;
+- a gravação troca a composição interna do pill sem um contrato único de colunas/alinhamento.
+
+**Impacto:** o composer parece quebrado mesmo quando funcional; a waveform curta reduz a percepção de captação e desperdiça a principal área de feedback durante a gravação.
+
+**Recomendação:**
+
+- usar uma única linha estrutural com controles de 44 px e `align-items: center`;
+- garantir `minmax(0, 1fr)` para textarea/waveform e métricas verticais equivalentes nos modos texto e gravação;
+- remover o alinhamento por `items-end` do estado de uma linha;
+- medir a largura útil da waveform com `ResizeObserver`;
+- calcular dinamicamente a quantidade visível de barras usando largura da barra + gap, mantendo buffer circular;
+- preencher toda a área entre tempo e pausar, sem esticar barras individualmente;
+- preservar fallback textual sob reduced motion.
+
+**Aceite:** em 320, 375, 768 e 1440 px, ícones e linha de texto compartilham o eixo vertical; nenhum controle sobrepõe o textarea; a waveform ocupa toda a largura útil entre timer e pausa; resize não cria buraco lateral; teclado, zoom 200% e reduced motion continuam funcionais.
+
+### WA-024 — P2 — Bolha não possui menu contextual nem ações equivalentes
+
+**Categoria:** paridade funcional, eficiência, acessibilidade e controle do usuário.
+**Localização:** [`MessageBubble.tsx:40`](app/[supabaseId]/whatsapp/features/components/MessageBubble.tsx#L40), [`MessagingMessageBubble.tsx:166`](components/messaging/MessagingMessageBubble.tsx#L166), [`ProcessEvoWebhookUseCase.ts:140`](app/api/useCases/whatsapp/ProcessEvoWebhookUseCase.ts#L140).
+
+**Evidência confirmada:**
+
+- a captura fornecida mostra o menu nativo do navegador ao clicar com o botão direito numa bolha;
+- `MessageBubble` somente adapta os dados e renderiza `MessagingMessageBubble`;
+- `MessagingMessageBubble` não usa `ContextMenu`, `onContextMenu` ou uma ação “Mais ações”;
+- o projeto possui shadcn/Radix e `DropdownMenu`, mas `components/ui/context-menu.tsx` ainda não está instalado;
+- a Inbox não possui contratos completos para responder, copiar, reagir, encaminhar, fixar, favoritar ou apagar uma mensagem;
+- o webhook atual reconhece `MESSAGES_DELETE`, porém converte a exclusão em status `FAILED`; não existe tombstone de “apagada para todos”, e isso não equivale a um comando iniciado pelo operador;
+- eventos e comandos de reação, pin, favorito e exclusão para todos ainda exigem contrato de provider, persistência, RBAC e Realtime.
+
+**Impacto:** o navegador apresenta ações sem relação com a mensagem, enquanto tarefas frequentes ficam ausentes ou escondidas. Isso rompe o modelo mental do WhatsApp Web, aumenta deslocamento até o composer e impede uso equivalente por toque ou teclado.
+
+**Contrato recomendado:**
+
+1. instalar e usar o `ContextMenu` oficial do shadcn/Radix, com `ContextMenuTrigger asChild` envolvendo somente a bolha persistida e `ContextMenuContent` portado para fora do histórico rolável;
+2. abrir por botão direito no desktop, long press no toque, tecla Menu/`Shift+F10` quando a mensagem estiver focada e por uma ação acessível “Mais ações”;
+3. oferecer uma faixa de reações rápidas e, nesta ordem, **Responder**, **Copiar**, **Reagir**, **Encaminhar**, **Fixar/Desafixar**, **Favoritar/Desfavoritar**, separador e **Apagar**;
+4. não exibir “Pergunte à Meta AI”, atalhos de IA ou qualquer substituto dessa ação;
+5. manter o menu nativo do navegador fora das bolhas; não instalar `preventDefault` global no painel;
+6. usar `ContextMenuGroup`, `ContextMenuSeparator`, ícones Lucide e tokens semânticos; “Apagar” usa variante destrutiva;
+7. desabilitar ou ocultar ações incompatíveis com tipo, direção, RBAC, mensagem otimista, ausência de `providerMessageId` ou capability da Evolution, sem simular sucesso;
+8. “Copiar” copia texto/caption disponível e informa sucesso/falha; “Apagar” sempre abre confirmação e nunca exclui no primeiro clique;
+9. “Apagar para todos” só aparece quando a Evolution confirmar suporte, a mensagem/direção forem elegíveis e o backend autorizar; caso contrário, limitar a “Apagar para mim”;
+10. reação, encaminhamento e exclusão externa passam por comando idempotente e reconciliação; fixação e favorito têm persistência explícita e atualização Realtime.
+
+A documentação oficial consultada confirma que o [Context Menu do shadcn](https://ui.shadcn.com/docs/components/radix/context-menu) compõe trigger/content/groups/separators, e que o primitive do [Radix Context Menu](https://www.radix-ui.com/primitives/docs/components/context-menu) gerencia portal, foco, teclado, typeahead, colisão de viewport e long press.
+
+**Aceite:** testes cobrem botão direito, long press, tecla Menu/`Shift+F10`, ação “Mais ações”, foco inicial/retorno, Escape, colisão nas quatro bordas, scroll, temas, zoom, RBAC e disponibilidade por tipo/direção. A lista contém as sete ações solicitadas, “Apagar” exige confirmação, nenhuma ação externa é alegada sem confirmação e “Pergunte à Meta AI” nunca é renderizada.
+
+### WA-025 — P1 — Modelo atual confunde contato canônico, JID e telefone
+
+**Categoria:** identidade, sincronização, busca, consistência e privacidade.
+**Localização:** [`schema.prisma:3320`](prisma/schema.prisma#L3320), [`phoneUtils.ts:35`](app/api/services/whatsapp/phoneUtils.ts#L35), [`EvoApiService.ts:723`](app/api/services/whatsapp/evo/EvoApiService.ts#L723), [`WhatsAppService.ts:932`](app/api/services/whatsapp/WhatsAppService.ts#L932), [`ProcessEvoWebhookUseCase.ts:188`](app/api/useCases/whatsapp/ProcessEvoWebhookUseCase.ts#L188), [`docker-compose.vps.yml:24`](docker-compose.vps.yml#L24).
+
+**Fatos confirmados no código:**
+
+- `TeamWhatsAppContact` é único por `(teamId, remoteJid)`, portanto representa uma identidade do provider, não uma pessoa estável do time;
+- a mesma pessoa observada como `numero@s.whatsapp.net` e depois como identificador `@lid` pode ocupar duas linhas independentes;
+- `normalizeRemoteJid` remove o sufixo de `@lid`, e `resolveNormalizedPhone` devolve esses dígitos opacos; o resultado pode ser persistido/roteado como se fosse telefone;
+- `findContacts` captura `remoteJid`, `pushName` e `phoneNumber`, mas não preserva aliases como `remoteJidAlt`, `senderPn` ou `participantAlt`;
+- o webhook lê apenas `key.remoteJid` e cria/busca conversa com essa identidade, perdendo evidências alternativas que poderiam ligar LID e phone-number JID;
+- o sync tenta casar conversa por JID exato ou telefone e faz upsert por contato; quando a conversa chega por LID e a agenda por phone-number JID, o vínculo pode falhar;
+- as imagens Evolution usam a tag `latest`, então payload, correções de LID e comportamento de sincronização podem mudar sem alteração explícita do repositório.
+
+**Evidência do provider:** releases oficiais recentes da Evolution documentam mudanças e correções específicas para `@lid`, incluindo mapeamento/cache LID → `@s.whatsapp.net`. Isso confirma que o tema é versionado e evolutivo; não autoriza o Corretor Studio a inferir telefone a partir dos dígitos de um LID. Fontes: [releases da Evolution API](https://github.com/evolution-foundation/evolution-api/releases) e [changelog oficial](https://github.com/evolution-foundation/evolution-api/blob/main/CHANGELOG.md).
+
+**Impacto:** nome pode sumir ou oscilar depois do sync, a mesma pessoa pode aparecer duplicada, busca por nome/telefone pode não encontrar a conversa existente e um identificador técnico pode vazar para a interface. Usar heurística incorreta para resolver LID ainda cria risco de vincular mensagem ou conversa ao contato errado.
+
+**Causa-raiz:** uma única tabela tenta cumprir três papéis incompatíveis: cadastro de pessoa do time, agenda importada e índice de identidades técnicas do provider. A agenda do celular/provider foi tratada como fonte de verdade, embora possa ser parcial, indisponível ou usar identidade diferente da conversa.
+
+**Contrato recomendado:**
+
+1. transformar `team_whatsapp_contacts` no cadastro canônico e estável exibido/pesquisado pelo time;
+2. criar `whatsapp_contact_identities` para relacionar um contato canônico a zero ou vários JIDs/aliases por configuração;
+3. manter telefone canônico em E.164 e máscara somente na apresentação; JID nunca é nome, telefone ou fallback visual;
+4. classificar `@s.whatsapp.net`/`@c.us` como identidade telefônica somente após validar o número; classificar `@lid` como opaco e `@g.us` como grupo;
+5. ligar LID a phone-number JID apenas por evidência forte do provider (`remoteJidAlt`, `senderPn`, `participantAlt`, mapper versionado) ou merge manual autorizado; nunca por nome, avatar, últimos dígitos ou coincidência aproximada;
+6. aplicar precedência de nome `MANUAL > LEAD > PHONE_BOOK > PUSH_NAME > telefone formatado > “Contato sem número identificado”`;
+7. sincronizar em job durável de segundo plano para enriquecer identidades, telefone e nome; ausência no snapshot marca `STALE`, mas nunca apaga ou recria o contato interno;
+8. vincular `WhatsAppConversation.contactId` ao contato canônico, mantendo `externalChatId` exclusivamente para roteamento do provider;
+9. ao criar contato/conversa, normalizar o telefone, retornar o contato interno existente quando houver match exato e impedir duplicata;
+10. fixar a versão/imagem Evolution, registrar capabilities e manter fixtures anonimizadas de payload por versão.
+
+**Aceite:** o mesmo contato continua com um único `contactId` ao alternar entre phone-number JID e LID; falta/timeout da agenda não remove nome nem impede busca; `@lid` não aparece na UI nem preenche telefone; contato existente é reutilizado ao adicionar o mesmo E.164; conflito de aliases entra em estado explícito sem merge automático; sync parcial retoma sem duplicar.
+
+**Dependências:** migration aditiva e backfill, resolver de identidades, captura de aliases no adapter/webhook, job de sync, RLS/grants, API de busca/criação e rollout com dual-read.
+**Comando Impeccable:** `$impeccable shape`.
+
 ## 7. Supabase: avaliação local e validação pendente
 
 ### 7.1 Estado observado nas migrations
@@ -610,6 +750,8 @@ Faltam busca dentro da conversa, resposta citada, encaminhamento, separadores de
 | `whatsapp_conversation_tag_assignments` |      Não encontrado | Não encontrado                   | Pendente.                                      |
 
 “Sem grants na migration” não prova ausência de grants: privilégios padrão variam conforme configuração/idade do projeto.
+
+A futura `whatsapp_contact_identities` deve nascer com RLS habilitado e `anon/authenticated` revogados, pois JIDs e aliases são dados técnicos server-only. Se o frontend consumir contatos canônicos por Realtime, publicar somente `team_whatsapp_contacts` — ou projeção segura equivalente — com policies por time e sem expor JID. O [changelog Supabase](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically) informa que tabelas novas já não são expostas automaticamente em projetos novos; a implementação ainda deve declarar grants e exposição explicitamente para não depender do default/idade do projeto.
 
 ### 7.2 Função privilegiada
 
@@ -698,19 +840,21 @@ Não copiar:
 
 ### 8.2 Matriz “atual × clone × alvo”
 
-| Capacidade        | Corretor Studio atual                         | Clone local                  | Alvo recomendado                                   |
-| ----------------- | --------------------------------------------- | ---------------------------- | -------------------------------------------------- |
-| Estrutura         | Lista + painel; mobile alterna telas          | Lista + painel rígido        | Preservar estrutura atual.                         |
-| Busca             | Só conversas existentes                       | “Search or start a new chat” | Busca unificada instantânea com contatos e número. |
-| Primeiro contato  | Dois CTAs e formulário manual                 | Busca cria/abre conversa     | Um fluxo contato → conversa → bolha pendente.      |
-| Cabeçalho         | Identidade + CRM + tags + atribuição + status | Identidade + poucas ações    | Identidade/status; CRM em sheet/overflow.          |
-| Composer          | Texto, emoji, mídia, áudio, menções           | Composer familiar            | Preservar e adicionar preview/retry.               |
-| Feedback de envio | PENDING/SENT/DELIVERED/READ/FAILED            | Básico                       | Corretor já é melhor; tornar durável.              |
-| Mídia             | Storage + fallback Evolution; 404 recorrente  | Render simples               | Ingestão durável e estado recuperável.             |
-| Presença/typing   | Ausente                                       | Presente                     | Só implementar com sinal confiável.                |
-| Busca na conversa | Ausente                                       | Ação visual                  | Implementar após confiabilidade.                   |
-| Acessibilidade    | Base razoável, gaps manuais                   | Fraca                        | WCAG AA e teclado completo.                        |
-| Marca             | Corretor Studio                               | Próxima do WhatsApp          | Manter Corretor Studio.                            |
+| Capacidade        | Corretor Studio atual                         | Clone local                  | Alvo recomendado                                    |
+| ----------------- | --------------------------------------------- | ---------------------------- | --------------------------------------------------- |
+| Estrutura         | Lista + painel; mobile alterna telas          | Lista + painel rígido        | Preservar estrutura atual.                          |
+| Busca             | Só conversas existentes                       | “Search or start a new chat” | Busca unificada instantânea no cadastro canônico.   |
+| Identidade        | Contato/JID/telefone misturados               | Nome/telefone local          | Contato interno estável + aliases técnicos ocultos. |
+| Primeiro contato  | Dois CTAs e formulário manual                 | Busca cria/abre conversa     | Um fluxo contato → conversa → bolha pendente.       |
+| Cabeçalho         | Identidade + CRM + tags + atribuição + status | Identidade + poucas ações    | Identidade/status; CRM em sheet/overflow.           |
+| Composer          | Texto, emoji, mídia, áudio, menções           | Composer familiar            | Preservar e adicionar preview/retry.                |
+| Feedback de envio | PENDING/SENT/DELIVERED/READ/FAILED            | Básico                       | Corretor já é melhor; tornar durável.               |
+| Mídia             | Storage + fallback Evolution; 404 recorrente  | Render simples               | Ingestão durável e estado recuperável.              |
+| Presença/typing   | Ausente                                       | Presente                     | Só implementar com sinal confiável.                 |
+| Busca na conversa | Ausente                                       | Ação visual                  | Implementar após confiabilidade.                    |
+| Ações da bolha    | Menu nativo do navegador; sem ações           | Menu contextual completo     | shadcn `ContextMenu`, ações reais e sem Meta AI.    |
+| Acessibilidade    | Base razoável, gaps manuais                   | Fraca                        | WCAG AA e teclado completo.                         |
+| Marca             | Corretor Studio                               | Próxima do WhatsApp          | Manter Corretor Studio.                             |
 
 ### 8.3 Hierarquia recomendada
 
@@ -865,23 +1009,37 @@ bun test --isolate \
 - nenhum contrato Evolution com payloads reais versionados;
 - nenhum teste visual/responsivo;
 - nenhuma simulação de ordem HTTP × Realtime;
+- nenhum teste do mapeamento visual/acessível `SENT → DELIVERED → READ`;
+- nenhum teste que impeça check/read receipt em mensagem inbound ou sem sinal confiável;
+- nenhum teste de alinhamento do composer ou ocupação responsiva da waveform;
+- nenhum teste de menu contextual, long press, teclado ou ações sobre a mensagem;
+- nenhum contrato Evolution versionado para reação, encaminhamento ou exclusão iniciada pelo operador;
+- nenhum teste que diferencie phone-number JID, LID, grupo e identidade desconhecida;
+- nenhum teste de vínculo LID ↔ phone-number JID por alias confiável, conflito ou ausência de mapping;
+- nenhum teste garantindo que contato interno/nome manual sobrevivem a snapshot parcial ou agenda indisponível;
+- nenhum teste que impeça JID/LID de aparecer como nome/telefone na UI;
+- nenhum teste de create-or-return para contato já existente por E.164;
 - nenhum teste SSRF;
 - nenhuma validação automatizada dos grants vivos.
 
 ### 11.3 Matriz de aceite
 
-| Jornada        | Cenários mínimos                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| Primeiro envio | sucesso; provider aceita e DB falha; timeout; retry; refresh; duas abas.                   |
-| Reconciliação  | HTTP antes/depois do Realtime; webhook antes/depois da resposta; uma bolha final.          |
-| Busca          | nome; acento; telefone cru/formatado; contato sem conversa; arquivada; filtro; RBAC.       |
-| Sync           | histórico grande; interrupção; retomada; mensagem duplicada; contato LID; string inválida. |
-| Mídia          | upload; cancelamento; expiração; provider offline; storage offline; retry; arquivo 16 MB.  |
-| Áudio          | prompt/granted/denied/unsupported; pause/resume; reduced motion; mobile.                   |
-| Realtime       | token ausente; CLOSED/TIMED_OUT; reconexão; polling; conversa trocada rapidamente.         |
-| Segurança      | SSRF, redirect, DNS rebinding, IP privado, secret leak, webhook sem header.                |
-| RLS            | master, manager, operator, outro time, anon, authenticated sem membership, service role.   |
-| Acessibilidade | teclado, NVDA/VoiceOver, zoom 200%, contraste e target 44 px.                              |
+| Jornada        | Cenários mínimos                                                                             |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| Primeiro envio | sucesso; provider aceita e DB falha; timeout; retry; refresh; duas abas.                     |
+| Reconciliação  | HTTP antes/depois do Realtime; webhook antes/depois da resposta; uma bolha final.            |
+| Busca          | nome; acento; telefone cru/formatado; contato interno sem conversa; arquivada; filtro; RBAC. |
+| Contatos       | PN JID; LID resolvido/não resolvido; grupo; alias conflitante; E.164 duplicado; JID oculto.  |
+| Sync           | agenda ausente/parcial; stale; nome manual preservado; interrupção; retomada; sem duplicata. |
+| Mídia          | upload; cancelamento; expiração; provider offline; storage offline; retry; arquivo 16 MB.    |
+| Áudio          | prompt/granted/denied/unsupported; pause/resume; reduced motion; mobile.                     |
+| Recibos        | SENT/DELIVERED/READ; atraso; Realtime; outbound-only; labels; contraste; PLAYED.             |
+| Composer       | alinhamento texto/microfone; waveform integral; 320/375/768/1440; zoom 200%.                 |
+| Ações da bolha | botão direito; long press; teclado; RBAC; provider; foco; confirmação; sem Meta AI.          |
+| Realtime       | token ausente; CLOSED/TIMED_OUT; reconexão; polling; conversa trocada rapidamente.           |
+| Segurança      | SSRF, redirect, DNS rebinding, IP privado, secret leak, webhook sem header.                  |
+| RLS            | master, manager, operator, outro time, anon, authenticated sem membership, service role.     |
+| Acessibilidade | teclado, NVDA/VoiceOver, zoom 200%, contraste e target 44 px.                                |
 
 ## 12. Backlog recomendado para a SPEC
 
@@ -903,10 +1061,13 @@ bun test --isolate \
 
 ### Fase C — busca e sincronização
 
-1. Busca unificada de conversas/contatos/número.
-2. Sync incremental em batches com checkpoint.
-3. Remover N+1 de provider ID.
-4. Explicar filtro, arquivamento e permissão no zero state.
+1. Migrar `team_whatsapp_contacts` para contato canônico e criar `whatsapp_contact_identities`.
+2. Classificar JIDs e resolver aliases somente por evidência forte; nunca derivar telefone de LID.
+3. Vincular conversa ao `contactId` e fazer backfill/dual-read sem perda.
+4. Busca unificada de conversas/contatos/número sobre o cadastro interno.
+5. Criar ou retornar contato existente por E.164 e iniciar a conversa sem duplicar.
+6. Sync incremental em batches com checkpoint, estado `STALE` e preservação de dados internos.
+7. Remover N+1 de provider ID e explicar filtro, arquivamento, permissão e sync no zero state.
 
 ### Fase D — mídia, áudio e mobile
 
@@ -914,6 +1075,8 @@ bun test --isolate \
 2. Preview/cancel/retry de anexos.
 3. Recovery contextual do microfone e correção do timer.
 4. Cabeçalho progressivo, targets 44 px e lightbox acessível.
+5. Alinhar textarea e microfone numa única centerline.
+6. Fazer a waveform ocupar dinamicamente toda a largura útil.
 
 ### Fase E — paridade e operação madura
 
@@ -922,16 +1085,23 @@ bun test --isolate \
 3. Atalhos e eficiência para power users.
 4. Presença/typing somente com sinal confiável.
 5. Dashboard de SLOs sem PII.
+6. Proteger recibos `SENT/DELIVERED/READ/PLAYED` com testes de contrato, UI e Realtime.
+7. Adicionar menu contextual shadcn com responder, copiar, reagir, encaminhar, fixar, favoritar e apagar.
+8. Persistir/reconciliar ações de mensagem e excluir explicitamente qualquer ação de Meta AI.
 
 ## 13. Quick wins
 
 - gerar `clientMessageId` fora de `performSend` e reutilizar no retry;
 - normalizar telefone antes da busca;
+- parar de preencher `normalizedPhone` com o identificador opaco de `@lid`;
+- capturar aliases alternativos do provider sem ainda fazer merge heurístico;
+- substituir `latest` por uma versão Evolution homologada e registrar fixtures do contrato;
 - trocar os dois CTAs por uma entrada única;
 - marcar command como `REJECTED/FAILED` em quota/rate limit;
 - remover JID/instância/body de logs;
 - adicionar “Como liberar” e “Testar microfone”;
 - ampliar hit areas sem mudar a aparência;
+- substituir o menu nativo da bolha por `ContextMenu` portado, preservando o menu nativo fora dela;
 - adicionar `aria-current` e usar Dialog no lightbox;
 - corrigir elapsed pausado;
 - documentar/substituir wallpapers.
