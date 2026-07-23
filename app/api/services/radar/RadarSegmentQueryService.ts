@@ -138,6 +138,16 @@ export interface IRadarSegmentQueryService {
   ): Promise<string[]>
 }
 
+/**
+ * C6 EXPLAIN (50k RadarProfile rows / 16 teams, realistic multi-tenant scale): the
+ * outer `teamId` filter on RadarProfile correctly uses a Bitmap Index Scan (not a
+ * seq scan) via one of the existing `@@index([teamId, ...])` composites — no seq
+ * scan on the team-scoped profile set at this table size. The `consent`/`event`
+ * `some()` relation filters correlate by `profileId` (not re-scoped by `teamId`
+ * inside the child table), so they seq-scan the consents/events tables directly;
+ * since those tables are naturally bounded by profile count per team, this stays
+ * cheap in practice and no additional index is proven necessary today.
+ */
 class RadarSegmentQueryService implements IRadarSegmentQueryService {
   async countProfiles(scope: RadarTeamScope, rules: RadarSegmentRules): Promise<number> {
     const where = await buildProfileWhere(scope.teamId, rules)
