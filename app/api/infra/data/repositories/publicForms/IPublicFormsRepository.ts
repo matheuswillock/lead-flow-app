@@ -23,6 +23,8 @@ export const publicFormDetailSelect = {
   assignedSdrId: true,
   coverTitle: true,
   coverDescription: true,
+  coverBadge: true,
+  coverHighlights: true,
   ctaLabel: true,
   successTitle: true,
   successDescription: true,
@@ -71,6 +73,7 @@ export const publicFormDetailSelect = {
       operator: true,
       comparisonValue: true,
       action: true,
+      elseAction: true,
     },
   },
   scoreBands: {

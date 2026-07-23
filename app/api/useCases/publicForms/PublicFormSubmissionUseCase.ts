@@ -13,7 +13,7 @@ import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { Output } from "@/lib/output"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import {
-  calculatePublicFormScore,
+  calculatePublicFormScorePercent,
   resolveVisibleQuestionIds,
   validateAnswer,
 } from "@/lib/public-forms/engine"
@@ -81,7 +81,7 @@ export class PublicFormSubmissionUseCase {
     })
     if (errors.length > 0) return new Output(false, [], errors, null)
 
-    const score = calculatePublicFormScore(snapshot, visibleAnswers)
+    const score = calculatePublicFormScorePercent(snapshot, visibleAnswers)
     const band = snapshot.scoreBands.find(
       (item) => score >= item.minScore && score <= item.maxScore,
     )

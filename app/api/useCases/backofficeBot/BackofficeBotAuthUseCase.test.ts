@@ -19,11 +19,36 @@ const linkInitiateMock = mock(async (): Promise<AuthServiceResponse> => ({
   },
 }));
 
+const linkStatusMock = mock(async (): Promise<AuthServiceResponse> => ({
+  ok: true as const,
+  result: {
+    linked: false,
+    botAvailable: true,
+    botStatus: "connected",
+    assistantPhone: "551151951303",
+  },
+}));
+
 const sendTextMessageMock = mock(async () => ({}));
+const getInstanceConnectionStateMock = mock(async (): Promise<"open" | "close" | "connecting"> => "open");
+const getInstancePhoneNumberMock = mock(async (): Promise<string | null> => "551151951303");
+
 const findPrimaryChannelMock = mock(async () => ({
   id: "channel-1",
   displayName: "Bethânia",
+  status: "disconnected" as const,
+  phoneNumber: "5511999999999",
+  isActive: true,
 }));
+
+const upsertChannelMock = mock(async (data: { status: string; phoneNumber: string | null }) => ({
+  id: "channel-1",
+  displayName: "Bethânia",
+  status: data.status,
+  phoneNumber: data.phoneNumber,
+  isActive: true,
+}));
+
 const createMessageMock = mock(async () => ({ id: "message-1" }));
 const originalConsoleError = console.error;
 const consoleErrorMock = mock(() => {});
@@ -32,18 +57,22 @@ mock.module("@/app/api/services/backofficeBot/BackofficeBotAuthService", () => (
   backofficeBotAuthService: {
     verifyCode: verifyCodeMock,
     linkInitiate: linkInitiateMock,
+    linkStatus: linkStatusMock,
   },
 }));
 
 mock.module("@/app/api/services/backofficeBot/evo/BackofficeEvoApiService", () => ({
   backofficeEvoApiService: {
     sendTextMessage: sendTextMessageMock,
+    getInstanceConnectionState: getInstanceConnectionStateMock,
+    getInstancePhoneNumber: getInstancePhoneNumberMock,
   },
 }));
 
 mock.module("@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository", () => ({
   backofficeBotRepository: {
     findPrimaryChannel: findPrimaryChannelMock,
+    upsertChannel: upsertChannelMock,
     createMessage: createMessageMock,
   },
 }));
@@ -60,7 +89,9 @@ mock.module("@/lib/services/EmailService", () => ({
   }),
 }));
 
-const { BackofficeBotAuthUseCase } = await import("./BackofficeBotAuthUseCase");
+const { BackofficeBotAuthUseCase, resetBethaniaChannelSyncCacheForTests } = await import(
+  "./BackofficeBotAuthUseCase"
+);
 
 describe("BackofficeBotAuthUseCase", () => {
   beforeEach(() => {
@@ -68,9 +99,24 @@ describe("BackofficeBotAuthUseCase", () => {
     consoleErrorMock.mockClear();
     verifyCodeMock.mockClear();
     linkInitiateMock.mockClear();
+    linkStatusMock.mockClear();
     sendTextMessageMock.mockClear();
+    getInstanceConnectionStateMock.mockClear();
+    getInstancePhoneNumberMock.mockClear();
     findPrimaryChannelMock.mockClear();
+    upsertChannelMock.mockClear();
     createMessageMock.mockClear();
+    resetBethaniaChannelSyncCacheForTests();
+
+    getInstanceConnectionStateMock.mockResolvedValue("open");
+    getInstancePhoneNumberMock.mockResolvedValue("551151951303");
+    findPrimaryChannelMock.mockResolvedValue({
+      id: "channel-1",
+      displayName: "Bethânia",
+      status: "disconnected",
+      phoneNumber: "5511999999999",
+      isActive: true,
+    });
   });
 
   afterEach(() => {
@@ -90,6 +136,12 @@ describe("BackofficeBotAuthUseCase", () => {
 
     const output = await new BackofficeBotAuthUseCase().linkInitiate("profile-1");
 
+    expect(getInstanceConnectionStateMock).toHaveBeenCalled();
+    expect(getInstancePhoneNumberMock).toHaveBeenCalled();
+    expect(upsertChannelMock).toHaveBeenCalledWith({
+      status: "connected",
+      phoneNumber: "551151951303",
+    });
     expect(linkInitiateMock).toHaveBeenCalledWith("profile-1");
     expect(output.isValid).toBe(true);
     expect(output.errorMessages).toEqual([]);
@@ -112,6 +164,45 @@ describe("BackofficeBotAuthUseCase", () => {
     ]);
     expect(output.result).toMatchObject({ errorCode: "BETHANIA_LINK_RATE_LIMIT" });
     expect((output.result as { correlationId: string }).correlationId).toMatch(/^[a-f0-9]{12}$/);
+  });
+
+  test("linkInitiate não promove connected quando lookup de telefone live falha", async () => {
+    getInstancePhoneNumberMock.mockResolvedValueOnce(null);
+    linkInitiateMock.mockResolvedValueOnce({
+      ok: true as const,
+      result: {
+        challengeId: "challenge-ok",
+        code: "111111",
+        expiresAt: "2026-07-20T12:10:00.000Z",
+        expectedPhone: "+5511888888888",
+      },
+    });
+
+    const output = await new BackofficeBotAuthUseCase().linkInitiate("profile-1");
+
+    expect(upsertChannelMock).not.toHaveBeenCalled();
+    expect(linkInitiateMock).toHaveBeenCalledWith("profile-1");
+    expect(output.isValid).toBe(true);
+  });
+
+  test("linkStatus sincroniza com Evolution e consulta status", async () => {
+    const useCase = new BackofficeBotAuthUseCase();
+    const output = await useCase.linkStatus("profile-1");
+
+    expect(getInstanceConnectionStateMock).toHaveBeenCalledTimes(1);
+    expect(linkStatusMock).toHaveBeenCalledWith("profile-1");
+    expect(output.isValid).toBe(true);
+    expect(output.result).toMatchObject({ linked: false, botAvailable: true });
+  });
+
+  test("linkStatus throttle evita sync Evolution em polls consecutivos", async () => {
+    const useCase = new BackofficeBotAuthUseCase();
+
+    await useCase.linkStatus("profile-1");
+    await useCase.linkStatus("profile-1");
+
+    expect(getInstanceConnectionStateMock).toHaveBeenCalledTimes(1);
+    expect(linkStatusMock).toHaveBeenCalledTimes(2);
   });
 
   test("verifyCode confirma vínculo e envia mensagem WhatsApp", async () => {

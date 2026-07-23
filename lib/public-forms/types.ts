@@ -7,6 +7,7 @@ import type {
   PublicFormStatus,
 } from "@prisma/client"
 export type PublicFormOptionInput = { id?: string; label: string; value: string; score: number }
+export type PublicFormCoverHighlight = { id: string; value: string; label: string }
 export type PublicFormQuestionInput = {
   id?: string
   type: PublicFormQuestionType
@@ -26,6 +27,7 @@ export type PublicFormRuleInput = {
   operator: PublicFormRuleOperator
   comparisonValue?: unknown
   action: PublicFormRuleAction
+  elseAction?: PublicFormRuleAction
 }
 export type PublicFormScoreBandInput = {
   id?: string
@@ -41,6 +43,8 @@ export type PublicFormDraftInput = {
   eligibleCloserIds: string[]
   coverTitle?: string | null
   coverDescription?: string | null
+  coverBadge?: string | null
+  coverHighlights?: PublicFormCoverHighlight[]
   ctaLabel: string
   successTitle: string
   successDescription?: string | null

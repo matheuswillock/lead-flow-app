@@ -142,6 +142,28 @@ export function PublicFormsContainer() {
         ) : null}
       </div>
 
+      {forms.capabilities.canEdit ? (
+        <section className="flex flex-col gap-3 rounded-xl border p-4">
+          <div>
+            <h2 className="text-sm font-semibold">Templates</h2>
+            <p className="text-xs text-muted-foreground">
+              Comece do zero ou use um modelo pronto.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Link
+              href={`/${params.supabaseId}/forms/new?template=health_plan_simulator`}
+              className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40"
+            >
+              <span className="font-medium">Simulador de Redução</span>
+              <span className="text-xs text-muted-foreground">
+                Modelo com capa, perguntas, cálculo de economia e agendamento.
+              </span>
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       <LeadsFiltersLayout
         actions={
           hasFilters ? (
