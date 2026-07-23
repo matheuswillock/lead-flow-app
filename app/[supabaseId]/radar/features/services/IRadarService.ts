@@ -1,10 +1,27 @@
 import type {
+  RadarCustomSegment,
+  RadarCustomSegmentListItem,
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarSegment,
+  RadarSegmentDeleteResult,
+  RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
+
+export type CustomSegmentInput = {
+  name: string
+  description?: string | null
+  rules: RadarSegmentRules
+}
+
+export type CustomSegmentUpdateInput = {
+  name?: string
+  description?: string | null
+  rules?: RadarSegmentRules
+  isActive?: boolean
+}
 
 export type ListProfilesParams = {
   page: number
@@ -64,4 +81,33 @@ export interface IRadarService {
     teamId: string,
     body: { profileId: string; variableKeys: string[] }
   ): Promise<{ values: Record<string, string> }>
+  listCustomSegments(supabaseId: string, teamId: string): Promise<RadarCustomSegmentListItem[]>
+  createCustomSegment(
+    supabaseId: string,
+    teamId: string,
+    input: CustomSegmentInput
+  ): Promise<RadarCustomSegment>
+  updateCustomSegment(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string,
+    input: CustomSegmentUpdateInput
+  ): Promise<RadarCustomSegment>
+  deleteCustomSegment(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string
+  ): Promise<RadarSegmentDeleteResult>
+  listCustomSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string,
+    page: number,
+    pageSize: number
+  ): Promise<{ items: RadarProfileDetail[]; total: number; page: number; pageSize: number }>
+  previewCustomSegmentCount(
+    supabaseId: string,
+    teamId: string,
+    rules: RadarSegmentRules
+  ): Promise<{ count: number }>
 }

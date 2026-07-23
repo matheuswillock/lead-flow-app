@@ -78,6 +78,7 @@ export type RadarSegmentOption = {
   slug: string
   name: string
   count: number
+  isSystem: boolean
 }
 
 export type CampaignSheetTab = "campaign" | "logs"
