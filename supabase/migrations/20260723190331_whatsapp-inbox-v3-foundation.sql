@@ -14,9 +14,9 @@ alter table public.team_whatsapp_contacts
   add column if not exists name text,
   -- `PHONE_NUMBER` was added to the enum immediately above. PostgreSQL does
   -- not allow a newly-added enum value to be used as a default until this
-  -- migration transaction commits, so use an existing conservative source
-  -- here and promote the default in the next migration.
-  add column if not exists "nameSource" public."WhatsAppContactNameSource" not null default 'PUSH_NAME',
+  -- migration transaction commits. Keep this nullable until the following
+  -- migration can backfill existing rows with the correct source.
+  add column if not exists "nameSource" public."WhatsAppContactNameSource",
   add column if not exists "searchText" text,
   add column if not exists "syncState" public."WhatsAppContactSyncState" not null default 'FRESH',
   add column if not exists "lastSeenAt" timestamptz;
