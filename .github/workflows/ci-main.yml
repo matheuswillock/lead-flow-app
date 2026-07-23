@@ -24,7 +24,7 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -59,7 +59,7 @@ jobs:
   migration-status:
     name: Migration Status
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
       - quality
@@ -110,7 +110,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -145,7 +145,7 @@ jobs:
     needs:
       - build
       - migration-status
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     steps:
       - name: Checkout
