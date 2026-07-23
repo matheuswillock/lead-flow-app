@@ -114,6 +114,7 @@ jobs:
 
   build:
     name: Build
+    # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
     if: >-
       ${{
         (
@@ -125,7 +126,7 @@ jobs:
           !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: [self-hosted, linux, x64, lead-flow-build]
     timeout-minutes: 15
     steps:
       - name: Checkout

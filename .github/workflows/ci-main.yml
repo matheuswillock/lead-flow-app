@@ -112,7 +112,8 @@ jobs:
 
   build:
     name: Build
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "linux", "x64", "lead-flow-ci"]') }}
+    # PR → hosted; push → só runner com lead-flow-build (sem concurrency group).
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "linux", "x64", "lead-flow-build"]') }}
     timeout-minutes: 15
     steps:
       - name: Checkout
