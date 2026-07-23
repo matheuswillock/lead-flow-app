@@ -657,6 +657,28 @@ export class RadarRepository {
     return new Map(leads.map((lead) => [lead.id, lead.status]))
   }
 
+  async countProfilesByWhere(where: Prisma.RadarProfileWhereInput): Promise<number> {
+    return prisma.radarProfile.count({ where })
+  }
+
+  async listProfileIdsByWhere(
+    where: Prisma.RadarProfileWhereInput,
+    pagination?: { skip: number; take: number }
+  ): Promise<string[]> {
+    const profiles = await prisma.radarProfile.findMany({
+      where,
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      ...(pagination ? { skip: pagination.skip, take: pagination.take } : {}),
+    })
+    return profiles.map((profile) => profile.id)
+  }
+
+  async findLeadIdsByWhere(where: Prisma.LeadWhereInput): Promise<string[]> {
+    const leads = await prisma.lead.findMany({ where, select: { id: true } })
+    return leads.map((lead) => lead.id)
+  }
+
   async listProfilesForSegmentationByIds(teamId: string, profileIds: string[]) {
     const uniqueIds = [...new Set(profileIds.filter(Boolean))]
     if (uniqueIds.length === 0) return []

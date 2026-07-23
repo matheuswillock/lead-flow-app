@@ -6,7 +6,12 @@ const option = z.object({
   id: uuid.optional(),
   label: z.string().trim().min(1).max(300),
   value: z.string().trim().min(1).max(300),
-  score: z.number().int().min(-10000).max(10000).default(0),
+  score: z.number().int().min(0).max(100).default(0),
+})
+const coverHighlight = z.object({
+  id: z.string().min(1).max(80),
+  value: z.string().trim().min(1).max(80),
+  label: z.string().trim().min(1).max(120),
 })
 const question = z.object({
   id: uuid.optional(),
@@ -27,6 +32,7 @@ const question = z.object({
     "custom_field",
     "scheduling",
     "consent",
+    "calculation",
   ]),
   title: z.string().trim().min(1).max(500),
   description: text,
@@ -44,6 +50,8 @@ export const publicFormDraftSchema = z.object({
   eligibleCloserIds: z.array(uuid).max(100).default([]),
   coverTitle: text,
   coverDescription: text,
+  coverBadge: z.string().trim().max(80).nullable().optional(),
+  coverHighlights: z.array(coverHighlight).max(6).default([]),
   ctaLabel: z.string().trim().min(1).max(80).default("Começar"),
   successTitle: z.string().trim().min(1).max(200).default("Respostas enviadas"),
   successDescription: text,
@@ -65,6 +73,7 @@ export const publicFormDraftSchema = z.object({
         operator: z.enum(["equals", "not_equals", "contains", "selected", "not_selected"]),
         comparisonValue: z.unknown().optional(),
         action: z.enum(["show", "skip"]),
+        elseAction: z.enum(["show", "skip"]).optional(),
       }),
     )
     .max(500)
@@ -75,8 +84,8 @@ export const publicFormDraftSchema = z.object({
         id: uuid.optional(),
         label: z.string().trim().min(1).max(200),
         summary: text,
-        minScore: z.number().int(),
-        maxScore: z.number().int(),
+        minScore: z.number().int().min(0).max(100),
+        maxScore: z.number().int().min(0).max(100),
       }),
     )
     .max(100)

@@ -24,6 +24,7 @@ export function createHealthPlanSimulatorDraft(
     hospitais: crypto.randomUUID(),
     tempo: crypto.randomUUID(),
     captacao: crypto.randomUUID(),
+    resultado: crypto.randomUUID(),
     agenda: crypto.randomUUID(),
   }
 
@@ -32,7 +33,7 @@ export function createHealthPlanSimulatorDraft(
       id: crypto.randomUUID(),
       label,
       value: label,
-      score: index === 0 ? 2 : 1,
+      score: index === 0 ? 100 : 50,
     }))
 
   const healthPlanLabels =
@@ -48,6 +49,12 @@ export function createHealthPlanSimulatorDraft(
     coverTitle: "Simule a redução do seu plano de saúde em menos de 2 minutos.",
     coverDescription:
       "Descubra o quanto você pode economizar sem abrir mão da cobertura que você precisa. Análise personalizada e sem compromisso.",
+    coverBadge: "Simulador gratuito",
+    coverHighlights: [
+      { id: crypto.randomUUID(), value: "até 40%", label: "de economia possível" },
+      { id: crypto.randomUUID(), value: "2 min", label: "para simular" },
+      { id: crypto.randomUUID(), value: "100%", label: "gratuito" },
+    ],
     ctaLabel: "Começar",
     successTitle: "Reunião agendada!",
     successDescription:
@@ -188,6 +195,16 @@ export function createHealthPlanSimulatorDraft(
       },
       {
         id: crypto.randomUUID(),
+        type: "calculation",
+        title: "Resultado da simulação",
+        description: "Estimativa de economia com base nas suas respostas.",
+        required: false,
+        mappingTarget: "history",
+        config: { pageKey: page.resultado, engine: "health_plan_reduction" },
+        options: [],
+      },
+      {
+        id: crypto.randomUUID(),
         type: "scheduling",
         title: "Escolha o melhor horário",
         description: "Selecione um horário disponível. Você vai receber o convite no e-mail.",
@@ -202,15 +219,22 @@ export function createHealthPlanSimulatorDraft(
       {
         id: crypto.randomUUID(),
         label: "Alta intenção",
-        minScore: 8,
+        minScore: 71,
         maxScore: 100,
         summary: "Lead engajado no simulador com perfil completo.",
       },
       {
         id: crypto.randomUUID(),
         label: "Qualificado",
+        minScore: 41,
+        maxScore: 70,
+        summary: "Lead com interesse intermediário.",
+      },
+      {
+        id: crypto.randomUUID(),
+        label: "Inicial",
         minScore: 0,
-        maxScore: 7,
+        maxScore: 40,
         summary: "Lead captado via simulador.",
       },
     ],
@@ -234,7 +258,7 @@ export function applyHealthPlanCatalogToDraft(
           id: crypto.randomUUID(),
           label,
           value: label,
-          score: index === 0 ? 2 : 1,
+          score: index === 0 ? 100 : 50,
         })),
       }
     }),

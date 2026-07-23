@@ -800,6 +800,7 @@ model Profile {
   createdTeamFilterPresets    TeamFilterPreset[]        @relation("TeamFilterPresetCreator")
   createdTeamStatusRules      TeamStatusRule[]          @relation("TeamStatusRuleCreator")
   createdTeamAutomationRules  TeamAutomationRule[]      @relation("TeamAutomationRuleCreator")
+  createdTeamRadarSegments    TeamRadarSegment[]        @relation("TeamRadarSegmentCreator")
   createdLeadCustomFieldDefinitions LeadCustomFieldDefinition[] @relation("LeadCustomFieldDefinitionCreator")
   updatedLeadStatusTransitionFieldRules BackofficeLeadStatusTransitionFieldRule[] @relation("BackofficeLeadStatusTransitionFieldRuleUpdater")
   updatedLeadStatusTransitionGates BackofficeLeadStatusTransitionGate[] @relation("BackofficeLeadStatusTransitionGateUpdater")
@@ -2116,6 +2117,7 @@ model Team {
   radarSourceLinks   RadarSourceLink[]
   radarEvents        RadarEvent[]
   radarChannelConsents RadarChannelConsent[]
+  radarSegments      TeamRadarSegment[]
   backofficeBotSessions   BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
@@ -3823,6 +3825,26 @@ model RadarChannelConsent {
   @@map("corretor_studio_radar_channel_consents")
 }
 
+model TeamRadarSegment {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  createdBy   String   @db.Uuid
+  name        String   @db.Text
+  description String?  @db.Text
+  rulesJson   Json
+  isSystem    Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator Profile @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, name])
+  @@index([teamId, isActive])
+  @@map("corretor_studio_radar_segments")
+}
+
 // ==============================
 // STUDIO BOT (BETHÂNIA) — BACKOFFICE
 // ==============================
@@ -4375,6 +4397,7 @@ enum PublicFormQuestionType {
   custom_field
   scheduling
   consent
+  calculation
 }
 
 enum PublicFormMappingTarget {
@@ -4453,6 +4476,8 @@ model PublicForm {
   approvalStatus         PublicFormApprovalStatus   @default(draft)
   coverTitle             String?                    @db.Text
   coverDescription       String?                    @db.Text
+  coverBadge             String?                    @db.Text
+  coverHighlights        Json?
   ctaLabel               String                     @default("Começar") @db.Text
   successTitle           String                     @default("Respostas enviadas") @db.Text
   successDescription     String?                    @db.Text
@@ -4549,6 +4574,7 @@ model PublicFormRule {
   operator         PublicFormRuleOperator
   comparisonValue  Json?
   action           PublicFormRuleAction
+  elseAction       PublicFormRuleAction   @default(show)
   createdAt        DateTime               @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
   form             PublicForm             @relation(fields: [formId], references: [id], onDelete: Cascade)

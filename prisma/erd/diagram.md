@@ -1113,6 +1113,7 @@ crm_field crm_field
 custom_field custom_field
 scheduling scheduling
 consent consent
+calculation calculation
         }
     
 
@@ -2796,6 +2797,18 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_radar_segments" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    Json rulesJson 
+    Boolean isSystem 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_bot_channels" {
     String id "🗝️"
     String displayName 
@@ -3080,6 +3093,8 @@ meeting_scheduled meeting_scheduled
     PublicFormApprovalStatus approvalStatus 
     String coverTitle "❓"
     String coverDescription "❓"
+    String coverBadge "❓"
+    Json coverHighlights "❓"
     String ctaLabel 
     String successTitle 
     String successDescription "❓"
@@ -3136,6 +3151,7 @@ meeting_scheduled meeting_scheduled
     PublicFormRuleOperator operator 
     Json comparisonValue "❓"
     PublicFormRuleAction action 
+    PublicFormRuleAction elseAction 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3534,6 +3550,8 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_radar_channel_consents" |o--|o "RadarConsentReason" : "enum:reason"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_segments" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_segments" }o--|| corretor_studio_profiles : "creator"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
     "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"
@@ -3592,6 +3610,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_form_options" }o--|| corretor_studio_public_form_questions : "question"
     "corretor_studio_public_form_rules" |o--|| "PublicFormRuleOperator" : "enum:operator"
     "corretor_studio_public_form_rules" |o--|| "PublicFormRuleAction" : "enum:action"
+    "corretor_studio_public_form_rules" |o--|| "PublicFormRuleAction" : "enum:elseAction"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "sourceQuestion"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "targetQuestion"

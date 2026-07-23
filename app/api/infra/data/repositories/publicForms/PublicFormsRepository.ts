@@ -112,6 +112,7 @@ async function replaceDraftRelations(
         comparisonValue:
           rule.comparisonValue === undefined ? Prisma.JsonNull : json(rule.comparisonValue),
         action: rule.action,
+        elseAction: rule.elseAction ?? (rule.action === "show" ? "skip" : "show"),
       })),
     })
   }
@@ -230,6 +231,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           assignedSdrId: input.assignedSdrId,
           coverTitle: input.coverTitle,
           coverDescription: input.coverDescription,
+          coverBadge: input.coverBadge,
+          coverHighlights: json(input.coverHighlights ?? []),
           ctaLabel: input.ctaLabel,
           successTitle: input.successTitle,
           successDescription: input.successDescription,
@@ -261,6 +264,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           assignedSdrId: input.assignedSdrId,
           coverTitle: input.coverTitle,
           coverDescription: input.coverDescription,
+          coverBadge: input.coverBadge,
+          coverHighlights: json(input.coverHighlights ?? []),
           ctaLabel: input.ctaLabel,
           successTitle: input.successTitle,
           successDescription: input.successDescription,

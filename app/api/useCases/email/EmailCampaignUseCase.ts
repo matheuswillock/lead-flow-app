@@ -18,7 +18,11 @@ import {
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
-import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
+import {
+  CUSTOM_RADAR_SEGMENT_PREFIX,
+  isValidRadarSegmentAudience,
+  radarSegmentLockKey,
+} from "@/lib/radar/segment-audience"
 import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipients"
 import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
@@ -402,7 +406,7 @@ export class EmailCampaignUseCase {
       if (data.contactListId && data.radarSegmentSlug) {
         return new Output(false, [], ["Use apenas lista de contatos ou segmento Radar, não ambos"], null)
       }
-      if (data.radarSegmentSlug && !isRadarSegmentSlug(data.radarSegmentSlug)) {
+      if (data.radarSegmentSlug && !(await isValidRadarSegmentAudience(ctx.teamId, data.radarSegmentSlug))) {
         return new Output(false, [], ["Segmento Radar inválido"], null)
       }
 
@@ -447,20 +451,45 @@ export class EmailCampaignUseCase {
             null
           )
         }
-        const campaign = await prisma.emailCampaign.create({
-          data: {
-            id: randomUUID(),
-            teamId: ctx.teamId,
-            createdBy: ctx.profileId,
-            name: trimmedName,
-            templateId: data.templateId,
-            contactListId: data.contactListId ?? null,
-            radarSegmentSlug: data.radarSegmentSlug ?? null,
-            status: scheduledAt ? "scheduled" : "draft",
-            scheduledAt,
-            totalRecipients,
-          },
+        const campaignData = {
+          id: randomUUID(),
+          teamId: ctx.teamId,
+          createdBy: ctx.profileId,
+          name: trimmedName,
+          templateId: data.templateId,
+          contactListId: data.contactListId ?? null,
+          radarSegmentSlug: data.radarSegmentSlug ?? null,
+          status: (scheduledAt ? "scheduled" : "draft") as EmailCampaignStatus,
+          scheduledAt,
+          totalRecipients,
+        }
+
+        const customSegmentId = data.radarSegmentSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
+          ? data.radarSegmentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+          : null
+
+        if (!customSegmentId) {
+          const campaign = await prisma.emailCampaign.create({ data: campaignData })
+          return new Output(true, ["Campanha criada com sucesso"], [], campaign)
+        }
+
+        // Serializa contra TeamRadarSegmentRepository.removeWithLock: sem o
+        // lock, o segmento poderia ser excluído entre a validação acima e
+        // este insert, deixando a campanha com um custom:{id} órfão.
+        const campaign = await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
+
+          const stillActive = await tx.teamRadarSegment.findFirst({
+            where: { id: customSegmentId, teamId: ctx.teamId, isActive: true },
+          })
+          if (!stillActive) return null
+
+          return tx.emailCampaign.create({ data: campaignData })
         })
+
+        if (!campaign) {
+          return new Output(false, [], ["Segmento Radar inválido"], null)
+        }
         return new Output(true, ["Campanha criada com sucesso"], [], campaign)
       }
 

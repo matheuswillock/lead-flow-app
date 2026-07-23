@@ -110,6 +110,12 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     [pageQuestions, answers],
   )
   const isSimulator = snapshot.formKind === "health_plan_simulator"
+  const hasCalculationQuestion = snapshot.questions.some((item) => item.type === "calculation")
+  const coverHighlights =
+    Array.isArray(snapshot.coverHighlights) && snapshot.coverHighlights.length > 0
+      ? snapshot.coverHighlights
+      : null
+  const coverBadge = snapshot.coverBadge?.trim() || (isSimulator ? "Simulador gratuito" : null)
 
   useEffect(() => {
     if (preview || !publicId) return
@@ -182,6 +188,12 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     setIndex((current) => Math.min(current, Math.max(0, pages.length - 1)))
   }, [started, track, visibleIds, visibleIdsKey, pages.length])
 
+  useEffect(() => {
+    if (!started || phase !== "form") return
+    if (!pageQuestions.some((item) => item.type === "calculation")) return
+    void runSimulationFlow()
+  }, [started, phase, pageQuestionsKey])
+
   function start() {
     previousVisibleIds.current = visibleIds
     setStarted(true)
@@ -201,12 +213,16 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     for (const item of pageQuestions) {
       track("question_answered", item.id)
     }
+    if (pageQuestions.some((item) => item.type === "calculation")) {
+      void runSimulationFlow()
+      return
+    }
     if (index < pages.length - 1) {
       const pagesAhead = pages.slice(index + 1)
       const onlySchedulingAhead = pagesAhead.every((page) =>
         page.every((item) => item.type === "scheduling"),
       )
-      if (isSimulator && phase === "form" && onlySchedulingAhead) {
+      if ((isSimulator || hasCalculationQuestion) && phase === "form" && onlySchedulingAhead) {
         void runSimulationFlow()
         return
       }
@@ -214,7 +230,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       return
     }
     if (
-      isSimulator &&
+      (isSimulator || hasCalculationQuestion) &&
       phase === "form" &&
       !pageQuestions.some((item) => item.type === "scheduling")
     ) {
@@ -401,9 +417,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
             </div>
           ) : !started ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none">
-              {isSimulator ? (
+              {coverBadge ? (
                 <span className="mb-4 inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                  Simulador gratuito
+                  {coverBadge}
                 </span>
               ) : null}
               <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -412,7 +428,16 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
               <p className="mt-4 max-w-xl text-pretty text-base text-muted-foreground sm:text-lg">
                 {snapshot.coverDescription || snapshot.description}
               </p>
-              {isSimulator ? (
+              {coverHighlights ? (
+                <div className="mt-8 grid grid-cols-3 gap-3">
+                  {coverHighlights.map((item) => (
+                    <div key={item.id} className="rounded-xl bg-primary/10 p-3">
+                      <p className="text-lg font-semibold text-primary">{item.value}</p>
+                      <p className="text-[11px] text-muted-foreground">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : isSimulator ? (
                 <div className="mt-8 grid grid-cols-3 gap-3">
                   {[
                     ["até 40%", "de economia possível"],
@@ -430,6 +455,11 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                 {snapshot.ctaLabel}
                 <ArrowRight data-icon="inline-end" />
               </Button>
+            </div>
+          ) : pageQuestions.some((item) => item.type === "calculation") ? (
+            <div className="flex flex-col items-center gap-4 py-16 text-center">
+              <Loader2 className="size-10 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Preparando o cálculo...</p>
             </div>
           ) : pageQuestions.length ? (
             <div
