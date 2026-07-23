@@ -277,9 +277,12 @@ export function RadarContainer() {
                           description={segment.description}
                           count={segment.count}
                           variant="custom"
+                          isInactive={!segment.isActive}
                           mutationLock={mutationLock}
-                          onViewProfiles={() =>
-                            openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
+                          onViewProfiles={
+                            segment.isActive
+                              ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
+                              : undefined
                           }
                           onEdit={() => {
                             setEditingSegment(segment)
