@@ -785,6 +785,8 @@ UNKNOWN UNKNOWN
 SENT SENT
 DELIVERED DELIVERED
 READ READ
+PLAYED PLAYED
+UNKNOWN UNKNOWN
 FAILED FAILED
 RECEIVED RECEIVED
         }
@@ -839,6 +841,7 @@ HUMAN HUMAN
 LEAD LEAD
 PHONE_BOOK PHONE_BOOK
 PUSH_NAME PUSH_NAME
+PHONE_NUMBER PHONE_NUMBER
         }
     
 
@@ -862,6 +865,15 @@ STARTS_WITH STARTS_WITH
         TeamWhatsAppContactSource {
             PHONE_CONTACTS PHONE_CONTACTS
 GROUP_PARTICIPANT GROUP_PARTICIPANT
+        }
+    
+
+
+        WhatsAppContactSyncState {
+            FRESH FRESH
+STALE STALE
+UNRESOLVED UNRESOLVED
+CONFLICT CONFLICT
         }
     
 
@@ -2543,7 +2555,28 @@ meeting_scheduled meeting_scheduled
     String displayName "❓"
     String pushName "❓"
     TeamWhatsAppContactSource source 
+    String phoneE164 "❓"
+    String name "❓"
+    WhatsAppContactNameSource nameSource 
+    String searchText "❓"
+    WhatsAppContactSyncState syncState 
+    DateTime lastSeenAt "❓"
     DateTime lastSyncedAt 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_contact_identities" {
+    String id "🗝️"
+    String remoteJid 
+    String identityType 
+    String phoneE164 "❓"
+    String mappingSource 
+    DateTime verifiedAt "❓"
+    Boolean sendable 
+    DateTime firstSeenAt 
+    DateTime lastSeenAt 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2604,6 +2637,7 @@ meeting_scheduled meeting_scheduled
     String id "🗝️"
     String providerMessageId "❓"
     String providerEventId "❓"
+    String clientMessageId "❓"
     WhatsAppMessageDirection direction 
     WhatsAppMessageType messageType 
     WhatsAppMessageStatus status 
@@ -2619,6 +2653,7 @@ meeting_scheduled meeting_scheduled
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
     DateTime readAt "❓"
+    DateTime playedAt "❓"
     DateTime failedAt "❓"
     Boolean isAutoResponse 
     Json rawPayload 
@@ -2638,8 +2673,25 @@ meeting_scheduled meeting_scheduled
     String messageId "❓"
     WhatsAppOutboundCommandStatus status 
     Int attemptCount 
+    String requestHash "❓"
+    DateTime claimedAt "❓"
+    DateTime nextReconcileAt "❓"
     String lastError "❓"
     DateTime reconciledAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_sync_jobs" {
+    String id "🗝️"
+    String status 
+    Json checkpoint 
+    String leaseOwner "❓"
+    DateTime leaseExpiresAt "❓"
+    DateTime startedAt "❓"
+    DateTime completedAt "❓"
+    String lastError "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3488,7 +3540,12 @@ meeting_scheduled meeting_scheduled
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
     "team_whatsapp_contacts" |o--|| "TeamWhatsAppContactSource" : "enum:source"
+    "team_whatsapp_contacts" |o--|| "WhatsAppContactNameSource" : "enum:nameSource"
+    "team_whatsapp_contacts" |o--|| "WhatsAppContactSyncState" : "enum:syncState"
     "team_whatsapp_contacts" }o--|| corretor_studio_teams : "team"
+    "whatsapp_contact_identities" }o--|| corretor_studio_teams : "team"
+    "whatsapp_contact_identities" }o--|o team_whatsapp_configs : "config"
+    "whatsapp_contact_identities" }o--|| team_whatsapp_contacts : "contact"
     "team_whatsapp_configs" |o--|| "WhatsAppProvider" : "enum:provider"
     "team_whatsapp_configs" |o--|| "WhatsAppConnectionStatus" : "enum:status"
     "team_whatsapp_configs" |o--|| "WhatsAppHistorySyncStatus" : "enum:historySyncStatus"
@@ -3500,6 +3557,7 @@ meeting_scheduled meeting_scheduled
     "whatsapp_conversations" |o--|| "WhatsAppHandoffMode" : "enum:handoffMode"
     "whatsapp_conversations" }o--|| corretor_studio_teams : "team"
     "whatsapp_conversations" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_conversations" }o--|o team_whatsapp_contacts : "contact"
     "whatsapp_conversations" }o--|o corretor_studio_leads : "lead"
     "whatsapp_conversations" }o--|o corretor_studio_profiles : "assignedProfile"
     "whatsapp_conversations" }o--|o corretor_studio_profiles : "createdByProfile"
@@ -3515,6 +3573,8 @@ meeting_scheduled meeting_scheduled
     "whatsapp_outbound_commands" |o--|| "WhatsAppOutboundCommandStatus" : "enum:status"
     "whatsapp_outbound_commands" }o--|| corretor_studio_teams : "team"
     "whatsapp_outbound_commands" }o--|| whatsapp_conversations : "conversation"
+    "whatsapp_sync_jobs" }o--|| corretor_studio_teams : "team"
+    "whatsapp_sync_jobs" }o--|| team_whatsapp_configs : "config"
     "whatsapp_webhook_events" |o--|| "WhatsAppWebhookEventStatus" : "enum:status"
     "whatsapp_webhook_events" }o--|| team_whatsapp_configs : "config"
     "whatsapp_webhook_events" }o--|| corretor_studio_teams : "team"

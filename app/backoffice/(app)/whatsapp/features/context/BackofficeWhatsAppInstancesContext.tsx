@@ -19,6 +19,7 @@ import type {
   BackofficeWhatsAppTeamWithoutInstance,
   ProvisionWhatsAppInstanceFormData,
   UpdateWhatsAppInstanceFormData,
+  BackofficeWhatsAppWebhookResyncResult,
 } from "./BackofficeWhatsAppInstancesTypes"
 
 const DEFAULT_FILTERS: BackofficeWhatsAppInstancesFilters = {
@@ -49,6 +50,8 @@ interface BackofficeWhatsAppInstancesContextValue {
   isDisconnecting: boolean
   isSyncing: boolean
   isProvisioning: boolean
+  isResyncingWebhooks: boolean
+  webhookResyncResult: BackofficeWhatsAppWebhookResyncResult | null
   canManage: boolean
   error: string | null
   selectedConfigId: string | null
@@ -72,6 +75,8 @@ interface BackofficeWhatsAppInstancesContextValue {
   provisionInstance: (
     data: ProvisionWhatsAppInstanceFormData
   ) => Promise<{ isValid: boolean; errorMessages: string[] }>
+  previewResyncWebhooks: () => Promise<void>
+  confirmResyncWebhooks: () => Promise<{ isValid: boolean; errorMessages: string[] }>
 }
 
 export const BackofficeWhatsAppInstancesContext = createContext<
@@ -103,6 +108,9 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
   const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isProvisioning, setIsProvisioning] = useState(false)
+  const [isResyncingWebhooks, setIsResyncingWebhooks] = useState(false)
+  const [webhookResyncResult, setWebhookResyncResult] =
+    useState<BackofficeWhatsAppWebhookResyncResult | null>(null)
   const [isProvisionOpen, setIsProvisionOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -187,7 +195,6 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
                 status: detail.status,
                 phoneNumber: detail.phoneNumber,
                 displayName: detail.displayName,
-                hostBaseUrl: detail.hostBaseUrl,
                 lastConnectedAt: detail.lastConnectedAt,
                 lastDisconnectedAt: detail.lastDisconnectedAt,
                 lastSyncAt: detail.lastSyncAt,
@@ -344,6 +351,45 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
     [instancesService, refreshList]
   )
 
+  const previewResyncWebhooks = useCallback(async () => {
+    setIsResyncingWebhooks(true)
+    try {
+      const result = await instancesService.previewResyncWebhooks()
+      if (result.isValid && result.result) {
+        setWebhookResyncResult(result.result)
+      } else {
+        toast.error(result.errorMessages?.[0] ?? "Erro ao pré-visualizar webhooks")
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao pré-visualizar webhooks"
+      toast.error(message)
+    } finally {
+      setIsResyncingWebhooks(false)
+    }
+  }, [instancesService])
+
+  const confirmResyncWebhooks = useCallback(async () => {
+    setIsResyncingWebhooks(true)
+    try {
+      const result = await instancesService.confirmResyncWebhooks()
+      if (result.result) {
+        setWebhookResyncResult(result.result)
+      }
+      if (result.isValid) {
+        toast.success(result.successMessages?.[0] ?? "Webhooks reaplicados")
+      } else {
+        toast.error(result.errorMessages?.[0] ?? "Erro ao reaplicar webhooks")
+      }
+      return { isValid: result.isValid, errorMessages: result.errorMessages ?? [] }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao reaplicar webhooks"
+      toast.error(message)
+      return { isValid: false, errorMessages: [message] }
+    } finally {
+      setIsResyncingWebhooks(false)
+    }
+  }, [instancesService])
+
   return (
     <BackofficeWhatsAppInstancesContext.Provider
       value={{
@@ -360,6 +406,8 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         isDisconnecting,
         isSyncing,
         isProvisioning,
+        isResyncingWebhooks,
+        webhookResyncResult,
         canManage,
         error,
         selectedConfigId,
@@ -378,6 +426,8 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         closeProvision,
         loadEligibleTeams,
         provisionInstance,
+        previewResyncWebhooks,
+        confirmResyncWebhooks,
       }}
     >
       {children}

@@ -51,7 +51,6 @@ async function main() {
       teamId: true,
       instanceName: true,
       webhookSecret: true,
-      hostBaseUrl: true,
       status: true,
     },
     orderBy: { createdAt: "asc" },
@@ -81,7 +80,6 @@ async function main() {
       await evoApiService.setWebhook({
         instanceName: config.instanceName,
         webhookUrl,
-        hostBaseUrl: config.hostBaseUrl ?? undefined,
       })
       ok += 1
     } catch (error) {

@@ -58,13 +58,11 @@ export function BackofficeWhatsAppInstanceSheet() {
 
   const [usageLimitMonthly, setUsageLimitMonthly] = useState("2000")
   const [billingEnabled, setBillingEnabled] = useState(true)
-  const [hostBaseUrl, setHostBaseUrl] = useState("")
 
   useEffect(() => {
     if (!selectedDetail) return
     setUsageLimitMonthly(String(selectedDetail.usageLimitMonthly))
     setBillingEnabled(selectedDetail.billingEnabled)
-    setHostBaseUrl(selectedDetail.hostBaseUrl ?? "")
   }, [selectedDetail])
 
   const isOpen = Boolean(selectedConfigId)
@@ -77,7 +75,6 @@ export function BackofficeWhatsAppInstanceSheet() {
     await updateInstance(selectedDetail.id, {
       usageLimitMonthly: limit,
       billingEnabled,
-      hostBaseUrl,
     })
   }
 
@@ -190,16 +187,6 @@ export function BackofficeWhatsAppInstanceSheet() {
                         min={0}
                         value={usageLimitMonthly}
                         onChange={(event) => setUsageLimitMonthly(event.target.value)}
-                        disabled={isSaving}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="host-base-url">Host Evolution (opcional)</FieldLabel>
-                      <Input
-                        id="host-base-url"
-                        value={hostBaseUrl}
-                        onChange={(event) => setHostBaseUrl(event.target.value)}
-                        placeholder="https://evolution.exemplo.com"
                         disabled={isSaving}
                       />
                     </Field>

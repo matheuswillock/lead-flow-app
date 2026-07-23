@@ -7,7 +7,6 @@ import { getWhatsAppConfigUseCase } from "@/app/api/useCases/whatsapp/GetWhatsAp
 
 const createConfigSchema = z.object({
   usageLimitMonthly: z.number().int().positive().optional(),
-  hostBaseUrl: z.string().url().optional(),
   reuseFromTeamId: z.string().uuid().optional(),
 })
 
@@ -91,7 +90,6 @@ export async function POST(
     callerIsMaster: teamAccess.access.isMaster,
     callerRole: teamAccess.access.teamMember.role,
     usageLimitMonthly: parsed.data.usageLimitMonthly,
-    hostBaseUrl: parsed.data.hostBaseUrl,
     reuseFromTeamId: parsed.data.reuseFromTeamId,
   })
 

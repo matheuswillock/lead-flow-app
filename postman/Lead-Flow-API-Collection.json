@@ -12248,7 +12248,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"usageLimitMonthly\": 2000,\n  \"hostBaseUrl\": null\n}"
+                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"usageLimitMonthly\": 2000\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances",
@@ -12300,7 +12300,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"usageLimitMonthly\": 3000,\n  \"billingEnabled\": true,\n  \"hostBaseUrl\": null\n}"
+                  "raw": "{\n  \"usageLimitMonthly\": 3000,\n  \"billingEnabled\": true\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/instances/{{whatsappConfigId}}",
@@ -12422,6 +12422,37 @@
                   ]
                 },
                 "description": "Lista times elegíveis sem instância provisionada."
+              }
+            },
+            {
+              "name": "POST Resync WhatsApp Webhooks (Ops)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"confirm\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/whatsapp/ops/resync-webhooks",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "whatsapp",
+                    "ops",
+                    "resync-webhooks"
+                  ]
+                },
+                "description": "Prévia (confirm:false) ou aplica (confirm:true) webhooks Evolution das instâncias primárias do produto."
               }
             }
           ]
@@ -17384,6 +17415,29 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "backoffice", "bot", "host", "workflows", "import"]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "POST Backoffice Bot Host Resync Bethania Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/resync-bethania-webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "bot", "host", "resync-bethania-webhook"]
+            },
+            "description": "MASTER: prévia/aplica webhook Evolution da instância Bethânia → N8N inbound."
           },
           "response": []
         },

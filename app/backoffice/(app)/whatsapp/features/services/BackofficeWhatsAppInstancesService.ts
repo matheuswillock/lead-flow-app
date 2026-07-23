@@ -55,7 +55,6 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
       body: JSON.stringify({
         usageLimitMonthly: form.usageLimitMonthly,
         billingEnabled: form.billingEnabled,
-        hostBaseUrl: form.hostBaseUrl.trim() || null,
       }),
     })
     return res.json()
@@ -70,7 +69,6 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
       body: JSON.stringify({
         teamId: form.teamId,
         usageLimitMonthly: form.usageLimitMonthly,
-        hostBaseUrl: form.hostBaseUrl?.trim() || undefined,
       }),
     })
     return res.json()
@@ -110,5 +108,23 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
       throw new Error(data.errorMessages?.[0] ?? "Erro ao listar times elegíveis")
     }
     return data.result?.items ?? []
+  }
+
+  async previewResyncWebhooks() {
+    const res = await fetch("/api/v1/backoffice/whatsapp/ops/resync-webhooks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: false }),
+    })
+    return res.json()
+  }
+
+  async confirmResyncWebhooks() {
+    const res = await fetch("/api/v1/backoffice/whatsapp/ops/resync-webhooks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    })
+    return res.json()
   }
 }

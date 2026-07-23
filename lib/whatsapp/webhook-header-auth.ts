@@ -4,6 +4,9 @@ export const WHATSAPP_WEBHOOK_HEADER_NAME = "apikey"
 
 export function deriveWebhookHeaderSecret(webhookSecret: string): string {
   const pepper = process.env.WHATSAPP_WEBHOOK_HEADER_SECRET?.trim()
+  if (pepper && pepper.length < 32) {
+    throw new Error("WHATSAPP_WEBHOOK_HEADER_SECRET must contain at least 32 characters")
+  }
   if (pepper) {
     return crypto.createHmac("sha256", pepper).update(webhookSecret).digest("hex")
   }
@@ -11,6 +14,9 @@ export function deriveWebhookHeaderSecret(webhookSecret: string): string {
 }
 
 export function isWebhookHeaderEnforcementEnabled(): boolean {
+  // The deploy must provision the pepper and Evolution header before switching
+  // this on. Keeping the path-secret fallback during that rollout prevents a
+  // production webhook outage caused by an absent environment variable.
   return process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE === "true"
 }
 

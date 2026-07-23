@@ -16,6 +16,7 @@ export interface IBackofficeEvoApiService {
     instanceName: string;
     webhookUrl: string;
   }): Promise<BackofficeEvoConnectResult>;
+  setWebhook(params: { instanceName: string; webhookUrl: string }): Promise<void>;
   getInstanceConnectionState(
     instanceName: string
   ): Promise<"open" | "close" | "connecting">;
