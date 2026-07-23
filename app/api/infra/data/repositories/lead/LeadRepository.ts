@@ -708,6 +708,10 @@ export class LeadRepository implements ILeadRepository {
     return { leads: leads as unknown as Lead[] };
   }
 
+  // C6 EXPLAIN (5k leads/team, 50/50 value split on customFieldFilters): Postgres correctly
+  // picks a seq scan + hash join over lead_custom_field_values_definition_value_idx
+  // (definitionId, value) at this selectivity — the index exists and would kick in for a
+  // rarer filter value; no additional index proven necessary for this access pattern.
   async findAllByTeamId(
     teamId: string,
     options?: {
@@ -862,6 +866,7 @@ export class LeadRepository implements ILeadRepository {
     return { leads };
   }
 
+  // C6 EXPLAIN: same custom-field-filter access pattern and conclusion as findAllByTeamId above.
   async findAllByOperatorIdInTeam(
     operatorId: string,
     teamId: string,
