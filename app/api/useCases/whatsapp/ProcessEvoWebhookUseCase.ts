@@ -38,24 +38,10 @@ import {
   type ContactNameSource,
 } from "@/lib/whatsapp/contact-name"
 import { shouldWipeInboxOnPhoneChange } from "@/lib/whatsapp/should-wipe-inbox-on-phone-change"
+import { shouldApplyOutboundMessageStatus } from "@/lib/whatsapp/outbound-message-status"
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
-}
-
-const MESSAGE_STATUS_RANK: Record<string, number> = {
-  FAILED: 0,
-  PENDING: 1,
-  RECEIVED: 1,
-  SENT: 2,
-  DELIVERED: 3,
-  READ: 4,
-}
-
-function shouldApplyMessageStatus(current: string, next: string): boolean {
-  const currentRank = MESSAGE_STATUS_RANK[current] ?? 0
-  const nextRank = MESSAGE_STATUS_RANK[next] ?? 0
-  return nextRank >= currentRank
 }
 
 const CONTACTS_LOOKUP_CHUNK_SIZE = 500
@@ -719,6 +705,7 @@ class ProcessEvoWebhookUseCase {
       )
       return
     }
+    if (existing.direction !== "OUTBOUND") return
 
     const now = new Date()
     let status: WhatsAppMessageStatus | undefined
@@ -739,7 +726,7 @@ class ProcessEvoWebhookUseCase {
       updateData.failedAt = now
     }
 
-    if (status && shouldApplyMessageStatus(existing.status, status)) {
+    if (status && shouldApplyOutboundMessageStatus(existing.status, status)) {
       updateData.status = status
       console.info(
         "[ProcessEvoWebhookUseCase][applyOutboundMessageStatus] Updating message status to",

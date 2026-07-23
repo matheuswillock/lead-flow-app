@@ -4,6 +4,9 @@ export const WHATSAPP_WEBHOOK_HEADER_NAME = "apikey"
 
 export function deriveWebhookHeaderSecret(webhookSecret: string): string {
   const pepper = process.env.WHATSAPP_WEBHOOK_HEADER_SECRET?.trim()
+  if (process.env.NODE_ENV === "production" && (!pepper || pepper.length < 32)) {
+    throw new Error("WHATSAPP_WEBHOOK_HEADER_SECRET must contain at least 32 characters in production")
+  }
   if (pepper) {
     return crypto.createHmac("sha256", pepper).update(webhookSecret).digest("hex")
   }
@@ -11,7 +14,8 @@ export function deriveWebhookHeaderSecret(webhookSecret: string): string {
 }
 
 export function isWebhookHeaderEnforcementEnabled(): boolean {
-  return process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE === "true"
+  // URL secrets route events; in production the derived header is mandatory.
+  return process.env.NODE_ENV === "production" || process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE === "true"
 }
 
 export function readWebhookHeaderSecret(request: { headers: Headers }): string | null {

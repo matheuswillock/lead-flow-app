@@ -26,6 +26,16 @@ export interface UpsertWhatsAppContactInput {
   lastSyncedAt?: Date
 }
 
+export interface CanonicalWhatsAppContact {
+  id: string
+  teamId: string
+  phoneE164: string | null
+  name: string | null
+  nameSource: "MANUAL" | "LEAD" | "PHONE_BOOK" | "PUSH_NAME" | "PHONE_NUMBER"
+  syncState: "FRESH" | "STALE" | "UNRESOLVED" | "CONFLICT"
+  lastSyncedAt: Date
+}
+
 export interface IWhatsAppContactRepository {
   upsertMany(contacts: UpsertWhatsAppContactInput[]): Promise<number>
   listByTeam(
@@ -45,4 +55,26 @@ export interface IWhatsAppContactRepository {
     limit?: number,
     extraWhere?: Prisma.TeamWhatsAppContactWhereInput
   ): Promise<TeamWhatsAppContactSelect[]>
+  findOrCreateCanonical(input: {
+    teamId: string
+    phoneE164: string
+    name?: string | null
+    nameSource?: "MANUAL" | "LEAD" | "PHONE_BOOK" | "PUSH_NAME" | "PHONE_NUMBER"
+  }): Promise<CanonicalWhatsAppContact>
+  findCanonicalById(teamId: string, contactId: string): Promise<CanonicalWhatsAppContact | null>
+  updateCanonical(input: {
+    teamId: string
+    contactId: string
+    phoneE164?: string
+    name?: string | null
+  }): Promise<CanonicalWhatsAppContact>
+  searchCanonical(teamId: string, query: string, limit?: number): Promise<CanonicalWhatsAppContact[]>
+  upsertIdentity(input: {
+    teamId: string
+    configId: string
+    contactId: string
+    remoteJid: string
+    identityType: "PHONE" | "LID" | "GROUP" | "UNKNOWN"
+    phoneE164?: string | null
+  }): Promise<void>
 }

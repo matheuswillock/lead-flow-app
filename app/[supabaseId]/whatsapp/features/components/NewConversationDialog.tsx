@@ -17,7 +17,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { maskPhone, unmask } from "@/lib/masks"
 import { normalizeRadarPhone } from "@/lib/radar/normalization"
 import { useWhatsAppInboxContext } from "../context/WhatsAppInboxContext"
@@ -33,7 +32,6 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
   const [open, setOpen] = useState(false)
   const [phone, setPhone] = useState("")
   const [contactName, setContactName] = useState("")
-  const [initialMessage, setInitialMessage] = useState("")
   const [createdConversationId, setCreatedConversationId] = useState<string | null>(null)
 
   const Icon = triggerIcon === "contact" ? UserPlus : MessageSquarePlus
@@ -46,7 +44,6 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
   const resetForm = () => {
     setPhone("")
     setContactName("")
-    setInitialMessage("")
     setCreatedConversationId(null)
   }
 
@@ -55,7 +52,6 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
     const conversation = await createConversation({
       phone: normalizeRadarPhone(phoneDigits),
       contactName: contactName.trim() || undefined,
-      initialMessage: initialMessage.trim() || undefined,
     })
     if (isContactMode && conversation?.id && !contactName.trim()) {
       setCreatedConversationId(conversation.id)
@@ -80,7 +76,7 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="flex-1">
+        <Button type="button" variant="outline" size="sm" className="min-h-11 flex-1">
           <Icon data-icon="inline-start" />
           {triggerLabel}
         </Button>
@@ -93,7 +89,7 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
           {createdConversationId ? (
             <div className="flex flex-col gap-3 py-2">
               <p className="text-sm text-muted-foreground">
-                Conversa criada. Sincronize com a agenda do celular para preencher o nome do contato.
+                Conversa criada. O cadastro interno mantém o nome e o telefone; a sincronização com o celular é apenas enriquecimento.
               </p>
               <Button
                 type="button"
@@ -116,6 +112,7 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
                 <Input
                   id="new-conversation-phone"
                   placeholder="(11) 99999-9999"
+                  className="min-h-11"
                   value={phone}
                   onChange={(e) => setPhone(maskPhone(e.target.value))}
                   autoFocus
@@ -131,18 +128,9 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
                 <Input
                   id="new-conversation-name"
                   placeholder="Nome"
+                  className="min-h-11"
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="new-conversation-message">Mensagem inicial (opcional)</FieldLabel>
-                <Textarea
-                  id="new-conversation-message"
-                  placeholder="Olá!"
-                  value={initialMessage}
-                  onChange={(e) => setInitialMessage(e.target.value)}
-                  rows={3}
                 />
               </Field>
             </FieldGroup>
@@ -150,7 +138,7 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
         </div>
         <DialogFooter>
           {createdConversationId ? (
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+            <Button type="button" variant="outline" className="min-h-11" onClick={() => handleOpenChange(false)}>
               Fechar
             </Button>
           ) : (
@@ -158,12 +146,13 @@ export function NewConversationDialog({ triggerLabel, triggerIcon }: NewConversa
               <Button
                 type="button"
                 variant="outline"
+                className="min-h-11"
                 onClick={() => handleOpenChange(false)}
                 disabled={isCreatingConversation}
               >
                 Cancelar
               </Button>
-              <Button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit}>
+              <Button type="button" className="min-h-11" onClick={() => void handleSubmit()} disabled={!canSubmit}>
                 {isCreatingConversation ? (
                   <Loader2 className="animate-spin" data-icon="inline-start" />
                 ) : null}

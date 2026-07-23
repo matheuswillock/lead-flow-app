@@ -24,13 +24,36 @@ describe("webhook-header-auth", () => {
     expect(WHATSAPP_WEBHOOK_HEADER_NAME).toBe("apikey")
   })
 
-  it("enforcement opt-in (default false)", () => {
-    const prev = process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE
-    delete process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE
+  it("obriga header em produção e permite rollout explícito em desenvolvimento", () => {
+    const env = process.env as Record<string, string | undefined>
+    const prev = env.WHATSAPP_WEBHOOK_HEADER_ENFORCE
+    const previousNodeEnv = env.NODE_ENV
+    delete env.WHATSAPP_WEBHOOK_HEADER_ENFORCE
+    env.NODE_ENV = "development"
     expect(isWebhookHeaderEnforcementEnabled()).toBe(false)
-    process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE = "true"
+    env.WHATSAPP_WEBHOOK_HEADER_ENFORCE = "true"
     expect(isWebhookHeaderEnforcementEnabled()).toBe(true)
-    if (prev) process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE = prev
-    else delete process.env.WHATSAPP_WEBHOOK_HEADER_ENFORCE
+    delete env.WHATSAPP_WEBHOOK_HEADER_ENFORCE
+    env.NODE_ENV = "production"
+    expect(isWebhookHeaderEnforcementEnabled()).toBe(true)
+    if (prev) env.WHATSAPP_WEBHOOK_HEADER_ENFORCE = prev
+    else delete env.WHATSAPP_WEBHOOK_HEADER_ENFORCE
+    if (previousNodeEnv) env.NODE_ENV = previousNodeEnv
+    else delete env.NODE_ENV
+  })
+
+  it("exige pepper forte em produção", () => {
+    const env = process.env as Record<string, string | undefined>
+    const nodeEnv = env.NODE_ENV
+    const pepper = env.WHATSAPP_WEBHOOK_HEADER_SECRET
+    env.NODE_ENV = "production"
+    env.WHATSAPP_WEBHOOK_HEADER_SECRET = "curto"
+    expect(() => deriveWebhookHeaderSecret("secret")).toThrow("at least 32")
+    env.WHATSAPP_WEBHOOK_HEADER_SECRET = "x".repeat(32)
+    expect(deriveWebhookHeaderSecret("secret")).toHaveLength(64)
+    if (nodeEnv) env.NODE_ENV = nodeEnv
+    else delete env.NODE_ENV
+    if (pepper) env.WHATSAPP_WEBHOOK_HEADER_SECRET = pepper
+    else delete env.WHATSAPP_WEBHOOK_HEADER_SECRET
   })
 })

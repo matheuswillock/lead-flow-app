@@ -71,6 +71,7 @@ export interface WhatsAppMessageSelect {
   configId: string
   leadId: string | null
   providerMessageId: string | null
+  clientMessageId: string | null
   direction: string
   messageType: string
   status: string
@@ -159,6 +160,7 @@ export interface IWhatsAppRepository {
     contactPhone: string
     normalizedPhone: string
     contactName?: string
+    contactId?: string
   }): Promise<WhatsAppConversationSelect>
 
   listConversations(params: {
@@ -243,6 +245,26 @@ export interface IWhatsAppRepository {
   // Durable delivery and webhook outbox
   findOutboundCommand(teamId: string, clientMessageId: string): Promise<WhatsAppOutboundCommandRecord | null>
   createOutboundCommand(input: { teamId: string; conversationId: string; clientMessageId: string }): Promise<boolean>
+  createPendingOutboundMessageAndCommand(input: {
+    teamId: string
+    conversationId: string
+    clientMessageId: string
+    sentByProfileId: string
+    contentText?: string
+    messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO"
+    mediaMimeType?: string
+    mediaFileName?: string
+    caption?: string
+  }): Promise<{ created: boolean; messageId: string | null }>
+  confirmOutboundMessage(input: {
+    messageId: string
+    providerMessageId: string
+    rawPayload: Prisma.InputJsonValue
+    storagePath?: string | null
+    mediaSha256?: string | null
+    mediaSizeBytes?: number | null
+    sentAt: Date
+  }): Promise<WhatsAppMessageSelect>
   completeOutboundCommand(input: { teamId: string; clientMessageId: string; messageId: string }): Promise<void>
   failOutboundCommand(input: { teamId: string; clientMessageId: string; status: "UNKNOWN" | "FAILED"; error: string }): Promise<void>
   persistWebhookEvent(input: { configId: string; teamId: string; providerEventId: string; eventType: string; payload: Prisma.InputJsonValue }): Promise<string>

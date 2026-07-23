@@ -25,7 +25,6 @@ export interface BackofficeWhatsAppInstanceRow {
   qrCodeText: string | null
   qrCodeImageUrl: string | null
   webhookSecret: string
-  hostBaseUrl: string | null
   lastConnectedAt: Date | null
   lastDisconnectedAt: Date | null
   lastSyncAt: Date | null
@@ -63,7 +62,6 @@ export interface IBackofficeWhatsAppInstanceRepository {
     data: {
       usageLimitMonthly?: number
       billingEnabled?: boolean
-      hostBaseUrl?: string | null
       updatedByProfileId: string
     }
   ): Promise<BackofficeWhatsAppInstanceRow>

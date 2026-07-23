@@ -91,6 +91,7 @@ const MESSAGE_SELECT = {
   configId: true,
   leadId: true,
   providerMessageId: true,
+  clientMessageId: true,
   direction: true,
   messageType: true,
   status: true,
@@ -230,6 +231,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
     contactPhone: string
     normalizedPhone: string
     contactName?: string
+    contactId?: string
   }): Promise<WhatsAppConversationSelect> {
     const existing = await prisma.whatsAppConversation.findUnique({
       where: {
@@ -261,6 +263,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
           contactPhone: params.contactPhone,
           normalizedPhone: params.normalizedPhone,
           contactName: params.contactName ?? null,
+          contactId: params.contactId ?? null,
         },
         select: CONVERSATION_SELECT,
       })
@@ -544,6 +547,88 @@ class WhatsAppRepository implements IWhatsAppRepository {
       on conflict ("teamId", "clientMessageId") do nothing
     `
     return created === 1
+  }
+
+  async createPendingOutboundMessageAndCommand(input: {
+    teamId: string
+    conversationId: string
+    clientMessageId: string
+    sentByProfileId: string
+    contentText?: string
+    messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO"
+    mediaMimeType?: string
+    mediaFileName?: string
+    caption?: string
+  }): Promise<{ created: boolean; messageId: string | null }> {
+    return prisma.$transaction(async (tx) => {
+      const conversation = await tx.whatsAppConversation.findFirst({
+        where: { id: input.conversationId, teamId: input.teamId, deletedAt: null },
+        select: { configId: true, leadId: true, contactPhone: true },
+      })
+      if (!conversation) throw new Error("Conversa não encontrada")
+
+      const existing = await tx.whatsAppOutboundCommand.findUnique({
+        where: { teamId_clientMessageId: { teamId: input.teamId, clientMessageId: input.clientMessageId } },
+        select: { messageId: true },
+      })
+      if (existing) return { created: false, messageId: existing.messageId }
+
+      const message = await tx.whatsAppMessage.create({
+        data: {
+          conversationId: input.conversationId,
+          teamId: input.teamId,
+          configId: conversation.configId,
+          leadId: conversation.leadId,
+          clientMessageId: input.clientMessageId,
+          direction: "OUTBOUND",
+          messageType: input.messageType,
+          status: "PENDING",
+          contentText: input.contentText ?? null,
+          mediaMimeType: input.mediaMimeType ?? null,
+          mediaFileName: input.mediaFileName ?? null,
+          caption: input.caption ?? null,
+          recipientPhone: normalizePhone(conversation.contactPhone),
+          sentByProfileId: input.sentByProfileId,
+          rawPayload: {},
+        },
+        select: { id: true },
+      })
+      await tx.whatsAppOutboundCommand.create({
+        data: {
+          teamId: input.teamId,
+          conversationId: input.conversationId,
+          clientMessageId: input.clientMessageId,
+          messageId: message.id,
+          status: "PENDING",
+          attemptCount: 1,
+        },
+      })
+      return { created: true, messageId: message.id }
+    })
+  }
+
+  async confirmOutboundMessage(input: {
+    messageId: string
+    providerMessageId: string
+    rawPayload: Prisma.InputJsonValue
+    storagePath?: string | null
+    mediaSha256?: string | null
+    mediaSizeBytes?: number | null
+    sentAt: Date
+  }): Promise<WhatsAppMessageSelect> {
+    return prisma.whatsAppMessage.update({
+      where: { id: input.messageId },
+      data: {
+        providerMessageId: input.providerMessageId,
+        status: "SENT",
+        sentAt: input.sentAt,
+        rawPayload: input.rawPayload,
+        ...(input.storagePath !== undefined ? { storagePath: input.storagePath } : {}),
+        ...(input.mediaSha256 !== undefined ? { mediaSha256: input.mediaSha256 } : {}),
+        ...(input.mediaSizeBytes !== undefined ? { mediaSizeBytes: input.mediaSizeBytes } : {}),
+      },
+      select: MESSAGE_SELECT,
+    })
   }
 
   async completeOutboundCommand(input: { teamId: string; clientMessageId: string; messageId: string }): Promise<void> {

@@ -79,6 +79,6 @@ export interface IWhatsAppInboxService {
   createConversation(
     teamId: string,
     supabaseId: string,
-    input: { phone: string; contactName?: string; initialMessage?: string }
+    input: { phone?: string; contactName?: string; contactId?: string }
   ): Promise<WhatsAppConversation>
 }

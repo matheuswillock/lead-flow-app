@@ -20,7 +20,6 @@ type WhatsAppConnectionStatus = (typeof VALID_STATUSES)[number]
 const provisionSchema = z.object({
   teamId: z.string().uuid(),
   usageLimitMonthly: z.number().int().min(0).optional(),
-  hostBaseUrl: z.string().trim().optional().nullable(),
 })
 
 function parsePositiveInt(value: string | null, fallback: number): number {
@@ -77,7 +76,6 @@ export async function POST(request: NextRequest) {
       teamId: parsed.data.teamId,
       profileId: access.access.profileId,
       usageLimitMonthly: parsed.data.usageLimitMonthly,
-      hostBaseUrl: parsed.data.hostBaseUrl ?? undefined,
     })
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {

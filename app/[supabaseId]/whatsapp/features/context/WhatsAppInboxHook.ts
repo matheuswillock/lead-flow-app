@@ -1641,7 +1641,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   )
 
   const createConversation = useCallback(
-    async (input: { phone: string; contactName?: string; initialMessage?: string }) => {
+    async (input: { phone?: string; contactName?: string; contactId?: string }) => {
       if (!activeTeamId || isCreatingConversation) return
       setIsCreatingConversation(true)
       try {

@@ -51,7 +51,7 @@ export async function POST(
     if (isWebhookHeaderEnforcementEnabled()) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    console.warn("[WhatsAppEvoWebhookRoute][POST] Webhook header ausente (rollout legado via URL secret)")
+    console.warn("[WhatsAppEvoWebhookRoute][POST] Webhook header ausente (legacy rollout)")
   }
 
   let rawEvent: unknown

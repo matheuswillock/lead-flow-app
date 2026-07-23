@@ -2105,6 +2105,7 @@ model Team {
   whatsappMessages      WhatsAppMessage[]
   whatsappUsageEvents   WhatsAppUsageEvent[]
   whatsappContacts      TeamWhatsAppContact[]
+  whatsappContactIdentities WhatsAppContactIdentity[]
   whatsappConversationTags WhatsAppConversationTag[]
   whatsappOutboundCommands WhatsAppOutboundCommand[]
   whatsappWebhookEvents WhatsAppWebhookEvent[]
@@ -3256,6 +3257,7 @@ enum WhatsAppMessageStatus {
   SENT
   DELIVERED
   READ
+  UNKNOWN
   FAILED
   RECEIVED
 }
@@ -3298,6 +3300,7 @@ enum WhatsAppContactNameSource {
   LEAD
   PHONE_BOOK
   PUSH_NAME
+  PHONE_NUMBER
 }
 
 enum WhatsAppAutoResponseRuleType {
@@ -3317,6 +3320,13 @@ enum TeamWhatsAppContactSource {
   GROUP_PARTICIPANT
 }
 
+enum WhatsAppContactSyncState {
+  FRESH
+  STALE
+  UNRESOLVED
+  CONFLICT
+}
+
 model TeamWhatsAppContact {
   id           String                    @id @default(uuid()) @db.Uuid
   teamId       String                    @db.Uuid
@@ -3326,15 +3336,48 @@ model TeamWhatsAppContact {
   displayName  String?                   @db.Text
   pushName     String?                   @db.Text
   source       TeamWhatsAppContactSource
+  // V3 canonical directory. Legacy JID fields above are retained for the
+  // additive backfill and are not exposed to the browser.
+  phoneE164    String?                   @db.Text
+  name         String?                   @db.Text
+  nameSource   WhatsAppContactNameSource @default(PHONE_NUMBER)
+  searchText   String?                   @db.Text
+  syncState    WhatsAppContactSyncState  @default(FRESH)
+  lastSeenAt   DateTime?                 @db.Timestamptz(6)
   lastSyncedAt DateTime                  @default(now()) @db.Timestamptz(6)
   createdAt    DateTime                  @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime                  @updatedAt @db.Timestamptz(6)
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  identities WhatsAppContactIdentity[]
+  conversations WhatsAppConversation[]
 
   @@unique([teamId, remoteJid])
   @@index([teamId, opaqueId])
+  @@unique([teamId, phoneE164])
+  @@index([teamId, searchText])
+  @@index([teamId, syncState, lastSyncedAt])
   @@map("team_whatsapp_contacts")
+}
+
+model WhatsAppContactIdentity {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  configId    String?  @db.Uuid
+  contactId   String   @db.Uuid
+  remoteJid   String   @db.Text
+  identityType String  @db.Text
+  phoneE164   String?  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  config TeamWhatsAppConfig? @relation(fields: [configId], references: [id], onDelete: Cascade)
+  contact TeamWhatsAppContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, configId, remoteJid])
+  @@index([teamId, contactId])
+  @@map("whatsapp_contact_identities")
 }
 
 model TeamWhatsAppConfig {
@@ -3378,6 +3421,7 @@ model TeamWhatsAppConfig {
   messages      WhatsAppMessage[]
   autoResponseRules WhatsAppAutoResponseRule[]
   webhookEvents WhatsAppWebhookEvent[]
+  contactIdentities WhatsAppContactIdentity[]
 
   @@index([normalizedPhone])
   @@index([primaryConfigId])
@@ -3392,6 +3436,7 @@ model WhatsAppConversation {
   configId           String    @db.Uuid
   leadId             String?   @db.Uuid
   externalChatId     String?   @db.Text
+  contactId          String?   @db.Uuid
   contactPhone       String    @db.Text
   contactName        String?   @db.Text
   contactNameSource  WhatsAppContactNameSource @default(PUSH_NAME)
@@ -3413,6 +3458,7 @@ model WhatsAppConversation {
 
   team            Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
   config          TeamWhatsAppConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  contact         TeamWhatsAppContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
   lead            Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
   assignedProfile Profile?           @relation("WhatsAppConversationAssignee", fields: [assignedProfileId], references: [id], onDelete: SetNull)
   createdByProfile Profile?          @relation("WhatsAppConversationCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
@@ -3427,6 +3473,7 @@ model WhatsAppConversation {
   @@index([deletedAt])
   @@index([teamId, isArchived, lastMessageAt(sort: Desc)])
   @@index([teamId, normalizedPhone])
+  @@index([teamId, contactId])
   @@index([leadId])
   @@index([assignedProfileId])
   @@index([createdByProfileId])
@@ -3441,6 +3488,7 @@ model WhatsAppMessage {
   leadId            String?                  @db.Uuid
   providerMessageId String?                  @db.Text
   providerEventId   String?                  @db.Text
+  clientMessageId   String?                  @db.Text
   direction         WhatsAppMessageDirection
   messageType       WhatsAppMessageType      @default(TEXT)
   status            WhatsAppMessageStatus    @default(PENDING)
@@ -3478,6 +3526,7 @@ model WhatsAppMessage {
 
   @@unique([teamId, providerMessageId])
   @@unique([teamId, providerEventId])
+  @@unique([teamId, clientMessageId])
   @@index([conversationId, createdAt(sort: Asc)])
   @@index([sentByProfileId])
   @@index([deletedAt])

@@ -13,7 +13,14 @@ type SendMessageUseCaseInput = SendMessageInput & { access: TeamAccess; clientMe
 
 function isUncertainDeliveryError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : ""
-  return /timeout|timed out|network|fetch failed|econnreset|socket/.test(message)
+  return /provider_accepted_persistence_failed|provider_timeout|timeout|timed out|network|fetch failed|econnreset|socket/.test(message)
+}
+
+function messageTypeFor(input: SendMessageUseCaseInput): "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO" {
+  if (!input.media) return "TEXT"
+  return input.media.mediatype === "image" ? "IMAGE"
+    : input.media.mediatype === "document" ? "DOCUMENT"
+      : input.media.mediatype === "audio" ? "AUDIO" : "VIDEO"
 }
 
 class SendMessageUseCase {
@@ -35,17 +42,23 @@ class SendMessageUseCase {
           return new Output(false, [], ["Envio pendente de confirmação. Não tente reenviar automaticamente."], { messageId: existing.messageId, status: existing.status })
         }
         if (existing.status === "PENDING") {
-          return new Output(false, [], ["Envio já está em processamento."], { status: existing.status })
+          return new Output(false, [], ["Envio já está em processamento."], { messageId: existing.messageId, status: existing.status })
         }
       }
 
-      const commandCreated = await whatsAppRepository.createOutboundCommand({
+      const durable = await whatsAppRepository.createPendingOutboundMessageAndCommand({
         teamId: input.teamId,
         conversationId: input.conversationId,
         clientMessageId: input.clientMessageId,
+        sentByProfileId: input.sentByProfileId,
+        contentText: input.contentText,
+        messageType: messageTypeFor(input),
+        mediaMimeType: input.media?.mimeType,
+        mediaFileName: input.media?.fileName,
+        caption: input.media?.caption,
       })
-      if (!commandCreated) {
-        return new Output(false, [], ["Envio já está em processamento."], null)
+      if (!durable.created || !durable.messageId) {
+        return new Output(false, [], ["Envio já está em processamento."], { messageId: durable.messageId, status: "PENDING" })
       }
 
       const usage = await this.service.getUsageSummary(input.teamId)
@@ -57,7 +70,11 @@ class SendMessageUseCase {
         return new Output(false, [], ["Limite de envio por minuto atingido. Aguarde um momento."], null)
       }
 
-      const result = await this.service.sendMessage(input)
+      const result = await this.service.sendMessage({
+        ...input,
+        pendingMessageId: durable.messageId,
+        clientMessageId: input.clientMessageId,
+      })
       await whatsAppRepository.completeOutboundCommand({
         teamId: input.teamId,
         clientMessageId: input.clientMessageId,
@@ -75,6 +92,13 @@ class SendMessageUseCase {
         status,
         error: error instanceof Error ? error.message : "Erro desconhecido",
       }).catch((commandError: unknown) => console.error("[SendMessageUseCase] Falha ao atualizar comando", commandError))
+      const durable = await whatsAppRepository.findOutboundCommand(input.teamId, input.clientMessageId)
+      if (durable?.messageId) {
+        await whatsAppRepository.updateMessageStatus(durable.messageId, {
+          status,
+          ...(status === "FAILED" ? { failedAt: new Date() } : {}),
+        }).catch(() => undefined)
+      }
       console.error("[SendMessageUseCase][execute]", error)
       const message = error instanceof Error ? error.message : "Erro ao enviar mensagem"
       return new Output(false, [], [message], null)

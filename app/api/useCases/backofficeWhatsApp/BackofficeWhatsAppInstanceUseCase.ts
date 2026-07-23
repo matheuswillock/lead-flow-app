@@ -29,7 +29,6 @@ function toListItem(row: BackofficeWhatsAppInstanceRow) {
     phoneNumber: row.phoneNumber,
     displayName: row.displayName,
     status: row.status,
-    hostBaseUrl: row.hostBaseUrl,
     lastConnectedAt: row.lastConnectedAt,
     lastDisconnectedAt: row.lastDisconnectedAt,
     lastSyncAt: row.lastSyncAt,
@@ -114,7 +113,6 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
     data: {
       usageLimitMonthly?: number
       billingEnabled?: boolean
-      hostBaseUrl?: string | null
       updatedByProfileId: string
     }
   ): Promise<Output> {
@@ -154,7 +152,6 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
     teamId: string
     profileId: string
     usageLimitMonthly?: number
-    hostBaseUrl?: string
   }): Promise<Output> {
     try {
       const existing = await backofficeWhatsAppInstanceRepository.findInstanceByTeamId(data.teamId)
@@ -171,7 +168,6 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
         teamId: data.teamId,
         profileId: data.profileId,
         usageLimitMonthly: data.usageLimitMonthly,
-        hostBaseUrl: data.hostBaseUrl,
       })
 
       const row = await backofficeWhatsAppInstanceRepository.findInstanceByTeamId(data.teamId)

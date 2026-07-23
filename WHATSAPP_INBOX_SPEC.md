@@ -2,7 +2,7 @@
 
 **Versão:** 3.2
 **Data:** 2026-07-23
-**Status:** pronta para implementação; rollout de produção bloqueado pelos gates da seção 17
+**Status:** implementação das Fases 0–2 em andamento; rollout de produção bloqueado pelos gates da seção 17
 **Dona funcional:** Produto / Operação do Corretor Studio
 **Domínio:** Inbox de WhatsApp por time
 **Provider atual:** Evolution API self-hosted
@@ -48,6 +48,19 @@ Isso elimina o caminho em que o destinatário recebe uma mensagem que não exist
 | `BETHANIA_SPEC.md` e `BETHANIA_AUDIT.md` | Fora do escopo.                                                                   |
 
 Antes da primeira PR, o responsável técnico deve comparar o código atual com o commit auditado. Alterações posteriores que já resolvam parte desta SPEC devem ser marcadas como “já atendidas”, com teste e evidência; não devem ser reimplementadas cegamente.
+
+## 2.1 Progresso de implementação
+
+**Atualizado em:** 2026-07-23 — working tree local, ainda sem PR/commit de implementação.
+
+| Fase | Estado | Evidência atual | Pendente para conclusão |
+| --- | --- | --- | --- |
+| Gate read-only de produção | **bloqueado** | MCP Supabase não exposto nesta sessão; tentativa de consulta externa falhou por DNS/sandbox. Nenhuma migration foi aplicada remotamente. | Advisors, RLS, grants, owners, `SECURITY DEFINER`, índices e publicação Realtime no banco vivo. |
+| Fase 0 — segurança/base operacional | **em andamento** | Evolution usa `EVO_API_BASE_URL` validada e sem redirects; URL por time não é mais aceita nas rotas de provisionamento; logs de erro do provider usam código/correlation ID; header derivado e pepper de no mínimo 32 caracteres são obrigatórios em produção; migration revoga acesso browser a tabelas operacionais/identidades. | Remover parâmetros legados de todas as interfaces internas, validar imagem `v2.3.7` contra ambiente homologado, validar RLS/grants no banco vivo e rotacionar chave se houver suspeita de exposição prévia. |
+| Fase 1 — envio durável | **em andamento** | Migration adiciona `clientMessageId` à mensagem; mensagem `PENDING` e command são criados na mesma transação; confirmação atualiza a mesma bolha; timeout vira `UNKNOWN`; reducer monotônico coberto por teste. Criação de conversa não aceita mais `initialMessage`. | Teste de integração provider→timeout→reconciliação, retry reutilizando a intenção, dedupe HTTP×Realtime e códigos de domínio estáveis. |
+| Fase 2 — contatos, busca e sync | **em andamento** | Migration aditiva para contato canônico, identidade técnica e `conversation.contactId`; resolver valida JID de telefone, mantém LID opaco e ignora grupo; `POST /contacts`, `PATCH /contacts/:contactId`, `GET /search` e criação por `contactId` foram iniciados; diálogo remove envio direto. | Backfill em lotes/relatório de conflitos, busca única Conversas/Contatos/Número com UI, dual-write de webhook, job com checkpoint/cron e testes de isolamento/concorrência. |
+
+Validações executadas nesta rodada: `bun test` focalizado (**11 testes verdes**), `tsc --noEmit` e `bun run design:check`. O Impeccable foi executado após a alteração do diálogo: detector automático sem padrões; `audit`/`critique` manual mantiveram como pendências prioritárias a busca unificada, o cabeçalho reduzido, preview de anexos e recuperação do microfone. O diálogo corrigiu alvos de toque para 44 px. A geração padrão do Prisma ainda falha por ausência local de `prisma-erd-generator`; para validação foi usado o gerador oficial somente do client (`prisma generate --generator client`).
 
 ## 3. Problema
 

@@ -5,7 +5,6 @@ export interface CreateWhatsAppConfigInput {
   teamId: string
   profileId: string
   usageLimitMonthly?: number
-  hostBaseUrl?: string
   reuseFromTeamId?: string
   callerIsMaster?: boolean
 }
@@ -35,6 +34,9 @@ export interface SendMessageInput {
   conversationId: string
   teamId: string
   sentByProfileId: string
+  /** Existing durable bubble created with the outbox command. */
+  pendingMessageId?: string
+  clientMessageId?: string
   contentText?: string
   mentionedJids?: string[]
   media?: {
@@ -56,9 +58,9 @@ export interface SendAutoResponseMessageInput {
 export interface CreateConversationInput {
   teamId: string
   profileId: string
-  phone: string
+  phone?: string
   contactName?: string
-  initialMessage?: string
+  contactId?: string
 }
 
 export interface UsageSummaryOutput {
@@ -91,6 +93,14 @@ export interface WhatsAppContactOutput {
   source: string
 }
 
+export interface CanonicalWhatsAppContactOutput {
+  id: string
+  name: string | null
+  phoneE164: string | null
+  formattedPhone: string | null
+  syncState: "FRESH" | "STALE" | "UNRESOLVED" | "CONFLICT"
+}
+
 export interface IWhatsAppService {
   createConfig(input: CreateWhatsAppConfigInput): Promise<ConfigOutput>
   getConfig(teamId: string): Promise<ConfigOutput | null>
@@ -106,5 +116,8 @@ export interface IWhatsAppService {
     teamId: string,
     params?: { q?: string; groupJid?: string; contactWhere?: Prisma.TeamWhatsAppContactWhereInput }
   ): Promise<WhatsAppContactOutput[]>
+  createOrGetContact(input: { teamId: string; phone: string; name?: string }): Promise<CanonicalWhatsAppContactOutput>
+  updateContact(input: { teamId: string; contactId: string; phone?: string; name?: string | null }): Promise<CanonicalWhatsAppContactOutput>
+  searchContacts(teamId: string, query: string): Promise<CanonicalWhatsAppContactOutput[]>
   getUsageSummary(teamId: string): Promise<UsageSummaryOutput>
 }

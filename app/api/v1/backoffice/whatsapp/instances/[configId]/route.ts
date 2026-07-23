@@ -9,7 +9,6 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
 const updateSchema = z.object({
   usageLimitMonthly: z.number().int().min(0).optional(),
   billingEnabled: z.boolean().optional(),
-  hostBaseUrl: z.string().trim().optional().nullable(),
 })
 
 type RouteContext = { params: Promise<{ configId: string }> }

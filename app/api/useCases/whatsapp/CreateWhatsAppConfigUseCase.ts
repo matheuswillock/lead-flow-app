@@ -39,7 +39,6 @@ class CreateWhatsAppConfigUseCase {
         teamId: input.teamId,
         profileId: input.profileId,
         usageLimitMonthly: input.usageLimitMonthly,
-        hostBaseUrl: input.hostBaseUrl,
         reuseFromTeamId: input.reuseFromTeamId,
         callerIsMaster: input.callerIsMaster,
       })

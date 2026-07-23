@@ -62,6 +62,7 @@ export type WhatsAppMessageStatus =
   | 'SENT'
   | 'DELIVERED'
   | 'READ'
+  | 'UNKNOWN'
   | 'FAILED'
   | 'RECEIVED'
 
@@ -187,7 +188,7 @@ export interface InboxActions {
   createConversation: (input: {
     phone: string
     contactName?: string
-    initialMessage?: string
+    contactId?: string
   }) => Promise<WhatsAppConversation | void>
   syncPhoneContacts: (
     conversationId?: string
@@ -195,4 +196,3 @@ export interface InboxActions {
   syncGroupParticipants: (conversationId: string) => Promise<{ imported: number; totalParticipants: number }>
   loadContacts: (groupJid?: string) => Promise<void>
 }
-

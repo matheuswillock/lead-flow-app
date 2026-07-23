@@ -505,7 +505,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   async createConversation(
     teamId: string,
     supabaseId: string,
-    input: { phone: string; contactName?: string; initialMessage?: string }
+    input: { phone?: string; contactName?: string; contactId?: string }
   ): Promise<WhatsAppConversation> {
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations`,
