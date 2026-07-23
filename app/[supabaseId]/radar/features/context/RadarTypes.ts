@@ -15,8 +15,75 @@ export type RadarProfileListItem = {
 export type RadarSegment = {
   slug: string
   name: string
-  description: string
+  description: string | null
   count: number
+  isSystem: boolean
+}
+
+/** Mirrors lib/radar/segment-dsl.ts's discriminated union — kept in sync manually. */
+export type RadarProfileFieldCondition = {
+  kind: "profile_field"
+  field: "primaryEmail" | "primaryDocument" | "lastSeenAt"
+  operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty" | "before" | "after" | "within_days"
+  value?: unknown
+}
+
+export type RadarConsentCondition = {
+  kind: "consent"
+  channel: "email" | "whatsapp"
+  status: RadarConsentStatus
+}
+
+export type RadarEventCondition = {
+  kind: "event"
+  eventType: string
+  occurrence: "occurred" | "not_occurred"
+  windowDays?: number
+}
+
+export type RadarLeadCustomFieldCondition = {
+  kind: "lead_custom_field"
+  definitionId: string
+  operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty"
+  value?: unknown
+}
+
+export type RadarLeadStatusCondition = {
+  kind: "lead_status"
+  statuses: string[]
+}
+
+export type RadarSegmentCondition =
+  | RadarProfileFieldCondition
+  | RadarConsentCondition
+  | RadarEventCondition
+  | RadarLeadCustomFieldCondition
+  | RadarLeadStatusCondition
+
+export type RadarSegmentRules = {
+  match: "all" | "any"
+  conditions: RadarSegmentCondition[]
+}
+
+export type RadarCustomSegment = {
+  id: string
+  teamId: string
+  createdBy: string
+  name: string
+  description: string | null
+  rulesJson: RadarSegmentRules
+  isSystem: boolean
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/** `GET .../segments/custom` includes `count`; create/update responses don't. */
+export type RadarCustomSegmentListItem = RadarCustomSegment & { count: number }
+
+export type RadarSegmentDeleteResult = {
+  id: string
+  softDeleted: boolean
 }
 
 export type RadarMetrics = {

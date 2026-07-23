@@ -535,6 +535,24 @@ describe.skipIf(!RUN_INTEGRATION)("RadarSegmentQueryService (C4)", () => {
     })
     expect(count).toBe(0)
   })
+
+  it("previewCustomSegmentCount (C5): conta regras ainda não salvas (rascunho do builder) sem exigir um TeamRadarSegment persistido", async () => {
+    const result = await customerDataPlatformUseCase.previewCustomSegmentCount(segScope.teamId, segScope.ctx, {
+      match: "all",
+      conditions: [{ kind: "lead_custom_field", definitionId, operator: "eq", value: "premium" }],
+    })
+    expect(result.isValid).toBe(true)
+    expect((result.result as { count: number }).count).toBe(1)
+  })
+
+  it("previewCustomSegmentCount (C5): regras inválidas retornam isValid false sem lançar exceção", async () => {
+    const result = await customerDataPlatformUseCase.previewCustomSegmentCount(segScope.teamId, segScope.ctx, {
+      match: "all",
+      conditions: [],
+    })
+    expect(result.isValid).toBe(false)
+    expect(result.result).toBeNull()
+  })
 })
 
 describe.skipIf(!RUN_INTEGRATION)("Custom segment como audiência de campanha (D11)", () => {

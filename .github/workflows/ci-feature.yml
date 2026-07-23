@@ -38,7 +38,7 @@ jobs:
           !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     outputs:
       governance-sync: ${{ steps['quality-result'].outputs['governance-sync'] }}
@@ -116,6 +116,7 @@ jobs:
 
   build:
     name: Build
+    # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
     if: >-
       ${{
         (
@@ -128,7 +129,7 @@ jobs:
           !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-build]
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -177,7 +178,7 @@ jobs:
           !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 2
     needs:
       - quality
@@ -218,7 +219,7 @@ jobs:
           !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     needs:
       - quality

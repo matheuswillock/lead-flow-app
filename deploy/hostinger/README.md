@@ -214,6 +214,83 @@ bun run vps:logs
 bun run vps:down
 ```
 
+## GitHub Actions — self-hosted runner (CI sem minutos hosted)
+
+A VPS Hostinger (KVM 2) hospeda até **2** GitHub Actions runners do repositório `lead-flow-app`. Os workflows usam:
+
+```yaml
+# Lint / Quality / demais jobs
+runs-on: [self-hosted, linux, x64, lead-flow-ci]
+
+# next build (só o runner 1 tem esta label → máx. 1 build por vez)
+runs-on: [self-hosted, linux, x64, lead-flow-build]
+```
+
+Isso mantém orquestração/logs/secrets no GitHub, mas a CPU/RAM do job é da VPS — **não consome minutos `ubuntu-latest` do plano**. Com 2 runners, até **2 jobs em paralelo** (ex.: Build + Lint), sem dois `next build` ao mesmo tempo.
+
+### Por que não Jenkins
+
+O corte de minutos vem de sair do runner hosted. Jenkins faria o mesmo com mais manutenção (JVM, plugins, reescrever pipelines). Neste projeto o self-hosted do GitHub Actions é suficiente.
+
+### Instalação (SSH, root)
+
+Na VPS (`187.77.226.253` / `srv1799450.hstgr.cloud`), com o script em `/opt/lead-flow-app`:
+
+```bash
+# No seu PC (gh autenticado) — um token por registro:
+TOKEN=$(gh api -X POST repos/matheuswillock/lead-flow-app/actions/runners/registration-token --jq .token)
+
+# Runner 1
+scp deploy/hostinger/bootstrap-github-runner.sh root@187.77.226.253:/opt/lead-flow-app/deploy/hostinger/
+ssh root@187.77.226.253 'export RUNNER_TOKEN='"$TOKEN"'; bash /opt/lead-flow-app/deploy/hostinger/bootstrap-github-runner.sh'
+
+# Runner 2 (novo token)
+TOKEN=$(gh api -X POST repos/matheuswillock/lead-flow-app/actions/runners/registration-token --jq .token)
+ssh root@187.77.226.253 'export RUNNER_INDEX=2 RUNNER_TOKEN='"$TOKEN"' SKIP_HOST_DEPS=1; bash /opt/lead-flow-app/deploy/hostinger/bootstrap-github-runner.sh'
+```
+
+O script [`bootstrap-github-runner.sh`](bootstrap-github-runner.sh):
+
+- `RUNNER_INDEX=1|2` (máx. 2) → users `github-runner` / `github-runner-2`, nomes `lead-flow-vps-1` / `lead-flow-vps-2`
+- labels: runner 1 = `lead-flow-ci` + `lead-flow-build`; runner 2 = só `lead-flow-ci`
+- systemd separado por runner + `NODE_OPTIONS=--max-old-space-size=2560`
+- limpeza diária idle-only via `/usr/local/sbin/github-runner-cleanup.sh` (lista em `/etc/github-runner/workdirs.list` + discovery `.runner`)
+- **não** dá acesso a `/opt/lead-flow-bot/.env*`
+
+### Isolamento de PRs (`ci-main.yml`)
+
+Jobs disparados por `pull_request` → `main` rodam em **`ubuntu-latest`** (hosted).  
+Só `push` em `main` usa o runner persistente da VPS. Assim código de PR não executa no agente long-lived (evita persistir alterações no worker/`_work` entre jobs).
+
+### Saúde
+
+```bash
+systemctl status 'actions.runner.*'
+# GitHub → Settings → Actions → Runners → lead-flow-vps-1 e lead-flow-vps-2 = Idle / Online
+```
+
+### Remover / re-registrar
+
+```bash
+# Ex.: runner 2
+cd /home/github-runner-2/actions-runner
+sudo ./svc.sh stop
+sudo ./svc.sh uninstall
+sudo -u github-runner-2 ./config.sh remove --token "$(gh api -X POST repos/matheuswillock/lead-flow-app/actions/runners/remove-token --jq .token)"
+# depois rode bootstrap com RUNNER_INDEX=2 e novo RUNNER_TOKEN
+```
+
+### Recursos
+
+| Item | Valor |
+|------|--------|
+| Jobs em paralelo | até **2** (dois runners) |
+| `next build` | **máx. 1** via label exclusiva `lead-flow-build` no runner 1 (Build + Lint ok) |
+| Stack compartilhada | Evolution + n8n + ops |
+| RAM recomendada | KVM 2 (8 GB) |
+| Heap Node por runner | `2560` MB |
+| Se OOM no `next build` | baixar heap, ou temporariamente voltar só o job `build` para `ubuntu-latest` |
+
 ## Troubleshooting
 
 | Sintoma | Ação |
@@ -223,6 +300,8 @@ bun run vps:down
 | Evolution não chama N8N | Rede `studio-bot-net` — use `docker-compose.vps.yml` unificado |
 | Vercel ping falha | `BACKOFFICE_N8N_OUTBOUND_URL` e secret |
 | QR WhatsApp falha | Atualizar `CONFIG_SESSION_PHONE_VERSION` e `restart api` |
+| CI queued / runner Offline | `systemctl status 'actions.runner.*'` e reiniciar; conferir Idle no GitHub |
+| OOM no build Next | `free -h` durante o job; reduzir `NODE_OPTIONS` ou upgrade de RAM |
 
 ## Arquivos deste diretório
 
@@ -232,4 +311,5 @@ bun run vps:down
 | [`.env.evolution.production.example`](.env.evolution.production.example) | Template Evolution na VPS |
 | [`.env.n8n.production.example`](.env.n8n.production.example) | Template N8N na VPS |
 | [`vercel-env.production.example`](vercel-env.production.example) | Variáveis Vercel |
-| [`../vps-bootstrap.sh`](../vps-bootstrap.sh) | Script de bootstrap |
+| [`bootstrap-github-runner.sh`](bootstrap-github-runner.sh) | Instala self-hosted runner (CI) |
+| [`../vps-bootstrap.sh`](../vps-bootstrap.sh) | Script de bootstrap da stack Bethânia |
