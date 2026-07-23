@@ -785,6 +785,7 @@ UNKNOWN UNKNOWN
 SENT SENT
 DELIVERED DELIVERED
 READ READ
+UNKNOWN UNKNOWN
 FAILED FAILED
 RECEIVED RECEIVED
         }
@@ -839,6 +840,7 @@ HUMAN HUMAN
 LEAD LEAD
 PHONE_BOOK PHONE_BOOK
 PUSH_NAME PUSH_NAME
+PHONE_NUMBER PHONE_NUMBER
         }
     
 
@@ -862,6 +864,15 @@ STARTS_WITH STARTS_WITH
         TeamWhatsAppContactSource {
             PHONE_CONTACTS PHONE_CONTACTS
 GROUP_PARTICIPANT GROUP_PARTICIPANT
+        }
+    
+
+
+        WhatsAppContactSyncState {
+            FRESH FRESH
+STALE STALE
+UNRESOLVED UNRESOLVED
+CONFLICT CONFLICT
         }
     
 
@@ -2543,7 +2554,23 @@ meeting_scheduled meeting_scheduled
     String displayName "❓"
     String pushName "❓"
     TeamWhatsAppContactSource source 
+    String phoneE164 "❓"
+    String name "❓"
+    WhatsAppContactNameSource nameSource 
+    String searchText "❓"
+    WhatsAppContactSyncState syncState 
+    DateTime lastSeenAt "❓"
     DateTime lastSyncedAt 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_contact_identities" {
+    String id "🗝️"
+    String remoteJid 
+    String identityType 
+    String phoneE164 "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2604,6 +2631,7 @@ meeting_scheduled meeting_scheduled
     String id "🗝️"
     String providerMessageId "❓"
     String providerEventId "❓"
+    String clientMessageId "❓"
     WhatsAppMessageDirection direction 
     WhatsAppMessageType messageType 
     WhatsAppMessageStatus status 
@@ -3488,7 +3516,12 @@ meeting_scheduled meeting_scheduled
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
     "team_whatsapp_contacts" |o--|| "TeamWhatsAppContactSource" : "enum:source"
+    "team_whatsapp_contacts" |o--|| "WhatsAppContactNameSource" : "enum:nameSource"
+    "team_whatsapp_contacts" |o--|| "WhatsAppContactSyncState" : "enum:syncState"
     "team_whatsapp_contacts" }o--|| corretor_studio_teams : "team"
+    "whatsapp_contact_identities" }o--|| corretor_studio_teams : "team"
+    "whatsapp_contact_identities" }o--|o team_whatsapp_configs : "config"
+    "whatsapp_contact_identities" }o--|| team_whatsapp_contacts : "contact"
     "team_whatsapp_configs" |o--|| "WhatsAppProvider" : "enum:provider"
     "team_whatsapp_configs" |o--|| "WhatsAppConnectionStatus" : "enum:status"
     "team_whatsapp_configs" |o--|| "WhatsAppHistorySyncStatus" : "enum:historySyncStatus"
@@ -3500,6 +3533,7 @@ meeting_scheduled meeting_scheduled
     "whatsapp_conversations" |o--|| "WhatsAppHandoffMode" : "enum:handoffMode"
     "whatsapp_conversations" }o--|| corretor_studio_teams : "team"
     "whatsapp_conversations" }o--|| team_whatsapp_configs : "config"
+    "whatsapp_conversations" }o--|o team_whatsapp_contacts : "contact"
     "whatsapp_conversations" }o--|o corretor_studio_leads : "lead"
     "whatsapp_conversations" }o--|o corretor_studio_profiles : "assignedProfile"
     "whatsapp_conversations" }o--|o corretor_studio_profiles : "createdByProfile"
