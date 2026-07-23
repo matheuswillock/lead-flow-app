@@ -4,6 +4,7 @@ import type {
   BackofficeWhatsAppInstancesFilters,
   BackofficeWhatsAppInstancesPagination,
   BackofficeWhatsAppTeamWithoutInstance,
+  BackofficeWhatsAppWebhookResyncResult,
   ProvisionWhatsAppInstanceFormData,
   UpdateWhatsAppInstanceFormData,
 } from "../context/BackofficeWhatsAppInstancesTypes"
@@ -32,4 +33,6 @@ export interface IBackofficeWhatsAppInstancesService {
   listTeamsWithoutInstance(
     q?: string
   ): Promise<BackofficeWhatsAppTeamWithoutInstance[]>
+  previewResyncWebhooks(): Promise<ApiOutput<BackofficeWhatsAppWebhookResyncResult>>
+  confirmResyncWebhooks(): Promise<ApiOutput<BackofficeWhatsAppWebhookResyncResult>>
 }

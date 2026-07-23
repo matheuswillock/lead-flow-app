@@ -109,4 +109,22 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
     }
     return data.result?.items ?? []
   }
+
+  async previewResyncWebhooks() {
+    const res = await fetch("/api/v1/backoffice/whatsapp/ops/resync-webhooks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: false }),
+    })
+    return res.json()
+  }
+
+  async confirmResyncWebhooks() {
+    const res = await fetch("/api/v1/backoffice/whatsapp/ops/resync-webhooks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    })
+    return res.json()
+  }
 }

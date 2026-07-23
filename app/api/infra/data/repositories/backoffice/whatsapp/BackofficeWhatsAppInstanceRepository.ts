@@ -118,6 +118,24 @@ class BackofficeWhatsAppInstanceRepository implements IBackofficeWhatsAppInstanc
     })
   }
 
+  async listPrimaryWebhookResyncTargets() {
+    return prisma.teamWhatsAppConfig.findMany({
+      where: {
+        primaryConfigId: null,
+        webhookSecret: { not: "" },
+        instanceName: { not: "" },
+      },
+      select: {
+        id: true,
+        teamId: true,
+        instanceName: true,
+        webhookSecret: true,
+        status: true,
+      },
+      orderBy: { createdAt: "asc" },
+    })
+  }
+
   async updateInstanceAdminFields(
     configId: string,
     data: {

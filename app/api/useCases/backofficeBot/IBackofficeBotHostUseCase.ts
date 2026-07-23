@@ -25,6 +25,10 @@ export interface IBackofficeBotHostUseCase {
     access: { profileId: string; fullAccess: boolean }
   ): Promise<Output>;
   importWorkflows(access: { profileId: string; fullAccess: boolean }): Promise<Output>;
+  resyncBethaniaWebhook(
+    input: { confirm: boolean },
+    access: { profileId: string; fullAccess: boolean }
+  ): Promise<Output>;
   syncHost(
     input: { version: string; packBase64: string; packSha256: string },
     access: { profileId: string; fullAccess: boolean }

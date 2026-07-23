@@ -27,4 +27,5 @@ export interface IBackofficeWhatsAppInstanceUseCase {
     filters: { q?: string },
     pagination: { page: number; pageSize: number }
   ): Promise<Output>
+  resyncWebhooks(input: { confirm: boolean; profileId: string }): Promise<Output>
 }

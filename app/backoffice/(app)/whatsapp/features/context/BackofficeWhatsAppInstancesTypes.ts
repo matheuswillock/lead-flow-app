@@ -87,3 +87,21 @@ export interface ProvisionWhatsAppInstanceFormData {
   teamId: string
   usageLimitMonthly?: number
 }
+
+export interface BackofficeWhatsAppWebhookResyncItem {
+  configId: string
+  teamId: string
+  instanceName: string
+  status: WhatsAppConnectionStatus
+  webhookUrl: string
+  ok: boolean
+  error?: string
+}
+
+export interface BackofficeWhatsAppWebhookResyncResult {
+  mode: "dry-run" | "apply"
+  total: number
+  ok: number
+  failed: number
+  results: BackofficeWhatsAppWebhookResyncItem[]
+}

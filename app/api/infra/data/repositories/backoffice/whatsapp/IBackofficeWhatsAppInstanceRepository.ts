@@ -45,6 +45,14 @@ export interface BackofficeWhatsAppTeamWithoutInstance {
   master: BackofficeWhatsAppInstanceMaster
 }
 
+export interface BackofficeWhatsAppWebhookResyncTarget {
+  id: string
+  teamId: string
+  instanceName: string
+  webhookSecret: string
+  status: WhatsAppConnectionStatus
+}
+
 export interface ListInstancesFilters {
   q?: string
   status?: WhatsAppConnectionStatus
@@ -57,6 +65,7 @@ export interface IBackofficeWhatsAppInstanceRepository {
   ): Promise<{ items: BackofficeWhatsAppInstanceRow[]; totalItems: number }>
   findInstanceById(configId: string): Promise<BackofficeWhatsAppInstanceRow | null>
   findInstanceByTeamId(teamId: string): Promise<BackofficeWhatsAppInstanceRow | null>
+  listPrimaryWebhookResyncTargets(): Promise<BackofficeWhatsAppWebhookResyncTarget[]>
   updateInstanceAdminFields(
     configId: string,
     data: {
