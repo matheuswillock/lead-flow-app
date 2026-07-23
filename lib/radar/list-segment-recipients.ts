@@ -59,8 +59,13 @@ async function listCustomSegmentEmailRecipients(
   now: number,
   recentMs: number
 ): Promise<RadarSegmentEmailRecipient[]> {
+  // `isActive` só controla se o segmento pode ser SELECIONADO como audiência
+  // nova (ver isValidRadarSegmentAudience) — uma vez que uma campanha já
+  // referencia `custom:{id}`, a resolução de destinatários deve continuar
+  // funcionando mesmo com o segmento desativado (soft-delete), senão o
+  // disparo de uma campanha agendada falha com zero destinatários.
   const segment = await teamRadarSegmentRepository.findById(teamId, segmentId)
-  if (!segment || !segment.isActive) return []
+  if (!segment) return []
 
   const rules = parseRadarSegmentRules(segment.rulesJson)
   const profileIds = await radarSegmentQueryService.listProfileIds(
