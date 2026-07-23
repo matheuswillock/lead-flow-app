@@ -19,7 +19,7 @@ env:
 jobs:
   sync-develop:
     name: Merge main → develop
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     steps:
       - name: Checkout develop
