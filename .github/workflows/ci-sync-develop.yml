@@ -80,7 +80,8 @@ jobs:
       - name: Push sync branch
         run: |
           git checkout -B "$SYNC_BRANCH"
-          git push origin "$SYNC_BRANCH" --force-with-lease
+          # --no-verify: job de sync não instala deps; pre-push local não se aplica aqui.
+          git push origin "$SYNC_BRANCH" --force-with-lease --no-verify
 
       - name: Create or update PR to develop
         uses: actions/github-script@v7
