@@ -112,11 +112,8 @@ jobs:
 
   build:
     name: Build
-    # push (VPS): compartilha fila lead-flow-next-build. PR (hosted): grupo único, não bloqueia VPS.
-    concurrency:
-      group: ${{ github.event_name == 'pull_request' && format('ci-main-build-pr-{0}', github.run_id) || 'lead-flow-next-build' }}
-      cancel-in-progress: false
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "linux", "x64", "lead-flow-ci"]') }}
+    # PR → hosted; push → só runner com lead-flow-build (sem concurrency group).
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "linux", "x64", "lead-flow-build"]') }}
     timeout-minutes: 15
     steps:
       - name: Checkout

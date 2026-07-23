@@ -20,7 +20,8 @@
 # Gerar token (local, com gh autenticado):
 #   gh api -X POST repos/matheuswillock/lead-flow-app/actions/runners/registration-token --jq .token
 #
-# Capacidade: até 2 jobs em paralelo (2 runners, mesmas labels).
+# Capacidade: até 2 jobs em paralelo (2 runners).
+# Runner 1 também recebe label lead-flow-build (único) — serializa next build sem concurrency group.
 # O runner NÃO entra no grupo docker e NÃO recebe acesso a /opt/lead-flow-bot/.env*
 # =============================================================================
 
@@ -36,18 +37,21 @@ fi
 if [[ "${RUNNER_INDEX}" == "1" ]]; then
   RUNNER_USER="${RUNNER_USER:-github-runner}"
   RUNNER_NAME="${RUNNER_NAME:-lead-flow-vps-1}"
+  DEFAULT_RUNNER_LABELS="self-hosted,linux,x64,lead-flow-ci,lead-flow-build"
 else
   RUNNER_USER="${RUNNER_USER:-github-runner-2}"
   RUNNER_NAME="${RUNNER_NAME:-lead-flow-vps-2}"
+  DEFAULT_RUNNER_LABELS="self-hosted,linux,x64,lead-flow-ci"
 fi
 
 RUNNER_HOME="${RUNNER_HOME:-/home/${RUNNER_USER}}"
 RUNNER_DIR="${RUNNER_DIR:-${RUNNER_HOME}/actions-runner}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-${RUNNER_HOME}/_work}"
 RUNNER_REPO_URL="${RUNNER_REPO_URL:-https://github.com/matheuswillock/lead-flow-app}"
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,linux,x64,lead-flow-ci}"
+RUNNER_LABELS="${RUNNER_LABELS:-${DEFAULT_RUNNER_LABELS}}"
 RUNNER_VERSION="${RUNNER_VERSION:-2.329.0}"
-# Heap Node: Build + Lint em paralelo é ok; next build serializado via concurrency lead-flow-next-build.
+WORKDIRS_LIST="/etc/github-runner/workdirs.list"
+# Heap Node: Build + Lint em paralelo ok; next build só no runner com label lead-flow-build.
 NODE_OPTIONS_DEFAULT="${NODE_OPTIONS:---max-old-space-size=2560}"
 BUN_INSTALL_VERSION="${BUN_INSTALL_VERSION:-1.3.14}"
 SKIP_HOST_DEPS="${SKIP_HOST_DEPS:-0}"
@@ -205,16 +209,30 @@ EOF
   fi
 }
 
+register_workdir() {
+  mkdir -p "$(dirname "${WORKDIRS_LIST}")"
+  touch "${WORKDIRS_LIST}"
+  if ! grep -qxF "${RUNNER_WORKDIR}" "${WORKDIRS_LIST}"; then
+    echo "${RUNNER_WORKDIR}" >> "${WORKDIRS_LIST}"
+    log "Workdir registrado em ${WORKDIRS_LIST}: ${RUNNER_WORKDIR}"
+  fi
+}
+
 install_cleanup_cron() {
   local cleanup_script="/usr/local/sbin/github-runner-cleanup.sh"
   local cron_file="/etc/cron.d/github-runner-cleanup"
 
-  log "Instalando limpeza segura de workdirs (todos os runners, idle-only)..."
+  register_workdir
+
+  log "Instalando limpeza segura de workdirs (descoberta + lista, idle-only)..."
   cat > "${cleanup_script}" <<'EOF'
 #!/usr/bin/env bash
-# Limpa workdirs antigos dos self-hosted runners (máx. 2) sem tocar em job ativo
+# Limpa workdirs dos self-hosted runners sem tocar em job ativo
 # nem em caches compartilhados (_actions, _tool).
+# Origem dos paths: /etc/github-runner/workdirs.list + .runner (workFolder).
 set -euo pipefail
+
+WORKDIRS_LIST="${WORKDIRS_LIST:-/etc/github-runner/workdirs.list}"
 
 if pgrep -f 'Runner.Worker' >/dev/null 2>&1; then
   echo "[github-runner-cleanup] Runner.Worker ativo — pulando limpeza"
@@ -237,9 +255,42 @@ cleanup_workdir() {
   find "${workdir}/_temp" -mindepth 1 -mtime +1 -delete 2>/dev/null || true
 }
 
-# Ambos os workdirs possíveis (vps-1 e vps-2)
-cleanup_workdir /home/github-runner/_work
-cleanup_workdir /home/github-runner-2/_work
+resolve_work_folder() {
+  local runner_json="$1"
+  local runner_dir work
+  runner_dir="$(dirname "${runner_json}")"
+  work="$(jq -r '.workFolder // empty' "${runner_json}" 2>/dev/null || true)"
+  [[ -n "${work}" ]] || return 0
+  if [[ "${work}" != /* ]]; then
+    work="$(cd "${runner_dir}" && cd "${work}" 2>/dev/null && pwd)" || return 0
+  fi
+  printf '%s\n' "${work}"
+}
+
+list_workdirs() {
+  local runner_json work
+  if [[ -f "${WORKDIRS_LIST}" ]]; then
+    while IFS= read -r work || [[ -n "${work}" ]]; do
+      [[ -n "${work}" ]] || continue
+      printf '%s\n' "${work}"
+    done < "${WORKDIRS_LIST}"
+  fi
+  shopt -s nullglob
+  for runner_json in /home/*/actions-runner/.runner; do
+    resolve_work_folder "${runner_json}"
+  done
+}
+
+mapfile -t WORKDIRS < <(list_workdirs | awk 'NF && !seen[$0]++')
+if [[ ${#WORKDIRS[@]} -eq 0 ]]; then
+  echo "[github-runner-cleanup] Nenhum workdir encontrado — nada a limpar"
+  exit 0
+fi
+
+for workdir in "${WORKDIRS[@]}"; do
+  echo "[github-runner-cleanup] Limpando ${workdir}"
+  cleanup_workdir "${workdir}"
+done
 
 echo "[github-runner-cleanup] OK"
 EOF
