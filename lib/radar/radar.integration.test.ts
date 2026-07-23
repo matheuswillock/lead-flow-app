@@ -1,20 +1,44 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "crypto"
-import { prisma } from "@/app/api/infra/data/prisma"
-import { radarService } from "@/app/api/services/radar/RadarService"
-import { profileMatchesRadarSegment } from "@/lib/radar/segment-rules"
-import { normalizeRadarEmail, normalizeRadarPhone } from "@/lib/radar/normalization"
 import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
-import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
-import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
-import { radarSegmentQueryService } from "@/app/api/services/radar/RadarSegmentQueryService"
-import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
-import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseCase"
-import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
-import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
 
 const RUN_INTEGRATION = process.env.RADAR_INTEGRATION_TEST === "1" && Boolean(process.env.DATABASE_URL)
+
+/**
+ * Importados dinamicamente (só quando RUN_INTEGRATION) para que `bun run test`
+ * (sem RADAR_INTEGRATION_TEST) nunca carregue módulos reais como
+ * EmailCampaignUseCase — um import estático aqui já bastaria para disputar,
+ * fora de ordem, com o `mock.module("@/app/api/infra/data/prisma", ...)` de
+ * outros arquivos de teste (ex.: EmailCreditService.test.ts) rodando no mesmo
+ * processo do bun test, quebrando testes completamente não relacionados.
+ */
+let prisma: typeof import("@/app/api/infra/data/prisma").prisma
+let radarService: typeof import("@/app/api/services/radar/RadarService").radarService
+let profileMatchesRadarSegment: typeof import("@/lib/radar/segment-rules").profileMatchesRadarSegment
+let normalizeRadarEmail: typeof import("@/lib/radar/normalization").normalizeRadarEmail
+let normalizeRadarPhone: typeof import("@/lib/radar/normalization").normalizeRadarPhone
+let syncLeadToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncLeadToRadarUseCase").syncLeadToRadarUseCase
+let teamHasRadarFeature: typeof import("@/lib/radar/team-has-radar-feature").teamHasRadarFeature
+let radarSegmentQueryService: typeof import("@/app/api/services/radar/RadarSegmentQueryService").radarSegmentQueryService
+let teamRadarSegmentService: typeof import("@/app/api/services/radar/TeamRadarSegmentService").teamRadarSegmentService
+let EmailCampaignUseCase: typeof import("@/app/api/useCases/email/EmailCampaignUseCase").EmailCampaignUseCase
+let EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB: typeof import("@/lib/email/campaign-limits").EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+let customerDataPlatformUseCase: typeof import("@/app/api/useCases/radar/RadarUseCase").customerDataPlatformUseCase
+
+if (RUN_INTEGRATION) {
+  ;({ prisma } = await import("@/app/api/infra/data/prisma"))
+  ;({ radarService } = await import("@/app/api/services/radar/RadarService"))
+  ;({ profileMatchesRadarSegment } = await import("@/lib/radar/segment-rules"))
+  ;({ normalizeRadarEmail, normalizeRadarPhone } = await import("@/lib/radar/normalization"))
+  ;({ syncLeadToRadarUseCase } = await import("@/app/api/useCases/radar/SyncLeadToRadarUseCase"))
+  ;({ teamHasRadarFeature } = await import("@/lib/radar/team-has-radar-feature"))
+  ;({ radarSegmentQueryService } = await import("@/app/api/services/radar/RadarSegmentQueryService"))
+  ;({ teamRadarSegmentService } = await import("@/app/api/services/radar/TeamRadarSegmentService"))
+  ;({ EmailCampaignUseCase } = await import("@/app/api/useCases/email/EmailCampaignUseCase"))
+  ;({ EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } = await import("@/lib/email/campaign-limits"))
+  ;({ customerDataPlatformUseCase } = await import("@/app/api/useCases/radar/RadarUseCase"))
+}
 
   const scope = {
     teamId: "",
