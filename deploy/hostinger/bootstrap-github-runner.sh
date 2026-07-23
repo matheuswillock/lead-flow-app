@@ -47,7 +47,7 @@ RUNNER_WORKDIR="${RUNNER_WORKDIR:-${RUNNER_HOME}/_work}"
 RUNNER_REPO_URL="${RUNNER_REPO_URL:-https://github.com/matheuswillock/lead-flow-app}"
 RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,linux,x64,lead-flow-ci}"
 RUNNER_VERSION="${RUNNER_VERSION:-2.329.0}"
-# Heap um pouco menor: com 2 runners, dois next build podem competir pela RAM.
+# Heap Node: Build + Lint em paralelo é ok; next build serializado via concurrency lead-flow-next-build.
 NODE_OPTIONS_DEFAULT="${NODE_OPTIONS:---max-old-space-size=2560}"
 BUN_INSTALL_VERSION="${BUN_INSTALL_VERSION:-1.3.14}"
 SKIP_HOST_DEPS="${SKIP_HOST_DEPS:-0}"

@@ -281,9 +281,10 @@ sudo -u github-runner-2 ./config.sh remove --token "$(gh api -X POST repos/mathe
 | Item | Valor |
 |------|--------|
 | Jobs em paralelo | até **2** (dois runners) |
+| `next build` | **máx. 1** via `concurrency.group: lead-flow-next-build` (Build + Lint ok) |
 | Stack compartilhada | Evolution + n8n + ops |
 | RAM recomendada | KVM 2 (8 GB) |
-| Heap Node por runner | `2560` MB (dois builds competem) |
+| Heap Node por runner | `2560` MB |
 | Se OOM no `next build` | baixar heap, ou temporariamente voltar só o job `build` para `ubuntu-latest` |
 
 ## Troubleshooting

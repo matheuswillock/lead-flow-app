@@ -107,6 +107,10 @@ jobs:
 
   build:
     name: Build
+    # Serializa next build na VPS (máx. 1). Lint/Quality podem rodar no 2º runner.
+    concurrency:
+      group: lead-flow-next-build
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 15
