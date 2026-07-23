@@ -192,8 +192,6 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     if (!started || phase !== "form") return
     if (!pageQuestions.some((item) => item.type === "calculation")) return
     void runSimulationFlow()
-    // Intentionally keyed by page content + phase; runSimulationFlow is stable enough for this flow.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- trigger once per calculation page visit
   }, [started, phase, pageQuestionsKey])
 
   function start() {

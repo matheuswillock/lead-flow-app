@@ -1,8 +1,14 @@
 import type { PublicFormDraftInput, PublicFormQuestionInput } from "./types"
 
-export function getPageKey(question: PublicFormQuestionInput): string {
-  const key = question.config?.pageKey
-  if (typeof key === "string" && key.length > 0) return key
+export function getPageKey(question: {
+  id?: string | null
+  config?: unknown
+}): string {
+  const config = question.config
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    const key = (config as Record<string, unknown>).pageKey
+    if (typeof key === "string" && key.length > 0) return key
+  }
   return question.id ?? ""
 }
 
