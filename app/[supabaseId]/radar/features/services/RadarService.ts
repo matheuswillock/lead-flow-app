@@ -1,9 +1,19 @@
-import type { IRadarService, RadarFieldOption, ListProfilesParams } from "./IRadarService"
 import type {
+  IRadarService,
+  RadarFieldOption,
+  ListProfilesParams,
+  CustomSegmentInput,
+  CustomSegmentUpdateInput,
+} from "./IRadarService"
+import type {
+  RadarCustomSegment,
+  RadarCustomSegmentListItem,
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarSegment,
+  RadarSegmentDeleteResult,
+  RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
 
@@ -185,6 +195,90 @@ export class RadarFrontendService implements IRadarService {
       body: JSON.stringify(body),
     })
     return parseOutput<{ values: Record<string, string> }>(res)
+  }
+
+  async listCustomSegments(supabaseId: string, teamId: string): Promise<RadarCustomSegmentListItem[]> {
+    const res = await fetch(`${this.baseUrl}/segments/custom`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarCustomSegmentListItem[]>(res)
+  }
+
+  async createCustomSegment(
+    supabaseId: string,
+    teamId: string,
+    input: CustomSegmentInput
+  ): Promise<RadarCustomSegment> {
+    const res = await fetch(`${this.baseUrl}/segments/custom`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<RadarCustomSegment>(res)
+  }
+
+  async updateCustomSegment(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string,
+    input: CustomSegmentUpdateInput
+  ): Promise<RadarCustomSegment> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/${segmentId}`, {
+      method: "PATCH",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<RadarCustomSegment>(res)
+  }
+
+  async deleteCustomSegment(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string
+  ): Promise<RadarSegmentDeleteResult> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/${segmentId}`, {
+      method: "DELETE",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarSegmentDeleteResult>(res)
+  }
+
+  async listCustomSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string,
+    page: number,
+    pageSize: number
+  ) {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+    const res = await fetch(`${this.baseUrl}/segments/custom/${segmentId}/profiles?${query}`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<{ items: RadarProfileDetail[]; total: number; page: number; pageSize: number }>(res)
+  }
+
+  async previewCustomSegmentCount(
+    supabaseId: string,
+    teamId: string,
+    rules: RadarSegmentRules
+  ): Promise<{ count: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/preview`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ rules }),
+    })
+    return parseOutput<{ count: number }>(res)
   }
 }
 

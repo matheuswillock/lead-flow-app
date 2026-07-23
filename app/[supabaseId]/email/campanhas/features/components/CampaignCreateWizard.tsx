@@ -14,6 +14,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -91,6 +92,8 @@ export function CampaignCreateWizard() {
 
   const selectedList = contactLists.find((list) => list.id === wizardContactListId)
   const selectedSegment = radarSegments.find((segment) => segment.slug === wizardRadarSegmentSlug)
+  const systemSegments = useMemo(() => radarSegments.filter((segment) => segment.isSystem), [radarSegments])
+  const customSegments = useMemo(() => radarSegments.filter((segment) => !segment.isSystem), [radarSegments])
   const recipientCount =
     wizardRecipientSource === "radar_segment"
       ? selectedSegment?.count ?? 0
@@ -273,17 +276,34 @@ export function CampaignCreateWizard() {
                       <SelectValue placeholder="Selecione um segmento..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectGroup>
-                        {radarSegments.length === 0 ? (
+                      {radarSegments.length === 0 ? (
+                        <SelectGroup>
                           <SelectItem value="__none" disabled>Nenhum segmento disponível</SelectItem>
-                        ) : (
-                          radarSegments.map((segment) => (
-                            <SelectItem key={segment.slug} value={segment.slug}>
-                              {segment.name} ({segment.count})
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectGroup>
+                        </SelectGroup>
+                      ) : (
+                        <>
+                          {systemSegments.length > 0 ? (
+                            <SelectGroup>
+                              <SelectLabel>Segmentos do sistema</SelectLabel>
+                              {systemSegments.map((segment) => (
+                                <SelectItem key={segment.slug} value={segment.slug}>
+                                  {segment.name} ({segment.count})
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ) : null}
+                          {customSegments.length > 0 ? (
+                            <SelectGroup>
+                              <SelectLabel>Meus segmentos</SelectLabel>
+                              {customSegments.map((segment) => (
+                                <SelectItem key={segment.slug} value={segment.slug}>
+                                  {segment.name} ({segment.count})
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ) : null}
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                   {fieldErrorMessage(step2Issues, "radarSegmentSlug") ? (

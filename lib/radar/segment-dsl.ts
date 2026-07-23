@@ -74,6 +74,9 @@ const leadStatusSchema = z.enum([
   "contract_finalized",
 ])
 
+/** Fonte única para o frontend popular o multi-select de lead_status. */
+export const RADAR_SEGMENT_LEAD_STATUSES = leadStatusSchema.options
+
 const profileFieldConditionSchema = z
   .object({
     kind: z.literal("profile_field"),

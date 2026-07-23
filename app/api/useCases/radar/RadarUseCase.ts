@@ -291,6 +291,24 @@ export class RadarUseCase {
     }
   }
 
+  /**
+   * Conta o público de regras ainda não salvas (rascunho do builder) — as
+   * demais contagens (listSegments/listCustomSegments/listCustomSegmentProfiles)
+   * exigem um TeamRadarSegment já persistido.
+   */
+  async previewCustomSegmentCount(teamId: string, ctx: TeamContext, rulesInput: unknown) {
+    try {
+      const rules = parseRadarSegmentRules(rulesInput)
+      const scope = this.scope(teamId, ctx)
+      const count = await this.segmentQueryService.countProfiles(scope, rules)
+      return new Output(true, [], [], { count })
+    } catch (error) {
+      console.error("[RadarUseCase][previewCustomSegmentCount]", error)
+      const message = error instanceof Error ? error.message : "Regras de segmento inválidas"
+      return new Output(false, [], [message], null)
+    }
+  }
+
   async listCustomSegmentProfiles(
     teamId: string,
     ctx: TeamContext,
