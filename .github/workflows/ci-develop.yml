@@ -521,7 +521,9 @@ jobs:
           # branch since we last read it (e.g. a manual hotfix on the release PR).
           # Overwriting it silently is how commits used to disappear from release.
           # Fail loudly instead so a human reconciles it.
-          git push origin release/develop-to-main --force-with-lease
+          # --no-verify: este job não instala deps; quality gate já validou o commit.
+          # (pre-push também pula em CI=true; belt-and-suspenders no self-hosted.)
+          git push origin release/develop-to-main --force-with-lease --no-verify
 
       - name: Create or update PR
         id: release-pr

@@ -2,6 +2,11 @@ import { existsSync } from "node:fs"
 
 const gitMetadataPath = `${process.cwd()}/.git`
 
+if (process.env.CI === "true") {
+  console.info("[hooks:install] CI=true — pulando configuração de hooks no runner.")
+  process.exit(0)
+}
+
 if (!existsSync(gitMetadataPath)) {
   console.info("[hooks:install] Git metadata não encontrado; hooks não instalados.")
   process.exit(0)
