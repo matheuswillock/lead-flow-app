@@ -47,12 +47,29 @@ export function calculatePublicFormScore(
   )
 }
 
+function getMaxSelections(question: PublicFormQuestionInput): number | null {
+  const maxSelections = question.config?.maxSelections
+  if (typeof maxSelections !== "number" || !Number.isFinite(maxSelections)) return null
+  const floored = Math.floor(maxSelections)
+  return floored > 0 ? floored : null
+}
+
 /** Max possible raw score across scoreable questions (for 0–100% normalization). */
 export function calculatePublicFormMaxPossibleScore(form: PublicFormDraftInput) {
   return form.questions.reduce((sum, question) => {
     if (!question.options.length) return sum
     if (question.type === "multiple_choice") {
-      return sum + question.options.reduce((n, option) => n + Math.max(0, option.score), 0)
+      // maxSelections limita quantas opções o respondente pode marcar — o
+      // máximo alcançável soma só as N maiores pontuações positivas, não
+      // todas as opções (senão o máximo fica inflado e bandas altas de score
+      // ficam inatingíveis).
+      const positiveScores = question.options
+        .map((option) => Math.max(0, option.score))
+        .sort((a, b) => b - a)
+      const maxSelections = getMaxSelections(question)
+      const selectable =
+        maxSelections != null ? positiveScores.slice(0, maxSelections) : positiveScores
+      return sum + selectable.reduce((n, score) => n + score, 0)
     }
     if (["single_choice", "health_plan", "boolean"].includes(question.type)) {
       return sum + Math.max(0, ...question.options.map((option) => option.score), 0)
@@ -111,11 +128,8 @@ export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
     ) {
       return "Selecione opções válidas"
     }
-    const maxSelections =
-      typeof q.config?.maxSelections === "number" && Number.isFinite(q.config.maxSelections)
-        ? Math.floor(q.config.maxSelections)
-        : null
-    if (maxSelections != null && maxSelections > 0 && v.length > maxSelections) {
+    const maxSelections = getMaxSelections(q)
+    if (maxSelections != null && v.length > maxSelections) {
       return `Selecione no máximo ${maxSelections} opções`
     }
   }

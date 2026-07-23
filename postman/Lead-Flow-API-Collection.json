@@ -16639,6 +16639,41 @@
               "response": []
             },
             {
+              "name": "Preview Custom Segment Count",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rules\": {\n    \"match\": \"all\",\n    \"conditions\": [\n      { \"kind\": \"event\", \"eventType\": \"email.opened\", \"occurrence\": \"occurred\", \"windowDays\": 30 },\n      { \"kind\": \"consent\", \"channel\": \"email\", \"status\": \"allowed\" }\n    ]\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/preview",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    "preview"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
               "name": "Atualizar segmento custom",
               "request": {
                 "method": "PATCH",
