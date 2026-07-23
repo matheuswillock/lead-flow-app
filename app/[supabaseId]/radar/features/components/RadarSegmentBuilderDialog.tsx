@@ -27,11 +27,17 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions"
 import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 import { getLeadStatusLabel } from "@/lib/lead-status"
+import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
 import { RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useParams } from "next/navigation"
 import { useRadarContext } from "../context/RadarContext"
-import type { RadarCustomSegmentListItem, RadarSegmentCondition, RadarSegmentRules } from "../context/RadarTypes"
+import type {
+  RadarCustomSegmentListItem,
+  RadarLeadCustomFieldCondition,
+  RadarSegmentCondition,
+  RadarSegmentRules,
+} from "../context/RadarTypes"
 import {
   OPERATORS_BY_CUSTOM_FIELD_TYPE,
   OPERATORS_BY_LAST_SEEN,
@@ -75,6 +81,100 @@ function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegm
 }
 
 const defaultRules: RadarSegmentRules = { match: "all", conditions: [defaultConditionForKind("profile_field")] }
+
+/**
+ * buildCustomFieldWhereFilter compara valores JSON tipados no Prisma — number/
+ * boolean/multi_select precisam ser codificados com o tipo real, não string,
+ * ou o segmento retorna 0 perfis (eq/neq) ou erro de query (multi_select).
+ */
+function LeadCustomFieldValueInput({
+  condition,
+  definition,
+  onChange,
+}: {
+  condition: RadarLeadCustomFieldCondition
+  definition: LeadCustomFieldDefinitionDTO | undefined
+  onChange: (value: unknown) => void
+}) {
+  const fieldType = definition?.type ?? "text"
+
+  if (fieldType === "select") {
+    return (
+      <Select value={typeof condition.value === "string" ? condition.value : ""} onValueChange={onChange}>
+        <SelectTrigger className="w-40">
+          <SelectValue placeholder="Valor" />
+        </SelectTrigger>
+        <SelectContent>
+          {(definition?.options ?? []).map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  if (fieldType === "multi_select") {
+    const selected = Array.isArray(condition.value) ? (condition.value as string[]) : []
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {(definition?.options ?? []).map((option) => {
+          const isSelected = selected.includes(option.value)
+          return (
+            <Badge
+              key={option.value}
+              variant={isSelected ? "default" : "outline"}
+              className="cursor-pointer"
+              onClick={() =>
+                onChange(isSelected ? selected.filter((v) => v !== option.value) : [...selected, option.value])
+              }
+            >
+              {option.label}
+            </Badge>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (fieldType === "boolean") {
+    return (
+      <Select
+        value={typeof condition.value === "boolean" ? String(condition.value) : ""}
+        onValueChange={(value) => onChange(value === "true")}
+      >
+        <SelectTrigger className="w-32">
+          <SelectValue placeholder="Valor" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="true">Sim</SelectItem>
+          <SelectItem value="false">Não</SelectItem>
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  if (fieldType === "number") {
+    return (
+      <Input
+        className="w-40"
+        type="number"
+        value={typeof condition.value === "number" ? condition.value : ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+      />
+    )
+  }
+
+  return (
+    <Input
+      className="w-40"
+      type={fieldType === "date" ? "date" : "text"}
+      value={typeof condition.value === "string" ? condition.value : ""}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+}
 
 type RadarSegmentBuilderDialogProps = {
   open: boolean
@@ -243,7 +343,11 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                     <Select
                       value={condition.operator}
                       onValueChange={(value) =>
-                        updateCondition(index, { ...condition, operator: value as typeof condition.operator })
+                        updateCondition(index, {
+                          ...condition,
+                          operator: value as typeof condition.operator,
+                          value: undefined,
+                        })
                       }
                     >
                       <SelectTrigger className="w-48">
@@ -263,9 +367,25 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                     {conditionNeedsValueInput(condition) ? (
                       <Input
                         className="w-40"
-                        type={condition.field === "lastSeenAt" ? "date" : "text"}
+                        type={
+                          condition.field === "lastSeenAt"
+                            ? condition.operator === "within_days"
+                              ? "number"
+                              : "date"
+                            : "text"
+                        }
                         value={typeof condition.value === "string" || typeof condition.value === "number" ? condition.value : ""}
-                        onChange={(e) => updateCondition(index, { ...condition, value: e.target.value })}
+                        onChange={(e) =>
+                          updateCondition(index, {
+                            ...condition,
+                            value:
+                              condition.field === "lastSeenAt" && condition.operator === "within_days"
+                                ? e.target.value
+                                  ? Number(e.target.value)
+                                  : undefined
+                                : e.target.value,
+                          })
+                        }
                       />
                     ) : null}
                   </div>
@@ -349,15 +469,13 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                   <div className="flex flex-wrap gap-2">
                     <Select
                       value={condition.definitionId}
-                      onValueChange={(value) => {
-                        const def = customFieldDefinitions.find((d) => d.id === value)
+                      onValueChange={(value) =>
                         updateCondition(index, {
                           kind: "lead_custom_field",
                           definitionId: value,
                           operator: "eq",
                         })
-                        void def
-                      }}
+                      }
                     >
                       <SelectTrigger className="w-56">
                         <SelectValue placeholder="Campo" />
@@ -373,7 +491,11 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                     <Select
                       value={condition.operator}
                       onValueChange={(value) =>
-                        updateCondition(index, { ...condition, operator: value as typeof condition.operator })
+                        updateCondition(index, {
+                          ...condition,
+                          operator: value as typeof condition.operator,
+                          value: undefined,
+                        })
                       }
                     >
                       <SelectTrigger className="w-48">
@@ -390,10 +512,10 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                       </SelectContent>
                     </Select>
                     {conditionNeedsValueInput(condition) ? (
-                      <Input
-                        className="w-40"
-                        value={typeof condition.value === "string" || typeof condition.value === "number" ? condition.value : ""}
-                        onChange={(e) => updateCondition(index, { ...condition, value: e.target.value })}
+                      <LeadCustomFieldValueInput
+                        condition={condition}
+                        definition={customFieldDefinitions.find((d) => d.id === condition.definitionId)}
+                        onChange={(value) => updateCondition(index, { ...condition, value })}
                       />
                     ) : null}
                   </div>

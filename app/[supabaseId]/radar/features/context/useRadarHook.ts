@@ -18,6 +18,8 @@ import type { CustomSegmentInput, CustomSegmentUpdateInput } from "../services/I
 
 export type RadarTab = "perfis" | "segmentos"
 
+export type RadarSegmentProfilesTarget = { kind: "system" | "custom"; slugOrId: string; name: string }
+
 export type RadarHookReturn = ReturnType<typeof useRadarHookFn>
 
 export function useRadarHookFn() {
@@ -54,8 +56,14 @@ export function useRadarHookFn() {
   const [channelFilter, setChannelFilter] = useState<string>("")
   const [lastSeenFrom, setLastSeenFrom] = useState("")
   const [lastSeenTo, setLastSeenTo] = useState("")
+  const [segmentProfilesTarget, setSegmentProfilesTarget] = useState<RadarSegmentProfilesTarget | null>(null)
+  const [segmentProfilesItems, setSegmentProfilesItems] = useState<RadarProfileDetail[]>([])
+  const [segmentProfilesTotal, setSegmentProfilesTotal] = useState(0)
+  const [segmentProfilesPage, setSegmentProfilesPage] = useState(1)
+  const [isLoadingSegmentProfiles, setIsLoadingSegmentProfiles] = useState(false)
   const pageSize = 20
   const detailEventsPageSize = 10
+  const segmentProfilesPageSize = 20
 
   const loadKeyRef = useRef("")
   const inFlightRef = useRef(false)
@@ -284,10 +292,16 @@ export function useRadarHookFn() {
     async (input: CustomSegmentInput) => {
       if (!supabaseId || !activeTeamId) return false
       const result = await withMutationLock(async () => {
-        await radarFrontendService.createCustomSegment(supabaseId, activeTeamId, input)
-        toast.success("Segmento criado com sucesso")
-        await loadDashboard()
-        return true
+        try {
+          await radarFrontendService.createCustomSegment(supabaseId, activeTeamId, input)
+          toast.success("Segmento criado com sucesso")
+          await loadDashboard()
+          return true
+        } catch (createError) {
+          console.error("[useRadarHookFn][createCustomSegment]", createError)
+          toast.error(createError instanceof Error ? createError.message : "Não foi possível criar o segmento.")
+          return false
+        }
       })
       if (result === null) return false
       return result
@@ -299,10 +313,16 @@ export function useRadarHookFn() {
     async (segmentId: string, input: CustomSegmentUpdateInput) => {
       if (!supabaseId || !activeTeamId) return false
       const result = await withMutationLock(async () => {
-        await radarFrontendService.updateCustomSegment(supabaseId, activeTeamId, segmentId, input)
-        toast.success("Segmento atualizado com sucesso")
-        await loadDashboard()
-        return true
+        try {
+          await radarFrontendService.updateCustomSegment(supabaseId, activeTeamId, segmentId, input)
+          toast.success("Segmento atualizado com sucesso")
+          await loadDashboard()
+          return true
+        } catch (updateError) {
+          console.error("[useRadarHookFn][updateCustomSegment]", updateError)
+          toast.error(updateError instanceof Error ? updateError.message : "Não foi possível atualizar o segmento.")
+          return false
+        }
       })
       if (result === null) return false
       return result
@@ -314,18 +334,24 @@ export function useRadarHookFn() {
     async (segmentId: string) => {
       if (!supabaseId || !activeTeamId) return false
       const result = await withMutationLock(async () => {
-        const deleteResult = await radarFrontendService.deleteCustomSegment(
-          supabaseId,
-          activeTeamId,
-          segmentId
-        )
-        toast.success(
-          deleteResult.softDeleted
-            ? "Segmento em uso por campanhas — desativado em vez de excluído"
-            : "Segmento removido com sucesso"
-        )
-        await loadDashboard()
-        return true
+        try {
+          const deleteResult = await radarFrontendService.deleteCustomSegment(
+            supabaseId,
+            activeTeamId,
+            segmentId
+          )
+          toast.success(
+            deleteResult.softDeleted
+              ? "Segmento em uso por campanhas — desativado em vez de excluído"
+              : "Segmento removido com sucesso"
+          )
+          await loadDashboard()
+          return true
+        } catch (deleteError) {
+          console.error("[useRadarHookFn][deleteCustomSegment]", deleteError)
+          toast.error(deleteError instanceof Error ? deleteError.message : "Não foi possível remover o segmento.")
+          return false
+        }
       })
       if (result === null) return false
       return result
@@ -353,6 +379,64 @@ export function useRadarHookFn() {
       }
     },
     [activeTeamId, isPreviewingAudience, supabaseId]
+  )
+
+  const loadSegmentProfiles = useCallback(
+    async (target: RadarSegmentProfilesTarget, targetPage: number) => {
+      if (!supabaseId || !activeTeamId) return
+      setIsLoadingSegmentProfiles(true)
+      try {
+        const result =
+          target.kind === "system"
+            ? await radarFrontendService.listSegmentProfiles(
+                supabaseId,
+                activeTeamId,
+                target.slugOrId,
+                targetPage,
+                segmentProfilesPageSize
+              )
+            : await radarFrontendService.listCustomSegmentProfiles(
+                supabaseId,
+                activeTeamId,
+                target.slugOrId,
+                targetPage,
+                segmentProfilesPageSize
+              )
+        setSegmentProfilesItems(result.items)
+        setSegmentProfilesTotal(result.total)
+      } catch (segmentProfilesError) {
+        console.error("[useRadarHookFn][loadSegmentProfiles]", segmentProfilesError)
+        toast.error("Não foi possível carregar os perfis do segmento.")
+      } finally {
+        setIsLoadingSegmentProfiles(false)
+      }
+    },
+    [activeTeamId, segmentProfilesPageSize, supabaseId]
+  )
+
+  const openSegmentProfiles = useCallback(
+    (target: RadarSegmentProfilesTarget) => {
+      setSegmentProfilesTarget(target)
+      setSegmentProfilesPage(1)
+      void loadSegmentProfiles(target, 1)
+    },
+    [loadSegmentProfiles]
+  )
+
+  const closeSegmentProfiles = useCallback(() => {
+    setSegmentProfilesTarget(null)
+    setSegmentProfilesItems([])
+    setSegmentProfilesTotal(0)
+    setSegmentProfilesPage(1)
+  }, [])
+
+  const changeSegmentProfilesPage = useCallback(
+    (nextPage: number) => {
+      if (!segmentProfilesTarget) return
+      setSegmentProfilesPage(nextPage)
+      void loadSegmentProfiles(segmentProfilesTarget, nextPage)
+    },
+    [loadSegmentProfiles, segmentProfilesTarget]
   )
 
   return {
@@ -401,6 +485,15 @@ export function useRadarHookFn() {
     updateCustomSegment,
     deleteCustomSegment,
     previewAudienceCount,
+    segmentProfilesTarget,
+    segmentProfilesItems,
+    segmentProfilesTotal,
+    segmentProfilesPage,
+    segmentProfilesPageSize,
+    isLoadingSegmentProfiles,
+    openSegmentProfiles,
+    closeSegmentProfiles,
+    changeSegmentProfilesPage,
     reload: loadDashboard,
   }
 }

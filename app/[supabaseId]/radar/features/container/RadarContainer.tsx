@@ -2,7 +2,7 @@
 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Database, Plus, RefreshCw } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
@@ -32,6 +32,7 @@ import { RadarProfileSheet } from "../components/RadarProfileSheet"
 import { RadarProfilesTable } from "../components/RadarProfilesTable"
 import { RadarSegmentBuilderDialog } from "../components/RadarSegmentBuilderDialog"
 import { RadarSegmentCard } from "../components/RadarSegmentCard"
+import { RadarSegmentProfilesSheet } from "../components/RadarSegmentProfilesSheet"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
@@ -77,11 +78,22 @@ export function RadarContainer() {
     runWhatsappSync,
     syncLeadProfile,
     deleteCustomSegment,
+    segmentProfilesTarget,
+    segmentProfilesItems,
+    segmentProfilesTotal,
+    segmentProfilesPage,
+    segmentProfilesPageSize,
+    isLoadingSegmentProfiles,
+    openSegmentProfiles,
+    closeSegmentProfiles,
+    changeSegmentProfilesPage,
   } = useRadarContext()
 
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingSegment, setEditingSegment] = useState<RadarCustomSegmentListItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RadarCustomSegmentListItem | null>(null)
+
+  const systemSegments = useMemo(() => segments.filter((segment) => segment.isSystem), [segments])
 
   if (!hasAccess(FEATURE_SLUGS.RADAR)) {
     return (
@@ -211,13 +223,16 @@ export function RadarContainer() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {isLoading
                   ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
-                  : segments.map((segment) => (
+                  : systemSegments.map((segment) => (
                       <RadarSegmentCard
                         key={segment.slug}
                         name={segment.name}
                         description={segment.description}
                         count={segment.count}
                         variant="system"
+                        onViewProfiles={() =>
+                          openSegmentProfiles({ kind: "system", slugOrId: segment.slug, name: segment.name })
+                        }
                       />
                     ))}
               </div>
@@ -263,6 +278,9 @@ export function RadarContainer() {
                           count={segment.count}
                           variant="custom"
                           mutationLock={mutationLock}
+                          onViewProfiles={() =>
+                            openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
+                          }
                           onEdit={() => {
                             setEditingSegment(segment)
                             setBuilderOpen(true)
@@ -290,6 +308,22 @@ export function RadarContainer() {
         />
 
         <RadarSegmentBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} segment={editingSegment} />
+
+        <RadarSegmentProfilesSheet
+          segmentName={segmentProfilesTarget?.name ?? null}
+          open={Boolean(segmentProfilesTarget)}
+          onOpenChange={(open) => !open && closeSegmentProfiles()}
+          profiles={segmentProfilesItems}
+          isLoading={isLoadingSegmentProfiles}
+          page={segmentProfilesPage}
+          total={segmentProfilesTotal}
+          pageSize={segmentProfilesPageSize}
+          onPageChange={changeSegmentProfilesPage}
+          onViewProfile={(id) => {
+            closeSegmentProfiles()
+            void openProfile(id)
+          }}
+        />
 
         <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
           <AlertDialogContent>

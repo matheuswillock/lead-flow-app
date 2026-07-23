@@ -16,6 +16,7 @@ type RadarSegmentCardProps = {
   count: number
   variant: "system" | "custom"
   mutationLock?: boolean
+  onViewProfiles?: () => void
   onEdit?: () => void
   onDelete?: () => void
 }
@@ -26,6 +27,7 @@ export function RadarSegmentCard({
   count,
   variant,
   mutationLock,
+  onViewProfiles,
   onEdit,
   onDelete,
 }: RadarSegmentCardProps) {
@@ -65,6 +67,11 @@ export function RadarSegmentCard({
       </div>
       {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
       <p className="font-display text-2xl font-semibold">{count}</p>
+      {onViewProfiles ? (
+        <Button size="sm" variant="ghost" className="self-start px-0" onClick={onViewProfiles}>
+          Ver perfis
+        </Button>
+      ) : null}
     </div>
   )
 }
