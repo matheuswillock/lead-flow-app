@@ -1,6 +1,12 @@
 import { parseCurrencyBR, phoneDigitCount } from "./masks"
 import type { PublicFormAnswerInput, PublicFormDraftInput, PublicFormQuestionInput } from "./types"
+
 const values = (v: unknown) => (Array.isArray(v) ? v.map(String) : v == null ? [] : [String(v)])
+
+function inverseAction(action: "show" | "skip"): "show" | "skip" {
+  return action === "show" ? "skip" : "show"
+}
+
 export function resolveVisibleQuestionIds(
   form: PublicFormDraftInput,
   answers: PublicFormAnswerInput[],
@@ -16,13 +22,15 @@ export function resolveVisibleQuestionIds(
         : r.operator === "not_equals" || r.operator === "not_selected"
           ? expected.every((v) => !got.includes(v))
           : got.some((v) => expected.some((e) => v.includes(e)))
-    if ((r.action === "show" && !hit) || (r.action === "skip" && hit))
-      visible.delete(r.targetQuestionId)
+    const elseAction = r.elseAction ?? inverseAction(r.action)
+    const effective = hit ? r.action : elseAction
+    if (effective === "skip") visible.delete(r.targetQuestionId)
   }
   return form.questions
     .map((q) => q.id)
     .filter((id): id is string => Boolean(id && visible.has(id)))
 }
+
 export function calculatePublicFormScore(
   form: PublicFormDraftInput,
   answers: PublicFormAnswerInput[],
@@ -38,7 +46,33 @@ export function calculatePublicFormScore(
     0,
   )
 }
+
+/** Max possible raw score across scoreable questions (for 0–100% normalization). */
+export function calculatePublicFormMaxPossibleScore(form: PublicFormDraftInput) {
+  return form.questions.reduce((sum, question) => {
+    if (!question.options.length) return sum
+    if (question.type === "multiple_choice") {
+      return sum + question.options.reduce((n, option) => n + Math.max(0, option.score), 0)
+    }
+    if (["single_choice", "health_plan", "boolean"].includes(question.type)) {
+      return sum + Math.max(0, ...question.options.map((option) => option.score), 0)
+    }
+    return sum
+  }, 0)
+}
+
+export function calculatePublicFormScorePercent(
+  form: PublicFormDraftInput,
+  answers: PublicFormAnswerInput[],
+) {
+  const raw = calculatePublicFormScore(form, answers)
+  const max = calculatePublicFormMaxPossibleScore(form)
+  if (max <= 0) return 0
+  return Math.round((100 * raw) / max)
+}
+
 export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
+  if (q.type === "calculation") return null
   const empty = v == null || v === "" || (Array.isArray(v) && !v.length)
   if (q.required && empty) return "Esta resposta é obrigatória"
   if (empty) return null

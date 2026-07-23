@@ -4397,6 +4397,7 @@ enum PublicFormQuestionType {
   custom_field
   scheduling
   consent
+  calculation
 }
 
 enum PublicFormMappingTarget {
@@ -4475,6 +4476,8 @@ model PublicForm {
   approvalStatus         PublicFormApprovalStatus   @default(draft)
   coverTitle             String?                    @db.Text
   coverDescription       String?                    @db.Text
+  coverBadge             String?                    @db.Text
+  coverHighlights        Json?
   ctaLabel               String                     @default("Começar") @db.Text
   successTitle           String                     @default("Respostas enviadas") @db.Text
   successDescription     String?                    @db.Text
@@ -4571,6 +4574,7 @@ model PublicFormRule {
   operator         PublicFormRuleOperator
   comparisonValue  Json?
   action           PublicFormRuleAction
+  elseAction       PublicFormRuleAction   @default(show)
   createdAt        DateTime               @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
   form             PublicForm             @relation(fields: [formId], references: [id], onDelete: Cascade)

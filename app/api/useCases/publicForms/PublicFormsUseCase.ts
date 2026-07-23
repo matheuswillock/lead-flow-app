@@ -9,6 +9,7 @@ import type {
   PublicFormListFilters,
   PublicFormMetricEventInput,
 } from "@/lib/public-forms/types"
+import { getPageKey } from "@/lib/public-forms/pages"
 
 function isManager(access: TeamAccess) {
   return access.isMaster || access.teamMember.role === "manager"
@@ -46,6 +47,20 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
   }
   if (!draft.schedulingEnabled && schedulingQuestions.length > 0) {
     errors.push("Ative a agenda ou remova a pergunta de agendamento")
+  }
+  const calculationQuestions = draft.questions.filter((question) => question.type === "calculation")
+  if (calculationQuestions.length > 1) {
+    errors.push("Só é permitido uma pergunta de cálculo por formulário")
+  }
+  for (const question of calculationQuestions) {
+    const pageKey = getPageKey(question)
+    const siblings = draft.questions.filter(
+      (item) => item.id !== question.id && getPageKey(item) === pageKey,
+    )
+    if (siblings.length > 0) {
+      errors.push("A pergunta de cálculo deve ficar sozinha na página")
+      break
+    }
   }
   const bands = [...draft.scoreBands].sort((a, b) => a.minScore - b.minScore)
   const questionIds = new Set(draft.questions.map((question) => question.id))

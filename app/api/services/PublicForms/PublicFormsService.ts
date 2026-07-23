@@ -27,6 +27,10 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     eligibleCloserIds: form.eligibleClosers.map((item) => item.profileId),
     coverTitle: form.coverTitle,
     coverDescription: form.coverDescription,
+    coverBadge: form.coverBadge,
+    coverHighlights: Array.isArray(form.coverHighlights)
+      ? (form.coverHighlights as Array<{ id: string; value: string; label: string }>)
+      : [],
     ctaLabel: form.ctaLabel,
     successTitle: form.successTitle,
     successDescription: form.successDescription,
@@ -63,6 +67,7 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
       operator: rule.operator,
       comparisonValue: rule.comparisonValue,
       action: rule.action,
+      elseAction: rule.elseAction ?? (rule.action === "show" ? "skip" : "show"),
     })),
     scoreBands: form.scoreBands.map((band) => ({
       id: band.id,
