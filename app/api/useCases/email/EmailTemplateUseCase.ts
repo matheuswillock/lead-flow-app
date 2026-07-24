@@ -21,6 +21,7 @@ const templateDetailSelect = {
   id: true,
   teamId: true,
   createdBy: true,
+  managedByBackofficeUserId: true,
   versionGroupId: true,
   versionNumber: true,
   isCurrentPublished: true,
@@ -192,13 +193,22 @@ export class EmailTemplateUseCase {
           approvalStatus: true,
           createdAt: true,
           updatedAt: true,
+          managedByBackofficeUserId: true,
           creator: { select: { id: true, fullName: true, email: true } },
         },
         orderBy: { updatedAt: "desc" },
       })
 
       if (scope === "campaign") {
-        return new Output(true, [], [], templates)
+        return new Output(
+          true,
+          [],
+          [],
+          templates.map((template) => ({
+            ...template,
+            managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
+          }))
+        )
       }
 
       const latestByGroup = new Map<string, (typeof templates)[number]>()
@@ -219,7 +229,15 @@ export class EmailTemplateUseCase {
         }
       }
 
-      return new Output(true, [], [], Array.from(latestByGroup.values()))
+      return new Output(
+        true,
+        [],
+        [],
+        Array.from(latestByGroup.values()).map((template) => ({
+          ...template,
+          managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
+        }))
+      )
     } catch (error) {
       console.error("[EmailTemplateUseCase][list]", error)
       return new Output(false, [], ["Erro ao listar templates de email"], null)
@@ -237,7 +255,10 @@ export class EmailTemplateUseCase {
         return new Output(false, [], ["Template não encontrado"], null)
       }
 
-      return new Output(true, [], [], template)
+      return new Output(true, [], [], {
+        ...template,
+        managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
+      })
     } catch (error) {
       console.error("[EmailTemplateUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar template de email"], null)

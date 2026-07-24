@@ -22,6 +22,7 @@ export type ContactList = {
     email: string | null
   } | null
   activeImport?: ContactListActiveImport | null
+  managedByCorretorStudio?: boolean
 }
 
 export type ContactUnsubscribeSource = {

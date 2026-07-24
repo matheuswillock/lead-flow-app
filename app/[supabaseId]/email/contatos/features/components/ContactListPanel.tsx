@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge";
 import { useContactsContext } from "../context/ContactsContext";
 import type { ContactList } from "../context/ContatosTypes";
 
@@ -72,6 +73,11 @@ function ContactListItem({ list }: { list: ContactList }) {
           <p className="truncate text-xs text-muted-foreground leading-snug mt-0.5">
             Criado por: {creatorLabel}
           </p>
+          {list.managedByCorretorStudio ? (
+            <div className="mt-1">
+              <ManagedByCorretorStudioBadge />
+            </div>
+          ) : null}
         </div>
 
         <div className="ml-2 flex shrink-0 items-center gap-1.5">
