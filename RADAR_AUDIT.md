@@ -196,3 +196,50 @@ Tipo Postgres `email_variable_value_source` + linhas persistidas de `email_team_
 4. **Rename físico sem período de compatibilidade:** fluxos que rodam para todos os times (interpolação de e-mail, sync WhatsApp, webhook Resend) quebram entre migration e deploy — janela coordenada obrigatória; plano B = views temporárias.
 5. **NOVO — acoplamento com sub-campanhas:** as mensagens de rejeição ">2000" (`EmailCampaignUseCase.ts:436, 640`) e o aviso do wizard (`:292–295`) citam "CDP" e "sub-campanhas" na mesma frase — o rename precisa reescrevê-las como "Segmentos Radar..." sem alterar a regra; e a completude (segmentos dinâmicos) herda a regra: **audiência de segmento ≤ `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB` por campanha; teto de `EMAIL_CAMPAIGN_MAX_EMAILS_PER_DAY` aplicado no disparo por `wouldExceedDailyEmailCap`** — nenhum caminho novo de disparo pode contornar o guard.
 6. **`prisma/erd/diagram.md`** regenerar; **URL** `/cdp` precisa de redirect permanente no `proxy.ts`.
+
+---
+
+## 7. Baseline para a Fase D (cobertura total de canais, origem e engajamento)
+
+Achados confirmados diretamente no código de `develop` (pós C1–C6), usados como ponto de partida da Fase D (`RADAR_SPEC.md`):
+
+### 7.1 Sync inline já cobre CRM, WhatsApp e E-mail — os gaps reais são Portfolio e EmailContact sem Lead
+
+Contrário a uma suposição inicial de que "nada sincroniza por evento fora do CRM", confirmado que:
+
+- **CRM:** `syncLeadToRadarInline` (`LeadUseCase.ts:2317`) roda fire-and-forget em `createLead`/`updateLead`/`updateLeadStatus`, gated por `teamHasRadarFeature`.
+- **WhatsApp:** `syncWhatsappMessageToRadarUseCase.execute(...)` é chamado a partir do webhook real da Evolution (`ProcessEvoWebhookUseCase.ts:314`), não só do scan em lote.
+- **E-mail:** `handleEmailWebhookEvent` é chamado a partir do webhook real do Resend (`ResendWebhookUseCase.ts:107`).
+
+Os **gaps reais** que a Fase D fecha (D3/D4):
+
+- **Portfolio:** `syncFromPortfolio` só é alcançável via rota de sync manual/batch (`RadarUseCase.ts:68`) — nenhum hook inline em `PortfolioUseCase`.
+- **EmailContact sem Lead correspondente:** além de não ter hook inline em `EmailContactListUseCase.addContact`, há uma barreira de **schema** (§7.2 abaixo) que impede o perfil de nascer só a partir de um e-mail.
+
+### 7.2 Bloqueio de schema: `RadarProfile.normalizedPhone`/`displayPhone` são `String` NOT NULL
+
+Em `prisma/schema.prisma`, o model `RadarProfile` declara `normalizedPhone String` e `displayPhone String` sem `?` — todo perfil hoje **exige** um telefone válido para existir (consistente com a decisão DA8/C3 de que "perfil continua exigindo telefone para nascer"). Isso bloqueia, por construção, qualquer perfil "email-only" (contato de e-mail sem Lead correspondente, ou lead capturado só por formulário/pixel sem telefone). A Fase D (D4) relaxa esses dois campos para `String?`, mantendo a unique `[teamId, normalizedPhone, normalizedName]` (que convive com múltiplos `NULL` em Postgres) e introduzindo `resolveProfileForEmail` como espelho de `resolveProfileForPhone`.
+
+### 7.3 `RadarSyncFilters` não tem filtro por portfólio/contato
+
+`lib/radar/sync-filters.ts` define hoje:
+
+```ts
+export interface RadarSyncFilters {
+  leadId?: string
+  updatedSince?: Date
+  emailLogSince?: Date
+}
+```
+
+Não há `portfolioId`/`contactId` — a Fase D (D3) estende esse tipo com `portfolioId?: string` para o novo `SyncPortfolioToRadarUseCase`, seguindo o mesmo padrão de filtro único por entidade já usado por `leadId`.
+
+### 7.4 Modelos de contrato relevantes para D13/D14
+
+- **`LeadPortfolio`** (1:1 com `Lead`, contrato **atual/em andamento**): `portfolioStatus`, `renewalStatus`, `renewalAmount`, `source: PortfolioSource` (`crm`/`manual`/`brokerage_transfer`), `lastContactAt`. O repositório `findPortfoliosForRadarSync` hoje **não seleciona** o campo `source` — necessário incluí-lo em D3 para detectar `brokerage_transfer` ("troca de corretagem").
+- **`LeadFinalized`** (1:N com `Lead`, contratos **históricos/fechados**): `finalizedDateAt`, `amount`, `contractType`, `operadora`, `productName`, `closerId`, com `holder: LeadFinalizedHolder?` e `dependents: LeadFinalizedDependent[]`.
+- **`LeadFinalizedHolder`/`LeadFinalizedDependent`:** têm `name`/`document`(opcional para dependentes)/`birthDate`, mas **nenhum telefone/e-mail** — um perfil Radar para eles (D14) precisa de um esquema de identidade novo, chaveado por `document` normalizado, com uma regra explícita para o caso sem documento (não gera perfil próprio).
+
+### 7.5 Nenhuma coluna de origem no Lead hoje
+
+O model `Lead` não tem nenhuma coluna equivalente a "canal de origem" — toda a informação de como o lead entrou (webhook Meta, webhook Studio, formulário público, import CSV, manual) hoje só existe implicitamente no caminho de código que criou o registro, não como um dado consultável. A Fase D (D1/D2) introduz `LeadOriginChannel` + `Lead.originChannel`/`originMetadata` para tornar essa origem uma condição de segmento e um dado exibível no perfil.
