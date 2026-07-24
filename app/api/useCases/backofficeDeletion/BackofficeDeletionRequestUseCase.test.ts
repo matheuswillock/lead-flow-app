@@ -92,9 +92,17 @@ describe("BackofficeDeletionRequestUseCase", () => {
 
   describe("createRequest", () => {
     it("cria USER_DELETE com snapshot e mensagem de 2 aprovações", async () => {
-      const create = mock(async () => ({ id: "req-new" }))
+      const createdPayload: Array<{
+        reason: string | null
+        snapshot: { email: string; isMaster: boolean }
+      }> = []
       const useCase = new BackofficeDeletionRequestUseCase(
-        createDeletionRepoMock({ create }),
+        createDeletionRepoMock({
+          create: async (input) => {
+            createdPayload.push(input as (typeof createdPayload)[number])
+            return { id: "req-new" }
+          },
+        }),
         createMemberRepoMock()
       )
 
@@ -107,20 +115,23 @@ describe("BackofficeDeletionRequestUseCase", () => {
 
       expect(output.isValid).toBe(true)
       expect(output.successMessages[0]).toContain("2 aprovações")
-      expect(create).toHaveBeenCalledTimes(1)
-      const arg = create.mock.calls[0]?.[0] as {
-        reason: string | null
-        snapshot: { email: string; isMaster: boolean }
-      }
-      expect(arg.reason).toBe("zona de perigo")
-      expect(arg.snapshot.email).toBe("alvo@example.com")
-      expect(arg.snapshot.isMaster).toBe(false)
+      expect(createdPayload[0]?.reason).toBe("zona de perigo")
+      expect(createdPayload[0]?.snapshot.email).toBe("alvo@example.com")
+      expect(createdPayload[0]?.snapshot.isMaster).toBe(false)
     })
 
     it("cria TEAM_DELETE com snapshot do time", async () => {
-      const create = mock(async () => ({ id: "req-team" }))
+      const createdPayload: Array<{
+        type: BackofficeDeletionRequestType
+        snapshot: { name: string; masterId: string }
+      }> = []
       const useCase = new BackofficeDeletionRequestUseCase(
-        createDeletionRepoMock({ create }),
+        createDeletionRepoMock({
+          create: async (input) => {
+            createdPayload.push(input as (typeof createdPayload)[number])
+            return { id: "req-team" }
+          },
+        }),
         createMemberRepoMock()
       )
 
@@ -131,13 +142,9 @@ describe("BackofficeDeletionRequestUseCase", () => {
       })
 
       expect(output.isValid).toBe(true)
-      const arg = create.mock.calls[0]?.[0] as {
-        type: BackofficeDeletionRequestType
-        snapshot: { name: string; masterId: string }
-      }
-      expect(arg.type).toBe("TEAM_DELETE")
-      expect(arg.snapshot.name).toBe("Salu Seguros")
-      expect(arg.snapshot.masterId).toBe("master-1")
+      expect(createdPayload[0]?.type).toBe("TEAM_DELETE")
+      expect(createdPayload[0]?.snapshot.name).toBe("Salu Seguros")
+      expect(createdPayload[0]?.snapshot.masterId).toBe("master-1")
     })
 
     it("bloqueia quando já existe pending para o alvo", async () => {
@@ -330,9 +337,9 @@ describe("BackofficeDeletionRequestUseCase", () => {
     })
 
     it("executa soft-delete de usuário ao atingir 2 aprovações distintas", async () => {
-      const softDeleteMemberCascade = mock(async () => undefined)
+      const softDeleteCalls: Array<[string, string, string]> = []
       const softDeleteTeamCascade = mock(async () => undefined)
-      const updateStatus = mock(async () => undefined)
+      const statusUpdates: Array<[string, string]> = []
 
       const approvalsAfter: BackofficeDeletionRequestListItem["approvals"] = [
         {
@@ -364,9 +371,16 @@ describe("BackofficeDeletionRequestUseCase", () => {
             return baseRequest({ approvals: approvalsAfter })
           },
           createApproval: async () => undefined,
-          updateStatus,
+          updateStatus: async (id, status) => {
+            statusUpdates.push([id, status])
+          },
         }),
-        createMemberRepoMock({ softDeleteMemberCascade, softDeleteTeamCascade })
+        createMemberRepoMock({
+          softDeleteMemberCascade: async (memberId, actorProfileId, requestId) => {
+            softDeleteCalls.push([memberId, actorProfileId, requestId ?? ""])
+          },
+          softDeleteTeamCascade,
+        })
       )
 
       const output = await useCase.decide({
@@ -378,14 +392,10 @@ describe("BackofficeDeletionRequestUseCase", () => {
 
       expect(output.isValid).toBe(true)
       expect(output.successMessages[0]).toContain("exclusão lógica executada")
-      expect(softDeleteMemberCascade).toHaveBeenCalledWith(
-        "profile-target",
-        "bruno-id",
-        "req-1"
-      )
+      expect(softDeleteCalls).toEqual([["profile-target", "bruno-id", "req-1"]])
       expect(softDeleteTeamCascade).not.toHaveBeenCalled()
-      expect(updateStatus.mock.calls[0]?.[0]).toBe("req-1")
-      expect(updateStatus.mock.calls[0]?.[1]).toBe("approved")
+      expect(statusUpdates[0]?.[0]).toBe("req-1")
+      expect(statusUpdates[0]?.[1]).toBe("approved")
     })
 
     it("executa soft-delete de time ao atingir 2 aprovações", async () => {

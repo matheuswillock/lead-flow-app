@@ -49,7 +49,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
               status: "success",
               filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
               fileName: "full.dump",
-              sizeBytes: 2048n,
+              sizeBytes: BigInt(2048),
               checksumSha256: "deadbeef",
               storageSyncPath: null,
               errorMessage: null,
@@ -69,32 +69,38 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
   describe("triggerCronBackup", () => {
     it("marca success e grava metadados quando VPS responde ok", async () => {
-      const update = mock(async () => undefined)
+      const lastUpdate: {
+        status?: string
+        fileName?: string | null
+        checksumSha256?: string | null
+        sizeBytes?: bigint | null
+      }[] = []
       const useCase = new BackofficeDatabaseBackupUseCase(
-        createRepoMock({ update }),
+        createRepoMock({
+          update: async (_id, data) => {
+            lastUpdate.push(data)
+          },
+        }),
         createVpsMock()
       )
 
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(true)
       expect((output.result as { id: string }).id).toBe("backup-1")
-      expect(update).toHaveBeenCalledTimes(1)
-      const payload = update.mock.calls[0]?.[1] as {
-        status: string
-        fileName: string | null
-        checksumSha256: string | null
-        sizeBytes: bigint | null
-      }
-      expect(payload.status).toBe("success")
-      expect(payload.fileName).toBe("full.dump")
-      expect(payload.checksumSha256).toBe("abc123")
-      expect(payload.sizeBytes).toBe(1024n)
+      expect(lastUpdate[0]?.status).toBe("success")
+      expect(lastUpdate[0]?.fileName).toBe("full.dump")
+      expect(lastUpdate[0]?.checksumSha256).toBe("abc123")
+      expect(lastUpdate[0]?.sizeBytes).toEqual(BigInt(1024))
     })
 
     it("marca failed quando VPS retorna erro", async () => {
-      const update = mock(async () => undefined)
+      const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
-        createRepoMock({ update }),
+        createRepoMock({
+          update: async (_id, data) => {
+            lastUpdate.push(data)
+          },
+        }),
         createVpsMock({
           runBackup: async () => ({ ok: false, error: "pg_dump failed" }),
         })
@@ -103,18 +109,18 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toContain("Falha ao executar backup")
-      const payload = update.mock.calls[0]?.[1] as {
-        status: string
-        errorMessage: string | null
-      }
-      expect(payload.status).toBe("failed")
-      expect(payload.errorMessage).toBe("pg_dump failed")
+      expect(lastUpdate[0]?.status).toBe("failed")
+      expect(lastUpdate[0]?.errorMessage).toBe("pg_dump failed")
     })
 
     it("marca failed quando VPS lança exceção", async () => {
-      const update = mock(async () => undefined)
+      const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
-        createRepoMock({ update }),
+        createRepoMock({
+          update: async (_id, data) => {
+            lastUpdate.push(data)
+          },
+        }),
         createVpsMock({
           runBackup: async () => {
             throw new Error("network down")
@@ -124,12 +130,8 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
-      const payload = update.mock.calls[0]?.[1] as {
-        status: string
-        errorMessage: string | null
-      }
-      expect(payload.status).toBe("failed")
-      expect(payload.errorMessage).toBe("network down")
+      expect(lastUpdate[0]?.status).toBe("failed")
+      expect(lastUpdate[0]?.errorMessage).toBe("network down")
     })
   })
 
@@ -172,12 +174,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
     })
 
     it("faz proxy do arquivo quando backup está success", async () => {
-      const downloadBackup = mock(async () =>
-        new Response(new Uint8Array([9]), {
-          status: 200,
-          headers: { "Content-Type": "application/gzip" },
-        })
-      )
+      const downloaded: Array<{ fileName: string; filePath?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
           findById: async () => ({
@@ -187,14 +184,22 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             status: "success",
             filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
             fileName: "full.dump",
-            sizeBytes: 10n,
+            sizeBytes: BigInt(10),
             checksumSha256: "x",
             storageSyncPath: null,
             errorMessage: null,
             createdAt: new Date(),
           }),
         }),
-        createVpsMock({ downloadBackup })
+        createVpsMock({
+          downloadBackup: async (input) => {
+            downloaded.push(input)
+            return new Response(new Uint8Array([9]), {
+              status: 200,
+              headers: { "Content-Type": "application/gzip" },
+            })
+          },
+        })
       )
 
       const result = await useCase.getDownloadStream("b1")
@@ -203,7 +208,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
         expect(result.fileName).toBe("full.dump")
         expect(result.contentType).toBe("application/gzip")
       }
-      expect(downloadBackup).toHaveBeenCalledWith({
+      expect(downloaded[0]).toEqual({
         fileName: "full.dump",
         filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
       })
@@ -219,7 +224,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             status: "success",
             filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
             fileName: "full.dump",
-            sizeBytes: 10n,
+            sizeBytes: BigInt(10),
             checksumSha256: "x",
             storageSyncPath: null,
             errorMessage: null,
