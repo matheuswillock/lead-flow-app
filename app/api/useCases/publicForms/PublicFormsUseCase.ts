@@ -108,6 +108,11 @@ export class PublicFormsUseCase {
     const result = await publicFormsService.list(access.teamId, filters)
     return new Output(true, [], [], {
       ...result,
+      items: result.items.map((item) => ({
+        ...item,
+        managedByCorretorStudio: Boolean(item.managedByBackofficeUserId),
+        managedByBackofficeUserId: undefined,
+      })),
       capabilities: { canEdit: isManager(access), canApprove: approvalPermission },
     })
   }
@@ -122,12 +127,13 @@ export class PublicFormsUseCase {
       return new Output(false, [], ["Acesso negado aos formulários"], null)
     }
     const form = await publicFormsService.get(access.teamId, id)
-    return form
-      ? new Output(true, [], [], {
-          ...form,
-          capabilities: { canEdit: isManager(access), canApprove: approvalPermission },
-        })
-      : new Output(false, [], ["Formulário não encontrado"], null)
+    if (!form) return new Output(false, [], ["Formulário não encontrado"], null)
+    const { managedByBackofficeUserId, ...rest } = form
+    return new Output(true, [], [], {
+      ...rest,
+      managedByCorretorStudio: Boolean(managedByBackofficeUserId),
+      capabilities: { canEdit: isManager(access), canApprove: approvalPermission },
+    })
   }
 
   async create(access: TeamAccess, input: PublicFormDraftInput) {

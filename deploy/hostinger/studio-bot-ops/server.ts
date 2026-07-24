@@ -126,6 +126,97 @@ function verifyAuth(req, body) {
   }
 }
 
+function verifyBearerOnly(req) {
+  if (!TOKEN) return false;
+  const auth = req.headers.authorization || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  return bearer === TOKEN;
+}
+
+const BACKUP_ROOT = process.env.BACKUP_ROOT || "/opt/lead-flow-app/backups";
+const BACKUP_SCRIPT =
+  process.env.BACKUP_SCRIPT_PATH ||
+  path.join(DEPLOY_DIR, "deploy/hostinger/backup-supabase.sh");
+
+async function handleBackupRun(_body, res) {
+  try {
+    const { stdout } = await execFileAsync("bash", [BACKUP_SCRIPT], {
+      env: {
+        ...process.env,
+        BACKUP_ROOT,
+      },
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    const lines = String(stdout || "")
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    const last = lines[lines.length - 1] || "{}";
+    let parsed = {};
+    try {
+      parsed = JSON.parse(last);
+    } catch {
+      return json(res, 500, { ok: false, error: "Saída do script de backup inválida", raw: last });
+    }
+    return json(res, 200, { ok: true, ...parsed });
+  } catch (error) {
+    return json(res, 500, { ok: false, error: execErrorDetail(error) });
+  }
+}
+
+async function handleBackupDownload(url, res) {
+  const fileName = (url.searchParams.get("file") || "full.dump").trim();
+  const requestedPath = (url.searchParams.get("path") || "").trim();
+
+  let absolute;
+  if (requestedPath) {
+    absolute = path.resolve(requestedPath);
+  } else {
+    // Resolve latest date folder containing fileName
+    const entries = await fs.readdir(BACKUP_ROOT, { withFileTypes: true }).catch(() => []);
+    const dirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort()
+      .reverse();
+    let found = null;
+    for (const dir of dirs) {
+      const candidate = path.join(BACKUP_ROOT, dir, fileName);
+      try {
+        await fs.access(candidate);
+        found = candidate;
+        break;
+      } catch {
+        // continue
+      }
+    }
+    if (!found) {
+      return json(res, 404, { ok: false, error: "Arquivo de backup não encontrado" });
+    }
+    absolute = found;
+  }
+
+  const rootResolved = path.resolve(BACKUP_ROOT);
+  if (!absolute.startsWith(rootResolved + path.sep) && absolute !== rootResolved) {
+    return json(res, 403, { ok: false, error: "Path fora do diretório de backups" });
+  }
+
+  try {
+    const data = await fs.readFile(absolute);
+    res.writeHead(200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${path.basename(absolute)}"`,
+      "Content-Length": data.length,
+    });
+    res.end(data);
+  } catch (error) {
+    return json(res, 404, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -583,6 +674,22 @@ const server = http.createServer(async (req, res) => {
     if (!TOKEN) {
       return json(res, 500, { ok: false, error: "OPS_AGENT_TOKEN não configurado" });
     }
+
+    // Backup endpoints: Bearer-only (cron Vercel / backoffice download)
+    if (req.method === "POST" && url.pathname === "/backup/run") {
+      if (!verifyBearerOnly(req)) {
+        return json(res, 401, { ok: false, error: "unauthorized" });
+      }
+      const body = await readBody(req);
+      return await handleBackupRun(body, res);
+    }
+    if (req.method === "GET" && url.pathname === "/backup/download") {
+      if (!verifyBearerOnly(req)) {
+        return json(res, 401, { ok: false, error: "unauthorized" });
+      }
+      return await handleBackupDownload(url, res);
+    }
+
     const body = req.method === "GET" ? "" : await readBody(req);
     if (!verifyAuth(req, body)) {
       return json(res, 401, { ok: false, error: "unauthorized" });

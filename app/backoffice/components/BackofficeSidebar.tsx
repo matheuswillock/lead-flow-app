@@ -21,6 +21,8 @@ import {
   ShieldBan,
   EllipsisVertical,
   ListChecks,
+  ShieldCheck,
+  Database,
   LogOut,
   UserRound,
   FileText,
@@ -163,6 +165,8 @@ const navigationItems: NavItem[] = [
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
   { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },
+  { title: "Aprovações", url: "/backoffice/approvals", icon: ShieldCheck },
+  { title: "Backups", url: "/backoffice/backups", icon: Database },
 ]
 
 function isItemActive(item: NavItem, pathname: string) {

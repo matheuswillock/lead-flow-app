@@ -191,6 +191,12 @@ export function BackofficeClientDetailsContainer() {
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [removeFromTeamTarget, setRemoveFromTeamTarget] = useState<{
+    member: BackofficeClientTeamMember
+    teamId: string
+  } | null>(null)
+  const [isRemovingFromTeam, setIsRemovingFromTeam] = useState(false)
+  const removeFromTeamInFlight = useRef(false)
   const [memberAccessActionId, setMemberAccessActionId] = useState<string | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addTeamOpen, setAddTeamOpen] = useState(false)
@@ -801,12 +807,11 @@ export function BackofficeClientDetailsContainer() {
                                             <DropdownMenuItem
                                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                               onClick={() => {
-                                                setSelectedMember(member)
-                                                setMemberDeleteOpen(true)
+                                                setRemoveFromTeamTarget({ member, teamId: team.id })
                                               }}
                                             >
                                               <Trash2 />
-                                              Deletar conta
+                                              Remover do time
                                             </DropdownMenuItem>
                                           ) : null}
                                         </DropdownMenuContent>
@@ -1231,11 +1236,56 @@ export function BackofficeClientDetailsContainer() {
         service={service}
         canManage={canManage}
         onSuccess={reload}
-        onDeleteRequest={() => {
-          setMemberEditOpen(false)
-          setMemberDeleteOpen(true)
-        }}
       />
+
+      <AlertDialog
+        open={removeFromTeamTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !isRemovingFromTeam) setRemoveFromTeamTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover do time?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso remove apenas a associação do membro ao time. A conta e os leads
+              permanecem intactos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingFromTeam}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRemovingFromTeam}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault()
+                void (async () => {
+                  if (!removeFromTeamTarget || removeFromTeamInFlight.current) return
+                  removeFromTeamInFlight.current = true
+                  setIsRemovingFromTeam(true)
+                  try {
+                    await service.removeMemberFromTeam(
+                      removeFromTeamTarget.member.id,
+                      removeFromTeamTarget.teamId
+                    )
+                    toast.success("Membro removido do time")
+                    setRemoveFromTeamTarget(null)
+                    reload()
+                  } catch (err) {
+                    console.error("[BackofficeClientDetailsContainer][removeFromTeam]", err)
+                    toast.error(err instanceof Error ? err.message : "Erro ao remover do time")
+                  } finally {
+                    removeFromTeamInFlight.current = false
+                    setIsRemovingFromTeam(false)
+                  }
+                })()
+              }}
+            >
+              {isRemovingFromTeam ? "Removendo..." : "Remover do time"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <BackofficeMemberDeleteDialog
         open={memberDeleteOpen}
