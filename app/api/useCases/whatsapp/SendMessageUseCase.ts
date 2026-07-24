@@ -46,6 +46,7 @@ class SendMessageUseCase {
       await assertCanAccessConversation(input.access, input.conversationId)
       const intentHash = requestHash(input)
 
+      let claimedRetry = false
       const existing = await whatsAppRepository.findOutboundCommand(input.teamId, input.clientMessageId)
       if (existing) {
         if (existing.conversationId !== input.conversationId) {
@@ -75,6 +76,7 @@ class SendMessageUseCase {
           if (!retry.claimed || !retry.messageId) {
             return new Output(false, [], ["Não foi possível reutilizar a intenção de envio."], whatsappError("IDEMPOTENCY_CONFLICT"))
           }
+          claimedRetry = true
         }
       }
 
@@ -100,6 +102,24 @@ class SendMessageUseCase {
       })
       if (!durable.messageId) {
         return new Output(false, [], ["Não foi possível registrar a intenção de envio."], whatsappError("INTERNAL_ERROR"))
+      }
+      // A unique command is the claim to call Evolution. If a concurrent
+      // request won the transaction, returning its durable state prevents a
+      // second delivery for the same clientMessageId. A claimed retry already
+      // owns the PENDING command, so createPending returns created:false and
+      // must continue to the provider call.
+      if (!durable.created && !claimedRetry) {
+        if (durable.conversationId !== input.conversationId) {
+          return new Output(false, [], ["A intenção de envio não corresponde à conversa."], whatsappError("IDEMPOTENCY_CONFLICT"))
+        }
+        if (durable.requestHash && durable.requestHash !== intentHash) {
+          return new Output(false, [], ["A intenção de envio não corresponde ao conteúdo original."], whatsappError("IDEMPOTENCY_CONFLICT"))
+        }
+        return new Output(true, ["Envio já está em processamento."], [], {
+          messageId: durable.messageId,
+          status: "PENDING",
+          idempotentReplay: true,
+        })
       }
 
       const result = await this.service.sendMessage({

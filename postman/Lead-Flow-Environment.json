@@ -129,6 +129,20 @@
       "description": "ID de uma LeadCustomFieldDefinition — usado em customFieldFilters/customFieldSort na listagem de leads"
     },
     {
+      "key": "radarProfileId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um RadarProfile — usado no detalhe/eventos do perfil e no preview de interpolação"
+    },
+    {
+      "key": "radarCustomSegmentId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um TeamRadarSegment (segmento custom do Radar) — usado nas rotas de segmentos custom"
+    },
+    {
       "key": "automationRuleId",
       "value": "",
       "type": "default",

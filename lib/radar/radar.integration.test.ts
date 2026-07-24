@@ -26,6 +26,7 @@ let EmailCampaignUseCase: typeof import("@/app/api/useCases/email/EmailCampaignU
 let EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB: typeof import("@/lib/email/campaign-limits").EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 let customerDataPlatformUseCase: typeof import("@/app/api/useCases/radar/RadarUseCase").customerDataPlatformUseCase
 let listRadarSegmentEmailRecipients: typeof import("@/lib/radar/list-segment-recipients").listRadarSegmentEmailRecipients
+let parseRadarSegmentRules: typeof import("@/lib/radar/segment-dsl").parseRadarSegmentRules
 
 if (RUN_INTEGRATION) {
   ;({ prisma } = await import("@/app/api/infra/data/prisma"))
@@ -40,6 +41,7 @@ if (RUN_INTEGRATION) {
   ;({ EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } = await import("@/lib/email/campaign-limits"))
   ;({ customerDataPlatformUseCase } = await import("@/app/api/useCases/radar/RadarUseCase"))
   ;({ listRadarSegmentEmailRecipients } = await import("@/lib/radar/list-segment-recipients"))
+  ;({ parseRadarSegmentRules } = await import("@/lib/radar/segment-dsl"))
 }
 
   const scope = {
@@ -989,5 +991,146 @@ describe.skipIf(!RUN_INTEGRATION)("Fixes de review C4 (visibilidade, delete guar
     for (const id of ids2) {
       expect(ids1.has(id)).toBe(false)
     }
+  })
+})
+
+describe.skipIf(!RUN_INTEGRATION)("C6 — regressão ponta a ponta (lead → perfil inline → segmento → campanha)", () => {
+  let teamId = ""
+  let ctx: TeamAccess
+  let templateId = ""
+  let segmentId = ""
+  let leadId = ""
+
+  beforeAll(async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const supabaseId = randomUUID()
+    const profile = await prisma.profile.create({
+      data: {
+        id: randomUUID(),
+        email: `radar-e2e-${suffix}@example.com`,
+        supabaseId,
+        fullName: "Radar E2E Tester",
+        isMaster: true,
+      },
+    })
+    const team = await prisma.team.create({
+      data: { id: randomUUID(), name: `Radar E2E Test ${suffix}`, masterId: profile.id },
+    })
+    await prisma.teamMember.create({
+      data: { id: randomUUID(), teamId: team.id, profileId: profile.id, role: "manager" },
+    })
+    teamId = team.id
+    ctx = {
+      supabaseId,
+      teamId: team.id,
+      profileId: profile.id,
+      profileEmail: profile.email,
+      profileName: profile.fullName,
+      isMaster: true,
+      managerId: profile.id,
+      canCreateAccountUsers: false,
+      canManageAccountTeams: false,
+      canTransferAccountLeads: false,
+      canViewAllTeams: false,
+      userTimezone: "America/Sao_Paulo",
+      teamMember: { role: "manager", functions: [] },
+    }
+
+    const templateGroupId = randomUUID()
+    const template = await prisma.emailTemplate.create({
+      data: {
+        id: templateGroupId,
+        teamId: team.id,
+        createdBy: profile.id,
+        name: "Template Radar E2E Test",
+        subject: "Assunto de teste",
+        html: "<p>Olá</p>",
+        editorMode: "html",
+        versionGroupId: templateGroupId,
+        versionNumber: 1,
+        status: "published",
+        isCurrentPublished: true,
+        approvalStatus: "approved",
+      },
+    })
+    templateId = template.id
+
+    const lead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-e2e-${suffix}`,
+        managerId: profile.id,
+        teamId: team.id,
+        name: "Lead E2E",
+        phone: `1198888${String(Date.now()).slice(-4)}`,
+        email: `lead-e2e-${suffix}@example.com`,
+        status: "new_opportunity",
+      },
+    })
+    leadId = lead.id
+  })
+
+  afterAll(async () => {
+    if (!teamId) return
+    await prisma.emailCampaign.deleteMany({ where: { teamId } })
+    await prisma.emailTemplate.deleteMany({ where: { teamId } })
+    await prisma.teamRadarSegment.deleteMany({ where: { teamId } })
+    await prisma.radarIdentity.deleteMany({ where: { teamId } })
+    await prisma.radarProfile.deleteMany({ where: { teamId } })
+    await prisma.lead.deleteMany({ where: { teamId } })
+    await prisma.teamMember.deleteMany({ where: { teamId } })
+    await prisma.team.deleteMany({ where: { id: teamId } })
+  })
+
+  it("lead criado → perfil nasce inline (C3) → segmento dinâmico encontra (C4) → campanha resolve o destinatário respeitando o limite (D11)", async () => {
+    // 1. Push inline (C3) — mesmo caminho que updateLeadStatus dispara fire-and-forget.
+    const syncResult = await syncLeadToRadarUseCase.execute({ leadId, teamId })
+    expect(syncResult.isValid).toBe(true)
+
+    const profile = await prisma.radarProfile.findFirst({
+      where: { teamId, identities: { some: { type: "lead_id", normalizedValue: leadId } } },
+    })
+    expect(profile).not.toBeNull()
+    expect(profile!.normalizedPrimaryEmail).not.toBeNull()
+
+    // 2. Segmento dinâmico (C4) — regra casa com o status do lead recém-criado.
+    const segment = await teamRadarSegmentService.create(teamId, ctx.profileId, {
+      name: "Segmento E2E novas oportunidades",
+      rules: { match: "all", conditions: [{ kind: "lead_status", statuses: ["new_opportunity"] }] },
+    })
+    segmentId = segment.id
+    const rules = parseRadarSegmentRules(segment.rulesJson)
+
+    const count = await radarSegmentQueryService.countProfiles(
+      { teamId, ctx: { profileId: ctx.profileId, teamMember: ctx.teamMember } },
+      rules
+    )
+    expect(count).toBe(1)
+
+    const profileIds = await radarSegmentQueryService.listProfileIds(
+      { teamId, ctx: { profileId: ctx.profileId, teamMember: ctx.teamMember } },
+      rules
+    )
+    expect(profileIds).toEqual([profile!.id])
+
+    // 3. Campanha (D11) — audiência ≤ EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB é aceita (nunca hardcoded 2000).
+    const emailCampaignUseCase = new EmailCampaignUseCase()
+    const campaignResult = await emailCampaignUseCase.create(
+      {
+        name: "Campanha E2E segmento dinâmico",
+        templateId,
+        radarSegmentSlug: `custom:${segmentId}`,
+      },
+      ctx
+    )
+    expect(campaignResult.isValid).toBe(true)
+
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { teamId, radarSegmentSlug: `custom:${segmentId}` },
+    })
+    expect(campaign).not.toBeNull()
+
+    const recipients = await listRadarSegmentEmailRecipients(teamId, `custom:${segmentId}`)
+    expect(recipients.map((recipient) => recipient.email)).toContain(profile!.normalizedPrimaryEmail!)
   })
 })
