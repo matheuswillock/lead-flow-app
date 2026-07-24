@@ -270,7 +270,12 @@ export interface IWhatsAppRepository {
     mediaMimeType?: string
     mediaFileName?: string
     caption?: string
-  }): Promise<{ created: boolean; messageId: string | null }>
+  }): Promise<{
+    created: boolean
+    messageId: string | null
+    conversationId: string | null
+    requestHash: string | null
+  }>
   retryFailedOutboundCommand(input: {
     teamId: string
     clientMessageId: string
