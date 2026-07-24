@@ -82,6 +82,16 @@ enum LeadRequiredDocumentStatus {
   rejected
 }
 
+enum LeadOriginChannel {
+  manual
+  csv_import
+  public_form
+  legacy_public_widget
+  studio_webhook
+  meta_webhook
+  whatsapp_manual
+}
+
 enum BackofficeLeadStatus {
   new_opportunity
   scheduled
@@ -1674,6 +1684,11 @@ model Lead {
   referrerLeadId  String?   @db.Uuid
   referrerName    String?   @db.Text
   referrerPhone   String?   @db.Text
+
+  // Origem de entrada (Radar Fase D1) — nullable, sem default de banco; leads
+  // pré-existentes ficam NULL por decisão (ver migration de backfill/RADAR_AUDIT.md §7.5)
+  originChannel   LeadOriginChannel?
+  originMetadata  Json?
 
   createdBy String?  @db.Uuid
   updatedBy String?  @db.Uuid
