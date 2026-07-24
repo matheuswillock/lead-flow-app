@@ -110,6 +110,8 @@ const CRM_LEAD_LIST_SELECT = {
   updatedBy: true,
   createdAt: true,
   updatedAt: true,
+  originChannel: true,
+  originMetadata: true,
   manager: {
     select: {
       id: true,

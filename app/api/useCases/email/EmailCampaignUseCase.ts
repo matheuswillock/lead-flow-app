@@ -189,6 +189,7 @@ export class EmailCampaignUseCase {
             dispatchCount: true,
             createdAt: true,
             createdBy: true,
+            managedByBackofficeUserId: true,
             templateId: true,
             contactListId: true,
             radarSegmentSlug: true,
@@ -294,6 +295,7 @@ export class EmailCampaignUseCase {
             errorMessage: campaign.errorMessage,
             subCampaignCount,
             isParentCampaign: subCampaignCount > 0,
+            managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
           }
         }),
         total,
@@ -376,6 +378,7 @@ export class EmailCampaignUseCase {
         ...(childTotals ?? {}),
         subCampaignCount: campaign.subCampaigns.length,
         isParentCampaign: isParent,
+        managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
       })
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)

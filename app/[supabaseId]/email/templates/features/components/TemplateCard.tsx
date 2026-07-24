@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { ArrowRight, Check, Copy, Mail, MoreHorizontal, Pencil, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ManagedByCorretorStudioBadge } from '@/components/email/ManagedByCorretorStudioBadge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -174,6 +175,11 @@ export function TemplateCard({
               <p className="truncate text-sm font-medium">{template.name}</p>
               <p className="truncate text-xs text-muted-foreground">{template.subject}</p>
               <p className="truncate text-xs text-muted-foreground">Por {creatorLabel}</p>
+              {template.managedByCorretorStudio ? (
+                <div className="mt-1">
+                  <ManagedByCorretorStudioBadge />
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <StatusBadge template={template} />

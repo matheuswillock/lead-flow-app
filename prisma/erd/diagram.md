@@ -68,6 +68,18 @@ rejected rejected
     
 
 
+        LeadOriginChannel {
+            manual manual
+csv_import csv_import
+public_form public_form
+legacy_public_widget legacy_public_widget
+studio_webhook studio_webhook
+meta_webhook meta_webhook
+whatsapp_manual whatsapp_manual
+        }
+    
+
+
         backoffice_lead_status {
             new_opportunity new_opportunity
 scheduled scheduled
@@ -1717,6 +1729,8 @@ meeting_scheduled meeting_scheduled
     Boolean isReferral "❓"
     String referrerName "❓"
     String referrerPhone "❓"
+    LeadOriginChannel originChannel "❓"
+    Json originMetadata "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3352,6 +3366,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:status"
     "corretor_studio_leads" |o--|o "MeetingHeald" : "enum:meetingHeald"
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:followUpSourceStatus"
+    "corretor_studio_leads" |o--|o "LeadOriginChannel" : "enum:originChannel"
     "corretor_studio_leads" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_leads" }o--|o corretor_studio_teams : "team"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "assignee"
@@ -3457,6 +3472,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_templates" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "approver"
     "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "rejecter"
     "corretor_studio_email_templates" ||--|| corretor_studio_email_templates : "versionGroup"
@@ -3465,13 +3481,16 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_email_template_history" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_contact_lists" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
+    "corretor_studio_email_import_jobs" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_campaigns" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
     "corretor_studio_email_campaigns" |o--|o corretor_studio_email_campaigns : "parentCampaign"

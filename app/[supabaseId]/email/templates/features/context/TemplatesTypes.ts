@@ -23,6 +23,7 @@ export interface Template {
     fullName: string | null
     email: string | null
   } | null
+  managedByCorretorStudio?: boolean
 }
 
 export interface TemplatesState {

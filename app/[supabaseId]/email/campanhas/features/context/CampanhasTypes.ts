@@ -47,6 +47,7 @@ export type Campaign = {
   subCampaignCount?: number
   isParentCampaign?: boolean
   subCampaigns?: SubCampaignSummary[]
+  managedByCorretorStudio?: boolean
 }
 
 export type CreditStatus = {
