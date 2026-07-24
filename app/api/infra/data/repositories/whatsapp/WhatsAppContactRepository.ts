@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { resolveContactNameUpdate } from "@/lib/whatsapp/contact-name"
 import type {
   CanonicalWhatsAppContact,
   IWhatsAppContactRepository,
@@ -42,7 +43,26 @@ class WhatsAppContactRepository implements IWhatsAppContactRepository {
       where: { teamId: input.teamId, phoneE164: input.phoneE164 },
       select: CANONICAL_CONTACT_SELECT,
     })
-    if (existing) return existing
+    if (existing) {
+      const nameUpdate = resolveContactNameUpdate({
+        currentName: existing.name,
+        currentSource: existing.nameSource,
+        incomingName: input.name,
+        incomingSource: input.nameSource ?? "PHONE_NUMBER",
+      })
+      if (!nameUpdate) return existing
+      return prisma.teamWhatsAppContact.update({
+        where: { id: existing.id },
+        data: {
+          name: nameUpdate.contactName,
+          displayName: nameUpdate.contactName,
+          nameSource: nameUpdate.contactNameSource,
+          searchText: `${nameUpdate.contactName} ${existing.phoneE164 ?? ""}`.trim().toLowerCase(),
+          lastSeenAt: new Date(),
+        },
+        select: CANONICAL_CONTACT_SELECT,
+      })
+    }
 
     // Legacy columns remain non-null while old readers coexist. A deterministic
     // technical key is never returned through the API.

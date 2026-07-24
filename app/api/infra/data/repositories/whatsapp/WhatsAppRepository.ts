@@ -598,7 +598,12 @@ class WhatsAppRepository implements IWhatsAppRepository {
     mediaMimeType?: string
     mediaFileName?: string
     caption?: string
-  }): Promise<{ created: boolean; messageId: string | null }> {
+  }): Promise<{
+    created: boolean
+    messageId: string | null
+    conversationId: string | null
+    requestHash: string | null
+  }> {
     return prisma.$transaction(async (tx) => {
       const conversation = await tx.whatsAppConversation.findFirst({
         where: { id: input.conversationId, teamId: input.teamId, deletedAt: null },
@@ -608,9 +613,16 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
       const existing = await tx.whatsAppOutboundCommand.findUnique({
         where: { teamId_clientMessageId: { teamId: input.teamId, clientMessageId: input.clientMessageId } },
-        select: { messageId: true },
+        select: { messageId: true, conversationId: true, requestHash: true },
       })
-      if (existing) return { created: false, messageId: existing.messageId }
+      if (existing) {
+        return {
+          created: false,
+          messageId: existing.messageId,
+          conversationId: existing.conversationId,
+          requestHash: existing.requestHash,
+        }
+      }
 
       const message = await tx.whatsAppMessage.create({
         data: {
@@ -645,7 +657,12 @@ class WhatsAppRepository implements IWhatsAppRepository {
           nextReconcileAt: new Date(Date.now() + 10 * 60_000),
         },
       })
-      return { created: true, messageId: message.id }
+      return {
+        created: true,
+        messageId: message.id,
+        conversationId: input.conversationId,
+        requestHash: input.requestHash,
+      }
     })
   }
 

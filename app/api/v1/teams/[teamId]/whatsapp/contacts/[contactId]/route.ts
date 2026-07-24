@@ -3,6 +3,7 @@ import { z } from "zod"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { updateWhatsAppContactUseCase } from "@/app/api/useCases/whatsapp/UpdateWhatsAppContactUseCase"
+import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
 
 const updateSchema = z.object({
   phone: z.string().min(8).optional(),
@@ -15,6 +16,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if ("error" in teamAccess) return NextResponse.json(teamAccess.error, { status: teamAccess.status })
   if (teamAccess.access.teamId !== teamId) {
     return NextResponse.json(new Output(false, [], ["Acesso negado a este time"], null), { status: 403 })
+  }
+  if (!isWhatsAppV3Enabled("contacts", teamId)) {
+    return NextResponse.json(new Output(false, [], ["Contatos V1 ainda não estão habilitados para este time."], null), { status: 404 })
   }
   const parsed = updateSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json(new Output(false, [], ["Payload inválido"], null), { status: 400 })
