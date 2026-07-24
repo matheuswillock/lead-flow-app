@@ -9211,7 +9211,6 @@
             "description": "Cancela o agendamento ativo do lead e limpa o snapshot de reunião no BackofficeLead."
           }
         },
-
         {
           "name": "POST Backoffice Lead Schedule Resend",
           "request": {
@@ -10290,6 +10289,314 @@
                 },
                 "description": "Adiciona o usuário master da conta a um time específico quando ele ainda não é membro. Retorna 409 se o master já pertence ao time."
               }
+            },
+            {
+              "name": "Studio Email (Client Team)",
+              "item": [
+                {
+                  "name": "GET Studio Email Campaigns",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/campaigns?page=1&pageSize=20",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "campaigns"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "pageSize",
+                          "value": "20"
+                        }
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
+                      ]
+                    },
+                    "description": "Lista campanhas de e-mail do produto para um time do cliente (visão backoffice)."
+                  }
+                },
+                {
+                  "name": "POST Studio Email Campaign",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Campanha gerenciada\",\n  \"templateId\": \"{{emailTemplateId}}\",\n  \"contactListId\": \"{{emailContactListId}}\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/campaigns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "campaigns"
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
+                      ]
+                    },
+                    "description": "Cria campanha no time do cliente e marca managedByCorretorStudio."
+                  }
+                },
+                {
+                  "name": "GET Studio Email Contact Lists",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/contact-lists",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "contact-lists"
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Email Templates",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/templates",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "templates"
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Email Analytics",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/analytics",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "analytics"
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Email Logs",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/logs?page=1&pageSize=20",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "logs"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "pageSize",
+                          "value": "20"
+                        }
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Email Settings",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/settings",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "settings"
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
@@ -17296,8 +17603,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "settings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "settings"
+              ]
             },
             "description": "MASTER: configurações do agente Ops (URL, env mascarado)."
           },
@@ -17307,15 +17623,29 @@
           "name": "PATCH Backoffice Bot Host Settings",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agentBaseUrl\": \"https://ops.corretorstudio.com\",\n  \"n8nEnv\": {\n    \"LEAD_FLOW_API_BASE_URL\": \"https://app.corretorstudio.com\"\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "settings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "settings"
+              ]
             }
           },
           "response": []
@@ -17327,8 +17657,18 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/settings/env-file",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "settings", "env-file"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "settings",
+                "env-file"
+              ]
             },
             "description": "MASTER: exporta .txt com agentBaseUrl, desiredHostVersion e variáveis N8N/Evolution (inclui secrets) salvas no host settings."
           },
@@ -17341,8 +17681,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/rotate-token",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "rotate-token"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "rotate-token"
+              ]
             },
             "description": "MASTER: gera novo OPS_AGENT_TOKEN (plain só nesta resposta)."
           },
@@ -17355,8 +17704,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/jobs",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "jobs"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "jobs"
+              ]
             }
           },
           "response": []
@@ -17368,8 +17726,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "health"
+              ]
             }
           },
           "response": []
@@ -17381,8 +17748,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/apply",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "apply"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "apply"
+              ]
             },
             "description": "MASTER: materializa .env.n8n/.env.evolution na VPS e recria containers."
           },
@@ -17392,15 +17768,29 @@
           "name": "POST Backoffice Bot Host Restart",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"target\": \"n8n\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/restart",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "restart"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "restart"
+              ]
             }
           },
           "response": []
@@ -17412,8 +17802,18 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/workflows/import",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "workflows", "import"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "workflows",
+                "import"
+              ]
             }
           },
           "response": []
@@ -17434,8 +17834,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/resync-bethania-webhook",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "resync-bethania-webhook"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "resync-bethania-webhook"
+              ]
             },
             "description": "MASTER: prévia/aplica webhook Evolution da instância Bethânia → N8N inbound."
           },
@@ -17448,8 +17857,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/host/sync",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "host", "sync"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "host",
+                "sync"
+              ]
             },
             "description": "MASTER: unpack host-pack + pull/up na VPS."
           },
@@ -17462,8 +17880,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/metrics",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "metrics"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "metrics"
+              ]
             }
           },
           "response": []
@@ -17475,8 +17902,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/configuration",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "configuration"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "configuration"
+              ]
             }
           },
           "response": []
@@ -17485,15 +17921,29 @@
           "name": "PATCH Backoffice Bot AI Configuration",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"enabled\": false,\n  \"shadowMode\": true,\n  \"rolloutPercentage\": 0\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/configuration",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "configuration"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "configuration"
+              ]
             }
           },
           "response": []
@@ -17505,8 +17955,18 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/provider/test",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "provider", "test"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "provider",
+                "test"
+              ]
             },
             "description": "MASTER: teste sintético Groq (persiste interaction+attempt)."
           },
@@ -17519,8 +17979,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/usage?page=1&pageSize=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "usage"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "usage"
+              ]
             }
           },
           "response": []
@@ -17532,8 +18001,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/bot/ai/export",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "backoffice", "bot", "ai", "export"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "bot",
+                "ai",
+                "export"
+              ]
             }
           },
           "response": []
