@@ -133,6 +133,7 @@ export class EmailContactListUseCase {
           totalContacts: true,
           isSystemDefault: true,
           isBlocklist: true,
+          managedByBackofficeUserId: true,
           createdAt: true,
           updatedAt: true,
           creator: { select: { id: true, fullName: true, email: true } },
@@ -251,6 +252,7 @@ export class EmailContactListUseCase {
             isSystemDefault: isDefault,
             isBlocklist,
             activeImport: isBlocklist ? null : (activeImportByListId.get(list.id) ?? null),
+            managedByCorretorStudio: Boolean(list.managedByBackofficeUserId),
           }
         })
         .sort((a, b) => {
@@ -279,6 +281,7 @@ export class EmailContactListUseCase {
           name: true,
           description: true,
           totalContacts: true,
+          managedByBackofficeUserId: true,
           createdAt: true,
           updatedAt: true,
           creator: { select: { id: true, fullName: true } },
@@ -294,7 +297,10 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Lista de contatos não encontrada"], null)
       }
 
-      return new Output(true, [], [], list)
+      return new Output(true, [], [], {
+        ...list,
+        managedByCorretorStudio: Boolean(list.managedByBackofficeUserId),
+      })
     } catch (error) {
       console.error("[EmailContactListUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar lista de contatos"], null)

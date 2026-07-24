@@ -40,6 +40,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
 
 function CampaignActionsMenu({
   campaign,
@@ -395,7 +396,14 @@ export function CampaignList({
                       </div>
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                      {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
+                      <div className="flex flex-col items-center gap-1">
+                        <span>
+                          {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
+                        </span>
+                        {campaign.managedByCorretorStudio ? (
+                          <ManagedByCorretorStudioBadge />
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm text-muted-foreground">
                       <div>{campaign.template?.name ?? "—"}</div>

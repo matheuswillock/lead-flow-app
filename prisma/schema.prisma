@@ -940,6 +940,10 @@ model BackofficeUser {
   emailCampaignsCreated  BackofficeEmailCampaign[]     @relation("BackofficeEmailCampaignCreator")
   emailContactListsCreated BackofficeEmailContactList[] @relation("BackofficeEmailContactListCreator")
   emailImportJobsCreated BackofficeEmailImportJob[]    @relation("BackofficeEmailImportJobCreator")
+  managedStudioEmailCampaigns    EmailCampaign[]    @relation("EmailCampaignManagedByBackoffice")
+  managedStudioEmailContactLists EmailContactList[] @relation("EmailContactListManagedByBackoffice")
+  managedStudioEmailTemplates    EmailTemplate[]    @relation("EmailTemplateManagedByBackoffice")
+  managedStudioEmailImportJobs   EmailImportJob[]   @relation("EmailImportJobManagedByBackoffice")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
@@ -2535,6 +2539,7 @@ model EmailTemplate {
   id          String   @id @default(uuid()) @db.Uuid
   teamId      String   @db.Uuid
   createdBy   String   @db.Uuid
+  managedByBackofficeUserId String? @db.Uuid
   name        String   @db.Text
   subject     String   @db.Text
   previewText String?  @db.Text
@@ -2559,6 +2564,7 @@ model EmailTemplate {
 
   team      Team            @relation("TeamEmailTemplates", fields: [teamId], references: [id], onDelete: Cascade)
   creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  managedByBackofficeUser BackofficeUser? @relation("EmailTemplateManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
   approver  Profile?        @relation("EmailTemplateApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   rejecter  Profile?        @relation("EmailTemplateRejecter", fields: [rejectedBy], references: [id], onDelete: SetNull)
   versionGroup EmailTemplate @relation("EmailTemplateVersionGroup", fields: [versionGroupId], references: [id], onDelete: Restrict)
@@ -2574,6 +2580,7 @@ model EmailTemplate {
   @@index([teamId, isCurrentPublished])
   @@unique([versionGroupId, versionNumber])
   @@index([createdBy])
+  @@index([managedByBackofficeUserId])
   @@map("corretor_studio_email_templates")
 }
 
@@ -2600,6 +2607,7 @@ model EmailContactList {
   id             String   @id @default(uuid()) @db.Uuid
   teamId         String   @db.Uuid
   createdBy      String   @db.Uuid
+  managedByBackofficeUserId String? @db.Uuid
   name           String   @db.Text
   description    String?  @db.Text
   csvStoragePath String?  @db.Text
@@ -2612,6 +2620,7 @@ model EmailContactList {
 
   team      Team            @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
   creator   Profile         @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  managedByBackofficeUser BackofficeUser? @relation("EmailContactListManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
   contacts  EmailContact[]
   campaigns EmailCampaign[]
   campaignDispatches EmailCampaignDispatch[]
@@ -2620,6 +2629,7 @@ model EmailContactList {
   @@index([teamId, isArchived])
   @@index([teamId, isBlocklist])
   @@index([createdBy])
+  @@index([managedByBackofficeUserId])
   @@map("corretor_studio_email_contact_lists")
 }
 
@@ -2629,6 +2639,7 @@ model EmailImportJob {
   teamId          String   @db.Uuid
   listId          String   @db.Uuid
   requestedBy     String   @db.Uuid
+  managedByBackofficeUserId String? @db.Uuid
   sourceFormat    String   @db.Text
   storagePath     String   @db.Text
   status          String   @default("pending") @db.Text
@@ -2647,9 +2658,11 @@ model EmailImportJob {
   team      Team             @relation("TeamEmailImportJobs", fields: [teamId], references: [id], onDelete: Cascade)
   list      EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
   requester Profile          @relation("EmailImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  managedByBackofficeUser BackofficeUser? @relation("EmailImportJobManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
 
   @@index([teamId, status])
   @@index([status, createdAt])
+  @@index([managedByBackofficeUserId])
   @@map("corretor_studio_email_import_jobs")
 }
 
@@ -2677,6 +2690,7 @@ model EmailCampaign {
   id                 String              @id @default(uuid()) @db.Uuid
   teamId             String              @db.Uuid
   createdBy          String              @db.Uuid
+  managedByBackofficeUserId String?      @db.Uuid
   name               String              @db.Text
   templateId         String              @db.Uuid
   contactListId      String?             @db.Uuid
@@ -2701,6 +2715,7 @@ model EmailCampaign {
 
   team           Team             @relation("TeamEmailCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
   creator        Profile          @relation("EmailCampaignCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  managedByBackofficeUser BackofficeUser? @relation("EmailCampaignManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
   template       EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
   contactList    EmailContactList? @relation(fields: [contactListId], references: [id], onDelete: Restrict)
   parentCampaign EmailCampaign?   @relation("EmailCampaignSubCampaigns", fields: [parentCampaignId], references: [id], onDelete: Cascade)
@@ -2712,6 +2727,7 @@ model EmailCampaign {
   @@index([teamId, scheduledAt])
   @@index([createdBy])
   @@index([parentCampaignId])
+  @@index([managedByBackofficeUserId])
   @@map("corretor_studio_email_campaigns")
 }
 

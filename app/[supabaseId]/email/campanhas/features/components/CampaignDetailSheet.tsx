@@ -23,6 +23,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -268,9 +269,14 @@ export function CampaignDetailSheet({
                 <div className="mb-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Criado por</span>
-                    <span className="font-medium">
-                      {detailCampaign.creator?.fullName || detailCampaign.creator?.email || "—"}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium">
+                        {detailCampaign.creator?.fullName || detailCampaign.creator?.email || "—"}
+                      </span>
+                      {detailCampaign.managedByCorretorStudio ? (
+                        <ManagedByCorretorStudioBadge />
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Destinatários</span>
