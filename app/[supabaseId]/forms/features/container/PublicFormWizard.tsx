@@ -6,8 +6,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd"
 import { ArrowLeft, Eye, GripVertical, HelpCircle, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { useTeamContext } from "@/app/context/TeamContext"
-import { useUserContext } from "@/app/context/UserContext"
+import { useOptionalTeamContext } from "@/app/context/TeamContext"
+import { useOptionalUser } from "@/app/context/UserContext"
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext"
 import { publicFormsService } from "../services/PublicFormsService"
 import { PublicFormRenderer } from "@/components/public-forms/PublicFormRenderer"
@@ -124,6 +124,24 @@ const emptyDraft: PublicFormDraftInput = {
 
 type Member = { profileId: string; name: string; functions: ("SDR" | "CLOSER")[] }
 
+export type PublicFormWizardHost = {
+  listHref: string
+  formHref: (formId: string) => string
+  previewHref: (formId: string) => string
+  loadContext: () => Promise<{
+    members: Member[]
+    customFields: LeadCustomFieldDefinitionDTO[]
+    healthPlans: Array<{ id: string; name: string }>
+    settings: PublicFormSettings | null
+  }>
+  getForm: (formId: string) => Promise<PublicFormDraftInput & { id: string }>
+  save: (
+    formId: string | null,
+    input: PublicFormDraftInput
+  ) => Promise<PublicFormDraftInput & { id: string }>
+  publish: (formId: string) => Promise<void>
+}
+
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.min(100, Math.max(0, Math.round(value)))
@@ -209,15 +227,30 @@ function PreviewLight({
   )
 }
 
-export function PublicFormWizard({ formId }: { formId?: string }) {
-  const { activeTeam } = useTeamContext()
-  const { user } = useUserContext()
+export function PublicFormWizard({
+  formId,
+  host,
+}: {
+  formId?: string
+  host?: PublicFormWizardHost
+}) {
+  const productTeam = useOptionalTeamContext()
+  const user = useOptionalUser()?.user ?? null
   const params = useParams<{ supabaseId: string }>()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setOverride } = usePageBreadcrumb()
   const isHealthPlanTemplate =
     !formId && searchParams.get("template") === "health_plan_simulator"
+  const activeTeam = host ? { id: "host" } : productTeam?.activeTeam
+  const listHref = host?.listHref ?? `/${params.supabaseId}/forms`
+  const formHref = host?.formHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}`)
+  const previewHref =
+    host?.previewHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}?preview=1`)
+
+  if (!host && !productTeam) {
+    throw new Error("PublicFormWizard requires TeamProvider when host is not provided")
+  }
 
   const [draft, setDraft] = useState<PublicFormDraftInput>(() => {
     if (formId) return emptyDraft
@@ -242,55 +275,107 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
   }, [setOverride, formId, draft.name])
 
   useEffect(() => {
-    if (!activeTeam?.id || !user?.id) return
-    const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
-    void fetch(`/api/v1/teams/${activeTeam.id}/members`, { headers: h })
-      .then((r) => r.json())
-      .then((o) => setMembers(o.result?.members ?? []))
-    void fetch(`/api/v1/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
-      .then((r) => r.json())
-      .then((o) =>
-        setCustomFields(
-          Array.isArray(o.result)
-            ? o.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
-            : [],
-        ),
-      )
-    void fetch("/api/v1/health-plans", { headers: h })
-      .then((r) => r.json())
-      .then((o) => {
-        const plans = Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []
-        setHealthPlans(plans)
-        if (isHealthPlanTemplate && plans.length > 0) {
-          setDraft((current) =>
-            applyHealthPlanCatalogToDraft(
-              current,
-              plans.map((plan: { name: string }) => plan.name),
-            ),
-          )
+    let cancelled = false
+    async function load() {
+      if (host) {
+        try {
+          const context = await host.loadContext()
+          if (cancelled) return
+          setMembers(context.members)
+          setCustomFields(context.customFields.filter((field) => field.isActive))
+          setHealthPlans(context.healthPlans)
+          setSettings(context.settings)
+          if (isHealthPlanTemplate && context.healthPlans.length > 0) {
+            setDraft((current) =>
+              applyHealthPlanCatalogToDraft(
+                current,
+                context.healthPlans.map((plan) => plan.name),
+              ),
+            )
+          }
+          if (formId) {
+            const form = await host.getForm(formId)
+            if (cancelled) return
+            setDraft({
+              ...emptyDraft,
+              ...form,
+              coverHighlights: form.coverHighlights ?? [],
+              questions: form.questions ?? [],
+              rules: form.rules ?? [],
+              scoreBands: form.scoreBands ?? [],
+            })
+          }
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+        } finally {
+          if (!cancelled) setLoading(false)
         }
-      })
-    void publicFormsClientService
-      .getSettings({ supabaseId: user.id, teamId: activeTeam.id })
-      .then(setSettings)
-      .catch(() => null)
-    if (formId) {
-      void publicFormsService
-        .get(user.id, activeTeam.id, formId)
-        .then((f) =>
-          setDraft({
-            ...emptyDraft,
-            ...f,
-            coverHighlights: f.coverHighlights ?? [],
-            questions: f.questions ?? [],
-            rules: f.rules ?? [],
-            scoreBands: f.scoreBands ?? [],
-          }),
-        )
-        .catch((e) => toast.error(e.message))
-        .finally(() => setLoading(false))
+        return
+      }
+
+      if (!activeTeam?.id || !user?.id) return
+      const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
+      void fetch(`/api/v1/teams/${activeTeam.id}/members`, { headers: h })
+        .then((r) => r.json())
+        .then((o) => {
+          if (!cancelled) setMembers(o.result?.members ?? [])
+        })
+      void fetch(`/api/v1/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
+        .then((r) => r.json())
+        .then((o) => {
+          if (cancelled) return
+          setCustomFields(
+            Array.isArray(o.result)
+              ? o.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
+              : [],
+          )
+        })
+      void fetch("/api/v1/health-plans", { headers: h })
+        .then((r) => r.json())
+        .then((o) => {
+          if (cancelled) return
+          const plans = Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []
+          setHealthPlans(plans)
+          if (isHealthPlanTemplate && plans.length > 0) {
+            setDraft((current) =>
+              applyHealthPlanCatalogToDraft(
+                current,
+                plans.map((plan: { name: string }) => plan.name),
+              ),
+            )
+          }
+        })
+      void publicFormsClientService
+        .getSettings({ supabaseId: user.id, teamId: activeTeam.id })
+        .then((value) => {
+          if (!cancelled) setSettings(value)
+        })
+        .catch(() => null)
+      if (formId) {
+        void publicFormsService
+          .get(user.id, activeTeam.id, formId)
+          .then((f) => {
+            if (cancelled) return
+            setDraft({
+              ...emptyDraft,
+              ...f,
+              coverHighlights: f.coverHighlights ?? [],
+              questions: f.questions ?? [],
+              rules: f.rules ?? [],
+              scoreBands: f.scoreBands ?? [],
+            })
+          })
+          .catch((e) => toast.error(e.message))
+          .finally(() => {
+            if (!cancelled) setLoading(false)
+          })
+      }
     }
-  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate])
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate, host])
 
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {
@@ -306,6 +391,24 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
   }
 
   async function save() {
+    if (host) {
+      setSaving(true)
+      try {
+        const payload = buildSavePayload(draft)
+        const f = await host.save(currentId ?? null, payload)
+        setCurrentId(f.id)
+        setDirty(false)
+        toast.success("Rascunho salvo")
+        if (!currentId) router.replace(host.formHref(f.id))
+        return f
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+        return null
+      } finally {
+        setSaving(false)
+      }
+    }
+
     if (!activeTeam?.id || !user?.id) return null
     setSaving(true)
     try {
@@ -328,10 +431,15 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
     setPublishing(true)
     try {
       const f = await save()
-      if (!f || !activeTeam?.id || !user?.id) return
-      await publicFormsService.action(user.id, activeTeam.id, f.id, "publish")
+      if (!f) return
+      if (host) {
+        await host.publish(f.id)
+      } else {
+        if (!activeTeam?.id || !user?.id) return
+        await publicFormsService.action(user.id, activeTeam.id, f.id, "publish")
+      }
       toast.success("Formulário publicado")
-      router.push(`/${params.supabaseId}/forms`)
+      router.push(listHref)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível publicar")
     } finally {
@@ -342,11 +450,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
   async function openPreview() {
     const form = await save()
     if (form) {
-      window.open(
-        `/${params.supabaseId}/forms/${form.id}?preview=1`,
-        "_blank",
-        "noopener,noreferrer",
-      )
+      window.open(previewHref(form.id), "_blank", "noopener,noreferrer")
     }
   }
 
@@ -385,7 +489,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
       <main className="flex min-h-dvh flex-col bg-muted/40">
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-background px-4 py-3">
           <Button variant="secondary" asChild>
-            <Link href={`/${params.supabaseId}/forms/${currentId}`}>
+            <Link href={formHref(currentId!)}>
               <ArrowLeft data-icon="inline-start" />
               Voltar ao editor
             </Link>
@@ -405,7 +509,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 md:px-6">
         <Button asChild variant="ghost">
           <Link
-            href={`/${params.supabaseId}/forms`}
+            href={listHref}
             onClick={(event) => {
               if (dirty) {
                 event.preventDefault()
@@ -551,7 +655,7 @@ export function PublicFormWizard({ formId }: { formId?: string }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction onClick={() => router.push(`/${params.supabaseId}/forms`)}>
+            <AlertDialogAction onClick={() => router.push(listHref)}>
               Sair sem salvar
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -483,6 +483,8 @@ export const useUser = (): UserContextState => {
   return context;
 };
 
+export const useOptionalUser = (): UserContextState | undefined => useContext(UserContext);
+
 /**
  * Alias for useUser hook (backward compatibility)
  */

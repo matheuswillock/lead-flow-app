@@ -10597,6 +10597,172 @@
                   }
                 }
               ]
+            },
+            {
+              "name": "Studio Public Forms (Client Team)",
+              "item": [
+                {
+                  "name": "GET Studio Public Forms",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms?page=1&pageSize=20",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms"
+                      ],
+                      "query": [
+                        { "key": "page", "value": "1" },
+                        { "key": "pageSize", "value": "20" }
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" }
+                      ]
+                    },
+                    "description": "Lista formulários públicos do produto para um time do cliente (visão backoffice)."
+                  }
+                },
+                {
+                  "name": "GET Studio Public Form",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/:formId",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms",
+                        ":formId"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" },
+                        { "key": "formId", "value": "{{publicFormId}}" }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "POST Studio Public Form Publish",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/:formId/publish",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms",
+                        ":formId",
+                        "publish"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" },
+                        { "key": "formId", "value": "{{publicFormId}}" }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Public Form Settings",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-form-settings",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-form-settings"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Public Form Wizard Context",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/wizard-context",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms",
+                        "wizard-context"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
