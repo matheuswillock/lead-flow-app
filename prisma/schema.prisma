@@ -944,6 +944,7 @@ model BackofficeUser {
   managedStudioEmailContactLists EmailContactList[] @relation("EmailContactListManagedByBackoffice")
   managedStudioEmailTemplates    EmailTemplate[]    @relation("EmailTemplateManagedByBackoffice")
   managedStudioEmailImportJobs   EmailImportJob[]   @relation("EmailImportJobManagedByBackoffice")
+  managedStudioPublicForms       PublicForm[]       @relation("PublicFormManagedByBackoffice")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
@@ -4584,6 +4585,7 @@ model PublicForm {
   createdById            String                     @db.Uuid
   assignedSdrId          String?                    @db.Uuid
   reviewedById           String?                    @db.Uuid
+  managedByBackofficeUserId String?                 @db.Uuid
   name                   String                     @db.Text
   description            String?                    @db.Text
   publicId               String                     @unique @default(uuid()) @db.Uuid
@@ -4612,6 +4614,7 @@ model PublicForm {
   creator                Profile                    @relation("PublicFormCreator", fields: [createdById], references: [id], onDelete: Restrict)
   assignedSdr            Profile?                   @relation("PublicFormAssignedSdr", fields: [assignedSdrId], references: [id], onDelete: SetNull)
   reviewer               Profile?                   @relation("PublicFormReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  managedByBackofficeUser BackofficeUser?           @relation("PublicFormManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
   eligibleClosers        PublicFormEligibleCloser[]
   questions              PublicFormQuestion[]
   rules                  PublicFormRule[]
@@ -4623,6 +4626,7 @@ model PublicForm {
   @@index([teamId, status, updatedAt(sort: Desc)])
   @@index([teamId, approvalStatus, updatedAt(sort: Desc)])
   @@index([assignedSdrId])
+  @@index([managedByBackofficeUserId])
   @@map("corretor_studio_public_forms")
 }
 

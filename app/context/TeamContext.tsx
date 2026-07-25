@@ -411,3 +411,5 @@ export const useTeamContext = () => {
   }
   return context;
 };
+
+export const useOptionalTeamContext = () => useContext(TeamContext);

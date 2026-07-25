@@ -3681,6 +3681,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_forms" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "assignedSdr"
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "reviewer"
+    "corretor_studio_public_forms" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_public_form_questions" |o--|| "PublicFormQuestionType" : "enum:type"

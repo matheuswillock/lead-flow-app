@@ -10,6 +10,7 @@ export type PublicFormListItem = {
   updatedAt: string
   _count: { submissions: number }
   publications: Array<{ id: string; version: number }>
+  managedByCorretorStudio?: boolean
 }
 
 export type PublicFormsPage = {

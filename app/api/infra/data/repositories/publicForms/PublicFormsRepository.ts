@@ -177,6 +177,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           status: true,
           approvalStatus: true,
           assignedSdrId: true,
+          managedByBackofficeUserId: true,
           updatedAt: true,
           assignedSdr: { select: { id: true, fullName: true } },
           _count: { select: { submissions: true } },
