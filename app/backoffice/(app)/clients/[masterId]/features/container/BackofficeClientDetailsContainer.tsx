@@ -63,6 +63,7 @@ import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
 import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
 import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
 import { BackofficeClientStudioEmailsPanel } from "../components/BackofficeClientStudioEmailsPanel"
+import { BackofficeClientPublicFormsPanel } from "../components/BackofficeClientPublicFormsPanel"
 import type { BackofficeClientTeam, BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
@@ -212,7 +213,7 @@ export function BackofficeClientDetailsContainer() {
 
   useEffect(() => {
     const tab = searchParams.get("tab")
-    if (tab === "invoices" || tab === "teams" || tab === "emails") {
+    if (tab === "invoices" || tab === "teams" || tab === "emails" || tab === "forms") {
       setActiveSection(tab)
     }
     const teamId = searchParams.get("teamId")
@@ -226,7 +227,10 @@ export function BackofficeClientDetailsContainer() {
     const currentTab = searchParams.get("tab")
     if (
       currentName === details.fullName &&
-      (currentTab === "teams" || currentTab === "invoices" || currentTab === "emails")
+      (currentTab === "teams" ||
+        currentTab === "invoices" ||
+        currentTab === "emails" ||
+        currentTab === "forms")
     ) {
       return
     }
@@ -234,14 +238,19 @@ export function BackofficeClientDetailsContainer() {
     const params = new URLSearchParams(searchParams.toString())
     params.set("name", details.fullName)
 
-    if (currentTab !== "teams" && currentTab !== "invoices" && currentTab !== "emails") {
+    if (
+      currentTab !== "teams" &&
+      currentTab !== "invoices" &&
+      currentTab !== "emails" &&
+      currentTab !== "forms"
+    ) {
       params.set("tab", activeSection)
     }
 
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }, [activeSection, details?.fullName, pathname, router, searchParams])
 
-  function handleTabChange(nextSection: "teams" | "invoices" | "emails") {
+  function handleTabChange(nextSection: "teams" | "invoices" | "emails" | "forms") {
     setActiveSection(nextSection)
     const params = new URLSearchParams(searchParams.toString())
     params.set("tab", nextSection)
@@ -250,7 +259,7 @@ export function BackofficeClientDetailsContainer() {
       params.set("name", details.fullName)
     }
 
-    if (nextSection === "emails" && selectedEmailTeamId) {
+    if ((nextSection === "emails" || nextSection === "forms") && selectedEmailTeamId) {
       params.set("teamId", selectedEmailTeamId)
     }
 
@@ -260,7 +269,17 @@ export function BackofficeClientDetailsContainer() {
   function handleEmailTeamChange(teamId: string | null) {
     setSelectedEmailTeamId(teamId)
     const params = new URLSearchParams(searchParams.toString())
-    params.set("tab", "emails")
+    params.set("tab", activeSection === "forms" ? "forms" : "emails")
+    if (teamId) params.set("teamId", teamId)
+    else params.delete("teamId")
+    if (details?.fullName) params.set("name", details.fullName)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  function handleFormsTeamChange(teamId: string | null) {
+    setSelectedEmailTeamId(teamId)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", "forms")
     if (teamId) params.set("teamId", teamId)
     else params.delete("teamId")
     if (details?.fullName) params.set("name", details.fullName)
@@ -593,12 +612,15 @@ export function BackofficeClientDetailsContainer() {
 
           <Tabs
             value={activeSection}
-            onValueChange={(value) => handleTabChange(value as "teams" | "invoices" | "emails")}
+            onValueChange={(value) =>
+              handleTabChange(value as "teams" | "invoices" | "emails" | "forms")
+            }
           >
             <TabsList>
               <TabsTrigger value="teams">Times</TabsTrigger>
               <TabsTrigger value="invoices">Faturas</TabsTrigger>
               <TabsTrigger value="emails">E-mails</TabsTrigger>
+              <TabsTrigger value="forms">Formulários</TabsTrigger>
             </TabsList>
 
             <TabsContent value="teams" className="mt-4">
@@ -1158,6 +1180,16 @@ export function BackofficeClientDetailsContainer() {
                 teams={details?.allTeams ?? []}
                 selectedTeamId={selectedEmailTeamId}
                 onSelectedTeamIdChange={handleEmailTeamChange}
+                canManage={canManage}
+              />
+            </TabsContent>
+
+            <TabsContent value="forms" className="mt-4">
+              <BackofficeClientPublicFormsPanel
+                masterId={masterId}
+                teams={details?.allTeams ?? []}
+                selectedTeamId={selectedEmailTeamId}
+                onSelectedTeamIdChange={handleFormsTeamChange}
                 canManage={canManage}
               />
             </TabsContent>

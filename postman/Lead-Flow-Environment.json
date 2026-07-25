@@ -122,6 +122,13 @@
       "description": "ID do time ativo para endpoints de integrações e webhook studio"
     },
     {
+      "key": "publicFormId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um PublicForm — usado nas rotas backoffice Studio Public Forms"
+    },
+    {
       "key": "leadCustomFieldDefinitionId",
       "value": "",
       "type": "default",

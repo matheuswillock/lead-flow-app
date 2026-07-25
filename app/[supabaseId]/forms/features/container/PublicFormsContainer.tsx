@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -286,16 +287,19 @@ export function PublicFormsContainer() {
               {forms.items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">
-                    {forms.capabilities.canEdit ? (
-                      <Link
-                        className="hover:underline"
-                        href={`/${params.supabaseId}/forms/${item.id}`}
-                      >
-                        {item.name}
-                      </Link>
-                    ) : (
-                      item.name
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {forms.capabilities.canEdit ? (
+                        <Link
+                          className="hover:underline"
+                          href={`/${params.supabaseId}/forms/${item.id}`}
+                        >
+                          {item.name}
+                        </Link>
+                      ) : (
+                        item.name
+                      )}
+                      {item.managedByCorretorStudio ? <ManagedByCorretorStudioBadge /> : null}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={item.status === "published" ? "default" : "secondary"}>
