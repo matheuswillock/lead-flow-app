@@ -22,7 +22,6 @@ export const publicFormDetailSelect = {
   approvalStatus: true,
   assignedSdrId: true,
   managedByBackofficeUserId: true,
-  managedByBackofficeUserId: true,
   coverTitle: true,
   coverDescription: true,
   coverBadge: true,
