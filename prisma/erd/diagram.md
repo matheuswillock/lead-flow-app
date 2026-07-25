@@ -68,6 +68,18 @@ rejected rejected
     
 
 
+        LeadOriginChannel {
+            manual manual
+csv_import csv_import
+public_form public_form
+legacy_public_widget legacy_public_widget
+studio_webhook studio_webhook
+meta_webhook meta_webhook
+whatsapp_manual whatsapp_manual
+        }
+    
+
+
         backoffice_lead_status {
             new_opportunity new_opportunity
 scheduled scheduled
@@ -1803,6 +1815,8 @@ meeting_scheduled meeting_scheduled
     Boolean isReferral "❓"
     String referrerName "❓"
     String referrerPhone "❓"
+    LeadOriginChannel originChannel "❓"
+    Json originMetadata "❓"
     DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -3451,6 +3465,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:status"
     "corretor_studio_leads" |o--|o "MeetingHeald" : "enum:meetingHeald"
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:followUpSourceStatus"
+    "corretor_studio_leads" |o--|o "LeadOriginChannel" : "enum:originChannel"
     "corretor_studio_leads" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_leads" }o--|o corretor_studio_teams : "team"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "assignee"

@@ -1,0 +1,11 @@
+-- D1: intentional no-op backfill for Lead.originChannel/originMetadata (Fase D).
+--
+-- Decision (see RADAR_AUDIT.md §7.5): there is no reliable historical signal to
+-- infer how a pre-existing lead entered the CRM (webhook logs, form submissions,
+-- import batches — none of that is joined back to `corretor_studio_leads` today).
+-- Rather than invent an origin for leads created before this migration, they stay
+-- NULL by design. Only leads created from D2 onward get `originChannel` populated,
+-- explicitly, at the point of creation.
+--
+-- This migration intentionally performs no UPDATE. It exists so the decision is
+-- traceable in migration history, separate from the schema migration itself.
