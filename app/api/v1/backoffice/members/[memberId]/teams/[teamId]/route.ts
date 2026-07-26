@@ -90,7 +90,11 @@ export async function DELETE(
     if (denied) return denied
 
     const { memberId, teamId } = await params
-    const output = await backofficeMemberUseCase.removeFromTeam(memberId, teamId)
+    const output = await backofficeMemberUseCase.removeFromTeam(
+      memberId,
+      teamId,
+      accessResult.access.profileId
+    )
 
     let status = 200
     if (!output.isValid) {

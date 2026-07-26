@@ -499,6 +499,46 @@ enum BackofficeAccessPrincipal {
   @@map("backoffice_access_principal")
 }
 
+enum BackofficeDeletionEntityType {
+  LEAD
+  TEAM
+  PROFILE
+  TEAM_MEMBERSHIP
+
+  @@map("backoffice_deletion_entity_type")
+}
+
+enum BackofficeDeletionRequestType {
+  USER_DELETE
+  TEAM_DELETE
+
+  @@map("backoffice_deletion_request_type")
+}
+
+enum BackofficeDeletionRequestStatus {
+  pending
+  approved
+  rejected
+  cancelled
+
+  @@map("backoffice_deletion_request_status")
+}
+
+enum BackofficeDeletionApprovalDecision {
+  approved
+  rejected
+
+  @@map("backoffice_deletion_approval_decision")
+}
+
+enum BackofficeDatabaseBackupStatus {
+  pending
+  success
+  failed
+
+  @@map("backoffice_database_backup_status")
+}
+
 // AgeRange foi alterado para String - formato livre: "36, 32, 13"
 
 enum SubscriptionStatus {
@@ -754,6 +794,8 @@ model Profile {
   subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
   activeTeamId             String?             @db.Uuid
   timezone                 String              @default("America/Sao_Paulo") @db.Text
+  deletedAt                DateTime?           @db.Timestamptz(6)
+  deletedByProfileId       String?             @db.Uuid
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -875,11 +917,20 @@ model Profile {
 
   auditLogsAsActor              AuditLog[]                    @relation("AuditLogActor")
 
+  deletedByProfile              Profile?                      @relation("ProfileDeletedBy", fields: [deletedByProfileId], references: [id], onDelete: SetNull)
+  profilesDeleted               Profile[]                     @relation("ProfileDeletedBy")
+  leadsDeleted                  Lead[]                        @relation("LeadDeletedBy")
+  teamsDeleted                  Team[]                        @relation("TeamDeletedBy")
+  backofficeDeletionRequestsRequested BackofficeDeletionRequest[] @relation("BackofficeDeletionRequestRequester")
+  backofficeDeletionApprovals   BackofficeDeletionApproval[]  @relation("BackofficeDeletionApprovalApprover")
+  backofficeDeletionAuditLogs   BackofficeDeletionAuditLog[]  @relation("BackofficeDeletionAuditLogActor")
+
   @@index([role])
   @@index([managerId])
   @@index([sponsorMasterId])
   @@index([cpfCnpj])
   @@index([googleConnectionId])
+  @@index([deletedAt])
   @@map("corretor_studio_profiles")
 }
 
@@ -953,6 +1004,79 @@ model BackofficeUser {
   @@index([linkedCorretorStudioProfileId], map: "backoffice_users_linked_profile_id_idx")
   @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
   @@map("backoffice_users")
+}
+
+model BackofficeDeletionRequest {
+  id                   String                         @id @default(uuid()) @db.Uuid
+  type                 BackofficeDeletionRequestType
+  targetId             String                         @db.Uuid
+  requestedByProfileId String                         @map("requestedByProfileId") @db.Uuid
+  status               BackofficeDeletionRequestStatus @default(pending)
+  reason               String?                        @db.Text
+  snapshot             Json?
+  createdAt            DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt            DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  executedAt           DateTime?                      @map("executedAt") @db.Timestamptz(6)
+
+  requestedBy Profile                      @relation("BackofficeDeletionRequestRequester", fields: [requestedByProfileId], references: [id], onDelete: Restrict)
+  approvals   BackofficeDeletionApproval[]
+  auditLogs   BackofficeDeletionAuditLog[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([type, targetId])
+  @@index([requestedByProfileId])
+  @@map("backoffice_deletion_requests")
+}
+
+model BackofficeDeletionApproval {
+  id                String                             @id @default(uuid()) @db.Uuid
+  requestId         String                             @map("requestId") @db.Uuid
+  approverProfileId String                             @map("approverProfileId") @db.Uuid
+  decision          BackofficeDeletionApprovalDecision
+  createdAt         DateTime                           @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  request  BackofficeDeletionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approver Profile                   @relation("BackofficeDeletionApprovalApprover", fields: [approverProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, approverProfileId])
+  @@index([approverProfileId])
+  @@map("backoffice_deletion_approvals")
+}
+
+model BackofficeDeletionAuditLog {
+  id             String                      @id @default(uuid()) @db.Uuid
+  entityType     BackofficeDeletionEntityType
+  entityId       String                      @db.Uuid
+  action         String                      @db.Text
+  actorProfileId String?                     @map("actorProfileId") @db.Uuid
+  requestId      String?                     @map("requestId") @db.Uuid
+  payload        Json?
+  createdAt      DateTime                    @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  actor   Profile?                   @relation("BackofficeDeletionAuditLogActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+  request BackofficeDeletionRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([actorProfileId])
+  @@index([requestId])
+  @@map("backoffice_deletion_audit_logs")
+}
+
+model BackofficeDatabaseBackup {
+  id               String                        @id @default(uuid()) @db.Uuid
+  startedAt        DateTime                      @default(now()) @map("startedAt") @db.Timestamptz(6)
+  finishedAt       DateTime?                     @map("finishedAt") @db.Timestamptz(6)
+  status           BackofficeDatabaseBackupStatus @default(pending)
+  filePath         String?                       @map("filePath") @db.Text
+  fileName         String?                       @map("fileName") @db.Text
+  sizeBytes        BigInt?                       @map("sizeBytes")
+  checksumSha256   String?                       @map("checksumSha256") @db.Text
+  storageSyncPath  String?                       @map("storageSyncPath") @db.Text
+  errorMessage     String?                       @map("errorMessage") @db.Text
+  createdAt        DateTime                      @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  @@index([status, startedAt(sort: Desc)])
+  @@map("backoffice_database_backups")
 }
 
 model BackofficeBannedUser {
@@ -1693,6 +1817,8 @@ model Lead {
 
   createdBy String?  @db.Uuid
   updatedBy String?  @db.Uuid
+  deletedAt DateTime? @db.Timestamptz(6)
+  deletedByProfileId String? @db.Uuid
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
@@ -1703,6 +1829,7 @@ model Lead {
   closer        Profile?         @relation("LeadCloser", fields: [closerId], references: [id], onDelete: SetNull)
   creator       Profile?         @relation("LeadCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater       Profile?         @relation("LeadUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  deletedBy     Profile?         @relation("LeadDeletedBy", fields: [deletedByProfileId], references: [id], onDelete: SetNull)
   referrerLead  Lead?            @relation("LeadReferrer", fields: [referrerLeadId], references: [id], onDelete: SetNull)
   referredLeads Lead[]           @relation("LeadReferrer")
   activities    LeadActivity[]
@@ -1733,6 +1860,7 @@ model Lead {
   @@index([followUpAt])
   @@index([statusEnteredAt])
   @@index([status])
+  @@index([deletedAt])
   @@index([teamId, status, createdAt(sort: Desc)])
   @@map("corretor_studio_leads")
 }
@@ -2081,10 +2209,13 @@ model Team {
   name      String   @db.Text
   masterId  String   @db.Uuid
   isDefault Boolean  @default(false)
+  deletedAt DateTime? @db.Timestamptz(6)
+  deletedByProfileId String? @db.Uuid
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   master                   Profile                       @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
+  deletedBy                Profile?                      @relation("TeamDeletedBy", fields: [deletedByProfileId], references: [id], onDelete: SetNull)
   members                  TeamMember[]
   leads                    Lead[]
   pendingOperators         PendingOperator[]
@@ -2147,6 +2278,7 @@ model Team {
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
 
   @@index([masterId])
+  @@index([deletedAt])
   @@map("corretor_studio_teams")
 }
 

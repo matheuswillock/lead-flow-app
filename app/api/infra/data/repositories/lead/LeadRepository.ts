@@ -108,6 +108,8 @@ const CRM_LEAD_LIST_SELECT = {
   referrerPhone: true,
   createdBy: true,
   updatedBy: true,
+  deletedAt: true,
+  deletedByProfileId: true,
   createdAt: true,
   updatedAt: true,
   originChannel: true,
@@ -185,8 +187,8 @@ export class LeadRepository implements ILeadRepository {
   }
 
   async findById(id: string): Promise<LeadRecord | null> {
-    return await prisma.lead.findUnique({
-      where: { id },
+    return await prisma.lead.findFirst({
+      where: { id, deletedAt: null },
       include: {
         manager: {
           select: {
@@ -243,8 +245,8 @@ export class LeadRepository implements ILeadRepository {
   }
 
   async findByLeadCode(leadCode: string): Promise<Lead | null> {
-    return await prisma.lead.findUnique({
-      where: { leadCode },
+    return await prisma.lead.findFirst({
+      where: { leadCode, deletedAt: null },
     });
   }
 
@@ -257,6 +259,7 @@ export class LeadRepository implements ILeadRepository {
     return prisma.lead.findFirst({
       where: {
         teamId,
+        deletedAt: null,
         OR: [
           { phone: normalizedPhone },
           ...(leadPhone ? [{ phone: leadPhone }] : []),
@@ -285,6 +288,7 @@ export class LeadRepository implements ILeadRepository {
       const existingLead = await tx.lead.findFirst({
         where: {
           teamId: params.teamId,
+          deletedAt: null,
           OR: [
             { phone: params.normalizedPhone },
             ...(leadPhone ? [{ phone: leadPhone }] : []),
@@ -357,6 +361,7 @@ export class LeadRepository implements ILeadRepository {
 
     const where: Prisma.LeadWhereInput = {
       managerId,
+      deletedAt: null,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
       ...(onlyTransfer && { isTransfer: true }),
@@ -517,6 +522,7 @@ export class LeadRepository implements ILeadRepository {
       where: {
         managerId,
         status,
+        deletedAt: null,
       },
       include: {
         manager: {
@@ -680,6 +686,7 @@ export class LeadRepository implements ILeadRepository {
 
     const where: any = {
       managerId,
+      deletedAt: null,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
       ...(onlyTransfer && { isTransfer: true }),
@@ -752,6 +759,7 @@ export class LeadRepository implements ILeadRepository {
 
     const where: any = {
       teamId,
+      deletedAt: null,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
       ...(onlyTransfer && { isTransfer: true }),
@@ -814,6 +822,7 @@ export class LeadRepository implements ILeadRepository {
     } = options || {};
 
     const where: Prisma.LeadWhereInput = {
+      deletedAt: null,
       OR: [
         { assignedTo: operatorId }, // Leads atribuídos ao operator
         { createdBy: operatorId },   // Leads criados pelo operator
@@ -952,6 +961,7 @@ export class LeadRepository implements ILeadRepository {
 
     const where: Prisma.LeadWhereInput = {
       teamId,
+      deletedAt: null,
       AND: [visibilityFilter, ...filters],
     };
 
@@ -1132,6 +1142,7 @@ export class LeadRepository implements ILeadRepository {
     return await prisma.lead.findMany({
       where: {
         teamId,
+        deletedAt: null,
         OR: conflictFilters,
       },
       select: {
@@ -1165,6 +1176,7 @@ export class LeadRepository implements ILeadRepository {
     return prisma.lead.findMany({
       where: {
         teamId,
+        deletedAt: null,
         ...(input.excludeLeadId ? { id: { not: input.excludeLeadId } } : {}),
         OR: orConditions,
       },
@@ -1186,6 +1198,7 @@ export class LeadRepository implements ILeadRepository {
     return prisma.lead.findMany({
       where: {
         teamId,
+        deletedAt: null,
         ...(input.excludeLeadId ? { id: { not: input.excludeLeadId } } : {}),
         OR: orConditions,
       },

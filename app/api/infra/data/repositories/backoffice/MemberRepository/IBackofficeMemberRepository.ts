@@ -96,12 +96,30 @@ export interface IBackofficeMemberRepository {
 
   deleteMemberCascade(memberId: string): Promise<void>
 
+  softDeleteMemberCascade(
+    memberId: string,
+    actorProfileId: string,
+    requestId?: string | null
+  ): Promise<void>
+
+  softDeleteTeamCascade(
+    teamId: string,
+    actorProfileId: string,
+    requestId?: string | null
+  ): Promise<void>
+
   findTeamMembership(
     teamId: string,
     profileId: string
   ): Promise<MemberTeamMembershipRecord | null>
 
   deleteTeamMembership(teamId: string, profileId: string): Promise<void>
+
+  deleteTeamMembershipWithAudit(input: {
+    teamId: string
+    profileId: string
+    actorProfileId: string
+  }): Promise<void>
 
   findTeamForMaster(teamId: string, masterId: string): Promise<{ id: string; masterId: string } | null>
   findTeamById(teamId: string): Promise<{ id: string; masterId: string } | null>

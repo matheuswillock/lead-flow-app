@@ -27,8 +27,6 @@ export function BackofficeTeamDeleteDialog({
   open,
   onOpenChange,
   team,
-  masterId,
-  service,
   onSuccess,
 }: BackofficeTeamDeleteDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false)
@@ -42,12 +40,30 @@ export function BackofficeTeamDeleteDialog({
     setIsDeleting(true)
 
     try {
-      await service.deleteTeam(masterId, team!.id)
-      toast.success("Time excluído com sucesso")
+      const response = await fetch("/api/v1/backoffice/deletion-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "TEAM_DELETE",
+          targetId: team!.id,
+          reason: `Solicitação de exclusão do time ${team!.name}`,
+        }),
+      })
+      const data = (await response.json()) as {
+        isValid?: boolean
+        errorMessages?: string[]
+        successMessages?: string[]
+      }
+      if (!response.ok || !data.isValid) {
+        throw new Error(data.errorMessages?.[0] ?? "Erro ao solicitar exclusão do time")
+      }
+      toast.success(
+        data.successMessages?.[0] ?? "Solicitação criada — pendente de 2 aprovações"
+      )
       onOpenChange(false)
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao excluir time")
+      toast.error(err instanceof Error ? err.message : "Erro ao solicitar exclusão do time")
     } finally {
       setIsDeleting(false)
       inFlight.current = false
@@ -60,19 +76,19 @@ export function BackofficeTeamDeleteDialog({
     <AlertDialog open={open} onOpenChange={isDeleting ? undefined : onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Excluir time</AlertDialogTitle>
+          <AlertDialogTitle>Solicitar exclusão do time</AlertDialogTitle>
           <AlertDialogDescription>
-            Tem certeza que deseja excluir o time <strong>{team.name}</strong>?
+            Isso cria uma solicitação de soft-delete do time <strong>{team.name}</strong> e
+            dos leads vinculados. Requer 2 aprovações.
             {memberCount > 0 && (
               <>
                 {" "}
                 {memberCount === 1
-                  ? "1 membro será desvinculado do time"
-                  : `${memberCount} membros serão desvinculados do time`}{" "}
-                (as contas não serão excluídas).
+                  ? "1 membro permanecerá com a conta ativa"
+                  : `${memberCount} membros permanecerão com as contas ativas`}
+                .
               </>
             )}
-            {" "}Esta ação não pode ser desfeita.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -85,7 +101,7 @@ export function BackofficeTeamDeleteDialog({
             disabled={isDeleting}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {isDeleting ? "Excluindo..." : "Excluir time"}
+            {isDeleting ? "Solicitando..." : "Solicitar exclusão"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

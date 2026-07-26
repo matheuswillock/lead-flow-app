@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Send, Sparkles, Trash2, X } from "lucide-react"
+import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Send, Sparkles, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,7 +33,6 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { maskPhone } from "@/lib/masks"
 import { toast } from "sonner"
-import { BackofficeMemberDeleteDialog } from "@/app/backoffice/(app)/clients/[masterId]/features/components/BackofficeMemberDeleteDialog"
 import { BackofficeMemberEditDialog } from "@/app/backoffice/(app)/clients/[masterId]/features/components/BackofficeMemberEditDialog"
 import type {
   BackofficeClientDetails,
@@ -143,7 +142,6 @@ export function BackofficeAllUsersContainer() {
   const [selectedMemberTeamId, setSelectedMemberTeamId] = useState<string | null>(null)
   const [selectedDetails, setSelectedDetails] = useState<BackofficeClientDetails | null>(null)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
-  const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
   const [userTypeDialogItem, setUserTypeDialogItem] = useState<BackofficeAllUsersItem | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [accessActionKey, setAccessActionKey] = useState<string | null>(null)
@@ -324,12 +322,6 @@ export function BackofficeAllUsersContainer() {
     const result = await resolveMemberContext(item, { loadDetails: true })
     if (!result) return
     setMemberEditOpen(true)
-  }
-
-  async function handleOpenDelete(item: BackofficeAllUsersItem) {
-    const result = await resolveMemberContext(item, { loadDetails: false })
-    if (!result) return
-    setMemberDeleteOpen(true)
   }
 
   async function handleMemberEditSuccess() {
@@ -580,15 +572,6 @@ export function BackofficeAllUsersContainer() {
                             Gerenciar tipo de usuário
                           </DropdownMenuItem>
                         ) : null}
-                        {canManage && !item.isMaster ? (
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                            onClick={() => void handleOpenDelete(item)}
-                          >
-                            <Trash2 />
-                            Deletar conta
-                          </DropdownMenuItem>
-                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -662,17 +645,6 @@ export function BackofficeAllUsersContainer() {
         service={clientDetailsService}
         canManage={canManage}
         onSuccess={() => void handleMemberEditSuccess()}
-        onDeleteRequest={() => {
-          setMemberEditOpen(false)
-          setMemberDeleteOpen(true)
-        }}
-      />
-      <BackofficeMemberDeleteDialog
-        open={memberDeleteOpen}
-        onOpenChange={setMemberDeleteOpen}
-        member={selectedMember}
-        service={clientDetailsService}
-        onSuccess={() => void handleActionSuccess()}
       />
       <BackofficeProfileUserTypeDialog
         open={userTypeDialogItem !== null}
