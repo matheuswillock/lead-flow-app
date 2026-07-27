@@ -1,10 +1,11 @@
--- Restore 7 leads agendados Andrezza Jesus / Viva Seguros (incidente hard-delete backoffice).
--- Fontes: EmailLog closer_schedule_notification + Resend get-email + notifications MEETING_REMINDER
---   (tmp/recovery/viva-andrezza-leads-agendados-recuperados-20260727.csv)
+-- Restore leads Viva Seguros (incidente hard-delete backoffice).
+-- 7 Andrezza (EmailLog+Resend+reminders) + 2 Carla (notifications only, parcial).
+-- G74676O (Gilberto) permanece intacto — não reinserido.
+-- Fontes: tmp/recovery/viva-andrezza-leads-agendados-recuperados-20260727.csv + corretor_studio_notifications
 -- teamId=a1b2c3d4-0001-4000-8000-000000000001
--- assignedTo=Andrezza Jesus (34d5a729-8a6b-4412-8cf4-6b0003e7e6bc, conta recriada 2026-07-27)
+-- SDR Andrezza=34d5a729-8a6b-4412-8cf4-6b0003e7e6bc; SDR Carla=907688ff-d10e-42f1-ab53-6f62995d1be7
 -- closer=Pedro Falcão (a3983ca7-5f03-4e34-a252-34966166750b)
--- Telefone: indisponível no template Resend antigo.
+-- Telefone/e-mail: Andrezza sem telefone (template Resend); Carla sem e-mail/telefone/Meet (só notification).
 -- Idempotente: ON CONFLICT (leadCode) DO NOTHING; schedule por leadId único.
 
 DO $$
@@ -12,6 +13,7 @@ DECLARE
   v_team uuid := 'a1b2c3d4-0001-4000-8000-000000000001';
   v_closer uuid := 'a3983ca7-5f03-4e34-a252-34966166750b';
   v_sdr uuid := '34d5a729-8a6b-4412-8cf4-6b0003e7e6bc';
+  v_carla uuid := '907688ff-d10e-42f1-ab53-6f62995d1be7';
   v_manager uuid;
   v_lead_id uuid;
 BEGIN
@@ -33,6 +35,13 @@ BEGIN
     WHERE id = v_sdr AND "deletedAt" IS NULL
   ) THEN
     v_sdr := NULL;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM "public"."corretor_studio_profiles"
+    WHERE id = v_carla AND "deletedAt" IS NULL
+  ) THEN
+    v_carla := NULL;
   END IF;
 
   INSERT INTO "public"."corretor_studio_leads" (
@@ -455,5 +464,128 @@ BEGIN
     WHERE NOT EXISTS (SELECT 1 FROM "public"."corretor_studio_leads_schedule" s WHERE s."leadId" = v_lead_id);
   END IF;
 
-  RAISE NOTICE 'Restore Viva/Andrezza concluído (7 leads agendados)';
+
+  -- === Carla: C48723E Carla Teste (parcial — só notification) ===
+  INSERT INTO "public"."corretor_studio_leads" (
+    "id", "leadCode", "name", "email", "phone", "cnpj", "status", "teamId", "managerId",
+    "assignedTo", "closerId", "notes", "meetingNotes", "meetingTitle", "meetingLink", "meetingType",
+    "meetingHeald", "meetingDate", "ticket", "soldPlan", "lossReason", "contractDueDate",
+    "currentHealthPlan", "currentValue", "referenceHospital", "currentTreatment", "age",
+    "createdAt", "updatedAt", "statusEnteredAt", "deletedAt", "deletedByProfileId"
+  ) VALUES (
+    'a9a0a5c6-b417-459b-9ab5-10c82d1ae8b9'::uuid,
+    'C48723E',
+    'Carla Teste',
+    NULL,
+    NULL,
+    NULL,
+    'scheduled'::"LeadStatus",
+    v_team,
+    v_manager,
+    v_carla,
+    v_closer,
+    'Recuperação parcial (notification LEAD_SCHEDULE_CREATED). Sem e-mail/telefone/Meet no rastro.
+[restore:notification 20260727]',
+    'Reunião agendada com Carla Teste',
+    'Estudo Plano de Saúde: Carla Teste',
+    NULL,
+    'online',
+    NULL,
+    '2026-06-16T02:30:00.000Z'::timestamptz,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    '2026-06-15T20:14:17.325+00'::timestamptz,
+    now(),
+    '2026-06-15T20:14:17.325+00'::timestamptz,
+    NULL,
+    NULL
+  ) ON CONFLICT ("leadCode") DO NOTHING;
+
+  SELECT id INTO v_lead_id FROM "public"."corretor_studio_leads" WHERE "leadCode" = 'C48723E';
+  IF v_lead_id IS NOT NULL THEN
+    INSERT INTO "public"."corretor_studio_leads_schedule" (
+      "id", "leadId", "date", "meetingLink", "meetingTitle", "meetingType", "notes", "createdAt", "updatedAt"
+    )
+    SELECT
+      gen_random_uuid(),
+      v_lead_id,
+      '2026-06-16T02:30:00.000Z'::timestamptz,
+      NULL,
+      'Estudo Plano de Saúde: Carla Teste',
+      'online',
+      'Reunião agendada com Carla Teste',
+      now(),
+      now()
+    WHERE NOT EXISTS (SELECT 1 FROM "public"."corretor_studio_leads_schedule" s WHERE s."leadId" = v_lead_id);
+  END IF;
+
+  -- === Carla: C34630E Carlos de Souza Cavalcante (parcial — só notification) ===
+  INSERT INTO "public"."corretor_studio_leads" (
+    "id", "leadCode", "name", "email", "phone", "cnpj", "status", "teamId", "managerId",
+    "assignedTo", "closerId", "notes", "meetingNotes", "meetingTitle", "meetingLink", "meetingType",
+    "meetingHeald", "meetingDate", "ticket", "soldPlan", "lossReason", "contractDueDate",
+    "currentHealthPlan", "currentValue", "referenceHospital", "currentTreatment", "age",
+    "createdAt", "updatedAt", "statusEnteredAt", "deletedAt", "deletedByProfileId"
+  ) VALUES (
+    '738b1dbf-8995-49dc-a8dd-d0dd71b381f6'::uuid,
+    'C34630E',
+    'Carlos de Souza Cavalcante',
+    NULL,
+    NULL,
+    NULL,
+    'scheduled'::"LeadStatus",
+    v_team,
+    v_manager,
+    v_carla,
+    v_closer,
+    'Recuperação parcial (notification LEAD_SCHEDULE_CREATED). Sem e-mail/telefone/Meet no rastro.
+[restore:notification 20260727]',
+    'Reunião agendada com Carlos de Souza Cavalcante',
+    'Estudo Plano de Saúde: Carlos de Souza Cavalcante',
+    NULL,
+    'online',
+    NULL,
+    '2026-06-19T14:00:00.000Z'::timestamptz,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    '2026-06-16T14:58:31.755+00'::timestamptz,
+    now(),
+    '2026-06-16T14:58:31.755+00'::timestamptz,
+    NULL,
+    NULL
+  ) ON CONFLICT ("leadCode") DO NOTHING;
+
+  SELECT id INTO v_lead_id FROM "public"."corretor_studio_leads" WHERE "leadCode" = 'C34630E';
+  IF v_lead_id IS NOT NULL THEN
+    INSERT INTO "public"."corretor_studio_leads_schedule" (
+      "id", "leadId", "date", "meetingLink", "meetingTitle", "meetingType", "notes", "createdAt", "updatedAt"
+    )
+    SELECT
+      gen_random_uuid(),
+      v_lead_id,
+      '2026-06-19T14:00:00.000Z'::timestamptz,
+      NULL,
+      'Estudo Plano de Saúde: Carlos de Souza Cavalcante',
+      'online',
+      'Reunião agendada com Carlos de Souza Cavalcante',
+      now(),
+      now()
+    WHERE NOT EXISTS (SELECT 1 FROM "public"."corretor_studio_leads_schedule" s WHERE s."leadId" = v_lead_id);
+  END IF;
+
+  RAISE NOTICE 'Restore Viva concluído (9 leads: 7 Andrezza + 2 Carla; G74676O já existia)';
 END $$;
