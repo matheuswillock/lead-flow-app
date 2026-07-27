@@ -197,6 +197,7 @@ export class PublicFormSubmissionUseCase {
           soldPlan: undefined,
           customFields: custom,
           confirmDuplicate: true,
+          originChannel: "public_form",
         }
         const output = await leadUseCase.createLead(
           form.team.master.supabaseId,

@@ -47,7 +47,7 @@
     "lint:check": "prettier --check .",
     "lint:fix": "prettier --write .",
     "lint:pt-br": "bun scripts/lint-pt-br.ts",
-    "test": "bun test --isolate app/api/useCases/leads/utils app/api/v1/leads/DTO app/api/services/resend lib/email lib/leadCustomFields lib/radar lib/web-push lib/proxy lib/studio-bot lib/public-forms lib/auth \"app/[supabaseId]/radar/features/utils\" app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/leadSchedule app/api/useCases/email app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup",
+    "test": "bun test --isolate app/api/useCases/leads/utils app/api/v1/leads/DTO app/api/services/resend lib/email lib/leadCustomFields lib/radar lib/web-push lib/proxy lib/studio-bot lib/public-forms lib/auth \"app/[supabaseId]/radar/features/utils\" app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/leadSchedule app/api/useCases/email app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup app/api/useCases/integrations app/api/useCases/metaLeads",
     "test:backoffice-deletion": "bun test --isolate app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup",
     "test:email": "bun test --isolate app/api/services/resend lib/email app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
     "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts",
