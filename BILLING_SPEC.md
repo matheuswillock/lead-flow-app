@@ -280,7 +280,7 @@ Migration: `bun run db:migrate:from-prisma -- pricing-multi-slug-installments` (
 ### [Estágio 4 parcial] Parcelas CUSTOM — 2026-07-27
 
 **Branch:** `claude/blissful-faraday-05e253`  
-**Commit:** _a preencher após git commit_
+**Commit:** `cb495d60` — feat(pricing): parcelas CUSTOM com valores diferentes por ciclo (D12 parcial)
 
 **Arquivos alterados:**
 - `prisma/schema.prisma` — enum `InstallmentSplitMode { EQUAL, CUSTOM }`, campos `installmentSplitMode` e `installmentSchedule` (Json) em `BackofficeProductPaymentRule`
