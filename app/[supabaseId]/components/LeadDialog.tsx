@@ -1539,7 +1539,8 @@ export default function LeadDialog({
 
   const onSubmit = async (data: LeadFormWithCustomFields, mode: LeadFormSaveMode = "full") => {
     const saveAsDraft = mode === "draft";
-    if (leadCustomFieldDefinitions.length > 0 && data.customFields) {
+    const saveAssigneesOnly = mode === "assignees";
+    if (!saveAssigneesOnly && leadCustomFieldDefinitions.length > 0 && data.customFields) {
       const customValidation = buildLeadCustomFieldsSchema(leadCustomFieldDefinitions).safeParse({
         customFields: data.customFields,
       });
@@ -1553,6 +1554,65 @@ export default function LeadDialog({
     try {
       if (currentLead) {
         setPendingSubmitData(null);
+        if (saveAssigneesOnly) {
+          const loadingToast = toast.loading("Salvando SDR e closer...");
+          try {
+            if (!supabaseId) {
+              toast.error("Usuário não identificado", { id: loadingToast });
+              return;
+            }
+
+            const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                "x-supabase-user-id": supabaseId,
+                "x-team-id": activeTeamId || "",
+              },
+              body: JSON.stringify({
+                assignedTo: data.responsible || null,
+                closerId: data.closerId || null,
+              }),
+            });
+
+            const result = await response.json().catch(() => null);
+            if (!response.ok || !result?.isValid) {
+              throw new Error(
+                result?.errorMessages?.join(", ") || "Erro ao salvar SDR/closer do lead"
+              );
+            }
+
+            const assigneesPatch =
+              result.result && typeof result.result === "object"
+                ? (result.result as Partial<Lead>)
+                : {
+                    assignedTo: data.responsible || null,
+                    closerId: data.closerId || null,
+                  };
+
+            await applyLocalLeadPatch(currentLead.id, assigneesPatch);
+            setLocalLead((prev) =>
+              prev && prev.id === currentLead.id
+                ? ({ ...prev, ...assigneesPatch } as Lead)
+                : prev,
+            );
+            form.setValue("responsible", data.responsible || "", { shouldDirty: false });
+            form.setValue("closerId", data.closerId || "", { shouldDirty: false });
+            toast.success("SDR e closer salvos com sucesso!", {
+              id: loadingToast,
+              duration: 3000,
+            });
+          } catch (assigneesError) {
+            toast.error(
+              assigneesError instanceof Error
+                ? assigneesError.message
+                : "Erro ao salvar SDR/closer do lead",
+              { id: loadingToast, duration: 5000 }
+            );
+          }
+          return;
+        }
+
         const loadingToast = toast.loading(
           saveAsDraft ? "Salvando rascunho..." : "Atualizando lead..."
         );

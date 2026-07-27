@@ -772,6 +772,12 @@ export class LeadScheduleService implements ILeadScheduleService {
     if (isOnlineMeeting && inviteDispatchStatus !== "failed") {
       try {
         const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
+        const leadPhoneForNotify = (
+          await prisma.lead.findUnique({
+            where: { id: leadId },
+            select: { phone: true },
+          })
+        )?.phone;
         await emailService.sendCloserScheduleNotificationEmail({
           to: closerEmail,
           teamId,
@@ -781,6 +787,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingDate,
           meetingLink: resolvedMeetingLink,
           leadCode,
+          leadPhone: leadPhoneForNotify ?? null,
           isReschedule,
           attendees: attendeeEmails,
           notes: meetingNotes ?? null,

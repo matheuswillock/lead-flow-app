@@ -201,6 +201,7 @@ export interface CloserScheduleNotificationEmailData {
   closerName: string;
   leadName: string;
   leadCode?: string | null;
+  leadPhone?: string | null;
   meetingTitle: string;
   meetingDate: Date;
   meetingLink?: string | null;
@@ -1900,6 +1901,9 @@ export class EmailService {
     const leadCrmMarkup = leadCrmUrl
       ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead no Corretor Studio:</strong> <a href="${leadCrmUrl}" style="color: #ff6900; text-decoration: none;">Abrir lead no CRM</a></p>`
       : "";
+    const leadPhoneMarkup = data.leadPhone?.trim()
+      ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Telefone:</strong> ${data.leadPhone.trim()}</p>`
+      : "";
     const linkMarkup = data.meetingLink
       ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
       : "Link não informado";
@@ -1939,6 +1943,7 @@ export class EmailService {
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead:</strong> ${data.leadName}</p>
+                      ${leadPhoneMarkup}
                       ${leadCrmMarkup}
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${linkMarkup}</p>
                       <div style="margin: 0; color: #7c2d12; font-size: 14px;">
