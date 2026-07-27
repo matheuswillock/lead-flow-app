@@ -5,15 +5,36 @@ import type {
 } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
+import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 import { BackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/BackofficeDeletionRequestRepository"
 import type { IBackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/IBackofficeDeletionRequestRepository"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
-import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
+import type {
+  IBackofficeMemberRepository,
+  MemberForDeletionRecord,
+} from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
 import {
   BACKOFFICE_DELETION_APPROVER_EMAILS,
   isBackofficeDeletionApproverEmail,
 } from "./deletionApproverEmails"
 import type { IBackofficeDeletionRequestUseCase } from "./IBackofficeDeletionRequestUseCase"
+
+function isIdempotentAsaasCancelError(errorMessage: string): boolean {
+  const normalized = errorMessage
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+  const patterns = [
+    "not found",
+    "nao encontrado",
+    "nao encontrada",
+    "already cancelled",
+    "already canceled",
+    "ja cancelad",
+  ]
+  return patterns.some((pattern) => normalized.includes(pattern))
+}
 
 export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequestUseCase {
   constructor(
@@ -182,7 +203,69 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
       )
     } catch (error) {
       console.error("[BackofficeDeletionRequestUseCase][decide]", error)
-      return new Output(false, [], ["Erro ao processar decisão"], null)
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Erro ao processar decisão"
+      return new Output(false, [], [message], null)
+    }
+  }
+
+  private async cancelBillingBeforeUserDeletion(member: MemberForDeletionRecord): Promise<void> {
+    if (
+      member.subscriptionAsaasId &&
+      !member.subscriptionAsaasId.startsWith("backoffice-adhesion-")
+    ) {
+      try {
+        await AsaasSubscriptionService.cancelSubscription(member.subscriptionAsaasId)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!isIdempotentAsaasCancelError(message)) {
+          console.error(
+            "[BackofficeDeletionRequestUseCase][cancelBillingBeforeUserDeletion] Asaas:",
+            message
+          )
+          throw new Error(
+            "Não foi possível cancelar a assinatura do usuário. Tente novamente em alguns instantes."
+          )
+        }
+      }
+    }
+
+    const billingMasterId = member.isMaster ? member.id : member.managerId
+    if (billingMasterId) {
+      try {
+        await memberProBillingUseCase.syncBillingAfterUsageChange(
+          billingMasterId,
+          "backoffice_user_delete"
+        )
+      } catch (error) {
+        console.error(
+          "[BackofficeDeletionRequestUseCase][cancelBillingBeforeUserDeletion] Member PRO sync:",
+          error
+        )
+      }
+    }
+  }
+
+  private async banSupabaseUser(supabaseId: string): Promise<void> {
+    const supabase = createSupabaseAdmin()
+    if (!supabase) {
+      throw new Error("Cliente Supabase Admin indisponível para desativar a conta Auth")
+    }
+
+    const { error } = await supabase.auth.admin.updateUserById(supabaseId, {
+      ban_duration: "876000h",
+    })
+
+    if (error) {
+      console.error(
+        "[BackofficeDeletionRequestUseCase][banSupabaseUser]",
+        error.message
+      )
+      throw new Error(
+        "Não foi possível desativar a conta Auth no Supabase. A exclusão não foi concluída."
+      )
     }
   }
 
@@ -194,23 +277,17 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
   ): Promise<void> {
     if (type === "USER_DELETE") {
       const member = await this.memberRepository.findMemberForDeletion(targetId)
-      await this.memberRepository.softDeleteMemberCascade(targetId, actorProfileId, requestId)
-
-      if (member?.supabaseId) {
-        try {
-          const supabase = createSupabaseAdmin()
-          if (supabase) {
-            await supabase.auth.admin.updateUserById(member.supabaseId, {
-              ban_duration: "876000h",
-            })
-          }
-        } catch (authError) {
-          console.error(
-            "[BackofficeDeletionRequestUseCase][executeApprovedRequest] Falha ao desativar Auth:",
-            authError
-          )
-        }
+      if (!member) {
+        throw new Error("Usuário não encontrado ou já excluído")
       }
+
+      await this.cancelBillingBeforeUserDeletion(member)
+
+      if (member.supabaseId) {
+        await this.banSupabaseUser(member.supabaseId)
+      }
+
+      await this.memberRepository.softDeleteMemberCascade(targetId, actorProfileId, requestId)
       return
     }
 
