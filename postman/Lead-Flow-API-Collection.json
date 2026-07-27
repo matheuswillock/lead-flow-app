@@ -13819,7 +13819,32 @@
                     "backups"
                   ]
                 },
-                "description": "Lista metadados de backups diários."
+                "description": "Lista metadados de backups diários (cron e manuais)."
+              }
+            },
+            {
+              "name": "POST Manual Backup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/backups",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "backups"
+                  ]
+                },
+                "description": "Dispara backup imediato na VPS (source=manual). Requer manager. Bloqueia se já houver pending."
               }
             },
             {
@@ -13878,7 +13903,7 @@
                     "database-backup"
                   ]
                 },
-                "description": "Cron 05:00 BRT (08:00 UTC) — dispara dump na VPS e grava metadados."
+                "description": "Cron 05:00 BRT (08:00 UTC) — dispara dump na VPS e grava metadados com source=cron."
               }
             }
           ]

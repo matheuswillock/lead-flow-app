@@ -5,8 +5,8 @@ import type {
 } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
-import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService"
-import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
+import { BackofficeDeletionBillingService } from "@/app/api/services/backofficeDeletionBilling/BackofficeDeletionBillingService"
+import type { IBackofficeDeletionBillingService } from "@/app/api/services/backofficeDeletionBilling/IBackofficeDeletionBillingService"
 import { BackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/BackofficeDeletionRequestRepository"
 import type { IBackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/IBackofficeDeletionRequestRepository"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
@@ -39,7 +39,8 @@ function isIdempotentAsaasCancelError(errorMessage: string): boolean {
 export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequestUseCase {
   constructor(
     private readonly repository: IBackofficeDeletionRequestRepository = new BackofficeDeletionRequestRepository(),
-    private readonly memberRepository: IBackofficeMemberRepository = new BackofficeMemberRepository()
+    private readonly memberRepository: IBackofficeMemberRepository = new BackofficeMemberRepository(),
+    private readonly billingService: IBackofficeDeletionBillingService = new BackofficeDeletionBillingService()
   ) {}
 
   async createRequest(input: {
@@ -246,7 +247,7 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
     }
 
     try {
-      await AsaasSubscriptionService.cancelSubscription(member.subscriptionAsaasId)
+      await this.billingService.cancelAsaasSubscription(member.subscriptionAsaasId)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (!isIdempotentAsaasCancelError(message)) {
@@ -269,10 +270,7 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
     }
 
     try {
-      await memberProBillingUseCase.syncBillingAfterUsageChange(
-        billingMasterId,
-        "backoffice_user_delete"
-      )
+      await this.billingService.syncMemberProAfterNonMasterDeletion(billingMasterId)
     } catch (error) {
       console.error(
         "[BackofficeDeletionRequestUseCase][syncMemberProBillingAfterUserDeletion]",
@@ -318,7 +316,9 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
         return
       }
 
-      const billingMasterId = member.isMaster ? member.id : member.managerId
+      // Never resync Member PRO against a master being deleted — that can recreate
+      // a PIX subscription for the soft-deleted account. Only seat-sync the surviving manager.
+      const billingMasterId = member.isMaster ? null : member.managerId
 
       await this.cancelAsaasSubscriptionBeforeUserDeletion(member)
 

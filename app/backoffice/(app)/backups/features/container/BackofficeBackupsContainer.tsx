@@ -1,6 +1,6 @@
 "use client"
 
-import { Database } from "lucide-react"
+import { Database, HardDriveDownload, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,10 @@ import {
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { useBackofficeBackups } from "../context/BackofficeBackupsContext"
-import type { BackofficeDatabaseBackupStatus } from "../context/BackofficeBackupsTypes"
+import type {
+  BackofficeDatabaseBackupSource,
+  BackofficeDatabaseBackupStatus,
+} from "../context/BackofficeBackupsTypes"
 
 function formatBytes(bytes: number | null): string {
   if (bytes == null || bytes <= 0) return "—"
@@ -38,8 +41,10 @@ function statusLabel(status: BackofficeDatabaseBackupStatus) {
       return "Concluído"
     case "failed":
       return "Falhou"
-    default:
-      return status
+    default: {
+      const _exhaustive: never = status
+      return _exhaustive
+    }
   }
 }
 
@@ -51,8 +56,36 @@ function statusVariant(status: BackofficeDatabaseBackupStatus): "default" | "sec
       return "default"
     case "failed":
       return "destructive"
-    default:
+    default: {
+      const _exhaustive: never = status
+      return _exhaustive
+    }
+  }
+}
+
+function sourceLabel(source: BackofficeDatabaseBackupSource) {
+  switch (source) {
+    case "cron":
+      return "Automático (cron)"
+    case "manual":
+      return "Manual"
+    default: {
+      const _exhaustive: never = source
+      return _exhaustive
+    }
+  }
+}
+
+function sourceVariant(source: BackofficeDatabaseBackupSource): "secondary" | "outline" {
+  switch (source) {
+    case "cron":
       return "secondary"
+    case "manual":
+      return "outline"
+    default: {
+      const _exhaustive: never = source
+      return _exhaustive
+    }
   }
 }
 
@@ -69,7 +102,20 @@ function triggerBrowserDownload(blob: Blob, fileName: string) {
 
 export function BackofficeBackupsContainer() {
   const { tz } = useTimezone()
-  const { items, isLoading, isDownloading, downloadingId, error, download } = useBackofficeBackups()
+  const {
+    items,
+    isLoading,
+    isDownloading,
+    isGenerating,
+    downloadingId,
+    error,
+    refresh,
+    createManualBackup,
+    download,
+  } = useBackofficeBackups()
+
+  const hasPending = items.some((item) => item.status === "pending")
+  const generateDisabled = isGenerating || isLoading || hasPending
 
   async function handleDownload(id: string) {
     if (isDownloading) return
@@ -83,16 +129,62 @@ export function BackofficeBackupsContainer() {
     }
   }
 
+  async function handleGenerate() {
+    if (generateDisabled) return
+    try {
+      await createManualBackup()
+      toast.success("Backup gerado com sucesso")
+    } catch (err) {
+      console.error("[BackofficeBackupsContainer][handleGenerate]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar backup")
+      await refresh({ force: true })
+    }
+  }
+
+  async function handleRefresh() {
+    if (isGenerating) return
+    try {
+      await refresh({ force: true })
+    } catch (err) {
+      console.error("[BackofficeBackupsContainer][handleRefresh]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar lista")
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <Database className="size-5 text-muted-foreground" />
-          <h1 className="text-2xl font-semibold tracking-tight">Backups</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Database className="size-5 text-muted-foreground" />
+            <h1 className="text-2xl font-semibold tracking-tight">Backups</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Histórico de backups do banco de dados (automáticos e manuais). Apenas backups
+            concluídos podem ser baixados.
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Histórico de backups automáticos do banco de dados. Apenas backups concluídos podem ser baixados.
-        </p>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isGenerating || isLoading}
+            onClick={() => void handleRefresh()}
+          >
+            <RefreshCw data-icon="inline-start" />
+            Atualizar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={generateDisabled}
+            onClick={() => void handleGenerate()}
+          >
+            <HardDriveDownload data-icon="inline-start" />
+            {isGenerating ? "Gerando…" : "Gerar backup"}
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -104,6 +196,7 @@ export function BackofficeBackupsContainer() {
           <TableHeader>
             <TableRow>
               <TableHead>Data</TableHead>
+              <TableHead>Origem</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Tamanho</TableHead>
               <TableHead>Checksum (SHA-256)</TableHead>
@@ -115,14 +208,14 @@ export function BackofficeBackupsContainer() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, index) => (
                 <TableRow key={index}>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={7}>
                     <Skeleton className="h-8 w-full" />
                   </TableCell>
                 </TableRow>
               ))
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   Nenhum backup encontrado.
                 </TableCell>
               </TableRow>
@@ -135,6 +228,11 @@ export function BackofficeBackupsContainer() {
                   <TableRow key={item.id}>
                     <TableCell>
                       {formatIntimezone(new Date(date), "dd/MM/yyyy HH:mm", tz)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={sourceVariant(item.source)}>
+                        {sourceLabel(item.source)}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
@@ -150,7 +248,7 @@ export function BackofficeBackupsContainer() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={isDownloading}
+                          disabled={isDownloading || isGenerating}
                           onClick={() => void handleDownload(item.id)}
                         >
                           {isPendingDownload ? "Baixando…" : "Baixar"}

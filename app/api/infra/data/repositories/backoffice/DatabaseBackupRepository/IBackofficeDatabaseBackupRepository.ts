@@ -1,10 +1,15 @@
-import type { BackofficeDatabaseBackupStatus } from "@prisma/client"
+import type {
+  BackofficeDatabaseBackupSource,
+  BackofficeDatabaseBackupStatus,
+} from "@prisma/client"
 
 export type BackofficeDatabaseBackupRecord = {
   id: string
   startedAt: Date
   finishedAt: Date | null
   status: BackofficeDatabaseBackupStatus
+  source: BackofficeDatabaseBackupSource
+  triggeredByProfileId: string | null
   filePath: string | null
   fileName: string | null
   sizeBytes: bigint | null
@@ -14,8 +19,14 @@ export type BackofficeDatabaseBackupRecord = {
   createdAt: Date
 }
 
+export type CreatePendingBackupInput = {
+  source: BackofficeDatabaseBackupSource
+  triggeredByProfileId?: string | null
+}
+
 export interface IBackofficeDatabaseBackupRepository {
-  createPending(): Promise<{ id: string }>
+  createPending(input: CreatePendingBackupInput): Promise<{ id: string }>
+  hasPending(): Promise<boolean>
   update(
     id: string,
     data: {

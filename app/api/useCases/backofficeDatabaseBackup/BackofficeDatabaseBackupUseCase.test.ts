@@ -8,6 +8,7 @@ function createRepoMock(
 ): IBackofficeDatabaseBackupRepository {
   return {
     createPending: async () => ({ id: "backup-1" }),
+    hasPending: async () => false,
     update: async () => undefined,
     list: async () => [],
     findById: async () => null,
@@ -38,7 +39,7 @@ function createVpsMock(
 
 describe("BackofficeDatabaseBackupUseCase", () => {
   describe("list", () => {
-    it("serializa sizeBytes bigint para number", async () => {
+    it("serializa sizeBytes bigint para number e inclui source", async () => {
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
           list: async () => [
@@ -47,6 +48,8 @@ describe("BackofficeDatabaseBackupUseCase", () => {
               startedAt: new Date("2026-07-24T08:00:00.000Z"),
               finishedAt: new Date("2026-07-24T08:05:00.000Z"),
               status: "success",
+              source: "cron",
+              triggeredByProfileId: null,
               filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
               fileName: "full.dump",
               sizeBytes: BigInt(2048),
@@ -62,13 +65,19 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
       const output = await useCase.list()
       expect(output.isValid).toBe(true)
-      const items = (output.result as { items: Array<{ sizeBytes: number | null }> }).items
+      const items = (
+        output.result as {
+          items: Array<{ sizeBytes: number | null; source: string }>
+        }
+      ).items
       expect(items[0]?.sizeBytes).toBe(2048)
+      expect(items[0]?.source).toBe("cron")
     })
   })
 
   describe("triggerCronBackup", () => {
-    it("marca success e grava metadados quando VPS responde ok", async () => {
+    it("cria pending com source=cron e marca success quando VPS responde ok", async () => {
+      const createCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
       const lastUpdate: {
         status?: string
         fileName?: string | null
@@ -77,6 +86,10 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       }[] = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
+          createPending: async (input) => {
+            createCalls.push(input)
+            return { id: "backup-1" }
+          },
           update: async (_id, data) => {
             lastUpdate.push(data)
           },
@@ -87,10 +100,27 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(true)
       expect((output.result as { id: string }).id).toBe("backup-1")
+      expect(createCalls[0]).toEqual({ source: "cron", triggeredByProfileId: null })
       expect(lastUpdate[0]?.status).toBe("success")
       expect(lastUpdate[0]?.fileName).toBe("full.dump")
       expect(lastUpdate[0]?.checksumSha256).toBe("abc123")
       expect(lastUpdate[0]?.sizeBytes).toEqual(BigInt(1024))
+    })
+
+    it("bloqueia quando já existe backup pending", async () => {
+      const createPending = mock(async () => ({ id: "backup-1" }))
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock({
+          hasPending: async () => true,
+          createPending,
+        }),
+        createVpsMock()
+      )
+
+      const output = await useCase.triggerCronBackup()
+      expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toContain("em andamento")
+      expect(createPending).not.toHaveBeenCalled()
     })
 
     it("marca failed quando VPS retorna erro", async () => {
@@ -135,6 +165,45 @@ describe("BackofficeDatabaseBackupUseCase", () => {
     })
   })
 
+  describe("triggerManualBackup", () => {
+    it("cria pending com source=manual e triggeredByProfileId", async () => {
+      const createCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock({
+          createPending: async (input) => {
+            createCalls.push(input)
+            return { id: "backup-manual-1" }
+          },
+        }),
+        createVpsMock()
+      )
+
+      const output = await useCase.triggerManualBackup("profile-manager-1")
+      expect(output.isValid).toBe(true)
+      expect((output.result as { id: string }).id).toBe("backup-manual-1")
+      expect(createCalls[0]).toEqual({
+        source: "manual",
+        triggeredByProfileId: "profile-manager-1",
+      })
+    })
+
+    it("bloqueia quando já existe backup pending", async () => {
+      const createPending = mock(async () => ({ id: "backup-1" }))
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock({
+          hasPending: async () => true,
+          createPending,
+        }),
+        createVpsMock()
+      )
+
+      const output = await useCase.triggerManualBackup("profile-manager-1")
+      expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toContain("em andamento")
+      expect(createPending).not.toHaveBeenCalled()
+    })
+  })
+
   describe("getDownloadStream", () => {
     it("retorna 404 quando backup não existe", async () => {
       const useCase = new BackofficeDatabaseBackupUseCase(createRepoMock(), createVpsMock())
@@ -153,6 +222,8 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             startedAt: new Date(),
             finishedAt: null,
             status: "pending",
+            source: "cron",
+            triggeredByProfileId: null,
             filePath: null,
             fileName: null,
             sizeBytes: null,
@@ -182,6 +253,8 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             startedAt: new Date(),
             finishedAt: new Date(),
             status: "success",
+            source: "manual",
+            triggeredByProfileId: "profile-1",
             filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
             fileName: "full.dump",
             sizeBytes: BigInt(10),
@@ -222,6 +295,8 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             startedAt: new Date(),
             finishedAt: new Date(),
             status: "success",
+            source: "cron",
+            triggeredByProfileId: null,
             filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
             fileName: "full.dump",
             sizeBytes: BigInt(10),

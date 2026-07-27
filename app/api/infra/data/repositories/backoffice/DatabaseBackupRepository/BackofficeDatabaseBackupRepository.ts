@@ -1,16 +1,29 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   BackofficeDatabaseBackupRecord,
+  CreatePendingBackupInput,
   IBackofficeDatabaseBackupRepository,
 } from "./IBackofficeDatabaseBackupRepository"
 import type { BackofficeDatabaseBackupStatus } from "@prisma/client"
 
 export class BackofficeDatabaseBackupRepository implements IBackofficeDatabaseBackupRepository {
-  async createPending(): Promise<{ id: string }> {
+  async createPending(input: CreatePendingBackupInput): Promise<{ id: string }> {
     return prisma.backofficeDatabaseBackup.create({
-      data: { status: "pending" },
+      data: {
+        status: "pending",
+        source: input.source,
+        triggeredByProfileId: input.triggeredByProfileId ?? null,
+      },
       select: { id: true },
     })
+  }
+
+  async hasPending(): Promise<boolean> {
+    const pending = await prisma.backofficeDatabaseBackup.findFirst({
+      where: { status: "pending" },
+      select: { id: true },
+    })
+    return pending != null
   }
 
   async update(

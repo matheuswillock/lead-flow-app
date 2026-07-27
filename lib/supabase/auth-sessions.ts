@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isAuthSessionExpired } from "@/lib/auth/session-lifetime";
 
 function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -129,6 +130,18 @@ export async function updateSession(request: NextRequest) {
     const { data, error } = await supabase.auth.getUser();
     user = data.user ?? null;
     userError = error ?? null;
+  }
+
+  if (user && isAuthSessionExpired(user.last_sign_in_at)) {
+    console.info("[proxy] Auth session expired (max 6h) — signing out", {
+      userId: user.id,
+      lastSignInAt: user.last_sign_in_at,
+    })
+    const { error: signOutError } = await supabase.auth.signOut()
+    if (signOutError && isDev) {
+      console.error("[proxy] signOut after session expiry:", signOutError.message)
+    }
+    user = null
   }
 
   if (userError && userError.name !== "AuthSessionMissingError" && isDev) {
