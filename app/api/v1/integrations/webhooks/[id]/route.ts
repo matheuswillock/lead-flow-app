@@ -16,21 +16,34 @@ const EventKeySchema = z.enum([
   "activity_created",
 ]);
 
-const PatchBodySchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(),
-  targetUrl: z.string().url().optional(),
-  destinationPreset: z.enum(["generic", "slack", "teams", "zapier"]).optional(),
-  selectedEvents: z.array(EventKeySchema).min(1).optional(),
-  failureThreshold: z.number().int().min(1).max(100).optional(),
-  tokenMode: z.enum(["manual", "auto", "none"]).optional(),
-  manualToken: z
-    .string()
-    .min(8)
-    .max(512)
-    .regex(/^[A-Za-z0-9_-]+$/)
-    .optional(),
-  expiryMode: z.enum(["hours_24", "months_6", "indeterminate"]).optional(),
-});
+const PatchBodySchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    targetUrl: z.string().url().optional(),
+    destinationPreset: z.enum(["generic", "slack", "teams", "zapier"]).optional(),
+    selectedEvents: z.array(EventKeySchema).min(1).optional(),
+    failureThreshold: z.number().int().min(1).max(100).optional(),
+    tokenMode: z.enum(["manual", "auto", "none"]).optional(),
+    manualToken: z
+      .string()
+      .min(8)
+      .max(512)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
+    expiryMode: z.enum(["hours_24", "months_6", "indeterminate"]).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.tokenMode === "manual") {
+      const token = value.manualToken?.trim() ?? "";
+      if (token.length < 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualToken"],
+          message: "Token manual é obrigatório e deve ter ao menos 8 caracteres",
+        });
+      }
+    }
+  });
 
 type RouteContext = { params: Promise<{ id: string }> };
 

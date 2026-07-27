@@ -21,6 +21,7 @@ export type TeamWebhookOutboxClaimRow = {
 export interface ITeamWebhookOutboxRepository {
   enqueue(input: EnqueueTeamWebhookOutboxInput): Promise<void>;
   claimDue(limit: number): Promise<TeamWebhookOutboxClaimRow[]>;
+  requeueIfProcessing(ids: string[]): Promise<void>;
   markDelivered(id: string): Promise<void>;
   markFailed(id: string, attemptCount: number, nextAttemptAt: Date | null, lastError: string): Promise<void>;
   cancelPendingForWebhook(webhookId: string): Promise<void>;

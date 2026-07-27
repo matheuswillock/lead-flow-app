@@ -947,7 +947,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       })
       .catch(console.error);
 
-    void outboundEventPublisher.publish({
+    await outboundEventPublisher.publish({
       teamId,
       eventKey: "appointment_created",
       leadId,
@@ -957,7 +957,9 @@ export class LeadScheduleService implements ILeadScheduleService {
           meeting_date: meetingDate.toISOString(),
         },
       },
-    });
+    }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
 
     return new Output(
       true,

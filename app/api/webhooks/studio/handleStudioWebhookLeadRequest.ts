@@ -94,6 +94,15 @@ export const handleStudioWebhookLeadRequest = async ({
     errorMessage?: string | null;
   }): Promise<NextResponse> => {
     if (logTeamId) {
+      const resultWebhookId =
+        output.result &&
+        typeof output.result === "object" &&
+        output.result !== null &&
+        "webhookId" in output.result &&
+        typeof (output.result as { webhookId?: unknown }).webhookId === "string"
+          ? (output.result as { webhookId: string }).webhookId
+          : null;
+
       await studioWebhookIntegrationUseCase.registerWebhookRequestLog({
         teamId: logTeamId,
         method,
@@ -103,6 +112,8 @@ export const handleStudioWebhookLeadRequest = async ({
         requestPayload: requestPayloadForLog,
         responsePayload: output,
         errorMessage: errorMessage ?? null,
+        webhookId: resultWebhookId,
+        token: token ?? null,
       });
     }
 

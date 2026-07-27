@@ -58,6 +58,14 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
     });
   }
 
+  async listInboundByTeamId(teamId: string): Promise<TeamWebhookRow[]> {
+    return prisma.teamWebhook.findMany({
+      where: { teamId, direction: "inbound" },
+      select: TEAM_WEBHOOK_SELECT,
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
   async createWithCtx(
     ctx: TeamWebhookTeamContext,
     data: CreateTeamWebhookData

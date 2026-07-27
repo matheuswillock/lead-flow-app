@@ -17,28 +17,41 @@ const EventKeySchema = z.enum([
   "activity_created",
 ]);
 
-const CreateBodySchema = z.discriminatedUnion("direction", [
-  z.object({
-    direction: z.literal("inbound"),
-    name: z.string().trim().min(1).max(120),
-    tokenMode: z.enum(["manual", "auto", "none"]),
-    manualToken: z
-      .string()
-      .min(8)
-      .max(512)
-      .regex(/^[A-Za-z0-9_-]+$/)
-      .optional(),
-    expiryMode: z.enum(["hours_24", "months_6", "indeterminate"]),
-  }),
-  z.object({
-    direction: z.literal("outbound"),
-    name: z.string().trim().min(1).max(120),
-    targetUrl: z.string().url(),
-    destinationPreset: z.enum(["generic", "slack", "teams", "zapier"]),
-    selectedEvents: z.array(EventKeySchema).min(1),
-    failureThreshold: z.number().int().min(1).max(100).optional(),
-  }),
-]);
+const CreateBodySchema = z
+  .discriminatedUnion("direction", [
+    z.object({
+      direction: z.literal("inbound"),
+      name: z.string().trim().min(1).max(120),
+      tokenMode: z.enum(["manual", "auto", "none"]),
+      manualToken: z
+        .string()
+        .min(8)
+        .max(512)
+        .regex(/^[A-Za-z0-9_-]+$/)
+        .optional(),
+      expiryMode: z.enum(["hours_24", "months_6", "indeterminate"]),
+    }),
+    z.object({
+      direction: z.literal("outbound"),
+      name: z.string().trim().min(1).max(120),
+      targetUrl: z.string().url(),
+      destinationPreset: z.enum(["generic", "slack", "teams", "zapier"]),
+      selectedEvents: z.array(EventKeySchema).min(1),
+      failureThreshold: z.number().int().min(1).max(100).optional(),
+    }),
+  ])
+  .superRefine((value, ctx) => {
+    if (value.direction === "inbound" && value.tokenMode === "manual") {
+      const token = value.manualToken?.trim() ?? "";
+      if (token.length < 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualToken"],
+          message: "Token manual é obrigatório e deve ter ao menos 8 caracteres",
+        });
+      }
+    }
+  });
 
 const resolveAppUrl = (request: NextRequest): string => {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();

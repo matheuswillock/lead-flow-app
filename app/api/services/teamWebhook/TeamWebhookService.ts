@@ -16,7 +16,7 @@ import {
   generateTeamWebhookToken,
   hashTeamWebhookToken,
 } from "@/lib/webhooks/teamWebhookSecurity";
-import { assertSafeWebhookTargetUrl } from "@/lib/webhooks/ssrfUrlGuard";
+import { assertSafeWebhookTargetUrlResolved } from "@/lib/webhooks/ssrfUrlGuard";
 import { wrapOutboundPayloadForPreset } from "@/lib/webhooks/webhookPayloadPresets";
 import { webhookHttpDeliveryService } from "./WebhookHttpDeliveryService";
 import type {
@@ -123,10 +123,22 @@ export class TeamWebhookService implements ITeamWebhookService {
       };
     }
 
-    const token =
-      input.tokenMode === "manual"
-        ? (input.manualToken?.trim() ?? "")
-        : generateTeamWebhookToken();
+    if (input.tokenMode === "manual") {
+      const manual = input.manualToken?.trim() ?? "";
+      if (manual.length < 8) {
+        throw new Error("Token manual é obrigatório e deve ter ao menos 8 caracteres");
+      }
+      return {
+        token: manual,
+        tokenHash: hashTeamWebhookToken(manual),
+        tokenCipher: encryptTeamWebhookToken(manual),
+        tokenPreview: buildTeamWebhookTokenPreview(manual),
+        expiryMode: input.expiryMode,
+        expiresAt: computeTeamWebhookTokenExpiry(input.expiryMode),
+      };
+    }
+
+    const token = generateTeamWebhookToken();
 
     return {
       token,
@@ -153,7 +165,7 @@ export class TeamWebhookService implements ITeamWebhookService {
         throw new Error("Selecione ao menos um evento");
       }
 
-      const guard = assertSafeWebhookTargetUrl(input.targetUrl);
+      const guard = await assertSafeWebhookTargetUrlResolved(input.targetUrl);
       if (!guard.ok) {
         throw new Error(guard.reason);
       }
@@ -205,7 +217,7 @@ export class TeamWebhookService implements ITeamWebhookService {
 
       let targetUrl = input.targetUrl;
       if (targetUrl) {
-        const guard = assertSafeWebhookTargetUrl(targetUrl);
+        const guard = await assertSafeWebhookTargetUrlResolved(targetUrl);
         if (!guard.ok) {
           throw new Error(guard.reason);
         }

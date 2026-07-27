@@ -532,7 +532,7 @@ export class LeadUseCase implements ILeadUseCase {
           })
           .catch(console.error);
 
-        void outboundEventPublisher.publish({
+        await outboundEventPublisher.publish({
           teamId,
           eventKey: "lead_created",
           leadId: lead.id,
@@ -546,7 +546,9 @@ export class LeadUseCase implements ILeadUseCase {
               phone: lead.phone,
             },
           },
-        });
+        }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
       }
 
       if (data.customFields !== undefined) {
@@ -1152,7 +1154,7 @@ export class LeadUseCase implements ILeadUseCase {
         }
 
         if (existingLead?.teamId && data.assignedTo) {
-          void outboundEventPublisher.publish({
+          await outboundEventPublisher.publish({
             teamId: existingLead.teamId,
             eventKey: "lead_assigned",
             leadId: id,
@@ -1161,6 +1163,8 @@ export class LeadUseCase implements ILeadUseCase {
               assigned_to: data.assignedTo,
               previous_assigned_to: existingLead.assignedTo ?? null,
             },
+          }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
           });
         }
       }
@@ -1760,7 +1764,7 @@ export class LeadUseCase implements ILeadUseCase {
             })
             .catch(console.error);
 
-          void outboundEventPublisher.publish({
+          await outboundEventPublisher.publish({
             teamId: existingLead.teamId,
             eventKey: "lead_status_changed",
             leadId: id,
@@ -1772,6 +1776,8 @@ export class LeadUseCase implements ILeadUseCase {
                 previous_status: existingLead.status,
               },
             },
+          }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
           });
 
           this.syncLeadToRadarInline(id, existingLead.teamId);
@@ -1858,7 +1864,7 @@ export class LeadUseCase implements ILeadUseCase {
         );
 
         if (existingLead.teamId) {
-          void outboundEventPublisher.publish({
+          await outboundEventPublisher.publish({
             teamId: existingLead.teamId,
             eventKey: "lead_assigned",
             leadId: id,
@@ -1867,6 +1873,8 @@ export class LeadUseCase implements ILeadUseCase {
               assigned_to: operatorId,
               previous_assigned_to: existingLead.assignedTo ?? null,
             },
+          }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
           });
         }
       }

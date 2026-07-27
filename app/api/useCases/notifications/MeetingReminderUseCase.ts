@@ -46,7 +46,7 @@ export class MeetingReminderUseCase {
           recipientProfileIds,
         });
 
-        void outboundEventPublisher.publish({
+        await outboundEventPublisher.publish({
           teamId: lead.teamId,
           eventKey: "appointment_reminder",
           leadId: lead.id,
@@ -58,7 +58,9 @@ export class MeetingReminderUseCase {
               meeting_link: schedule.meetingLink,
             },
           },
-        });
+        }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
 
         for (const profileId of recipientProfileIds) {
           await studioBotOutboxService.enqueueMeetingReminder({

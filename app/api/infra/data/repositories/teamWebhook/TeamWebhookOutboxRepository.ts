@@ -5,6 +5,9 @@ import type {
   TeamWebhookOutboxClaimRow,
 } from "./ITeamWebhookOutboxRepository";
 
+/** Rows stuck in `processing` longer than this are treated as abandoned leases. */
+const STALE_PROCESSING_MS = 5 * 60 * 1000;
+
 export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository {
   async enqueue(input: EnqueueTeamWebhookOutboxInput): Promise<void> {
     await prisma.teamWebhookOutbox.create({
@@ -22,6 +25,21 @@ export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository
 
   async claimDue(limit: number): Promise<TeamWebhookOutboxClaimRow[]> {
     const now = new Date();
+    const staleBefore = new Date(now.getTime() - STALE_PROCESSING_MS);
+
+    // Recover rows stranded in processing after crashes / mid-batch failures.
+    await prisma.teamWebhookOutbox.updateMany({
+      where: {
+        status: "processing",
+        updatedAt: { lt: staleBefore },
+      },
+      data: {
+        status: "pending",
+        lastError: "Lease de processamento expirado; reenfileirado",
+        nextAttemptAt: now,
+      },
+    });
+
     const due = await prisma.teamWebhookOutbox.findMany({
       where: {
         status: "pending",
@@ -57,6 +75,21 @@ export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository
     }
 
     return claimed;
+  }
+
+  async requeueIfProcessing(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await prisma.teamWebhookOutbox.updateMany({
+      where: {
+        id: { in: ids },
+        status: "processing",
+      },
+      data: {
+        status: "pending",
+        nextAttemptAt: new Date(),
+        lastError: "Reenfileirado após falha no processamento do lote",
+      },
+    });
   }
 
   async markDelivered(id: string): Promise<void> {
