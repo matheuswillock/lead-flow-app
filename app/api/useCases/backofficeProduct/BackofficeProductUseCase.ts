@@ -21,6 +21,8 @@ export interface BackofficeProductPaymentRuleDTO {
   price: number
   canInstallment: boolean
   maxInstallments: number
+  installmentSplitMode: "EQUAL" | "CUSTOM"
+  installmentSchedule: number[]
 }
 
 export interface BackofficeProductDTO {
@@ -302,12 +304,15 @@ function decimalToNumber(value: { toString(): string } | null): number | null {
 }
 
 function mapPaymentRuleDTO(rule: BackofficeProductPaymentRule): BackofficeProductPaymentRuleDTO {
+  const schedule = Array.isArray(rule.installmentSchedule) ? (rule.installmentSchedule as number[]) : []
   return {
     paymentMethod: rule.paymentMethod,
     billingCycle: rule.billingCycle,
     price: Number(rule.price.toString()),
     canInstallment: rule.canInstallment,
     maxInstallments: rule.maxInstallments,
+    installmentSplitMode: rule.installmentSplitMode as "EQUAL" | "CUSTOM",
+    installmentSchedule: schedule,
   }
 }
 
