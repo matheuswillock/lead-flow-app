@@ -816,13 +816,17 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return true
   }
 
-  async reconcileStaleOutboundCommands(olderThan: Date): Promise<number> {
+  async reconcileStaleOutboundCommands(now = new Date()): Promise<number> {
     const updated = await prisma.$executeRaw`
       update whatsapp_outbound_commands
       set status = 'UNKNOWN',
         "lastError" = 'Envio sem confirmação do provedor; confirme no histórico antes de reenviar.',
         "reconciledAt" = now(), "updatedAt" = now()
-      where status = 'PENDING' and "createdAt" < ${olderThan}
+      where status = 'PENDING'
+        and (
+          ("nextReconcileAt" is not null and "nextReconcileAt" <= ${now})
+          or ("nextReconcileAt" is null and "createdAt" < ${new Date(now.getTime() - 10 * 60_000)})
+        )
     `
     return updated
   }
@@ -847,7 +851,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
     }).then((configs) => configs.map((config) => ({ teamId: config.teamId, configId: config.id })))
   }
 
-  async claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string } | null> {
+  async claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string; checkpoint: unknown } | null> {
     const candidate = await prisma.whatsAppSyncJob.findFirst({
       where: {
         OR: [
@@ -856,7 +860,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         ],
       },
       orderBy: { createdAt: "asc" },
-      select: { id: true, teamId: true, configId: true },
+      select: { id: true, teamId: true, configId: true, checkpoint: true },
     })
     if (!candidate) return null
     const claimed = await prisma.whatsAppSyncJob.updateMany({
@@ -873,6 +877,30 @@ class WhatsAppRepository implements IWhatsAppRepository {
       },
     })
     return claimed.count ? candidate : null
+  }
+
+  async renewContactSyncJobLease(input: { jobId: string; workerId: string; checkpoint: unknown }): Promise<void> {
+    await prisma.whatsAppSyncJob.updateMany({
+      where: { id: input.jobId, leaseOwner: input.workerId, status: "RUNNING" },
+      data: {
+        checkpoint: input.checkpoint as Prisma.InputJsonValue,
+        leaseExpiresAt: new Date(Date.now() + 45_000),
+        updatedAt: new Date(),
+      },
+    })
+  }
+
+  async parkContactSyncJob(input: { jobId: string; checkpoint: unknown }): Promise<void> {
+    await prisma.whatsAppSyncJob.update({
+      where: { id: input.jobId },
+      data: {
+        status: "PENDING",
+        checkpoint: input.checkpoint as Prisma.InputJsonValue,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        updatedAt: new Date(),
+      },
+    })
   }
 
   async completeContactSyncJob(input: { jobId: string; error?: string }): Promise<void> {

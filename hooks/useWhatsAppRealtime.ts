@@ -9,6 +9,7 @@ export type WhatsAppMessageRealtimeRow = {
   direction: string
   messageType: string
   status: string
+  clientMessageId: string | null
   contentText: string | null
   mediaUrl: string | null
   caption: string | null
@@ -67,6 +68,7 @@ function mapMessageRow(row: Partial<WhatsAppMessageRealtimeRow>): WhatsAppMessag
     direction: row.direction ?? 'INBOUND',
     messageType: row.messageType ?? 'text',
     status: row.status ?? 'RECEIVED',
+    clientMessageId: row.clientMessageId ?? null,
     contentText: row.contentText ?? null,
     mediaUrl: row.mediaUrl ?? null,
     caption: row.caption ?? null,

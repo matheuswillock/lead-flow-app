@@ -9,6 +9,7 @@ import { isManagerLikeRole } from '@/lib/roles'
 import { useWhatsAppRealtime } from '@/hooks/useWhatsAppRealtime'
 import { dispatchWhatsAppUnreadChanged, WHATSAPP_CONFIG_CHANGED_EVENT, WHATSAPP_UNREAD_CHANGED_EVENT } from '@/lib/whatsapp/unread-events'
 import { buildContactLookupFromList } from '../utils/formatWhatsAppMessageText'
+import { mergeMessageByClientId } from '../utils/mergeMessageByClientId'
 import { whatsAppInboxService } from '../services/WhatsAppInboxService'
 import type {
   ConversationFilterMode,
@@ -824,14 +825,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   )
 
   // Shared send routine used by sendMessage (new optimistic message) and
-  // resendMessage (existing FAILED message reused by id).
+  // resendMessage (existing FAILED message reused by clientMessageId).
   const performSend = useCallback(
     async (
       conversationId: string,
       text: string,
       optimisticId: string,
+      clientMessageId: string,
       media?: SendMessageMediaInput,
-      mentionedJids?: string[]
+      mentionedJids?: string[],
+      retryFailed?: boolean
     ) => {
       if (!activeTeamId) return
       isSendingRef.current = true
@@ -841,32 +844,47 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           activeTeamId,
           supabaseId,
           conversationId,
-          crypto.randomUUID(),
+          clientMessageId,
           text,
           media,
-          mentionedJids
+          mentionedJids,
+          retryFailed
         )
         // Promote the optimistic bubble to the real message id so the realtime
-        // INSERT for the same id is de-duplicated by handleMessageInserted.
-        setMessages((prev) => {
-          // A Realtime INSERT can win the race against this HTTP response.
-          // In that case the persisted row is more authoritative, so remove
-          // only the optimistic bubble instead of overwriting its receipt.
-          if (prev.some((m) => m.id === result.messageId)) {
-            return prev.filter((m) => m.id !== optimisticId)
-          }
-          return prev.map((m) =>
-            m.id === optimisticId
-              ? {
-                  ...m,
-                  id: result.messageId,
-                  status: result.status,
-                  sentAt: m.sentAt ?? new Date().toISOString(),
-                  sentByProfileId: m.sentByProfileId ?? currentProfileId,
-                }
-              : m
-          )
-        })
+        // INSERT for the same id / clientMessageId is de-duplicated.
+        setMessages((prev) =>
+          mergeMessageByClientId(prev, {
+            id: result.messageId,
+            conversationId,
+            direction: 'OUTBOUND',
+            messageType: media
+              ? media.mediatype === 'image'
+                ? 'IMAGE'
+                : media.mediatype === 'document'
+                  ? 'DOCUMENT'
+                  : media.mediatype === 'audio'
+                    ? 'AUDIO'
+                    : 'VIDEO'
+              : 'TEXT',
+            status: result.status,
+            clientMessageId,
+            contentText: text || null,
+            mediaUrl: null,
+            caption: media?.caption ?? null,
+            senderDisplayName: null,
+            mediaFileName: media?.fileName ?? null,
+            linkPreview: null,
+            sentByProfileId: currentProfileId,
+            senderPhone: null,
+            recipientPhone: null,
+            sentAt: new Date().toISOString(),
+            deliveredAt: null,
+            readAt: null,
+            failedAt: null,
+            isAutoResponse: false,
+            createdAt: new Date().toISOString(),
+          })
+        )
       } catch (error) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -892,7 +910,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       const trimmedText = text.trim()
       if (!trimmedText && !media) return
 
-      const optimisticId = `optimistic-${Date.now()}`
+      const clientMessageId = crypto.randomUUID()
+      const optimisticId = `optimistic-${clientMessageId}`
       const messageType = media
         ? media.mediatype === 'image'
           ? 'IMAGE'
@@ -909,6 +928,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         direction: 'OUTBOUND',
         messageType,
         status: 'PENDING',
+        clientMessageId,
         contentText: trimmedText || null,
         mediaUrl: null,
         caption: media?.caption ?? null,
@@ -928,7 +948,14 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
       setMessages((prev) => [...prev, optimisticMessage])
 
-      performSend(selectedConversationId, trimmedText, optimisticId, media, mentionedJids).catch((error) => {
+      performSend(
+        selectedConversationId,
+        trimmedText,
+        optimisticId,
+        clientMessageId,
+        media,
+        mentionedJids
+      ).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao enviar mensagem:', error)
         setIsSending(false)
         isSendingRef.current = false
@@ -942,15 +969,27 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       if (isSendingRef.current) return
 
       const target = messagesRef.current.find((m) => m.id === messageId)
-      if (!target || !target.contentText) return
+      if (!target || (!target.contentText && !target.mediaFileName)) return
+
+      const clientMessageId = target.clientMessageId ?? crypto.randomUUID()
 
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === messageId ? { ...m, status: 'PENDING', failedAt: null } : m
+          m.id === messageId
+            ? { ...m, status: 'PENDING', failedAt: null, clientMessageId }
+            : m
         )
       )
 
-      performSend(target.conversationId, target.contentText, messageId).catch((error) => {
+      performSend(
+        target.conversationId,
+        target.contentText ?? '',
+        messageId,
+        clientMessageId,
+        undefined,
+        undefined,
+        Boolean(target.clientMessageId)
+      ).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao reenviar mensagem:', error)
         setIsSending(false)
         isSendingRef.current = false
@@ -1004,6 +1043,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       direction: string
       messageType: string
       status: string
+      clientMessageId?: string | null
       contentText: string | null
       mediaUrl: string | null
       caption: string | null
@@ -1038,13 +1078,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       }
 
       setMessages((prev) => {
-        if (prev.some((m) => m.id === row.id)) return prev
         const msg: WhatsAppMessage = {
           id: row.id,
           conversationId: row.conversationId,
           direction: row.direction as 'INBOUND' | 'OUTBOUND',
           messageType: row.messageType,
           status: row.status,
+          clientMessageId: row.clientMessageId ?? null,
           contentText: row.contentText,
           mediaUrl: row.mediaUrl,
           caption: row.caption,
@@ -1061,7 +1101,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           isAutoResponse: row.isAutoResponse ?? false,
           createdAt: row.createdAt,
         }
-        return [...prev, msg]
+        return mergeMessageByClientId(prev, msg)
       })
 
       // Conversa aberta recebendo mensagem nova: marca como lida no servidor

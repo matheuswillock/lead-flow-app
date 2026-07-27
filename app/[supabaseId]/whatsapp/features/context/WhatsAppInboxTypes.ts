@@ -89,6 +89,8 @@ export interface WhatsAppMessage {
   direction: 'INBOUND' | 'OUTBOUND'
   messageType: string
   status: WhatsAppMessageStatus | string
+  /** Idempotency key for outbound intents; null for inbound / legacy rows. */
+  clientMessageId: string | null
   contentText: string | null
   mediaUrl: string | null
   caption: string | null

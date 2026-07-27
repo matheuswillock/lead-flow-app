@@ -303,10 +303,12 @@ export interface IWhatsAppRepository {
   }): Promise<void>
   listPendingWebhookEventIds(limit: number): Promise<string[]>
   requeueDeadLetterEvent(input: { eventId: string; teamId: string; actorProfileId: string }): Promise<boolean>
-  reconcileStaleOutboundCommands(olderThan: Date): Promise<number>
+  reconcileStaleOutboundCommands(now?: Date): Promise<number>
   listConnectedContactSyncTargets(): Promise<Array<{ teamId: string; configId: string }>>
   enqueueContactSyncJob(input: { teamId: string; configId: string }): Promise<string>
-  claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string } | null>
+  claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string; checkpoint: unknown } | null>
+  renewContactSyncJobLease(input: { jobId: string; workerId: string; checkpoint: unknown }): Promise<void>
+  parkContactSyncJob(input: { jobId: string; checkpoint: unknown }): Promise<void>
   completeContactSyncJob(input: { jobId: string; error?: string }): Promise<void>
 
   // Usage

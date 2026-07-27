@@ -38,6 +38,8 @@ import {
   type ContactNameSource,
 } from "@/lib/whatsapp/contact-name"
 import { shouldWipeInboxOnPhoneChange } from "@/lib/whatsapp/should-wipe-inbox-on-phone-change"
+import { resolveContactIdentity } from "@/app/api/services/whatsapp/ContactIdentityResolver"
+import { whatsAppContactRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppContactRepository"
 import { shouldApplyOutboundMessageStatus } from "@/lib/whatsapp/outbound-message-status"
 import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
 import { logSafeWhatsAppError } from "@/lib/whatsapp/safe-observability"
@@ -189,6 +191,15 @@ class ProcessEvoWebhookUseCase {
 
     const routed = await this.resolveTargetTeamContext(teamId, configId, normalizedPhone, isGroup)
 
+    const contactId = isGroup
+      ? undefined
+      : await this.linkCanonicalContactFromRemoteJid({
+          teamId: routed.teamId,
+          configId: routed.configId,
+          remoteJid,
+          pushName,
+        })
+
     const conversation = await this.repository.findOrCreateConversation({
       teamId: routed.teamId,
       configId: routed.configId,
@@ -196,7 +207,15 @@ class ProcessEvoWebhookUseCase {
       contactPhone: phoneRaw,
       normalizedPhone,
       contactName: isGroup ? undefined : pushName,
+      contactId,
     })
+
+    if (contactId && !conversation.contactId) {
+      await this.repository.updateConversation(conversation.id, {
+        contact: { connect: { id: contactId } },
+      })
+      conversation.contactId = contactId
+    }
 
     const existing = await this.repository.findMessageByProviderMessageId(routed.teamId, providerMessageId)
     const isRedelivery = existing !== null
@@ -420,6 +439,48 @@ class ProcessEvoWebhookUseCase {
         "[ProcessEvoWebhookUseCase][healConversationSideEffectsIfNeeded] Safe heal failed",
         error
       )
+    }
+  }
+
+  private async linkCanonicalContactFromRemoteJid(input: {
+    teamId: string
+    configId: string
+    remoteJid: string
+    pushName?: string
+  }): Promise<string | undefined> {
+    try {
+      const identity = resolveContactIdentity(input.remoteJid)
+      if (identity.kind === "GROUP") return undefined
+
+      const now = new Date()
+      const canonical = identity.kind === "PHONE" && identity.phoneE164
+        ? await whatsAppContactRepository.findOrCreateCanonical({
+            teamId: input.teamId,
+            phoneE164: identity.phoneE164,
+            name: input.pushName,
+            nameSource: input.pushName ? "PUSH_NAME" : "PHONE_NUMBER",
+          })
+        : await whatsAppContactRepository.findOrCreateProvisional({
+            teamId: input.teamId,
+            remoteJid: identity.remoteJid,
+            displayName: input.pushName,
+          })
+
+      await whatsAppContactRepository.upsertIdentity({
+        teamId: input.teamId,
+        configId: input.configId,
+        contactId: canonical.id,
+        remoteJid: identity.remoteJid,
+        identityType: identity.kind,
+        phoneE164: identity.phoneE164,
+        mappingSource: "WEBHOOK",
+        verifiedAt: identity.kind === "PHONE" ? now : null,
+        sendable: identity.kind === "PHONE",
+      })
+      return canonical.id
+    } catch (error) {
+      console.error("[ProcessEvoWebhookUseCase][linkCanonicalContactFromRemoteJid]", error)
+      return undefined
     }
   }
 

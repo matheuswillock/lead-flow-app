@@ -76,6 +76,18 @@ export interface SyncContactsOutput {
   imported: number
   updatedConversations: number
   totalContacts: number
+  checkpoint?: {
+    offset: number
+    imported: number
+    done: boolean
+  }
+}
+
+export interface SyncContactsOptions {
+  checkpoint?: { offset?: number; imported?: number }
+  batchSize?: number
+  timeBudgetMs?: number
+  onProgress?: (checkpoint: { offset: number; imported: number; done: boolean }) => Promise<void>
 }
 
 export interface SyncGroupParticipantsOutput {
@@ -110,7 +122,11 @@ export interface IWhatsAppService {
   sendAutoResponseMessage(input: SendAutoResponseMessageInput): Promise<{ messageId: string }>
   createConversation(input: CreateConversationInput): Promise<WhatsAppConversationSelect>
   syncTeamHistory(teamId: string): Promise<{ chats: number; messages: number }>
-  syncContacts(teamId: string, conversationId?: string): Promise<SyncContactsOutput>
+  syncContacts(
+    teamId: string,
+    conversationId?: string,
+    options?: SyncContactsOptions
+  ): Promise<SyncContactsOutput>
   syncGroupParticipants(teamId: string, conversationId: string): Promise<SyncGroupParticipantsOutput>
   listContacts(
     teamId: string,
