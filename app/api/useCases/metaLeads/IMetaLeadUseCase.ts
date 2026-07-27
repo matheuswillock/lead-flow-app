@@ -30,5 +30,6 @@ export interface IMetaLeadUseCase {
 export interface CreateLeadFromMetaDTO {
   metaData: MetaLeadData;
   managerId: string;
+  supabaseId: string;
   assignedTo?: string;
 }

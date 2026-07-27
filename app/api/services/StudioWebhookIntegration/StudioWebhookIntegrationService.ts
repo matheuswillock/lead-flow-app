@@ -1,12 +1,9 @@
-import { ActivityType, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 import type {
   CreateStudioWebhookRequestLogInput,
-  CreateLeadFromStudioWebhookInput,
   IStudioWebhookIntegrationService,
   StudioWebhookConfigSnapshot,
-  StudioWebhookLeadResult,
   StudioWebhookRequestLogSnapshot,
   StudioWebhookTeamSnapshot,
   UpsertStudioWebhookConfigInput,
@@ -109,75 +106,6 @@ export class StudioWebhookIntegrationService implements IStudioWebhookIntegratio
       where: { teamId },
       data: { lastUsedAt: new Date() },
     });
-  }
-
-  private async generateLeadCode(name: string): Promise<string> {
-    const clean = name.replace(/[^A-Za-zÀ-ÿ]/g, "");
-    const firstLetter = (clean[0] || "L").toUpperCase();
-    const lastLetter = (clean[clean.length - 1] || "D").toUpperCase();
-
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const digitsLength = 4 + Math.floor(Math.random() * 3);
-      const digits = Array.from({ length: digitsLength }, () => Math.floor(Math.random() * 10)).join("");
-      const code = `${firstLetter}${digits}${lastLetter}`;
-      const existing = await prisma.lead.findUnique({
-        where: { leadCode: code },
-        select: { id: true },
-      });
-      if (!existing) {
-        return code;
-      }
-    }
-
-    const fallbackDigits = Date.now().toString().slice(-6);
-    return `${firstLetter}${fallbackDigits}${lastLetter}`;
-  }
-
-  async createLeadFromWebhook(input: CreateLeadFromStudioWebhookInput): Promise<StudioWebhookLeadResult> {
-    const leadCode = await this.generateLeadCode(input.name);
-
-    const lead = await prisma.lead.create({
-      data: {
-        manager: { connect: { id: input.managerId } },
-        team: { connect: { id: input.teamId } },
-        creator: { connect: { id: input.managerId } },
-        updater: { connect: { id: input.managerId } },
-        leadCode,
-        status: "new_opportunity",
-        name: input.name,
-        email: input.email || null,
-        phone: input.phone || null,
-        cnpj: input.cnpj || null,
-        age: input.age || null,
-        currentHealthPlan: input.currentHealthPlan || null,
-        currentValue: typeof input.currentValue === "number" ? input.currentValue : null,
-        referenceHospital: input.referenceHospital || null,
-        currentTreatment: input.currentTreatment || null,
-        activities: {
-          create: buildStudioActivityData({
-            type: ActivityType.note,
-            body: "Lead criado via webhook genérico",
-            payload: {
-              kind: "lead_creation",
-              channel: "webhook",
-              provider: "studio",
-              source: input.source,
-              metadata: (input.metadata ?? null) as Prisma.InputJsonValue,
-              submittedAt: new Date().toISOString(),
-            },
-          }),
-        },
-      },
-      select: {
-        id: true,
-        leadCode: true,
-      },
-    });
-
-    return {
-      id: lead.id,
-      leadCode: lead.leadCode,
-    };
   }
 
   async createWebhookRequestLog(input: CreateStudioWebhookRequestLogInput): Promise<void> {
