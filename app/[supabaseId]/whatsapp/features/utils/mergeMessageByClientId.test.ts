@@ -24,6 +24,7 @@ function msg(partial: Partial<WhatsAppMessage> & Pick<WhatsAppMessage, "id">): W
     failedAt: null,
     isAutoResponse: false,
     createdAt: "2026-07-27T00:00:00.000Z",
+    mentionedJids: null,
     ...partial,
   }
 }
@@ -49,6 +50,36 @@ describe("mergeMessageByClientId", () => {
       msg({ id: "real-1", clientMessageId: "aaa", status: "DELIVERED" })
     )
     expect(next).toHaveLength(1)
+    expect(next[0]?.status).toBe("DELIVERED")
+  })
+
+  it("preserva mediaUrl/recibos quando HTTP chega com nulls após Realtime", () => {
+    const clientMessageId = "22222222-2222-4222-8222-222222222222"
+    const prev = [
+      msg({
+        id: "real-1",
+        clientMessageId,
+        status: "DELIVERED",
+        mediaUrl: "https://cdn.example/a.jpg",
+        deliveredAt: "2026-07-27T00:01:00.000Z",
+        mediaFileName: "a.jpg",
+      }),
+    ]
+    const next = mergeMessageByClientId(
+      prev,
+      msg({
+        id: "real-1",
+        clientMessageId,
+        status: "SENT",
+        mediaUrl: null,
+        mediaFileName: null,
+        deliveredAt: null,
+      })
+    )
+    expect(next).toHaveLength(1)
+    expect(next[0]?.mediaUrl).toBe("https://cdn.example/a.jpg")
+    expect(next[0]?.mediaFileName).toBe("a.jpg")
+    expect(next[0]?.deliveredAt).toBe("2026-07-27T00:01:00.000Z")
     expect(next[0]?.status).toBe("DELIVERED")
   })
 

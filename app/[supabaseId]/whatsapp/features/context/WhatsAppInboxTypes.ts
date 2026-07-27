@@ -107,6 +107,8 @@ export interface WhatsAppMessage {
   failedAt: string | null
   isAutoResponse: boolean
   createdAt: string
+  /** Group mentions used for outbound idempotency hash; retained for retry. */
+  mentionedJids?: string[] | null
 }
 
 export type WhatsAppConnectionStatus = 'PENDING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'

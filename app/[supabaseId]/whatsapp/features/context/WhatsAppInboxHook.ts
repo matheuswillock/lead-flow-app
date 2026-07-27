@@ -883,6 +883,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             failedAt: null,
             isAutoResponse: false,
             createdAt: new Date().toISOString(),
+            mentionedJids: mentionedJids && mentionedJids.length > 0 ? mentionedJids : null,
           })
         )
       } catch (error) {
@@ -944,6 +945,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         failedAt: null,
         isAutoResponse: false,
         createdAt: new Date().toISOString(),
+        mentionedJids: mentionedJids && mentionedJids.length > 0 ? mentionedJids : null,
       }
 
       setMessages((prev) => [...prev, optimisticMessage])
@@ -969,9 +971,15 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       if (isSendingRef.current) return
 
       const target = messagesRef.current.find((m) => m.id === messageId)
-      if (!target || (!target.contentText && !target.mediaFileName)) return
+      // Media-only retries need the original binary payload (not available after
+      // the first attempt). Keep retry for text intents that can be reconstructed.
+      if (!target?.contentText?.trim()) return
+      if (!target.clientMessageId) {
+        toast.error('Não é possível reenviar esta mensagem. Envie novamente pelo composer.')
+        return
+      }
 
-      const clientMessageId = target.clientMessageId ?? crypto.randomUUID()
+      const clientMessageId = target.clientMessageId
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -983,12 +991,12 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
       performSend(
         target.conversationId,
-        target.contentText ?? '',
+        target.contentText,
         messageId,
         clientMessageId,
         undefined,
-        undefined,
-        Boolean(target.clientMessageId)
+        target.mentionedJids ?? undefined,
+        true
       ).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao reenviar mensagem:', error)
         setIsSending(false)
