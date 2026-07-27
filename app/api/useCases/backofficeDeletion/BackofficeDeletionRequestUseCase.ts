@@ -5,15 +5,36 @@ import type {
 } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
+import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService"
+import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 import { BackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/BackofficeDeletionRequestRepository"
 import type { IBackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/IBackofficeDeletionRequestRepository"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
-import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
+import type {
+  IBackofficeMemberRepository,
+  MemberForDeletionRecord,
+} from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
 import {
   BACKOFFICE_DELETION_APPROVER_EMAILS,
   isBackofficeDeletionApproverEmail,
 } from "./deletionApproverEmails"
 import type { IBackofficeDeletionRequestUseCase } from "./IBackofficeDeletionRequestUseCase"
+
+function isIdempotentAsaasCancelError(errorMessage: string): boolean {
+  const normalized = errorMessage
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+  const patterns = [
+    "not found",
+    "nao encontrado",
+    "nao encontrada",
+    "already cancelled",
+    "already canceled",
+    "ja cancelad",
+  ]
+  return patterns.some((pattern) => normalized.includes(pattern))
+}
 
 export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequestUseCase {
   constructor(
@@ -133,6 +154,28 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
 
       const already = request.approvals.find((a) => a.approverProfileId === input.approverProfileId)
       if (already) {
+        // Retry path: both approvals may already exist after a failed Auth/billing
+        // execution left the request pending. Allow re-running the cascade.
+        if (
+          input.decision === "approved" &&
+          already.decision === "approved" &&
+          this.hasRequiredApprovals(request)
+        ) {
+          await this.executeApprovedRequest(
+            request.type,
+            request.targetId,
+            input.approverProfileId,
+            input.requestId
+          )
+          await this.repository.updateStatus(input.requestId, "approved", new Date())
+          return new Output(
+            true,
+            ["Solicitação aprovada e exclusão lógica executada"],
+            [],
+            { id: input.requestId, status: "approved" }
+          )
+        }
+
         return new Output(false, [], ["Você já registrou uma decisão nesta solicitação"], null)
       }
 
@@ -152,17 +195,7 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
         return new Output(false, [], ["Solicitação não encontrada após aprovação"], null)
       }
 
-      const approvedEmails = new Set(
-        refreshed.approvals
-          .filter((a) => a.decision === "approved" && a.approverEmail)
-          .map((a) => a.approverEmail!.trim().toLowerCase())
-      )
-
-      const requiredOk = BACKOFFICE_DELETION_APPROVER_EMAILS.every((email) =>
-        approvedEmails.has(email)
-      )
-
-      if (!requiredOk) {
+      if (!this.hasRequiredApprovals(refreshed)) {
         return new Output(
           true,
           ["Aprovação registrada — aguardando o segundo aprovador"],
@@ -182,7 +215,90 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
       )
     } catch (error) {
       console.error("[BackofficeDeletionRequestUseCase][decide]", error)
-      return new Output(false, [], ["Erro ao processar decisão"], null)
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Erro ao processar decisão"
+      return new Output(false, [], [message], null)
+    }
+  }
+
+  private hasRequiredApprovals(request: {
+    approvals: Array<{ decision: BackofficeDeletionApprovalDecision; approverEmail: string | null }>
+  }): boolean {
+    const approvedEmails = new Set(
+      request.approvals
+        .filter((a) => a.decision === "approved" && a.approverEmail)
+        .map((a) => a.approverEmail!.trim().toLowerCase())
+    )
+
+    return BACKOFFICE_DELETION_APPROVER_EMAILS.every((email) => approvedEmails.has(email))
+  }
+
+  private async cancelAsaasSubscriptionBeforeUserDeletion(
+    member: MemberForDeletionRecord
+  ): Promise<void> {
+    if (
+      !member.subscriptionAsaasId ||
+      member.subscriptionAsaasId.startsWith("backoffice-adhesion-")
+    ) {
+      return
+    }
+
+    try {
+      await AsaasSubscriptionService.cancelSubscription(member.subscriptionAsaasId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!isIdempotentAsaasCancelError(message)) {
+        console.error(
+          "[BackofficeDeletionRequestUseCase][cancelAsaasSubscriptionBeforeUserDeletion]",
+          message
+        )
+        throw new Error(
+          "Não foi possível cancelar a assinatura do usuário. Tente novamente em alguns instantes."
+        )
+      }
+    }
+  }
+
+  private async syncMemberProBillingAfterUserDeletion(
+    billingMasterId: string | null
+  ): Promise<void> {
+    if (!billingMasterId) {
+      return
+    }
+
+    try {
+      await memberProBillingUseCase.syncBillingAfterUsageChange(
+        billingMasterId,
+        "backoffice_user_delete"
+      )
+    } catch (error) {
+      console.error(
+        "[BackofficeDeletionRequestUseCase][syncMemberProBillingAfterUserDeletion]",
+        error
+      )
+    }
+  }
+
+  private async banSupabaseUser(supabaseId: string): Promise<void> {
+    const supabase = createSupabaseAdmin()
+    if (!supabase) {
+      throw new Error("Cliente Supabase Admin indisponível para desativar a conta Auth")
+    }
+
+    const { error } = await supabase.auth.admin.updateUserById(supabaseId, {
+      ban_duration: "876000h",
+    })
+
+    if (error) {
+      console.error(
+        "[BackofficeDeletionRequestUseCase][banSupabaseUser]",
+        error.message
+      )
+      throw new Error(
+        "Não foi possível desativar a conta Auth no Supabase. A exclusão não foi concluída."
+      )
     }
   }
 
@@ -194,23 +310,24 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
   ): Promise<void> {
     if (type === "USER_DELETE") {
       const member = await this.memberRepository.findMemberForDeletion(targetId)
-      await this.memberRepository.softDeleteMemberCascade(targetId, actorProfileId, requestId)
-
-      if (member?.supabaseId) {
-        try {
-          const supabase = createSupabaseAdmin()
-          if (supabase) {
-            await supabase.auth.admin.updateUserById(member.supabaseId, {
-              ban_duration: "876000h",
-            })
-          }
-        } catch (authError) {
-          console.error(
-            "[BackofficeDeletionRequestUseCase][executeApprovedRequest] Falha ao desativar Auth:",
-            authError
-          )
-        }
+      if (!member) {
+        // Idempotent retry: cascade may have succeeded before updateStatus failed.
+        console.info(
+          "[BackofficeDeletionRequestUseCase][executeApprovedRequest] usuário já soft-deleted; concluindo retry"
+        )
+        return
       }
+
+      const billingMasterId = member.isMaster ? member.id : member.managerId
+
+      await this.cancelAsaasSubscriptionBeforeUserDeletion(member)
+
+      if (member.supabaseId) {
+        await this.banSupabaseUser(member.supabaseId)
+      }
+
+      await this.memberRepository.softDeleteMemberCascade(targetId, actorProfileId, requestId)
+      await this.syncMemberProBillingAfterUserDeletion(billingMasterId)
       return
     }
 

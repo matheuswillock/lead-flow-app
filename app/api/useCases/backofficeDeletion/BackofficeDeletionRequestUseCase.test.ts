@@ -264,6 +264,51 @@ describe("BackofficeDeletionRequestUseCase", () => {
       expect(output.errorMessages[0]).toContain("já registrou uma decisão")
     })
 
+    it("retenta a execução quando ambas as aprovações já existem e a solicitação segue pending", async () => {
+      const softDeleteMemberCascade = mock(async () => undefined)
+      const updateStatus = mock(async () => undefined)
+      const bothApprovals: BackofficeDeletionRequestListItem["approvals"] = [
+        {
+          id: "a1",
+          approverProfileId: "matheus-id",
+          approverEmail: MATHEUS,
+          decision: "approved",
+          createdAt: new Date(),
+        },
+        {
+          id: "a2",
+          approverProfileId: "bruno-id",
+          approverEmail: BRUNO,
+          decision: "approved",
+          createdAt: new Date(),
+        },
+      ]
+
+      const useCase = new BackofficeDeletionRequestUseCase(
+        createDeletionRepoMock({
+          findById: async () => baseRequest({ approvals: bothApprovals }),
+          updateStatus,
+        }),
+        createMemberRepoMock({ softDeleteMemberCascade })
+      )
+
+      const output = await useCase.decide({
+        requestId: "req-1",
+        decision: "approved",
+        approverProfileId: "bruno-id",
+        approverEmail: BRUNO,
+      })
+
+      expect(output.isValid).toBe(true)
+      expect(output.successMessages[0]).toContain("exclusão lógica executada")
+      expect(softDeleteMemberCascade).toHaveBeenCalledWith(
+        "profile-target",
+        "bruno-id",
+        "req-1"
+      )
+      expect(updateStatus).toHaveBeenCalledWith("req-1", "approved", expect.any(Date))
+    })
+
     it("marca rejected ao receber rejeição de um aprovador", async () => {
       const updateStatus = mock(async () => undefined)
       const createApproval = mock(async () => undefined)
