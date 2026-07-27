@@ -7,8 +7,7 @@ function createRepoMock(
   overrides: Partial<IBackofficeDatabaseBackupRepository> = {}
 ): IBackofficeDatabaseBackupRepository {
   return {
-    createPending: async () => ({ id: "backup-1" }),
-    hasPending: async () => false,
+    claimPendingSlot: async () => ({ ok: true, id: "backup-1" }),
     update: async () => undefined,
     list: async () => [],
     findById: async () => null,
@@ -77,7 +76,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
   describe("triggerCronBackup", () => {
     it("cria pending com source=cron e marca success quando VPS responde ok", async () => {
-      const createCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
+      const claimCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
       const lastUpdate: {
         status?: string
         fileName?: string | null
@@ -86,9 +85,9 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       }[] = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
-          createPending: async (input) => {
-            createCalls.push(input)
-            return { id: "backup-1" }
+          claimPendingSlot: async (input) => {
+            claimCalls.push(input)
+            return { ok: true, id: "backup-1" }
           },
           update: async (_id, data) => {
             lastUpdate.push(data)
@@ -100,19 +99,18 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(true)
       expect((output.result as { id: string }).id).toBe("backup-1")
-      expect(createCalls[0]).toEqual({ source: "cron", triggeredByProfileId: null })
+      expect(claimCalls[0]).toEqual({ source: "cron", triggeredByProfileId: null })
       expect(lastUpdate[0]?.status).toBe("success")
       expect(lastUpdate[0]?.fileName).toBe("full.dump")
       expect(lastUpdate[0]?.checksumSha256).toBe("abc123")
       expect(lastUpdate[0]?.sizeBytes).toEqual(BigInt(1024))
     })
 
-    it("bloqueia quando já existe backup pending", async () => {
-      const createPending = mock(async () => ({ id: "backup-1" }))
+    it("bloqueia quando o slot pending já está ocupado", async () => {
+      const claimPendingSlot = mock(async () => ({ ok: false as const, reason: "busy" as const }))
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
-          hasPending: async () => true,
-          createPending,
+          claimPendingSlot,
         }),
         createVpsMock()
       )
@@ -120,7 +118,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toContain("em andamento")
-      expect(createPending).not.toHaveBeenCalled()
+      expect(claimPendingSlot).toHaveBeenCalled()
     })
 
     it("marca failed quando VPS retorna erro", async () => {
@@ -167,12 +165,12 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
   describe("triggerManualBackup", () => {
     it("cria pending com source=manual e triggeredByProfileId", async () => {
-      const createCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
+      const claimCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
-          createPending: async (input) => {
-            createCalls.push(input)
-            return { id: "backup-manual-1" }
+          claimPendingSlot: async (input) => {
+            claimCalls.push(input)
+            return { ok: true, id: "backup-manual-1" }
           },
         }),
         createVpsMock()
@@ -181,18 +179,17 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const output = await useCase.triggerManualBackup("profile-manager-1")
       expect(output.isValid).toBe(true)
       expect((output.result as { id: string }).id).toBe("backup-manual-1")
-      expect(createCalls[0]).toEqual({
+      expect(claimCalls[0]).toEqual({
         source: "manual",
         triggeredByProfileId: "profile-manager-1",
       })
     })
 
-    it("bloqueia quando já existe backup pending", async () => {
-      const createPending = mock(async () => ({ id: "backup-1" }))
+    it("bloqueia quando o slot pending já está ocupado", async () => {
+      const claimPendingSlot = mock(async () => ({ ok: false as const, reason: "busy" as const }))
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
-          hasPending: async () => true,
-          createPending,
+          claimPendingSlot,
         }),
         createVpsMock()
       )
@@ -200,7 +197,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const output = await useCase.triggerManualBackup("profile-manager-1")
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toContain("em andamento")
-      expect(createPending).not.toHaveBeenCalled()
+      expect(claimPendingSlot).toHaveBeenCalled()
     })
   })
 

@@ -69,7 +69,12 @@ export class BackofficeDatabaseBackupUseCase {
     source: BackofficeDatabaseBackupSource
     triggeredByProfileId?: string | null
   }): Promise<Output> {
-    if (await this.repository.hasPending()) {
+    const claimed = await this.repository.claimPendingSlot({
+      source: input.source,
+      triggeredByProfileId: input.triggeredByProfileId ?? null,
+    })
+
+    if (!claimed.ok) {
       return new Output(
         false,
         [],
@@ -78,10 +83,7 @@ export class BackofficeDatabaseBackupUseCase {
       )
     }
 
-    const pending = await this.repository.createPending({
-      source: input.source,
-      triggeredByProfileId: input.triggeredByProfileId ?? null,
-    })
+    const pending = { id: claimed.id }
 
     console.info("[BackofficeDatabaseBackupUseCase][runBackupJob] started", {
       id: pending.id,

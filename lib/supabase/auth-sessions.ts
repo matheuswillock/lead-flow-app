@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isAuthSessionExpired } from "@/lib/auth/session-lifetime";
+import {
+  AUTH_SESSION_BOUND_COOKIE,
+  extractSupabaseSessionId,
+  formatAuthSessionBoundCookie,
+  isAuthSessionExpired,
+  parseAuthSessionBoundCookie,
+  resolveAuthSessionStartedAt,
+} from "@/lib/auth/session-lifetime";
 
 function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -22,6 +29,33 @@ function hasSupabaseAuthCookie(request: NextRequest) {
 
 function hasSupabaseAuthCookieOnResponse(response: NextResponse) {
   return cookiesIncludeSupabaseAuth(response.cookies.getAll());
+}
+
+function setAuthSessionBoundCookie(
+  response: NextResponse,
+  sessionId: string,
+  startedAtMs: number
+) {
+  response.cookies.set({
+    name: AUTH_SESSION_BOUND_COOKIE,
+    value: formatAuthSessionBoundCookie(sessionId, startedAtMs),
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  })
+}
+
+function clearAuthSessionBoundCookie(response: NextResponse) {
+  response.cookies.set({
+    name: AUTH_SESSION_BOUND_COOKIE,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  })
 }
 
 export function copySessionCookies(from: NextResponse, to: NextResponse) {
@@ -132,16 +166,30 @@ export async function updateSession(request: NextRequest) {
     userError = error ?? null;
   }
 
-  if (user && isAuthSessionExpired(user.last_sign_in_at)) {
-    console.info("[proxy] Auth session expired (max 6h) — signing out", {
-      userId: user.id,
-      lastSignInAt: user.last_sign_in_at,
-    })
-    const { error: signOutError } = await supabase.auth.signOut()
-    if (signOutError && isDev) {
-      console.error("[proxy] signOut after session expiry:", signOutError.message)
+  if (user) {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const sessionId = extractSupabaseSessionId(sessionData.session?.access_token)
+    if (sessionId) {
+      const bound = parseAuthSessionBoundCookie(
+        request.cookies.get(AUTH_SESSION_BOUND_COOKIE)?.value
+      )
+      const startedAtMs = resolveAuthSessionStartedAt({ sessionId, bound })
+      setAuthSessionBoundCookie(response, sessionId, startedAtMs)
+
+      if (isAuthSessionExpired(startedAtMs)) {
+        console.info("[proxy] Auth session expired (max 6h) — signing out", {
+          userId: user.id,
+          sessionId,
+          startedAtMs,
+        })
+        const { error: signOutError } = await supabase.auth.signOut()
+        if (signOutError && isDev) {
+          console.error("[proxy] signOut after session expiry:", signOutError.message)
+        }
+        clearAuthSessionBoundCookie(response)
+        user = null
+      }
     }
-    user = null
   }
 
   if (userError && userError.name !== "AuthSessionMissingError" && isDev) {

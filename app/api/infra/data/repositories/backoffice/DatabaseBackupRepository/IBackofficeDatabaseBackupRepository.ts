@@ -24,9 +24,16 @@ export type CreatePendingBackupInput = {
   triggeredByProfileId?: string | null
 }
 
+export type ClaimPendingBackupResult =
+  | { ok: true; id: string }
+  | { ok: false; reason: "busy" }
+
 export interface IBackofficeDatabaseBackupRepository {
-  createPending(input: CreatePendingBackupInput): Promise<{ id: string }>
-  hasPending(): Promise<boolean>
+  /**
+   * Atomically expire stale pending rows and claim a new pending slot.
+   * Concurrent callers serialize via advisory lock + unique pending index.
+   */
+  claimPendingSlot(input: CreatePendingBackupInput): Promise<ClaimPendingBackupResult>
   update(
     id: string,
     data: {
