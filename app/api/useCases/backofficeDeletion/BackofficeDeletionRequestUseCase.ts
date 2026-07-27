@@ -5,8 +5,8 @@ import type {
 } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
-import { BackofficeDeletionBillingService } from "@/app/api/services/backofficeDeletionBilling/BackofficeDeletionBillingService"
-import type { IBackofficeDeletionBillingService } from "@/app/api/services/backofficeDeletionBilling/IBackofficeDeletionBillingService"
+import { BackofficeDeletionBillingCoordinator } from "@/app/api/useCases/backofficeDeletion/BackofficeDeletionBillingCoordinator"
+import type { IBackofficeDeletionBillingCoordinator } from "@/app/api/useCases/backofficeDeletion/IBackofficeDeletionBillingCoordinator"
 import { BackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/BackofficeDeletionRequestRepository"
 import type { IBackofficeDeletionRequestRepository } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/IBackofficeDeletionRequestRepository"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
@@ -40,7 +40,7 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
   constructor(
     private readonly repository: IBackofficeDeletionRequestRepository = new BackofficeDeletionRequestRepository(),
     private readonly memberRepository: IBackofficeMemberRepository = new BackofficeMemberRepository(),
-    private readonly billingService: IBackofficeDeletionBillingService = new BackofficeDeletionBillingService()
+    private readonly billingService: IBackofficeDeletionBillingCoordinator = new BackofficeDeletionBillingCoordinator()
   ) {}
 
   async createRequest(input: {

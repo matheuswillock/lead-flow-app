@@ -9,7 +9,7 @@ import type {
   IBackofficeDeletionRequestRepository,
 } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/IBackofficeDeletionRequestRepository"
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
-import type { IBackofficeDeletionBillingService } from "@/app/api/services/backofficeDeletionBilling/IBackofficeDeletionBillingService"
+import type { IBackofficeDeletionBillingCoordinator } from "@/app/api/useCases/backofficeDeletion/IBackofficeDeletionBillingCoordinator"
 import { BackofficeDeletionRequestUseCase } from "./BackofficeDeletionRequestUseCase"
 
 const MATHEUS = "matheuswillock@corretorstudio.com.br"
@@ -87,8 +87,8 @@ function createMemberRepoMock(
 }
 
 function createBillingServiceMock(
-  overrides: Partial<IBackofficeDeletionBillingService> = {}
-): IBackofficeDeletionBillingService {
+  overrides: Partial<IBackofficeDeletionBillingCoordinator> = {}
+): IBackofficeDeletionBillingCoordinator {
   return {
     cancelAsaasSubscription: async () => undefined,
     syncMemberProAfterNonMasterDeletion: async () => undefined,
