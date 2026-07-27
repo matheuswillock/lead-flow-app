@@ -563,6 +563,7 @@ export class RadarRepository {
       where: {
         teamId,
         ...(filters.leadId ? { leadId: filters.leadId } : {}),
+        ...(filters.portfolioId ? { id: filters.portfolioId } : {}),
         ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
       },
       select: {
@@ -571,6 +572,7 @@ export class RadarRepository {
         renewalStatus: true,
         portfolioStatus: true,
         renewalAmount: true,
+        source: true,
         updatedAt: true,
         createdAt: true,
         lead: {

@@ -19,6 +19,7 @@ let profileMatchesRadarSegment: typeof import("@/lib/radar/segment-rules").profi
 let normalizeRadarEmail: typeof import("@/lib/radar/normalization").normalizeRadarEmail
 let normalizeRadarPhone: typeof import("@/lib/radar/normalization").normalizeRadarPhone
 let syncLeadToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncLeadToRadarUseCase").syncLeadToRadarUseCase
+let syncPortfolioToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncPortfolioToRadarUseCase").syncPortfolioToRadarUseCase
 let teamHasRadarFeature: typeof import("@/lib/radar/team-has-radar-feature").teamHasRadarFeature
 let radarSegmentQueryService: typeof import("@/app/api/services/radar/RadarSegmentQueryService").radarSegmentQueryService
 let teamRadarSegmentService: typeof import("@/app/api/services/radar/TeamRadarSegmentService").teamRadarSegmentService
@@ -34,6 +35,7 @@ if (RUN_INTEGRATION) {
   ;({ profileMatchesRadarSegment } = await import("@/lib/radar/segment-rules"))
   ;({ normalizeRadarEmail, normalizeRadarPhone } = await import("@/lib/radar/normalization"))
   ;({ syncLeadToRadarUseCase } = await import("@/app/api/useCases/radar/SyncLeadToRadarUseCase"))
+  ;({ syncPortfolioToRadarUseCase } = await import("@/app/api/useCases/radar/SyncPortfolioToRadarUseCase"))
   ;({ teamHasRadarFeature } = await import("@/lib/radar/team-has-radar-feature"))
   ;({ radarSegmentQueryService } = await import("@/app/api/services/radar/RadarSegmentQueryService"))
   ;({ teamRadarSegmentService } = await import("@/app/api/services/radar/TeamRadarSegmentService"))
@@ -290,6 +292,192 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
         where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(inlineLead.phone) },
       })
       await prisma.lead.delete({ where: { id: inlineLead.id } })
+    }
+  })
+
+  it("push inline (SyncPortfolioToRadarUseCase) é idempotente frente ao batch — não duplica identidade/evento/perfil (D3)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const phoneDigits = String(Date.now()).slice(-4)
+    const portfolioLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-portfolio-${suffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Carteira",
+        phone: `1199997${phoneDigits}`,
+        email: `portfolio-${suffix}@example.com`,
+        status: "new_opportunity",
+      },
+    })
+    const portfolio = await prisma.leadPortfolio.create({
+      data: {
+        id: randomUUID(),
+        leadId: portfolioLead.id,
+        teamId: scope.teamId,
+        portfolioStatus: "active",
+        renewalStatus: "to_renew",
+        source: "crm",
+      },
+    })
+
+    try {
+      // Simula o backfill batch rodando primeiro.
+      const batchResult = await radarService.syncFromPortfolio(scope, { portfolioId: portfolio.id })
+      expect(batchResult.created).toBe(1)
+
+      const profileAfterBatch = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(portfolioLead.phone) },
+      })
+      expect(profileAfterBatch).not.toBeNull()
+
+      const identitiesAfterBatch = await prisma.radarIdentity.count({
+        where: { profileId: profileAfterBatch!.id },
+      })
+      const eventsAfterBatch = await prisma.radarEvent.count({ where: { profileId: profileAfterBatch!.id } })
+      const profilesCountAfterBatch = await prisma.radarProfile.count({ where: { teamId: scope.teamId } })
+
+      // Push inline chega depois (ex.: updatePortfolioEntry disparou o fire-and-forget).
+      const inlineResult = await syncPortfolioToRadarUseCase.execute({
+        portfolioId: portfolio.id,
+        teamId: scope.teamId,
+      })
+      expect(inlineResult.isValid).toBe(true)
+
+      const identitiesAfterInline = await prisma.radarIdentity.count({
+        where: { profileId: profileAfterBatch!.id },
+      })
+      const eventsAfterInline = await prisma.radarEvent.count({ where: { profileId: profileAfterBatch!.id } })
+      const profilesCountAfterInline = await prisma.radarProfile.count({ where: { teamId: scope.teamId } })
+
+      expect(identitiesAfterInline).toBe(identitiesAfterBatch)
+      expect(eventsAfterInline).toBe(eventsAfterBatch)
+      expect(profilesCountAfterInline).toBe(profilesCountAfterBatch)
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(portfolioLead.phone) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(portfolioLead.phone) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(portfolioLead.phone) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(portfolioLead.phone) },
+      })
+      // LeadPortfolio tem onDelete: Cascade a partir de Lead — apagar o lead remove a carteira junto.
+      await prisma.lead.delete({ where: { id: portfolioLead.id } })
+    }
+  })
+
+  it("carteira renovada gera RadarEvent portfolio.renewed (D3)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const phoneDigits = String(Date.now()).slice(-4)
+    const renewedLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-renewed-${suffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Renovado",
+        phone: `1199996${phoneDigits}`,
+        email: `renewed-${suffix}@example.com`,
+        status: "new_opportunity",
+      },
+    })
+    const portfolio = await prisma.leadPortfolio.create({
+      data: {
+        id: randomUUID(),
+        leadId: renewedLead.id,
+        teamId: scope.teamId,
+        portfolioStatus: "active",
+        renewalStatus: "renewed",
+        source: "crm",
+      },
+    })
+
+    try {
+      await radarService.syncFromPortfolio(scope, { portfolioId: portfolio.id })
+
+      const event = await prisma.radarEvent.findFirst({
+        where: {
+          teamId: scope.teamId,
+          sourceType: "portfolio",
+          sourceId: `${portfolio.id}:renewed`,
+          eventType: "portfolio.renewed",
+        },
+      })
+      expect(event).not.toBeNull()
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(renewedLead.phone) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(renewedLead.phone) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(renewedLead.phone) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(renewedLead.phone) },
+      })
+      await prisma.lead.delete({ where: { id: renewedLead.id } })
+    }
+  })
+
+  it("carteira com troca de corretagem gera RadarEvent portfolio.brokerage_transfer (D3)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const phoneDigits = String(Date.now()).slice(-4)
+    const transferLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-transfer-${suffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Troca Corretagem",
+        phone: `1199995${phoneDigits}`,
+        email: `transfer-${suffix}@example.com`,
+        status: "new_opportunity",
+      },
+    })
+    const portfolio = await prisma.leadPortfolio.create({
+      data: {
+        id: randomUUID(),
+        leadId: transferLead.id,
+        teamId: scope.teamId,
+        portfolioStatus: "active",
+        renewalStatus: "to_renew",
+        source: "brokerage_transfer",
+      },
+    })
+
+    try {
+      await radarService.syncFromPortfolio(scope, { portfolioId: portfolio.id })
+
+      const event = await prisma.radarEvent.findFirst({
+        where: {
+          teamId: scope.teamId,
+          sourceType: "portfolio",
+          sourceId: `${portfolio.id}:brokerage_transfer`,
+          eventType: "portfolio.brokerage_transfer",
+        },
+      })
+      expect(event).not.toBeNull()
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transferLead.phone) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transferLead.phone) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transferLead.phone) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transferLead.phone) },
+      })
+      await prisma.lead.delete({ where: { id: transferLead.id } })
     }
   })
 

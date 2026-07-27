@@ -348,6 +348,30 @@ export class RadarService {
             metadata: { renewalStatus: entry.renewalStatus },
           })
         }
+
+        if (entry.renewalStatus === "renewed") {
+          await radarRepository.appendEventIfNew({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            eventType: "portfolio.renewed",
+            sourceType: "portfolio",
+            sourceId: `${entry.id}:renewed`,
+            occurredAt: entry.updatedAt,
+            metadata: { renewalStatus: entry.renewalStatus },
+          })
+        }
+
+        if (entry.source === "brokerage_transfer") {
+          await radarRepository.appendEventIfNew({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            eventType: "portfolio.brokerage_transfer",
+            sourceType: "portfolio",
+            sourceId: `${entry.id}:brokerage_transfer`,
+            occurredAt: entry.updatedAt,
+            metadata: { source: entry.source },
+          })
+        }
       } catch (error) {
         counters.errors.push(`portfolio:${entry.id}`)
         console.error("[RadarService][syncFromPortfolio]", entry.id, error)
