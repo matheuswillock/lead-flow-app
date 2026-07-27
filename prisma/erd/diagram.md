@@ -600,6 +600,60 @@ MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
 BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
 EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
 AUTOMATION_RULE AUTOMATION_RULE
+WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
+        }
+    
+
+
+        team_webhook_direction {
+            inbound inbound
+outbound outbound
+        }
+    
+
+
+        team_webhook_status {
+            active active
+paused paused
+disabled disabled
+        }
+    
+
+
+        team_webhook_destination_preset {
+            generic generic
+slack slack
+teams teams
+zapier zapier
+        }
+    
+
+
+        team_webhook_event_key {
+            lead_created lead_created
+lead_status_changed lead_status_changed
+lead_assigned lead_assigned
+appointment_created appointment_created
+appointment_reminder appointment_reminder
+activity_created activity_created
+        }
+    
+
+
+        team_webhook_log_result {
+            success success
+failure failure
+rejected rejected
+        }
+    
+
+
+        team_webhook_outbox_status {
+            pending pending
+processing processing
+delivered delivered
+failed failed
+cancelled cancelled
         }
     
 
@@ -2124,6 +2178,59 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_team_webhooks" {
+    String id "🗝️"
+    TeamWebhookDirection direction 
+    TeamWebhookStatus status 
+    String name 
+    String targetUrl "❓"
+    TeamWebhookDestinationPreset destinationPreset "❓"
+    TeamWebhookEventKey selectedEvents 
+    Int failureStreak 
+    Int failureThreshold 
+    DateTime pausedAt "❓"
+    String pauseReason "❓"
+    String tokenHash "❓"
+    String tokenCipher "❓"
+    String tokenPreview "❓"
+    StudioWebhookTokenExpiryMode expiryMode "❓"
+    DateTime expiresAt "❓"
+    DateTime lastUsedAt "❓"
+    DateTime lastSuccessAt "❓"
+    DateTime lastFailureAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_webhook_event_logs" {
+    String id "🗝️"
+    TeamWebhookDirection direction 
+    TeamWebhookLogResult result 
+    TeamWebhookEventKey eventKey "❓"
+    String method "❓"
+    String endpoint "❓"
+    Int statusCode "❓"
+    Json requestPayload "❓"
+    Json responsePayload "❓"
+    String errorMessage "❓"
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_team_webhook_outbox" {
+    String id "🗝️"
+    TeamWebhookEventKey eventKey 
+    Json payload 
+    TeamWebhookOutboxStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_notifications" {
     String id "🗝️"
     NotificationType type 
@@ -3552,6 +3659,22 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_team_studio_webhook_configs" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" }o--|| corretor_studio_profiles : "updatedBy"
     "corretor_studio_team_studio_webhook_request_logs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_webhooks" |o--|| "TeamWebhookDirection" : "enum:direction"
+    "corretor_studio_team_webhooks" |o--|| "TeamWebhookStatus" : "enum:status"
+    "corretor_studio_team_webhooks" |o--|o "TeamWebhookDestinationPreset" : "enum:destinationPreset"
+    "corretor_studio_team_webhooks" |o--}o "TeamWebhookEventKey" : "enum:selectedEvents"
+    "corretor_studio_team_webhooks" |o--|o "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
+    "corretor_studio_team_webhooks" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_webhooks" }o--|| corretor_studio_profiles : "updatedBy"
+    "corretor_studio_team_webhook_event_logs" |o--|| "TeamWebhookDirection" : "enum:direction"
+    "corretor_studio_team_webhook_event_logs" |o--|| "TeamWebhookLogResult" : "enum:result"
+    "corretor_studio_team_webhook_event_logs" |o--|o "TeamWebhookEventKey" : "enum:eventKey"
+    "corretor_studio_team_webhook_event_logs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_webhook_event_logs" }o--|| corretor_studio_team_webhooks : "webhook"
+    "corretor_studio_team_webhook_outbox" |o--|| "TeamWebhookEventKey" : "enum:eventKey"
+    "corretor_studio_team_webhook_outbox" |o--|| "TeamWebhookOutboxStatus" : "enum:status"
+    "corretor_studio_team_webhook_outbox" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_webhook_outbox" }o--|| corretor_studio_team_webhooks : "webhook"
     "corretor_studio_notifications" |o--|| "NotificationType" : "enum:type"
     "corretor_studio_notifications" }o--|| corretor_studio_profiles : "recipient"
     "corretor_studio_notifications" }o--|o corretor_studio_profiles : "actor"

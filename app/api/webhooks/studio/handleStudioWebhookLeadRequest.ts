@@ -23,6 +23,10 @@ const resolveErrorStatus = (output: Output): number => {
     return 401;
   }
 
+  if (messages.includes(studioWebhookErrors.WEBHOOK_INACTIVE_ERROR)) {
+    return 403;
+  }
+
   if (normalized.includes("já existe um lead")) {
     return 409;
   }

@@ -3,6 +3,7 @@ import { meetingReminderRepository } from "@/app/api/infra/data/repositories/mee
 import { backofficeBotRepository } from "@/app/api/infra/data/repositories/backofficeBot/BackofficeBotRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioBotOutboxService";
+import { outboundEventPublisher } from "@/app/api/services/teamWebhook/OutboundEventPublisher";
 
 export class MeetingReminderUseCase {
   async processDueReminders(): Promise<Output> {
@@ -43,6 +44,20 @@ export class MeetingReminderUseCase {
           meetingDate: schedule.date,
           meetingLink: schedule.meetingLink,
           recipientProfileIds,
+        });
+
+        void outboundEventPublisher.publish({
+          teamId: lead.teamId,
+          eventKey: "appointment_reminder",
+          leadId: lead.id,
+          payload: {
+            lead: { id: lead.id, name: lead.name, leadCode: lead.leadCode },
+            schedule: {
+              id: schedule.id,
+              meeting_date: schedule.date.toISOString(),
+              meeting_link: schedule.meetingLink,
+            },
+          },
         });
 
         for (const profileId of recipientProfileIds) {

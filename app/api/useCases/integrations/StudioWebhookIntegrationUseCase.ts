@@ -23,12 +23,18 @@ import {
   type IStudioWebhookIntegrationService,
 } from "@/app/api/services/StudioWebhookIntegration/IStudioWebhookIntegrationService";
 import { studioWebhookIntegrationService } from "@/app/api/services/StudioWebhookIntegration/StudioWebhookIntegrationService";
+import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookRepository";
+import { teamWebhookEventLogRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookEventLogRepository";
+import { outboundEventPublisher } from "@/app/api/services/teamWebhook/OutboundEventPublisher";
 
 const UNAUTHORIZED_ERROR = "Webhook token não autorizado";
 const TOKEN_EXPIRED_ERROR = "Webhook token expirado";
+const WEBHOOK_INACTIVE_ERROR = "Webhook de entrada inativo ou pausado";
 const NO_TOKEN_SENTINEL = "__studio_webhook_no_token__";
 const NO_TOKEN_PREVIEW = "Sem token";
 const STUDIO_WEBHOOK_LOG_LIMIT = 15;
+const NONE_TOKEN_HASH = hashStudioWebhookToken("__none__");
+const LEGACY_NONE_TOKEN_HASH = hashStudioWebhookToken(NO_TOKEN_SENTINEL);
 
 const normalizeOptionalString = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -181,6 +187,46 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         updatedByProfileId: input.updatedByProfileId,
       });
 
+      // Dual-write para modelo unificado TeamWebhook (inbound)
+      try {
+        const existingInbound = await teamWebhookRepository.findInboundByTeamId(input.teamId);
+        const inboundTokenHash =
+          input.tokenMode === "none" ? NONE_TOKEN_HASH : tokenHash;
+        if (existingInbound) {
+          await teamWebhookRepository.updateWithCtx(
+            { profileId: input.updatedByProfileId, teamId: input.teamId },
+            existingInbound.id,
+            {
+              tokenHash: inboundTokenHash,
+              tokenCipher,
+              tokenPreview,
+              expiryMode: input.expiryMode,
+              expiresAt,
+              status: "active",
+            }
+          );
+        } else {
+          await teamWebhookRepository.createWithCtx(
+            { profileId: input.updatedByProfileId, teamId: input.teamId },
+            {
+              direction: "inbound",
+              name: "Webhook Genérico de Leads",
+              tokenHash: inboundTokenHash,
+              tokenCipher,
+              tokenPreview,
+              expiryMode: input.expiryMode,
+              expiresAt,
+              status: "active",
+            }
+          );
+        }
+      } catch (dualWriteError) {
+        console.error(
+          "[StudioWebhookIntegrationUseCase] Dual-write TeamWebhook falhou:",
+          dualWriteError
+        );
+      }
+
       return new Output(true, ["Configuração do webhook salva com sucesso"], [], {
         configured: true,
         teamId: config.teamId,
@@ -205,6 +251,75 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       const team = await this.service.getTeamWithMaster(input.teamId);
       if (!team) {
         return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+      }
+
+      const teamInbound = await teamWebhookRepository.findInboundByTeamId(input.teamId);
+      if (teamInbound) {
+        if (teamInbound.status === "disabled" || teamInbound.status === "paused") {
+          return new Output(false, [], [WEBHOOK_INACTIVE_ERROR], null);
+        }
+
+        if (isStudioWebhookTokenExpired(teamInbound.expiresAt)) {
+          return new Output(false, [], [TOKEN_EXPIRED_ERROR], null);
+        }
+
+        const isNoTokenMode =
+          teamInbound.tokenHash === NONE_TOKEN_HASH ||
+          teamInbound.tokenHash === LEGACY_NONE_TOKEN_HASH ||
+          isNoTokenPreview(teamInbound.tokenPreview);
+
+        if (isNoTokenMode) {
+          if (normalizeOptionalString(input.token)) {
+            return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+          }
+        } else {
+          const normalizedToken = normalizeOptionalString(input.token);
+          if (!normalizedToken || !teamInbound.tokenHash) {
+            return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+          }
+          if (!safeStudioWebhookTokenEquals(normalizedToken, teamInbound.tokenHash)) {
+            return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+          }
+        }
+
+        const leadResult = await this.service.createLeadFromWebhook({
+          teamId: input.teamId,
+          managerId: team.masterId,
+          name: input.payload.name.trim(),
+          email: normalizeOptionalString(input.payload.email),
+          phone: normalizeOptionalString(input.payload.phone),
+          cnpj: normalizeOptionalString(input.payload.cnpj),
+          age: normalizeOptionalString(input.payload.ages),
+          currentHealthPlan: normalizeOptionalString(input.payload.current_health_plan),
+          currentValue: input.payload.current_value,
+          referenceHospital: normalizeOptionalString(input.payload.reference_hospital),
+          currentTreatment: normalizeOptionalString(input.payload.current_treatment),
+          source: normalizeOptionalString(input.payload.source) || "studio_webhook",
+          metadata: input.payload.metadata,
+        });
+
+        await teamWebhookRepository.touchUsage(teamInbound.id, true);
+        await this.service.touchWebhookLastUsed(input.teamId).catch(() => undefined);
+
+        void outboundEventPublisher.publish({
+          teamId: input.teamId,
+          eventKey: "lead_created",
+          leadId: leadResult.id,
+          payload: {
+            lead: {
+              id: leadResult.id,
+              leadCode: leadResult.leadCode,
+              name: input.payload.name.trim(),
+              source: "studio_webhook",
+            },
+          },
+        });
+
+        return new Output(true, ["Lead criado via webhook com sucesso"], [], {
+          id: leadResult.id,
+          leadCode: leadResult.leadCode,
+          webhookId: teamInbound.id,
+        });
       }
 
       const config = await this.service.getWebhookConfigByTeamId(input.teamId);
@@ -311,6 +426,32 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         responsePayload: input.responsePayload,
         errorMessage: input.errorMessage ?? null,
       });
+
+      const inbound = await teamWebhookRepository.findInboundByTeamId(input.teamId);
+      if (inbound) {
+        const isRejected =
+          input.statusCode === 403 ||
+          (typeof input.errorMessage === "string" &&
+            input.errorMessage.includes(WEBHOOK_INACTIVE_ERROR));
+
+        await teamWebhookEventLogRepository.create({
+          teamId: input.teamId,
+          webhookId: inbound.id,
+          direction: "inbound",
+          result:
+            input.resultType === "success"
+              ? "success"
+              : isRejected
+                ? "rejected"
+                : "failure",
+          method: input.method,
+          endpoint: input.endpoint,
+          statusCode: input.statusCode,
+          requestPayload: input.requestPayload,
+          responsePayload: input.responsePayload,
+          errorMessage: input.errorMessage ?? null,
+        });
+      }
     } catch (error) {
       console.error("[StudioWebhookIntegrationUseCase] Erro ao registrar log do webhook:", error);
     }
@@ -324,4 +465,5 @@ export const studioWebhookIntegrationUseCase = new StudioWebhookIntegrationUseCa
 export const studioWebhookErrors = {
   UNAUTHORIZED_ERROR,
   TOKEN_EXPIRED_ERROR,
+  WEBHOOK_INACTIVE_ERROR,
 };

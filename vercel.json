@@ -68,6 +68,10 @@
     {
       "path": "/api/v1/backoffice/cron/database-backup",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/v1/integrations/webhooks/cron/process-outbox",
+      "schedule": "* * * * *"
     }
   ]
 }
