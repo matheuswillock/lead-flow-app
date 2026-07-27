@@ -42,17 +42,17 @@ const resolveProfileForTeamAccess = cache(async (supabaseId: string) => {
       isMaster: true,
       managerId: true,
       timezone: true,
+      deletedAt: true,
     },
   });
 });
 
 const resolveTeamMembershipForAccess = cache(async (teamId: string, profileId: string) => {
-  return prisma.teamMember.findUnique({
+  return prisma.teamMember.findFirst({
     where: {
-      teamId_profileId: {
-        teamId,
-        profileId,
-      },
+      teamId,
+      profileId,
+      team: { deletedAt: null },
     },
     select: {
       role: true,
@@ -64,6 +64,7 @@ const resolveTeamMembershipForAccess = cache(async (teamId: string, profileId: s
       team: {
         select: {
           masterId: true,
+          deletedAt: true,
           master: {
             select: {
               sponsorMasterId: true,
@@ -76,10 +77,11 @@ const resolveTeamMembershipForAccess = cache(async (teamId: string, profileId: s
 });
 
 const resolveTeamForSponsorAccess = cache(async (teamId: string) => {
-  return prisma.team.findUnique({
-    where: { id: teamId },
+  return prisma.team.findFirst({
+    where: { id: teamId, deletedAt: null },
     select: {
       masterId: true,
+      deletedAt: true,
       master: {
         select: {
           sponsorMasterId: true,
@@ -104,6 +106,13 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     return {
       error: new Output(false, [], ["Perfil não encontrado"], null),
       status: 404,
+    };
+  }
+
+  if (profile.deletedAt) {
+    return {
+      error: new Output(false, [], ["Conta desativada"], null),
+      status: 403,
     };
   }
 

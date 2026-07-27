@@ -1,5 +1,6 @@
 import type { IBackofficeBackupsService } from "./IBackofficeBackupsService"
 import type {
+  BackofficeBackupCreateResult,
   BackofficeBackupDownloadResult,
   BackofficeBackupsListResult,
 } from "../context/BackofficeBackupsTypes"
@@ -35,6 +36,16 @@ export class BackofficeBackupsService implements IBackofficeBackupsService {
     return parseOutput<BackofficeBackupsListResult>(
       await fetch("/api/v1/backoffice/backups", { cache: "no-store" }),
       "Erro ao carregar backups"
+    )
+  }
+
+  async createManualBackup(): Promise<BackofficeBackupCreateResult> {
+    return parseOutput<BackofficeBackupCreateResult>(
+      await fetch("/api/v1/backoffice/backups", {
+        method: "POST",
+        cache: "no-store",
+      }),
+      "Erro ao gerar backup"
     )
   }
 

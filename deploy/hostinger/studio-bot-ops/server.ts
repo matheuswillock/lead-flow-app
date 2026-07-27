@@ -7,6 +7,7 @@ import http from "node:http";
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -202,13 +203,22 @@ async function handleBackupDownload(url, res) {
   }
 
   try {
-    const data = await fs.readFile(absolute);
+    const stat = await fs.stat(absolute);
+    const stream = createReadStream(absolute);
     res.writeHead(200, {
       "Content-Type": "application/octet-stream",
       "Content-Disposition": `attachment; filename="${path.basename(absolute)}"`,
-      "Content-Length": data.length,
+      "Content-Length": stat.size,
     });
-    res.end(data);
+    stream.on("error", (error) => {
+      console.error("[studio-bot-ops][downloadBackup] stream error:", error);
+      if (!res.headersSent) {
+        json(res, 500, { ok: false, error: "Falha ao ler backup" });
+        return;
+      }
+      res.destroy(error);
+    });
+    stream.pipe(res);
   } catch (error) {
     return json(res, 404, {
       ok: false,

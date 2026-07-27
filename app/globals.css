@@ -571,6 +571,16 @@ h1, h2, h3, h4, h5, h6 {
   --landing-ink: #141118;
   --landing-body: #57515e;
   --landing-muted: #756e7b;
+  --surface-0: #ffffff;
+  --surface-1: color-mix(in oklab, var(--card) 92%, var(--secondary));
+  --surface-2: var(--secondary);
+  --surface-3: color-mix(in oklab, var(--secondary) 88%, var(--landing-ink));
+  --surface-4: color-mix(in oklab, var(--secondary) 78%, var(--landing-ink));
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
   --landing-line: color-mix(in oklab, var(--landing-ink) 9%, transparent);
   --landing-warm: color-mix(in oklab, var(--primary) 8%, var(--card));
   --landing-invert: #ffffff;
@@ -869,6 +879,10 @@ h1, h2, h3, h4, h5, h6 {
   background: linear-gradient(155deg, var(--brand-purple), var(--precision-indigo));
 }
 
+.landing-feature-panel--indigo {
+  background: linear-gradient(155deg, var(--precision-indigo), var(--brand-purple));
+}
+
 .landing-feature-glow {
   position: absolute;
   width: 460px;
@@ -939,7 +953,8 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--brand-pink);
 }
 
-.landing-feature-accent--purple {
+.landing-feature-accent--purple,
+.landing-feature-accent--indigo {
   --landing-feature-active-bg: var(--precision-indigo);
   color: var(--precision-indigo);
 }

@@ -541,6 +541,13 @@ failed failed
     
 
 
+        backoffice_database_backup_source {
+            cron cron
+manual manual
+        }
+    
+
+
         subscription_status {
             trial trial
 active active
@@ -1334,6 +1341,8 @@ meeting_scheduled meeting_scheduled
     DateTime startedAt 
     DateTime finishedAt "❓"
     BackofficeDatabaseBackupStatus status 
+    BackofficeDatabaseBackupSource source 
+    String triggeredByProfileId "❓"
     String filePath "❓"
     String fileName "❓"
     BigInt sizeBytes "❓"
@@ -3386,6 +3395,7 @@ meeting_scheduled meeting_scheduled
     "backoffice_deletion_audit_logs" }o--|o corretor_studio_profiles : "actor"
     "backoffice_deletion_audit_logs" }o--|o backoffice_deletion_requests : "request"
     "backoffice_database_backups" |o--|| "BackofficeDatabaseBackupStatus" : "enum:status"
+    "backoffice_database_backups" |o--|| "BackofficeDatabaseBackupSource" : "enum:source"
     "backoffice_banned_users" |o--|| "BackofficeBanStatus" : "enum:status"
     "backoffice_banned_users" |o--|| "BackofficeBanScope" : "enum:scope"
     "backoffice_banned_users" }o--|| corretor_studio_profiles : "profile"

@@ -141,6 +141,7 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
             where: { teamId: { in: teamIds }, deletedAt: null },
             data: { deletedAt: now, deletedByProfileId: actorProfileId },
           })
+          await tx.teamMember.deleteMany({ where: { teamId: { in: teamIds } } })
           await tx.team.updateMany({
             where: { id: { in: teamIds }, deletedAt: null },
             data: { deletedAt: now, deletedByProfileId: actorProfileId },
@@ -219,6 +220,8 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
         where: { teamId, deletedAt: null },
         data: { deletedAt: now, deletedByProfileId: actorProfileId },
       })
+
+      await tx.teamMember.deleteMany({ where: { teamId } })
 
       await tx.team.update({
         where: { id: teamId },

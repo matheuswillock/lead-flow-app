@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeDatabaseBackupUseCase } from "@/app/api/useCases/backofficeDatabaseBackup/BackofficeDatabaseBackupUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
@@ -13,6 +14,9 @@ export async function GET(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
+
+    const denied = requireManagerAccess(accessResult.access)
+    if (denied) return denied
 
     const { id } = await params
     const result = await backofficeDatabaseBackupUseCase.getDownloadStream(id)

@@ -20,8 +20,9 @@ export function LandingHero() {
           <p className="mt-6 max-w-xl text-pretty text-lg leading-8 text-landing-body md:text-xl">
             Enquanto outros perdem leads no WhatsApp e em planilhas, seu time opera com{" "}
             <strong className="font-bold text-landing-ink">pipeline</strong>,{" "}
-            <strong className="font-bold text-landing-ink">agenda</strong> e{" "}
-            <strong className="font-bold text-landing-ink">indicadores</strong> tudo em um só lugar
+            <strong className="font-bold text-landing-ink">Radar</strong>,{" "}
+            <strong className="font-bold text-landing-ink">campanhas de e-mail</strong> e{" "}
+            <strong className="font-bold text-landing-ink">indicadores</strong> — tudo em um só lugar
             para não ficar para trás.
           </p>
 

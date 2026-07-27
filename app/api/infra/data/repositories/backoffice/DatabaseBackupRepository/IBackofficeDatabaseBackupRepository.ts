@@ -1,10 +1,15 @@
-import type { BackofficeDatabaseBackupStatus } from "@prisma/client"
+import type {
+  BackofficeDatabaseBackupSource,
+  BackofficeDatabaseBackupStatus,
+} from "@prisma/client"
 
 export type BackofficeDatabaseBackupRecord = {
   id: string
   startedAt: Date
   finishedAt: Date | null
   status: BackofficeDatabaseBackupStatus
+  source: BackofficeDatabaseBackupSource
+  triggeredByProfileId: string | null
   filePath: string | null
   fileName: string | null
   sizeBytes: bigint | null
@@ -14,8 +19,21 @@ export type BackofficeDatabaseBackupRecord = {
   createdAt: Date
 }
 
+export type CreatePendingBackupInput = {
+  source: BackofficeDatabaseBackupSource
+  triggeredByProfileId?: string | null
+}
+
+export type ClaimPendingBackupResult =
+  | { ok: true; id: string }
+  | { ok: false; reason: "busy" }
+
 export interface IBackofficeDatabaseBackupRepository {
-  createPending(): Promise<{ id: string }>
+  /**
+   * Atomically expire stale pending rows and claim a new pending slot.
+   * Concurrent callers serialize via advisory lock + unique pending index.
+   */
+  claimPendingSlot(input: CreatePendingBackupInput): Promise<ClaimPendingBackupResult>
   update(
     id: string,
     data: {
