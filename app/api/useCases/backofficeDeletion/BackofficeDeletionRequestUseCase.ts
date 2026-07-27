@@ -154,6 +154,28 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
 
       const already = request.approvals.find((a) => a.approverProfileId === input.approverProfileId)
       if (already) {
+        // Retry path: both approvals may already exist after a failed Auth/billing
+        // execution left the request pending. Allow re-running the cascade.
+        if (
+          input.decision === "approved" &&
+          already.decision === "approved" &&
+          this.hasRequiredApprovals(request)
+        ) {
+          await this.executeApprovedRequest(
+            request.type,
+            request.targetId,
+            input.approverProfileId,
+            input.requestId
+          )
+          await this.repository.updateStatus(input.requestId, "approved", new Date())
+          return new Output(
+            true,
+            ["Solicitação aprovada e exclusão lógica executada"],
+            [],
+            { id: input.requestId, status: "approved" }
+          )
+        }
+
         return new Output(false, [], ["Você já registrou uma decisão nesta solicitação"], null)
       }
 
@@ -173,17 +195,7 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
         return new Output(false, [], ["Solicitação não encontrada após aprovação"], null)
       }
 
-      const approvedEmails = new Set(
-        refreshed.approvals
-          .filter((a) => a.decision === "approved" && a.approverEmail)
-          .map((a) => a.approverEmail!.trim().toLowerCase())
-      )
-
-      const requiredOk = BACKOFFICE_DELETION_APPROVER_EMAILS.every((email) =>
-        approvedEmails.has(email)
-      )
-
-      if (!requiredOk) {
+      if (!this.hasRequiredApprovals(refreshed)) {
         return new Output(
           true,
           ["Aprovação registrada — aguardando o segundo aprovador"],
@@ -211,40 +223,61 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
     }
   }
 
-  private async cancelBillingBeforeUserDeletion(member: MemberForDeletionRecord): Promise<void> {
+  private hasRequiredApprovals(request: {
+    approvals: Array<{ decision: BackofficeDeletionApprovalDecision; approverEmail: string | null }>
+  }): boolean {
+    const approvedEmails = new Set(
+      request.approvals
+        .filter((a) => a.decision === "approved" && a.approverEmail)
+        .map((a) => a.approverEmail!.trim().toLowerCase())
+    )
+
+    return BACKOFFICE_DELETION_APPROVER_EMAILS.every((email) => approvedEmails.has(email))
+  }
+
+  private async cancelAsaasSubscriptionBeforeUserDeletion(
+    member: MemberForDeletionRecord
+  ): Promise<void> {
     if (
-      member.subscriptionAsaasId &&
-      !member.subscriptionAsaasId.startsWith("backoffice-adhesion-")
+      !member.subscriptionAsaasId ||
+      member.subscriptionAsaasId.startsWith("backoffice-adhesion-")
     ) {
-      try {
-        await AsaasSubscriptionService.cancelSubscription(member.subscriptionAsaasId)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        if (!isIdempotentAsaasCancelError(message)) {
-          console.error(
-            "[BackofficeDeletionRequestUseCase][cancelBillingBeforeUserDeletion] Asaas:",
-            message
-          )
-          throw new Error(
-            "Não foi possível cancelar a assinatura do usuário. Tente novamente em alguns instantes."
-          )
-        }
-      }
+      return
     }
 
-    const billingMasterId = member.isMaster ? member.id : member.managerId
-    if (billingMasterId) {
-      try {
-        await memberProBillingUseCase.syncBillingAfterUsageChange(
-          billingMasterId,
-          "backoffice_user_delete"
-        )
-      } catch (error) {
+    try {
+      await AsaasSubscriptionService.cancelSubscription(member.subscriptionAsaasId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!isIdempotentAsaasCancelError(message)) {
         console.error(
-          "[BackofficeDeletionRequestUseCase][cancelBillingBeforeUserDeletion] Member PRO sync:",
-          error
+          "[BackofficeDeletionRequestUseCase][cancelAsaasSubscriptionBeforeUserDeletion]",
+          message
+        )
+        throw new Error(
+          "Não foi possível cancelar a assinatura do usuário. Tente novamente em alguns instantes."
         )
       }
+    }
+  }
+
+  private async syncMemberProBillingAfterUserDeletion(
+    billingMasterId: string | null
+  ): Promise<void> {
+    if (!billingMasterId) {
+      return
+    }
+
+    try {
+      await memberProBillingUseCase.syncBillingAfterUsageChange(
+        billingMasterId,
+        "backoffice_user_delete"
+      )
+    } catch (error) {
+      console.error(
+        "[BackofficeDeletionRequestUseCase][syncMemberProBillingAfterUserDeletion]",
+        error
+      )
     }
   }
 
@@ -278,16 +311,23 @@ export class BackofficeDeletionRequestUseCase implements IBackofficeDeletionRequ
     if (type === "USER_DELETE") {
       const member = await this.memberRepository.findMemberForDeletion(targetId)
       if (!member) {
-        throw new Error("Usuário não encontrado ou já excluído")
+        // Idempotent retry: cascade may have succeeded before updateStatus failed.
+        console.info(
+          "[BackofficeDeletionRequestUseCase][executeApprovedRequest] usuário já soft-deleted; concluindo retry"
+        )
+        return
       }
 
-      await this.cancelBillingBeforeUserDeletion(member)
+      const billingMasterId = member.isMaster ? member.id : member.managerId
+
+      await this.cancelAsaasSubscriptionBeforeUserDeletion(member)
 
       if (member.supabaseId) {
         await this.banSupabaseUser(member.supabaseId)
       }
 
       await this.memberRepository.softDeleteMemberCascade(targetId, actorProfileId, requestId)
+      await this.syncMemberProBillingAfterUserDeletion(billingMasterId)
       return
     }
 
