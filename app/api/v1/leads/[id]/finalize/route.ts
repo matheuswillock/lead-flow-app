@@ -6,6 +6,7 @@ import { invalidateLeadCache, invalidatePortfolioCache } from '@/lib/cache/inval
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { syncPortfolioToRadarInline } from '@/app/api/useCases/radar/syncPortfolioToRadarInline';
 
 export async function POST(
   request: NextRequest,
@@ -170,6 +171,8 @@ export async function POST(
       (finalizedDate.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
     );
 
+    let createdOrUpdatedPortfolioId: string | null = null;
+
     const result = await prisma.$transaction(async (tx) => {
       const leadFinalized = await tx.leadFinalized.create({
         data: {
@@ -233,7 +236,7 @@ export async function POST(
         },
       });
 
-      await tx.leadPortfolio.upsert({
+      const portfolio = await tx.leadPortfolio.upsert({
         where: { leadId },
         create: {
           leadId,
@@ -244,7 +247,9 @@ export async function POST(
         update: {
           source: normalizedSource,
         },
+        select: { id: true },
       });
+      createdOrUpdatedPortfolioId = portfolio.id;
 
       return { leadFinalized, lead: updatedLead };
     });
@@ -252,6 +257,9 @@ export async function POST(
     const teamId = teamAccess.access.teamId;
     invalidateLeadCache({ leadId, teamId });
     invalidatePortfolioCache({ teamId, leadId });
+    if (createdOrUpdatedPortfolioId) {
+      syncPortfolioToRadarInline(createdOrUpdatedPortfolioId, teamId);
+    }
     return NextResponse.json(
       new Output(true, ['Contrato finalizado com sucesso'], [], result),
       { status: 200 }

@@ -409,6 +409,26 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
         },
       })
       expect(event).not.toBeNull()
+
+      // Edição não relacionada avança updatedAt enquanto renewalStatus segue
+      // "renewed" — re-sync não deve criar um segundo evento (regressão do
+      // bug reportado na review da PR #540: dedupe por sourceId+eventType,
+      // não por occurredAt, que muda a cada edição).
+      await prisma.leadPortfolio.update({
+        where: { id: portfolio.id },
+        data: { note: "edição não relacionada" },
+      })
+      await radarService.syncFromPortfolio(scope, { portfolioId: portfolio.id })
+
+      const renewedEventsCount = await prisma.radarEvent.count({
+        where: {
+          teamId: scope.teamId,
+          sourceType: "portfolio",
+          sourceId: `${portfolio.id}:renewed`,
+          eventType: "portfolio.renewed",
+        },
+      })
+      expect(renewedEventsCount).toBe(1)
     } finally {
       await prisma.radarEvent.deleteMany({
         where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(renewedLead.phone) } },
