@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useTimezone } from "@/app/context/TimezoneContext"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { useBackofficeBackups } from "../context/BackofficeBackupsContext"
 import type {
@@ -102,6 +103,8 @@ function triggerBrowserDownload(blob: Blob, fileName: string) {
 
 export function BackofficeBackupsContainer() {
   const { tz } = useTimezone()
+  const { user } = useBackofficeUser()
+  const canManageBackups = !user?.isOperator
   const {
     items,
     isLoading,
@@ -115,7 +118,7 @@ export function BackofficeBackupsContainer() {
   } = useBackofficeBackups()
 
   const hasPending = items.some((item) => item.status === "pending")
-  const generateDisabled = isGenerating || isLoading || hasPending
+  const generateDisabled = !canManageBackups || isGenerating || isLoading || hasPending
 
   async function handleDownload(id: string) {
     if (isDownloading) return
@@ -175,15 +178,17 @@ export function BackofficeBackupsContainer() {
             <RefreshCw data-icon="inline-start" />
             Atualizar
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={generateDisabled}
-            onClick={() => void handleGenerate()}
-          >
-            <HardDriveDownload data-icon="inline-start" />
-            {isGenerating ? "Gerando…" : "Gerar backup"}
-          </Button>
+          {canManageBackups ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={generateDisabled}
+              onClick={() => void handleGenerate()}
+            >
+              <HardDriveDownload data-icon="inline-start" />
+              {isGenerating ? "Gerando…" : "Gerar backup"}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -243,7 +248,7 @@ export function BackofficeBackupsContainer() {
                     </TableCell>
                     <TableCell className="max-w-56 truncate">{item.fileName ?? "—"}</TableCell>
                     <TableCell className="text-right">
-                      {item.status === "success" ? (
+                      {item.status === "success" && canManageBackups ? (
                         <Button
                           type="button"
                           variant="outline"
