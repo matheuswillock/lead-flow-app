@@ -1,5 +1,6 @@
 import type { IBackofficePricingService } from "./IBackofficePricingService"
 import type { BackofficeProductFormData, BackofficeProductItem } from "../context/BackofficePricingTypes"
+import { flattenSchedule } from "../context/BackofficePricingTypes"
 
 function parsePrice(value: string): number | null {
   const n = parseFloat(value.replace(",", "."))
@@ -39,16 +40,37 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
           price: pixPrice,
           canInstallment: false,
           maxInstallments: 1,
+          installmentSplitMode: "EQUAL" as const,
+          installmentSchedule: [],
         })
       }
-      if (cardPrice != null) {
-        rules.push({
-          paymentMethod: "CREDIT_CARD",
-          billingCycle: cycle,
-          price: cardPrice,
-          canInstallment: maxInstallments > 1,
-          maxInstallments,
-        })
+      if (cardPrice != null || entry.installmentSplitMode === "CUSTOM") {
+        const splitMode = entry.installmentSplitMode ?? "EQUAL"
+        if (splitMode === "CUSTOM") {
+          const schedule = flattenSchedule(entry.installmentSchedule ?? [])
+          const total = schedule.reduce((s, v) => s + v, 0)
+          if (schedule.length > 0 && total > 0) {
+            rules.push({
+              paymentMethod: "CREDIT_CARD",
+              billingCycle: cycle,
+              price: total,
+              canInstallment: schedule.length > 1,
+              maxInstallments: schedule.length,
+              installmentSplitMode: "CUSTOM" as const,
+              installmentSchedule: schedule,
+            })
+          }
+        } else if (cardPrice != null) {
+          rules.push({
+            paymentMethod: "CREDIT_CARD",
+            billingCycle: cycle,
+            price: cardPrice,
+            canInstallment: maxInstallments > 1,
+            maxInstallments,
+            installmentSplitMode: "EQUAL" as const,
+            installmentSchedule: [],
+          })
+        }
       }
     }
     if (rules.length) {

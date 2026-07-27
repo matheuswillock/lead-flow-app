@@ -156,11 +156,15 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
             price: new Prisma.Decimal(rule.price),
             canInstallment: rule.canInstallment,
             maxInstallments: rule.maxInstallments,
+            installmentSplitMode: rule.installmentSplitMode ?? "EQUAL",
+            installmentSchedule: rule.installmentSchedule ?? [],
           },
           update: {
             price: new Prisma.Decimal(rule.price),
             canInstallment: rule.canInstallment,
             maxInstallments: rule.maxInstallments,
+            installmentSplitMode: rule.installmentSplitMode ?? "EQUAL",
+            installmentSchedule: rule.installmentSchedule ?? [],
           },
         })
       )

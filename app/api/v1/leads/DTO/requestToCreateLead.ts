@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LeadStatus, MeetingHeald } from "@prisma/client";
+import { LeadStatus, MeetingHeald, LeadOriginChannel } from "@prisma/client";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "./leadValueLimits";
 import { isValidCNPJ, sanitizeDocumentDigits } from "@/lib/masks";
 
@@ -59,6 +59,8 @@ export const CreateLeadRequestSchema = z.object({
   referrerPhone: z.string().optional(),
   confirmDuplicate: z.boolean().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
+  originChannel: z.nativeEnum(LeadOriginChannel).optional(),
+  originMetadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema>;

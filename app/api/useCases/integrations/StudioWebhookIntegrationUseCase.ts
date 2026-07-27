@@ -23,6 +23,8 @@ import {
   type IStudioWebhookIntegrationService,
 } from "@/app/api/services/StudioWebhookIntegration/IStudioWebhookIntegrationService";
 import { studioWebhookIntegrationService } from "@/app/api/services/StudioWebhookIntegration/StudioWebhookIntegrationService";
+import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseFactory";
+import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 
 const UNAUTHORIZED_ERROR = "Webhook token não autorizado";
 const TOKEN_EXPIRED_ERROR = "Webhook token expirado";
@@ -234,9 +236,21 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         }
       }
 
-      const leadResult = await this.service.createLeadFromWebhook({
-        teamId: input.teamId,
-        managerId: team.masterId,
+      if (!team.master.supabaseId) {
+        return new Output(false, [], ["Master do time sem identificação de autenticação"], null);
+      }
+
+      const source = normalizeOptionalString(input.payload.source) || "studio_webhook";
+      const activityPayload = {
+        kind: "lead_creation",
+        channel: "webhook",
+        provider: "studio",
+        source,
+        metadata: (input.payload.metadata ?? null) as Prisma.InputJsonValue,
+        submittedAt: new Date().toISOString(),
+      };
+
+      const leadData: CreateLeadRequest = {
         name: input.payload.name.trim(),
         email: normalizeOptionalString(input.payload.email),
         phone: normalizeOptionalString(input.payload.phone),
@@ -246,15 +260,39 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         currentValue: input.payload.current_value,
         referenceHospital: normalizeOptionalString(input.payload.reference_hospital),
         currentTreatment: normalizeOptionalString(input.payload.current_treatment),
-        source: normalizeOptionalString(input.payload.source) || "studio_webhook",
-        metadata: input.payload.metadata,
-      });
+        meetingDate: undefined,
+        meetingTitle: undefined,
+        meetingNotes: undefined,
+        meetingLink: undefined,
+        notes: undefined,
+        assignedTo: undefined,
+        closerId: undefined,
+        ticket: undefined,
+        contractDueDate: undefined,
+        soldPlan: undefined,
+        confirmDuplicate: true,
+        originChannel: "studio_webhook",
+        originMetadata: activityPayload,
+      };
+
+      const leadOutput = await leadUseCase.createLead(
+        team.master.supabaseId,
+        leadData,
+        input.teamId,
+        { authorAsStudio: true, body: "Lead criado via webhook genérico", payload: activityPayload },
+        { autoScheduleMeeting: false }
+      );
+
+      if (!leadOutput.isValid) {
+        return leadOutput;
+      }
 
       await this.service.touchWebhookLastUsed(input.teamId);
 
+      const created = leadOutput.result as { id: string; leadCode: string | null };
       return new Output(true, ["Lead criado via webhook com sucesso"], [], {
-        id: leadResult.id,
-        leadCode: leadResult.leadCode,
+        id: created.id,
+        leadCode: created.leadCode,
       });
     } catch (error) {
       if (

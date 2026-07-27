@@ -175,6 +175,7 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
           contractDueDate,
           soldPlan: row.soldPlan?.trim() || undefined,
           confirmDuplicate: true,
+          originChannel: "csv_import",
         },
         ctx.teamId
       );
