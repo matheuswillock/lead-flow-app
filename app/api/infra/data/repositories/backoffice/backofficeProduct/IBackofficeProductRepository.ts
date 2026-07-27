@@ -65,4 +65,6 @@ export interface UpsertPaymentRuleInput {
   price: number
   canInstallment: boolean
   maxInstallments: number
+  installmentSplitMode?: "EQUAL" | "CUSTOM"
+  installmentSchedule?: number[]
 }

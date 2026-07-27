@@ -21,13 +21,17 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
+import { Plus, X } from "lucide-react"
 import { useBackofficePricing } from "../context/BackofficePricingContext"
 import type {
   BackofficeAdhesionBillingCycleKey,
   BackofficeProductBillingMode,
   BackofficeProductFormData,
   BackofficeProductType,
+  InstallmentGroup,
 } from "../context/BackofficePricingTypes"
+import { flattenSchedule } from "../context/BackofficePricingTypes"
 
 const CYCLES: { key: BackofficeAdhesionBillingCycleKey; label: string; months: number; defaultMax: number }[] = [
   { key: "monthly", label: "Mensal", months: 1, defaultMax: 1 },
@@ -63,14 +67,29 @@ function formatCurrency(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 }
 
+function scheduleTotal(groups: InstallmentGroup[]): number {
+  return flattenSchedule(groups).reduce((s, v) => s + v, 0)
+}
+
+function isScheduleValid(groups: InstallmentGroup[]): boolean {
+  return groups.every((g) => {
+    const count = parseInt(g.count, 10)
+    const value = parseFloat(g.value.replace(",", "."))
+    return count >= 1 && isFinite(value) && value > 0
+  }) && groups.length >= 1
+}
+
 function canSubmit(formData: BackofficeProductFormData): boolean {
   if (!formData.name.trim() || !formData.featureSlug.trim()) return false
   if (formData.billingMode === "RECURRING") {
-    return CYCLES.every(
-      ({ key }) =>
-        hasPositivePrice(formData.paymentRules[key].pixPrice) &&
-        hasPositivePrice(formData.paymentRules[key].cardPrice)
-    )
+    return CYCLES.every(({ key }) => {
+      const entry = formData.paymentRules[key]
+      if (!hasPositivePrice(entry.pixPrice)) return false
+      if (entry.installmentSplitMode === "CUSTOM") {
+        return isScheduleValid(entry.installmentSchedule)
+      }
+      return hasPositivePrice(entry.cardPrice)
+    })
   }
   return !formData.priceLifetime || hasPositivePrice(formData.priceLifetime)
 }
@@ -85,6 +104,10 @@ export function BackofficeProductDialog() {
     isSaving,
     setFormField,
     setPaymentRuleField,
+    setInstallmentSplitMode,
+    setInstallmentGroup,
+    addInstallmentGroup,
+    removeInstallmentGroup,
     submitForm,
   } = useBackofficePricing()
   const isRecurring = formData.billingMode === "RECURRING"
@@ -250,80 +273,187 @@ export function BackofficeProductDialog() {
                       <th className="px-3 py-2 text-left font-medium">Total PIX</th>
                       <th className="px-3 py-2 text-left font-medium">Desc/mês</th>
                       <th className="px-3 py-2 text-left font-medium">Desc Total</th>
-                      <th className="px-3 py-2 text-left font-medium">Max Parcelas</th>
+                      <th className="px-3 py-2 text-left font-medium">Parcelas</th>
                       <th className="px-3 py-2 text-left font-medium">Desc %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {CYCLES.map(({ key, label, months }) => {
                       const entry = formData.paymentRules[key]
-                      const cardPrice = parsePrice(entry.cardPrice)
+                      const isCustom = entry.installmentSplitMode === "CUSTOM"
                       const pixPrice = parsePrice(entry.pixPrice)
-                      const totalCard = cardPrice * months
+
+                      const cardTotal = isCustom
+                        ? scheduleTotal(entry.installmentSchedule)
+                        : parsePrice(entry.cardPrice) * months
+                      const cardMonthly = isCustom
+                        ? (cardTotal > 0 ? cardTotal / months : 0)
+                        : parsePrice(entry.cardPrice)
                       const totalPix = pixPrice * months
-                      const discountMonth = cardPrice > 0 && pixPrice > 0 ? cardPrice - pixPrice : 0
+                      const discountMonth = cardMonthly > 0 && pixPrice > 0 ? cardMonthly - pixPrice : 0
                       const discountTotal = discountMonth * months
-                      const discountPct = cardPrice > 0 && discountMonth > 0 ? (discountMonth / cardPrice) * 100 : 0
+                      const discountPct = cardMonthly > 0 && discountMonth > 0 ? (discountMonth / cardMonthly) * 100 : 0
 
                       return (
-                        <tr key={key} className="border-b last:border-b-0">
-                          <td className="px-3 py-2 font-medium text-muted-foreground">{label}</td>
-                          <td className="px-3 py-2">
-                            <Input
-                              className="h-8 w-28 text-sm"
-                              inputMode="decimal"
-                              placeholder="R$ 0,00"
-                              value={displayCurrencyInput(entry.cardPrice)}
-                              disabled={isSaving}
-                              onChange={(e) =>
-                                setPaymentRuleField(key, "cardPrice", parseCurrencyInput(e.target.value))
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-muted-foreground">
-                            {cardPrice > 0 ? formatCurrency(totalCard) : "—"}
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              className="h-8 w-28 text-sm"
-                              inputMode="decimal"
-                              placeholder="R$ 0,00"
-                              value={displayCurrencyInput(entry.pixPrice)}
-                              disabled={isSaving}
-                              onChange={(e) =>
-                                setPaymentRuleField(key, "pixPrice", parseCurrencyInput(e.target.value))
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-muted-foreground">
-                            {pixPrice > 0 ? formatCurrency(totalPix) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-muted-foreground">
-                            {discountMonth > 0 ? formatCurrency(discountMonth) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-muted-foreground">
-                            {discountTotal > 0 ? formatCurrency(discountTotal) : "—"}
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              className="h-8 w-16 text-sm"
-                              inputMode="numeric"
-                              placeholder="1"
-                              value={entry.maxInstallments}
-                              disabled={isSaving}
-                              onChange={(e) =>
-                                setPaymentRuleField(
-                                  key,
-                                  "maxInstallments",
-                                  e.target.value.replace(/\D/g, "")
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-muted-foreground">
-                            {discountPct > 0 ? `${discountPct.toFixed(2)}%` : "—"}
-                          </td>
-                        </tr>
+                        <>
+                          <tr key={key} className="border-b last:border-b-0">
+                            <td className="px-3 py-2 font-medium text-muted-foreground">{label}</td>
+                            <td className="px-3 py-2">
+                              {isCustom ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {cardMonthly > 0 ? formatCurrency(cardMonthly) : "—"}
+                                </span>
+                              ) : (
+                                <Input
+                                  className="h-8 w-28 text-sm"
+                                  inputMode="decimal"
+                                  placeholder="R$ 0,00"
+                                  value={displayCurrencyInput(entry.cardPrice)}
+                                  disabled={isSaving}
+                                  onChange={(e) =>
+                                    setPaymentRuleField(key, "cardPrice", parseCurrencyInput(e.target.value))
+                                  }
+                                />
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {cardTotal > 0 ? formatCurrency(cardTotal) : "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Input
+                                className="h-8 w-28 text-sm"
+                                inputMode="decimal"
+                                placeholder="R$ 0,00"
+                                value={displayCurrencyInput(entry.pixPrice)}
+                                disabled={isSaving}
+                                onChange={(e) =>
+                                  setPaymentRuleField(key, "pixPrice", parseCurrencyInput(e.target.value))
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {pixPrice > 0 ? formatCurrency(totalPix) : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {discountMonth > 0 ? formatCurrency(discountMonth) : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {discountTotal > 0 ? formatCurrency(discountTotal) : "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              {isCustom ? (
+                                <button
+                                  type="button"
+                                  className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
+                                  disabled={isSaving}
+                                  onClick={() => setInstallmentSplitMode(key, "EQUAL")}
+                                >
+                                  Custom
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    className="h-8 w-16 text-sm"
+                                    inputMode="numeric"
+                                    placeholder="1"
+                                    value={entry.maxInstallments}
+                                    disabled={isSaving}
+                                    onChange={(e) =>
+                                      setPaymentRuleField(
+                                        key,
+                                        "maxInstallments",
+                                        e.target.value.replace(/\D/g, "")
+                                      )
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    title="Usar parcelas com valores diferentes"
+                                    className="rounded p-1 text-xs text-muted-foreground hover:text-primary"
+                                    disabled={isSaving}
+                                    onClick={() => setInstallmentSplitMode(key, "CUSTOM")}
+                                  >
+                                    ±
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {discountPct > 0 ? `${discountPct.toFixed(2)}%` : "—"}
+                            </td>
+                          </tr>
+                          {isCustom && (
+                            <tr key={`${key}-schedule`} className="border-b last:border-b-0 bg-muted/20">
+                              <td colSpan={9} className="px-3 py-3">
+                                <div className="flex flex-col gap-2">
+                                  <p className="text-xs font-medium text-muted-foreground">
+                                    Parcelas personalizadas — {label}
+                                  </p>
+                                  <div className="flex flex-col gap-1.5">
+                                    {entry.installmentSchedule.map((group, idx) => (
+                                      <div key={idx} className="flex items-center gap-2">
+                                        <Input
+                                          className="h-7 w-16 text-sm"
+                                          inputMode="numeric"
+                                          placeholder="Nº"
+                                          value={group.count}
+                                          disabled={isSaving}
+                                          onChange={(e) =>
+                                            setInstallmentGroup(key, idx, "count", e.target.value.replace(/\D/g, ""))
+                                          }
+                                        />
+                                        <span className="text-xs text-muted-foreground">×</span>
+                                        <Input
+                                          className="h-7 w-28 text-sm"
+                                          inputMode="decimal"
+                                          placeholder="R$ 0,00"
+                                          value={displayCurrencyInput(group.value)}
+                                          disabled={isSaving}
+                                          onChange={(e) =>
+                                            setInstallmentGroup(key, idx, "value", parseCurrencyInput(e.target.value))
+                                          }
+                                        />
+                                        <button
+                                          type="button"
+                                          disabled={isSaving || entry.installmentSchedule.length === 1}
+                                          className={cn(
+                                            "rounded p-1 text-muted-foreground transition-colors",
+                                            entry.installmentSchedule.length > 1
+                                              ? "hover:text-destructive"
+                                              : "opacity-30 cursor-not-allowed"
+                                          )}
+                                          onClick={() => removeInstallmentGroup(key, idx)}
+                                        >
+                                          <X className="size-3.5" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <button
+                                      type="button"
+                                      disabled={isSaving}
+                                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                      onClick={() => addInstallmentGroup(key)}
+                                    >
+                                      <Plus className="size-3" />
+                                      Adicionar grupo
+                                    </button>
+                                    <span className="text-xs text-muted-foreground">
+                                      Total:{" "}
+                                      <span className={cn(
+                                        "font-medium",
+                                        cardTotal > 0 ? "text-foreground" : "text-muted-foreground"
+                                      )}>
+                                        {cardTotal > 0 ? formatCurrency(cardTotal) : "—"}
+                                      </span>
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       )
                     })}
                   </tbody>
