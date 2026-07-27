@@ -246,6 +246,9 @@ class ProcessEvoWebhookUseCase {
           mediaUrl: parsed.mediaUrl,
           mediaMimeType: parsed.mediaMimeType,
           mediaFileName: parsed.mediaFileName,
+          mediaStatus: ["IMAGE", "AUDIO", "VIDEO", "DOCUMENT", "STICKER"].includes(parsed.messageType)
+            ? "PROCESSING"
+            : undefined,
           linkPreview: parsed.linkPreview ?? undefined,
           caption: safeCaption,
           senderDisplayName: !fromMe && isGroup ? pushName ?? null : undefined,

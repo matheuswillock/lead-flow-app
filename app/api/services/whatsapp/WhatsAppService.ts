@@ -19,7 +19,7 @@ import {
   toStoredNormalizedPhone,
 } from "./WhatsAppPhonePolicy"
 import { resolveContactNameUpdate, type ContactNameSource } from "@/lib/whatsapp/contact-name"
-import { deleteWhatsAppMedia, uploadWhatsAppMedia } from "./WhatsAppMediaStorage"
+import { readMediaAsBase64ForProvider, validateStoredMediaObject, assertMediaPathBelongsToTeam } from "./WhatsAppMediaStorage"
 import { randomUUID } from "node:crypto"
 import { formatPhoneE164, resolveContactIdentity } from "./ContactIdentityResolver"
 
@@ -485,18 +485,25 @@ class WhatsAppService implements IWhatsAppService {
       caption = input.media.caption
       preview = input.media.caption ?? `[${messageType === "IMAGE" ? "Imagem" : messageType === "DOCUMENT" ? "Documento" : messageType === "AUDIO" ? "Áudio" : "Vídeo"}]`
 
-      // Persist to storage before Evolution send to avoid duplicate delivery on storage failure.
-      const stored = await uploadWhatsAppMedia({
-        teamId: input.teamId,
-        conversationId: input.conversationId,
-        messageId,
-        base64: input.media.base64,
+      if (!assertMediaPathBelongsToTeam(input.media.storagePath, input.teamId)) {
+        throw new Error("MEDIA_UNSUPPORTED")
+      }
+      if (!input.media.storagePath.startsWith(`${input.teamId}/${input.conversationId}/`)) {
+        throw new Error("MEDIA_UNSUPPORTED")
+      }
+
+      const validated = await validateStoredMediaObject({
+        storagePath: input.media.storagePath,
+        expectedSha256: input.media.sha256,
+        expectedSizeBytes: input.media.sizeBytes,
         mimeType: input.media.mimeType,
-        fileName: input.media.fileName,
       })
-      storagePath = stored.storagePath
-      mediaSha256 = stored.mediaSha256
-      mediaSizeBytes = stored.mediaSizeBytes
+      storagePath = input.media.storagePath
+      mediaSha256 = validated.mediaSha256
+      mediaSizeBytes = validated.mediaSizeBytes
+
+      // Evolution still requires Base64 today — convert only in memory on the server.
+      const base64 = await readMediaAsBase64ForProvider(input.media.storagePath)
 
       try {
         evoResult = await this.provider.sendMedia({
@@ -505,11 +512,11 @@ class WhatsAppService implements IWhatsAppService {
           mediatype: input.media.mediatype,
           mimeType: input.media.mimeType,
           fileName: input.media.fileName,
-          base64: input.media.base64,
+          base64,
           caption: input.media.caption,
         })
       } catch (error) {
-        await deleteWhatsAppMedia(stored.storagePath)
+        // Keep the private object for retry by clientMessageId; do not delete on provider failure.
         throw error
       }
     } else {

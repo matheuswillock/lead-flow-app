@@ -2,7 +2,7 @@
 
 **Versão:** 3.2
 **Data:** 2026-07-23
-**Status:** Fases 0–2 concluídas no código; rollout de produção bloqueado pelos gates da seção 17 (ops)
+**Status:** Fases 0–3 concluídas no código; rollout de produção bloqueado pelos gates da seção 17 (ops)
 **Dona funcional:** Produto / Operação do Corretor Studio
 **Domínio:** Inbox de WhatsApp por time
 **Provider atual:** Evolution API self-hosted
@@ -51,7 +51,7 @@ Antes da primeira PR, o responsável técnico deve comparar o código atual com 
 
 ## 2.1 Progresso de implementação
 
-**Atualizado em:** 2026-07-27 — branch `feat/whatsapp-inbox-v3-close-phases-0-2`.
+**Atualizado em:** 2026-07-27 — branch `feat/whatsapp-inbox-v3-phase-3`.
 
 | Fase | Estado | Evidência atual | Pendente para conclusão |
 | --- | --- | --- | --- |
@@ -59,6 +59,7 @@ Antes da primeira PR, o responsável técnico deve comparar o código atual com 
 | Fase 0 — segurança/base operacional | **concluída (código)** | `resolveEvoApiBaseUrl` + testes SSRF/HTTPS; runbook ops §17.2.1; coluna `hostBaseUrl` permanece legado não lido (remoção em T4.6). | Ativar enforcement em homolog conforme runbook. |
 | Fase 1 — envio durável | **concluída** | Frontend gera `clientMessageId` imutável na bolha; resend envia `retryFailed`; dedupe HTTP×Realtime via `mergeMessageByClientId`; reconciliador usa `nextReconcileAt`; testes `SendMessageUseCase` + merge. | Smoke E2E duas abas em staging. |
 | Fase 2 — contatos, busca e sync | **concluída** | Dual-write webhook→canonical/identity; migration `20260727163017_backfill-whatsapp-contact-identities.sql` (idempotente); sync com checkpoint/batch/lease + `parkContactSyncJob` para retomada. | Aplicar migration no ambiente alvo (local reset / push remoto só com autorização); validar cron sync sob carga. |
+| Fase 3 — mídia, áudio e interface | **concluída (código)** | Upload assinado `POST .../media/uploads` sem Base64 no browser; send referencia `storagePath`+hash; ingestão inbound com `mediaStatus` + cron `ingest-media`; GET tipado 202/410/422/503; preview/cancel/progress; mic “Como liberar”/reteste; waveform `ResizeObserver` + reduced motion; hit targets 44px + safe-area. | Smoke mobile E2E 320–1440; aplicar migration `whatsapp-media-status` no ambiente alvo. |
 
 Validações desta rodada: testes focados WhatsApp V3, `bun run typecheck`, `bun run lint`, `bun run governance:check`, `bun run lint:pt-br`, `bun run design:check`.
 

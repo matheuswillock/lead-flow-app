@@ -3447,6 +3447,13 @@ enum WhatsAppMessageStatus {
   RECEIVED
 }
 
+enum WhatsAppMediaStatus {
+  PROCESSING
+  AVAILABLE
+  EXPIRED
+  FAILED
+}
+
 enum WhatsAppOutboundCommandStatus {
   PENDING
   SENT
@@ -3702,13 +3709,17 @@ model WhatsAppMessage {
   isAutoResponse    Boolean                  @default(false)
   autoResponseRuleId String?                 @db.Uuid
   rawPayload        Json
-  storagePath       String?                  @db.Text
-  mediaSha256       String?                  @db.Text
-  mediaSizeBytes    Int?
-  mediaDurationMs   Int?
-  deletedAt         DateTime?                @db.Timestamptz(6)
-  createdAt         DateTime                 @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime                 @updatedAt @db.Timestamptz(6)
+  storagePath         String?                  @db.Text
+  mediaSha256         String?                  @db.Text
+  mediaSizeBytes      Int?
+  mediaDurationMs     Int?
+  mediaStatus         WhatsAppMediaStatus?
+  mediaAttemptCount   Int                      @default(0)
+  mediaLastErrorCode  String?                  @db.Text
+  mediaRetrievedAt    DateTime?                @db.Timestamptz(6)
+  deletedAt           DateTime?                @db.Timestamptz(6)
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(6)
 
   conversation  WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   team          Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -3723,6 +3734,7 @@ model WhatsAppMessage {
   @@index([conversationId, createdAt(sort: Asc)])
   @@index([sentByProfileId])
   @@index([deletedAt])
+  @@index([mediaStatus, mediaAttemptCount, updatedAt])
   @@map("whatsapp_messages")
 }
 

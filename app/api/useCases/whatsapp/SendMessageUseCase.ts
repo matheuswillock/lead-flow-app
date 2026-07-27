@@ -20,7 +20,15 @@ function requestHash(input: SendMessageUseCaseInput): string {
       contentText: input.contentText ?? null,
       mentionedJids: input.mentionedJids ?? [],
       media: input.media
-        ? { mediatype: input.media.mediatype, mimeType: input.media.mimeType, fileName: input.media.fileName, caption: input.media.caption ?? null, base64: input.media.base64 }
+        ? {
+            mediatype: input.media.mediatype,
+            mimeType: input.media.mimeType,
+            fileName: input.media.fileName,
+            caption: input.media.caption ?? null,
+            storagePath: input.media.storagePath,
+            sha256: input.media.sha256.toLowerCase(),
+            sizeBytes: input.media.sizeBytes,
+          }
         : null,
     }))
     .digest("hex")
@@ -99,6 +107,9 @@ class SendMessageUseCase {
         mediaMimeType: input.media?.mimeType,
         mediaFileName: input.media?.fileName,
         caption: input.media?.caption,
+        storagePath: input.media?.storagePath,
+        mediaSha256: input.media?.sha256?.toLowerCase(),
+        mediaSizeBytes: input.media?.sizeBytes,
       })
       if (!durable.messageId) {
         return new Output(false, [], ["Não foi possível registrar a intenção de envio."], whatsappError("INTERNAL_ERROR"))

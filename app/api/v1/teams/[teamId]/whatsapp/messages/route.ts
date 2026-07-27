@@ -13,7 +13,9 @@ const mediaSchema = z.object({
   mediatype: z.enum(["image", "document", "audio", "video"]),
   mimeType: z.string().min(1),
   fileName: z.string().min(1),
-  base64: z.string().min(1),
+  storagePath: z.string().min(1),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i, "sha256 inválido"),
+  sizeBytes: z.number().int().positive(),
   caption: z.string().max(4096).optional(),
 })
 
@@ -41,6 +43,7 @@ function resolveStatus(output: Output): number {
   if (code === "CONVERSATION_NOT_FOUND") return 404
   if (code === "RATE_LIMITED" || code === "QUOTA_EXCEEDED") return 429
   if (code === "PROVIDER_OFFLINE" || code === "IDEMPOTENCY_CONFLICT") return 409
+  if (code === "MEDIA_TOO_LARGE" || code === "MEDIA_UNSUPPORTED" || code === "MEDIA_UNAVAILABLE") return 422
   if (code === "INTERNAL_ERROR") return 500
   return 400
 }

@@ -102,6 +102,10 @@ const MESSAGE_SELECT = {
   storagePath: true,
   mediaSha256: true,
   mediaSizeBytes: true,
+  mediaStatus: true,
+  mediaAttemptCount: true,
+  mediaLastErrorCode: true,
+  mediaRetrievedAt: true,
   linkPreview: true,
   caption: true,
   senderDisplayName: true,
@@ -494,6 +498,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
       status: WhatsAppMessageStatus
       deliveredAt?: Date
       readAt?: Date
+      playedAt?: Date
       failedAt?: Date
     }
   ): Promise<WhatsAppMessageSelect> {
@@ -501,6 +506,97 @@ class WhatsAppRepository implements IWhatsAppRepository {
       where: { id },
       data,
       select: MESSAGE_SELECT,
+    })
+  }
+
+  async findMessageIdByStoragePath(storagePath: string): Promise<string | null> {
+    const row = await prisma.whatsAppMessage.findFirst({
+      where: { storagePath },
+      select: { id: true },
+    })
+    return row?.id ?? null
+  }
+
+  async claimMediaIngestBatch(limit = 20): Promise<Array<{
+    id: string
+    teamId: string
+    conversationId: string
+    configId: string
+    mediaUrl: string | null
+    mediaMimeType: string | null
+    mediaFileName: string | null
+    mediaAttemptCount: number
+    rawPayload: Prisma.JsonValue
+    providerMessageId: string | null
+  }>> {
+    const maxAttempts = 5
+    const candidates = await prisma.whatsAppMessage.findMany({
+      where: {
+        mediaStatus: "PROCESSING",
+        mediaAttemptCount: { lt: maxAttempts },
+        deletedAt: null,
+        OR: [
+          { mediaAttemptCount: 0 },
+          { updatedAt: { lte: new Date(Date.now() - 30_000) } },
+        ],
+      },
+      orderBy: [{ mediaAttemptCount: "asc" }, { updatedAt: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        teamId: true,
+        conversationId: true,
+        configId: true,
+        mediaUrl: true,
+        mediaMimeType: true,
+        mediaFileName: true,
+        mediaAttemptCount: true,
+        rawPayload: true,
+        providerMessageId: true,
+      },
+    })
+
+    const claimed: typeof candidates = []
+    for (const candidate of candidates) {
+      const updated = await prisma.whatsAppMessage.updateMany({
+        where: {
+          id: candidate.id,
+          mediaStatus: "PROCESSING",
+          mediaAttemptCount: candidate.mediaAttemptCount,
+        },
+        data: {
+          mediaAttemptCount: { increment: 1 },
+        },
+      })
+      if (updated.count === 1) {
+        claimed.push({
+          ...candidate,
+          mediaAttemptCount: candidate.mediaAttemptCount + 1,
+        })
+      }
+    }
+    return claimed
+  }
+
+  async markMediaIngestResult(input: {
+    messageId: string
+    status: "AVAILABLE" | "EXPIRED" | "FAILED" | "PROCESSING"
+    storagePath?: string | null
+    mediaSha256?: string | null
+    mediaSizeBytes?: number | null
+    errorCode?: string | null
+    mediaRetrievedAt?: Date | null
+  }): Promise<void> {
+    await prisma.whatsAppMessage.update({
+      where: { id: input.messageId },
+      data: {
+        mediaStatus: input.status,
+        ...(input.storagePath !== undefined ? { storagePath: input.storagePath } : {}),
+        ...(input.mediaSha256 !== undefined ? { mediaSha256: input.mediaSha256 } : {}),
+        ...(input.mediaSizeBytes !== undefined ? { mediaSizeBytes: input.mediaSizeBytes } : {}),
+        mediaLastErrorCode: input.errorCode ?? null,
+        ...(input.mediaRetrievedAt !== undefined ? { mediaRetrievedAt: input.mediaRetrievedAt } : {}),
+      },
     })
   }
 
@@ -598,6 +694,9 @@ class WhatsAppRepository implements IWhatsAppRepository {
     mediaMimeType?: string
     mediaFileName?: string
     caption?: string
+    storagePath?: string
+    mediaSha256?: string
+    mediaSizeBytes?: number
   }): Promise<{
     created: boolean
     messageId: string | null
@@ -638,6 +737,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
           mediaMimeType: input.mediaMimeType ?? null,
           mediaFileName: input.mediaFileName ?? null,
           caption: input.caption ?? null,
+          storagePath: input.storagePath ?? null,
+          mediaSha256: input.mediaSha256 ?? null,
+          mediaSizeBytes: input.mediaSizeBytes ?? null,
+          mediaStatus: input.storagePath ? "AVAILABLE" : null,
           recipientPhone: normalizePhone(conversation.contactPhone),
           sentByProfileId: input.sentByProfileId,
           rawPayload: {},
@@ -718,6 +821,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         ...(input.storagePath !== undefined ? { storagePath: input.storagePath } : {}),
         ...(input.mediaSha256 !== undefined ? { mediaSha256: input.mediaSha256 } : {}),
         ...(input.mediaSizeBytes !== undefined ? { mediaSizeBytes: input.mediaSizeBytes } : {}),
+        ...(input.storagePath ? { mediaStatus: "AVAILABLE", mediaRetrievedAt: input.sentAt } : {}),
       },
       select: MESSAGE_SELECT,
     })

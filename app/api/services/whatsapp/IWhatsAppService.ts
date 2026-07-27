@@ -43,7 +43,9 @@ export interface SendMessageInput {
     mediatype: "image" | "document" | "audio" | "video"
     mimeType: string
     fileName: string
-    base64: string
+    storagePath: string
+    sha256: string
+    sizeBytes: number
     caption?: string
   }
 }

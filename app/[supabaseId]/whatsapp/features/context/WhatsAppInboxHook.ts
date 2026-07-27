@@ -873,6 +873,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             caption: media?.caption ?? null,
             senderDisplayName: null,
             mediaFileName: media?.fileName ?? null,
+            storagePath: media?.storagePath ?? null,
+            mediaSha256: media?.sha256 ?? null,
+            mediaSizeBytes: media?.sizeBytes ?? null,
+            mediaStatus: media ? 'AVAILABLE' : null,
+            mediaMimeType: media?.mimeType ?? null,
             linkPreview: null,
             sentByProfileId: currentProfileId,
             senderPhone: null,
@@ -905,13 +910,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   )
 
   const sendMessage = useCallback(
-    (text: string, media?: SendMessageMediaInput, mentionedJids?: string[]) => {
+    (text: string, media?: SendMessageMediaInput, mentionedJids?: string[], options?: { clientMessageId?: string }) => {
       if (!activeTeamId || !selectedConversationId || isSendingRef.current) return
 
       const trimmedText = text.trim()
       if (!trimmedText && !media) return
 
-      const clientMessageId = crypto.randomUUID()
+      const clientMessageId = options?.clientMessageId ?? crypto.randomUUID()
       const optimisticId = `optimistic-${clientMessageId}`
       const messageType = media
         ? media.mediatype === 'image'
@@ -935,6 +940,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         caption: media?.caption ?? null,
         senderDisplayName: null,
         mediaFileName: media?.fileName ?? null,
+        storagePath: media?.storagePath ?? null,
+        mediaSha256: media?.sha256 ?? null,
+        mediaSizeBytes: media?.sizeBytes ?? null,
+        mediaStatus: media ? 'AVAILABLE' : null,
+        mediaMimeType: media?.mimeType ?? null,
         linkPreview: null,
         sentByProfileId: currentProfileId,
         senderPhone: null,
@@ -971,15 +981,43 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       if (isSendingRef.current) return
 
       const target = messagesRef.current.find((m) => m.id === messageId)
-      // Media-only retries need the original binary payload (not available after
-      // the first attempt). Keep retry for text intents that can be reconstructed.
-      if (!target?.contentText?.trim()) return
-      if (!target.clientMessageId) {
+      if (!target?.clientMessageId) {
         toast.error('Não é possível reenviar esta mensagem. Envie novamente pelo composer.')
         return
       }
 
+      const hasText = Boolean(target.contentText?.trim())
+      const canRetryMedia =
+        Boolean(target.storagePath) &&
+        Boolean(target.mediaSha256) &&
+        typeof target.mediaSizeBytes === 'number' &&
+        Boolean(target.mediaFileName) &&
+        ['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO'].includes(target.messageType)
+
+      if (!hasText && !canRetryMedia) {
+        toast.error('Não é possível reenviar esta mídia sem o arquivo no storage.')
+        return
+      }
+
       const clientMessageId = target.clientMessageId
+      const media: SendMessageMediaInput | undefined = canRetryMedia
+        ? {
+            mediatype:
+              target.messageType === 'IMAGE'
+                ? 'image'
+                : target.messageType === 'DOCUMENT'
+                  ? 'document'
+                  : target.messageType === 'AUDIO'
+                    ? 'audio'
+                    : 'video',
+            mimeType: target.mediaMimeType || 'application/octet-stream',
+            fileName: target.mediaFileName!,
+            storagePath: target.storagePath!,
+            sha256: target.mediaSha256!,
+            sizeBytes: target.mediaSizeBytes!,
+            caption: target.caption ?? undefined,
+          }
+        : undefined
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -991,10 +1029,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
 
       performSend(
         target.conversationId,
-        target.contentText,
+        target.contentText?.trim() ?? '',
         messageId,
         clientMessageId,
-        undefined,
+        media,
         target.mentionedJids ?? undefined,
         true
       ).catch((error) => {
@@ -1861,6 +1899,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     isLoadingTeamMembers,
     currentProfileId,
     activeTeamId,
+    supabaseId,
     canManageAssignment,
     isCreatingConversation,
     isSyncingContacts,

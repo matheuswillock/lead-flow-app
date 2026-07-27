@@ -82,6 +82,10 @@ export interface WhatsAppMessageSelect {
   storagePath: string | null
   mediaSha256: string | null
   mediaSizeBytes: number | null
+  mediaStatus: string | null
+  mediaAttemptCount: number
+  mediaLastErrorCode: string | null
+  mediaRetrievedAt: Date | null
   linkPreview: Prisma.JsonValue | null
   caption: string | null
   senderDisplayName: string | null
@@ -243,6 +247,31 @@ export interface IWhatsAppRepository {
     }
   ): Promise<WhatsAppMessageSelect>
 
+  findMessageIdByStoragePath(storagePath: string): Promise<string | null>
+
+  claimMediaIngestBatch(limit?: number): Promise<Array<{
+    id: string
+    teamId: string
+    conversationId: string
+    configId: string
+    mediaUrl: string | null
+    mediaMimeType: string | null
+    mediaFileName: string | null
+    mediaAttemptCount: number
+    rawPayload: Prisma.JsonValue
+    providerMessageId: string | null
+  }>>
+
+  markMediaIngestResult(input: {
+    messageId: string
+    status: "AVAILABLE" | "EXPIRED" | "FAILED" | "PROCESSING"
+    storagePath?: string | null
+    mediaSha256?: string | null
+    mediaSizeBytes?: number | null
+    errorCode?: string | null
+    mediaRetrievedAt?: Date | null
+  }): Promise<void>
+
   listMessages(params: {
     conversationId: string
     page?: number
@@ -270,6 +299,9 @@ export interface IWhatsAppRepository {
     mediaMimeType?: string
     mediaFileName?: string
     caption?: string
+    storagePath?: string
+    mediaSha256?: string
+    mediaSizeBytes?: number
   }): Promise<{
     created: boolean
     messageId: string | null
