@@ -1,10 +1,9 @@
 import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
-import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService"
-import { createEmailService } from "@/lib/services/EmailService"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
+import { backofficeDeletionRequestUseCase } from "@/app/api/useCases/backofficeDeletion/BackofficeDeletionRequestUseCase"
 
 type MemberRole = "manager" | "backoffice" | "operator"
 
@@ -44,27 +43,6 @@ function createSupabaseAdmin() {
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
-function isIdempotentAsaasCancelError(errorMessage: string): boolean {
-  const normalized = errorMessage
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-  const patterns = [
-    "not found",
-    "nao encontrado",
-    "nao encontrada",
-    "already canceled",
-    "already cancelled",
-    "already deleted",
-    "ja cancelada",
-    "ja cancelado",
-    "cancelada anteriormente",
-    "inexistente",
-    "erro na api asaas: 404",
-  ]
-  return patterns.some((p) => normalized.includes(p))
 }
 
 export class BackofficeMemberUseCase {
@@ -246,15 +224,6 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Membro não encontrado"], null)
       }
 
-      if (member.isMaster) {
-        return new Output(
-          false,
-          [],
-          ["Para excluir o usuário master use o botão Excluir conta no topo da página"],
-          null
-        )
-      }
-
       const supabase = createSupabaseAdmin()
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -266,56 +235,23 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Senha incorreta"], null)
       }
 
-      if (member.subscriptionAsaasId && !member.subscriptionAsaasId.startsWith("backoffice-adhesion-")) {
-        try {
-          await AsaasSubscriptionService.cancelSubscription(member.subscriptionAsaasId)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          if (!isIdempotentAsaasCancelError(message)) {
-            console.error("[BackofficeMemberUseCase][deleteMember] Falha ao cancelar assinatura Asaas:", message)
-            return new Output(
-              false,
-              [],
-              ["Não foi possível cancelar a assinatura do membro. Tente novamente em alguns instantes."],
-              null
-            )
-          }
-        }
-      }
-
-      await this.repository.deleteMemberCascade(memberId)
-
-      if (member.managerId) {
-        await memberProBillingUseCase.syncBillingAfterUsageChange(member.managerId, "remove_user")
-      }
-
-      if (member.supabaseId) {
-        try {
-          await supabase.auth.admin.deleteUser(member.supabaseId)
-        } catch (authError) {
-          console.error("[BackofficeMemberUseCase][deleteMember] Erro ao excluir do Supabase Auth:", authError)
-        }
-      }
-
-      try {
-        const emailService = createEmailService()
-        await emailService.sendAccountDeletionFarewellEmail({
-          userName: member.fullName ?? member.email,
-          userEmail: member.email,
-        })
-      } catch (emailError) {
-        console.error("[BackofficeMemberUseCase][deleteMember] Erro ao enviar e-mail de encerramento:", emailError)
-      }
-
-      console.info("[BackofficeMemberUseCase][deleteMember] Conta excluída:", member.email)
-      return new Output(true, ["Conta excluída com sucesso"], [], { id: memberId })
+      return backofficeDeletionRequestUseCase.createRequest({
+        type: "USER_DELETE",
+        targetId: memberId,
+        reason: "Solicitação via exclusão de conta no backoffice",
+        requestedByProfileId: adminProfileId,
+      })
     } catch (error) {
       console.error("[BackofficeMemberUseCase][deleteMember]", error)
-      return new Output(false, [], ["Erro ao excluir conta do membro"], null)
+      return new Output(false, [], ["Erro ao solicitar exclusão da conta"], null)
     }
   }
 
-  async removeFromTeam(memberId: string, teamId: string): Promise<Output> {
+  async removeFromTeam(
+    memberId: string,
+    teamId: string,
+    actorProfileId?: string
+  ): Promise<Output> {
     try {
       const member = await this.repository.findMemberForUpdate(memberId)
       if (!member) {
@@ -336,7 +272,15 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Time não encontrado"], null)
       }
 
-      await this.repository.deleteTeamMembership(teamId, memberId)
+      if (actorProfileId) {
+        await this.repository.deleteTeamMembershipWithAudit({
+          teamId,
+          profileId: memberId,
+          actorProfileId,
+        })
+      } else {
+        await this.repository.deleteTeamMembership(teamId, memberId)
+      }
 
       await memberProBillingUseCase.syncBillingAfterUsageChange(team.masterId, "remove_member")
 

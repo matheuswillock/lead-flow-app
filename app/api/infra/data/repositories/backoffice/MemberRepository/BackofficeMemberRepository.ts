@@ -71,8 +71,8 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
   }
 
   async findMemberForDeletion(memberId: string): Promise<MemberForDeletionRecord | null> {
-    const profile = await prisma.profile.findUnique({
-      where: { id: memberId },
+    const profile = await prisma.profile.findFirst({
+      where: { id: memberId, deletedAt: null },
       select: {
         id: true,
         supabaseId: true,
@@ -98,9 +98,154 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
   }
 
   async deleteMemberCascade(memberId: string): Promise<void> {
+    // Legacy name — soft-delete sem request (uso interno legado). Preferir softDeleteMemberCascade.
+    await this.softDeleteMemberCascade(memberId, memberId, null)
+  }
+
+  async softDeleteMemberCascade(
+    memberId: string,
+    actorProfileId: string,
+    requestId?: string | null
+  ): Promise<void> {
+    const now = new Date()
+
     await prisma.$transaction(async (tx) => {
-      await tx.lead.deleteMany({ where: { assignedTo: memberId } })
-      await tx.profile.delete({ where: { id: memberId } })
+      const profile = await tx.profile.findFirst({
+        where: { id: memberId, deletedAt: null },
+        select: { id: true, isMaster: true, managerId: true, email: true, fullName: true },
+      })
+      if (!profile) {
+        throw new Error("Membro não encontrado ou já excluído")
+      }
+
+      await tx.lead.updateMany({
+        where: { assignedTo: memberId, deletedAt: null },
+        data: { assignedTo: null },
+      })
+      await tx.lead.updateMany({
+        where: { closerId: memberId, deletedAt: null },
+        data: { closerId: null },
+      })
+
+      await tx.teamMember.deleteMany({ where: { profileId: memberId } })
+
+      if (profile.isMaster) {
+        const teams = await tx.team.findMany({
+          where: { masterId: memberId, deletedAt: null },
+          select: { id: true },
+        })
+        const teamIds = teams.map((t) => t.id)
+
+        if (teamIds.length > 0) {
+          await tx.lead.updateMany({
+            where: { teamId: { in: teamIds }, deletedAt: null },
+            data: { deletedAt: now, deletedByProfileId: actorProfileId },
+          })
+          await tx.team.updateMany({
+            where: { id: { in: teamIds }, deletedAt: null },
+            data: { deletedAt: now, deletedByProfileId: actorProfileId },
+          })
+
+          for (const teamId of teamIds) {
+            await tx.backofficeDeletionAuditLog.create({
+              data: {
+                entityType: "TEAM",
+                entityId: teamId,
+                action: "soft_delete_cascade_master",
+                actorProfileId,
+                requestId: requestId ?? null,
+                payload: { masterId: memberId },
+              },
+            })
+          }
+
+          await tx.backofficeDeletionAuditLog.create({
+            data: {
+              entityType: "LEAD",
+              entityId: memberId,
+              action: "soft_delete_leads_cascade_master",
+              actorProfileId,
+              requestId: requestId ?? null,
+              payload: { teamIds, leadScope: "teams_of_master" },
+            },
+          })
+        }
+
+        await tx.lead.updateMany({
+          where: { managerId: memberId, deletedAt: null },
+          data: { deletedAt: now, deletedByProfileId: actorProfileId },
+        })
+      }
+
+      await tx.profile.update({
+        where: { id: memberId },
+        data: { deletedAt: now, deletedByProfileId: actorProfileId },
+      })
+
+      await tx.backofficeDeletionAuditLog.create({
+        data: {
+          entityType: "PROFILE",
+          entityId: memberId,
+          action: profile.isMaster ? "soft_delete_master" : "soft_delete_user",
+          actorProfileId,
+          requestId: requestId ?? null,
+          payload: {
+            email: profile.email,
+            fullName: profile.fullName,
+            isMaster: profile.isMaster,
+          },
+        },
+      })
+    })
+  }
+
+  async softDeleteTeamCascade(
+    teamId: string,
+    actorProfileId: string,
+    requestId?: string | null
+  ): Promise<void> {
+    const now = new Date()
+
+    await prisma.$transaction(async (tx) => {
+      const team = await tx.team.findFirst({
+        where: { id: teamId, deletedAt: null },
+        select: { id: true, name: true, masterId: true },
+      })
+      if (!team) {
+        throw new Error("Time não encontrado ou já excluído")
+      }
+
+      await tx.lead.updateMany({
+        where: { teamId, deletedAt: null },
+        data: { deletedAt: now, deletedByProfileId: actorProfileId },
+      })
+
+      await tx.team.update({
+        where: { id: teamId },
+        data: { deletedAt: now, deletedByProfileId: actorProfileId },
+      })
+
+      await tx.backofficeDeletionAuditLog.create({
+        data: {
+          entityType: "TEAM",
+          entityId: teamId,
+          action: "soft_delete_team",
+          actorProfileId,
+          requestId: requestId ?? null,
+          payload: { name: team.name, masterId: team.masterId },
+        },
+      })
+
+      await tx.backofficeDeletionAuditLog.create({
+        data: {
+          entityType: "LEAD",
+          entityId: teamId,
+          action: "soft_delete_leads_of_team",
+          actorProfileId,
+          requestId: requestId ?? null,
+          payload: { teamId },
+        },
+      })
     })
   }
 
@@ -121,6 +266,27 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     })
   }
 
+  async deleteTeamMembershipWithAudit(input: {
+    teamId: string
+    profileId: string
+    actorProfileId: string
+  }): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.teamMember.delete({
+        where: { teamId_profileId: { teamId: input.teamId, profileId: input.profileId } },
+      })
+      await tx.backofficeDeletionAuditLog.create({
+        data: {
+          entityType: "TEAM_MEMBERSHIP",
+          entityId: input.profileId,
+          action: "remove_from_team",
+          actorProfileId: input.actorProfileId,
+          payload: { teamId: input.teamId, profileId: input.profileId },
+        },
+      })
+    })
+  }
+
   async findTeamForMaster(
     teamId: string,
     masterId: string
@@ -132,8 +298,8 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
   }
 
   async findTeamById(teamId: string): Promise<{ id: string; masterId: string } | null> {
-    return prisma.team.findUnique({
-      where: { id: teamId },
+    return prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
       select: { id: true, masterId: true },
     })
   }

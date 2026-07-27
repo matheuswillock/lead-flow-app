@@ -63,6 +63,7 @@ import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
 import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
 import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
 import { BackofficeClientStudioEmailsPanel } from "../components/BackofficeClientStudioEmailsPanel"
+import { BackofficeClientPublicFormsPanel } from "../components/BackofficeClientPublicFormsPanel"
 import type { BackofficeClientTeam, BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
@@ -191,6 +192,12 @@ export function BackofficeClientDetailsContainer() {
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [removeFromTeamTarget, setRemoveFromTeamTarget] = useState<{
+    member: BackofficeClientTeamMember
+    teamId: string
+  } | null>(null)
+  const [isRemovingFromTeam, setIsRemovingFromTeam] = useState(false)
+  const removeFromTeamInFlight = useRef(false)
   const [memberAccessActionId, setMemberAccessActionId] = useState<string | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addTeamOpen, setAddTeamOpen] = useState(false)
@@ -206,7 +213,7 @@ export function BackofficeClientDetailsContainer() {
 
   useEffect(() => {
     const tab = searchParams.get("tab")
-    if (tab === "invoices" || tab === "teams" || tab === "emails") {
+    if (tab === "invoices" || tab === "teams" || tab === "emails" || tab === "forms") {
       setActiveSection(tab)
     }
     const teamId = searchParams.get("teamId")
@@ -220,7 +227,10 @@ export function BackofficeClientDetailsContainer() {
     const currentTab = searchParams.get("tab")
     if (
       currentName === details.fullName &&
-      (currentTab === "teams" || currentTab === "invoices" || currentTab === "emails")
+      (currentTab === "teams" ||
+        currentTab === "invoices" ||
+        currentTab === "emails" ||
+        currentTab === "forms")
     ) {
       return
     }
@@ -228,14 +238,19 @@ export function BackofficeClientDetailsContainer() {
     const params = new URLSearchParams(searchParams.toString())
     params.set("name", details.fullName)
 
-    if (currentTab !== "teams" && currentTab !== "invoices" && currentTab !== "emails") {
+    if (
+      currentTab !== "teams" &&
+      currentTab !== "invoices" &&
+      currentTab !== "emails" &&
+      currentTab !== "forms"
+    ) {
       params.set("tab", activeSection)
     }
 
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }, [activeSection, details?.fullName, pathname, router, searchParams])
 
-  function handleTabChange(nextSection: "teams" | "invoices" | "emails") {
+  function handleTabChange(nextSection: "teams" | "invoices" | "emails" | "forms") {
     setActiveSection(nextSection)
     const params = new URLSearchParams(searchParams.toString())
     params.set("tab", nextSection)
@@ -244,7 +259,7 @@ export function BackofficeClientDetailsContainer() {
       params.set("name", details.fullName)
     }
 
-    if (nextSection === "emails" && selectedEmailTeamId) {
+    if ((nextSection === "emails" || nextSection === "forms") && selectedEmailTeamId) {
       params.set("teamId", selectedEmailTeamId)
     }
 
@@ -254,7 +269,17 @@ export function BackofficeClientDetailsContainer() {
   function handleEmailTeamChange(teamId: string | null) {
     setSelectedEmailTeamId(teamId)
     const params = new URLSearchParams(searchParams.toString())
-    params.set("tab", "emails")
+    params.set("tab", activeSection === "forms" ? "forms" : "emails")
+    if (teamId) params.set("teamId", teamId)
+    else params.delete("teamId")
+    if (details?.fullName) params.set("name", details.fullName)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  function handleFormsTeamChange(teamId: string | null) {
+    setSelectedEmailTeamId(teamId)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", "forms")
     if (teamId) params.set("teamId", teamId)
     else params.delete("teamId")
     if (details?.fullName) params.set("name", details.fullName)
@@ -587,12 +612,15 @@ export function BackofficeClientDetailsContainer() {
 
           <Tabs
             value={activeSection}
-            onValueChange={(value) => handleTabChange(value as "teams" | "invoices" | "emails")}
+            onValueChange={(value) =>
+              handleTabChange(value as "teams" | "invoices" | "emails" | "forms")
+            }
           >
             <TabsList>
               <TabsTrigger value="teams">Times</TabsTrigger>
               <TabsTrigger value="invoices">Faturas</TabsTrigger>
               <TabsTrigger value="emails">E-mails</TabsTrigger>
+              <TabsTrigger value="forms">Formulários</TabsTrigger>
             </TabsList>
 
             <TabsContent value="teams" className="mt-4">
@@ -801,12 +829,11 @@ export function BackofficeClientDetailsContainer() {
                                             <DropdownMenuItem
                                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                               onClick={() => {
-                                                setSelectedMember(member)
-                                                setMemberDeleteOpen(true)
+                                                setRemoveFromTeamTarget({ member, teamId: team.id })
                                               }}
                                             >
                                               <Trash2 />
-                                              Deletar conta
+                                              Remover do time
                                             </DropdownMenuItem>
                                           ) : null}
                                         </DropdownMenuContent>
@@ -1156,6 +1183,16 @@ export function BackofficeClientDetailsContainer() {
                 canManage={canManage}
               />
             </TabsContent>
+
+            <TabsContent value="forms" className="mt-4">
+              <BackofficeClientPublicFormsPanel
+                masterId={masterId}
+                teams={details?.allTeams ?? []}
+                selectedTeamId={selectedEmailTeamId}
+                onSelectedTeamIdChange={handleFormsTeamChange}
+                canManage={canManage}
+              />
+            </TabsContent>
           </Tabs>
         </>
       )}
@@ -1231,11 +1268,56 @@ export function BackofficeClientDetailsContainer() {
         service={service}
         canManage={canManage}
         onSuccess={reload}
-        onDeleteRequest={() => {
-          setMemberEditOpen(false)
-          setMemberDeleteOpen(true)
-        }}
       />
+
+      <AlertDialog
+        open={removeFromTeamTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !isRemovingFromTeam) setRemoveFromTeamTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover do time?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso remove apenas a associação do membro ao time. A conta e os leads
+              permanecem intactos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingFromTeam}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRemovingFromTeam}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault()
+                void (async () => {
+                  if (!removeFromTeamTarget || removeFromTeamInFlight.current) return
+                  removeFromTeamInFlight.current = true
+                  setIsRemovingFromTeam(true)
+                  try {
+                    await service.removeMemberFromTeam(
+                      removeFromTeamTarget.member.id,
+                      removeFromTeamTarget.teamId
+                    )
+                    toast.success("Membro removido do time")
+                    setRemoveFromTeamTarget(null)
+                    reload()
+                  } catch (err) {
+                    console.error("[BackofficeClientDetailsContainer][removeFromTeam]", err)
+                    toast.error(err instanceof Error ? err.message : "Erro ao remover do time")
+                  } finally {
+                    removeFromTeamInFlight.current = false
+                    setIsRemovingFromTeam(false)
+                  }
+                })()
+              }}
+            >
+              {isRemovingFromTeam ? "Removendo..." : "Remover do time"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <BackofficeMemberDeleteDialog
         open={memberDeleteOpen}

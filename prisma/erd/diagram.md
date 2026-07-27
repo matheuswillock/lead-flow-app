@@ -501,6 +501,46 @@ CAN_CREATE_USERS CAN_CREATE_USERS
     
 
 
+        backoffice_deletion_entity_type {
+            LEAD LEAD
+TEAM TEAM
+PROFILE PROFILE
+TEAM_MEMBERSHIP TEAM_MEMBERSHIP
+        }
+    
+
+
+        backoffice_deletion_request_type {
+            USER_DELETE USER_DELETE
+TEAM_DELETE TEAM_DELETE
+        }
+    
+
+
+        backoffice_deletion_request_status {
+            pending pending
+approved approved
+rejected rejected
+cancelled cancelled
+        }
+    
+
+
+        backoffice_deletion_approval_decision {
+            approved approved
+rejected rejected
+        }
+    
+
+
+        backoffice_database_backup_status {
+            pending pending
+success success
+failed failed
+        }
+    
+
+
         subscription_status {
             trial trial
 active active
@@ -1223,6 +1263,7 @@ meeting_scheduled meeting_scheduled
     String subscriptionCycle "❓"
     String activeTeamId "❓"
     String timezone 
+    DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1255,6 +1296,51 @@ meeting_scheduled meeting_scheduled
     DateTime mailboxProvisionedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "backoffice_deletion_requests" {
+    String id "🗝️"
+    BackofficeDeletionRequestType type 
+    String targetId 
+    BackofficeDeletionRequestStatus status 
+    String reason "❓"
+    Json snapshot "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    DateTime executedAt "❓"
+    }
+  
+
+  "backoffice_deletion_approvals" {
+    String id "🗝️"
+    BackofficeDeletionApprovalDecision decision 
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_deletion_audit_logs" {
+    String id "🗝️"
+    BackofficeDeletionEntityType entityType 
+    String entityId 
+    String action 
+    Json payload "❓"
+    DateTime createdAt 
+    }
+  
+
+  "backoffice_database_backups" {
+    String id "🗝️"
+    DateTime startedAt 
+    DateTime finishedAt "❓"
+    BackofficeDatabaseBackupStatus status 
+    String filePath "❓"
+    String fileName "❓"
+    BigInt sizeBytes "❓"
+    String checksumSha256 "❓"
+    String storageSyncPath "❓"
+    String errorMessage "❓"
+    DateTime createdAt 
     }
   
 
@@ -1731,6 +1817,7 @@ meeting_scheduled meeting_scheduled
     String referrerPhone "❓"
     LeadOriginChannel originChannel "❓"
     Json originMetadata "❓"
+    DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1920,6 +2007,7 @@ meeting_scheduled meeting_scheduled
     String id "🗝️"
     String name 
     Boolean isDefault 
+    DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3282,11 +3370,22 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "manager"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "sponsorMaster"
     "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
+    "corretor_studio_profiles" |o--|o corretor_studio_profiles : "deletedByProfile"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" }o--|o google_oauth_connections : "googleConnection"
     "backoffice_users" }o--|o corretor_studio_profiles : "linkedCorretorStudioProfile"
+    "backoffice_deletion_requests" |o--|| "BackofficeDeletionRequestType" : "enum:type"
+    "backoffice_deletion_requests" |o--|| "BackofficeDeletionRequestStatus" : "enum:status"
+    "backoffice_deletion_requests" }o--|| corretor_studio_profiles : "requestedBy"
+    "backoffice_deletion_approvals" |o--|| "BackofficeDeletionApprovalDecision" : "enum:decision"
+    "backoffice_deletion_approvals" }o--|| backoffice_deletion_requests : "request"
+    "backoffice_deletion_approvals" }o--|| corretor_studio_profiles : "approver"
+    "backoffice_deletion_audit_logs" |o--|| "BackofficeDeletionEntityType" : "enum:entityType"
+    "backoffice_deletion_audit_logs" }o--|o corretor_studio_profiles : "actor"
+    "backoffice_deletion_audit_logs" }o--|o backoffice_deletion_requests : "request"
+    "backoffice_database_backups" |o--|| "BackofficeDatabaseBackupStatus" : "enum:status"
     "backoffice_banned_users" |o--|| "BackofficeBanStatus" : "enum:status"
     "backoffice_banned_users" |o--|| "BackofficeBanScope" : "enum:scope"
     "backoffice_banned_users" }o--|| corretor_studio_profiles : "profile"
@@ -3373,6 +3472,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "closer"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "creator"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "updater"
+    "corretor_studio_leads" }o--|o corretor_studio_profiles : "deletedBy"
     "corretor_studio_leads" |o--|o corretor_studio_leads : "referrerLead"
     "corretor_studio_lead_activities" |o--|| "ActivityType" : "enum:type"
     "corretor_studio_lead_activities" }o--|| corretor_studio_leads : "lead"
@@ -3415,6 +3515,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_pending_operators" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_pending_operators" }o--|o corretor_studio_teams : "team"
     "corretor_studio_teams" }o--|| corretor_studio_profiles : "master"
+    "corretor_studio_teams" }o--|o corretor_studio_profiles : "deletedBy"
     "corretor_studio_team_filter_presets" |o--|| "FilterPresetScope" : "enum:scope"
     "corretor_studio_team_filter_presets" |o--|| "FilterPresetVisibility" : "enum:visibility"
     "corretor_studio_team_filter_presets" }o--|| corretor_studio_teams : "team"
@@ -3681,6 +3782,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_forms" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "assignedSdr"
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "reviewer"
+    "corretor_studio_public_forms" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_public_form_questions" |o--|| "PublicFormQuestionType" : "enum:type"

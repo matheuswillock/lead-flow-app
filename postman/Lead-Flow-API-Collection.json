@@ -10597,6 +10597,172 @@
                   }
                 }
               ]
+            },
+            {
+              "name": "Studio Public Forms (Client Team)",
+              "item": [
+                {
+                  "name": "GET Studio Public Forms",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms?page=1&pageSize=20",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms"
+                      ],
+                      "query": [
+                        { "key": "page", "value": "1" },
+                        { "key": "pageSize", "value": "20" }
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" }
+                      ]
+                    },
+                    "description": "Lista formulários públicos do produto para um time do cliente (visão backoffice)."
+                  }
+                },
+                {
+                  "name": "GET Studio Public Form",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/:formId",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms",
+                        ":formId"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" },
+                        { "key": "formId", "value": "{{publicFormId}}" }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "POST Studio Public Form Publish",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/:formId/publish",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms",
+                        ":formId",
+                        "publish"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" },
+                        { "key": "formId", "value": "{{publicFormId}}" }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Public Form Settings",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-form-settings",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-form-settings"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "GET Studio Public Form Wizard Context",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/wizard-context",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "public-forms",
+                        "wizard-context"
+                      ],
+                      "variable": [
+                        { "key": "masterId", "value": "{{masterProfileId}}" },
+                        { "key": "teamId", "value": "{{teamId}}" }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
@@ -13514,6 +13680,205 @@
                   ]
                 },
                 "description": "Rota pública (sem autenticação). Cria BackofficeLead com origin=public_form."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Deletion Requests",
+          "item": [
+            {
+              "name": "GET Deletion Requests",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/deletion-requests?status=pending",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "deletion-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "pending"
+                    }
+                  ]
+                },
+                "description": "Lista solicitações de exclusão (soft-delete) do backoffice."
+              }
+            },
+            {
+              "name": "POST Create Deletion Request",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"type\": \"USER_DELETE\",\n  \"targetId\": \"{{profileId}}\",\n  \"reason\": \"Solicitação via Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/deletion-requests",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "deletion-requests"
+                  ]
+                },
+                "description": "Cria solicitação USER_DELETE ou TEAM_DELETE (pendente de 2 aprovações)."
+              }
+            },
+            {
+              "name": "POST Approve/Reject Deletion Request",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"decision\": \"approved\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/deletion-requests/:id/approve",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "deletion-requests",
+                    ":id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{deletionRequestId}}"
+                    }
+                  ]
+                },
+                "description": "Registra aprovação ou rejeição. Com 2 aprovadores distintos, executa soft-delete."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Database Backups",
+          "item": [
+            {
+              "name": "GET Backups",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/backups",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "backups"
+                  ]
+                },
+                "description": "Lista metadados de backups diários."
+              }
+            },
+            {
+              "name": "GET Download Backup",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/backups/:id/download",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "backups",
+                    ":id",
+                    "download"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{backupId}}"
+                    }
+                  ]
+                },
+                "description": "Proxy autenticado para baixar o arquivo na VPS."
+              }
+            },
+            {
+              "name": "GET Cron Database Backup",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{cronSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/cron/database-backup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "cron",
+                    "database-backup"
+                  ]
+                },
+                "description": "Cron 05:00 BRT (08:00 UTC) — dispara dump na VPS e grava metadados."
               }
             }
           ]

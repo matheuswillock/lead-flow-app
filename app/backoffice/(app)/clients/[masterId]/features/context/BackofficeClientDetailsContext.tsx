@@ -47,7 +47,7 @@ const DEFAULT_INVOICE_FILTERS: BackofficeClientInvoiceFilters = {
   period: "all",
 }
 
-type ClientDetailsSection = "teams" | "invoices" | "emails"
+type ClientDetailsSection = "teams" | "invoices" | "emails" | "forms"
 
 interface BackofficeClientDetailsContextValue {
   masterId: string

@@ -54,7 +54,6 @@ interface BackofficeMemberEditDialogProps {
   details: BackofficeClientDetails | null
   service: IBackofficeClientDetailsService
   onSuccess: () => void
-  onDeleteRequest: () => void
   canManage?: boolean
 }
 
@@ -65,7 +64,6 @@ export function BackofficeMemberEditDialog({
   details,
   service,
   onSuccess,
-  onDeleteRequest,
   canManage = true,
 }: BackofficeMemberEditDialogProps) {
   const [profileForm, setProfileForm] = useState<ProfileFormState>(() =>
@@ -77,7 +75,9 @@ export function BackofficeMemberEditDialog({
   const [externalTeams, setExternalTeams] = useState<ExternalTeamMembershipRow[]>([])
   const [isLoadingTeams, setIsLoadingTeams] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isRequestingDeletion, setIsRequestingDeletion] = useState(false)
   const inFlight = useRef(false)
+  const deletionInFlight = useRef(false)
 
   useEffect(() => {
     if (open && member) {
@@ -301,23 +301,126 @@ export function BackofficeMemberEditDialog({
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 flex flex-col gap-3">
                   <p className="text-sm font-semibold text-destructive">Zona de perigo</p>
                   <p className="text-sm text-muted-foreground">
-                    Excluir esta conta remove permanentemente o usuário e todos os seus
-                    dados de leads atribuídos.
+                    Solicita exclusão lógica da conta (soft-delete). Os leads não são apagados
+                    fisicamente. Se o usuário for master, times e leads do tenant entram em
+                    soft-delete em cascata após 2 aprovações.
                   </p>
                   <Button
                     type="button"
                     variant="destructive"
                     size="sm"
                     className="w-full"
-                    onClick={onDeleteRequest}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isRequestingDeletion}
+                    onClick={() => {
+                      void (async () => {
+                        if (!member || deletionInFlight.current) return
+                        deletionInFlight.current = true
+                        setIsRequestingDeletion(true)
+                        try {
+                          const response = await fetch("/api/v1/backoffice/deletion-requests", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              type: "USER_DELETE",
+                              targetId: member.id,
+                              reason: "Solicitação via zona de perigo no backoffice",
+                            }),
+                          })
+                          const data = (await response.json()) as {
+                            isValid?: boolean
+                            errorMessages?: string[]
+                            successMessages?: string[]
+                          }
+                          if (!response.ok || !data.isValid) {
+                            throw new Error(
+                              data.errorMessages?.[0] ?? "Erro ao criar solicitação de exclusão"
+                            )
+                          }
+                          toast.success(
+                            data.successMessages?.[0] ??
+                              "Solicitação criada — pendente de 2 aprovações"
+                          )
+                          onOpenChange(false)
+                        } catch (err) {
+                          console.error("[BackofficeMemberEditDialog][requestDeletion]", err)
+                          toast.error(
+                            err instanceof Error ? err.message : "Erro ao solicitar exclusão"
+                          )
+                        } finally {
+                          deletionInFlight.current = false
+                          setIsRequestingDeletion(false)
+                        }
+                      })()
+                    }}
                   >
                     <Trash2 />
-                    Excluir conta
+                    {isRequestingDeletion ? "Solicitando..." : "Solicitar exclusão da conta"}
                   </Button>
                 </div>
               </>
-            ) : null}
+            ) : (
+              <>
+                <Separator />
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 flex flex-col gap-3">
+                  <p className="text-sm font-semibold text-destructive">Zona de perigo</p>
+                  <p className="text-sm text-muted-foreground">
+                    Excluir um master soft-deleta a conta e, em cascata, times e leads do
+                    tenant. Requer 2 aprovações.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="w-full"
+                    disabled={isSubmitting || isRequestingDeletion}
+                    onClick={() => {
+                      void (async () => {
+                        if (!member || deletionInFlight.current) return
+                        deletionInFlight.current = true
+                        setIsRequestingDeletion(true)
+                        try {
+                          const response = await fetch("/api/v1/backoffice/deletion-requests", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              type: "USER_DELETE",
+                              targetId: member.id,
+                              reason: "Solicitação de exclusão de master via zona de perigo",
+                            }),
+                          })
+                          const data = (await response.json()) as {
+                            isValid?: boolean
+                            errorMessages?: string[]
+                            successMessages?: string[]
+                          }
+                          if (!response.ok || !data.isValid) {
+                            throw new Error(
+                              data.errorMessages?.[0] ?? "Erro ao criar solicitação de exclusão"
+                            )
+                          }
+                          toast.success(
+                            data.successMessages?.[0] ??
+                              "Solicitação criada — pendente de 2 aprovações"
+                          )
+                          onOpenChange(false)
+                        } catch (err) {
+                          console.error("[BackofficeMemberEditDialog][requestMasterDeletion]", err)
+                          toast.error(
+                            err instanceof Error ? err.message : "Erro ao solicitar exclusão"
+                          )
+                        } finally {
+                          deletionInFlight.current = false
+                          setIsRequestingDeletion(false)
+                        }
+                      })()
+                    }}
+                  >
+                    <Trash2 />
+                    {isRequestingDeletion ? "Solicitando..." : "Solicitar exclusão do master"}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter className="pt-4 mt-2 border-t">

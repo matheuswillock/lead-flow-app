@@ -64,6 +64,10 @@
     {
       "path": "/api/v1/backoffice/cron/process-email-import-jobs",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/backoffice/cron/database-backup",
+      "schedule": "0 8 * * *"
     }
   ]
 }
