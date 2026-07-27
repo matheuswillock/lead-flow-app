@@ -272,3 +272,29 @@ Migration: `bun run db:migrate:from-prisma -- pricing-multi-slug-installments` (
 - Overage e-mail opt-in (bloquear sem cartão — default).
 - Performance bootstrap / cache feature access.
 - Testes dedicados webhook/PaymentValidation (obrigatórios nos estágios 1–2, expandir depois).
+
+---
+
+## Changelog de implementação
+
+### [Estágio 4 parcial] Parcelas CUSTOM — 2026-07-27
+
+**Branch:** `claude/blissful-faraday-05e253`  
+**Commit:** _a preencher após git commit_
+
+**Arquivos alterados:**
+- `prisma/schema.prisma` — enum `InstallmentSplitMode { EQUAL, CUSTOM }`, campos `installmentSplitMode` e `installmentSchedule` (Json) em `BackofficeProductPaymentRule`
+- `supabase/migrations/20260727164941_pricing-installment-schedule.sql` — cria enum `installment_split_mode`, adiciona colunas `installmentSplitMode` e `installmentSchedule` na tabela `backoffice_product_payment_rules`
+- `app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository.ts` — `UpsertPaymentRuleInput` com campos opcionais `installmentSplitMode` e `installmentSchedule`
+- `app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository.ts` — `upsertPaymentRules` persiste os novos campos
+- `app/api/useCases/backofficeProduct/BackofficeProductUseCase.ts` — `BackofficeProductPaymentRuleDTO` e `mapPaymentRuleDTO` incluem os novos campos
+- `app/backoffice/(app)/pricing/features/context/BackofficePricingTypes.ts` — tipos `InstallmentSplitMode`, `InstallmentGroup`, helpers `flattenSchedule` e `groupSchedule`
+- `app/backoffice/(app)/pricing/features/context/BackofficePricingContext.tsx` — handlers `setInstallmentSplitMode`, `setInstallmentGroup`, `addInstallmentGroup`, `removeInstallmentGroup`; `productToFormData` mapeia os novos campos
+- `app/backoffice/(app)/pricing/features/services/BackofficePricingService.ts` — `formToPayload` expande grupos CUSTOM em array flat e calcula `price` = soma do schedule
+- `app/backoffice/(app)/pricing/features/components/BackofficeProductDialog.tsx` — toggle EQUAL/CUSTOM por linha de cartão; editor inline de grupos (Nº × valor) com add/remove e total em tempo real
+
+**O que foi feito:** Suporte a parcelamento customizado (CUSTOM) na regra de pagamento cartão. Em modo CUSTOM o usuário define grupos de parcelas (N × valor) em vez de um único preço mensal. O schedule é persistido como JSONB. Modo EQUAL permanece inalterado.
+
+**Pendente (próximo agente — Estágio 4 continuação):**
+- Integração Asaas: CUSTOM → N cobranças avulsas; EQUAL → `installmentCount`/`installmentValue` (spec D12).
+- Multi-slug: `featureSlugs String[]` substituindo `featureSlug` singular (spec D12 primeiro bullet).

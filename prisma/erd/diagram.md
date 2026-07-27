@@ -429,6 +429,13 @@ LIFETIME LIFETIME
     
 
 
+        installment_split_mode {
+            EQUAL EQUAL
+CUSTOM CUSTOM
+        }
+    
+
+
         backoffice_payment_method {
             PIX PIX
 CREDIT_CARD CREDIT_CARD
@@ -2480,6 +2487,8 @@ meeting_scheduled meeting_scheduled
     Decimal price 
     Boolean canInstallment 
     Int maxInstallments 
+    InstallmentSplitMode installmentSplitMode 
+    Json installmentSchedule 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3636,6 +3645,7 @@ meeting_scheduled meeting_scheduled
     "backoffice_feature_grant_teams" }o--|| corretor_studio_teams : "team"
     "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
     "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
+    "backoffice_product_payment_rules" |o--|| "InstallmentSplitMode" : "enum:installmentSplitMode"
     "backoffice_product_payment_rules" }o--|| backoffice_products : "product"
     "backoffice_lead_status_transition_field_rules" |o--|| "LeadStatus" : "enum:targetStatus"
     "backoffice_lead_status_transition_field_rules" |o--|| "BackofficeLeadTransitionFieldKey" : "enum:fieldKey"
