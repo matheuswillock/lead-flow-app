@@ -1,22 +1,22 @@
 export const stepsData = [
   {
     title: "Capture leads",
-    description: "Adicione leads manualmente ou via integração com formulários externos.",
+    description: "Cadastre manualmente, importe planilha ou receba leads por formulários e integrações.",
   },
   {
     title: "Organize no pipeline",
-    description: "Leads aparecem no Kanban. Defina etapas: Novo, Contato, Proposta e Fechamento.",
+    description: "Leads no Kanban e na tabela. Etapas claras: Novo, Contato, Proposta e Fechamento.",
   },
   {
-    title: "Agende reuniões",
-    description: "Marque reuniões direto do lead com integração ao Google Calendar.",
+    title: "Unifique no Radar",
+    description: "CRM e carteira viram perfis únicos. Segmente quem está apto, perto da renovação ou frio.",
   },
   {
-    title: "Trabalhe em times",
-    description: "Separe operações por time e gerencie funções SDR e Closer por workspace.",
+    title: "Dispare campanhas",
+    description: "Escolha um segmento do Radar ou uma lista CSV, agende e envie sem sair da plataforma.",
   },
   {
     title: "Analise e cresça",
-    description: "Acompanhe métricas e indicadores para tomar decisões rápidas.",
+    description: "Abertura, clique, entrega e indicadores do time — decida o próximo movimento com dados.",
   },
 ]

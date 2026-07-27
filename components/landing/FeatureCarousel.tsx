@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Check } from "lucide-react"
 import { div as MotionDiv } from "framer-motion/client"
 import { useReducedMotion } from "framer-motion"
 import { DemoRequestDialogButton } from "./DemoRequestDialog"
+import { RadarFeaturePreview } from "./RadarFeaturePreview"
 import { featurePanelsData } from "@/lib/landing/feature-panels-data"
 import { cn } from "@/lib/utils"
 import { useLandingReveal } from "@/lib/landing/use-landing-motion"
@@ -102,15 +103,19 @@ export function FeatureCarousel() {
                             <span />
                             <p>{isCrm ? (crmView === "pipeline" ? "Pipeline · CRM" : "Kanban · CRM") : panel.windowTitle}</p>
                           </div>
-                          <Image
-                            src={imageSrc}
-                            alt={imageAlt}
-                            width={1322}
-                            height={802}
-                            className="h-auto w-full"
-                            sizes="(max-width: 1024px) 88vw, 600px"
-                            loading={isDashboardLcpImage ? "eager" : "lazy"}
-                          />
+                          {panel.preview === "radar" ? (
+                            <RadarFeaturePreview />
+                          ) : (
+                            <Image
+                              src={imageSrc}
+                              alt={imageAlt}
+                              width={1322}
+                              height={802}
+                              className="h-auto w-full"
+                              sizes="(max-width: 1024px) 88vw, 600px"
+                              loading={isDashboardLcpImage ? "eager" : "lazy"}
+                            />
+                          )}
                         </div>
                         {isCrm && (
                           <div className="mt-5 inline-flex rounded-full border border-landing-panel-border bg-landing-panel-control p-1">

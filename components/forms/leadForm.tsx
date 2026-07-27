@@ -62,7 +62,7 @@ const formatCurrencyNumber = (value: number): string =>
         maximumFractionDigits: 2
     })}`;
 
-export type LeadFormSaveMode = "full" | "draft";
+export type LeadFormSaveMode = "full" | "draft" | "assignees";
 
 export interface ILeadFormProps {
     form: UseFormReturn<LeadFormWithCustomFields>;
@@ -220,8 +220,28 @@ export function LeadForm({
         () => leadFormSchema.safeParse(watchedValues).success,
         [watchedValues]
     );
-    const isDraftDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
-    const isSaveDisabled = isDraftDisabled || isFullSaveDisabled;
+    const hasAssigneeChanges = React.useMemo(() => {
+        if (!isEditMode || !initialData) return false;
+        return (
+            watchedValues.responsible !== initialData.responsible ||
+            watchedValues.closerId !== initialData.closerId
+        );
+    }, [initialData, isEditMode, watchedValues.closerId, watchedValues.responsible]);
+    const canSaveAssigneesOnly =
+        isEditMode && hasAssigneeChanges && !hasBlockingErrors && !isLoading && !isUpdating;
+    const isDraftDisabled =
+        !hasChanges ||
+        hasBlockingErrors ||
+        isLoading ||
+        isUpdating ||
+        (!isSchemaValid && !canSaveAssigneesOnly);
+    const isSaveDisabled =
+        (!isSchemaValid && !canSaveAssigneesOnly) ||
+        hasBlockingErrors ||
+        !hasChanges ||
+        isLoading ||
+        isUpdating ||
+        (isFullSaveDisabled && !canSaveAssigneesOnly);
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
     const isPreSchedule =
         watchedValues.isTransfer === true || scheduleSummary?.isPreSchedule === true;
@@ -377,18 +397,32 @@ export function LeadForm({
 
     const runSubmit = useCallback(
         (mode: LeadFormSaveMode) => {
+            const resolvedMode: LeadFormSaveMode =
+                mode !== "assignees" && !isSchemaValid && canSaveAssigneesOnly
+                    ? "assignees"
+                    : mode;
+
+            if (resolvedMode === "assignees") {
+                void onSubmit(form.getValues(), "assignees");
+                return;
+            }
+
             void form.handleSubmit(
-                (data) => onSubmit(data, mode),
+                (data) => onSubmit(data, resolvedMode),
                 () => {
                     void handleInvalidSubmit();
                 }
             )();
         },
-        [form, handleInvalidSubmit, onSubmit]
+        [canSaveAssigneesOnly, form, handleInvalidSubmit, isSchemaValid, onSubmit]
     );
 
     const handleSaveFull = useCallback(() => {
         if (isSaveDisabled) {
+            if (canSaveAssigneesOnly) {
+                runSubmit("assignees");
+                return;
+            }
             if (isFullSaveDisabled && fullSaveDisabledReason) {
                 toast.error(fullSaveDisabledReason);
                 return;
@@ -397,15 +431,26 @@ export function LeadForm({
             return;
         }
         runSubmit("full");
-    }, [fullSaveDisabledReason, handleInvalidSubmit, isFullSaveDisabled, isSaveDisabled, runSubmit]);
+    }, [
+        canSaveAssigneesOnly,
+        fullSaveDisabledReason,
+        handleInvalidSubmit,
+        isFullSaveDisabled,
+        isSaveDisabled,
+        runSubmit,
+    ]);
 
     const handleSaveDraft = useCallback(() => {
         if (isDraftDisabled) {
+            if (canSaveAssigneesOnly) {
+                runSubmit("assignees");
+                return;
+            }
             void handleInvalidSubmit();
             return;
         }
         runSubmit("draft");
-    }, [handleInvalidSubmit, isDraftDisabled, runSubmit]);
+    }, [canSaveAssigneesOnly, handleInvalidSubmit, isDraftDisabled, runSubmit]);
 
     useEffect(() => {
         if (!hasReachedFormEnd) return;

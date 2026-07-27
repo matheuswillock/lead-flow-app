@@ -8,7 +8,7 @@ export interface FeatureData {
 
 export const FEATURES_SECTION_HEADING = "Tudo que você precisa para vender mais"
 export const FEATURES_SECTION_SUBHEADING =
-  "CRM completo com pipeline, agenda, métricas e gestão de equipe — tudo em um só lugar para sua corretora de saúde."
+  "CRM completo com pipeline, Radar, campanhas de e-mail, agenda, métricas e gestão de equipe — tudo em um só lugar para sua corretora de saúde."
 
 export const featuresData: FeatureData[] = [
   {
@@ -34,14 +34,25 @@ export const featuresData: FeatureData[] = [
     size: "small",
   },
   {
+    title: "Radar",
+    description:
+      "Perfis unificados do CRM e da carteira, com segmentos prontos e customizados para alimentar campanhas de e-mail.",
+    benefits: [
+      "Perfis únicos com timeline e consentimento",
+      "Segmentos prontos para renovação e engajamento",
+      "Builder de segmentos sob medida",
+      "Audiência dinâmica para campanhas",
+    ],
+    size: "large",
+  },
+  {
     title: "Campanhas de E-mail",
     description:
-      "Em breve: campanhas segmentadas para listas de contatos com editor visual, agendamento automático e analytics detalhados.",
-    badge: "Em breve",
+      "Campanhas segmentadas com templates, agendamento, analytics e audiência via lista CSV ou Radar.",
     benefits: [
-      "Editor visual drag-and-drop (Maily)",
+      "Templates aprováveis",
       "Upload de listas via CSV",
-      "Agendamento de disparos",
+      "Segmentos do Radar como audiência",
       "Métricas de abertura, clique e entrega",
     ],
     size: "large",

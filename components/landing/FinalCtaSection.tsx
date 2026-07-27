@@ -10,10 +10,10 @@ export function FinalCtaSection() {
           <span aria-hidden className="landing-final-cta-orb landing-final-cta-orb--right" />
           <div className="relative z-10 mx-auto max-w-3xl text-center">
             <h2 className="text-balance font-display text-3xl font-extrabold leading-tight tracking-[-0.03em] md:text-5xl">
-              Pronto para vender mais organizado?
+              Pronto para disparar no público certo?
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-pretty text-lg leading-8 text-landing-panel-body">
-              Solicite uma demonstração e veja o Corretor Studio com os seus próprios números.
+              Solicite uma demonstração e veja Radar e campanhas de e-mail com a sua própria base.
             </p>
             <DemoRequestDialogButton
               className="mt-8 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-card px-6 py-3 font-semibold text-landing-ink transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

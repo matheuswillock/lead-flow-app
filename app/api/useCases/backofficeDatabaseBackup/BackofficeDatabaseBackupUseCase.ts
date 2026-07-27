@@ -1,3 +1,4 @@
+import type { BackofficeDatabaseBackupSource } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { BackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/BackofficeDatabaseBackupRepository"
 import type { IBackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/IBackofficeDatabaseBackupRepository"
@@ -9,6 +10,8 @@ function serializeBackup(row: {
   startedAt: Date
   finishedAt: Date | null
   status: string
+  source: BackofficeDatabaseBackupSource
+  triggeredByProfileId: string | null
   filePath: string | null
   fileName: string | null
   sizeBytes: bigint | null
@@ -22,6 +25,8 @@ function serializeBackup(row: {
     startedAt: row.startedAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
     status: row.status,
+    source: row.source,
+    triggeredByProfileId: row.triggeredByProfileId,
     fileName: row.fileName,
     sizeBytes: row.sizeBytes != null ? Number(row.sizeBytes) : null,
     checksumSha256: row.checksumSha256,
@@ -50,7 +55,41 @@ export class BackofficeDatabaseBackupUseCase {
   }
 
   async triggerCronBackup(): Promise<Output> {
-    const pending = await this.repository.createPending()
+    return this.runBackupJob({ source: "cron" })
+  }
+
+  async triggerManualBackup(triggeredByProfileId: string): Promise<Output> {
+    return this.runBackupJob({
+      source: "manual",
+      triggeredByProfileId,
+    })
+  }
+
+  private async runBackupJob(input: {
+    source: BackofficeDatabaseBackupSource
+    triggeredByProfileId?: string | null
+  }): Promise<Output> {
+    const claimed = await this.repository.claimPendingSlot({
+      source: input.source,
+      triggeredByProfileId: input.triggeredByProfileId ?? null,
+    })
+
+    if (!claimed.ok) {
+      return new Output(
+        false,
+        [],
+        ["Já existe um backup em andamento. Aguarde a conclusão antes de disparar outro."],
+        null
+      )
+    }
+
+    const pending = { id: claimed.id }
+
+    console.info("[BackofficeDatabaseBackupUseCase][runBackupJob] started", {
+      id: pending.id,
+      source: input.source,
+      triggeredByProfileId: input.triggeredByProfileId ?? null,
+    })
 
     try {
       const result = await this.vpsService.runBackup(pending.id)
@@ -77,10 +116,14 @@ export class BackofficeDatabaseBackupUseCase {
         storageSyncPath: result.storageSyncPath ?? null,
       })
 
-      console.info("[BackofficeDatabaseBackupUseCase][triggerCronBackup] success", pending.id)
+      console.info("[BackofficeDatabaseBackupUseCase][runBackupJob] success", {
+        id: pending.id,
+        source: input.source,
+        triggeredByProfileId: input.triggeredByProfileId ?? null,
+      })
       return new Output(true, ["Backup concluído"], [], { id: pending.id })
     } catch (error) {
-      console.error("[BackofficeDatabaseBackupUseCase][triggerCronBackup]", error)
+      console.error("[BackofficeDatabaseBackupUseCase][runBackupJob]", error)
       await this.repository.update(pending.id, {
         status: "failed",
         finishedAt: new Date(),

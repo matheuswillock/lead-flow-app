@@ -19,9 +19,9 @@ import { faqData } from "@/lib/landing/faq-data"
 import { getLandingStats } from "@/lib/landing/public-stats"
 import { buildStatsData } from "@/lib/landing/stats-data"
 
-const homeTitle = "Corretor Studio | CRM e Marketing para Corretores de Saúde"
+const homeTitle = "Corretor Studio | CRM, Radar e Campanhas para Corretores de Saúde"
 const homeDescription =
-  "CRM para corretores de saúde com pipeline Kanban, gestão de equipe, agenda e métricas. Solicite uma demonstração gratuita e aumente sua conversão."
+  "CRM para corretores de saúde com pipeline, Radar de audiência, campanhas de e-mail e métricas. Solicite uma demonstração gratuita e aumente sua conversão."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
@@ -75,7 +75,7 @@ export default async function HomePage() {
         inLanguage: "pt-BR",
         url: websiteUrl,
         description:
-          "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, gestão de times, campanhas e agendamento de reuniões.",
+          "Plataforma de gestão de leads para corretores de saúde com CRM, Radar, campanhas de e-mail, pipeline comercial, gestão de times e agendamento de reuniões.",
         publisher: { "@id": `${websiteUrl}#organization` },
         featureList: featurePanelsData.map((feature) => feature.eyebrow),
       },
@@ -126,7 +126,7 @@ export default async function HomePage() {
           <section className="sr-only" aria-label="Resumo da plataforma">
             <h2>CRM para corretores de planos de saúde</h2>
             <p>
-              O Corretor Studio reúne pipeline Kanban, carteira, campanhas de e-mail, dashboard,
+              O Corretor Studio reúne pipeline Kanban, carteira, Radar, campanhas de e-mail, dashboard,
               times, operadores, integrações e agenda para organizar a rotina comercial de
               corretores de saúde.
             </p>

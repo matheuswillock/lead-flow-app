@@ -12,6 +12,8 @@ export type FeaturePanel = {
   colorClass: string
   accentClass: string
   hasCrmToggle?: boolean
+  /** Preview HTML estático quando ainda não há screenshot do produto. */
+  preview?: "radar"
 }
 
 export const featurePanelsData: FeaturePanel[] = [
@@ -55,17 +57,38 @@ export const featurePanelsData: FeaturePanel[] = [
     accentClass: "landing-feature-accent--coral",
   },
   {
+    id: "radar",
+    navLabel: "Radar",
+    eyebrow: "Radar",
+    title: "Saiba quem merece o próximo e-mail — antes da concorrência",
+    description:
+      "O Radar une CRM, carteira e histórico de e-mail em perfis únicos. Monte segmentos prontos ou sob medida e dispare campanhas para quem realmente pode fechar.",
+    bullets: [
+      "Perfis unificados com timeline e consentimento por canal",
+      "Segmentos prontos: aptos, renovação, abriram e não clicaram",
+      "Builder de segmentos custom para a sua operação",
+      "Audiência dinâmica ligada às campanhas de e-mail",
+    ],
+    cta: "Ver o Radar na prática",
+    image: "/images/landing/campanhas.webp",
+    imageAlt: "Segmentos do Radar com audiência para campanhas de e-mail",
+    windowTitle: "Radar · Segmentos",
+    colorClass: "landing-feature-panel--indigo",
+    accentClass: "landing-feature-accent--indigo",
+    preview: "radar",
+  },
+  {
     id: "campanhas",
     navLabel: "Campanhas",
     eyebrow: "E-mail e Campanhas",
-    title: "Dispare campanhas para o público certo direto do CRM",
+    title: "Dispare campanhas para o público certo — com o Radar no comando",
     description:
-      "Crie campanhas de e-mail com agilidade e precisão. Segmente seus contatos e envie comunicações em poucos minutos: o público sai direto da sua base.",
+      "Templates, agendamento e métricas no mesmo lugar. Escolha uma lista CSV ou um segmento do Radar e envie em minutos, sem exportar planilha.",
     bullets: [
-      "Upload de listas via CSV",
-      "Templates aprováveis",
-      "Agendamento de disparos",
-      "Analytics detalhados: métricas de abertura, clique e entrega",
+      "Audiência via lista CSV ou segmento do Radar",
+      "Templates aprováveis e personalização por destinatário",
+      "Agendamento e disparo com limite controlado",
+      "Analytics de abertura, clique, entrega e descadastro",
     ],
     cta: "Ver campanhas",
     image: "/images/landing/campanhas.webp",

@@ -9,6 +9,7 @@ import type {
   IBackofficeDeletionRequestRepository,
 } from "@/app/api/infra/data/repositories/backoffice/DeletionRequestRepository/IBackofficeDeletionRequestRepository"
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
+import type { IBackofficeDeletionBillingCoordinator } from "@/app/api/useCases/backofficeDeletion/IBackofficeDeletionBillingCoordinator"
 import { BackofficeDeletionRequestUseCase } from "./BackofficeDeletionRequestUseCase"
 
 const MATHEUS = "matheuswillock@corretorstudio.com.br"
@@ -83,6 +84,16 @@ function createMemberRepoMock(
     softDeleteTeamCascade: async () => undefined,
     ...overrides,
   } as unknown as IBackofficeMemberRepository
+}
+
+function createBillingServiceMock(
+  overrides: Partial<IBackofficeDeletionBillingCoordinator> = {}
+): IBackofficeDeletionBillingCoordinator {
+  return {
+    cancelAsaasSubscription: async () => undefined,
+    syncMemberProAfterNonMasterDeletion: async () => undefined,
+    ...overrides,
+  }
 }
 
 describe("BackofficeDeletionRequestUseCase", () => {
@@ -289,7 +300,8 @@ describe("BackofficeDeletionRequestUseCase", () => {
           findById: async () => baseRequest({ approvals: bothApprovals }),
           updateStatus,
         }),
-        createMemberRepoMock({ softDeleteMemberCascade })
+        createMemberRepoMock({ softDeleteMemberCascade }),
+        createBillingServiceMock()
       )
 
       const output = await useCase.decide({
@@ -384,6 +396,7 @@ describe("BackofficeDeletionRequestUseCase", () => {
     it("executa soft-delete de usuário ao atingir 2 aprovações distintas", async () => {
       const softDeleteCalls: Array<[string, string, string]> = []
       const softDeleteTeamCascade = mock(async () => undefined)
+      const syncMemberPro = mock(async () => undefined)
       const statusUpdates: Array<[string, string]> = []
 
       const approvalsAfter: BackofficeDeletionRequestListItem["approvals"] = [
@@ -425,6 +438,9 @@ describe("BackofficeDeletionRequestUseCase", () => {
             softDeleteCalls.push([memberId, actorProfileId, requestId ?? ""])
           },
           softDeleteTeamCascade,
+        }),
+        createBillingServiceMock({
+          syncMemberProAfterNonMasterDeletion: syncMemberPro,
         })
       )
 
@@ -439,8 +455,72 @@ describe("BackofficeDeletionRequestUseCase", () => {
       expect(output.successMessages[0]).toContain("exclusão lógica executada")
       expect(softDeleteCalls).toEqual([["profile-target", "bruno-id", "req-1"]])
       expect(softDeleteTeamCascade).not.toHaveBeenCalled()
+      expect(syncMemberPro).toHaveBeenCalledWith("master-1")
       expect(statusUpdates[0]?.[0]).toBe("req-1")
       expect(statusUpdates[0]?.[1]).toBe("approved")
+    })
+
+    it("não ressincroniza Member PRO ao excluir um master", async () => {
+      const syncMemberPro = mock(async () => undefined)
+      const softDeleteMemberCascade = mock(async () => undefined)
+
+      const approvalsAfter: BackofficeDeletionRequestListItem["approvals"] = [
+        {
+          id: "a1",
+          approverProfileId: "matheus-id",
+          approverEmail: MATHEUS,
+          decision: "approved",
+          createdAt: new Date(),
+        },
+        {
+          id: "a2",
+          approverProfileId: "bruno-id",
+          approverEmail: BRUNO,
+          decision: "approved",
+          createdAt: new Date(),
+        },
+      ]
+
+      let call = 0
+      const useCase = new BackofficeDeletionRequestUseCase(
+        createDeletionRepoMock({
+          findById: async () => {
+            call += 1
+            if (call === 1) {
+              return baseRequest({ approvals: [approvalsAfter[0]!] })
+            }
+            return baseRequest({ approvals: approvalsAfter })
+          },
+          createApproval: async () => undefined,
+          updateStatus: async () => undefined,
+        }),
+        createMemberRepoMock({
+          findMemberForDeletion: async () => ({
+            id: "profile-master",
+            supabaseId: null,
+            email: "master@example.com",
+            fullName: "Master",
+            isMaster: true,
+            managerId: null,
+            subscriptionAsaasId: null,
+          }),
+          softDeleteMemberCascade,
+        }),
+        createBillingServiceMock({
+          syncMemberProAfterNonMasterDeletion: syncMemberPro,
+        })
+      )
+
+      const output = await useCase.decide({
+        requestId: "req-1",
+        decision: "approved",
+        approverProfileId: "bruno-id",
+        approverEmail: BRUNO,
+      })
+
+      expect(output.isValid).toBe(true)
+      expect(softDeleteMemberCascade).toHaveBeenCalled()
+      expect(syncMemberPro).not.toHaveBeenCalled()
     })
 
     it("executa soft-delete de time ao atingir 2 aprovações", async () => {

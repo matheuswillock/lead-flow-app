@@ -10,9 +10,11 @@ interface BackofficeBackupsContextValue {
   items: BackofficeBackupItem[]
   isLoading: boolean
   isDownloading: boolean
+  isGenerating: boolean
   downloadingId: string | null
   error: string | null
-  refresh: () => Promise<void>
+  refresh: (options?: { force?: boolean }) => Promise<void>
+  createManualBackup: () => Promise<void>
   download: (id: string) => Promise<{ blob: Blob; fileName: string }>
 }
 
@@ -31,14 +33,15 @@ export function BackofficeBackupsProvider({
   const [items, setItems] = useState<BackofficeBackupItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const inFlightRef = useRef(false)
   const lastSuccessRef = useRef(false)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { force?: boolean }) => {
     if (inFlightRef.current) return
-    if (lastSuccessRef.current) return
+    if (!options?.force && lastSuccessRef.current) return
 
     inFlightRef.current = true
     setIsLoading(true)
@@ -51,6 +54,7 @@ export function BackofficeBackupsProvider({
     } catch (err) {
       console.error("[BackofficeBackupsProvider][refresh]", err)
       setError(err instanceof Error ? err.message : "Erro ao carregar backups")
+      lastSuccessRef.current = false
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -61,6 +65,19 @@ export function BackofficeBackupsProvider({
     lastSuccessRef.current = false
     void refresh()
   }, [refresh])
+
+  const createManualBackup = useCallback(async () => {
+    if (isGenerating) {
+      throw new Error("Geração de backup já em andamento")
+    }
+    setIsGenerating(true)
+    try {
+      await service.createManualBackup()
+      await refresh({ force: true })
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [isGenerating, refresh, service])
 
   const download = useCallback(
     async (id: string) => {
@@ -85,12 +102,25 @@ export function BackofficeBackupsProvider({
       items,
       isLoading,
       isDownloading,
+      isGenerating,
       downloadingId,
       error,
       refresh,
+      createManualBackup,
       download,
     }),
-    [service, items, isLoading, isDownloading, downloadingId, error, refresh, download]
+    [
+      service,
+      items,
+      isLoading,
+      isDownloading,
+      isGenerating,
+      downloadingId,
+      error,
+      refresh,
+      createManualBackup,
+      download,
+    ]
   )
 
   return (
