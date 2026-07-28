@@ -784,8 +784,8 @@ export function BackofficeAdhesionDialog({
                   {hasPartialExternal ? (
                     <>
                       Parcelas marcadas como pagas por fora: {formatCurrency(externalPaidAmount)}. Saldo
-                      pendente no Asaas (vencimento na criação): {formatCurrency(asaasPendingAmount)}. A
-                      conta será ativada na criação.
+                      pendente no Asaas ({formatCurrency(asaasPendingAmount)}): vencimentos a cada 30 dias
+                      a partir da criação (2ª em +30d, 3ª em +60d, etc.). A conta será ativada na criação.
                     </>
                   ) : (
                     <>

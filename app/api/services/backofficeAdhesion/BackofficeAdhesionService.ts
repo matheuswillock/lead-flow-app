@@ -20,6 +20,7 @@ import {
   readInstallmentLedger,
   type AdhesionInstallmentLedgerEntry,
 } from "@/lib/backoffice-adhesions/installment-ledger"
+import { resolveAdhesionInstallmentDueDate } from "@/lib/backoffice-adhesions/installment-due-date"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -2095,10 +2096,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }>
   }): Promise<typeof input.ledger> {
     const next = [...input.ledger]
-    const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", DEFAULT_TZ)
+    const scheduleBaseDate = input.adhesion.createdAt
     const createdPaymentIds: string[] = []
     try {
       for (const entry of input.pending) {
+        const dueDate = resolveAdhesionInstallmentDueDate(scheduleBaseDate, entry.index)
         const payment = await asaasFetch(asaasApi.payments, {
           method: "POST",
           body: JSON.stringify({
