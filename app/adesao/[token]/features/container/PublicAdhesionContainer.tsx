@@ -98,7 +98,11 @@ export function PublicAdhesionContainer() {
     ]
 
     const totalDueNow =
-      preset === "CREDIT_CARD" ? details.creditCardTotalAmount ?? 0 : details.pixTotalAmount ?? 0
+      details.chargeAmount > 0
+        ? details.chargeAmount
+        : preset === "CREDIT_CARD"
+          ? details.creditCardTotalAmount ?? 0
+          : details.pixTotalAmount ?? 0
     const monthlyTotal =
       selectedMonthlyTotal
 
@@ -133,8 +137,12 @@ export function PublicAdhesionContainer() {
       totalValue: formatCurrency(totalDueNow),
       totalHint:
         preset === "CREDIT_CARD"
-          ? `em até ${Math.max(1, details.maxCardInstallments ?? details.maxInstallments ?? 1)}x no cartão`
+          ? details.installmentSplitMode === "CUSTOM" && details.installmentSchedule.length > 0
+            ? `cronograma: ${details.installmentSchedule.map((value) => formatCurrency(value)).join(" + ")}`
+            : `em até ${Math.max(1, details.maxCardInstallments ?? details.maxInstallments ?? 1)}x no cartão`
           : "via PIX",
+      installmentSplitMode: details.installmentSplitMode,
+      installmentSchedule: details.installmentSchedule,
       startLabel: "Início",
       startValue: startDate ? formatDate(startDate) : "—",
       dueLabel: "Vencimento",
@@ -185,7 +193,11 @@ export function PublicAdhesionContainer() {
   }, [details])
 
   const maxInstallments =
-    mappedDetails?.presetBillingType === "PIX" ? 1 : details?.maxCardInstallments ?? details?.maxInstallments ?? 1
+    mappedDetails?.presetBillingType === "PIX"
+      ? 1
+      : mappedDetails?.installmentSplitMode === "CUSTOM"
+        ? Math.max(1, mappedDetails.installmentSchedule?.length ?? 1)
+        : details?.maxCardInstallments ?? details?.maxInstallments ?? 1
 
   return (
     <PublicCheckoutFlow

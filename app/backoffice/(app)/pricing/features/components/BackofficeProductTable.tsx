@@ -115,7 +115,13 @@ export function BackofficeProductTable({ products, onCreate }: Props) {
               <TableRow key={product.id}>
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   <div className="flex flex-col gap-1">
-                    <span>{product.featureSlug}</span>
+                    <div className="flex flex-wrap gap-1">
+                      {product.featureSlugs.map((slug) => (
+                        <Badge key={slug} variant="outline" className="font-mono text-[10px]">
+                          {slug}
+                        </Badge>
+                      ))}
+                    </div>
                     {product.isDefault && <Badge variant="secondary">Padrão</Badge>}
                   </div>
                 </TableCell>

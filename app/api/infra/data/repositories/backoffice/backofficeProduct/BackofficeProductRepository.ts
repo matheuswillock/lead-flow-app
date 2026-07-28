@@ -19,13 +19,13 @@ function toDecimalOrNull(value: number | null | undefined): Prisma.Decimal | nul
 export class BackofficeProductRepository implements IBackofficeProductRepository {
   async findAll(): Promise<BackofficeProduct[]> {
     return prisma.backofficeProduct.findMany({
-      orderBy: [{ featureSlug: "asc" }, { isDefault: "desc" }, { name: "asc" }],
+      orderBy: [{ name: "asc" }, { isDefault: "desc" }],
     })
   }
 
   async findAllWithPaymentRules(): Promise<BackofficeProductWithPaymentRules[]> {
     return prisma.backofficeProduct.findMany({
-      orderBy: [{ featureSlug: "asc" }, { isDefault: "desc" }, { name: "asc" }],
+      orderBy: [{ name: "asc" }, { isDefault: "desc" }],
       include: paymentRulesInclude,
     })
   }
@@ -43,7 +43,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
 
   async findByFeatureSlug(featureSlug: string): Promise<BackofficeProduct[]> {
     return prisma.backofficeProduct.findMany({
-      where: { featureSlug },
+      where: { featureSlugs: { has: featureSlug } },
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     })
   }
@@ -52,7 +52,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     featureSlug: string
   ): Promise<BackofficeProductWithPaymentRules[]> {
     return prisma.backofficeProduct.findMany({
-      where: { featureSlug, isActive: true },
+      where: { featureSlugs: { has: featureSlug }, isActive: true },
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
       include: paymentRulesInclude,
     })
@@ -60,7 +60,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
 
   async findDefaultByFeatureSlug(featureSlug: string): Promise<BackofficeProduct | null> {
     return prisma.backofficeProduct.findFirst({
-      where: { featureSlug, isDefault: true, isActive: true },
+      where: { featureSlugs: { has: featureSlug }, isDefault: true, isActive: true },
     })
   }
 
@@ -68,20 +68,20 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     featureSlug: string
   ): Promise<BackofficeProductWithPaymentRules | null> {
     return prisma.backofficeProduct.findFirst({
-      where: { featureSlug, isDefault: true, isActive: true },
+      where: { featureSlugs: { has: featureSlug }, isDefault: true, isActive: true },
       include: paymentRulesInclude,
     })
   }
 
   async countByFeatureSlug(featureSlug: string): Promise<number> {
-    return prisma.backofficeProduct.count({ where: { featureSlug } })
+    return prisma.backofficeProduct.count({ where: { featureSlugs: { has: featureSlug } } })
   }
 
   async create(data: CreateBackofficeProductInput): Promise<BackofficeProduct> {
     return prisma.backofficeProduct.create({
       data: {
         name: data.name,
-        featureSlug: data.featureSlug,
+        featureSlugs: data.featureSlugs,
         description: data.description ?? null,
         type: data.type,
         billingMode: data.billingMode,
@@ -101,7 +101,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name }),
-        ...(data.featureSlug !== undefined && { featureSlug: data.featureSlug }),
+        ...(data.featureSlugs !== undefined && { featureSlugs: data.featureSlugs }),
         ...(Object.prototype.hasOwnProperty.call(data, "description") && {
           description: data.description ?? null,
         }),
@@ -131,7 +131,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   async clearDefaultForFeatureSlug(featureSlug: string, exceptId?: string): Promise<void> {
     await prisma.backofficeProduct.updateMany({
       where: {
-        featureSlug,
+        featureSlugs: { has: featureSlug },
         ...(exceptId ? { id: { not: exceptId } } : {}),
       },
       data: { isDefault: false },
@@ -174,7 +174,6 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   async findLockedBillingCycles(
     productId: string
   ): Promise<Array<"monthly" | "quarterly" | "semiannual" | "annual">> {
-    // Lock via tabela Backoffice* (não consulta ProfileSubscription do domínio produto).
     const userSubs = await prisma.backofficeUserSubscription.findMany({
       where: { productId, status: "active" },
       select: { cycle: true },
@@ -200,7 +199,6 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
       if (cycle) locked.add(cycle)
     }
 
-    // Assinatura ativa sem ciclo: trava todos os ciclos já existentes no produto
     const hasActiveWithoutCycle = userSubs.some((sub) => !sub.cycle)
     if (hasActiveWithoutCycle) {
       const existing = await prisma.backofficeProductPaymentRule.findMany({

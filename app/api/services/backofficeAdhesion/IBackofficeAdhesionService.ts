@@ -135,6 +135,10 @@ export interface BackofficeAdhesionPublicDTO {
   creditCardMonthlyTotalAmount: number
   creditCardTotalAmount: number
   maxCardInstallments: number
+  installmentSplitMode: "EQUAL" | "CUSTOM" | null
+  installmentSchedule: number[]
+  remainingBalance: number
+  chargeAmount: number
   createdAt: string
   paidAt: string | null
   expiresAt: string
@@ -178,7 +182,7 @@ export interface BackofficeAdhesionOptionsDTO {
   productVariants: Array<{
     id: string
     name: string
-    featureSlug: string
+    featureSlugs: string[]
     isDefault: boolean
     availableCycles: BackofficeAdhesionBillingCycle[]
     installmentByCycle: Partial<

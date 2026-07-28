@@ -33,6 +33,10 @@ export interface PublicAdhesionDetails {
   creditCardMonthlyTotalAmount: number
   creditCardTotalAmount: number
   maxCardInstallments: number
+  installmentSplitMode: "EQUAL" | "CUSTOM" | null
+  installmentSchedule: number[]
+  remainingBalance: number
+  chargeAmount: number
   createdAt: string
   paidAt: string | null
   expiresAt: string

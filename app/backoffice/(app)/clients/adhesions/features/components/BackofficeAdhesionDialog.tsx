@@ -86,6 +86,14 @@ function formatCurrency(value: number): string {
   }).format(value)
 }
 
+function roundCurrency(value: number): number {
+  return Number(value.toFixed(2))
+}
+
+function formatScheduleAmounts(amounts: number[]): string {
+  return amounts.map((amount) => formatCurrency(amount)).join(" + ")
+}
+
 function formatQuantity(value: number, singular: string, plural: string): string {
   return `${value} ${value === 1 ? singular : plural}`
 }
@@ -299,15 +307,37 @@ export function BackofficeAdhesionDialog({
     values.extraUsers * cyclePrices.extraUserPrice
   const cardBaseMonthly = cyclePrices.cardBaseMonthlyPrice ?? cyclePrices.baseMonthlyPrice
   const pixBaseMonthly = cyclePrices.pixBaseMonthlyPrice ?? cyclePrices.baseMonthlyPrice
-  const cardMonthlyTotal = cardBaseMonthly + extrasMonthly
   const pixMonthlyTotal = pixBaseMonthly + extrasMonthly
   const cycleMonths = CYCLE_MONTHS[values.cycle]
-  const cardTotal = cardMonthlyTotal * cycleMonths
-  const pixTotal = pixMonthlyTotal * cycleMonths
+  const isCustomInstallments =
+    installmentMeta?.splitMode === "CUSTOM" && (installmentMeta.schedule?.length ?? 0) > 0
+  const cardPlanBaseTotal =
+    isCustomInstallments && installmentMeta?.cardTotal != null
+      ? installmentMeta.cardTotal
+      : roundCurrency(cardBaseMonthly * cycleMonths)
+  const cardTotal = roundCurrency(cardPlanBaseTotal + extrasMonthly * cycleMonths)
+  const pixTotal = roundCurrency(pixMonthlyTotal * cycleMonths)
   const chargeBillingType = resolveChargeBillingType(values.billingType)
   const chargeTotal = chargeBillingType === "PIX" ? pixTotal : cardTotal
+  const baseChargeTotal =
+    chargeBillingType === "PIX"
+      ? roundCurrency(pixBaseMonthly * cycleMonths)
+      : cardPlanBaseTotal
+  const baseInstallmentPreview: number[] = (() => {
+    if (isCustomInstallments && installmentMeta) {
+      return scaleInstallmentScheduleToTotal(installmentMeta.schedule, baseChargeTotal)
+    }
+    if (installmentMeta && installmentMeta.maxInstallments > 1) {
+      return scaleInstallmentScheduleToTotal(
+        Array.from({ length: installmentMeta.maxInstallments }, () => 1),
+        baseChargeTotal
+      )
+    }
+    if (baseChargeTotal > 0) return [baseChargeTotal]
+    return []
+  })()
   const installmentPreview: number[] = (() => {
-    if (installmentMeta?.splitMode === "CUSTOM" && installmentMeta.schedule.length > 0) {
+    if (isCustomInstallments && installmentMeta) {
       return scaleInstallmentScheduleToTotal(installmentMeta.schedule, chargeTotal)
     }
     if (installmentMeta && installmentMeta.maxInstallments > 1) {
@@ -319,6 +349,28 @@ export function BackofficeAdhesionDialog({
     if (chargeTotal > 0) return [Number(chargeTotal.toFixed(2))]
     return []
   })()
+  const crmPlanSubtext = isCustomInstallments
+    ? formatScheduleAmounts(baseInstallmentPreview)
+    : `${formatCurrency(chargeBillingType === "PIX" ? pixBaseMonthly : cardBaseMonthly)}/mês`
+  const crmPlanTotal = isCustomInstallments
+    ? baseChargeTotal
+    : chargeBillingType === "PIX"
+      ? roundCurrency(pixBaseMonthly * cycleMonths)
+      : roundCurrency(cardBaseMonthly * cycleMonths)
+  const externalPaidAmount = roundCurrency(
+    values.externalInstallmentIndexes.reduce(
+      (sum, index) => sum + (installmentPreview[index] ?? 0),
+      0
+    )
+  )
+  const asaasPendingAmount = roundCurrency(chargeTotal - externalPaidAmount)
+  const hasPartialExternal =
+    values.externalInstallmentIndexes.length > 0 &&
+    installmentPreview.length > 0 &&
+    values.externalInstallmentIndexes.length < installmentPreview.length
+  const isFullExternal =
+    installmentPreview.length > 0 &&
+    values.externalInstallmentIndexes.length === installmentPreview.length
   const selectedBaseMonthly = chargeBillingType === "PIX" ? pixBaseMonthly : cardBaseMonthly
   const total = chargeTotal
   const commercialItems = [
@@ -328,7 +380,9 @@ export function BackofficeAdhesionDialog({
       description: "Plano principal do Corretor Studio",
       quantity: "1 plano",
       monthlyUnitPrice: selectedBaseMonthly,
-      monthlyTotal: selectedBaseMonthly,
+      monthlyTotal: crmPlanTotal,
+      priceSubtext: crmPlanSubtext,
+      isCustomInstallments,
     },
     ...(values.extraTeams > 0
       ? [
@@ -339,6 +393,8 @@ export function BackofficeAdhesionDialog({
             quantity: formatQuantity(values.extraTeams, "time", "times"),
             monthlyUnitPrice: cyclePrices.extraTeamPrice,
             monthlyTotal: values.extraTeams * cyclePrices.extraTeamPrice,
+            priceSubtext: `${formatCurrency(cyclePrices.extraTeamPrice)}/mês`,
+            isCustomInstallments: false,
           },
         ]
       : []),
@@ -351,6 +407,8 @@ export function BackofficeAdhesionDialog({
             quantity: formatQuantity(values.extraUsers, "usuário", "usuários"),
             monthlyUnitPrice: cyclePrices.extraUserPrice,
             monthlyTotal: values.extraUsers * cyclePrices.extraUserPrice,
+            priceSubtext: `${formatCurrency(cyclePrices.extraUserPrice)}/mês`,
+            isCustomInstallments: false,
           },
         ]
       : []),
@@ -723,8 +781,18 @@ export function BackofficeAdhesionDialog({
                 </p>
               ) : isExternalPaid ? (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Pago por fora: sem cobrança Asaas. A conta será criada e o acesso enviado por
-                  e-mail. Total comercial de referência: {formatCurrency(total)}.
+                  {hasPartialExternal ? (
+                    <>
+                      Parcelas marcadas como pagas por fora: {formatCurrency(externalPaidAmount)}. Saldo
+                      pendente no Asaas (vencimento na criação): {formatCurrency(asaasPendingAmount)}. A
+                      conta será ativada na criação.
+                    </>
+                  ) : (
+                    <>
+                      Pago por fora: sem cobrança Asaas. A conta será criada e o acesso enviado por
+                      e-mail. Total comercial de referência: {formatCurrency(total)}.
+                    </>
+                  )}
                 </p>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -745,10 +813,21 @@ export function BackofficeAdhesionDialog({
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-muted-foreground">
-                      {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
-                    </p>
-                    <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                    {hasPartialExternal ? (
+                      <>
+                        <p className="text-sm text-muted-foreground">Pago por fora</p>
+                        <p className="text-lg font-semibold">{formatCurrency(externalPaidAmount)}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">A cobrar no Asaas</p>
+                        <p className="font-semibold">{formatCurrency(asaasPendingAmount)}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          {isExternalPaid || isFullExternal ? "Total pago por fora" : "Total do checkout"}
+                        </p>
+                        <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="mt-4 divide-y rounded-md border bg-background/60">
@@ -768,12 +847,12 @@ export function BackofficeAdhesionDialog({
                         <span>{item.quantity}</span>
                       </div>
                       <div className="flex items-center justify-between gap-3 md:block md:text-right">
-                        <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
+                        <span className="text-xs text-muted-foreground md:hidden">
+                          {item.isCustomInstallments ? "Parcelas" : "Mensal"}
+                        </span>
                         <div>
                           <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatCurrency(item.monthlyUnitPrice)}/mês
-                          </p>
+                          <p className="text-xs text-muted-foreground">{item.priceSubtext}</p>
                         </div>
                       </div>
                     </div>
@@ -1063,13 +1142,21 @@ export function BackofficeAdhesionDialog({
                       <SelectGroup>
                         {options.productVariants.map((variant) => {
                           const prices = variant.pricesByCycle[values.cycle]
-                          const displayPrice =
-                            prices?.cardMonthlyPrice ?? prices?.pixMonthlyPrice ?? 0
+                          const installment = variant.installmentByCycle?.[values.cycle]
+                          const isCustomVariant =
+                            installment?.splitMode === "CUSTOM" &&
+                            (installment.schedule?.length ?? 0) > 0
+                          const displayPrice = isCustomVariant
+                            ? installment?.cardTotal ?? 0
+                            : prices?.cardMonthlyPrice ?? prices?.pixMonthlyPrice ?? 0
+                          const priceLabel = isCustomVariant
+                            ? `${formatCurrency(displayPrice)} (${installment?.schedule.length ?? 0} parcelas)`
+                            : formatCurrency(displayPrice)
                           return (
                             <SelectItem key={variant.id} value={variant.id}>
                               {variant.name}
                               {variant.isDefault ? " (padrão)" : ""}
-                              {displayPrice > 0 ? ` — ${formatCurrency(displayPrice)}` : ""}
+                              {displayPrice > 0 ? ` — ${priceLabel}` : ""}
                             </SelectItem>
                           )
                         })}
@@ -1352,10 +1439,21 @@ export function BackofficeAdhesionDialog({
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-muted-foreground">
-                      {isExternalPaid ? "Total pago por fora" : "Total do checkout"}
-                    </p>
-                    <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                    {hasPartialExternal ? (
+                      <>
+                        <p className="text-sm text-muted-foreground">Pago por fora</p>
+                        <p className="text-lg font-semibold">{formatCurrency(externalPaidAmount)}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">A cobrar no Asaas</p>
+                        <p className="font-semibold">{formatCurrency(asaasPendingAmount)}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          {isExternalPaid || isFullExternal ? "Total pago por fora" : "Total do checkout"}
+                        </p>
+                        <p className="text-lg font-semibold">{formatCurrency(total)}</p>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="mt-4 divide-y rounded-md border bg-background/60">
@@ -1375,12 +1473,12 @@ export function BackofficeAdhesionDialog({
                         <span>{item.quantity}</span>
                       </div>
                       <div className="flex items-center justify-between gap-3 md:block md:text-right">
-                        <span className="text-xs text-muted-foreground md:hidden">Mensal</span>
+                        <span className="text-xs text-muted-foreground md:hidden">
+                          {item.isCustomInstallments ? "Parcelas" : "Mensal"}
+                        </span>
                         <div>
                           <p className="font-medium">{formatCurrency(item.monthlyTotal)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatCurrency(item.monthlyUnitPrice)}/mês
-                          </p>
+                          <p className="text-xs text-muted-foreground">{item.priceSubtext}</p>
                         </div>
                       </div>
                     </div>
@@ -1389,6 +1487,11 @@ export function BackofficeAdhesionDialog({
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>PIX: {formatCurrency(pixTotal)}</span>
                   <span>Cartão: {formatCurrency(cardTotal)}</span>
+                  {isCustomInstallments ? (
+                    <span>
+                      Parcelas: {formatScheduleAmounts(baseInstallmentPreview)}
+                    </span>
+                  ) : null}
                   <span>
                     Ciclo: {cycleMonths}{" "}
                     {cycleMonths === 1 ? "mês" : "meses"}

@@ -95,7 +95,7 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
 
   async productSlugExists(slug: string): Promise<boolean> {
     const product = await prisma.backofficeProduct.findFirst({
-      where: { featureSlug: slug },
+      where: { featureSlugs: { has: slug } },
       select: { id: true },
     })
     return !!product
