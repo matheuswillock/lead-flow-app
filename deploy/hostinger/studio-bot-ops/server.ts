@@ -131,13 +131,73 @@ function verifyBearerOnly(req) {
   if (!TOKEN) return false;
   const auth = req.headers.authorization || "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  return bearer === TOKEN;
+  if (!bearer) return false;
+  try {
+    const a = Buffer.from(bearer, "utf8");
+    const b = Buffer.from(TOKEN, "utf8");
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function tokenFingerprint() {
+  return createHash("sha256").update(TOKEN).digest("hex").slice(0, 12);
 }
 
 const BACKUP_ROOT = process.env.BACKUP_ROOT || "/opt/lead-flow-app/backups";
 const BACKUP_SCRIPT =
-  process.env.BACKUP_SCRIPT_PATH ||
-  path.join(DEPLOY_DIR, "deploy/hostinger/backup-supabase.sh");
+  process.env.BACKUP_SCRIPT_PATH || "/app/backup-supabase.sh";
+
+async function buildBackupReadinessCheck() {
+  const backupDatabaseUrl = Boolean(
+    process.env.BACKUP_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim()
+  );
+  const checks = {
+    bash: false,
+    pgDump: false,
+    scriptExists: false,
+    backupDatabaseUrl,
+    backupRootWritable: false,
+  };
+
+  try {
+    await execFileAsync("bash", ["--version"]);
+    checks.bash = true;
+  } catch {
+    // bash ausente no container
+  }
+
+  try {
+    await execFileAsync("pg_dump", ["--version"]);
+    checks.pgDump = true;
+  } catch {
+    // pg_dump ausente no container
+  }
+
+  try {
+    await fs.access(BACKUP_SCRIPT, fs.constants.R_OK);
+    checks.scriptExists = true;
+  } catch {
+    // script ausente
+  }
+
+  try {
+    await fs.mkdir(BACKUP_ROOT, { recursive: true });
+    await fs.access(BACKUP_ROOT, fs.constants.W_OK);
+    checks.backupRootWritable = true;
+  } catch {
+    // diretório sem permissão de escrita
+  }
+
+  return {
+    ok: Object.values(checks).every(Boolean),
+    ...checks,
+    backupScriptPath: BACKUP_SCRIPT,
+    backupRoot: BACKUP_ROOT,
+  };
+}
 
 async function handleBackupRun(_body, res) {
   try {
@@ -454,7 +514,15 @@ async function handleHealth(_req, res) {
     n8nEnv,
     evoEnv,
   });
-  return json(res, 200, { ok: true, containers, workflows, hostVersion, bethaniaProductionCheck });
+  const backupReadiness = await buildBackupReadinessCheck();
+  return json(res, 200, {
+    ok: true,
+    containers,
+    workflows,
+    hostVersion,
+    bethaniaProductionCheck,
+    backupReadiness,
+  });
 }
 
 async function handleApplyEnv(body, res) {
@@ -683,6 +751,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (!TOKEN) {
       return json(res, 500, { ok: false, error: "OPS_AGENT_TOKEN não configurado" });
+    }
+
+    // Bearer-only: validação de token (sem HMAC) — útil após rotacionar em .env.ops
+    if (req.method === "GET" && url.pathname === "/v1/token/verify") {
+      if (!verifyBearerOnly(req)) {
+        return json(res, 401, { ok: false, error: "unauthorized" });
+      }
+      return json(res, 200, { ok: true, tokenFingerprint: tokenFingerprint() });
     }
 
     // Backup endpoints: Bearer-only (cron Vercel / backoffice download)

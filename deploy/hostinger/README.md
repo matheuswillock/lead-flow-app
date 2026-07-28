@@ -81,11 +81,28 @@ Após o bootstrap, a operação diária (env N8N/Evolution, restart, import de w
 
 1. DNS `ops.corretorstudio.com` → IP da VPS; Caddy com bloco `ops` (ver `Caddyfile`).
 2. No backoffice, **Gerar token do agente** e copiar o valor.
-3. Na VPS, em `/opt/lead-flow-bot/.env` (ou export no compose): `OPS_AGENT_TOKEN=<token>`.
+3. Na VPS, em `/opt/lead-flow-bot/.env.ops`: `OPS_AGENT_TOKEN=<token>` (não use `.env` — o compose lê só `.env.ops`).
 4. Copiar `deploy/hostinger/studio-bot-ops` para `/opt/lead-flow-bot/studio-bot-ops` (ou `bun run host:pack` + sync).
 5. `docker compose -f docker-compose.vps.yml up -d --build studio-bot-ops`
 6. Em Vercel Production: `BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN=<mesmo token>`
 7. No painel Ops: `agentBaseUrl=https://ops.corretorstudio.com` → Salvar → Health.
+
+### Backup do banco (pg_dump na VPS)
+
+O backup **não** é aplicado pelo painel Ops automaticamente — exige configuração na VPS:
+
+1. Na VPS, crie `/opt/lead-flow-bot/.env.ops` a partir de `deploy/hostinger/.env.ops.example`.
+2. Preencha `BACKUP_DATABASE_URL` com a **connection string direct** do Supabase (porta `5432`).
+3. Crie o diretório de saída: `mkdir -p /opt/lead-flow-app/backups`.
+4. Rebuild do agente: `docker compose -f docker-compose.vps.yml up -d --build studio-bot-ops`.
+5. No painel **Ops → Health**, confira `backupReadiness.ok=true` no payload (bash, pg_dump, script, URL e pasta gravável).
+6. Teste **Backoffice → Backups → Gerar backup**.
+
+| Variável VPS (`.env.ops`) | Descrição |
+|---|---|
+| `BACKUP_DATABASE_URL` | Connection string direct Supabase para `pg_dump` |
+| `BACKUP_ROOT` | Pasta de saída (`/opt/lead-flow-app/backups`) |
+| `OPS_AGENT_TOKEN` | Mesmo token do backoffice/Vercel |
 
 ### Sync de versão do host
 

@@ -105,19 +105,22 @@ services:
   studio-bot-ops:
     container_name: studio_bot_ops
     build:
-      context: ./deploy/hostinger/studio-bot-ops
-      dockerfile: Dockerfile
+      context: ./deploy/hostinger
+      dockerfile: studio-bot-ops/Dockerfile
     restart: unless-stopped
     ports:
       - "127.0.0.1:9090:9090"
+    # Secrets e backup: somente em .env.ops (não use ${VAR} em environment — sobrescreve .env.ops com .env vazio/errado).
+    env_file:
+      - .env.ops
     environment:
       OPS_AGENT_HOST: "0.0.0.0"
       OPS_AGENT_PORT: "9090"
       OPS_DEPLOY_DIR: /opt/lead-flow-bot
       OPS_COMPOSE_FILE: /opt/lead-flow-bot/docker-compose.vps.yml
-      OPS_AGENT_TOKEN: ${OPS_AGENT_TOKEN}
     volumes:
       - /opt/lead-flow-bot:/opt/lead-flow-bot
+      - /opt/lead-flow-app/backups:/opt/lead-flow-app/backups
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - studio-bot-net
