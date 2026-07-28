@@ -182,6 +182,10 @@ export interface IBackofficeAdhesionRepository {
   findByLeadId(leadId: string): Promise<BackofficeAdhesionWithRelations | null>
   findByAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
   findByLedgerAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
+  mutateInstallmentLedger(
+    id: string,
+    apply: (ledger: unknown) => unknown
+  ): Promise<BackofficeAdhesionWithRelations>
   findByTokenHash(tokenHash: string): Promise<BackofficeAdhesionWithRelations | null>
   update(
     id: string,
