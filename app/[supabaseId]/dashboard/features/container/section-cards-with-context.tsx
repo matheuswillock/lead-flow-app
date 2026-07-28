@@ -424,18 +424,18 @@ export function SectionCardsWithContext() {
         />
         <PrimaryMetricCard
           icon={<TrendingUp className="size-4 text-muted-foreground" />}
-          label="Valor em Pipeline"
-          tooltip="Soma do ticket de todos os leads ativos no período — valor total que pode se tornar receita."
+          label="Ticket do Período"
+          tooltip="Soma do ticket de todos os leads criados no período, independentemente do status."
           value={`R$ ${metrics.ticket.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          caption={`Total em negociação nos ${periodText}`}
+          caption={`Ticket total de todos os leads nos ${periodText}`}
           isBlurred={isBlurred}
         />
         <PrimaryMetricCard
           icon={<Target className="size-4 text-muted-foreground" />}
           label="Taxa de Conversão"
-          tooltip="Contratos finalizados dividido pelo total de leads criados no período."
+          tooltip="Leads em proposta, DPS, boleto ou contrato finalizado, divididos pelo total de leads no período."
           value={`${metrics.taxaConversao}%`}
-          caption={`Contratos fechados ÷ total de leads nos ${periodText}`}
+          caption={`Proposta + DPS + boleto + contrato ÷ total de leads nos ${periodText}`}
           isBlurred={isBlurred}
         />
         <PrimaryMetricCard
@@ -577,7 +577,7 @@ export function SectionCardsWithContext() {
                 <UserX className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Taxa de Ausência
-                  <InfoTooltip text="Clientes sem comparecimento ÷ (reuniões realizadas + sem comparecimento) no período." />
+                  <InfoTooltip text="Clientes sem comparecimento ÷ (agendados + sem comparecimento) no período." />
                 </CardTitle>
               </div>
               <CardDescription
