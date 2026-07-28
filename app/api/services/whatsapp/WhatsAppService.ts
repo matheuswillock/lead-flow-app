@@ -1,4 +1,4 @@
-import type { IWhatsAppService, ConfigOutput, CreateWhatsAppConfigInput, CreateConversationInput, SendMessageInput, SendAutoResponseMessageInput, UsageSummaryOutput, SyncContactsOutput, SyncGroupParticipantsOutput, WhatsAppContactOutput, CanonicalWhatsAppContactOutput } from "./IWhatsAppService"
+import type { IWhatsAppService, ConfigOutput, CreateWhatsAppConfigInput, CreateConversationInput, SendMessageInput, SendAutoResponseMessageInput, UsageSummaryOutput, SyncContactsOutput, SyncContactsOptions, SyncGroupParticipantsOutput, WhatsAppContactOutput, CanonicalWhatsAppContactOutput } from "./IWhatsAppService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { whatsAppContactRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppContactRepository"
 import type { IWhatsAppProvider, WhatsAppProviderSendResult } from "./provider/IWhatsAppProvider"
@@ -19,7 +19,7 @@ import {
   toStoredNormalizedPhone,
 } from "./WhatsAppPhonePolicy"
 import { resolveContactNameUpdate, type ContactNameSource } from "@/lib/whatsapp/contact-name"
-import { deleteWhatsAppMedia, uploadWhatsAppMedia } from "./WhatsAppMediaStorage"
+import { readMediaAsBase64ForProvider, validateStoredMediaObject, assertMediaPathBelongsToTeam } from "./WhatsAppMediaStorage"
 import { randomUUID } from "node:crypto"
 import { formatPhoneE164, resolveContactIdentity } from "./ContactIdentityResolver"
 
@@ -485,18 +485,25 @@ class WhatsAppService implements IWhatsAppService {
       caption = input.media.caption
       preview = input.media.caption ?? `[${messageType === "IMAGE" ? "Imagem" : messageType === "DOCUMENT" ? "Documento" : messageType === "AUDIO" ? "Áudio" : "Vídeo"}]`
 
-      // Persist to storage before Evolution send to avoid duplicate delivery on storage failure.
-      const stored = await uploadWhatsAppMedia({
-        teamId: input.teamId,
-        conversationId: input.conversationId,
-        messageId,
-        base64: input.media.base64,
+      if (!assertMediaPathBelongsToTeam(input.media.storagePath, input.teamId)) {
+        throw new Error("MEDIA_UNSUPPORTED")
+      }
+      if (!input.media.storagePath.startsWith(`${input.teamId}/${input.conversationId}/`)) {
+        throw new Error("MEDIA_UNSUPPORTED")
+      }
+
+      const validated = await validateStoredMediaObject({
+        storagePath: input.media.storagePath,
+        expectedSha256: input.media.sha256,
+        expectedSizeBytes: input.media.sizeBytes,
         mimeType: input.media.mimeType,
-        fileName: input.media.fileName,
       })
-      storagePath = stored.storagePath
-      mediaSha256 = stored.mediaSha256
-      mediaSizeBytes = stored.mediaSizeBytes
+      storagePath = input.media.storagePath
+      mediaSha256 = validated.mediaSha256
+      mediaSizeBytes = validated.mediaSizeBytes
+
+      // Evolution still requires Base64 today — convert only in memory on the server.
+      const base64 = await readMediaAsBase64ForProvider(input.media.storagePath)
 
       try {
         evoResult = await this.provider.sendMedia({
@@ -505,11 +512,11 @@ class WhatsAppService implements IWhatsAppService {
           mediatype: input.media.mediatype,
           mimeType: input.media.mimeType,
           fileName: input.media.fileName,
-          base64: input.media.base64,
+          base64,
           caption: input.media.caption,
         })
       } catch (error) {
-        await deleteWhatsAppMedia(stored.storagePath)
+        // Keep the private object for retry by clientMessageId; do not delete on provider failure.
         throw error
       }
     } else {
@@ -931,7 +938,11 @@ class WhatsAppService implements IWhatsAppService {
     }
   }
 
-  async syncContacts(teamId: string, conversationId?: string): Promise<SyncContactsOutput> {
+  async syncContacts(
+    teamId: string,
+    conversationId?: string,
+    options?: SyncContactsOptions
+  ): Promise<SyncContactsOutput> {
     const config = await whatsAppRepository.findConfigByTeamId(teamId)
     if (!config) {
       throw new Error("Configuração não encontrada")
@@ -941,52 +952,73 @@ class WhatsAppService implements IWhatsAppService {
     }
 
     const contacts = await this.provider.fetchContacts(config.instanceName)
+    const startedAt = Date.now()
+    const batchSize = Math.max(1, options?.batchSize ?? 100)
+    const timeBudgetMs = options?.timeBudgetMs ?? 40_000
+    let offset = Math.max(0, options?.checkpoint?.offset ?? 0)
+    let imported = options?.checkpoint?.imported ?? 0
 
     const now = new Date()
-    const upsertInputs = contacts
-      .filter((contact) => resolveContactIdentity(contact.remoteJid).kind !== "GROUP")
-      .map((contact) => ({
-      teamId,
-      remoteJid: contact.remoteJid,
-      opaqueId: extractOpaqueId(contact.remoteJid),
-      phoneNumber: contact.phoneNumber ? normalizePhone(contact.phoneNumber) : null,
-      displayName: contact.pushName?.trim() || null,
-      pushName: contact.pushName?.trim() || null,
-      source: "PHONE_CONTACTS" as const,
-      lastSyncedAt: now,
-      }))
+    const eligible = contacts.filter((contact) => resolveContactIdentity(contact.remoteJid).kind !== "GROUP")
 
-    const imported = await whatsAppContactRepository.upsertMany(upsertInputs)
+    // Legacy directory upsert once per full run (offset 0). Resume skips re-upsert.
+    if (offset === 0) {
+      const upsertInputs = eligible.map((contact) => ({
+        teamId,
+        remoteJid: contact.remoteJid,
+        opaqueId: extractOpaqueId(contact.remoteJid),
+        phoneNumber: contact.phoneNumber ? normalizePhone(contact.phoneNumber) : null,
+        displayName: contact.pushName?.trim() || null,
+        pushName: contact.pushName?.trim() || null,
+        source: "PHONE_CONTACTS" as const,
+        lastSyncedAt: now,
+      }))
+      imported = await whatsAppContactRepository.upsertMany(upsertInputs)
+    }
 
     // Evolution enriches the directory but never becomes its source of truth.
-    // A LID is stored only as an opaque identity; it is intentionally not
-    // merged to a phone contact by a heuristic.
-    for (const contact of contacts) {
-      const identity = resolveContactIdentity(contact.remoteJid)
-      if (identity.kind === "GROUP") continue
-      const canonical = identity.kind === "PHONE" && identity.phoneE164
-        ? await whatsAppContactRepository.findOrCreateCanonical({
-            teamId,
-            phoneE164: identity.phoneE164,
-            name: contact.pushName,
-            nameSource: contact.pushName ? "PUSH_NAME" : "PHONE_NUMBER",
-          })
-        : await whatsAppContactRepository.findOrCreateProvisional({
-            teamId,
-            remoteJid: identity.remoteJid,
-            displayName: contact.pushName,
-          })
-      await whatsAppContactRepository.upsertIdentity({
-        teamId,
-        configId: config.id,
-        contactId: canonical.id,
-        remoteJid: identity.remoteJid,
-        identityType: identity.kind,
-        phoneE164: identity.phoneE164,
-        mappingSource: "CONTACT_SYNC",
-        verifiedAt: identity.kind === "PHONE" ? now : null,
-        sendable: identity.kind === "PHONE",
-      })
+    while (offset < eligible.length) {
+      if (Date.now() - startedAt > timeBudgetMs) {
+        const checkpoint = { offset, imported, done: false }
+        await options?.onProgress?.(checkpoint)
+        return {
+          imported,
+          updatedConversations: 0,
+          totalContacts: contacts.length,
+          checkpoint,
+        }
+      }
+
+      const slice = eligible.slice(offset, offset + batchSize)
+      for (const contact of slice) {
+        const identity = resolveContactIdentity(contact.remoteJid)
+        if (identity.kind === "GROUP") continue
+        const canonical = identity.kind === "PHONE" && identity.phoneE164
+          ? await whatsAppContactRepository.findOrCreateCanonical({
+              teamId,
+              phoneE164: identity.phoneE164,
+              name: contact.pushName,
+              nameSource: contact.pushName ? "PUSH_NAME" : "PHONE_NUMBER",
+            })
+          : await whatsAppContactRepository.findOrCreateProvisional({
+              teamId,
+              remoteJid: identity.remoteJid,
+              displayName: contact.pushName,
+            })
+        await whatsAppContactRepository.upsertIdentity({
+          teamId,
+          configId: config.id,
+          contactId: canonical.id,
+          remoteJid: identity.remoteJid,
+          identityType: identity.kind,
+          phoneE164: identity.phoneE164,
+          mappingSource: "CONTACT_SYNC",
+          verifiedAt: identity.kind === "PHONE" ? now : null,
+          sendable: identity.kind === "PHONE",
+        })
+      }
+      offset += slice.length
+      await options?.onProgress?.({ offset, imported, done: false })
     }
 
     const contactByJid = new Map(contacts.map((c) => [c.remoteJid, c]))
@@ -1033,7 +1065,9 @@ class WhatsAppService implements IWhatsAppService {
       if (await updateFromContact(conversation)) {
         updatedConversations = 1
       }
-      return { imported, updatedConversations, totalContacts: contacts.length }
+      const checkpoint = { offset, imported, done: true }
+      await options?.onProgress?.(checkpoint)
+      return { imported, updatedConversations, totalContacts: contacts.length, checkpoint }
     }
 
     const conversations = await whatsAppRepository.listConversations({
@@ -1049,7 +1083,9 @@ class WhatsAppService implements IWhatsAppService {
       }
     }
 
-    return { imported, updatedConversations, totalContacts: contacts.length }
+    const checkpoint = { offset, imported, done: true }
+    await options?.onProgress?.(checkpoint)
+    return { imported, updatedConversations, totalContacts: contacts.length, checkpoint }
   }
 
   async syncGroupParticipants(teamId: string, conversationId: string): Promise<SyncGroupParticipantsOutput> {

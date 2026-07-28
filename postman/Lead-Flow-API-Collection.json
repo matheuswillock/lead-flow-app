@@ -10613,7 +10613,9 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms?page=1&pageSize=20",
-                      "host": ["{{baseUrl}}"],
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
                       "path": [
                         "api",
                         "v1",
@@ -10625,12 +10627,24 @@
                         "public-forms"
                       ],
                       "query": [
-                        { "key": "page", "value": "1" },
-                        { "key": "pageSize", "value": "20" }
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "pageSize",
+                          "value": "20"
+                        }
                       ],
                       "variable": [
-                        { "key": "masterId", "value": "{{masterProfileId}}" },
-                        { "key": "teamId", "value": "{{teamId}}" }
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
                       ]
                     },
                     "description": "Lista formulários públicos do produto para um time do cliente (visão backoffice)."
@@ -10648,7 +10662,9 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/:formId",
-                      "host": ["{{baseUrl}}"],
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
                       "path": [
                         "api",
                         "v1",
@@ -10661,9 +10677,18 @@
                         ":formId"
                       ],
                       "variable": [
-                        { "key": "masterId", "value": "{{masterProfileId}}" },
-                        { "key": "teamId", "value": "{{teamId}}" },
-                        { "key": "formId", "value": "{{publicFormId}}" }
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        },
+                        {
+                          "key": "formId",
+                          "value": "{{publicFormId}}"
+                        }
                       ]
                     }
                   }
@@ -10680,7 +10705,9 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/:formId/publish",
-                      "host": ["{{baseUrl}}"],
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
                       "path": [
                         "api",
                         "v1",
@@ -10694,9 +10721,18 @@
                         "publish"
                       ],
                       "variable": [
-                        { "key": "masterId", "value": "{{masterProfileId}}" },
-                        { "key": "teamId", "value": "{{teamId}}" },
-                        { "key": "formId", "value": "{{publicFormId}}" }
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        },
+                        {
+                          "key": "formId",
+                          "value": "{{publicFormId}}"
+                        }
                       ]
                     }
                   }
@@ -10713,7 +10749,9 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-form-settings",
-                      "host": ["{{baseUrl}}"],
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
                       "path": [
                         "api",
                         "v1",
@@ -10725,8 +10763,14 @@
                         "public-form-settings"
                       ],
                       "variable": [
-                        { "key": "masterId", "value": "{{masterProfileId}}" },
-                        { "key": "teamId", "value": "{{teamId}}" }
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
                       ]
                     }
                   }
@@ -10743,7 +10787,9 @@
                     ],
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/public-forms/wizard-context",
-                      "host": ["{{baseUrl}}"],
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
                       "path": [
                         "api",
                         "v1",
@@ -10756,8 +10802,14 @@
                         "wizard-context"
                       ],
                       "variable": [
-                        { "key": "masterId", "value": "{{masterProfileId}}" },
-                        { "key": "teamId", "value": "{{teamId}}" }
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        }
                       ]
                     }
                   }
@@ -16326,6 +16378,47 @@
           "response": []
         },
         {
+          "name": "Criar upload assinado de mídia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"clientMessageId\": \"{{$guid}}\",\n  \"fileName\": \"foto.png\",\n  \"mimeType\": \"image/png\",\n  \"sizeBytes\": 1234,\n  \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/media/uploads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "media",
+                "uploads"
+              ]
+            },
+            "description": "Gera token de upload assinado. Browser envia binário via PUT no signedUploadToken; send referencia storagePath+sha256+sizeBytes."
+          },
+          "response": []
+        },
+        {
           "name": "Enviar mensagem",
           "request": {
             "method": "POST",
@@ -16347,7 +16440,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"contentText\": \"Ol\\u00e1 @Jo\\u00e3o, segue o link: https://meet.google.com/abc-defg-hij\",\n  \"mentionedJids\": [\"5511999999999@s.whatsapp.net\"]\n}"
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"clientMessageId\": \"{{$guid}}\",\n  \"contentText\": \"Olá\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages",
@@ -16363,7 +16456,7 @@
                 "messages"
               ]
             },
-            "description": "Envia mensagem outbound. Suporta mentionedJids (grupos) e linkPreview automático em URLs."
+            "description": "Envia mensagem outbound V3 com clientMessageId. Mídia usa storagePath após POST /media/uploads (sem Base64)."
           },
           "response": []
         },

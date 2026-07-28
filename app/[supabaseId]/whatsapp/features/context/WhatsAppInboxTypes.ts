@@ -89,11 +89,18 @@ export interface WhatsAppMessage {
   direction: 'INBOUND' | 'OUTBOUND'
   messageType: string
   status: WhatsAppMessageStatus | string
+  /** Idempotency key for outbound intents; null for inbound / legacy rows. */
+  clientMessageId: string | null
   contentText: string | null
   mediaUrl: string | null
   caption: string | null
   senderDisplayName: string | null
   mediaFileName: string | null
+  mediaMimeType?: string | null
+  storagePath?: string | null
+  mediaSha256?: string | null
+  mediaSizeBytes?: number | null
+  mediaStatus?: 'PROCESSING' | 'AVAILABLE' | 'EXPIRED' | 'FAILED' | null
   linkPreview: { title?: string; description?: string; imageUrl?: string; url?: string } | null
   sentByProfileId: string | null
   senderPhone: string | null
@@ -105,6 +112,8 @@ export interface WhatsAppMessage {
   failedAt: string | null
   isAutoResponse: boolean
   createdAt: string
+  /** Group mentions used for outbound idempotency hash; retained for retry. */
+  mentionedJids?: string[] | null
 }
 
 export type WhatsAppConnectionStatus = 'PENDING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'
@@ -157,6 +166,7 @@ export interface InboxState {
   isLoadingTeamMembers: boolean
   currentProfileId: string | null
   activeTeamId: string | null
+  supabaseId: string
   canManageAssignment: boolean
   isCreatingConversation: boolean
   isSyncingContacts: boolean
@@ -174,7 +184,9 @@ export interface SendMessageMediaInput {
   mediatype: 'image' | 'document' | 'audio' | 'video'
   mimeType: string
   fileName: string
-  base64: string
+  storagePath: string
+  sha256: string
+  sizeBytes: number
   caption?: string
 }
 
@@ -182,7 +194,12 @@ export interface InboxActions {
   selectConversation: (id: string | null) => void
   loadMoreConversations: () => void
   loadOlderMessages: () => void
-  sendMessage: (text: string, media?: SendMessageMediaInput, mentionedJids?: string[]) => void
+  sendMessage: (
+    text: string,
+    media?: SendMessageMediaInput,
+    mentionedJids?: string[],
+    options?: { clientMessageId?: string }
+  ) => void
   resendMessage: (messageId: string) => void
   setSearchQuery: (q: string) => void
   setFilterMode: (mode: ConversationFilterMode) => void

@@ -102,6 +102,10 @@ const MESSAGE_SELECT = {
   storagePath: true,
   mediaSha256: true,
   mediaSizeBytes: true,
+  mediaStatus: true,
+  mediaAttemptCount: true,
+  mediaLastErrorCode: true,
+  mediaRetrievedAt: true,
   linkPreview: true,
   caption: true,
   senderDisplayName: true,
@@ -494,6 +498,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
       status: WhatsAppMessageStatus
       deliveredAt?: Date
       readAt?: Date
+      playedAt?: Date
       failedAt?: Date
     }
   ): Promise<WhatsAppMessageSelect> {
@@ -501,6 +506,97 @@ class WhatsAppRepository implements IWhatsAppRepository {
       where: { id },
       data,
       select: MESSAGE_SELECT,
+    })
+  }
+
+  async findMessageIdByStoragePath(storagePath: string): Promise<string | null> {
+    const row = await prisma.whatsAppMessage.findFirst({
+      where: { storagePath },
+      select: { id: true },
+    })
+    return row?.id ?? null
+  }
+
+  async claimMediaIngestBatch(limit = 20): Promise<Array<{
+    id: string
+    teamId: string
+    conversationId: string
+    configId: string
+    mediaUrl: string | null
+    mediaMimeType: string | null
+    mediaFileName: string | null
+    mediaAttemptCount: number
+    rawPayload: Prisma.JsonValue
+    providerMessageId: string | null
+  }>> {
+    const maxAttempts = 5
+    const candidates = await prisma.whatsAppMessage.findMany({
+      where: {
+        mediaStatus: "PROCESSING",
+        mediaAttemptCount: { lt: maxAttempts },
+        deletedAt: null,
+        OR: [
+          { mediaAttemptCount: 0 },
+          { updatedAt: { lte: new Date(Date.now() - 30_000) } },
+        ],
+      },
+      orderBy: [{ mediaAttemptCount: "asc" }, { updatedAt: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        teamId: true,
+        conversationId: true,
+        configId: true,
+        mediaUrl: true,
+        mediaMimeType: true,
+        mediaFileName: true,
+        mediaAttemptCount: true,
+        rawPayload: true,
+        providerMessageId: true,
+      },
+    })
+
+    const claimed: typeof candidates = []
+    for (const candidate of candidates) {
+      const updated = await prisma.whatsAppMessage.updateMany({
+        where: {
+          id: candidate.id,
+          mediaStatus: "PROCESSING",
+          mediaAttemptCount: candidate.mediaAttemptCount,
+        },
+        data: {
+          mediaAttemptCount: { increment: 1 },
+        },
+      })
+      if (updated.count === 1) {
+        claimed.push({
+          ...candidate,
+          mediaAttemptCount: candidate.mediaAttemptCount + 1,
+        })
+      }
+    }
+    return claimed
+  }
+
+  async markMediaIngestResult(input: {
+    messageId: string
+    status: "AVAILABLE" | "EXPIRED" | "FAILED" | "PROCESSING"
+    storagePath?: string | null
+    mediaSha256?: string | null
+    mediaSizeBytes?: number | null
+    errorCode?: string | null
+    mediaRetrievedAt?: Date | null
+  }): Promise<void> {
+    await prisma.whatsAppMessage.update({
+      where: { id: input.messageId },
+      data: {
+        mediaStatus: input.status,
+        ...(input.storagePath !== undefined ? { storagePath: input.storagePath } : {}),
+        ...(input.mediaSha256 !== undefined ? { mediaSha256: input.mediaSha256 } : {}),
+        ...(input.mediaSizeBytes !== undefined ? { mediaSizeBytes: input.mediaSizeBytes } : {}),
+        mediaLastErrorCode: input.errorCode ?? null,
+        ...(input.mediaRetrievedAt !== undefined ? { mediaRetrievedAt: input.mediaRetrievedAt } : {}),
+      },
     })
   }
 
@@ -598,6 +694,9 @@ class WhatsAppRepository implements IWhatsAppRepository {
     mediaMimeType?: string
     mediaFileName?: string
     caption?: string
+    storagePath?: string
+    mediaSha256?: string
+    mediaSizeBytes?: number
   }): Promise<{
     created: boolean
     messageId: string | null
@@ -638,6 +737,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
           mediaMimeType: input.mediaMimeType ?? null,
           mediaFileName: input.mediaFileName ?? null,
           caption: input.caption ?? null,
+          storagePath: input.storagePath ?? null,
+          mediaSha256: input.mediaSha256 ?? null,
+          mediaSizeBytes: input.mediaSizeBytes ?? null,
+          mediaStatus: input.storagePath ? "AVAILABLE" : null,
           recipientPhone: normalizePhone(conversation.contactPhone),
           sentByProfileId: input.sentByProfileId,
           rawPayload: {},
@@ -718,6 +821,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         ...(input.storagePath !== undefined ? { storagePath: input.storagePath } : {}),
         ...(input.mediaSha256 !== undefined ? { mediaSha256: input.mediaSha256 } : {}),
         ...(input.mediaSizeBytes !== undefined ? { mediaSizeBytes: input.mediaSizeBytes } : {}),
+        ...(input.storagePath ? { mediaStatus: "AVAILABLE", mediaRetrievedAt: input.sentAt } : {}),
       },
       select: MESSAGE_SELECT,
     })
@@ -816,13 +920,17 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return true
   }
 
-  async reconcileStaleOutboundCommands(olderThan: Date): Promise<number> {
+  async reconcileStaleOutboundCommands(now = new Date()): Promise<number> {
     const updated = await prisma.$executeRaw`
       update whatsapp_outbound_commands
       set status = 'UNKNOWN',
         "lastError" = 'Envio sem confirmação do provedor; confirme no histórico antes de reenviar.',
         "reconciledAt" = now(), "updatedAt" = now()
-      where status = 'PENDING' and "createdAt" < ${olderThan}
+      where status = 'PENDING'
+        and (
+          ("nextReconcileAt" is not null and "nextReconcileAt" <= ${now})
+          or ("nextReconcileAt" is null and "createdAt" < ${new Date(now.getTime() - 10 * 60_000)})
+        )
     `
     return updated
   }
@@ -847,7 +955,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
     }).then((configs) => configs.map((config) => ({ teamId: config.teamId, configId: config.id })))
   }
 
-  async claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string } | null> {
+  async claimNextContactSyncJob(workerId: string): Promise<{ id: string; teamId: string; configId: string; checkpoint: unknown } | null> {
     const candidate = await prisma.whatsAppSyncJob.findFirst({
       where: {
         OR: [
@@ -856,7 +964,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         ],
       },
       orderBy: { createdAt: "asc" },
-      select: { id: true, teamId: true, configId: true },
+      select: { id: true, teamId: true, configId: true, checkpoint: true },
     })
     if (!candidate) return null
     const claimed = await prisma.whatsAppSyncJob.updateMany({
@@ -873,6 +981,30 @@ class WhatsAppRepository implements IWhatsAppRepository {
       },
     })
     return claimed.count ? candidate : null
+  }
+
+  async renewContactSyncJobLease(input: { jobId: string; workerId: string; checkpoint: unknown }): Promise<void> {
+    await prisma.whatsAppSyncJob.updateMany({
+      where: { id: input.jobId, leaseOwner: input.workerId, status: "RUNNING" },
+      data: {
+        checkpoint: input.checkpoint as Prisma.InputJsonValue,
+        leaseExpiresAt: new Date(Date.now() + 45_000),
+        updatedAt: new Date(),
+      },
+    })
+  }
+
+  async parkContactSyncJob(input: { jobId: string; checkpoint: unknown }): Promise<void> {
+    await prisma.whatsAppSyncJob.update({
+      where: { id: input.jobId },
+      data: {
+        status: "PENDING",
+        checkpoint: input.checkpoint as Prisma.InputJsonValue,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        updatedAt: new Date(),
+      },
+    })
   }
 
   async completeContactSyncJob(input: { jobId: string; error?: string }): Promise<void> {

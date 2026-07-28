@@ -913,6 +913,15 @@ RECEIVED RECEIVED
     
 
 
+        WhatsAppMediaStatus {
+            PROCESSING PROCESSING
+AVAILABLE AVAILABLE
+EXPIRED EXPIRED
+FAILED FAILED
+        }
+    
+
+
         WhatsAppOutboundCommandStatus {
             PENDING PENDING
 SENT SENT
@@ -2888,6 +2897,10 @@ meeting_scheduled meeting_scheduled
     String mediaSha256 "❓"
     Int mediaSizeBytes "❓"
     Int mediaDurationMs "❓"
+    WhatsAppMediaStatus mediaStatus "❓"
+    Int mediaAttemptCount 
+    String mediaLastErrorCode "❓"
+    DateTime mediaRetrievedAt "❓"
     DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -3827,6 +3840,7 @@ meeting_scheduled meeting_scheduled
     "whatsapp_messages" |o--|| "WhatsAppMessageDirection" : "enum:direction"
     "whatsapp_messages" |o--|| "WhatsAppMessageType" : "enum:messageType"
     "whatsapp_messages" |o--|| "WhatsAppMessageStatus" : "enum:status"
+    "whatsapp_messages" |o--|o "WhatsAppMediaStatus" : "enum:mediaStatus"
     "whatsapp_messages" }o--|| whatsapp_conversations : "conversation"
     "whatsapp_messages" }o--|| corretor_studio_teams : "team"
     "whatsapp_messages" }o--|| team_whatsapp_configs : "config"
