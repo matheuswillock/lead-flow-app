@@ -120,7 +120,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     clientMessageId: string,
     text: string,
     media?: SendMessageMediaInput,
-    mentionedJids?: string[]
+    mentionedJids?: string[],
+    retryFailed?: boolean
   ): Promise<{ messageId: string; status: WhatsAppMessage['status'] }> {
     const body: Record<string, unknown> = media
       ? {
@@ -134,6 +135,9 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     if (media) body.clientMessageId = clientMessageId
     if (mentionedJids && mentionedJids.length > 0) {
       body.mentionedJids = mentionedJids
+    }
+    if (retryFailed) {
+      body.retryFailed = true
     }
 
     const response = await fetch(

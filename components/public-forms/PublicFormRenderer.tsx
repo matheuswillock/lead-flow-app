@@ -20,11 +20,16 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { resolveVisibleQuestionIds, validateAnswer } from "@/lib/public-forms/engine"
+import { resolveVisibleQuestionIds, shouldGoToThankYou, validateAnswer } from "@/lib/public-forms/engine"
 import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
-import type { PublicFormMetricEventInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import type {
+  PublicFormMetricEventInput,
+  PublicFormSnapshot,
+  PublicFormSuccessAction,
+  PublicFormThemeColors,
+} from "@/lib/public-forms/types"
 import { cn } from "@/lib/utils"
 
 type PublicQuestion = PublicFormSnapshot["questions"][number]
@@ -52,6 +57,55 @@ function getOrigin() {
     utmTerm: params.get("utm_term"),
     landingUrl: window.location.href,
     referrer: document.referrer,
+  }
+}
+
+const DEFAULT_THEME: PublicFormThemeColors = {
+  backgroundColor: "#FFFFFF",
+  textColor: "#18181B",
+  lineColor: "#E4E4E7",
+  accentColor: "#FF6900",
+  buttonTextColor: "#FFFFFF",
+  inputBackgroundColor: "#FFFFFF",
+}
+
+function resolveTheme(theme: PublicFormSnapshot["theme"]): PublicFormThemeColors {
+  return {
+    backgroundColor: theme.backgroundColor || DEFAULT_THEME.backgroundColor,
+    textColor: theme.textColor || DEFAULT_THEME.textColor,
+    lineColor: theme.lineColor || DEFAULT_THEME.lineColor,
+    accentColor: theme.accentColor || DEFAULT_THEME.accentColor,
+    buttonTextColor: theme.buttonTextColor || DEFAULT_THEME.buttonTextColor,
+    inputBackgroundColor: theme.inputBackgroundColor || DEFAULT_THEME.inputBackgroundColor,
+  }
+}
+
+function buildWhatsAppUrl(action: PublicFormSuccessAction): string {
+  const phone = (action.whatsappPhone ?? "").replace(/\D/g, "")
+  const text = action.whatsappMessage?.trim()
+  const query = text ? `?text=${encodeURIComponent(text)}` : ""
+  return `https://wa.me/${phone}${query}`
+}
+
+function runSuccessAction(action: PublicFormSuccessAction) {
+  switch (action.type) {
+    case "link": {
+      if (action.url) window.open(action.url, "_blank", "noopener,noreferrer")
+      return
+    }
+    case "whatsapp": {
+      window.open(buildWhatsAppUrl(action), "_blank", "noopener,noreferrer")
+      return
+    }
+    case "close": {
+      window.close()
+      window.history.back()
+      return
+    }
+    default: {
+      const _exhaustive: never = action.type
+      return _exhaustive
+    }
   }
 }
 
@@ -213,6 +267,10 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     for (const item of pageQuestions) {
       track("question_answered", item.id)
     }
+    if (shouldGoToThankYou(snapshot, answerList)) {
+      void submit()
+      return
+    }
     if (pageQuestions.some((item) => item.type === "calculation")) {
       void runSimulationFlow()
       return
@@ -289,11 +347,12 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     }
   }
 
-  const theme = snapshot.theme
+  const theme = resolveTheme(snapshot.theme)
   const progressValue =
     phase === "result" || phase === "agenda"
       ? 100
       : ((index + 1) / Math.max(pages.length, 1)) * 100
+  const successActions = Array.isArray(snapshot.successActions) ? snapshot.successActions : []
 
   return (
     <div
@@ -306,24 +365,32 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
           "--form-background": theme.backgroundColor,
           "--form-text": theme.textColor,
           "--form-line": theme.lineColor,
-          "--form-accent": "var(--primary)",
+          "--form-accent": theme.accentColor,
+          "--form-button-text": theme.buttonTextColor,
+          "--form-input-bg": theme.inputBackgroundColor,
           backgroundColor: "var(--form-background)",
           color: "var(--form-text)",
         } as React.CSSProperties
       }
     >
-      <div className="flex min-h-[60dvh] w-full max-w-[580px] flex-col overflow-hidden rounded-3xl border border-[color-mix(in_oklab,var(--form-line)_80%,transparent)] bg-card text-card-foreground shadow-[0_8px_48px_color-mix(in_oklab,var(--primary)_12%,transparent)]">
+      <div className="flex min-h-[60dvh] w-full max-w-[580px] flex-col overflow-hidden rounded-3xl border border-[color-mix(in_oklab,var(--form-line)_80%,transparent)] bg-[var(--form-input-bg)] text-[var(--form-text)] shadow-[0_8px_48px_color-mix(in_oklab,var(--form-accent)_12%,transparent)]">
         <div className="h-1 bg-muted">
           <div
-            className="h-full bg-primary transition-[width] duration-500 motion-reduce:transition-none"
-            style={{ width: `${started || phase !== "form" ? progressValue : 0}%` }}
+            className="h-full transition-[width] duration-500 motion-reduce:transition-none"
+            style={{
+              width: `${started || phase !== "form" ? progressValue : 0}%`,
+              backgroundColor: "var(--form-accent)",
+            }}
           />
         </div>
         <div className="flex flex-1 flex-col justify-center overflow-y-auto p-6 sm:p-10">
           {done ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 text-center motion-reduce:animate-none">
-              <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-full border border-[var(--form-line)] bg-primary/10">
-                <Check aria-hidden="true" />
+              <div
+                className="mx-auto mb-5 flex size-14 items-center justify-center rounded-full border border-[var(--form-line)]"
+                style={{ backgroundColor: "color-mix(in oklab, var(--form-accent) 12%, transparent)" }}
+              >
+                <Check aria-hidden="true" style={{ color: "var(--form-accent)" }} />
               </div>
               <h1 className="text-balance text-3xl font-semibold tracking-tight">
                 {snapshot.successTitle}
@@ -332,6 +399,24 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                 <p className="mt-3 text-pretty text-muted-foreground">
                   {snapshot.successDescription}
                 </p>
+              ) : null}
+              {successActions.length > 0 ? (
+                <div className="mt-8 flex flex-col gap-3">
+                  {successActions.map((action) => (
+                    <Button
+                      key={action.id}
+                      type="button"
+                      className="w-full"
+                      style={{
+                        backgroundColor: "var(--form-accent)",
+                        color: "var(--form-button-text)",
+                      }}
+                      onClick={() => runSuccessAction(action)}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
+                </div>
               ) : null}
             </div>
           ) : phase === "loading" ? (
@@ -418,21 +503,38 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
           ) : !started ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none">
               {coverBadge ? (
-                <span className="mb-4 inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                <span
+                  className="mb-4 inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium"
+                  style={{
+                    borderColor: "color-mix(in oklab, var(--form-accent) 20%, transparent)",
+                    backgroundColor: "color-mix(in oklab, var(--form-accent) 10%, transparent)",
+                    color: "var(--form-accent)",
+                  }}
+                >
                   {coverBadge}
                 </span>
               ) : null}
               <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-                {snapshot.coverTitle || snapshot.name}
+                {snapshot.coverTitle?.trim() || "Formulário"}
               </h1>
-              <p className="mt-4 max-w-xl text-pretty text-base text-muted-foreground sm:text-lg">
-                {snapshot.coverDescription || snapshot.description}
-              </p>
+              {snapshot.coverDescription?.trim() ? (
+                <p className="mt-4 max-w-xl text-pretty text-base text-muted-foreground sm:text-lg">
+                  {snapshot.coverDescription}
+                </p>
+              ) : null}
               {coverHighlights ? (
                 <div className="mt-8 grid grid-cols-3 gap-3">
                   {coverHighlights.map((item) => (
-                    <div key={item.id} className="rounded-xl bg-primary/10 p-3">
-                      <p className="text-lg font-semibold text-primary">{item.value}</p>
+                    <div
+                      key={item.id}
+                      className="rounded-xl p-3"
+                      style={{
+                        backgroundColor: "color-mix(in oklab, var(--form-accent) 10%, transparent)",
+                      }}
+                    >
+                      <p className="text-lg font-semibold" style={{ color: "var(--form-accent)" }}>
+                        {item.value}
+                      </p>
                       <p className="text-[11px] text-muted-foreground">{item.label}</p>
                     </div>
                   ))}
@@ -444,14 +546,30 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                     ["2 min", "para simular"],
                     ["100%", "gratuito"],
                   ].map(([num, lbl]) => (
-                    <div key={num} className="rounded-xl bg-primary/10 p-3">
-                      <p className="text-lg font-semibold text-primary">{num}</p>
+                    <div
+                      key={num}
+                      className="rounded-xl p-3"
+                      style={{
+                        backgroundColor: "color-mix(in oklab, var(--form-accent) 10%, transparent)",
+                      }}
+                    >
+                      <p className="text-lg font-semibold" style={{ color: "var(--form-accent)" }}>
+                        {num}
+                      </p>
                       <p className="text-[11px] text-muted-foreground">{lbl}</p>
                     </div>
                   ))}
                 </div>
               ) : null}
-              <Button className="mt-8" size="lg" onClick={start}>
+              <Button
+                className="mt-8"
+                size="lg"
+                onClick={start}
+                style={{
+                  backgroundColor: "var(--form-accent)",
+                  color: "var(--form-button-text)",
+                }}
+              >
                 {snapshot.ctaLabel}
                 <ArrowRight data-icon="inline-end" />
               </Button>
@@ -466,7 +584,10 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
               key={pageQuestions.map((item) => item.id).join("-")}
               className="animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
             >
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
+              <p
+                className="mb-2 text-xs font-semibold uppercase tracking-wide"
+                style={{ color: "var(--form-accent)" }}
+              >
                 {index + 1} de {pages.length}
               </p>
               <FieldGroup className="gap-8">
@@ -510,7 +631,14 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                   <ArrowLeft data-icon="inline-start" />
                   Voltar
                 </Button>
-                <Button disabled={sending || !pageIsValid} onClick={goNext}>
+                <Button
+                  disabled={sending || !pageIsValid}
+                  onClick={goNext}
+                  style={{
+                    backgroundColor: "var(--form-accent)",
+                    color: "var(--form-button-text)",
+                  }}
+                >
                   {sending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
                   {index === pages.length - 1
                     ? pageHasScheduling

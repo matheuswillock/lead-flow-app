@@ -21,8 +21,17 @@ import type {
   PublicFormDraftInput,
   PublicFormQuestionInput,
   PublicFormRuleInput,
+  PublicFormScorePolarity,
   PublicFormSnapshot,
+  PublicFormSuccessAction,
 } from "@/lib/public-forms/types"
+import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
+import {
+  rebalanceAfterQuestionWeightEdit,
+  redistributeQuestionScoresEvenly,
+  sumQuestionScoreWeights,
+  withEqualOptionScores,
+} from "@/lib/public-forms/scoring"
 import {
   getPageKey,
   getQuestionStepErrors,
@@ -91,6 +100,7 @@ const steps = [
   "Básico",
   "Capa",
   "Perguntas",
+  "Agradecimentos",
   "Regras",
   "Pontuação",
   "Aparência",
@@ -109,10 +119,14 @@ const emptyDraft: PublicFormDraftInput = {
   ctaLabel: "Começar",
   successTitle: "Respostas enviadas",
   successDescription: "Obrigado pelo seu interesse.",
+  successActions: [],
   useDefaultTheme: true,
   backgroundColor: "#FFFFFF",
   textColor: "#18181B",
   lineColor: "#E4E4E7",
+  accentColor: "#FF6900",
+  buttonTextColor: "#FFFFFF",
+  inputBackgroundColor: "#FFFFFF",
   schedulingEnabled: false,
   meetingDurationMinutes: 30,
   schedulingMessage: "",
@@ -175,6 +189,7 @@ function ruleActionLabel(action: PublicFormRuleAction): string {
 }
 
 function questionTitleById(questions: PublicFormQuestionInput[], id: string): string {
+  if (id === PUBLIC_FORM_THANK_YOU_TARGET) return "página de agradecimentos"
   return questions.find((q) => q.id === id)?.title?.trim() || "pergunta"
 }
 
@@ -206,10 +221,10 @@ function reorderPages(
 }
 
 function buildSavePayload(draft: PublicFormDraftInput): PublicFormDraftInput {
-  const coverDescription = draft.coverDescription?.trim() || null
   return {
     ...draft,
-    description: coverDescription,
+    name: draft.name.trim(),
+    description: draft.description?.trim() || null,
   }
 }
 
@@ -300,6 +315,7 @@ export function PublicFormWizard({
               ...emptyDraft,
               ...form,
               coverHighlights: form.coverHighlights ?? [],
+              successActions: form.successActions ?? [],
               questions: form.questions ?? [],
               rules: form.rules ?? [],
               scoreBands: form.scoreBands ?? [],
@@ -360,6 +376,7 @@ export function PublicFormWizard({
               ...emptyDraft,
               ...f,
               coverHighlights: f.coverHighlights ?? [],
+              successActions: f.successActions ?? [],
               questions: f.questions ?? [],
               rules: f.rules ?? [],
               scoreBands: f.scoreBands ?? [],
@@ -471,6 +488,15 @@ export function PublicFormWizard({
         lineColor: draft.useDefaultTheme
           ? settings?.defaultLineColor || "#E4E4E7"
           : draft.lineColor || "#E4E4E7",
+        accentColor: draft.useDefaultTheme
+          ? settings?.defaultAccentColor || "#FF6900"
+          : draft.accentColor || "#FF6900",
+        buttonTextColor: draft.useDefaultTheme
+          ? settings?.defaultButtonTextColor || "#FFFFFF"
+          : draft.buttonTextColor || "#FFFFFF",
+        inputBackgroundColor: draft.useDefaultTheme
+          ? settings?.defaultInputBackgroundColor || "#FFFFFF"
+          : draft.inputBackgroundColor || "#FFFFFF",
       },
       eligibleClosers: members
         .filter((member) => draft.eligibleCloserIds.includes(member.profileId))
@@ -584,10 +610,11 @@ export function PublicFormWizard({
                 members={members}
               />
             )}
-            {step === 3 && <Rules draft={draft} change={change} />}
-            {step === 4 && <Scores draft={draft} change={change} />}
-            {step === 5 && <Appearance draft={draft} change={change} />}
-            {step === 6 && (
+            {step === 3 && <Thanks draft={draft} change={change} />}
+            {step === 4 && <Rules draft={draft} change={change} />}
+            {step === 5 && <Scores draft={draft} change={change} />}
+            {step === 6 && <Appearance draft={draft} change={change} />}
+            {step === 7 && (
               <Review
                 draft={draft}
                 publishing={publishing}
@@ -683,17 +710,12 @@ function Basic({
         </FieldContent>
       </Field>
       <Field>
-        <FieldLabel>Título de conclusão</FieldLabel>
-        <FieldContent>
-          <Input value={d.successTitle} onChange={(e) => change({ successTitle: e.target.value })} />
-        </FieldContent>
-      </Field>
-      <Field>
-        <FieldLabel>Mensagem de conclusão</FieldLabel>
+        <FieldLabel>Descrição</FieldLabel>
+        <FieldDescription>Somente para o time — não aparece no formulário público</FieldDescription>
         <FieldContent>
           <Textarea
-            value={d.successDescription ?? ""}
-            onChange={(e) => change({ successDescription: e.target.value })}
+            value={d.description ?? ""}
+            onChange={(e) => change({ description: e.target.value })}
           />
         </FieldContent>
       </Field>
@@ -720,6 +742,154 @@ function Basic({
           </Select>
         </FieldContent>
       </Field>
+    </FieldGroup>
+  )
+}
+
+function Thanks({
+  draft: d,
+  change,
+}: {
+  draft: PublicFormDraftInput
+  change: (p: Partial<PublicFormDraftInput>) => void
+}) {
+  const actions = d.successActions ?? []
+
+  function updateAction(id: string, patch: Partial<PublicFormSuccessAction>) {
+    change({
+      successActions: actions.map((action) =>
+        action.id === id ? { ...action, ...patch } : action,
+      ),
+    })
+  }
+
+  return (
+    <FieldGroup>
+      <Field>
+        <FieldLabel>Título de conclusão</FieldLabel>
+        <FieldContent>
+          <Input value={d.successTitle} onChange={(e) => change({ successTitle: e.target.value })} />
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel>Mensagem de conclusão</FieldLabel>
+        <FieldContent>
+          <Textarea
+            value={d.successDescription ?? ""}
+            onChange={(e) => change({ successDescription: e.target.value })}
+          />
+        </FieldContent>
+      </Field>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <FieldLabel>Ações da página de agradecimento</FieldLabel>
+          <Badge variant="secondary">Até 6 ações</Badge>
+        </div>
+        {actions.map((action, index) => (
+          <div className="flex flex-col gap-3 rounded-lg border p-4" key={action.id}>
+            <Field>
+              <FieldLabel>Rótulo do botão</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={action.label}
+                  onChange={(e) => updateAction(action.id, { label: e.target.value })}
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>Tipo</FieldLabel>
+              <FieldContent>
+                <Select
+                  value={action.type}
+                  onValueChange={(value) =>
+                    updateAction(action.id, {
+                      type: value as PublicFormSuccessAction["type"],
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="link">Link</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                    <SelectItem value="close">Fechar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldContent>
+            </Field>
+            {action.type === "link" ? (
+              <Field>
+                <FieldLabel>URL</FieldLabel>
+                <FieldContent>
+                  <Input
+                    value={action.url ?? ""}
+                    placeholder="https://"
+                    onChange={(e) => updateAction(action.id, { url: e.target.value })}
+                  />
+                </FieldContent>
+              </Field>
+            ) : null}
+            {action.type === "whatsapp" ? (
+              <>
+                <Field>
+                  <FieldLabel>Telefone WhatsApp</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      value={action.whatsappPhone ?? ""}
+                      placeholder="5511999999999"
+                      onChange={(e) =>
+                        updateAction(action.id, { whatsappPhone: e.target.value })
+                      }
+                    />
+                  </FieldContent>
+                </Field>
+                <Field>
+                  <FieldLabel>Mensagem</FieldLabel>
+                  <FieldContent>
+                    <Textarea
+                      value={action.whatsappMessage ?? ""}
+                      onChange={(e) =>
+                        updateAction(action.id, { whatsappMessage: e.target.value })
+                      }
+                    />
+                  </FieldContent>
+                </Field>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() =>
+                change({ successActions: actions.filter((item) => item.id !== action.id) })
+              }
+            >
+              <Trash2 data-icon="inline-start" />
+              Remover ação {index + 1}
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={actions.length >= 6}
+          onClick={() =>
+            change({
+              successActions: [
+                ...actions,
+                {
+                  id: crypto.randomUUID(),
+                  label: "Continuar",
+                  type: "close",
+                },
+              ],
+            })
+          }
+        >
+          <Plus data-icon="inline-start" />
+          Adicionar ação
+        </Button>
+      </div>
     </FieldGroup>
   )
 }
@@ -849,8 +1019,15 @@ function Questions({
 }) {
   const stepErrors = getQuestionStepErrors(d)
   const pages = groupQuestionsByPage(d.questions)
+  const scoreTotal = sumQuestionScoreWeights(d.questions)
 
   function updateQuestion(id: string, patch: Partial<PublicFormQuestionInput>) {
+    if (patch.scoreWeight !== undefined) {
+      change({
+        questions: rebalanceAfterQuestionWeightEdit(d.questions, id, patch.scoreWeight),
+      })
+      return
+    }
     change({
       questions: d.questions.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     })
@@ -862,7 +1039,7 @@ function Questions({
       toast.error("Remova as regras que usam esta pergunta")
       return
     }
-    const nextQuestions = d.questions.filter((x) => x.id !== id)
+    const nextQuestions = redistributeQuestionScoresEvenly(d.questions.filter((x) => x.id !== id))
     change({
       questions: nextQuestions,
       schedulingEnabled: nextQuestions.some((item) => item.type === "scheduling"),
@@ -884,35 +1061,37 @@ function Questions({
       return
     }
     change({
-      questions: [
+      questions: redistributeQuestionScoresEvenly([
         ...d.questions,
         {
           id: crypto.randomUUID(),
           type: "text",
           title: "Nova sub-pergunta",
           required: false,
+          scoreWeight: 0,
           options: [],
           mappingTarget: "history",
           config: { pageKey },
         },
-      ],
+      ]),
     })
   }
 
   function addPage() {
     change({
-      questions: [
+      questions: redistributeQuestionScoresEvenly([
         ...d.questions,
         {
           id: crypto.randomUUID(),
           type: "text",
           title: "Nova pergunta",
           required: false,
+          scoreWeight: 0,
           options: [],
           mappingTarget: "history",
           config: { pageKey: crypto.randomUUID() },
         },
-      ],
+      ]),
     })
   }
 
@@ -970,15 +1149,29 @@ function Questions({
     const wasScheduling = question.type === "scheduling"
     const options =
       nextType === "health_plan"
-        ? healthPlans.map((plan) => ({
-            id: crypto.randomUUID(),
-            label: plan.name,
-            value: plan.name,
-            score: 0,
-          }))
+        ? withEqualOptionScores(
+            healthPlans.map((plan) => ({
+              id: crypto.randomUUID(),
+              label: plan.name,
+              value: plan.name,
+              score: 0,
+              scorePolarity: "positive" as PublicFormScorePolarity,
+            })),
+          )
         : ["single_choice", "multiple_choice"].includes(nextType) && !question.options.length
-          ? [{ id: crypto.randomUUID(), label: "Opção 1", value: "opcao_1", score: 0 }]
-          : question.options
+          ? withEqualOptionScores([
+              {
+                id: crypto.randomUUID(),
+                label: "Opção 1",
+                value: "opcao_1",
+                score: 0,
+                scorePolarity: "positive" as PublicFormScorePolarity,
+              },
+            ])
+          : question.options.map((option) => ({
+              ...option,
+              scorePolarity: option.scorePolarity ?? "positive",
+            }))
     const nextQuestions = d.questions.map((item) =>
       item.id === question.id ? { ...item, type: nextType, options } : item,
     )
@@ -991,108 +1184,191 @@ function Questions({
   }
 
   function renderQuestionFields(q: PublicFormQuestionInput, isSub: boolean) {
+    const isChoice = q.type === "single_choice" || q.type === "multiple_choice"
     return (
       <>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Input
-            className="sm:col-span-2"
-            value={q.title}
-            placeholder={isSub ? "Sub-pergunta" : "Título da pergunta"}
-            onChange={(e) => updateQuestion(q.id!, { title: e.target.value })}
-          />
-          <Input
-            className="sm:col-span-2"
-            value={q.description ?? ""}
-            placeholder="Descrição opcional"
-            onChange={(event) => updateQuestion(q.id!, { description: event.target.value })}
-          />
-          <Input
-            className="sm:col-span-2"
-            value={q.placeholder ?? ""}
-            placeholder="Placeholder opcional"
-            onChange={(event) => updateQuestion(q.id!, { placeholder: event.target.value })}
-          />
-          <Select
-            value={q.type}
-            onValueChange={(v) => setQuestionType(q, v as PublicFormQuestionType)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {QUESTION_TYPE_OPTIONS.map(({ value, label }) => (
-                <SelectItem value={value} key={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={q.mappingTarget ?? "history"}
-            onValueChange={(v) =>
-              updateQuestion(q.id!, {
-                mappingTarget: v as PublicFormMappingTarget,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="history">Somente histórico</SelectItem>
-              <SelectItem value="native_field">Campo nativo</SelectItem>
-              <SelectItem value="custom_field">Campo personalizado</SelectItem>
-              <SelectItem value="notes">Observações</SelectItem>
-            </SelectContent>
-          </Select>
-          {q.mappingTarget === "native_field" && (
-            <Select
-              value={q.mappingKey ?? ""}
-              onValueChange={(v) => updateQuestion(q.id!, { mappingKey: v })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Campo do lead" />
-              </SelectTrigger>
-              <SelectContent>
-                {[
-                  ["age", "Idade"],
-                  ["cnpj", "CNPJ"],
-                  ["email", "E-mail"],
-                  ["referenceHospital", "Hospital de referência"],
-                  ["name", "Nome"],
-                  ["currentHealthPlan", "Plano atual"],
-                  ["phone", "Telefone"],
-                  ["currentTreatment", "Tratamento atual"],
-                  ["currentValue", "Valor atual"],
-                ]
-                  .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
-                  .map(([value, label]) => (
+          <Field className="sm:col-span-2">
+            <FieldLabel>{isSub ? "Sub-pergunta" : "Pergunta"}</FieldLabel>
+            <FieldContent>
+              <Input
+                value={q.title}
+                placeholder={isSub ? "Sub-pergunta" : "Título da pergunta"}
+                onChange={(e) => updateQuestion(q.id!, { title: e.target.value })}
+              />
+            </FieldContent>
+          </Field>
+          <Field className="sm:col-span-2">
+            <FieldLabel>Descrição</FieldLabel>
+            <FieldContent>
+              <Input
+                value={q.description ?? ""}
+                placeholder="Descrição opcional"
+                onChange={(event) => updateQuestion(q.id!, { description: event.target.value })}
+              />
+            </FieldContent>
+          </Field>
+          <Field className="sm:col-span-2">
+            <FieldLabel>Placeholder</FieldLabel>
+            <FieldContent>
+              <Input
+                value={q.placeholder ?? ""}
+                placeholder="Placeholder opcional"
+                onChange={(event) => updateQuestion(q.id!, { placeholder: event.target.value })}
+              />
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>Tipo</FieldLabel>
+            <FieldContent>
+              <Select
+                value={q.type}
+                onValueChange={(v) => setQuestionType(q, v as PublicFormQuestionType)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {QUESTION_TYPE_OPTIONS.map(({ value, label }) => (
                     <SelectItem value={value} key={value}>
                       {label}
                     </SelectItem>
                   ))}
-              </SelectContent>
-            </Select>
+                </SelectContent>
+              </Select>
+            </FieldContent>
+          </Field>
+          {isChoice ? (
+            <Field>
+              <FieldLabel>Modo de seleção</FieldLabel>
+              <FieldContent>
+                <Select
+                  value={q.type}
+                  onValueChange={(value) =>
+                    updateQuestion(q.id!, {
+                      type: value as "single_choice" | "multiple_choice",
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="single_choice">Só uma opção</SelectItem>
+                    <SelectItem value="multiple_choice">Várias opções</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldContent>
+            </Field>
+          ) : null}
+          <Field>
+            <FieldLabel>Destino</FieldLabel>
+            <FieldContent>
+              <Select
+                value={q.mappingTarget ?? "history"}
+                onValueChange={(v) =>
+                  updateQuestion(q.id!, {
+                    mappingTarget: v as PublicFormMappingTarget,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="history">Somente histórico</SelectItem>
+                  <SelectItem value="native_field">Campo nativo</SelectItem>
+                  <SelectItem value="custom_field">Campo personalizado</SelectItem>
+                  <SelectItem value="notes">Observações</SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldContent>
+          </Field>
+          {q.mappingTarget === "native_field" && (
+            <Field>
+              <FieldLabel>Campo nativo</FieldLabel>
+              <FieldContent>
+                <Select
+                  value={q.mappingKey ?? ""}
+                  onValueChange={(v) => updateQuestion(q.id!, { mappingKey: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Campo do lead" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      ["age", "Idade"],
+                      ["cnpj", "CNPJ"],
+                      ["email", "E-mail"],
+                      ["referenceHospital", "Hospital de referência"],
+                      ["name", "Nome"],
+                      ["currentHealthPlan", "Plano atual"],
+                      ["phone", "Telefone"],
+                      ["currentTreatment", "Tratamento atual"],
+                      ["currentValue", "Valor atual"],
+                    ]
+                      .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+                      .map(([value, label]) => (
+                        <SelectItem value={value} key={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </FieldContent>
+            </Field>
           )}
           {q.mappingTarget === "custom_field" && (
-            <Select
-              value={q.mappingKey ?? ""}
-              onValueChange={(value) => updateQuestion(q.id!, { mappingKey: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Campo personalizado" />
-              </SelectTrigger>
-              <SelectContent>
-                {[...customFields]
-                  .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
-                  .map((field) => (
-                    <SelectItem key={field.id} value={field.key}>
-                      {field.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            <Field>
+              <FieldLabel>Campo personalizado</FieldLabel>
+              <FieldContent>
+                <Select
+                  value={q.mappingKey ?? ""}
+                  onValueChange={(value) => updateQuestion(q.id!, { mappingKey: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Campo personalizado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...customFields]
+                      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
+                      .map((field) => (
+                        <SelectItem key={field.id} value={field.key}>
+                          {field.label}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </FieldContent>
+            </Field>
           )}
+          <Field className="sm:col-span-2">
+            <FieldLabel>Pontuação (%)</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-3">
+                <Slider
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="flex-1"
+                  value={[clampPercent(q.scoreWeight ?? 0)]}
+                  onValueChange={(values) =>
+                    updateQuestion(q.id!, { scoreWeight: clampPercent(values[0] ?? 0) })
+                  }
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="w-20"
+                  value={clampPercent(q.scoreWeight ?? 0)}
+                  onChange={(e) =>
+                    updateQuestion(q.id!, { scoreWeight: clampPercent(Number(e.target.value)) })
+                  }
+                />
+              </div>
+            </FieldContent>
+          </Field>
           <label className="flex items-center gap-2 text-sm">
             <Switch
               checked={q.required}
@@ -1108,103 +1384,148 @@ function Questions({
         ) : null}
         {["single_choice", "multiple_choice", "health_plan"].includes(q.type) && (
           <div className="mt-4 flex flex-col gap-3">
-            {q.options.map((o) => (
-              <div className="flex flex-col gap-2 rounded-md border p-3" key={o.id}>
-                <div className="flex gap-2">
-                  <Input
-                    className="flex-1"
-                    value={o.label}
-                    onChange={(e) =>
-                      change({
-                        questions: d.questions.map((x) =>
-                          x.id === q.id
-                            ? {
-                                ...x,
-                                options: x.options.map((y) =>
-                                  y.id === o.id
-                                    ? {
-                                        ...y,
-                                        label: e.target.value,
-                                        value: e.target.value
-                                          .toLowerCase()
-                                          .replace(/\W+/g, "_"),
-                                      }
-                                    : y,
-                                ),
-                              }
-                            : x,
-                        ),
-                      })
-                    }
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    type="button"
-                    onClick={() =>
-                      change({
-                        questions: d.questions.map((x) =>
-                          x.id === q.id
-                            ? { ...x, options: x.options.filter((y) => y.id !== o.id) }
-                            : x,
-                        ),
-                      })
-                    }
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-                <Field>
-                  <FieldLabel>Peso</FieldLabel>
-                  <FieldDescription>contribui para o % final</FieldDescription>
-                  <FieldContent className="flex flex-col gap-3">
-                    <Slider
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[clampPercent(o.score)]}
-                      onValueChange={(values) => {
-                        const score = clampPercent(values[0] ?? 0)
-                        change({
-                          questions: d.questions.map((x) =>
-                            x.id === q.id
-                              ? {
-                                  ...x,
-                                  options: x.options.map((y) =>
-                                    y.id === o.id ? { ...y, score } : y,
-                                  ),
-                                }
-                              : x,
-                          ),
-                        })
-                      }}
-                    />
+            {q.options.map((o) => {
+              const polarity = o.scorePolarity ?? "positive"
+              return (
+                <div className="flex flex-col gap-2 rounded-md border p-3" key={o.id}>
+                  <div className="flex gap-2">
                     <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      className="w-24"
-                      value={clampPercent(o.score)}
-                      onChange={(e) => {
-                        const score = clampPercent(Number(e.target.value))
+                      className="flex-1"
+                      value={o.label}
+                      onChange={(e) =>
                         change({
                           questions: d.questions.map((x) =>
                             x.id === q.id
                               ? {
                                   ...x,
                                   options: x.options.map((y) =>
-                                    y.id === o.id ? { ...y, score } : y,
+                                    y.id === o.id
+                                      ? {
+                                          ...y,
+                                          label: e.target.value,
+                                          value: e.target.value
+                                            .toLowerCase()
+                                            .replace(/\W+/g, "_"),
+                                        }
+                                      : y,
                                   ),
                                 }
                               : x,
                           ),
                         })
-                      }}
+                      }
                     />
-                  </FieldContent>
-                </Field>
-              </div>
-            ))}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      type="button"
+                      onClick={() =>
+                        change({
+                          questions: d.questions.map((x) =>
+                            x.id === q.id
+                              ? {
+                                  ...x,
+                                  options: withEqualOptionScores(
+                                    x.options.filter((y) => y.id !== o.id),
+                                  ),
+                                }
+                              : x,
+                          ),
+                        })
+                      }
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                  <Field>
+                    <FieldLabel>Polaridade</FieldLabel>
+                    <FieldContent>
+                      <Select
+                        value={polarity}
+                        onValueChange={(value) =>
+                          change({
+                            questions: d.questions.map((x) =>
+                              x.id === q.id
+                                ? {
+                                    ...x,
+                                    options: x.options.map((y) =>
+                                      y.id === o.id
+                                        ? {
+                                            ...y,
+                                            scorePolarity: value as PublicFormScorePolarity,
+                                          }
+                                        : y,
+                                    ),
+                                  }
+                                : x,
+                            ),
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="positive">Positivo</SelectItem>
+                          <SelectItem value="negative">Negativo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FieldContent>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Peso relativo</FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-3">
+                        <Slider
+                          min={0}
+                          max={100}
+                          step={1}
+                          className="flex-1"
+                          value={[clampPercent(o.score)]}
+                          onValueChange={(values) => {
+                            const score = clampPercent(values[0] ?? 0)
+                            change({
+                              questions: d.questions.map((x) =>
+                                x.id === q.id
+                                  ? {
+                                      ...x,
+                                      options: x.options.map((y) =>
+                                        y.id === o.id ? { ...y, score } : y,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            })
+                          }}
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="w-20"
+                          value={clampPercent(o.score)}
+                          onChange={(e) => {
+                            const score = clampPercent(Number(e.target.value))
+                            change({
+                              questions: d.questions.map((x) =>
+                                x.id === q.id
+                                  ? {
+                                      ...x,
+                                      options: x.options.map((y) =>
+                                        y.id === o.id ? { ...y, score } : y,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            })
+                          }}
+                        />
+                      </div>
+                    </FieldContent>
+                  </Field>
+                </div>
+              )
+            })}
             <Button
               variant="outline"
               size="sm"
@@ -1215,15 +1536,16 @@ function Questions({
                     x.id === q.id
                       ? {
                           ...x,
-                          options: [
+                          options: withEqualOptionScores([
                             ...x.options,
                             {
                               id: crypto.randomUUID(),
                               label: `Opção ${x.options.length + 1}`,
                               value: `option_${x.options.length + 1}`,
                               score: 0,
+                              scorePolarity: "positive",
                             },
-                          ],
+                          ]),
                         }
                       : x,
                   ),
@@ -1241,6 +1563,7 @@ function Questions({
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">Total: {scoreTotal}%</p>
       {stepErrors.length > 0 ? (
         <Alert variant="destructive">
           <AlertDescription>
@@ -1526,6 +1849,9 @@ function Rules({
                             {q.title}
                           </SelectItem>
                         ))}
+                        <SelectItem value={PUBLIC_FORM_THANK_YOU_TARGET}>
+                          Página de agradecimentos
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </FieldContent>
@@ -1564,6 +1890,9 @@ function Rules({
                             {q.title}
                           </SelectItem>
                         ))}
+                        <SelectItem value={PUBLIC_FORM_THANK_YOU_TARGET}>
+                          Página de agradecimentos
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </FieldContent>
@@ -1584,7 +1913,7 @@ function Rules({
       <Button
         variant="outline"
         type="button"
-        disabled={d.questions.length < 2}
+        disabled={d.questions.length < 1}
         onClick={() => {
           const defaultAction: PublicFormRuleAction = "skip"
           change({
@@ -1593,7 +1922,7 @@ function Rules({
               {
                 id: crypto.randomUUID(),
                 sourceQuestionId: d.questions[0].id!,
-                targetQuestionId: d.questions[1].id!,
+                targetQuestionId: d.questions[1]?.id ?? PUBLIC_FORM_THANK_YOU_TARGET,
                 operator: "equals",
                 comparisonValue: "",
                 action: defaultAction,
@@ -1651,11 +1980,14 @@ function Scores({
   draft: PublicFormDraftInput
   change: (p: Partial<PublicFormDraftInput>) => void
 }) {
+  const scoreTotal = sumQuestionScoreWeights(d.questions)
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Defina faixas em porcentagem (0–100) com base nos pesos das opções respondidas.
+          O orçamento do formulário é 100%. Cada pergunta tem uma pontuação (%) e as opções usam
+          peso relativo com polaridade positiva ou negativa.
         </p>
         <Dialog>
           <DialogTrigger asChild>
@@ -1672,11 +2004,12 @@ function Scores({
             </DialogHeader>
             <div className="flex flex-1 flex-col gap-3 overflow-y-auto text-sm text-muted-foreground">
               <p>
-                Em perguntas de escolha, cada opção tem um <strong>peso</strong> de 0 a 100. A soma
-                normalizada gera o percentual final do lead.
+                A soma das pontuações das perguntas deve ser 100%. Em cada pergunta de escolha, as
+                opções têm <strong>peso relativo</strong> e <strong>polaridade</strong> (positivo ou
+                negativo).
               </p>
               <p>
-                As faixas (ex.: De 0% Até 40% = Qualificado) interpretam esse percentual. O resumo
+                As faixas (ex.: De 0% Até 40% = Qualificado) interpretam o percentual final. O resumo
                 fica disponível no CRM para o time comercial.
               </p>
               <p>
@@ -1686,6 +2019,55 @@ function Scores({
           </DialogContent>
         </Dialog>
       </div>
+      {d.questions.length > 0 ? (
+        <div className="flex flex-col gap-3 rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">Pesos das perguntas</p>
+            <Badge variant="secondary">Total: {scoreTotal}%</Badge>
+          </div>
+          {d.questions.map((question) => (
+            <Field key={question.id}>
+              <FieldLabel>{question.title.trim() || "Pergunta sem título"}</FieldLabel>
+              <FieldContent>
+                <div className="flex items-center gap-3">
+                  <Slider
+                    min={0}
+                    max={100}
+                    step={1}
+                    className="flex-1"
+                    value={[clampPercent(question.scoreWeight ?? 0)]}
+                    onValueChange={(values) =>
+                      change({
+                        questions: rebalanceAfterQuestionWeightEdit(
+                          d.questions,
+                          question.id!,
+                          clampPercent(values[0] ?? 0),
+                        ),
+                      })
+                    }
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="w-20"
+                    value={clampPercent(question.scoreWeight ?? 0)}
+                    onChange={(e) =>
+                      change({
+                        questions: rebalanceAfterQuestionWeightEdit(
+                          d.questions,
+                          question.id!,
+                          clampPercent(Number(e.target.value)),
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              </FieldContent>
+            </Field>
+          ))}
+        </div>
+      ) : null}
       <ScoreCoverageBar bands={d.scoreBands} />
       {d.scoreBands.map((b) => {
         const min = clampPercent(b.minScore)
@@ -1905,7 +2287,10 @@ function Appearance({
         [
           ["Fundo", "backgroundColor"],
           ["Texto", "textColor"],
-          ["Linhas e opções", "lineColor"],
+          ["Linhas e bordas", "lineColor"],
+          ["Destaque (botões / progresso)", "accentColor"],
+          ["Texto do botão", "buttonTextColor"],
+          ["Fundo do input", "inputBackgroundColor"],
         ].map(([l, k]) => (
           <div className="flex items-center justify-between" key={k}>
             <Label>{l}</Label>
@@ -1950,6 +2335,11 @@ function Review({
       ok: questionErrors.length === 0,
       text: "Perguntas configuradas corretamente",
       step: 2,
+    },
+    {
+      ok: Boolean(d.successTitle.trim()),
+      text: "Título de agradecimento definido",
+      step: 3,
     },
   ]
   const ready = checks.every((c) => c.ok)

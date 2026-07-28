@@ -25,9 +25,24 @@ export async function GET(
     messageId,
     access: teamAccess.access,
   })
-  if (!output.isValid || !output.result) {
-    const status = output.errorMessages.some((m) => m.includes("Acesso negado")) ? 403 : 404
-    return NextResponse.json(output, { status })
+
+  const code = (output.result as { code?: string } | null)?.code
+
+  if (!output.isValid) {
+    if (code === "MEDIA_PROCESSING") {
+      return NextResponse.json(output, { status: 202 })
+    }
+    if (code === "MEDIA_EXPIRED") {
+      return NextResponse.json(output, { status: 410 })
+    }
+    if (code === "MEDIA_UNAVAILABLE") {
+      const retryable = (output.result as { retryable?: boolean } | null)?.retryable
+      return NextResponse.json(output, { status: retryable ? 503 : 422 })
+    }
+    if (code === "ACCESS_DENIED" || output.errorMessages.some((m) => m.includes("Acesso negado"))) {
+      return NextResponse.json(output, { status: 403 })
+    }
+    return NextResponse.json(output, { status: 404 })
   }
 
   const result = output.result as Record<string, unknown>
@@ -37,7 +52,10 @@ export async function GET(
   }
 
   if (typeof result.base64 !== "string") {
-    return NextResponse.json(output, { status: 404 })
+    return NextResponse.json(
+      new Output(false, [], ["Mídia indisponível"], { code: "MEDIA_UNAVAILABLE" }),
+      { status: 422 }
+    )
   }
 
   const mimeType = typeof result.mimeType === "string" ? result.mimeType : "application/octet-stream"

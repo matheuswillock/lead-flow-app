@@ -33,27 +33,6 @@ export type UpsertStudioWebhookConfigInput = {
   updatedByProfileId: string;
 };
 
-export type CreateLeadFromStudioWebhookInput = {
-  teamId: string;
-  managerId: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  cnpj?: string;
-  age?: string;
-  currentHealthPlan?: string;
-  currentValue?: number;
-  referenceHospital?: string;
-  currentTreatment?: string;
-  source: string;
-  metadata?: Record<string, unknown>;
-};
-
-export type StudioWebhookLeadResult = {
-  id: string;
-  leadCode: string;
-};
-
 export type StudioWebhookRequestLogResultType = "success" | "error";
 
 export type CreateStudioWebhookRequestLogInput = {
@@ -85,7 +64,6 @@ export interface IStudioWebhookIntegrationService {
   getWebhookConfigByTeamId(teamId: string): Promise<StudioWebhookConfigSnapshot | null>;
   upsertWebhookConfig(input: UpsertStudioWebhookConfigInput): Promise<StudioWebhookConfigSnapshot>;
   touchWebhookLastUsed(teamId: string): Promise<void>;
-  createLeadFromWebhook(input: CreateLeadFromStudioWebhookInput): Promise<StudioWebhookLeadResult>;
   createWebhookRequestLog(input: CreateStudioWebhookRequestLogInput): Promise<void>;
   listLatestWebhookRequestLogs(teamId: string, limit: number): Promise<StudioWebhookRequestLogSnapshot[]>;
 }

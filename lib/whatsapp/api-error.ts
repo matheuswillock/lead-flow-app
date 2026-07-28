@@ -7,6 +7,11 @@ export type WhatsAppApiErrorCode =
   | "RATE_LIMITED"
   | "QUOTA_EXCEEDED"
   | "DELIVERY_UNKNOWN"
+  | "MEDIA_TOO_LARGE"
+  | "MEDIA_UNSUPPORTED"
+  | "MEDIA_PROCESSING"
+  | "MEDIA_EXPIRED"
+  | "MEDIA_UNAVAILABLE"
   | "INTERNAL_ERROR"
 
 export type WhatsAppApiErrorResult = {

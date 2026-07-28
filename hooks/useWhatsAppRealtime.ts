@@ -9,11 +9,17 @@ export type WhatsAppMessageRealtimeRow = {
   direction: string
   messageType: string
   status: string
+  clientMessageId: string | null
   contentText: string | null
   mediaUrl: string | null
   caption: string | null
   senderDisplayName: string | null
   mediaFileName: string | null
+  mediaMimeType: string | null
+  storagePath: string | null
+  mediaSha256: string | null
+  mediaSizeBytes: number | null
+  mediaStatus: 'PROCESSING' | 'AVAILABLE' | 'EXPIRED' | 'FAILED' | null
   linkPreview: { title?: string; description?: string; imageUrl?: string; url?: string } | null
   sentByProfileId: string | null
   senderPhone: string | null
@@ -61,17 +67,30 @@ type Params = {
 
 function mapMessageRow(row: Partial<WhatsAppMessageRealtimeRow>): WhatsAppMessageRealtimeRow | null {
   if (!row?.id || !row?.conversationId) return null
+  const mediaStatus = row.mediaStatus
   return {
     id: row.id,
     conversationId: row.conversationId,
     direction: row.direction ?? 'INBOUND',
     messageType: row.messageType ?? 'text',
     status: row.status ?? 'RECEIVED',
+    clientMessageId: row.clientMessageId ?? null,
     contentText: row.contentText ?? null,
     mediaUrl: row.mediaUrl ?? null,
     caption: row.caption ?? null,
     senderDisplayName: row.senderDisplayName ?? null,
     mediaFileName: row.mediaFileName ?? null,
+    mediaMimeType: row.mediaMimeType ?? null,
+    storagePath: row.storagePath ?? null,
+    mediaSha256: row.mediaSha256 ?? null,
+    mediaSizeBytes: typeof row.mediaSizeBytes === 'number' ? row.mediaSizeBytes : null,
+    mediaStatus:
+      mediaStatus === 'PROCESSING' ||
+      mediaStatus === 'AVAILABLE' ||
+      mediaStatus === 'EXPIRED' ||
+      mediaStatus === 'FAILED'
+        ? mediaStatus
+        : null,
     linkPreview: row.linkPreview ?? null,
     sentByProfileId: row.sentByProfileId ?? null,
     senderPhone: row.senderPhone ?? null,

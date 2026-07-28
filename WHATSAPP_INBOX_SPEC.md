@@ -2,7 +2,7 @@
 
 **Versão:** 3.2
 **Data:** 2026-07-23
-**Status:** implementação das Fases 0–2 em andamento; rollout de produção bloqueado pelos gates da seção 17
+**Status:** Fases 0–3 concluídas no código; rollout de produção bloqueado pelos gates da seção 17 (ops)
 **Dona funcional:** Produto / Operação do Corretor Studio
 **Domínio:** Inbox de WhatsApp por time
 **Provider atual:** Evolution API self-hosted
@@ -51,16 +51,17 @@ Antes da primeira PR, o responsável técnico deve comparar o código atual com 
 
 ## 2.1 Progresso de implementação
 
-**Atualizado em:** 2026-07-23 — working tree local, ainda sem PR/commit de implementação.
+**Atualizado em:** 2026-07-27 — branch `feat/whatsapp-inbox-v3-phase-3`.
 
 | Fase | Estado | Evidência atual | Pendente para conclusão |
 | --- | --- | --- | --- |
-| Gate read-only de produção | **bloqueado** | MCP Supabase não exposto nesta sessão; tentativa de consulta externa falhou por DNS/sandbox. Nenhuma migration foi aplicada remotamente. | Advisors, RLS, grants, owners, `SECURITY DEFINER`, índices e publicação Realtime no banco vivo. |
-| Fase 0 — segurança/base operacional | **em andamento** | Provider e interfaces Evolution não aceitam mais `hostBaseUrl`; a coluna é legado não lido. A única origem é `EVO_API_BASE_URL`, HTTPS em produção e `redirect: "error"`. Forms/DTOs/backoffice/Postman foram removidos; erros do provider têm código/correlation ID sem body. O pepper e a flag de enforcement agora estão declarados nos templates de ambiente; o header só é obrigatório depois de provisioná-los, evitando interrupção no rollout. A migration local revoga browser das tabelas operacionais. | Provisionar o segredo e ativar enforcement no ambiente homologado antes do rollout; validar imagem `v2.3.7`, Advisors/RLS/grants/publication no banco vivo e rotacionar chave se houver suspeita de exposição prévia. |
-| Fase 1 — envio durável | **em andamento** | Mensagem `PENDING` e command com hash imutável são criados na mesma transação antes do provider; replay, retry explícito de `FAILED`, bloqueio de `UNKNOWN`, envelope de erro e prazo de reconciliação estão implementados. Reducer monotônico inclui `PLAYED` exclusivo de áudio e a UI já representa os estados. | Teste de integração provider→timeout→reconciliação, retry reutilizando a intenção, dedupe HTTP×Realtime em duas abas e validação visual/assistiva completa dos recibos. |
-| Fase 2 — contatos, busca e sync | **em andamento** | Identity canônica tem tipo, origem, verificação, `sendable` e frescor; LID vira provisório sem merge heurístico e grupos são ignorados. Busca unificada e diálogo Conversas/Contatos/Número têm debounce e cancelamento. O cron de 15 minutos enfileira times permitidos; conexão e webhook de contatos também enfileiram jobs com lease. | Backfill idempotente em batches/dry-run/relatório de conflitos, checkpoint real por lote, dual-write explícito de histórico/webhook, testes de isolamento/concorrência e validação em banco vivo. |
+| Gate read-only de produção | **ops pendente** | Checklist e runbook em §17.2.1. Nenhuma migration remota nem enforcement aplicados nesta entrega. | Owner: Advisors, RLS/grants/publication no banco vivo, provisionar pepper, `WHATSAPP_WEBHOOK_HEADER_ENFORCE=true` em homolog→prod. |
+| Fase 0 — segurança/base operacional | **concluída (código)** | `resolveEvoApiBaseUrl` + testes SSRF/HTTPS; runbook ops §17.2.1; coluna `hostBaseUrl` permanece legado não lido (remoção em T4.6). | Ativar enforcement em homolog conforme runbook. |
+| Fase 1 — envio durável | **concluída** | Frontend gera `clientMessageId` imutável na bolha; resend envia `retryFailed`; dedupe HTTP×Realtime via `mergeMessageByClientId`; reconciliador usa `nextReconcileAt`; testes `SendMessageUseCase` + merge. | Smoke E2E duas abas em staging. |
+| Fase 2 — contatos, busca e sync | **concluída** | Dual-write webhook→canonical/identity; migration `20260727163017_backfill-whatsapp-contact-identities.sql` (idempotente); sync com checkpoint/batch/lease + `parkContactSyncJob` para retomada. | Aplicar migration no ambiente alvo (local reset / push remoto só com autorização); validar cron sync sob carga. |
+| Fase 3 — mídia, áudio e interface | **concluída (código)** | Upload assinado `POST .../media/uploads` sem Base64 no browser; send referencia `storagePath`+hash; ingestão inbound com `mediaStatus` + cron `ingest-media`; GET tipado 202/410/422/503; preview/cancel/progress; mic “Como liberar”/reteste; waveform `ResizeObserver` + reduced motion; hit targets 44px + safe-area. | Smoke mobile E2E 320–1440; aplicar migration `whatsapp-media-status` no ambiente alvo. |
 
-Validações executadas nesta rodada: migration reset local, `bun test` focalizado (**21 testes verdes**), `bun run typecheck`, `bun run lint`, `bun run governance:check` e `bun run design:check`. O `$impeccable audit` do diálogo de nova conversa retornou detector automático sem padrões; o audit técnico local pontuou 17/20, com cancelamento real da busca tratado nesta rodada. A `critique` independente permanece pendente da autorização explícita para os dois avaliadores exigidos pela skill. O diálogo mantém alvos de toque de no mínimo 44 px.
+Validações desta rodada: testes focados WhatsApp V3, `bun run typecheck`, `bun run lint`, `bun run governance:check`, `bun run lint:pt-br`, `bun run design:check`.
 
 ## 3. Problema
 
@@ -2098,7 +2099,7 @@ O flag controla a experiência/DTO V3, não a garantia “persistir antes do pro
 - [ ] reproduzir primeiro contato autenticado no preview;
 - [ ] E2E de ordem HTTP × Realtime e duas abas verde;
 - [ ] versão/digest Evolution homologado no lugar de `latest` e fixtures de aliases LID/PN verdes;
-- [ ] migration/backfill de contatos executada em dry-run com relatório de duplicatas/conflitos;
+- [ ] migration/backfill de contatos (`20260727163017_backfill-whatsapp-contact-identities.sql`) aplicada e validada (local reset; remoto só com autorização);
 - [ ] provar que JID/LID não chega aos DTOs/Realtime/UI e que identities são server-only;
 - [ ] contrato de capabilities da Evolution e E2E das ações da bolha verdes;
 - [ ] executar o gate Impeccable pós-frontend, tratar os achados e repetir `audit`/`critique`;
@@ -2106,6 +2107,17 @@ O flag controla a experiência/DTO V3, não a garantia “persistir antes do pro
 - [ ] dashboard mínimo e rollback exercitado.
 
 Até esses itens serem atendidos, código pode chegar a preview/staging, mas não a 100% de produção.
+
+### 17.2.1 Runbook ops — gate de produção (T0.1 / homolog)
+
+Executar **antes** de ligar rollout V3 em produção. Nenhuma migration remota ou enforcement sem autorização explícita do owner.
+
+1. **Advisors (read-only):** Security + Performance no projeto Supabase vivo; anexar evidência à auditoria.
+2. **RLS / grants / publication:** confirmar tabelas operacionais WhatsApp (`whatsapp_outbound_commands`, `whatsapp_webhook_events`, `whatsapp_sync_jobs`, `whatsapp_contact_identities`, rate limit) com RLS e `REVOKE` de `anon`/`authenticated`; Realtime só nas tabelas publicadas intencionalmente.
+3. **Evolution:** imagem pinada `v2.3.7` (não `latest`); `EVO_API_BASE_URL` HTTPS único; rotacionar `EVO_API_KEY` se houver suspeita de exposição prévia de `hostBaseUrl`.
+4. **Webhook header:** provisionar `WHATSAPP_WEBHOOK_HEADER_SECRET` (≥32 bytes) nos envs; ressincronizar headers Evolution (`scripts/resync-whatsapp-webhook-headers.ts`); em **homolog** setar `WHATSAPP_WEBHOOK_HEADER_ENFORCE=true` e validar 401 sem header; só então espelhar em produção.
+5. **Backfill contatos:** migration `supabase/migrations/20260727163017_backfill-whatsapp-contact-identities.sql` (idempotente; faz parte do histórico Supabase). Validar em local com `bun run db:migrate:reset:local` antes de push remoto autorizado.
+6. **Flags V3:** allowlists `WHATSAPP_V3_*_TEAM_IDS` em staging antes de `*`.
 
 ### 17.3 Etapas
 

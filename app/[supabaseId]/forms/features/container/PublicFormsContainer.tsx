@@ -620,6 +620,9 @@ function SettingsSheet({
                   ["Fundo", "defaultBackgroundColor"],
                   ["Texto", "defaultTextColor"],
                   ["Linhas e opções", "defaultLineColor"],
+                  ["Destaque (botões / progresso)", "defaultAccentColor"],
+                  ["Texto do botão", "defaultButtonTextColor"],
+                  ["Fundo do input", "defaultInputBackgroundColor"],
                 ].map(([label, key]) => (
                   <div className="flex items-center justify-between" key={key}>
                     <Label htmlFor={key}>{label}</Label>

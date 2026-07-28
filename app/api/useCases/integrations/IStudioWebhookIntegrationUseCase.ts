@@ -48,6 +48,8 @@ export type RegisterStudioWebhookRequestLogUseCaseInput = {
   requestPayload?: unknown;
   responsePayload?: unknown;
   errorMessage?: string | null;
+  webhookId?: string | null;
+  token?: string | null;
 };
 
 export type GetStudioWebhookLogsUseCaseInput = {

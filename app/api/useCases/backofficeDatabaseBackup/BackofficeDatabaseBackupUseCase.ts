@@ -95,12 +95,13 @@ export class BackofficeDatabaseBackupUseCase {
       const result = await this.vpsService.runBackup(pending.id)
 
       if (!result.ok) {
+        const errorMessage = result.error || "Falha ao executar backup na VPS"
         await this.repository.update(pending.id, {
           status: "failed",
           finishedAt: new Date(),
-          errorMessage: result.error || "Falha ao executar backup na VPS",
+          errorMessage,
         })
-        return new Output(false, [], ["Falha ao executar backup na VPS"], {
+        return new Output(false, [], [errorMessage], {
           id: pending.id,
         })
       }
