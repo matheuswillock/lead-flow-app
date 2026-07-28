@@ -29,6 +29,8 @@ export interface BackofficeAdhesionCreateInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
+  /** Parcelas (0-based) já pagas fora do Asaas. */
+  externalInstallmentIndexes?: number[]
   userType?: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt?: string | null
   sponsorMasterId?: string | null
@@ -178,12 +180,26 @@ export interface BackofficeAdhesionOptionsDTO {
     name: string
     featureSlug: string
     isDefault: boolean
-    pricesByCycle: Record<
-      BackofficeAdhesionBillingCycle,
-      {
-        pixMonthlyPrice: number | null
-        cardMonthlyPrice: number | null
-      }
+    availableCycles: BackofficeAdhesionBillingCycle[]
+    installmentByCycle: Partial<
+      Record<
+        BackofficeAdhesionBillingCycle,
+        {
+          splitMode: "EQUAL" | "CUSTOM"
+          maxInstallments: number
+          schedule: number[]
+          cardTotal: number | null
+        }
+      >
+    >
+    pricesByCycle: Partial<
+      Record<
+        BackofficeAdhesionBillingCycle,
+        {
+          pixMonthlyPrice: number | null
+          cardMonthlyPrice: number | null
+        }
+      >
     >
   }>
   pricing: {

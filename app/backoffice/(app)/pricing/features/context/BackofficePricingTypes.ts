@@ -46,6 +46,25 @@ export interface BackofficeProductItem {
   paymentRules: BackofficeProductPaymentRuleItem[]
 }
 
+export const BILLING_CYCLE_META: {
+  key: BackofficeAdhesionBillingCycleKey
+  label: string
+  months: number
+  defaultMax: number
+}[] = [
+  { key: "monthly", label: "Mensal", months: 1, defaultMax: 1 },
+  { key: "quarterly", label: "Trimestral", months: 3, defaultMax: 3 },
+  { key: "semiannual", label: "Semestral", months: 6, defaultMax: 6 },
+  { key: "annual", label: "Anual", months: 12, defaultMax: 12 },
+]
+
+export const BILLING_CYCLE_LABELS: Record<BackofficeAdhesionBillingCycleKey, string> = {
+  monthly: "Mensal",
+  quarterly: "Trimestral",
+  semiannual: "Semestral",
+  annual: "Anual",
+}
+
 export interface BackofficeProductFormData {
   name: string
   featureSlug: string
@@ -59,6 +78,8 @@ export interface BackofficeProductFormData {
   priceLifetime: string
   isDefault: boolean
   isActive: boolean
+  /** Ciclos opt-in incluídos nesta precificação (RECURRING). */
+  activeCycles: BackofficeAdhesionBillingCycleKey[]
   paymentRules: {
     monthly: BackofficeProductPaymentRuleFormEntry
     quarterly: BackofficeProductPaymentRuleFormEntry
@@ -88,12 +109,27 @@ export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
   priceLifetime: "",
   isDefault: false,
   isActive: true,
+  activeCycles: [],
   paymentRules: {
     monthly: { ...EMPTY_RULE_ENTRY, maxInstallments: "1" },
     quarterly: { ...EMPTY_RULE_ENTRY, maxInstallments: "3" },
     semiannual: { ...EMPTY_RULE_ENTRY, maxInstallments: "6" },
     annual: { ...EMPTY_RULE_ENTRY, maxInstallments: "12" },
   },
+}
+
+export function isCycleRuleConfigured(entry: BackofficeProductPaymentRuleFormEntry): boolean {
+  const pix = Number.parseFloat(entry.pixPrice.replace(",", "."))
+  if (Number.isFinite(pix) && pix > 0) return true
+  if (entry.installmentSplitMode === "CUSTOM") {
+    return entry.installmentSchedule.some((g) => {
+      const count = Number.parseInt(g.count, 10)
+      const value = Number.parseFloat(g.value.replace(",", "."))
+      return count >= 1 && Number.isFinite(value) && value > 0
+    })
+  }
+  const card = Number.parseFloat(entry.cardPrice.replace(",", "."))
+  return Number.isFinite(card) && card > 0
 }
 
 export function flattenSchedule(groups: InstallmentGroup[]): number[] {

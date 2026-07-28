@@ -625,6 +625,87 @@ async function main() {
     console.info("[seed:backoffice-products] Regras de pagamento Radar prontas")
   }
 
+  // 8. CRM - Radar (precificação trimestral CUSTOM, não default)
+  const crmRadarData = {
+    featureSlug: "crm",
+    name: "CRM - Radar",
+    description:
+      "Precificação trimestral CRM para Radar — à vista ou cronograma 1x R$1.200 + 2x R$990.",
+    type: BackofficeProductType.PLAN,
+    billingMode: BackofficeProductBillingMode.RECURRING,
+    priceMonthly: null as number | null,
+    priceQuarterly: 1060,
+    priceSemiannual: null as number | null,
+    priceAnnual: null as number | null,
+    priceLifetime: null as number | null,
+    isActive: true,
+    isDefault: false,
+  }
+  let crmRadarProduct = await prisma.backofficeProduct.findFirst({
+    where: { featureSlug: "crm", name: "CRM - Radar" },
+  })
+  if (crmRadarProduct) {
+    crmRadarProduct = await prisma.backofficeProduct.update({
+      where: { id: crmRadarProduct.id },
+      data: crmRadarData,
+    })
+  } else {
+    crmRadarProduct = await prisma.backofficeProduct.create({ data: crmRadarData })
+  }
+  await prisma.backofficeProductPaymentRule.upsert({
+    where: {
+      productId_paymentMethod_billingCycle: {
+        productId: crmRadarProduct.id,
+        paymentMethod: BackofficePaymentMethod.PIX,
+        billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      },
+    },
+    create: {
+      productId: crmRadarProduct.id,
+      paymentMethod: BackofficePaymentMethod.PIX,
+      billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      price: 1060,
+      canInstallment: false,
+      maxInstallments: 1,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+    update: {
+      price: 1060,
+      canInstallment: false,
+      maxInstallments: 1,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+  })
+  await prisma.backofficeProductPaymentRule.upsert({
+    where: {
+      productId_paymentMethod_billingCycle: {
+        productId: crmRadarProduct.id,
+        paymentMethod: BackofficePaymentMethod.CREDIT_CARD,
+        billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      },
+    },
+    create: {
+      productId: crmRadarProduct.id,
+      paymentMethod: BackofficePaymentMethod.CREDIT_CARD,
+      billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      price: 3180,
+      canInstallment: true,
+      maxInstallments: 3,
+      installmentSplitMode: "CUSTOM",
+      installmentSchedule: [1200, 990, 990],
+    },
+    update: {
+      price: 3180,
+      canInstallment: true,
+      maxInstallments: 3,
+      installmentSplitMode: "CUSTOM",
+      installmentSchedule: [1200, 990, 990],
+    },
+  })
+  console.info("[seed:backoffice-products] Precificação CRM - Radar pronta")
+
   console.info("[seed:backoffice-products] Concluído.")
 }
 

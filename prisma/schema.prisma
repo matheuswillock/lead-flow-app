@@ -1475,6 +1475,8 @@ model BackofficeAdhesion {
   hasUnlimitedUsers                 Boolean                        @default(false) @map("hasUnlimitedUsers")
   additionalUsersData               Json                           @default("[]") @map("additional_users_data")
   additionalTeamsData               Json                           @default("[]") @map("additional_teams_data")
+  installmentSchedule               Json                           @default("[]") @map("installmentSchedule")
+  installmentLedger                 Json                           @default("[]") @map("installmentLedger")
   createdAt                         DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                         DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 

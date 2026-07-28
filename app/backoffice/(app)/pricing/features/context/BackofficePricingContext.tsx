@@ -13,7 +13,7 @@ import type {
   InstallmentGroup,
   InstallmentSplitMode,
 } from "./BackofficePricingTypes"
-import { EMPTY_PRODUCT_FORM, groupSchedule } from "./BackofficePricingTypes"
+import { BILLING_CYCLE_META, EMPTY_PRODUCT_FORM, groupSchedule, isCycleRuleConfigured } from "./BackofficePricingTypes"
 import { toast } from "sonner"
 
 interface PricingContextValue {
@@ -41,6 +41,8 @@ interface PricingContextValue {
   setInstallmentGroup: (cycle: BackofficeAdhesionBillingCycleKey, index: number, field: keyof InstallmentGroup, value: string) => void
   addInstallmentGroup: (cycle: BackofficeAdhesionBillingCycleKey) => void
   removeInstallmentGroup: (cycle: BackofficeAdhesionBillingCycleKey, index: number) => void
+  addActiveCycle: (cycle: BackofficeAdhesionBillingCycleKey) => void
+  removeActiveCycle: (cycle: BackofficeAdhesionBillingCycleKey) => void
   submitForm: () => Promise<void>
 
   deleteDialogOpen: boolean
@@ -71,6 +73,20 @@ function productToFormData(product: BackofficeProductItem): BackofficeProductFor
     }
   }
 
+  const paymentRules = {
+    monthly: ruleEntry("monthly", "1"),
+    quarterly: ruleEntry("quarterly", "3"),
+    semiannual: ruleEntry("semiannual", "6"),
+    annual: ruleEntry("annual", "12"),
+  }
+  const cyclesFromRules = Array.from(
+    new Set(product.paymentRules.map((rule) => rule.billingCycle as BackofficeAdhesionBillingCycleKey))
+  )
+  const activeCycles =
+    cyclesFromRules.length > 0
+      ? BILLING_CYCLE_META.map((meta) => meta.key).filter((key) => cyclesFromRules.includes(key))
+      : BILLING_CYCLE_META.map((meta) => meta.key).filter((key) => isCycleRuleConfigured(paymentRules[key]))
+
   return {
     name: product.name,
     featureSlug: product.featureSlug,
@@ -84,12 +100,8 @@ function productToFormData(product: BackofficeProductItem): BackofficeProductFor
     priceLifetime: product.priceLifetime != null ? String(product.priceLifetime) : "",
     isDefault: product.isDefault,
     isActive: product.isActive,
-    paymentRules: {
-      monthly: ruleEntry("monthly", "1"),
-      quarterly: ruleEntry("quarterly", "3"),
-      semiannual: ruleEntry("semiannual", "6"),
-      annual: ruleEntry("annual", "12"),
-    },
+    activeCycles,
+    paymentRules,
   }
 }
 
@@ -261,6 +273,31 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
     []
   )
 
+  const addActiveCycle = useCallback((cycle: BackofficeAdhesionBillingCycleKey) => {
+    setFormData((prev) => {
+      if (prev.activeCycles.includes(cycle)) return prev
+      return { ...prev, activeCycles: [...prev.activeCycles, cycle] }
+    })
+  }, [])
+
+  const removeActiveCycle = useCallback((cycle: BackofficeAdhesionBillingCycleKey) => {
+    const meta = BILLING_CYCLE_META.find((item) => item.key === cycle)
+    setFormData((prev) => ({
+      ...prev,
+      activeCycles: prev.activeCycles.filter((key) => key !== cycle),
+      paymentRules: {
+        ...prev.paymentRules,
+        [cycle]: {
+          pixPrice: "",
+          cardPrice: "",
+          maxInstallments: String(meta?.defaultMax ?? 1),
+          installmentSplitMode: "EQUAL" as const,
+          installmentSchedule: [{ count: "1", value: "" }],
+        },
+      },
+    }))
+  }, [])
+
   const submitForm = useCallback(async () => {
     if (isSaving) return
     setIsSaving(true)
@@ -330,6 +367,8 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
         setInstallmentGroup,
         addInstallmentGroup,
         removeInstallmentGroup,
+        addActiveCycle,
+        removeActiveCycle,
         submitForm,
         deleteDialogOpen,
         deleteProduct,

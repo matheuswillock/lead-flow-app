@@ -1,5 +1,9 @@
 import type { IBackofficePricingService } from "./IBackofficePricingService"
-import type { BackofficeProductFormData, BackofficeProductItem } from "../context/BackofficePricingTypes"
+import type {
+  BackofficeAdhesionBillingCycleKey,
+  BackofficeProductFormData,
+  BackofficeProductItem,
+} from "../context/BackofficePricingTypes"
 import { flattenSchedule } from "../context/BackofficePricingTypes"
 
 function parsePrice(value: string): number | null {
@@ -7,7 +11,12 @@ function parsePrice(value: string): number | null {
   return isNaN(n) || n <= 0 ? null : n
 }
 
-const BILLING_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
+const BILLING_CYCLES: BackofficeAdhesionBillingCycleKey[] = [
+  "monthly",
+  "quarterly",
+  "semiannual",
+  "annual",
+]
 
 function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProductFormData>) {
   const payload: Record<string, unknown> = {}
@@ -17,17 +26,26 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
   if ("description" in data) payload.description = data.description || null
   if (data.type !== undefined) payload.type = data.type
   if (data.billingMode !== undefined) payload.billingMode = data.billingMode
-  if ("priceMonthly" in data) payload.priceMonthly = parsePrice(data.priceMonthly ?? "")
-  if ("priceQuarterly" in data) payload.priceQuarterly = parsePrice(data.priceQuarterly ?? "")
-  if ("priceSemiannual" in data) payload.priceSemiannual = parsePrice(data.priceSemiannual ?? "")
-  if ("priceAnnual" in data) payload.priceAnnual = parsePrice(data.priceAnnual ?? "")
-  if ("priceLifetime" in data) payload.priceLifetime = parsePrice(data.priceLifetime ?? "")
   if (data.isDefault !== undefined) payload.isDefault = data.isDefault
   if (data.isActive !== undefined) payload.isActive = data.isActive
+  if ("priceLifetime" in data) payload.priceLifetime = parsePrice(data.priceLifetime ?? "")
 
   if (data.paymentRules && data.billingMode === "RECURRING") {
+    const activeCycles =
+      data.activeCycles && data.activeCycles.length > 0
+        ? data.activeCycles
+        : BILLING_CYCLES.filter((cycle) => {
+            const entry = data.paymentRules?.[cycle]
+            if (!entry) return false
+            return (
+              parsePrice(entry.pixPrice) != null ||
+              parsePrice(entry.cardPrice) != null ||
+              entry.installmentSplitMode === "CUSTOM"
+            )
+          })
+
     const rules = []
-    for (const cycle of BILLING_CYCLES) {
+    for (const cycle of activeCycles) {
       const entry = data.paymentRules[cycle]
       if (!entry) continue
       const pixPrice = parsePrice(entry.pixPrice)
@@ -73,18 +91,25 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
         }
       }
     }
-    if (rules.length) {
-      payload.paymentRules = rules
-      // keep flat prices synced with PIX rules for backward-compat (ADDON pricing)
-      const pixMonthly = parsePrice(data.paymentRules.monthly?.pixPrice ?? "")
-      const pixQuarterly = parsePrice(data.paymentRules.quarterly?.pixPrice ?? "")
-      const pixSemiannual = parsePrice(data.paymentRules.semiannual?.pixPrice ?? "")
-      const pixAnnual = parsePrice(data.paymentRules.annual?.pixPrice ?? "")
-      if (pixMonthly != null) payload.priceMonthly = pixMonthly
-      if (pixQuarterly != null) payload.priceQuarterly = pixQuarterly
-      if (pixSemiannual != null) payload.priceSemiannual = pixSemiannual
-      if (pixAnnual != null) payload.priceAnnual = pixAnnual
+
+    payload.paymentRules = rules
+    payload.priceMonthly = parsePrice(data.paymentRules.monthly?.pixPrice ?? "")
+    payload.priceQuarterly = parsePrice(data.paymentRules.quarterly?.pixPrice ?? "")
+    payload.priceSemiannual = parsePrice(data.paymentRules.semiannual?.pixPrice ?? "")
+    payload.priceAnnual = parsePrice(data.paymentRules.annual?.pixPrice ?? "")
+    for (const cycle of BILLING_CYCLES) {
+      if (!activeCycles.includes(cycle)) {
+        if (cycle === "monthly") payload.priceMonthly = null
+        if (cycle === "quarterly") payload.priceQuarterly = null
+        if (cycle === "semiannual") payload.priceSemiannual = null
+        if (cycle === "annual") payload.priceAnnual = null
+      }
     }
+  } else if (data.billingMode === "LIFETIME") {
+    if ("priceMonthly" in data) payload.priceMonthly = null
+    if ("priceQuarterly" in data) payload.priceQuarterly = null
+    if ("priceSemiannual" in data) payload.priceSemiannual = null
+    if ("priceAnnual" in data) payload.priceAnnual = null
   }
 
   return payload
