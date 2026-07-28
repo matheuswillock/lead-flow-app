@@ -2,33 +2,15 @@ import type {
   IBackofficeDatabaseBackupVpsService,
   VpsBackupRunResult,
 } from "./IBackofficeDatabaseBackupVpsService"
-
-const DEFAULT_OPS_BACKUP_RUN_URL = "https://ops.corretorstudio.com/backup/run"
-
-function resolveBackupVpsConfig():
-  | { ok: true; webhookUrl: string; token: string }
-  | { ok: false; error: string } {
-  const token =
-    process.env.BACKUP_VPS_TOKEN?.trim() ||
-    process.env.BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN?.trim()
-
-  const webhookUrl =
-    process.env.BACKUP_VPS_WEBHOOK_URL?.trim() || DEFAULT_OPS_BACKUP_RUN_URL
-
-  if (!token) {
-    return {
-      ok: false,
-      error:
-        "Token de backup não configurado (BACKUP_VPS_TOKEN ou BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN)",
-    }
-  }
-
-  return { ok: true, webhookUrl, token }
-}
+import {
+  buildBackupDownloadUrl,
+  mapVpsUnauthorizedError,
+  resolveOpsAgentAuthForBackup,
+} from "@/lib/studio-bot/resolve-ops-agent-auth"
 
 export class BackofficeDatabaseBackupVpsService implements IBackofficeDatabaseBackupVpsService {
   async runBackup(backupId: string): Promise<VpsBackupRunResult> {
-    const config = resolveBackupVpsConfig()
+    const config = await resolveOpsAgentAuthForBackup()
     if (!config.ok) {
       return { ok: false, error: config.error }
     }
@@ -50,7 +32,7 @@ export class BackofficeDatabaseBackupVpsService implements IBackofficeDatabaseBa
     if (!response.ok) {
       return {
         ok: false,
-        error: payload.error || `HTTP ${response.status}`,
+        error: mapVpsUnauthorizedError(response.status, payload.error),
       }
     }
 
@@ -75,16 +57,12 @@ export class BackofficeDatabaseBackupVpsService implements IBackofficeDatabaseBa
     fileName: string
     filePath?: string | null
   }): Promise<Response> {
-    const config = resolveBackupVpsConfig()
+    const config = await resolveOpsAgentAuthForBackup()
     if (!config.ok) {
       throw new Error(config.error)
     }
 
-    const downloadUrl = new URL(config.webhookUrl)
-    downloadUrl.pathname = downloadUrl.pathname.replace(/\/backup\/run\/?$/, "/backup/download")
-    if (!downloadUrl.pathname.includes("/backup/download")) {
-      downloadUrl.pathname = "/backup/download"
-    }
+    const downloadUrl = new URL(buildBackupDownloadUrl(config.webhookUrl))
     downloadUrl.searchParams.set("file", input.fileName)
     if (input.filePath) {
       downloadUrl.searchParams.set("path", input.filePath)
