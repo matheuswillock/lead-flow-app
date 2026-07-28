@@ -183,6 +183,27 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     return this.findById(id)
   }
 
+  async mutateInstallmentLedger(
+    id: string,
+    apply: (ledger: unknown) => unknown
+  ): Promise<BackofficeAdhesionWithRelations> {
+    return prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ installmentLedger: unknown }>>`
+        SELECT "installmentLedger"
+        FROM backoffice_adhesions
+        WHERE id = ${id}::uuid
+        FOR UPDATE
+      `
+      const current = rows[0]?.installmentLedger ?? []
+      const next = apply(current)
+      return tx.backofficeAdhesion.update({
+        where: { id },
+        data: { installmentLedger: next as Prisma.InputJsonValue },
+        include: backofficeAdhesionInclude,
+      })
+    })
+  }
+
   async findByTokenHash(tokenHash: string): Promise<BackofficeAdhesionWithRelations | null> {
     return prisma.backofficeAdhesion.findUnique({
       where: { tokenHash },
@@ -392,6 +413,19 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       where: { id: profileId },
       data,
     })
+  }
+
+  async revokePaidAdhesionAccess(profileId: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.profile.update({
+        where: { id: profileId },
+        data: { subscriptionStatus: SubscriptionStatus.canceled },
+      }),
+      prisma.profileSubscription.updateMany({
+        where: { profileId },
+        data: { subscriptionStatus: SubscriptionStatus.canceled },
+      }),
+    ])
   }
 
   async upsertProfileSubscription(data: {

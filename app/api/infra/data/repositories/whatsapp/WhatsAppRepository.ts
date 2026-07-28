@@ -119,6 +119,10 @@ const MESSAGE_SELECT = {
   failedAt: true,
   isAutoResponse: true,
   autoResponseRuleId: true,
+  quotedMessageId: true,
+  quotedProviderMessageId: true,
+  deletedForEveryoneAt: true,
+  deletedByProfileId: true,
   createdAt: true,
 } as const
 
@@ -509,6 +513,17 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
   }
 
+  async markMessageDeletedForEveryone(id: string, deletedByProfileId?: string | null): Promise<void> {
+    await prisma.whatsAppMessage.update({
+      where: { id },
+      data: {
+        deletedForEveryoneAt: new Date(),
+        ...(deletedByProfileId ? { deletedByProfileId } : {}),
+      },
+      select: { id: true },
+    })
+  }
+
   async findMessageIdByStoragePath(storagePath: string): Promise<string | null> {
     const row = await prisma.whatsAppMessage.findFirst({
       where: { storagePath },
@@ -602,6 +617,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
   async listMessages(params: {
     conversationId: string
+    profileId?: string
     page?: number
     limit?: number
   }): Promise<{ messages: WhatsAppMessageSelect[]; total: number }> {
@@ -612,6 +628,15 @@ class WhatsAppRepository implements IWhatsAppRepository {
     const where: Prisma.WhatsAppMessageWhereInput = {
       conversationId: params.conversationId,
       deletedAt: null,
+      ...(params.profileId
+        ? {
+            NOT: {
+              visibility: {
+                some: { profileId: params.profileId },
+              },
+            },
+          }
+        : {}),
     }
 
     const [messages, total] = await prisma.$transaction([
@@ -697,6 +722,8 @@ class WhatsAppRepository implements IWhatsAppRepository {
     storagePath?: string
     mediaSha256?: string
     mediaSizeBytes?: number
+    quotedMessageId?: string
+    quotedProviderMessageId?: string
   }): Promise<{
     created: boolean
     messageId: string | null
@@ -743,6 +770,8 @@ class WhatsAppRepository implements IWhatsAppRepository {
           mediaStatus: input.storagePath ? "AVAILABLE" : null,
           recipientPhone: normalizePhone(conversation.contactPhone),
           sentByProfileId: input.sentByProfileId,
+          quotedMessageId: input.quotedMessageId ?? null,
+          quotedProviderMessageId: input.quotedProviderMessageId ?? null,
           rawPayload: {},
         },
         select: { id: true },
@@ -1374,6 +1403,341 @@ class WhatsAppRepository implements IWhatsAppRepository {
       where: { teamId, externalChatId: { in: externalChatIds } },
       select: CONVERSATION_SELECT,
     })
+  }
+
+  async getMessageActionsState(input: {
+    teamId: string
+    messageId: string
+    profileId: string
+  }): Promise<{
+    messageId: string
+    conversationId: string
+    isFavorite: boolean
+    isPinned: boolean
+    isHidden: boolean
+    reactions: Array<{ emoji: string; profileId: string | null; removedAt: Date | null }>
+    deletedForEveryoneAt: Date | null
+  } | null> {
+    const message = await prisma.whatsAppMessage.findFirst({
+      where: { id: input.messageId, teamId: input.teamId },
+      select: {
+        id: true,
+        conversationId: true,
+        deletedForEveryoneAt: true,
+      },
+    })
+    if (!message) return null
+
+    const [favorite, pin, visibility, reactions] = await Promise.all([
+      prisma.whatsAppMessageFavorite.findUnique({
+        where: {
+          messageId_profileId: { messageId: input.messageId, profileId: input.profileId },
+        },
+        select: { id: true },
+      }),
+      prisma.whatsAppMessagePin.findFirst({
+        where: { messageId: input.messageId, teamId: input.teamId, removedAt: null },
+        select: { id: true },
+      }),
+      prisma.whatsAppMessageVisibility.findUnique({
+        where: {
+          messageId_profileId: { messageId: input.messageId, profileId: input.profileId },
+        },
+        select: { id: true },
+      }),
+      prisma.whatsAppMessageReaction.findMany({
+        where: { messageId: input.messageId, teamId: input.teamId, removedAt: null },
+        select: { emoji: true, profileId: true, removedAt: true },
+        take: 50,
+      }),
+    ])
+
+    return {
+      messageId: message.id,
+      conversationId: message.conversationId,
+      isFavorite: favorite != null,
+      isPinned: pin != null,
+      isHidden: visibility != null,
+      reactions,
+      deletedForEveryoneAt: message.deletedForEveryoneAt,
+    }
+  }
+
+  async upsertMessageFavorite(input: {
+    teamId: string
+    messageId: string
+    profileId: string
+  }): Promise<void> {
+    await prisma.whatsAppMessageFavorite.upsert({
+      where: {
+        messageId_profileId: { messageId: input.messageId, profileId: input.profileId },
+      },
+      create: {
+        teamId: input.teamId,
+        messageId: input.messageId,
+        profileId: input.profileId,
+      },
+      update: {},
+      select: { id: true },
+    })
+  }
+
+  async removeMessageFavorite(input: {
+    teamId: string
+    messageId: string
+    profileId: string
+  }): Promise<void> {
+    await prisma.whatsAppMessageFavorite.deleteMany({
+      where: {
+        teamId: input.teamId,
+        messageId: input.messageId,
+        profileId: input.profileId,
+      },
+    })
+  }
+
+  async pinMessage(input: {
+    teamId: string
+    conversationId: string
+    messageId: string
+    pinnedByProfileId: string
+    expiresAt?: Date | null
+  }): Promise<void> {
+    const existing = await prisma.whatsAppMessagePin.findFirst({
+      where: { messageId: input.messageId, teamId: input.teamId, removedAt: null },
+      select: { id: true },
+    })
+    if (existing) {
+      await prisma.whatsAppMessagePin.update({
+        where: { id: existing.id },
+        data: {
+          pinnedByProfileId: input.pinnedByProfileId,
+          pinnedAt: new Date(),
+          expiresAt: input.expiresAt ?? null,
+          removedAt: null,
+        },
+        select: { id: true },
+      })
+      return
+    }
+    await prisma.whatsAppMessagePin.create({
+      data: {
+        teamId: input.teamId,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        pinnedByProfileId: input.pinnedByProfileId,
+        expiresAt: input.expiresAt ?? null,
+      },
+      select: { id: true },
+    })
+  }
+
+  async unpinMessage(input: { teamId: string; messageId: string }): Promise<void> {
+    await prisma.whatsAppMessagePin.updateMany({
+      where: { teamId: input.teamId, messageId: input.messageId, removedAt: null },
+      data: { removedAt: new Date() },
+    })
+  }
+
+  async hideMessageForProfile(input: {
+    teamId: string
+    messageId: string
+    profileId: string
+  }): Promise<void> {
+    await prisma.whatsAppMessageVisibility.upsert({
+      where: {
+        messageId_profileId: { messageId: input.messageId, profileId: input.profileId },
+      },
+      create: {
+        teamId: input.teamId,
+        messageId: input.messageId,
+        profileId: input.profileId,
+      },
+      update: { hiddenAt: new Date() },
+      select: { id: true },
+    })
+  }
+
+  async findActionCommand(input: {
+    teamId: string
+    clientActionId: string
+  }): Promise<{
+    id: string
+    messageId: string
+    kind: string
+    status: string
+    requestHash: string | null
+  } | null> {
+    return prisma.whatsAppMessageActionCommand.findUnique({
+      where: {
+        teamId_clientActionId: { teamId: input.teamId, clientActionId: input.clientActionId },
+      },
+      select: {
+        id: true,
+        messageId: true,
+        kind: true,
+        status: true,
+        requestHash: true,
+      },
+    })
+  }
+
+  async createActionCommand(input: {
+    teamId: string
+    messageId: string
+    profileId: string
+    clientActionId: string
+    kind: "REACT" | "UNREACT" | "DELETE_FOR_EVERYONE"
+    requestHash: string
+    emoji?: string | null
+  }): Promise<{ created: boolean; id: string; status: string }> {
+    try {
+      const created = await prisma.whatsAppMessageActionCommand.create({
+        data: {
+          teamId: input.teamId,
+          messageId: input.messageId,
+          profileId: input.profileId,
+          clientActionId: input.clientActionId,
+          kind: input.kind,
+          status: "PENDING",
+          requestHash: input.requestHash,
+          emoji: input.emoji ?? null,
+          attemptCount: 1,
+          claimedAt: new Date(),
+        },
+        select: { id: true, status: true },
+      })
+      return { created: true, id: created.id, status: created.status }
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const existing = await this.findActionCommand({
+          teamId: input.teamId,
+          clientActionId: input.clientActionId,
+        })
+        if (existing) {
+          return { created: false, id: existing.id, status: existing.status }
+        }
+      }
+      throw error
+    }
+  }
+
+  async searchMessagesInConversation(input: {
+    teamId: string
+    conversationId: string
+    profileId: string
+    query: string
+    page?: number
+    limit?: number
+  }): Promise<{ messages: WhatsAppMessageSelect[]; total: number }> {
+    const page = Math.max(input.page ?? 1, 1)
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 50)
+    const q = input.query.trim()
+    if (!q) return { messages: [], total: 0 }
+
+    const where: Prisma.WhatsAppMessageWhereInput = {
+      teamId: input.teamId,
+      conversationId: input.conversationId,
+      deletedAt: null,
+      deletedForEveryoneAt: null,
+      OR: [
+        { contentText: { contains: q, mode: "insensitive" } },
+        { caption: { contains: q, mode: "insensitive" } },
+      ],
+      NOT: {
+        visibility: {
+          some: { profileId: input.profileId },
+        },
+      },
+    }
+
+    const [total, messages] = await Promise.all([
+      prisma.whatsAppMessage.count({ where }),
+      prisma.whatsAppMessage.findMany({
+        where,
+        select: MESSAGE_SELECT,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ])
+
+    return { messages, total }
+  }
+
+  async mergeMessageRawPayload(
+    messageId: string,
+    patch: Record<string, unknown>
+  ): Promise<void> {
+    const existing = await prisma.whatsAppMessage.findUnique({
+      where: { id: messageId },
+      select: { rawPayload: true },
+    })
+    const raw =
+      existing?.rawPayload &&
+      typeof existing.rawPayload === "object" &&
+      !Array.isArray(existing.rawPayload)
+        ? (existing.rawPayload as Record<string, unknown>)
+        : {}
+    await prisma.whatsAppMessage.update({
+      where: { id: messageId },
+      data: {
+        rawPayload: {
+          ...raw,
+          ...patch,
+        } as Prisma.InputJsonValue,
+      },
+      select: { id: true },
+    })
+  }
+
+  async getTeamOpsMetrics(teamId: string): Promise<{
+    deadLetterCount: number
+    pendingWebhookCount: number
+    unknownOutboundCount: number
+    failedMediaCount: number
+    pendingActionCommandCount: number
+    unknownActionCommandCount: number
+  }> {
+    const [
+      deadLetterCount,
+      pendingWebhookCount,
+      unknownOutboundCount,
+      failedMediaCount,
+      pendingActionCommandCount,
+      unknownActionCommandCount,
+    ] = await Promise.all([
+      prisma.whatsAppWebhookEvent.count({
+        where: { teamId, status: "DEAD_LETTER" },
+      }),
+      prisma.whatsAppWebhookEvent.count({
+        where: { teamId, status: { in: ["PENDING", "PROCESSING"] } },
+      }),
+      prisma.whatsAppOutboundCommand.count({
+        where: { teamId, status: "UNKNOWN" },
+      }),
+      prisma.whatsAppMessage.count({
+        where: { teamId, mediaStatus: "FAILED", deletedAt: null },
+      }),
+      prisma.whatsAppMessageActionCommand.count({
+        where: { teamId, status: "PENDING" },
+      }),
+      prisma.whatsAppMessageActionCommand.count({
+        where: { teamId, status: "UNKNOWN" },
+      }),
+    ])
+
+    return {
+      deadLetterCount,
+      pendingWebhookCount,
+      unknownOutboundCount,
+      failedMediaCount,
+      pendingActionCommandCount,
+      unknownActionCommandCount,
+    }
   }
 }
 

@@ -47,12 +47,40 @@ export interface WhatsAppProviderMessageContent {
   mediaMimeType: string | null
   mediaFileName: string | null
   caption: string | null
+  quotedProviderMessageId: string | null
   linkPreview: {
     title: string | null
     description: string | null
     imageUrl: string | null
     url: string | null
   } | null
+}
+
+export interface WhatsAppProviderQuotedMessage {
+  providerMessageId: string
+  fromMe?: boolean
+  remoteJid?: string
+}
+
+export interface WhatsAppMessageActionCapabilities {
+  reply: boolean
+  forward: boolean
+  react: boolean
+  deleteForEveryone: boolean
+}
+
+export interface WhatsAppProviderActionResult {
+  providerActionId: string | null
+  status: string
+}
+
+export class WhatsAppProviderCapabilityError extends Error {
+  readonly code = "CAPABILITY_UNAVAILABLE" as const
+
+  constructor(capability: string) {
+    super(`Capability unavailable: ${capability}`)
+    this.name = "WhatsAppProviderCapabilityError"
+  }
 }
 
 export interface WhatsAppProviderHistoryMessage {
@@ -134,6 +162,7 @@ export interface IWhatsAppProvider {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
+    quoted?: WhatsAppProviderQuotedMessage
   }): Promise<WhatsAppProviderSendResult>
 
   sendMedia(params: {
@@ -144,7 +173,33 @@ export interface IWhatsAppProvider {
     fileName: string
     base64: string
     caption?: string
+    quoted?: WhatsAppProviderQuotedMessage
   }): Promise<WhatsAppProviderSendResult>
+
+  getMessageActionCapabilities(): WhatsAppMessageActionCapabilities
+
+  reactToMessage?(params: {
+    instanceName: string
+    remoteJid: string
+    providerMessageId: string
+    fromMe: boolean
+    emoji: string
+  }): Promise<WhatsAppProviderActionResult>
+
+  unreactToMessage?(params: {
+    instanceName: string
+    remoteJid: string
+    providerMessageId: string
+    fromMe: boolean
+    emoji: string
+  }): Promise<WhatsAppProviderActionResult>
+
+  deleteForEveryone?(params: {
+    instanceName: string
+    remoteJid: string
+    providerMessageId: string
+    fromMe: boolean
+  }): Promise<WhatsAppProviderActionResult>
 
   resolveMediaBase64(params: {
     instanceName: string

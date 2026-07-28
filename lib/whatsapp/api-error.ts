@@ -12,6 +12,7 @@ export type WhatsAppApiErrorCode =
   | "MEDIA_PROCESSING"
   | "MEDIA_EXPIRED"
   | "MEDIA_UNAVAILABLE"
+  | "CAPABILITY_UNAVAILABLE"
   | "INTERNAL_ERROR"
 
 export type WhatsAppApiErrorResult = {

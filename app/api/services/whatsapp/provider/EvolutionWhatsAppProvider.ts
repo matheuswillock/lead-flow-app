@@ -2,19 +2,23 @@ import type { IEvoApiService, EvoHistoryMessage } from "../evo/IEvoApiService"
 import { evoApiService } from "../evo/EvoApiService"
 import { parseEvoMessageContent } from "../evo/parseEvoMessageContent"
 import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
-import type {
-  IWhatsAppProvider,
-  WhatsAppProviderChatSummary,
-  WhatsAppProviderConnectResult,
-  WhatsAppProviderConnectionInfo,
-  WhatsAppProviderContact,
-  WhatsAppProviderGroupParticipant,
-  WhatsAppProviderHistoryMessage,
-  WhatsAppProviderInstanceInfo,
-  WhatsAppProviderMediaContent,
-  WhatsAppProviderMediaType,
-  WhatsAppProviderQrCode,
-  WhatsAppProviderSendResult,
+import {
+  WhatsAppProviderCapabilityError,
+  type IWhatsAppProvider,
+  type WhatsAppMessageActionCapabilities,
+  type WhatsAppProviderActionResult,
+  type WhatsAppProviderChatSummary,
+  type WhatsAppProviderConnectResult,
+  type WhatsAppProviderConnectionInfo,
+  type WhatsAppProviderContact,
+  type WhatsAppProviderGroupParticipant,
+  type WhatsAppProviderHistoryMessage,
+  type WhatsAppProviderInstanceInfo,
+  type WhatsAppProviderMediaContent,
+  type WhatsAppProviderMediaType,
+  type WhatsAppProviderQrCode,
+  type WhatsAppProviderQuotedMessage,
+  type WhatsAppProviderSendResult,
 } from "./IWhatsAppProvider"
 
 /**
@@ -114,6 +118,7 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
+    quoted?: WhatsAppProviderQuotedMessage
   }): Promise<WhatsAppProviderSendResult> {
     return this.evo.sendTextMessage(params)
   }
@@ -126,8 +131,48 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     fileName: string
     base64: string
     caption?: string
+    quoted?: WhatsAppProviderQuotedMessage
   }): Promise<WhatsAppProviderSendResult> {
     return this.evo.sendMediaMessage(params)
+  }
+
+  getMessageActionCapabilities(): WhatsAppMessageActionCapabilities {
+    // Evolution methods for react/delete-for-everyone are not yet homologated.
+    return {
+      reply: true,
+      forward: true,
+      react: false,
+      deleteForEveryone: false,
+    }
+  }
+
+  async reactToMessage(_params: {
+    instanceName: string
+    remoteJid: string
+    providerMessageId: string
+    fromMe: boolean
+    emoji: string
+  }): Promise<WhatsAppProviderActionResult> {
+    throw new WhatsAppProviderCapabilityError("react")
+  }
+
+  async unreactToMessage(_params: {
+    instanceName: string
+    remoteJid: string
+    providerMessageId: string
+    fromMe: boolean
+    emoji: string
+  }): Promise<WhatsAppProviderActionResult> {
+    throw new WhatsAppProviderCapabilityError("react")
+  }
+
+  async deleteForEveryone(_params: {
+    instanceName: string
+    remoteJid: string
+    providerMessageId: string
+    fromMe: boolean
+  }): Promise<WhatsAppProviderActionResult> {
+    throw new WhatsAppProviderCapabilityError("deleteForEveryone")
   }
 
   async resolveMediaBase64(params: {

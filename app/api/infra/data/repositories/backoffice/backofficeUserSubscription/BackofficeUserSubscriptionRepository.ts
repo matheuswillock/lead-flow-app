@@ -63,4 +63,11 @@ export class BackofficeUserSubscriptionRepository
       data: { status },
     })
   }
+
+  async cancelActiveByAdhesionId(adhesionId: string): Promise<void> {
+    await prisma.backofficeUserSubscription.updateMany({
+      where: { adhesionId, status: "active" },
+      data: { status: "canceled" },
+    })
+  }
 }

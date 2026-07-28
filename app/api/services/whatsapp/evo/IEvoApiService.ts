@@ -93,6 +93,11 @@ export interface IEvoApiService {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
+    quoted?: {
+      providerMessageId: string
+      fromMe?: boolean
+      remoteJid?: string
+    }
   }): Promise<EvoSendTextResult>
 
   sendMediaMessage(params: {
@@ -103,6 +108,11 @@ export interface IEvoApiService {
     fileName: string
     base64: string
     caption?: string
+    quoted?: {
+      providerMessageId: string
+      fromMe?: boolean
+      remoteJid?: string
+    }
   }): Promise<EvoSendTextResult>
 
   getBase64FromMediaMessage(params: {

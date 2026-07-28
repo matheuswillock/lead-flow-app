@@ -118,6 +118,8 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
     contacts,
     activeTeamId,
     supabaseId,
+    replyTarget,
+    setReplyTarget,
   } = useWhatsAppInboxContext()
   const [text, setText] = useState("")
   const [mentionedJids, setMentionedJids] = useState<string[]>([])
@@ -210,7 +212,10 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
             caption,
           },
           undefined,
-          { clientMessageId }
+          {
+            clientMessageId,
+            quotedMessageId: replyTarget?.id,
+          }
         )
         clearAttachmentDraft()
         setText("")
@@ -227,7 +232,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
         setUploadProgress(null)
       }
     },
-    [activeTeamId, clearAttachmentDraft, selectedConversation?.id, sendMessage, supabaseId]
+    [activeTeamId, clearAttachmentDraft, replyTarget?.id, selectedConversation?.id, sendMessage, supabaseId]
   )
 
   const handleSendAudio = useCallback(
@@ -295,12 +300,23 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
       return
     }
     if (!trimmed || isDisabled) return
-    sendMessage(trimmed, undefined, mentionedJids.length > 0 ? mentionedJids : undefined)
+    sendMessage(trimmed, undefined, mentionedJids.length > 0 ? mentionedJids : undefined, {
+      quotedMessageId: replyTarget?.id,
+    })
     setText("")
     setMentionedJids([])
     resetMentionState()
     textareaRef.current?.focus()
-  }, [attachmentDraft, isDisabled, mentionedJids, resetMentionState, sendMessage, text, uploadAndSendFile])
+  }, [
+    attachmentDraft,
+    isDisabled,
+    mentionedJids,
+    replyTarget?.id,
+    resetMentionState,
+    sendMessage,
+    text,
+    uploadAndSendFile,
+  ])
 
   const insertMention = useCallback(
     (contact: WhatsAppTeamContact) => {
@@ -449,6 +465,12 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
   const shellDisabled = isDisabled && !isRecording
   const showMicPermissionPrompt = isMicrophoneSupported() && micPermissionDenied
 
+  const replyPreview = replyTarget
+    ? replyTarget.contentText?.trim() ||
+      replyTarget.caption?.trim() ||
+      `[${replyTarget.messageType}]`
+    : null
+
   return (
     <div className="flex flex-col gap-2 pb-[env(safe-area-inset-bottom)]">
       {isDisconnected && (
@@ -456,6 +478,25 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
           O WhatsApp está desconectado. Reconecte em Configurações do WhatsApp para enviar mensagens.
         </p>
       )}
+
+      {replyTarget ? (
+        <div className="flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-foreground">Respondendo a…</p>
+            <p className="line-clamp-2 text-xs text-muted-foreground">{replyPreview}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            onClick={() => setReplyTarget(null)}
+            aria-label="Cancelar resposta"
+          >
+            <X />
+          </Button>
+        </div>
+      ) : null}
 
       {showMicPermissionPrompt ? (
         <Alert variant="destructive">

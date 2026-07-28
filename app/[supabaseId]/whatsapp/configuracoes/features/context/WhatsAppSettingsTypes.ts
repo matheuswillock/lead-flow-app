@@ -39,6 +39,16 @@ export interface ReusableWhatsAppNumber {
   configId: string
 }
 
+export interface WhatsAppOpsMetrics {
+  deadLetterCount: number
+  pendingWebhookCount: number
+  unknownOutboundCount: number
+  failedMediaCount: number
+  pendingActionCommandCount: number
+  unknownActionCommandCount: number
+  requeueHint: string
+}
+
 export interface WhatsAppSettingsState {
   config: WhatsAppConfig | null
   usage: WhatsAppUsage | null

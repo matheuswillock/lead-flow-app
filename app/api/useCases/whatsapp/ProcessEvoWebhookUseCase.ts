@@ -232,6 +232,14 @@ class ProcessEvoWebhookUseCase {
     })
     if (!isRedelivery) {
       let messageCreated = false
+      let quotedMessageId: string | undefined
+      if (parsed.quotedProviderMessageId) {
+        const quoted = await this.repository.findMessageByProviderMessageId(
+          routed.teamId,
+          parsed.quotedProviderMessageId
+        )
+        quotedMessageId = quoted?.id
+      }
       try {
         await this.repository.createMessage({
           conversation: { connect: { id: conversation.id } },
@@ -255,6 +263,8 @@ class ProcessEvoWebhookUseCase {
           senderPhone: fromMe ? undefined : normalizedPhone,
           recipientPhone: fromMe ? normalizedPhone : undefined,
           sentAt: now,
+          quotedProviderMessageId: parsed.quotedProviderMessageId,
+          ...(quotedMessageId ? { quotedMessage: { connect: { id: quotedMessageId } } } : {}),
           rawPayload: data as Prisma.InputJsonValue,
         })
         messageCreated = true
@@ -840,10 +850,7 @@ class ProcessEvoWebhookUseCase {
 
     console.info("[ProcessEvoWebhookUseCase][handleMessagesDelete] Marking message as deleted", providerMessageId)
 
-    await this.repository.updateMessageStatus(existing.id, {
-      status: "FAILED",
-      failedAt: new Date(),
-    })
+    await this.repository.markMessageDeletedForEveryone(existing.id)
   }
 
   private resolveContactNamesFromWebhook(
