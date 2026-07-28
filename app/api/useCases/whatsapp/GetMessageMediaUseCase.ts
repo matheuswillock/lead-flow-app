@@ -58,6 +58,7 @@ class GetMessageMediaUseCase {
         })
       }
 
+      // Defesa para linhas ainda sem backfill: storagePath implica AVAILABLE.
       if (message.storagePath) {
         const signedUrl = await createWhatsAppMediaSignedUrl(message.storagePath)
         if (signedUrl) {

@@ -291,10 +291,11 @@ export async function deleteOrphanWhatsAppUploads(input: {
         if (deleted >= limit) break
         if (!obj.name) continue
         scanned += 1
-        const updatedAt = obj.updated_at ? Date.parse(obj.updated_at) : Number.NaN
-        if (!Number.isFinite(updatedAt) || updatedAt > cutoff) continue
 
-        if (obj.id == null && !obj.metadata) {
+        // clientMessageId folders are listed without a reliable updated_at.
+        // Traverse nested files first; apply the age cutoff only to files.
+        const isFolder = obj.id == null && !obj.metadata
+        if (isFolder) {
           const nestedPrefix = `${prefix}/${obj.name}`
           const { data: nested } = await supabase.storage
             .from(STORAGE_BUCKETS.WHATSAPP_MEDIA)
@@ -312,6 +313,9 @@ export async function deleteOrphanWhatsAppUploads(input: {
           }
           continue
         }
+
+        const updatedAt = obj.updated_at ? Date.parse(obj.updated_at) : Number.NaN
+        if (!Number.isFinite(updatedAt) || updatedAt > cutoff) continue
 
         const storagePath = `${prefix}/${obj.name}`
         if (await input.isLinked(storagePath)) continue

@@ -26,3 +26,19 @@ ALTER TABLE public.whatsapp_messages
 
 CREATE INDEX IF NOT EXISTS whatsapp_messages_media_ingest_idx
   ON public.whatsapp_messages ("mediaStatus", "mediaAttemptCount", "updatedAt");
+
+-- Backfill legado: cópia privada já persistida → AVAILABLE.
+UPDATE public.whatsapp_messages
+SET
+  "mediaStatus" = 'AVAILABLE',
+  "mediaRetrievedAt" = COALESCE("mediaRetrievedAt", "updatedAt")
+WHERE "mediaStatus" IS NULL
+  AND "storagePath" IS NOT NULL
+  AND btrim("storagePath") <> '';
+
+-- Backfill legado: mídia sem storagePath precisa de ingestão pelo worker.
+UPDATE public.whatsapp_messages
+SET "mediaStatus" = 'PROCESSING'
+WHERE "mediaStatus" IS NULL
+  AND "messageType"::text IN ('IMAGE', 'AUDIO', 'VIDEO', 'DOCUMENT', 'STICKER')
+  AND ("storagePath" IS NULL OR btrim("storagePath") = '');

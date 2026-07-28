@@ -1095,6 +1095,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       caption: string | null
       senderDisplayName?: string | null
       mediaFileName?: string | null
+      mediaMimeType?: string | null
+      storagePath?: string | null
+      mediaSha256?: string | null
+      mediaSizeBytes?: number | null
+      mediaStatus?: WhatsAppMessage['mediaStatus']
       linkPreview?: WhatsAppMessage['linkPreview']
       sentByProfileId: string | null
       senderPhone: string | null
@@ -1136,6 +1141,11 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           caption: row.caption,
           senderDisplayName: row.senderDisplayName ?? null,
           mediaFileName: row.mediaFileName ?? null,
+          mediaMimeType: row.mediaMimeType ?? null,
+          storagePath: row.storagePath ?? null,
+          mediaSha256: row.mediaSha256 ?? null,
+          mediaSizeBytes: row.mediaSizeBytes ?? null,
+          mediaStatus: row.mediaStatus ?? null,
           linkPreview: row.linkPreview ?? null,
           sentByProfileId: row.sentByProfileId,
           senderPhone: row.senderPhone,
@@ -1177,6 +1187,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       deliveredAt: string | null
       readAt: string | null
       failedAt: string | null
+      mediaFileName?: string | null
+      mediaMimeType?: string | null
+      storagePath?: string | null
+      mediaSha256?: string | null
+      mediaSizeBytes?: number | null
+      mediaStatus?: WhatsAppMessage['mediaStatus']
+      mediaUrl?: string | null
     }) => {
       if (row.conversationId !== currentMessagesConvIdRef.current) return
       setMessages((prev) =>
@@ -1188,6 +1205,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
                 deliveredAt: row.deliveredAt,
                 readAt: row.readAt,
                 failedAt: row.failedAt,
+                ...(row.mediaFileName !== undefined ? { mediaFileName: row.mediaFileName } : {}),
+                ...(row.mediaMimeType !== undefined ? { mediaMimeType: row.mediaMimeType } : {}),
+                ...(row.storagePath !== undefined ? { storagePath: row.storagePath } : {}),
+                ...(row.mediaSha256 !== undefined ? { mediaSha256: row.mediaSha256 } : {}),
+                ...(row.mediaSizeBytes !== undefined ? { mediaSizeBytes: row.mediaSizeBytes } : {}),
+                ...(row.mediaStatus !== undefined ? { mediaStatus: row.mediaStatus } : {}),
+                ...(row.mediaUrl !== undefined ? { mediaUrl: row.mediaUrl } : {}),
               }
             : m
         )
