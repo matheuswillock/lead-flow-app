@@ -52,6 +52,15 @@ function parseActivationMode(value: unknown): BackofficeAdhesionActivationMode {
     : "checkout"
 }
 
+function parseExternalInstallmentIndexes(data: Record<string, unknown>): number[] | undefined {
+  const raw = data.externalInstallmentIndexes
+  if (!Array.isArray(raw)) return undefined
+  const indexes = raw
+    .map((value) => (typeof value === "number" ? value : Number.parseInt(String(value), 10)))
+    .filter((value) => Number.isInteger(value) && value >= 0)
+  return indexes
+}
+
 function parseBillingType(value: unknown): BackofficeAdhesionBillingTypeValue | null {
   return typeof value === "string" && (BILLING_TYPES as readonly string[]).includes(value)
     ? (value as BackofficeAdhesionBillingTypeValue)
@@ -162,6 +171,7 @@ export async function POST(request: NextRequest) {
         phone: typeof data.phone === "string" ? data.phone : "",
         email: optionalString(data, "email"),
         cpfCnpj: optionalString(data, "cpfCnpj"),
+        productId: optionalString(data, "productId"),
         cycle,
         extraTeams: optionalInteger(data, "extraTeams") ?? 0,
         extraUsers: optionalInteger(data, "extraUsers") ?? 0,
@@ -176,6 +186,7 @@ export async function POST(request: NextRequest) {
         hasUnlimitedUsers: typeof data.hasUnlimitedUsers === "boolean" ? data.hasUnlimitedUsers : false,
         additionalUsers: parseAdditionalUsers(data),
         additionalTeams: parseAdditionalTeams(data),
+        externalInstallmentIndexes: parseExternalInstallmentIndexes(data),
       },
       access.access.backofficeUserId
     )

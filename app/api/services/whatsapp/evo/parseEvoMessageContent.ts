@@ -11,6 +11,7 @@ const EMPTY_CONTENT: ParsedEvoMessageContent = {
   mediaMimeType: null,
   mediaFileName: null,
   caption: null,
+  quotedProviderMessageId: null,
   linkPreview: null,
 }
 
@@ -46,9 +47,47 @@ function pickFileName(media: Record<string, unknown>): string | null {
   return typeof fileName === "string" && fileName.length > 0 ? fileName : null
 }
 
+function extractQuotedProviderMessageId(message: Record<string, unknown>): string | null {
+  const nestedCandidates = [
+    message["extendedTextMessage"],
+    message["imageMessage"],
+    message["videoMessage"],
+    message["audioMessage"],
+    message["documentMessage"],
+    message["stickerMessage"],
+    message["buttonsResponseMessage"],
+    message["listResponseMessage"],
+    message["templateButtonReplyMessage"],
+  ]
+
+  for (const candidate of nestedCandidates) {
+    const nested = asRecord(candidate)
+    const contextInfo = asRecord(nested?.["contextInfo"])
+    const stanzaId = contextInfo?.["stanzaId"]
+    if (typeof stanzaId === "string" && stanzaId.length > 0) {
+      return stanzaId
+    }
+    const quotedMessage = contextInfo?.["quotedMessage"]
+    if (quotedMessage != null) {
+      // Presence of quotedMessage without stanzaId is still a quote; ID may be absent.
+      const fallback = contextInfo?.["stanzaId"]
+      if (typeof fallback === "string" && fallback.length > 0) return fallback
+    }
+  }
+
+  const topLevel = asRecord(message["contextInfo"])
+  const topStanza = topLevel?.["stanzaId"]
+  if (typeof topStanza === "string" && topStanza.length > 0) {
+    return topStanza
+  }
+
+  return null
+}
+
 function fromMediaMessage(
   messageType: WhatsAppMessageType,
-  media: Record<string, unknown>
+  media: Record<string, unknown>,
+  quotedProviderMessageId: string | null
 ): ParsedEvoMessageContent {
   return {
     messageType,
@@ -57,6 +96,7 @@ function fromMediaMessage(
     mediaMimeType: pickMimeType(media),
     mediaFileName: pickFileName(media),
     caption: pickCaption(media),
+    quotedProviderMessageId,
     linkPreview: null,
   }
 }
@@ -91,6 +131,8 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
   const message = asRecord(messageData)
   if (!message) return EMPTY_CONTENT
 
+  const quotedProviderMessageId = extractQuotedProviderMessageId(message)
+
   const conversation = message["conversation"]
   if (typeof conversation === "string") {
     return {
@@ -100,6 +142,7 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
       mediaMimeType: null,
       mediaFileName: null,
       caption: null,
+      quotedProviderMessageId,
       linkPreview: null,
     }
   }
@@ -113,34 +156,35 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
       mediaMimeType: null,
       mediaFileName: null,
       caption: null,
+      quotedProviderMessageId,
       linkPreview: parseLinkPreview(extended),
     }
   }
 
   const image = asRecord(message["imageMessage"])
-  if (image) return fromMediaMessage("IMAGE", image)
+  if (image) return fromMediaMessage("IMAGE", image, quotedProviderMessageId)
 
   const audio = asRecord(message["audioMessage"])
-  if (audio) return fromMediaMessage("AUDIO", audio)
+  if (audio) return fromMediaMessage("AUDIO", audio, quotedProviderMessageId)
 
   const video = asRecord(message["videoMessage"])
-  if (video) return fromMediaMessage("VIDEO", video)
+  if (video) return fromMediaMessage("VIDEO", video, quotedProviderMessageId)
 
   const document = asRecord(message["documentMessage"])
-  if (document) return fromMediaMessage("DOCUMENT", document)
+  if (document) return fromMediaMessage("DOCUMENT", document, quotedProviderMessageId)
 
   const sticker = asRecord(message["stickerMessage"])
-  if (sticker) return fromMediaMessage("STICKER", sticker)
+  if (sticker) return fromMediaMessage("STICKER", sticker, quotedProviderMessageId)
 
   if (message["locationMessage"]) {
-    return { ...EMPTY_CONTENT, messageType: "LOCATION" }
+    return { ...EMPTY_CONTENT, messageType: "LOCATION", quotedProviderMessageId }
   }
 
   if (message["contactMessage"] || message["contactsArrayMessage"]) {
-    return { ...EMPTY_CONTENT, messageType: "CONTACT" }
+    return { ...EMPTY_CONTENT, messageType: "CONTACT", quotedProviderMessageId }
   }
 
-  return EMPTY_CONTENT
+  return { ...EMPTY_CONTENT, quotedProviderMessageId }
 }
 
 export function buildMessagePreview(parsed: WhatsAppProviderMessageContent): string | null {

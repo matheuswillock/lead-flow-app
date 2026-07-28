@@ -21,6 +21,7 @@ class GetMessagesUseCase {
 
       const result = await whatsAppRepository.listMessages({
         conversationId: input.conversationId,
+        profileId: input.access.profileId,
         page: input.page,
         limit: input.limit,
       })

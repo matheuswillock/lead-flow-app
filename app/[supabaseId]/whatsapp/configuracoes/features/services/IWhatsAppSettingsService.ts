@@ -1,4 +1,4 @@
-import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber } from '../context/WhatsAppSettingsTypes'
+import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber, WhatsAppOpsMetrics } from '../context/WhatsAppSettingsTypes'
 
 export interface IWhatsAppSettingsService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
@@ -11,6 +11,7 @@ export interface IWhatsAppSettingsService {
   reconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig>
   disconnect(teamId: string, supabaseId: string): Promise<WhatsAppConfig>
   fetchUsage(teamId: string, supabaseId: string): Promise<WhatsAppUsage | null>
+  fetchOpsMetrics(teamId: string, supabaseId: string): Promise<WhatsAppOpsMetrics>
   syncHistory(teamId: string, supabaseId: string): Promise<void>
   syncPhoneContacts(
     teamId: string,

@@ -43,6 +43,7 @@ import {
   type BackofficeAdhesionOptions,
 } from "../context/BackofficeAdhesionsTypes"
 import { formatDocumentInput, maskPhone } from "@/lib/masks"
+import { scaleInstallmentScheduleToTotal } from "@/lib/backoffice-adhesions/adhesion-pricing"
 
 const NO_SELECTION_VALUE = "__none__"
 const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
@@ -130,6 +131,7 @@ function defaultValues(): BackofficeAdhesionFormValues {
     sdrBackofficeUserId: null,
     closerBackofficeUserId: null,
     activationMode: "checkout",
+    externalInstallmentIndexes: [],
     userType: "common",
     memberProAccessDays: "",
     sponsorMasterId: null,
@@ -160,6 +162,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     sdrBackofficeUserId: adhesion.sdrBackofficeUserId,
     closerBackofficeUserId: adhesion.closerBackofficeUserId,
     activationMode: "checkout",
+    externalInstallmentIndexes: [],
     userType: "common",
     memberProAccessDays: "",
     sponsorMasterId: null,
@@ -276,6 +279,11 @@ export function BackofficeAdhesionDialog({
     cardBaseMonthlyPrice: null,
   }
   const variantCyclePrices = selectedVariant?.pricesByCycle[values.cycle]
+  const availableCycles =
+    selectedVariant?.availableCycles?.length
+      ? selectedVariant.availableCycles
+      : (Object.keys(BACKOFFICE_ADHESION_CYCLE_LABELS) as BackofficeAdhesionBillingCycleKey[])
+  const installmentMeta = selectedVariant?.installmentByCycle?.[values.cycle]
   const cyclePrices = {
     baseMonthlyPrice:
       variantCyclePrices?.cardMonthlyPrice ?? addonCyclePrices.baseMonthlyPrice,
@@ -297,8 +305,22 @@ export function BackofficeAdhesionDialog({
   const cardTotal = cardMonthlyTotal * cycleMonths
   const pixTotal = pixMonthlyTotal * cycleMonths
   const chargeBillingType = resolveChargeBillingType(values.billingType)
+  const chargeTotal = chargeBillingType === "PIX" ? pixTotal : cardTotal
+  const installmentPreview: number[] = (() => {
+    if (installmentMeta?.splitMode === "CUSTOM" && installmentMeta.schedule.length > 0) {
+      return scaleInstallmentScheduleToTotal(installmentMeta.schedule, chargeTotal)
+    }
+    if (installmentMeta && installmentMeta.maxInstallments > 1) {
+      return scaleInstallmentScheduleToTotal(
+        Array.from({ length: installmentMeta.maxInstallments }, () => 1),
+        chargeTotal
+      )
+    }
+    if (chargeTotal > 0) return [Number(chargeTotal.toFixed(2))]
+    return []
+  })()
   const selectedBaseMonthly = chargeBillingType === "PIX" ? pixBaseMonthly : cardBaseMonthly
-  const total = chargeBillingType === "PIX" ? pixTotal : cardTotal
+  const total = chargeTotal
   const commercialItems = [
     {
       key: "crm",
@@ -409,6 +431,15 @@ export function BackofficeAdhesionDialog({
           defaultAdditionalTeam
         )
       }
+      if (key === "productId") {
+        const variant = options?.productVariants.find((item) => item.id === value)
+        const nextCycles = variant?.availableCycles ?? []
+        if (nextCycles.length && !nextCycles.includes(current.cycle)) {
+          next.cycle = nextCycles[0]
+        }
+        next.externalInstallmentIndexes = []
+        next.activationMode = "checkout"
+      }
       if (key === "cycle") {
         const cycle = value as BackofficeAdhesionBillingCycleKey
         if (current.userType === "member_pro") {
@@ -417,6 +448,7 @@ export function BackofficeAdhesionDialog({
         if (cycle === "annual" || current.userType === "member_pro") {
           next.hasUnlimitedUsers = true
         }
+        next.externalInstallmentIndexes = []
       }
       if (key === "userType" && value === "member_pro") {
         next.memberProAccessDays = String(CYCLE_DAYS[current.cycle])
@@ -536,6 +568,12 @@ export function BackofficeAdhesionDialog({
         cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
         billingType: chargeBillingType,
         accessExpiresAt,
+        activationMode:
+          values.activationMode === "external_paid" ||
+          values.externalInstallmentIndexes.length > 0
+            ? "external_paid"
+            : "checkout",
+        externalInstallmentIndexes: values.externalInstallmentIndexes,
         hasUnlimitedUsers:
           values.cycle === "annual" ||
           values.userType === "member_pro" ||
@@ -833,25 +871,75 @@ export function BackofficeAdhesionDialog({
             ) : null}
 
             {mode === "create" && !isGuest ? (
-              <div className="flex items-center justify-between gap-3 rounded-md border p-3">
-                <div>
-                  <Label htmlFor="adhesion-external-paid">Pago por fora</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Cria a conta e envia o acesso sem gerar checkout Asaas.
-                  </p>
+              <div className="flex flex-col gap-3 rounded-md border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="adhesion-external-paid">100% pago externamente</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Marca todas as parcelas como pagas por fora, cria a conta e não gera checkout.
+                    </p>
+                  </div>
+                  <Switch
+                    id="adhesion-external-paid"
+                    checked={
+                      isExternalPaid ||
+                      (installmentPreview.length > 0 &&
+                        values.externalInstallmentIndexes.length === installmentPreview.length)
+                    }
+                    disabled={isSubmitting}
+                    onCheckedChange={(checked) => {
+                      setValues((current) => ({
+                        ...current,
+                        activationMode: checked ? "external_paid" : "checkout",
+                        billingType: resolveChargeBillingType(current.billingType),
+                        externalInstallmentIndexes: checked
+                          ? installmentPreview.map((_, index) => index)
+                          : [],
+                      }))
+                    }}
+                  />
                 </div>
-                <Switch
-                  id="adhesion-external-paid"
-                  checked={isExternalPaid}
-                  disabled={isSubmitting}
-                  onCheckedChange={(checked) => {
-                    setValues((current) => ({
-                      ...current,
-                      activationMode: checked ? "external_paid" : "checkout",
-                      billingType: resolveChargeBillingType(current.billingType),
-                    }))
-                  }}
-                />
+                {installmentPreview.length > 0 ? (
+                  <div className="flex flex-col gap-2 border-t pt-3">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Parcelas — marque as já pagas externamente. As demais geram cobrança Asaas e a
+                      conta é ativada na criação.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {installmentPreview.map((amount, index) => {
+                        const checked = values.externalInstallmentIndexes.includes(index)
+                        return (
+                          <label
+                            key={index}
+                            className="flex items-center justify-between gap-3 text-sm"
+                          >
+                            <span>
+                              Parcela {index + 1}: {formatCurrency(amount)}
+                            </span>
+                            <Switch
+                              checked={checked}
+                              disabled={isSubmitting}
+                              onCheckedChange={(nextChecked) => {
+                                setValues((current) => {
+                                  const set = new Set(current.externalInstallmentIndexes)
+                                  if (nextChecked) set.add(index)
+                                  else set.delete(index)
+                                  const indexes = Array.from(set).sort((a, b) => a - b)
+                                  return {
+                                    ...current,
+                                    externalInstallmentIndexes: indexes,
+                                    activationMode:
+                                      indexes.length > 0 ? "external_paid" : "checkout",
+                                  }
+                                })
+                              }}
+                            />
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -976,12 +1064,12 @@ export function BackofficeAdhesionDialog({
                         {options.productVariants.map((variant) => {
                           const prices = variant.pricesByCycle[values.cycle]
                           const displayPrice =
-                            prices.cardMonthlyPrice ?? prices.pixMonthlyPrice ?? 0
+                            prices?.cardMonthlyPrice ?? prices?.pixMonthlyPrice ?? 0
                           return (
                             <SelectItem key={variant.id} value={variant.id}>
                               {variant.name}
-                              {variant.isDefault ? " (padrão)" : ""} —{" "}
-                              {formatCurrency(displayPrice)}/mês
+                              {variant.isDefault ? " (padrão)" : ""}
+                              {displayPrice > 0 ? ` — ${formatCurrency(displayPrice)}` : ""}
                             </SelectItem>
                           )
                         })}
@@ -1009,9 +1097,9 @@ export function BackofficeAdhesionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      {Object.entries(BACKOFFICE_ADHESION_CYCLE_LABELS).map(([cycle, label]) => (
+                      {availableCycles.map((cycle) => (
                         <SelectItem key={cycle} value={cycle}>
-                          {label}
+                          {BACKOFFICE_ADHESION_CYCLE_LABELS[cycle]}
                         </SelectItem>
                       ))}
                     </SelectGroup>

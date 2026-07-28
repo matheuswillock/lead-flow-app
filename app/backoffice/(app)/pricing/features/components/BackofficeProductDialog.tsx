@@ -1,5 +1,6 @@
 "use client"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,10 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
-import { Plus, X } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { useBackofficePricing } from "../context/BackofficePricingContext"
 import type {
   BackofficeAdhesionBillingCycleKey,
@@ -31,17 +34,10 @@ import type {
   BackofficeProductType,
   InstallmentGroup,
 } from "../context/BackofficePricingTypes"
-import { flattenSchedule } from "../context/BackofficePricingTypes"
-
-const CYCLES: { key: BackofficeAdhesionBillingCycleKey; label: string; months: number; defaultMax: number }[] = [
-  { key: "monthly", label: "Mensal", months: 1, defaultMax: 1 },
-  { key: "quarterly", label: "Trimestral", months: 3, defaultMax: 3 },
-  { key: "semiannual", label: "Semestral", months: 6, defaultMax: 6 },
-  { key: "annual", label: "Anual", months: 12, defaultMax: 12 },
-]
+import { BILLING_CYCLE_META, flattenSchedule } from "../context/BackofficePricingTypes"
 
 function normalizePriceInput(value: string): string {
-  return value.replace(/[^\d,]/g, "").replace(",", ".")
+  return value.replace(/[^\d,.]/g, "").replace(",", ".")
 }
 
 function displayCurrencyInput(raw: string): string {
@@ -72,26 +68,64 @@ function scheduleTotal(groups: InstallmentGroup[]): number {
 }
 
 function isScheduleValid(groups: InstallmentGroup[]): boolean {
-  return groups.every((g) => {
-    const count = parseInt(g.count, 10)
-    const value = parseFloat(g.value.replace(",", "."))
-    return count >= 1 && isFinite(value) && value > 0
-  }) && groups.length >= 1
+  return (
+    groups.length >= 1 &&
+    groups.every((g) => {
+      const count = parseInt(g.count, 10)
+      const value = parseFloat(g.value.replace(",", "."))
+      return count >= 1 && isFinite(value) && value > 0
+    })
+  )
+}
+
+function isCycleValid(
+  formData: BackofficeProductFormData,
+  key: BackofficeAdhesionBillingCycleKey
+): boolean {
+  const entry = formData.paymentRules[key]
+  if (!hasPositivePrice(entry.pixPrice)) return false
+  if (entry.installmentSplitMode === "CUSTOM") {
+    return isScheduleValid(entry.installmentSchedule)
+  }
+  return hasPositivePrice(entry.cardPrice)
 }
 
 function canSubmit(formData: BackofficeProductFormData): boolean {
   if (!formData.name.trim() || !formData.featureSlug.trim()) return false
   if (formData.billingMode === "RECURRING") {
-    return CYCLES.every(({ key }) => {
-      const entry = formData.paymentRules[key]
-      if (!hasPositivePrice(entry.pixPrice)) return false
-      if (entry.installmentSplitMode === "CUSTOM") {
-        return isScheduleValid(entry.installmentSchedule)
-      }
-      return hasPositivePrice(entry.cardPrice)
-    })
+    if (formData.activeCycles.length === 0) return false
+    return formData.activeCycles.every((key) => isCycleValid(formData, key))
   }
   return !formData.priceLifetime || hasPositivePrice(formData.priceLifetime)
+}
+
+function submitBlockedReason(formData: BackofficeProductFormData): string | null {
+  if (!formData.name.trim()) return "Informe o nome da precificação."
+  if (!formData.featureSlug.trim()) return "Selecione a funcionalidade."
+  if (formData.billingMode === "LIFETIME") {
+    if (formData.priceLifetime && !hasPositivePrice(formData.priceLifetime)) {
+      return "Informe um preço vitalício válido ou deixe em branco."
+    }
+    return null
+  }
+  if (formData.activeCycles.length === 0) {
+    return "Adicione ao menos um ciclo com preço."
+  }
+  for (const key of formData.activeCycles) {
+    const entry = formData.paymentRules[key]
+    const label = BILLING_CYCLE_META.find((c) => c.key === key)?.label ?? key
+    if (!hasPositivePrice(entry.pixPrice)) {
+      return `Complete o PIX do ciclo ${label}.`
+    }
+    if (entry.installmentSplitMode === "CUSTOM") {
+      if (!isScheduleValid(entry.installmentSchedule)) {
+        return `Complete o cronograma de parcelas do ciclo ${label}.`
+      }
+    } else if (!hasPositivePrice(entry.cardPrice)) {
+      return `Complete o valor no cartão do ciclo ${label}.`
+    }
+  }
+  return null
 }
 
 export function BackofficeProductDialog() {
@@ -108,24 +142,29 @@ export function BackofficeProductDialog() {
     setInstallmentGroup,
     addInstallmentGroup,
     removeInstallmentGroup,
+    addActiveCycle,
+    removeActiveCycle,
     submitForm,
   } = useBackofficePricing()
   const isRecurring = formData.billingMode === "RECURRING"
   const submitDisabled = isSaving || !canSubmit(formData)
+  const blockedReason = submitDisabled && !isSaving ? submitBlockedReason(formData) : null
+  const availableToAdd = BILLING_CYCLE_META.filter(
+    (cycle) => !formData.activeCycles.includes(cycle.key)
+  )
 
   return (
     <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-4xl">
+      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {dialogMode === "create" && "Novo produto"}
-            {dialogMode === "duplicate" && "Duplicar produto"}
-            {dialogMode === "edit" && "Editar produto"}
+            {dialogMode === "create" && "Nova precificação"}
+            {dialogMode === "duplicate" && "Duplicar precificação"}
+            {dialogMode === "edit" && "Editar precificação"}
           </DialogTitle>
-          <DialogDescription>
-            {dialogMode === "duplicate"
-              ? "Revise os dados copiados e ajuste o que for necessário antes de criar a nova precificação."
-              : "Configure o produto usado na precificação das adesões."}
+          <DialogDescription className="flex flex-col gap-1">
+            <span>Defina nome, funcionalidade e pelo menos um ciclo com preço.</span>
+            <span>Ciclos sem preço não entram na adesão.</span>
           </DialogDescription>
         </DialogHeader>
 
@@ -138,6 +177,7 @@ export function BackofficeProductDialog() {
                 value={formData.name}
                 disabled={isSaving}
                 onChange={(event) => setFormField("name", event.target.value)}
+                placeholder="Ex.: CRM - Radar"
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -181,7 +221,7 @@ export function BackofficeProductDialog() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Múltiplas precificações podem usar o mesmo slug de funcionalidade.
+                    Várias precificações podem usar o mesmo slug (ex.: CRM padrão e CRM - Radar).
                   </p>
                 </>
               )}
@@ -198,15 +238,13 @@ export function BackofficeProductDialog() {
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label>Tipo</Label>
               <Select
                 value={formData.type}
                 disabled={isSaving}
-                onValueChange={(value) =>
-                  setFormField("type", value as BackofficeProductType)
-                }
+                onValueChange={(value) => setFormField("type", value as BackofficeProductType)}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -233,236 +271,272 @@ export function BackofficeProductDialog() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="RECURRING">Parcelado</SelectItem>
+                    <SelectItem value="RECURRING">Parcelado / recorrente</SelectItem>
                     <SelectItem value="LIFETIME">Vitalício</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-3 pt-6">
+            <div className="flex items-center gap-3">
               <Switch
                 id="product-default"
                 checked={formData.isDefault}
                 disabled={isSaving}
                 onCheckedChange={(checked) => setFormField("isDefault", checked)}
               />
-              <Label htmlFor="product-default">Produto padrão</Label>
+              <Label htmlFor="product-default">Precificação padrão do slug</Label>
             </div>
-            <div className="flex items-center gap-3 pt-6">
+            <div className="flex items-center gap-3">
               <Switch
                 id="product-active"
                 checked={formData.isActive}
                 disabled={isSaving}
                 onCheckedChange={(checked) => setFormField("isActive", checked)}
               />
-              <Label htmlFor="product-active">Produto ativo</Label>
+              <Label htmlFor="product-active">Precificação ativa</Label>
             </div>
           </div>
 
           {isRecurring ? (
             <div className="flex flex-col gap-3">
-              <Label className="text-sm font-medium">Regras de Pagamento</Label>
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
-                      <th className="px-3 py-2 text-left font-medium">Ciclo</th>
-                      <th className="px-3 py-2 text-left font-medium">Cartão/mês *</th>
-                      <th className="px-3 py-2 text-left font-medium">Total Cartão</th>
-                      <th className="px-3 py-2 text-left font-medium">PIX/mês *</th>
-                      <th className="px-3 py-2 text-left font-medium">Total PIX</th>
-                      <th className="px-3 py-2 text-left font-medium">Desc/mês</th>
-                      <th className="px-3 py-2 text-left font-medium">Desc Total</th>
-                      <th className="px-3 py-2 text-left font-medium">Parcelas</th>
-                      <th className="px-3 py-2 text-left font-medium">Desc %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {CYCLES.map(({ key, label, months }) => {
-                      const entry = formData.paymentRules[key]
-                      const isCustom = entry.installmentSplitMode === "CUSTOM"
-                      const pixPrice = parsePrice(entry.pixPrice)
+              <div className="flex flex-col gap-1">
+                <Label className="text-sm font-medium">Ciclos desta precificação</Label>
+                <p className="text-xs text-muted-foreground">
+                  Adicione só os ciclos que farão parte desta tabela. Exemplo: apenas trimestral.
+                </p>
+              </div>
 
-                      const cardTotal = isCustom
-                        ? scheduleTotal(entry.installmentSchedule)
-                        : parsePrice(entry.cardPrice) * months
-                      const cardMonthly = isCustom
-                        ? (cardTotal > 0 ? cardTotal / months : 0)
-                        : parsePrice(entry.cardPrice)
-                      const totalPix = pixPrice * months
-                      const discountMonth = cardMonthly > 0 && pixPrice > 0 ? cardMonthly - pixPrice : 0
-                      const discountTotal = discountMonth * months
-                      const discountPct = cardMonthly > 0 && discountMonth > 0 ? (discountMonth / cardMonthly) * 100 : 0
+              {availableToAdd.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {availableToAdd.map((cycle) => (
+                    <Button
+                      key={cycle.key}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isSaving}
+                      onClick={() => addActiveCycle(cycle.key)}
+                    >
+                      <Plus data-icon="inline-start" />
+                      {cycle.label}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
 
-                      return (
-                        <>
-                          <tr key={key} className="border-b last:border-b-0">
-                            <td className="px-3 py-2 font-medium text-muted-foreground">{label}</td>
-                            <td className="px-3 py-2">
-                              {isCustom ? (
-                                <span className="text-xs text-muted-foreground">
-                                  {cardMonthly > 0 ? formatCurrency(cardMonthly) : "—"}
-                                </span>
-                              ) : (
-                                <Input
-                                  className="h-8 w-28 text-sm"
-                                  inputMode="decimal"
-                                  placeholder="R$ 0,00"
-                                  value={displayCurrencyInput(entry.cardPrice)}
-                                  disabled={isSaving}
-                                  onChange={(e) =>
-                                    setPaymentRuleField(key, "cardPrice", parseCurrencyInput(e.target.value))
-                                  }
-                                />
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {cardTotal > 0 ? formatCurrency(cardTotal) : "—"}
-                            </td>
-                            <td className="px-3 py-2">
+              {formData.activeCycles.length === 0 ? (
+                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                  Nenhum ciclo adicionado. Use os botões acima para incluir Mensal, Trimestral,
+                  Semestral ou Anual.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {BILLING_CYCLE_META.filter((cycle) =>
+                    formData.activeCycles.includes(cycle.key)
+                  ).map(({ key, label, months }) => {
+                    const entry = formData.paymentRules[key]
+                    const isCustom = entry.installmentSplitMode === "CUSTOM"
+                    const pixPrice = parsePrice(entry.pixPrice)
+                    const cardTotal = isCustom
+                      ? scheduleTotal(entry.installmentSchedule)
+                      : parsePrice(entry.cardPrice) * months
+                    const cardMonthly = isCustom
+                      ? cardTotal > 0
+                        ? cardTotal / months
+                        : 0
+                      : parsePrice(entry.cardPrice)
+                    const totalPix = pixPrice * months
+
+                    return (
+                      <div key={key} className="flex flex-col gap-3 rounded-md border p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{label}</p>
+                            {isCustom ? <Badge variant="secondary">Valores diferentes</Badge> : null}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={isSaving}
+                            onClick={() => removeActiveCycle(key)}
+                          >
+                            <Trash2 data-icon="inline-start" />
+                            Remover ciclo
+                          </Button>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="flex flex-col gap-2">
+                            <Label htmlFor={`${key}-pix`}>Valor no PIX (por mês) *</Label>
+                            <Input
+                              id={`${key}-pix`}
+                              inputMode="decimal"
+                              placeholder="R$ 0,00"
+                              value={displayCurrencyInput(entry.pixPrice)}
+                              disabled={isSaving}
+                              onChange={(e) =>
+                                setPaymentRuleField(key, "pixPrice", parseCurrencyInput(e.target.value))
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Total PIX: {totalPix > 0 ? formatCurrency(totalPix) : "—"}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Label>Parcelamento no cartão</Label>
+                            <ToggleGroup
+                              type="single"
+                              variant="outline"
+                              size="sm"
+                              className="justify-start"
+                              value={entry.installmentSplitMode}
+                              disabled={isSaving}
+                              onValueChange={(value) => {
+                                if (value === "EQUAL" || value === "CUSTOM") {
+                                  setInstallmentSplitMode(key, value)
+                                }
+                              }}
+                            >
+                              <ToggleGroupItem value="EQUAL">Parcelas iguais</ToggleGroupItem>
+                              <ToggleGroupItem value="CUSTOM">Valores diferentes</ToggleGroupItem>
+                            </ToggleGroup>
+                            <p className="text-xs text-muted-foreground">
+                              {isCustom
+                                ? "Cliente só pode pagar à vista ou exatamente este cronograma."
+                                : "Cliente escolhe de 1 até N parcelas de mesmo valor."}
+                            </p>
+                          </div>
+                        </div>
+
+                        {!isCustom ? (
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor={`${key}-card`}>Valor no cartão (por mês do ciclo) *</Label>
                               <Input
-                                className="h-8 w-28 text-sm"
+                                id={`${key}-card`}
                                 inputMode="decimal"
                                 placeholder="R$ 0,00"
-                                value={displayCurrencyInput(entry.pixPrice)}
+                                value={displayCurrencyInput(entry.cardPrice)}
                                 disabled={isSaving}
                                 onChange={(e) =>
-                                  setPaymentRuleField(key, "pixPrice", parseCurrencyInput(e.target.value))
+                                  setPaymentRuleField(
+                                    key,
+                                    "cardPrice",
+                                    parseCurrencyInput(e.target.value)
+                                  )
                                 }
                               />
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {pixPrice > 0 ? formatCurrency(totalPix) : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {discountMonth > 0 ? formatCurrency(discountMonth) : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {discountTotal > 0 ? formatCurrency(discountTotal) : "—"}
-                            </td>
-                            <td className="px-3 py-2">
-                              {isCustom ? (
-                                <button
-                                  type="button"
-                                  className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
-                                  disabled={isSaving}
-                                  onClick={() => setInstallmentSplitMode(key, "EQUAL")}
-                                >
-                                  Custom
-                                </button>
-                              ) : (
-                                <div className="flex items-center gap-1">
+                              <p className="text-xs text-muted-foreground">
+                                Total no cartão: {cardTotal > 0 ? formatCurrency(cardTotal) : "—"}
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor={`${key}-max`}>Máximo de parcelas</Label>
+                              <Input
+                                id={`${key}-max`}
+                                inputMode="numeric"
+                                value={entry.maxInstallments}
+                                disabled={isSaving}
+                                onChange={(e) =>
+                                  setPaymentRuleField(
+                                    key,
+                                    "maxInstallments",
+                                    e.target.value.replace(/\D/g, "")
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2 rounded-md bg-muted/30 p-3">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Cronograma de parcelas — {label}
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              {entry.installmentSchedule.map((group, idx) => (
+                                <div key={idx} className="flex flex-wrap items-center gap-2">
                                   <Input
-                                    className="h-8 w-16 text-sm"
+                                    className="h-8 w-16"
                                     inputMode="numeric"
-                                    placeholder="1"
-                                    value={entry.maxInstallments}
+                                    placeholder="Nº"
+                                    aria-label={`Quantidade do grupo ${idx + 1}`}
+                                    value={group.count}
                                     disabled={isSaving}
                                     onChange={(e) =>
-                                      setPaymentRuleField(
+                                      setInstallmentGroup(
                                         key,
-                                        "maxInstallments",
+                                        idx,
+                                        "count",
                                         e.target.value.replace(/\D/g, "")
                                       )
                                     }
                                   />
-                                  <button
-                                    type="button"
-                                    title="Usar parcelas com valores diferentes"
-                                    className="rounded p-1 text-xs text-muted-foreground hover:text-primary"
+                                  <span className="text-xs text-muted-foreground">×</span>
+                                  <Input
+                                    className="h-8 w-28"
+                                    inputMode="decimal"
+                                    placeholder="R$ 0,00"
+                                    aria-label={`Valor do grupo ${idx + 1}`}
+                                    value={displayCurrencyInput(group.value)}
                                     disabled={isSaving}
-                                    onClick={() => setInstallmentSplitMode(key, "CUSTOM")}
+                                    onChange={(e) =>
+                                      setInstallmentGroup(
+                                        key,
+                                        idx,
+                                        "value",
+                                        parseCurrencyInput(e.target.value)
+                                      )
+                                    }
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={isSaving || entry.installmentSchedule.length === 1}
+                                    aria-label={`Remover grupo ${idx + 1}`}
+                                    onClick={() => removeInstallmentGroup(key, idx)}
                                   >
-                                    ±
-                                  </button>
+                                    <Trash2 />
+                                  </Button>
                                 </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {discountPct > 0 ? `${discountPct.toFixed(2)}%` : "—"}
-                            </td>
-                          </tr>
-                          {isCustom && (
-                            <tr key={`${key}-schedule`} className="border-b last:border-b-0 bg-muted/20">
-                              <td colSpan={9} className="px-3 py-3">
-                                <div className="flex flex-col gap-2">
-                                  <p className="text-xs font-medium text-muted-foreground">
-                                    Parcelas personalizadas — {label}
-                                  </p>
-                                  <div className="flex flex-col gap-1.5">
-                                    {entry.installmentSchedule.map((group, idx) => (
-                                      <div key={idx} className="flex items-center gap-2">
-                                        <Input
-                                          className="h-7 w-16 text-sm"
-                                          inputMode="numeric"
-                                          placeholder="Nº"
-                                          value={group.count}
-                                          disabled={isSaving}
-                                          onChange={(e) =>
-                                            setInstallmentGroup(key, idx, "count", e.target.value.replace(/\D/g, ""))
-                                          }
-                                        />
-                                        <span className="text-xs text-muted-foreground">×</span>
-                                        <Input
-                                          className="h-7 w-28 text-sm"
-                                          inputMode="decimal"
-                                          placeholder="R$ 0,00"
-                                          value={displayCurrencyInput(group.value)}
-                                          disabled={isSaving}
-                                          onChange={(e) =>
-                                            setInstallmentGroup(key, idx, "value", parseCurrencyInput(e.target.value))
-                                          }
-                                        />
-                                        <button
-                                          type="button"
-                                          disabled={isSaving || entry.installmentSchedule.length === 1}
-                                          className={cn(
-                                            "rounded p-1 text-muted-foreground transition-colors",
-                                            entry.installmentSchedule.length > 1
-                                              ? "hover:text-destructive"
-                                              : "opacity-30 cursor-not-allowed"
-                                          )}
-                                          onClick={() => removeInstallmentGroup(key, idx)}
-                                        >
-                                          <X className="size-3.5" />
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <button
-                                      type="button"
-                                      disabled={isSaving}
-                                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                                      onClick={() => addInstallmentGroup(key)}
-                                    >
-                                      <Plus className="size-3" />
-                                      Adicionar grupo
-                                    </button>
-                                    <span className="text-xs text-muted-foreground">
-                                      Total:{" "}
-                                      <span className={cn(
-                                        "font-medium",
-                                        cardTotal > 0 ? "text-foreground" : "text-muted-foreground"
-                                      )}>
-                                        {cardTotal > 0 ? formatCurrency(cardTotal) : "—"}
-                                      </span>
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={isSaving}
+                                onClick={() => addInstallmentGroup(key)}
+                              >
+                                <Plus data-icon="inline-start" />
+                                Adicionar grupo
+                              </Button>
+                              <p className="text-xs text-muted-foreground">
+                                Total no cartão:{" "}
+                                <span
+                                  className={cn(
+                                    "font-medium",
+                                    cardTotal > 0 ? "text-foreground" : "text-muted-foreground"
+                                  )}
+                                >
+                                  {cardTotal > 0 ? formatCurrency(cardTotal) : "—"}
+                                </span>
+                                {cardMonthly > 0 ? ` (${formatCurrency(cardMonthly)}/mês)` : null}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="product-lifetime">Vitalício</Label>
+              <Label htmlFor="product-lifetime">Preço vitalício</Label>
               <Input
                 id="product-lifetime"
                 inputMode="decimal"
@@ -476,13 +550,19 @@ export function BackofficeProductDialog() {
           )}
         </div>
 
-        <DialogFooter className="border-t pt-4">
-          <Button type="button" variant="outline" disabled={isSaving} onClick={closeDialog}>
-            Cancelar
-          </Button>
-          <Button type="button" disabled={submitDisabled} onClick={submitForm}>
-            {isSaving ? "Salvando..." : "Salvar"}
-          </Button>
+        <Separator />
+        <DialogFooter className="flex-col items-stretch gap-2 sm:flex-col">
+          {blockedReason ? (
+            <p className="text-xs text-muted-foreground">{blockedReason}</p>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" disabled={isSaving} onClick={closeDialog}>
+              Cancelar
+            </Button>
+            <Button type="button" disabled={submitDisabled} onClick={submitForm}>
+              {isSaving ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

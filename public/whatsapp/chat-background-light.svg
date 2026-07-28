@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Corretor Studio chat background light">
+  <title>Corretor Studio  padrão de fundo Inbox (light)</title>
+  <desc>Asset original Corretor Studio. Licença proprietária do produto. Não derivado do WhatsApp.</desc>
+  <rect width="120" height="120" fill="#f4f1ec"/>
+  <g fill="none" stroke="#e7e0d6" stroke-width="1.2" opacity="0.9">
+    <path d="M0 30h120M0 60h120M0 90h120"/>
+    <path d="M30 0v120M60 0v120M90 0v120"/>
+  </g>
+  <g fill="#ff6900" opacity="0.08">
+    <circle cx="20" cy="20" r="3"/>
+    <circle cx="80" cy="40" r="2.5"/>
+    <circle cx="50" cy="85" r="3.5"/>
+    <circle cx="105" cy="100" r="2"/>
+  </g>
+</svg>

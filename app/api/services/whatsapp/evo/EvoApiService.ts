@@ -607,6 +607,11 @@ export class EvoApiService implements IEvoApiService {
     text: string
     mentioned?: string[]
     linkPreview?: boolean
+    quoted?: {
+      providerMessageId: string
+      fromMe?: boolean
+      remoteJid?: string
+    }
   }): Promise<EvoSendTextResult> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
@@ -623,6 +628,15 @@ export class EvoApiService implements IEvoApiService {
     }
     if (params.linkPreview !== undefined) {
       body.linkPreview = params.linkPreview
+    }
+    if (params.quoted) {
+      body.quoted = {
+        key: {
+          id: params.quoted.providerMessageId,
+          ...(params.quoted.fromMe !== undefined ? { fromMe: params.quoted.fromMe } : {}),
+          ...(params.quoted.remoteJid ? { remoteJid: params.quoted.remoteJid } : {}),
+        },
+      }
     }
 
     const data = await fetchEvo<EvoSendTextResponse>(
@@ -661,6 +675,11 @@ export class EvoApiService implements IEvoApiService {
     fileName: string
     base64: string
     caption?: string
+    quoted?: {
+      providerMessageId: string
+      fromMe?: boolean
+      remoteJid?: string
+    }
   }): Promise<EvoSendTextResult> {
     const base = getBaseUrl()
     const apiKey = getApiKey()
@@ -668,19 +687,30 @@ export class EvoApiService implements IEvoApiService {
 
     console.info("[EvoApiService][sendMediaMessage] enviando mídia", { mediatype: params.mediatype })
 
+    const body: Record<string, unknown> = {
+      number: params.recipientJid,
+      mediatype: params.mediatype,
+      mimetype: params.mimeType,
+      fileName: params.fileName,
+      media: params.base64,
+      caption: params.caption,
+    }
+    if (params.quoted) {
+      body.quoted = {
+        key: {
+          id: params.quoted.providerMessageId,
+          ...(params.quoted.fromMe !== undefined ? { fromMe: params.quoted.fromMe } : {}),
+          ...(params.quoted.remoteJid ? { remoteJid: params.quoted.remoteJid } : {}),
+        },
+      }
+    }
+
     const data = await fetchEvo<EvoSendTextResponse>(
       url,
       {
         method: "POST",
         headers: buildHeaders(apiKey),
-        body: JSON.stringify({
-          number: params.recipientJid,
-          mediatype: params.mediatype,
-          mimetype: params.mimeType,
-          fileName: params.fileName,
-          media: params.base64,
-          caption: params.caption,
-        }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(EVO_SEND_REQUEST_TIMEOUT_MS),
       },
       "sendMediaMessage"

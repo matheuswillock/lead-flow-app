@@ -121,9 +121,13 @@ export class BackofficeProductUseCase {
         return new Output(false, [], ["Slug inválido: selecione um slug de funcionalidade"], null)
       }
 
-      const validationError = this.validatePrices(input.billingMode, input)
+      const validationError = this.validatePrices(input.billingMode, input, input.paymentRules)
       if (validationError) {
         return new Output(false, [], [validationError], null)
+      }
+
+      if (input.billingMode === "RECURRING" && (!input.paymentRules || input.paymentRules.length === 0)) {
+        return new Output(false, [], ["Informe ao menos uma regra de pagamento"], null)
       }
 
       const existingCount = await this.productRepo.countByFeatureSlug(featureSlug)
@@ -165,33 +169,37 @@ export class BackofficeProductUseCase {
       }
 
       const billingMode = input.billingMode ?? existing.billingMode
-      const validationError = this.validatePrices(billingMode, {
-        priceMonthly: Object.prototype.hasOwnProperty.call(input, "priceMonthly")
-          ? input.priceMonthly
-          : existing.priceMonthly !== null
-            ? Number(existing.priceMonthly)
-            : null,
-        priceQuarterly: Object.prototype.hasOwnProperty.call(input, "priceQuarterly")
-          ? input.priceQuarterly
-          : existing.priceQuarterly !== null
-            ? Number(existing.priceQuarterly)
-            : null,
-        priceSemiannual: Object.prototype.hasOwnProperty.call(input, "priceSemiannual")
-          ? input.priceSemiannual
-          : existing.priceSemiannual !== null
-            ? Number(existing.priceSemiannual)
-            : null,
-        priceAnnual: Object.prototype.hasOwnProperty.call(input, "priceAnnual")
-          ? input.priceAnnual
-          : existing.priceAnnual !== null
-            ? Number(existing.priceAnnual)
-            : null,
-        priceLifetime: Object.prototype.hasOwnProperty.call(input, "priceLifetime")
-          ? input.priceLifetime
-          : existing.priceLifetime !== null
-            ? Number(existing.priceLifetime)
-            : null,
-      })
+      const validationError = this.validatePrices(
+        billingMode,
+        {
+          priceMonthly: Object.prototype.hasOwnProperty.call(input, "priceMonthly")
+            ? input.priceMonthly
+            : existing.priceMonthly !== null
+              ? Number(existing.priceMonthly)
+              : null,
+          priceQuarterly: Object.prototype.hasOwnProperty.call(input, "priceQuarterly")
+            ? input.priceQuarterly
+            : existing.priceQuarterly !== null
+              ? Number(existing.priceQuarterly)
+              : null,
+          priceSemiannual: Object.prototype.hasOwnProperty.call(input, "priceSemiannual")
+            ? input.priceSemiannual
+            : existing.priceSemiannual !== null
+              ? Number(existing.priceSemiannual)
+              : null,
+          priceAnnual: Object.prototype.hasOwnProperty.call(input, "priceAnnual")
+            ? input.priceAnnual
+            : existing.priceAnnual !== null
+              ? Number(existing.priceAnnual)
+              : null,
+          priceLifetime: Object.prototype.hasOwnProperty.call(input, "priceLifetime")
+            ? input.priceLifetime
+            : existing.priceLifetime !== null
+              ? Number(existing.priceLifetime)
+              : null,
+        },
+        input.paymentRules
+      )
       if (validationError) {
         return new Output(false, [], [validationError], null)
       }
@@ -215,9 +223,57 @@ export class BackofficeProductUseCase {
       }
 
       const { paymentRules, ...productInput } = input
+
+      if (paymentRules) {
+        const lockedCycles = await this.productRepo.findLockedBillingCycles(id)
+        const locked = new Set(lockedCycles)
+        const existingWithRules = await this.productRepo.findByIdWithPaymentRules(id)
+        const existingRules = existingWithRules?.paymentRules ?? []
+        const incomingKeys = new Set(
+          paymentRules.map((rule) => `${rule.paymentMethod}:${rule.billingCycle}`)
+        )
+        const blockedRemovals = existingRules
+          .filter((rule) => !incomingKeys.has(`${rule.paymentMethod}:${rule.billingCycle}`))
+          .filter((rule) => locked.has(rule.billingCycle as "monthly" | "quarterly" | "semiannual" | "annual"))
+          .map((rule) => rule.billingCycle)
+        const blockedUpdates: string[] = []
+        for (const rule of paymentRules) {
+          if (!locked.has(rule.billingCycle)) continue
+          const current = existingRules.find(
+            (item) =>
+              item.paymentMethod === rule.paymentMethod && item.billingCycle === rule.billingCycle
+          )
+          if (!current) continue
+          const scheduleChanged =
+            JSON.stringify(current.installmentSchedule ?? []) !==
+            JSON.stringify(rule.installmentSchedule ?? [])
+          if (
+            Number(current.price.toString()) !== rule.price ||
+            (current.installmentSplitMode ?? "EQUAL") !== (rule.installmentSplitMode ?? "EQUAL") ||
+            (current.canInstallment ?? false) !== (rule.canInstallment ?? false) ||
+            current.maxInstallments !== rule.maxInstallments ||
+            scheduleChanged
+          ) {
+            blockedUpdates.push(rule.billingCycle)
+          }
+        }
+        if (blockedRemovals.length || blockedUpdates.length) {
+          const parts = [
+            ...Array.from(new Set(blockedUpdates)).map(
+              (cycle) => `ciclo ${cycle} em uso não pode ter preço/parcelas alterados`
+            ),
+            ...Array.from(new Set(blockedRemovals)).map(
+              (cycle) => `ciclo ${cycle} em uso não pode ser removido`
+            ),
+          ]
+          return new Output(false, [], [parts.join("; ")], null)
+        }
+      }
+
       const product = await this.productRepo.update(id, productInput)
-      if (paymentRules?.length) {
-        await this.productRepo.upsertPaymentRules(id, paymentRules)
+      if (paymentRules) {
+        const lockedCycles = await this.productRepo.findLockedBillingCycles(id)
+        await this.productRepo.syncPaymentRules(id, paymentRules, lockedCycles)
       }
       const withRules = await this.productRepo.findByIdWithPaymentRules(id)
       return new Output(
@@ -275,20 +331,35 @@ export class BackofficeProductUseCase {
       priceSemiannual?: number | null
       priceAnnual?: number | null
       priceLifetime?: number | null
-    }
+    },
+    paymentRules?: UpsertPaymentRuleInput[]
   ): string | null {
     if (billingMode === "RECURRING") {
-      if (!prices.priceMonthly || prices.priceMonthly <= 0) {
-        return "Preço mensal é obrigatório para produtos recorrentes"
+      const hasRule = (paymentRules?.length ?? 0) > 0
+      const hasFlat =
+        (prices.priceMonthly != null && prices.priceMonthly > 0) ||
+        (prices.priceQuarterly != null && prices.priceQuarterly > 0) ||
+        (prices.priceSemiannual != null && prices.priceSemiannual > 0) ||
+        (prices.priceAnnual != null && prices.priceAnnual > 0)
+      if (!hasRule && !hasFlat) {
+        return "Informe ao menos um ciclo com preço para produtos recorrentes"
       }
-      if (!prices.priceQuarterly || prices.priceQuarterly <= 0) {
-        return "Preço trimestral é obrigatório para produtos recorrentes"
-      }
-      if (!prices.priceSemiannual || prices.priceSemiannual <= 0) {
-        return "Preço semestral é obrigatório para produtos recorrentes"
-      }
-      if (!prices.priceAnnual || prices.priceAnnual <= 0) {
-        return "Preço anual é obrigatório para produtos recorrentes"
+      if (paymentRules?.length) {
+        for (const rule of paymentRules) {
+          if (!rule.price || rule.price <= 0) {
+            return `Preço inválido na regra ${rule.paymentMethod}/${rule.billingCycle}`
+          }
+          if (rule.installmentSplitMode === "CUSTOM") {
+            const schedule = rule.installmentSchedule ?? []
+            const total = schedule.reduce((sum, value) => sum + value, 0)
+            if (schedule.length === 0 || total <= 0) {
+              return `Cronograma de parcelas inválido no ciclo ${rule.billingCycle}`
+            }
+            if (Math.abs(total - rule.price) > 0.01) {
+              return `Soma das parcelas deve ser igual ao total no ciclo ${rule.billingCycle}`
+            }
+          }
+        }
       }
     } else if (billingMode === "LIFETIME") {
       if (prices.priceLifetime != null && prices.priceLifetime <= 0) {
