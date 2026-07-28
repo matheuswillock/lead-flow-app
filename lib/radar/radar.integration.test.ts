@@ -15,9 +15,12 @@ const RUN_INTEGRATION = process.env.RADAR_INTEGRATION_TEST === "1" && Boolean(pr
  */
 let prisma: typeof import("@/app/api/infra/data/prisma").prisma
 let radarService: typeof import("@/app/api/services/radar/RadarService").radarService
+let radarRepository: typeof import("@/app/api/infra/data/repositories/radar/RadarRepository").radarRepository
 let profileMatchesRadarSegment: typeof import("@/lib/radar/segment-rules").profileMatchesRadarSegment
 let normalizeRadarEmail: typeof import("@/lib/radar/normalization").normalizeRadarEmail
 let normalizeRadarPhone: typeof import("@/lib/radar/normalization").normalizeRadarPhone
+let normalizeRadarName: typeof import("@/lib/radar/normalization").normalizeRadarName
+let formatDisplayPhone: typeof import("@/lib/radar/normalization").formatDisplayPhone
 let syncLeadToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncLeadToRadarUseCase").syncLeadToRadarUseCase
 let syncPortfolioToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncPortfolioToRadarUseCase").syncPortfolioToRadarUseCase
 let syncEmailContactToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncEmailContactToRadarUseCase").syncEmailContactToRadarUseCase
@@ -33,8 +36,11 @@ let parseRadarSegmentRules: typeof import("@/lib/radar/segment-dsl").parseRadarS
 if (RUN_INTEGRATION) {
   ;({ prisma } = await import("@/app/api/infra/data/prisma"))
   ;({ radarService } = await import("@/app/api/services/radar/RadarService"))
+  ;({ radarRepository } = await import("@/app/api/infra/data/repositories/radar/RadarRepository"))
   ;({ profileMatchesRadarSegment } = await import("@/lib/radar/segment-rules"))
-  ;({ normalizeRadarEmail, normalizeRadarPhone } = await import("@/lib/radar/normalization"))
+  ;({ normalizeRadarEmail, normalizeRadarPhone, normalizeRadarName, formatDisplayPhone } = await import(
+    "@/lib/radar/normalization"
+  ))
   ;({ syncLeadToRadarUseCase } = await import("@/app/api/useCases/radar/SyncLeadToRadarUseCase"))
   ;({ syncPortfolioToRadarUseCase } = await import("@/app/api/useCases/radar/SyncPortfolioToRadarUseCase"))
   ;({ syncEmailContactToRadarUseCase } = await import("@/app/api/useCases/radar/SyncEmailContactToRadarUseCase"))
@@ -633,13 +639,35 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     }
   })
 
-  it("handleEmailWebhookEvent cria perfil email-only no primeiro evento sem Lead/perfil prévio (D4)", async () => {
+  it("handleEmailWebhookEvent cria perfil email-only no primeiro evento sem Lead/perfil prévio, quando o time tem o add-on Radar (D4, fix review PR #553)", async () => {
     const suffix = randomUUID().slice(0, 8)
+    // scope.teamId (usado no resto do describe) não tem o add-on Radar — de
+    // propósito, para o teste de gate de feature. Este teste precisa do
+    // caminho inverso (feature LIGADA), então cria seu próprio time com
+    // hasPermanentSubscription: true no master, o mesmo campo que
+    // teamHasProductFeature checa para liberar qualquer feature paga.
+    const radarProfile = await prisma.profile.create({
+      data: {
+        id: randomUUID(),
+        email: `radar-webhook-master-${suffix}@example.com`,
+        supabaseId: randomUUID(),
+        fullName: "Radar Webhook Master",
+        isMaster: true,
+        hasPermanentSubscription: true,
+      },
+    })
+    const radarTeam = await prisma.team.create({
+      data: { id: randomUUID(), name: `Radar Webhook Team ${suffix}`, masterId: radarProfile.id },
+    })
+    await prisma.teamMember.create({
+      data: { id: randomUUID(), teamId: radarTeam.id, profileId: radarProfile.id, role: "manager" },
+    })
+
     const recipientEmail = `webhook-only-${suffix}@example.com`
 
     try {
       await radarService.handleEmailWebhookEvent({
-        teamId: scope.teamId,
+        teamId: radarTeam.id,
         recipientEmail,
         recipientName: "Destinatário Webhook",
         logId: randomUUID(),
@@ -648,31 +676,24 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
       })
 
       const profile = await prisma.radarProfile.findFirst({
-        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) },
+        where: { teamId: radarTeam.id, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) },
       })
       expect(profile).not.toBeNull()
       expect(profile?.normalizedPhone).toBeNull()
 
       const event = await prisma.radarEvent.findFirst({
-        where: { teamId: scope.teamId, profileId: profile!.id, eventType: "email.opened" },
+        where: { teamId: radarTeam.id, profileId: profile!.id, eventType: "email.opened" },
       })
       expect(event).not.toBeNull()
     } finally {
-      await prisma.radarEvent.deleteMany({
-        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
-      })
-      await prisma.radarIdentity.deleteMany({
-        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
-      })
-      await prisma.radarSourceLink.deleteMany({
-        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
-      })
-      await prisma.radarChannelConsent.deleteMany({
-        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
-      })
-      await prisma.radarProfile.deleteMany({
-        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) },
-      })
+      await prisma.radarEvent.deleteMany({ where: { teamId: radarTeam.id } })
+      await prisma.radarIdentity.deleteMany({ where: { teamId: radarTeam.id } })
+      await prisma.radarSourceLink.deleteMany({ where: { teamId: radarTeam.id } })
+      await prisma.radarChannelConsent.deleteMany({ where: { teamId: radarTeam.id } })
+      await prisma.radarProfile.deleteMany({ where: { teamId: radarTeam.id } })
+      await prisma.teamMember.deleteMany({ where: { teamId: radarTeam.id } })
+      await prisma.team.delete({ where: { id: radarTeam.id } })
+      await prisma.profile.delete({ where: { id: radarProfile.id } })
     }
   })
 
@@ -750,6 +771,195 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
       await prisma.emailContact.delete({ where: { id: contact.id } })
       await prisma.emailContactList.delete({ where: { id: list.id } })
     }
+  })
+
+  it("funde perfis quando telefone e e-mail já pertencem a donos diferentes (D4, fix review PR #553)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const phoneDigits = String(Date.now()).slice(-4)
+    const sharedEmail = `merge-${suffix}@example.com`
+    const sharedPhone = `1199993${phoneDigits}`
+    const normalizedPhone = normalizeRadarPhone(sharedPhone)
+
+    // Perfil A: nasce só com telefone (ex.: WhatsApp), sem e-mail.
+    const { profile: phoneProfile } = await radarRepository.resolveProfileForPhone({
+      teamId: scope.teamId,
+      normalizedPhone,
+      normalizedName: normalizeRadarName("Contato WhatsApp"),
+      displayName: "Contato WhatsApp",
+      displayPhone: formatDisplayPhone(sharedPhone),
+      phoneValue: sharedPhone,
+      phoneSource: "whatsapp",
+    })
+
+    // Perfil B: nasce email-only (ex.: EmailContact), com o MESMO e-mail que
+    // depois vai chegar junto do telefone do perfil A.
+    const { profile: emailProfile } = await radarRepository.resolveProfileForEmail({
+      teamId: scope.teamId,
+      normalizedEmail: normalizeRadarEmail(sharedEmail),
+      emailValue: sharedEmail,
+      displayName: "Contato E-mail",
+      normalizedName: normalizeRadarName("Contato E-mail"),
+      emailSource: "email_contact",
+    })
+    expect(emailProfile.id).not.toBe(phoneProfile.id)
+
+    await radarRepository.upsertIdentity({
+      profileId: emailProfile.id,
+      teamId: scope.teamId,
+      type: "email",
+      value: sharedEmail,
+      normalizedValue: normalizeRadarEmail(sharedEmail),
+      source: "email",
+    })
+    await radarRepository.upsertSourceLink({
+      profileId: emailProfile.id,
+      teamId: scope.teamId,
+      sourceType: "email_contact",
+      sourceId: `merge-source-${suffix}`,
+    })
+    await radarRepository.appendEventIfNew({
+      profileId: emailProfile.id,
+      teamId: scope.teamId,
+      eventType: "email.opened",
+      sourceType: "email_log",
+      sourceId: `merge-event-${suffix}`,
+      occurredAt: new Date(),
+    })
+
+    try {
+      // Um Lead chega com o telefone do perfil A e o e-mail do perfil B —
+      // resolveProfileForPhone deve fundir B em A, não deixar B órfão.
+      const { profile: mergedProfile, wasExisting } = await radarRepository.resolveProfileForPhone({
+        teamId: scope.teamId,
+        normalizedPhone,
+        normalizedName: normalizeRadarName("Contato WhatsApp"),
+        displayName: "Contato WhatsApp",
+        displayPhone: formatDisplayPhone(sharedPhone),
+        phoneValue: sharedPhone,
+        phoneSource: "crm",
+        primaryEmail: sharedEmail,
+        normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail),
+      })
+      expect(wasExisting).toBe(true)
+      expect(mergedProfile.id).toBe(phoneProfile.id)
+      expect(mergedProfile.normalizedPrimaryEmail).toBe(normalizeRadarEmail(sharedEmail))
+
+      const losingProfileStillExists = await prisma.radarProfile.findUnique({ where: { id: emailProfile.id } })
+      expect(losingProfileStillExists).toBeNull()
+
+      const movedEmailIdentity = await prisma.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: scope.teamId,
+            type: "email",
+            normalizedValue: normalizeRadarEmail(sharedEmail),
+          },
+        },
+      })
+      expect(movedEmailIdentity?.profileId).toBe(phoneProfile.id)
+
+      const movedSourceLink = await prisma.radarSourceLink.findFirst({
+        where: { teamId: scope.teamId, sourceType: "email_contact", sourceId: `merge-source-${suffix}` },
+      })
+      expect(movedSourceLink?.profileId).toBe(phoneProfile.id)
+
+      const movedEvent = await prisma.radarEvent.findFirst({
+        where: { teamId: scope.teamId, sourceType: "email_log", sourceId: `merge-event-${suffix}` },
+      })
+      expect(movedEvent?.profileId).toBe(phoneProfile.id)
+    } finally {
+      await prisma.radarEvent.deleteMany({ where: { profileId: phoneProfile.id } })
+      await prisma.radarIdentity.deleteMany({ where: { profileId: phoneProfile.id } })
+      await prisma.radarSourceLink.deleteMany({ where: { profileId: phoneProfile.id } })
+      await prisma.radarChannelConsent.deleteMany({ where: { profileId: phoneProfile.id } })
+      await prisma.radarProfile.deleteMany({ where: { id: phoneProfile.id } })
+    }
+  })
+
+  it("sync de CRM (telefone+e-mail) e sync de contato de e-mail concorrentes para o mesmo e-mail não duplicam perfil (D4, fix review PR #553)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const phoneDigits = String(Date.now()).slice(-4)
+    const sharedEmail = `race-${suffix}@example.com`
+    const sharedPhone = `1199992${phoneDigits}`
+
+    const raceLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-race-${suffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Concorrente",
+        phone: sharedPhone,
+        email: sharedEmail,
+        status: "new_opportunity",
+      },
+    })
+    const list = await prisma.emailContactList.create({
+      data: {
+        id: randomUUID(),
+        teamId: scope.teamId,
+        createdBy: scope.ctx.profileId,
+        name: `Lista Concorrente ${suffix}`,
+      },
+    })
+    // Sem `name` — força processEmailContactForRadar a cair no caminho
+    // resolveProfileForEmail (sem isso, findLeadPhoneByEmail acharia o
+    // telefone do raceLead acima e os dois caminhos convergiriam em
+    // resolveProfileForPhone, deixando de testar a corrida real entre os
+    // dois locks descrita na review da PR #553).
+    const contact = await prisma.emailContact.create({
+      data: { id: randomUUID(), listId: list.id, email: sharedEmail, name: null },
+    })
+
+    try {
+      await Promise.all([
+        radarService.syncFromCrm(scope, { leadId: raceLead.id }),
+        radarService.syncFromEmail(scope, { emailContactId: contact.id }),
+      ])
+
+      const profilesWithEmail = await prisma.radarProfile.count({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) },
+      })
+      expect(profilesWithEmail).toBe(1)
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarChannelConsent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) },
+      })
+      await prisma.emailContact.delete({ where: { id: contact.id } })
+      await prisma.emailContactList.delete({ where: { id: list.id } })
+      await prisma.lead.delete({ where: { id: raceLead.id } })
+    }
+  })
+
+  it("handleEmailWebhookEvent respeita o gate de feature — time sem add-on não gera perfil (D4, fix review PR #553)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const recipientEmail = `no-feature-${suffix}@example.com`
+
+    await radarService.handleEmailWebhookEvent({
+      teamId: scope.teamId,
+      recipientEmail,
+      recipientName: "Sem Add-on",
+      logId: randomUUID(),
+      eventType: "opened",
+      occurredAt: new Date(),
+    })
+
+    const profile = await prisma.radarProfile.findFirst({
+      where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) },
+    })
+    expect(profile).toBeNull()
   })
 
   it("time sem add-on Radar: gate de feature nega (teamHasRadarFeature)", async () => {

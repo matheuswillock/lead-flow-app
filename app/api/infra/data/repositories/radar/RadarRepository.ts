@@ -149,6 +149,93 @@ export class RadarRepository {
   }
 
   /**
+   * D4: funde `losingProfileId` em `winningProfileId` quando o telefone e o
+   * e-mail resolvidos apontam para dois perfis diferentes já existentes
+   * (ex.: um perfil nasceu email-only via EmailContact/webhook, e depois um
+   * Lead com o mesmo e-mail + telefone real aparece, mas o telefone já
+   * pertence a um terceiro perfil criado antes via WhatsApp). Move
+   * identidades/eventos/links/consentimentos para o vencedor (com dedupe
+   * por chave única onde ela é escopada por team, não por perfil) e apaga
+   * o perdedor. Sempre roda dentro da transação já travada pelo chamador.
+   */
+  private async mergeProfiles(
+    tx: Prisma.TransactionClient,
+    teamId: string,
+    losingProfileId: string,
+    winningProfileId: string
+  ): Promise<void> {
+    await tx.radarIdentity.updateMany({
+      where: { profileId: losingProfileId },
+      data: { profileId: winningProfileId },
+    })
+
+    const losingSourceLinks = await tx.radarSourceLink.findMany({
+      where: { profileId: losingProfileId },
+      select: { id: true, sourceType: true, sourceId: true },
+    })
+    for (const link of losingSourceLinks) {
+      const conflict = await tx.radarSourceLink.findFirst({
+        where: { teamId, sourceType: link.sourceType, sourceId: link.sourceId, profileId: winningProfileId },
+        select: { id: true },
+      })
+      if (conflict) {
+        await tx.radarSourceLink.delete({ where: { id: link.id } })
+      } else {
+        await tx.radarSourceLink.update({ where: { id: link.id }, data: { profileId: winningProfileId } })
+      }
+    }
+
+    const losingEvents = await tx.radarEvent.findMany({
+      where: { profileId: losingProfileId },
+      select: { id: true, sourceType: true, sourceId: true, eventType: true, occurredAt: true },
+    })
+    for (const event of losingEvents) {
+      const conflict = await tx.radarEvent.findFirst({
+        where: {
+          teamId,
+          sourceType: event.sourceType,
+          sourceId: event.sourceId,
+          eventType: event.eventType,
+          occurredAt: event.occurredAt,
+          profileId: winningProfileId,
+        },
+        select: { id: true },
+      })
+      if (conflict) {
+        await tx.radarEvent.delete({ where: { id: event.id } })
+      } else {
+        await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+      }
+    }
+
+    const consentRank: Record<RadarConsentStatus, number> = { blocked: 2, unknown: 0, allowed: 1 }
+    const losingConsents = await tx.radarChannelConsent.findMany({ where: { profileId: losingProfileId } })
+    for (const consent of losingConsents) {
+      const existing = await tx.radarChannelConsent.findUnique({
+        where: { profileId_channel: { profileId: winningProfileId, channel: consent.channel } },
+      })
+      if (!existing) {
+        await tx.radarChannelConsent.update({
+          where: { id: consent.id },
+          data: { profileId: winningProfileId },
+        })
+      } else {
+        // Mais restritivo vence — nunca desbloqueia silenciosamente um canal
+        // que já estava bloqueado no perfil vencedor.
+        if (consentRank[consent.status] > consentRank[existing.status]) {
+          await tx.radarChannelConsent.update({
+            where: { id: existing.id },
+            data: { status: consent.status, reason: consent.reason ?? undefined },
+          })
+        }
+        await tx.radarChannelConsent.delete({ where: { id: consent.id } })
+      }
+    }
+
+    await tx.radarProfile.delete({ where: { id: losingProfileId } })
+  }
+
+  /**
    * Resolve (ou cria) o perfil dono de um telefone de forma atômica — lock
    * advisory por (teamId, phone) fecha a corrida em que duas syncs
    * concorrentes (ex.: CRM + WhatsApp) para o mesmo telefone com nomes
@@ -178,6 +265,18 @@ export class RadarRepository {
     return prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedPhone}))`
 
+      // D4: quando um e-mail acompanha o telefone, também trava o lock por
+      // e-mail (mesma chave usada por resolveProfileForEmail) — sem isso,
+      // uma chamada concorrente a resolveProfileForEmail para o mesmo
+      // e-mail (ex.: contato de lista + webhook chegando ao mesmo tempo)
+      // não seria serializada contra esta transação e as duas poderiam
+      // criar perfis duplicados para a mesma pessoa. Ordem fixa (telefone
+      // sempre primeiro) evita deadlock, já que resolveProfileForEmail
+      // nunca trava o lock de telefone.
+      if (input.normalizedPrimaryEmail) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedPrimaryEmail}))`
+      }
+
       const existingByIdentity = await tx.radarIdentity.findUnique({
         where: {
           teamId_type_normalizedValue: {
@@ -190,6 +289,23 @@ export class RadarRepository {
       })
 
       if (existingByIdentity) {
+        if (input.normalizedPrimaryEmail) {
+          const emailOwner = await tx.radarIdentity.findUnique({
+            where: {
+              teamId_type_normalizedValue: {
+                teamId: input.teamId,
+                type: "email",
+                normalizedValue: input.normalizedPrimaryEmail,
+              },
+            },
+            select: { profileId: true },
+          })
+
+          if (emailOwner && emailOwner.profileId !== existingByIdentity.profileId) {
+            await this.mergeProfiles(tx, input.teamId, emailOwner.profileId, existingByIdentity.profileId)
+          }
+        }
+
         const existingProfile = await tx.radarProfile.findUnique({
           where: { id: existingByIdentity.profileId },
           select: {

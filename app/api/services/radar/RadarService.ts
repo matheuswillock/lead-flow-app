@@ -31,6 +31,7 @@ import {
   type RadarResolvableProfile,
 } from "@/lib/radar/resolve-field-value"
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
+import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import {
   formatDisplayPhone,
   isValidRadarPrimaryIdentity,
@@ -819,6 +820,8 @@ export class RadarService {
     occurredAt: Date
     metadata?: Record<string, unknown>
   }) {
+    if (!(await teamHasRadarFeature(input.teamId))) return
+
     const normalizedEmail = normalizeRadarEmail(input.recipientEmail)
 
     const lead = input.recipientName
