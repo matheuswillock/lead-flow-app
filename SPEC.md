@@ -14,4 +14,5 @@ Artifacts de especificação separados para evolução independente por domínio
 ## Radar
 
 - [Radar V1 para e-mail](specs/radar-email.md)
+- [Meta / Instagram Audiência → Radar](specs/meta-instagram-audiencia-radar.md)
 

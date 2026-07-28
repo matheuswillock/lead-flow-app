@@ -59,7 +59,7 @@ export function WhatsAppMessageInputShell({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-8 shrink-0"
+              className="size-11 shrink-0"
               disabled={attachDisabled}
               onClick={onAttach}
               aria-label="Anexar arquivo"
@@ -73,7 +73,7 @@ export function WhatsAppMessageInputShell({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="size-8 shrink-0"
+                  className="size-11 shrink-0"
                   disabled={emojiDisabled}
                   aria-label="Inserir emoji"
                 >
@@ -105,7 +105,7 @@ export function WhatsAppMessageInputShell({
         <Button
           type="button"
           size="icon"
-          className={cn("size-10 shrink-0 rounded-full")}
+          className={cn("size-11 shrink-0 rounded-full")}
           disabled={sendDisabled || isSending}
           onClick={onSend}
           aria-label={sendAriaLabel}

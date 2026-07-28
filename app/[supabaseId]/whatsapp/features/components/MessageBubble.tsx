@@ -30,12 +30,35 @@ export function MessageBubble({ message, previousMessage = null }: MessageBubble
 
   const type = message.messageType.toUpperCase()
   const hasMedia = ["IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "STICKER", "PTT"].includes(type)
+  const mediaUnavailable =
+    message.mediaStatus === "EXPIRED" || message.mediaStatus === "FAILED"
+  const mediaProcessing = message.mediaStatus === "PROCESSING"
   const mediaProxyUrl =
-    activeTeamId && hasMedia && !message.id.startsWith("optimistic-")
+    activeTeamId &&
+    hasMedia &&
+    !message.id.startsWith("optimistic-") &&
+    !mediaUnavailable &&
+    !mediaProcessing
       ? `/api/v1/teams/${encodeURIComponent(activeTeamId)}/whatsapp/messages/${encodeURIComponent(message.id)}/media`
       : null
 
   const mappedPrevious = previousMessage ? mapWhatsAppMessageToMessaging(previousMessage) : null
+
+  if (hasMedia && mediaProcessing) {
+    return (
+      <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+        Processando mídia…
+      </div>
+    )
+  }
+
+  if (hasMedia && mediaUnavailable) {
+    return (
+      <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+        Mídia indisponível
+      </div>
+    )
+  }
 
   return (
     <MessagingMessageBubble

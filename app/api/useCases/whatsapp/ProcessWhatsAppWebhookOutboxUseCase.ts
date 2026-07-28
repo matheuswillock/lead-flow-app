@@ -3,7 +3,6 @@ import { processEvoWebhookUseCase } from "./ProcessEvoWebhookUseCase"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { getWhatsAppWebhookRetryAt, WHATSAPP_WEBHOOK_MAX_ATTEMPTS } from "./whatsappWebhookRetry"
 
-const OUTBOUND_CONFIRMATION_TIMEOUT_MS = 10 * 60_000
 const OUTBOX_CONCURRENCY = 10
 
 class ProcessWhatsAppWebhookOutboxUseCase {
@@ -42,9 +41,7 @@ class ProcessWhatsAppWebhookOutboxUseCase {
       const batch = eventIds.slice(start, start + OUTBOX_CONCURRENCY)
       results.push(...await Promise.all(batch.map((eventId) => this.process(eventId))))
     }
-    const reconciledOutbound = await whatsAppRepository.reconcileStaleOutboundCommands(
-      new Date(Date.now() - OUTBOUND_CONFIRMATION_TIMEOUT_MS)
-    )
+    const reconciledOutbound = await whatsAppRepository.reconcileStaleOutboundCommands()
     return new Output(true, ["Outbox processada"], [], {
       processed: results.filter((result) => result.isValid).length,
       total: eventIds.length,

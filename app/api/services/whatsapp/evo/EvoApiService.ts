@@ -17,8 +17,11 @@ import {
   toWhatsAppSafeErrorCode,
 } from "@/lib/whatsapp/safe-observability"
 
-function getBaseUrl(): string {
-  const envUrl = process.env.EVO_API_BASE_URL
+/** Resolves Evolution base URL from env only — never accepts per-request hosts (SSRF). */
+export function resolveEvoApiBaseUrl(
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  const envUrl = env.EVO_API_BASE_URL
   if (!envUrl) throw new Error("[EvoApiService] EVO_API_BASE_URL is not set")
   let url: URL
   try {
@@ -26,10 +29,14 @@ function getBaseUrl(): string {
   } catch {
     throw new Error("[EvoApiService] EVO_API_BASE_URL is invalid")
   }
-  if (url.protocol !== "https:" && process.env.NODE_ENV === "production") {
+  if (url.protocol !== "https:" && env.NODE_ENV === "production") {
     throw new Error("[EvoApiService] EVO_API_BASE_URL must use HTTPS in production")
   }
   return url.toString().replace(/\/$/, "")
+}
+
+function getBaseUrl(): string {
+  return resolveEvoApiBaseUrl()
 }
 
 function getApiKey(): string {

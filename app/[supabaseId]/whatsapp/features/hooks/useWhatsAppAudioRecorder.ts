@@ -7,16 +7,17 @@ import {
   requestMicrophoneStream,
 } from "../utils/microphonePermission"
 
-const WAVEFORM_BAR_COUNT = 56
+const DEFAULT_WAVEFORM_BAR_COUNT = 56
 const IDLE_LEVEL = 0.02
 const NOISE_GATE = 0.02
 const SMOOTHING = 0.35
 
-export type WhatsAppAudioRecorderStatus = "idle" | "recording" | "paused"
+export type WhatsAppAudioRecorderStatus = "idle" | "recording" | "paused" | "preview"
 
 interface UseWhatsAppAudioRecorderOptions {
   onSend: (file: File) => Promise<void>
   onError?: (error: MicrophoneAccessError) => void
+  waveformBarCount?: number
 }
 
 function computeRms(data: Uint8Array): number {
@@ -34,28 +35,42 @@ function normalizeWaveformLevel(rms: number): number {
   return Math.max(IDLE_LEVEL, Math.min(0.85, boosted))
 }
 
-export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRecorderOptions) {
+export function useWhatsAppAudioRecorder({
+  onSend,
+  onError,
+  waveformBarCount = DEFAULT_WAVEFORM_BAR_COUNT,
+}: UseWhatsAppAudioRecorderOptions) {
+  const barCount = Math.max(8, waveformBarCount)
   const [status, setStatus] = useState<WhatsAppAudioRecorderStatus>("idle")
   const [elapsedMs, setElapsedMs] = useState(0)
   const [waveformLevels, setWaveformLevels] = useState<number[]>(() =>
-    Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL)
+    Array.from({ length: barCount }, () => IDLE_LEVEL)
   )
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
-  const sendOnStopRef = useRef(false)
+  const previewFileRef = useRef<File | null>(null)
+  const enterPreviewOnStopRef = useRef(false)
   const rafRef = useRef<number | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef(0)
   const pausedTotalRef = useRef(0)
   const pauseStartedAtRef = useRef<number | null>(null)
-  const waveformBufferRef = useRef<number[]>(Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL))
+  const waveformBufferRef = useRef<number[]>(Array.from({ length: barCount }, () => IDLE_LEVEL))
   const smoothedLevelRef = useRef(IDLE_LEVEL)
   const timeDomainDataRef = useRef<Uint8Array | null>(null)
   const isSendingRef = useRef(false)
+  const barCountRef = useRef(barCount)
+
+  useEffect(() => {
+    barCountRef.current = barCount
+    waveformBufferRef.current = Array.from({ length: barCount }, () => IDLE_LEVEL)
+    setWaveformLevels(Array.from({ length: barCount }, () => IDLE_LEVEL))
+  }, [barCount])
 
   const cleanupMedia = useCallback(() => {
     if (rafRef.current !== null) {
@@ -77,27 +92,26 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
 
   const resetState = useCallback(() => {
     cleanupMedia()
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null)
+    previewFileRef.current = null
     setStatus("idle")
     setElapsedMs(0)
-    setWaveformLevels(Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL))
-    waveformBufferRef.current = Array.from({ length: WAVEFORM_BAR_COUNT }, () => IDLE_LEVEL)
+    setWaveformLevels(Array.from({ length: barCountRef.current }, () => IDLE_LEVEL))
+    waveformBufferRef.current = Array.from({ length: barCountRef.current }, () => IDLE_LEVEL)
     smoothedLevelRef.current = IDLE_LEVEL
     audioChunksRef.current = []
-    sendOnStopRef.current = false
+    enterPreviewOnStopRef.current = false
     startedAtRef.current = 0
     pausedTotalRef.current = 0
     pauseStartedAtRef.current = null
     isSendingRef.current = false
-  }, [cleanupMedia])
+  }, [cleanupMedia, previewUrl])
 
   const updateElapsed = useCallback(() => {
     if (startedAtRef.current === 0) return
-    const pauseOffset =
-      pauseStartedAtRef.current !== null
-        ? pauseStartedAtRef.current - startedAtRef.current - pausedTotalRef.current
-        : 0
     const end = pauseStartedAtRef.current ?? Date.now()
-    setElapsedMs(Math.max(0, end - startedAtRef.current - pausedTotalRef.current - pauseOffset))
+    setElapsedMs(Math.max(0, end - startedAtRef.current - pausedTotalRef.current))
   }, [])
 
   const startWaveformLoop = useCallback(() => {
@@ -114,7 +128,14 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
       const target = normalizeWaveformLevel(computeRms(data))
       smoothedLevelRef.current =
         smoothedLevelRef.current * (1 - SMOOTHING) + target * SMOOTHING
-      const next = [...waveformBufferRef.current.slice(1), smoothedLevelRef.current]
+      const count = barCountRef.current
+      const buffer = waveformBufferRef.current
+      const next =
+        buffer.length === count
+          ? [...buffer.slice(1), smoothedLevelRef.current]
+          : Array.from({ length: count }, (_, i) =>
+              i === count - 1 ? smoothedLevelRef.current : IDLE_LEVEL
+            )
       waveformBufferRef.current = next
       setWaveformLevels(next)
 
@@ -160,7 +181,7 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
       audioContextRef.current = audioContext
       analyserRef.current = analyser
       audioChunksRef.current = []
-      sendOnStopRef.current = false
+      enterPreviewOnStopRef.current = false
       startedAtRef.current = Date.now()
       pausedTotalRef.current = 0
       pauseStartedAtRef.current = null
@@ -170,12 +191,12 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
       }
 
       recorder.onstop = () => {
-        const shouldSend = sendOnStopRef.current
+        const shouldPreview = enterPreviewOnStopRef.current
         const mimeType = recorder.mimeType || "audio/webm"
         const chunks = [...audioChunksRef.current]
         cleanupMedia()
 
-        if (!shouldSend) {
+        if (!shouldPreview) {
           resetState()
           return
         }
@@ -184,12 +205,11 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
         const file = new File([blob], `audio-${Date.now()}.webm`, {
           type: blob.type || "audio/webm",
         })
-
-        void onSend(file)
-          .catch(() => onError?.(new MicrophoneAccessError("Falha ao enviar áudio", "Unknown")))
-          .finally(() => {
-            resetState()
-          })
+        previewFileRef.current = file
+        const url = URL.createObjectURL(blob)
+        setPreviewUrl(url)
+        setStatus("preview")
+        enterPreviewOnStopRef.current = false
       }
 
       recorder.start()
@@ -203,7 +223,7 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
       onError?.(mapped)
       resetState()
     }
-  }, [cleanupMedia, onError, onSend, resetState, startTimer, startWaveformLoop])
+  }, [cleanupMedia, onError, resetState, startTimer, startWaveformLoop])
 
   const pause = useCallback(() => {
     const recorder = mediaRecorderRef.current
@@ -231,7 +251,7 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
 
   const cancel = useCallback(() => {
     const recorder = mediaRecorderRef.current
-    sendOnStopRef.current = false
+    enterPreviewOnStopRef.current = false
     if (recorder && recorder.state !== "inactive") {
       recorder.stop()
       return
@@ -244,34 +264,49 @@ export function useWhatsAppAudioRecorder({ onSend, onError }: UseWhatsAppAudioRe
     if (!recorder || isSendingRef.current) return
     if (recorder.state === "inactive") return
 
-    isSendingRef.current = true
-    sendOnStopRef.current = true
+    enterPreviewOnStopRef.current = true
     stopWaveformLoop()
     stopTimer()
     updateElapsed()
     recorder.stop()
   }, [stopTimer, stopWaveformLoop, updateElapsed])
 
+  const confirmSend = useCallback(async () => {
+    const file = previewFileRef.current
+    if (!file || isSendingRef.current) return
+    isSendingRef.current = true
+    try {
+      await onSend(file)
+      resetState()
+    } catch {
+      isSendingRef.current = false
+      onError?.(new MicrophoneAccessError("Falha ao enviar áudio", "Unknown"))
+    }
+  }, [onError, onSend, resetState])
+
   useEffect(() => () => {
-    sendOnStopRef.current = false
+    enterPreviewOnStopRef.current = false
     const recorder = mediaRecorderRef.current
     if (recorder && recorder.state !== "inactive") {
       recorder.stop()
     } else {
       cleanupMedia()
     }
-  }, [cleanupMedia])
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+  }, [cleanupMedia, previewUrl])
 
   return {
     status,
     elapsedMs,
     waveformLevels,
+    previewUrl,
     start,
     startWithStream: start,
     pause,
     resume,
     cancel,
     send,
+    confirmSend,
     isRecording: status !== "idle",
   }
 }
