@@ -174,19 +174,11 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   async findLockedBillingCycles(
     productId: string
   ): Promise<Array<"monthly" | "quarterly" | "semiannual" | "annual">> {
-    const [profileSubs, userSubs] = await Promise.all([
-      prisma.profileSubscription.findMany({
-        where: {
-          productId,
-          subscriptionStatus: { in: ["active", "trial", "past_due"] },
-        },
-        select: { subscriptionCycle: true },
-      }),
-      prisma.backofficeUserSubscription.findMany({
-        where: { productId, status: "active" },
-        select: { cycle: true },
-      }),
-    ])
+    // Lock via tabela Backoffice* (não consulta ProfileSubscription do domínio produto).
+    const userSubs = await prisma.backofficeUserSubscription.findMany({
+      where: { productId, status: "active" },
+      select: { cycle: true },
+    })
 
     const locked = new Set<"monthly" | "quarterly" | "semiannual" | "annual">()
     const normalize = (value: string | null | undefined) => {
@@ -203,11 +195,6 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
       return null
     }
 
-    for (const sub of profileSubs) {
-      const cycle = normalize(sub.subscriptionCycle)
-      if (cycle) locked.add(cycle)
-    }
-
     for (const sub of userSubs) {
       const cycle = normalize(sub.cycle)
       if (cycle) locked.add(cycle)
@@ -215,7 +202,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
 
     // Assinatura ativa sem ciclo: trava todos os ciclos já existentes no produto
     const hasActiveWithoutCycle = userSubs.some((sub) => !sub.cycle)
-    if (hasActiveWithoutCycle || (profileSubs.some((s) => !s.subscriptionCycle) && profileSubs.length > 0)) {
+    if (hasActiveWithoutCycle) {
       const existing = await prisma.backofficeProductPaymentRule.findMany({
         where: { productId },
         select: { billingCycle: true },

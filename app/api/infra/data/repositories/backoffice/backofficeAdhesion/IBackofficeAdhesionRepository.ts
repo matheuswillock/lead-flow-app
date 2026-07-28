@@ -181,6 +181,7 @@ export interface IBackofficeAdhesionRepository {
   findById(id: string): Promise<BackofficeAdhesionWithRelations | null>
   findByLeadId(leadId: string): Promise<BackofficeAdhesionWithRelations | null>
   findByAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
+  findByLedgerAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
   findByTokenHash(tokenHash: string): Promise<BackofficeAdhesionWithRelations | null>
   update(
     id: string,

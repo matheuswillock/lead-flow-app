@@ -43,6 +43,7 @@ import {
   type BackofficeAdhesionOptions,
 } from "../context/BackofficeAdhesionsTypes"
 import { formatDocumentInput, maskPhone } from "@/lib/masks"
+import { scaleInstallmentScheduleToTotal } from "@/lib/backoffice-adhesions/adhesion-pricing"
 
 const NO_SELECTION_VALUE = "__none__"
 const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
@@ -283,16 +284,6 @@ export function BackofficeAdhesionDialog({
       ? selectedVariant.availableCycles
       : (Object.keys(BACKOFFICE_ADHESION_CYCLE_LABELS) as BackofficeAdhesionBillingCycleKey[])
   const installmentMeta = selectedVariant?.installmentByCycle?.[values.cycle]
-  const installmentPreview: number[] =
-    installmentMeta?.splitMode === "CUSTOM" && installmentMeta.schedule.length > 0
-      ? installmentMeta.schedule
-      : installmentMeta && installmentMeta.maxInstallments > 1 && installmentMeta.cardTotal
-        ? Array.from({ length: installmentMeta.maxInstallments }, () =>
-            Number((installmentMeta.cardTotal! / installmentMeta.maxInstallments).toFixed(2))
-          )
-        : installmentMeta?.cardTotal
-          ? [installmentMeta.cardTotal]
-          : []
   const cyclePrices = {
     baseMonthlyPrice:
       variantCyclePrices?.cardMonthlyPrice ?? addonCyclePrices.baseMonthlyPrice,
@@ -314,8 +305,22 @@ export function BackofficeAdhesionDialog({
   const cardTotal = cardMonthlyTotal * cycleMonths
   const pixTotal = pixMonthlyTotal * cycleMonths
   const chargeBillingType = resolveChargeBillingType(values.billingType)
+  const chargeTotal = chargeBillingType === "PIX" ? pixTotal : cardTotal
+  const installmentPreview: number[] = (() => {
+    if (installmentMeta?.splitMode === "CUSTOM" && installmentMeta.schedule.length > 0) {
+      return scaleInstallmentScheduleToTotal(installmentMeta.schedule, chargeTotal)
+    }
+    if (installmentMeta && installmentMeta.maxInstallments > 1) {
+      return scaleInstallmentScheduleToTotal(
+        Array.from({ length: installmentMeta.maxInstallments }, () => 1),
+        chargeTotal
+      )
+    }
+    if (chargeTotal > 0) return [Number(chargeTotal.toFixed(2))]
+    return []
+  })()
   const selectedBaseMonthly = chargeBillingType === "PIX" ? pixBaseMonthly : cardBaseMonthly
-  const total = chargeBillingType === "PIX" ? pixTotal : cardTotal
+  const total = chargeTotal
   const commercialItems = [
     {
       key: "crm",

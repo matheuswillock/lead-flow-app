@@ -5,7 +5,9 @@ import {
   BACKOFFICE_ADHESION_CYCLE_MONTHS,
   type BackofficeAdhesionPrices,
   calculateBackofficeAdhesionPricing,
+  resolveCardMonthlyPriceFromRule,
   resolveProductPriceForCycle,
+  scaleInstallmentScheduleToTotal,
 } from "@/lib/backoffice-adhesions/adhesion-pricing"
 import {
   generateBackofficeAdhesionToken,
@@ -62,6 +64,64 @@ const CANCELED_ASAAS_STATUSES = new Set([
   "CHARGEBACK",
   "REFUSED",
 ])
+
+const ADHESION_UUID =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+const ADHESION_INSTALLMENT_REF_RE = new RegExp(
+  `^backoffice-adhesion-(${ADHESION_UUID})-installment-(\\d+)$`,
+  "i"
+)
+const ADHESION_LEGACY_REF_RE = new RegExp(`^backoffice-adhesion-(${ADHESION_UUID})$`, "i")
+
+type AdhesionInstallmentLedgerEntry = {
+  index: number
+  amount: number
+  paymentSource: "EXTERNAL" | "ASAAS"
+  status: "paid" | "pending"
+  asaasPaymentId: string | null
+  paidAt: string | null
+}
+
+function parseAdhesionExternalReference(
+  externalReference: string | null | undefined
+): { adhesionId: string; installmentIndex: number | null } | null {
+  if (!externalReference) return null
+  const installmentMatch = ADHESION_INSTALLMENT_REF_RE.exec(externalReference)
+  if (installmentMatch) {
+    return {
+      adhesionId: installmentMatch[1],
+      installmentIndex: Number(installmentMatch[2]),
+    }
+  }
+  const legacyMatch = ADHESION_LEGACY_REF_RE.exec(externalReference)
+  if (legacyMatch) {
+    return { adhesionId: legacyMatch[1], installmentIndex: null }
+  }
+  return null
+}
+
+function readInstallmentLedger(value: unknown): AdhesionInstallmentLedgerEntry[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry, fallbackIndex) => {
+    if (!entry || typeof entry !== "object") return []
+    const record = entry as Record<string, unknown>
+    const index =
+      typeof record.index === "number" && Number.isFinite(record.index)
+        ? Math.trunc(record.index)
+        : fallbackIndex
+    const amount = Number(record.amount)
+    if (!Number.isFinite(amount)) return []
+    const paymentSource = record.paymentSource === "EXTERNAL" ? "EXTERNAL" : "ASAAS"
+    const status = record.status === "paid" ? "paid" : "pending"
+    const asaasPaymentId =
+      typeof record.asaasPaymentId === "string" && record.asaasPaymentId.trim()
+        ? record.asaasPaymentId
+        : null
+    const paidAt =
+      typeof record.paidAt === "string" && record.paidAt.trim() ? record.paidAt : null
+    return [{ index, amount, paymentSource, status, asaasPaymentId, paidAt }]
+  })
+}
 
 function roundCurrency(value: number): number {
   return Number(value.toFixed(2))
@@ -1002,11 +1062,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return { processed: false }
     }
 
+    const parsedRef = parseAdhesionExternalReference(payment.externalReference)
     const adhesion =
       (await this.repo.findByAsaasPaymentId(payment.id)) ??
-      (payment.externalReference?.startsWith("backoffice-adhesion-")
-        ? await this.repo.findById(payment.externalReference.replace("backoffice-adhesion-", ""))
-        : null)
+      (await this.repo.findByLedgerAsaasPaymentId(payment.id)) ??
+      (parsedRef ? await this.repo.findById(parsedRef.adhesionId) : null)
 
     if (!adhesion) {
       console.info("[BackofficeAdhesionService][processPaymentWebhook] adesão não encontrada", {
@@ -1015,6 +1075,25 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         event,
       })
       return { processed: false }
+    }
+
+    const ledger = readInstallmentLedger(adhesion.installmentLedger)
+    const installmentIndexFromLedger = ledger.findIndex(
+      (entry) => entry.asaasPaymentId === payment.id
+    )
+    const installmentIndex =
+      parsedRef?.installmentIndex ??
+      (installmentIndexFromLedger >= 0 ? installmentIndexFromLedger : null)
+
+    if (installmentIndex != null && ledger.length > 0) {
+      return this.processInstallmentPaymentWebhook({
+        event,
+        payment,
+        adhesion,
+        ledger,
+        installmentIndex,
+        options,
+      })
     }
 
     const status = payment.status?.toUpperCase() ?? ""
@@ -1054,6 +1133,106 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     if (isCanceled) {
       await this.repo.updateStatus(adhesion.id, "canceled", { canceledAt: new Date() })
+      return { processed: true, adhesionId: adhesion.id }
+    }
+
+    return { processed: true, adhesionId: adhesion.id }
+  }
+
+  private async processInstallmentPaymentWebhook(input: {
+    event: string
+    payment: BackofficeAdhesionPaymentWebhookInput
+    adhesion: BackofficeAdhesionWithRelations
+    ledger: AdhesionInstallmentLedgerEntry[]
+    installmentIndex: number
+    options?: { deferEmailDelivery?: boolean }
+  }): Promise<{ processed: boolean; adhesionId?: string }> {
+    const { event, payment, adhesion, options } = input
+    const ledger = [...input.ledger]
+    const entry = ledger.find((item) => item.index === input.installmentIndex) ??
+      ledger[input.installmentIndex]
+    if (!entry) {
+      console.info("[BackofficeAdhesionService][processInstallmentPaymentWebhook] parcela ausente", {
+        adhesionId: adhesion.id,
+        installmentIndex: input.installmentIndex,
+        paymentId: payment.id,
+      })
+      return { processed: false, adhesionId: adhesion.id }
+    }
+
+    const status = payment.status?.toUpperCase() ?? ""
+    const isPaid =
+      PAID_ASAAS_STATUSES.has(status) ||
+      event === "PAYMENT_RECEIVED" ||
+      event === "PAYMENT_CONFIRMED" ||
+      event === "PAYMENT_APPROVED"
+    const isOverdue = OVERDUE_ASAAS_STATUSES.has(status) || event === "PAYMENT_OVERDUE"
+    const isCanceled =
+      CANCELED_ASAAS_STATUSES.has(status) ||
+      event === "PAYMENT_REFUNDED" ||
+      event === "PAYMENT_DELETED" ||
+      event === "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED"
+
+    const paymentId = payment.id ?? null
+    const nextLedger = ledger.map((item) => {
+      if (item.index !== entry.index) return item
+      if (isPaid) {
+        const paidAt =
+          (this.resolvePaymentDate(payment) ?? new Date()).toISOString()
+        return {
+          ...item,
+          status: "paid" as const,
+          paymentSource: "ASAAS" as const,
+          asaasPaymentId: paymentId,
+          paidAt,
+        }
+      }
+      if (isCanceled) {
+        return {
+          ...item,
+          status: "pending" as const,
+          asaasPaymentId: item.asaasPaymentId === paymentId ? null : item.asaasPaymentId,
+          paidAt: null,
+        }
+      }
+      return {
+        ...item,
+        asaasPaymentId: paymentId,
+      }
+    })
+
+    await this.persistInstallmentLedger(adhesion.id, nextLedger)
+
+    if (isPaid) {
+      const allPaid = nextLedger.every((item) => item.status === "paid")
+      if (allPaid) {
+        const paidAt = this.resolvePaymentDate(payment) ?? new Date()
+        const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
+        try {
+          await this.ensureAccountForPaidAdhesion(updated, {
+            deferEmailDelivery: options?.deferEmailDelivery,
+          })
+        } catch (accountError) {
+          console.error(
+            "[BackofficeAdhesionService][processInstallmentPaymentWebhook][ensureAccount]",
+            { adhesionId: adhesion.id, error: accountError }
+          )
+          throw accountError
+        }
+      }
+      return { processed: true, adhesionId: adhesion.id }
+    }
+
+    if (isOverdue && adhesion.status !== "paid") {
+      await this.repo.updateStatus(adhesion.id, "overdue", { overdueAt: new Date() })
+      return { processed: true, adhesionId: adhesion.id }
+    }
+
+    if (isCanceled && adhesion.status !== "paid") {
+      const hasAnyPaid = nextLedger.some((item) => item.status === "paid")
+      if (!hasAnyPaid) {
+        await this.repo.updateStatus(adhesion.id, "canceled", { canceledAt: new Date() })
+      }
       return { processed: true, adhesionId: adhesion.id }
     }
 
@@ -1559,7 +1738,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         extraTeamPrice,
         extraUserPrice,
         pixBaseMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
-        cardBaseMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
+        cardBaseMonthlyPrice: cardRule
+          ? resolveCardMonthlyPriceFromRule(cardRule, cycle)
+          : null,
       }] as const
     })
 
@@ -1639,7 +1820,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         )
         pricesByCycle[cycle] = {
           pixMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
-          cardMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
+          cardMonthlyPrice: cardRule
+            ? resolveCardMonthlyPriceFromRule(cardRule, cycle)
+            : null,
         }
         if (cardRule) {
           const schedule = Array.isArray(cardRule.installmentSchedule)
@@ -1828,7 +2011,7 @@ function buildAdhesionInstallmentSchedule(input: {
       ? (input.cardRule.installmentSchedule as number[])
       : []
     if (schedule.length > 0) {
-      return schedule.map((value) => Number(Number(value).toFixed(2)))
+      return scaleInstallmentScheduleToTotal(schedule, input.cycleTotal)
     }
   }
   const count = Math.max(1, Math.trunc(input.maxInstallments || 1))

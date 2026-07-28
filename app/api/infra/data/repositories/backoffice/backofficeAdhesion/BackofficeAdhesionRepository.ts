@@ -168,6 +168,21 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     })
   }
 
+  async findByLedgerAsaasPaymentId(
+    paymentId: string
+  ): Promise<BackofficeAdhesionWithRelations | null> {
+    const payload = JSON.stringify([{ asaasPaymentId: paymentId }])
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM backoffice_adhesions
+      WHERE "installmentLedger" @> CAST(${payload} AS jsonb)
+      LIMIT 1
+    `
+    const id = rows[0]?.id
+    if (!id) return null
+    return this.findById(id)
+  }
+
   async findByTokenHash(tokenHash: string): Promise<BackofficeAdhesionWithRelations | null> {
     return prisma.backofficeAdhesion.findUnique({
       where: { tokenHash },
