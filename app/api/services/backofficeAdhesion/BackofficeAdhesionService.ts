@@ -15,6 +15,10 @@ import {
   hashBackofficeAdhesionToken,
   validateBackofficeAdhesionToken,
 } from "@/lib/backoffice-adhesions/adhesion-token-validation"
+import {
+  readInstallmentLedger,
+  type AdhesionInstallmentLedgerEntry,
+} from "@/lib/backoffice-adhesions/installment-ledger"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -73,15 +77,6 @@ const ADHESION_INSTALLMENT_REF_RE = new RegExp(
 )
 const ADHESION_LEGACY_REF_RE = new RegExp(`^backoffice-adhesion-(${ADHESION_UUID})$`, "i")
 
-type AdhesionInstallmentLedgerEntry = {
-  index: number
-  amount: number
-  paymentSource: "EXTERNAL" | "ASAAS"
-  status: "paid" | "pending"
-  asaasPaymentId: string | null
-  paidAt: string | null
-}
-
 function parseAdhesionExternalReference(
   externalReference: string | null | undefined
 ): { adhesionId: string; installmentIndex: number | null } | null {
@@ -100,27 +95,17 @@ function parseAdhesionExternalReference(
   return null
 }
 
-function readInstallmentLedger(value: unknown): AdhesionInstallmentLedgerEntry[] {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((entry, fallbackIndex) => {
-    if (!entry || typeof entry !== "object") return []
-    const record = entry as Record<string, unknown>
-    const index =
-      typeof record.index === "number" && Number.isFinite(record.index)
-        ? Math.trunc(record.index)
-        : fallbackIndex
-    const amount = Number(record.amount)
-    if (!Number.isFinite(amount)) return []
-    const paymentSource = record.paymentSource === "EXTERNAL" ? "EXTERNAL" : "ASAAS"
-    const status = record.status === "paid" ? "paid" : "pending"
-    const asaasPaymentId =
-      typeof record.asaasPaymentId === "string" && record.asaasPaymentId.trim()
-        ? record.asaasPaymentId
-        : null
-    const paidAt =
-      typeof record.paidAt === "string" && record.paidAt.trim() ? record.paidAt : null
-    return [{ index, amount, paymentSource, status, asaasPaymentId, paidAt }]
-  })
+function usesCustomInstallmentCheckout(
+  adhesion: BackofficeAdhesionWithRelations,
+  paymentRules: BackofficeProductPaymentRule[],
+  billingType: string
+): boolean {
+  if (billingType !== "CREDIT_CARD") return false
+  const cardRule = paymentRules.find(
+    (rule) => rule.billingCycle === adhesion.cycle && rule.paymentMethod === "CREDIT_CARD"
+  )
+  if (cardRule?.installmentSplitMode === "CUSTOM") return true
+  return false
 }
 
 function roundCurrency(value: number): number {
@@ -218,7 +203,9 @@ function mapPublicAdhesion(
       (r) => r.billingCycle === adhesion.cycle && r.paymentMethod === "CREDIT_CARD"
     )
     if (cardRule) {
-      creditCardMonthlyTotalAmount = roundCurrency(Number(cardRule.price.toString()) + monthlyExtras)
+      creditCardMonthlyTotalAmount = roundCurrency(
+        resolveCardMonthlyPriceFromRule(cardRule, adhesion.cycle) + monthlyExtras
+      )
       creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
       maxCardInstallments = cardRule.maxInstallments
     }
@@ -962,18 +949,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         return mapPayment(adhesion)
       }
 
-      try {
-        await asaasFetch(`${asaasApi.payments}/${adhesion.asaasPaymentId}`, {
-          method: "DELETE",
-        })
-      } catch (error) {
-        console.error(
-          "[BackofficeAdhesionService][createCheckout] Failed to cancel old Asaas payment:",
-          error
-        )
-      }
-
-      adhesion = await this.repo.clearPaymentArtifacts(adhesion.id)
+      adhesion = await this.cancelExistingCheckoutPayments(adhesion)
+    } else if (readInstallmentLedger(adhesion.installmentLedger).some((entry) => entry.asaasPaymentId)) {
+      adhesion = await this.cancelExistingCheckoutPayments(adhesion)
     }
 
     const normalized = this.normalizeCheckoutInput(input, adhesion.cycle)
@@ -988,12 +966,98 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     )
     const paymentRules = crmProduct?.paymentRules ?? []
     const publicDetails = mapPublicAdhesion(adhesion, paymentRules)
+    const customerId = await this.ensureAsaasCustomer(adhesion, normalized)
+
+    if (usesCustomInstallmentCheckout(adhesion, paymentRules, normalized.billingType)) {
+      const ledger = readInstallmentLedger(adhesion.installmentLedger)
+      const pending = ledger.filter((entry) => entry.status === "pending")
+      if (pending.length === 0) {
+        throw new Error("Não há parcelas pendentes para checkout")
+      }
+
+      const [firstPending, ...remainingPending] = pending
+      const firstResult = await this.createAsaasPayment(
+        adhesion,
+        customerId,
+        normalized,
+        firstPending.amount,
+        { singleCharge: true }
+      )
+
+      let nextLedger = ledger.map((entry) =>
+        entry.index === firstPending.index
+          ? { ...entry, asaasPaymentId: firstResult.paymentId }
+          : entry
+      )
+
+      if (remainingPending.length > 0) {
+        try {
+          nextLedger = await this.chargePendingInstallments({
+            adhesion,
+            customerId,
+            email: normalized.email,
+            billingType: "CREDIT_CARD",
+            ledger: nextLedger,
+            pending: remainingPending,
+          })
+        } catch (chargeError) {
+          try {
+            await asaasFetch(`${asaasApi.payments}/${firstResult.paymentId}`, {
+              method: "DELETE",
+            })
+          } catch (rollbackErr) {
+            console.error(
+              "[BackofficeAdhesionService][createCheckout][rollback-first-payment]",
+              rollbackErr
+            )
+          }
+          throw chargeError
+        }
+      }
+
+      await this.persistInstallmentLedger(adhesion.id, nextLedger, {
+        email: normalized.email,
+        cpfCnpj: normalized.cpfCnpj,
+        asaasCustomerId: customerId,
+        billingType: normalized.billingType,
+      })
+
+      const updated = await this.repo.updateCheckoutData(adhesion.id, {
+        fullName: normalized.fullName,
+        phone: normalized.phone,
+        email: normalized.email,
+        cpfCnpj: normalized.cpfCnpj,
+        postalCode: normalized.postalCode,
+        address: normalized.address,
+        addressNumber: normalized.addressNumber,
+        neighborhood: normalized.neighborhood,
+        complement: normalized.complement,
+        city: normalized.city,
+        state: normalized.state,
+        asaasCustomerId: customerId,
+        asaasPaymentId: firstResult.paymentId,
+        asaasInstallmentId: null,
+        installmentCount: pending.length,
+        billingType: normalized.billingType,
+        paymentDueDate: firstResult.paymentDueDate,
+        invoiceUrl: firstResult.invoiceUrl,
+        bankSlipUrl: firstResult.bankSlipUrl,
+        pixQrCode: firstResult.pix?.encodedImage ?? null,
+        pixPayload: firstResult.pix?.payload ?? null,
+      })
+
+      return {
+        ...mapPayment(updated),
+        pix: firstResult.pix,
+        boleto: firstResult.boleto,
+      }
+    }
+
     const chargeAmount =
       normalized.billingType === "PIX"
         ? publicDetails.pixTotalAmount
         : publicDetails.creditCardTotalAmount
 
-    const customerId = await this.ensureAsaasCustomer(adhesion, normalized)
     const paymentResult = await this.createAsaasPayment(adhesion, customerId, normalized, chargeAmount)
     const updated = await this.repo.updateCheckoutData(adhesion.id, {
       fullName: normalized.fullName,
@@ -1148,18 +1212,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     options?: { deferEmailDelivery?: boolean }
   }): Promise<{ processed: boolean; adhesionId?: string }> {
     const { event, payment, adhesion, options } = input
-    const ledger = [...input.ledger]
-    const entry = ledger.find((item) => item.index === input.installmentIndex) ??
-      ledger[input.installmentIndex]
-    if (!entry) {
-      console.info("[BackofficeAdhesionService][processInstallmentPaymentWebhook] parcela ausente", {
-        adhesionId: adhesion.id,
-        installmentIndex: input.installmentIndex,
-        paymentId: payment.id,
-      })
-      return { processed: false, adhesionId: adhesion.id }
-    }
-
     const status = payment.status?.toUpperCase() ?? ""
     const isPaid =
       PAID_ASAAS_STATUSES.has(status) ||
@@ -1174,69 +1226,106 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       event === "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED"
 
     const paymentId = payment.id ?? null
-    const nextLedger = ledger.map((item) => {
-      if (item.index !== entry.index) return item
-      if (isPaid) {
-        const paidAt =
-          (this.resolvePaymentDate(payment) ?? new Date()).toISOString()
+    const entryPreview =
+      input.ledger.find((item) => item.index === input.installmentIndex) ??
+      input.ledger[input.installmentIndex]
+    if (!entryPreview) {
+      console.info("[BackofficeAdhesionService][processInstallmentPaymentWebhook] parcela ausente", {
+        adhesionId: adhesion.id,
+        installmentIndex: input.installmentIndex,
+        paymentId: payment.id,
+      })
+      return { processed: false, adhesionId: adhesion.id }
+    }
+
+    const updated = await this.repo.mutateInstallmentLedger(adhesion.id, (raw) => {
+      const ledger = readInstallmentLedger(raw)
+      const entry =
+        ledger.find((item) => item.index === input.installmentIndex) ??
+        ledger[input.installmentIndex]
+      if (!entry) return raw
+
+      return ledger.map((item) => {
+        if (item.index !== entry.index) return item
+        if (isPaid) {
+          const paidAt = (this.resolvePaymentDate(payment) ?? new Date()).toISOString()
+          return {
+            ...item,
+            status: "paid" as const,
+            paymentSource: "ASAAS" as const,
+            asaasPaymentId: paymentId,
+            paidAt,
+          }
+        }
+        if (isCanceled) {
+          return {
+            ...item,
+            status: "pending" as const,
+            asaasPaymentId: item.asaasPaymentId === paymentId ? null : item.asaasPaymentId,
+            paidAt: null,
+          }
+        }
         return {
           ...item,
-          status: "paid" as const,
-          paymentSource: "ASAAS" as const,
           asaasPaymentId: paymentId,
-          paidAt,
         }
-      }
-      if (isCanceled) {
-        return {
-          ...item,
-          status: "pending" as const,
-          asaasPaymentId: item.asaasPaymentId === paymentId ? null : item.asaasPaymentId,
-          paidAt: null,
-        }
-      }
-      return {
-        ...item,
-        asaasPaymentId: paymentId,
-      }
+      })
     })
 
-    await this.persistInstallmentLedger(adhesion.id, nextLedger)
+    const nextLedger = readInstallmentLedger(updated.installmentLedger)
 
     if (isPaid) {
       const allPaid = nextLedger.every((item) => item.status === "paid")
       if (allPaid) {
         const paidAt = this.resolvePaymentDate(payment) ?? new Date()
-        const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
+        const paidAdhesion = await this.repo.updateStatus(updated.id, "paid", { paidAt })
         try {
-          await this.ensureAccountForPaidAdhesion(updated, {
+          await this.ensureAccountForPaidAdhesion(paidAdhesion, {
             deferEmailDelivery: options?.deferEmailDelivery,
           })
         } catch (accountError) {
           console.error(
             "[BackofficeAdhesionService][processInstallmentPaymentWebhook][ensureAccount]",
-            { adhesionId: adhesion.id, error: accountError }
+            { adhesionId: updated.id, error: accountError }
           )
           throw accountError
         }
       }
-      return { processed: true, adhesionId: adhesion.id }
+      return { processed: true, adhesionId: updated.id }
     }
 
-    if (isOverdue && adhesion.status !== "paid") {
-      await this.repo.updateStatus(adhesion.id, "overdue", { overdueAt: new Date() })
-      return { processed: true, adhesionId: adhesion.id }
+    if (isOverdue && updated.status !== "paid") {
+      await this.repo.updateStatus(updated.id, "overdue", { overdueAt: new Date() })
+      return { processed: true, adhesionId: updated.id }
     }
 
-    if (isCanceled && adhesion.status !== "paid") {
-      const hasAnyPaid = nextLedger.some((item) => item.status === "paid")
-      if (!hasAnyPaid) {
-        await this.repo.updateStatus(adhesion.id, "canceled", { canceledAt: new Date() })
+    if (isCanceled) {
+      await this.reconcileAdhesionAfterInstallmentCancellation(updated, nextLedger)
+      return { processed: true, adhesionId: updated.id }
+    }
+
+    return { processed: true, adhesionId: updated.id }
+  }
+
+  private async reconcileAdhesionAfterInstallmentCancellation(
+    adhesion: BackofficeAdhesionWithRelations,
+    ledger: AdhesionInstallmentLedgerEntry[]
+  ): Promise<void> {
+    const allPaid = ledger.every((item) => item.status === "paid")
+    const hasAnyPaid = ledger.some((item) => item.status === "paid")
+
+    if (adhesion.status === "paid" && !allPaid) {
+      await this.repo.update(adhesion.id, { status: "pending", paidAt: null })
+      await this.userSubscriptionRepo.cancelActiveByAdhesionId(adhesion.id)
+      if (adhesion.createdProfileId) {
+        await this.repo.revokePaidAdhesionAccess(adhesion.createdProfileId)
       }
-      return { processed: true, adhesionId: adhesion.id }
+      return
     }
 
-    return { processed: true, adhesionId: adhesion.id }
+    if (adhesion.status !== "paid" && !hasAnyPaid) {
+      await this.repo.updateStatus(adhesion.id, "canceled", { canceledAt: new Date() })
+    }
   }
 
   private async invalidateTokenAfterPayment(adhesionId: string): Promise<void> {
@@ -1424,7 +1513,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     adhesion: BackofficeAdhesionWithRelations,
     customerId: string,
     input: BackofficeAdhesionCheckoutInput,
-    chargeAmount: number
+    chargeAmount: number,
+    options?: { singleCharge?: boolean }
   ): Promise<{
     paymentId: string
     installmentId: string | null
@@ -1463,7 +1553,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         mobilePhone: input.phone,
       }
       payload.remoteIp = input.remoteIp
-      if ((input.installments ?? 1) > 1) {
+      if (!options?.singleCharge && (input.installments ?? 1) > 1) {
         payload.installmentCount = input.installments
         payload.installmentValue = roundCurrency(chargeAmount / Math.max(input.installments ?? 1, 1))
       }
@@ -1877,6 +1967,66 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     })
   }
 
+  private collectLedgerAsaasPaymentIds(ledger: AdhesionInstallmentLedgerEntry[]): string[] {
+    const ids = new Set<string>()
+    for (const entry of ledger) {
+      if (entry.asaasPaymentId) ids.add(entry.asaasPaymentId)
+    }
+    return [...ids]
+  }
+
+  private async cancelAsaasPayments(paymentIds: string[]): Promise<void> {
+    for (const paymentId of [...new Set(paymentIds)]) {
+      try {
+        await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+      } catch (error) {
+        console.error("[BackofficeAdhesionService][cancelAsaasPayments]", { paymentId, error })
+      }
+    }
+  }
+
+  private resetPendingLedgerPaymentIds(
+    ledger: AdhesionInstallmentLedgerEntry[]
+  ): AdhesionInstallmentLedgerEntry[] {
+    return ledger.map((entry) =>
+      entry.status === "paid"
+        ? entry
+        : { ...entry, asaasPaymentId: null, paidAt: null }
+    )
+  }
+
+  private async cancelExistingCheckoutPayments(
+    adhesion: BackofficeAdhesionWithRelations
+  ): Promise<BackofficeAdhesionWithRelations> {
+    const ledger = readInstallmentLedger(adhesion.installmentLedger)
+    const paymentIds = this.collectLedgerAsaasPaymentIds(ledger)
+    if (adhesion.asaasPaymentId) {
+      paymentIds.push(adhesion.asaasPaymentId)
+    }
+
+    if (paymentIds.length > 0) {
+      await this.cancelAsaasPayments(paymentIds)
+    }
+
+    const resetLedger = this.resetPendingLedgerPaymentIds(ledger)
+    const ledgerChanged = JSON.stringify(resetLedger) !== JSON.stringify(ledger)
+    const hadMainPayment =
+      Boolean(adhesion.asaasPaymentId) ||
+      Boolean(adhesion.pixPayload) ||
+      Boolean(adhesion.invoiceUrl)
+
+    if (hadMainPayment) {
+      await this.repo.update(adhesion.id, { installmentLedger: resetLedger })
+      return this.repo.clearPaymentArtifacts(adhesion.id)
+    }
+
+    if (ledgerChanged) {
+      return this.repo.update(adhesion.id, { installmentLedger: resetLedger })
+    }
+
+    return adhesion
+  }
+
   private async chargePendingInstallments(input: {
     adhesion: BackofficeAdhesionWithRelations
     customerId: string
@@ -1901,28 +2051,44 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   }): Promise<typeof input.ledger> {
     const next = [...input.ledger]
     const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", DEFAULT_TZ)
-    for (const entry of input.pending) {
-      const payment = await asaasFetch(asaasApi.payments, {
-        method: "POST",
-        body: JSON.stringify({
-          customer: input.customerId,
-          billingType: input.billingType,
-          value: entry.amount,
-          dueDate,
-          description: `Corretor Studio - Parcela ${entry.index + 1} adesão ${BACKOFFICE_ADHESION_CYCLE_LABELS[input.adhesion.cycle]}`,
-          externalReference: `backoffice-adhesion-${input.adhesion.id}-installment-${entry.index}`,
-        }),
-      })
-      const paymentId = payment?.id ? String(payment.id) : null
-      if (!paymentId) {
-        throw new Error(`Falha ao criar cobrança Asaas da parcela ${entry.index + 1}`)
+    const createdPaymentIds: string[] = []
+    try {
+      for (const entry of input.pending) {
+        const payment = await asaasFetch(asaasApi.payments, {
+          method: "POST",
+          body: JSON.stringify({
+            customer: input.customerId,
+            billingType: input.billingType,
+            value: entry.amount,
+            dueDate,
+            description: `Corretor Studio - Parcela ${entry.index + 1} adesão ${BACKOFFICE_ADHESION_CYCLE_LABELS[input.adhesion.cycle]}`,
+            externalReference: `backoffice-adhesion-${input.adhesion.id}-installment-${entry.index}`,
+          }),
+        })
+        const paymentId = payment?.id ? String(payment.id) : null
+        if (!paymentId) {
+          throw new Error(`Falha ao criar cobrança Asaas da parcela ${entry.index + 1}`)
+        }
+        createdPaymentIds.push(paymentId)
+        next[entry.index] = {
+          ...next[entry.index],
+          asaasPaymentId: paymentId,
+        }
       }
-      next[entry.index] = {
-        ...next[entry.index],
-        asaasPaymentId: paymentId,
+      return next
+    } catch (error) {
+      for (const paymentId of createdPaymentIds) {
+        try {
+          await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+        } catch (rollbackErr) {
+          console.error(
+            "[BackofficeAdhesionService][chargePendingInstallments][rollback]",
+            { paymentId, rollbackErr }
+          )
+        }
       }
+      throw error
     }
-    return next
   }
 
   private async ensureUserSubscriptionForPaidAdhesion(

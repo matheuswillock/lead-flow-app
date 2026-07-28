@@ -248,6 +248,8 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         locked.has(rule.billingCycle) &&
         (Number(current.price.toString()) !== rule.price ||
           (current.installmentSplitMode ?? "EQUAL") !== (rule.installmentSplitMode ?? "EQUAL") ||
+          (current.canInstallment ?? false) !== (rule.canInstallment ?? false) ||
+          current.maxInstallments !== rule.maxInstallments ||
           JSON.stringify(current.installmentSchedule ?? []) !==
             JSON.stringify(rule.installmentSchedule ?? []))
       ) {

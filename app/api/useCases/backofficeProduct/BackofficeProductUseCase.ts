@@ -250,6 +250,8 @@ export class BackofficeProductUseCase {
           if (
             Number(current.price.toString()) !== rule.price ||
             (current.installmentSplitMode ?? "EQUAL") !== (rule.installmentSplitMode ?? "EQUAL") ||
+            (current.canInstallment ?? false) !== (rule.canInstallment ?? false) ||
+            current.maxInstallments !== rule.maxInstallments ||
             scheduleChanged
           ) {
             blockedUpdates.push(rule.billingCycle)

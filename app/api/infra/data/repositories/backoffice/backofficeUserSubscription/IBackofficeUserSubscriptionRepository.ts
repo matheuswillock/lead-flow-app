@@ -23,4 +23,5 @@ export interface IBackofficeUserSubscriptionRepository {
   findByProfileId(profileId: string): Promise<BackofficeUserSubscriptionWithProduct[]>
   upsertForAdhesion(data: UpsertBackofficeUserSubscriptionInput): Promise<BackofficeUserSubscription>
   updateStatus(id: string, status: BackofficeSubscriptionStatus): Promise<BackofficeUserSubscription>
+  cancelActiveByAdhesionId(adhesionId: string): Promise<void>
 }
