@@ -217,6 +217,61 @@ export class RadarRepository {
         return { profile, wasExisting: true }
       }
 
+      // D4: telefone chegando pela primeira vez para um e-mail que já tem
+      // perfil email-only — promove o mesmo perfil (nunca cria uma segunda
+      // linha via chave natural telefone+nome). "Promover" = a identidade
+      // phone passa a apontar para o profileId que já existia por e-mail.
+      if (input.normalizedPrimaryEmail) {
+        const existingByEmailIdentity = await tx.radarIdentity.findUnique({
+          where: {
+            teamId_type_normalizedValue: {
+              teamId: input.teamId,
+              type: "email",
+              normalizedValue: input.normalizedPrimaryEmail,
+            },
+          },
+          select: { profileId: true },
+        })
+
+        if (existingByEmailIdentity) {
+          const profile = await tx.radarProfile.update({
+            where: { id: existingByEmailIdentity.profileId },
+            data: {
+              normalizedPhone: input.normalizedPhone,
+              displayPhone: input.displayPhone || undefined,
+              lastSeenAt: input.lastSeenAt ?? new Date(),
+            },
+          })
+
+          await tx.radarIdentity.upsert({
+            where: {
+              teamId_type_normalizedValue: {
+                teamId: input.teamId,
+                type: "phone",
+                normalizedValue: input.normalizedPhone,
+              },
+            },
+            create: {
+              profileId: profile.id,
+              teamId: input.teamId,
+              type: "phone",
+              value: input.phoneValue,
+              normalizedValue: input.normalizedPhone,
+              source: input.phoneSource,
+              isPrimary: true,
+            },
+            update: {
+              profileId: profile.id,
+              value: input.phoneValue ?? undefined,
+              source: input.phoneSource,
+              isPrimary: true,
+            },
+          })
+
+          return { profile, wasExisting: true }
+        }
+      }
+
       const existingByKey = await tx.radarProfile.findUnique({
         where: {
           teamId_normalizedPhone_normalizedName: {
@@ -285,6 +340,77 @@ export class RadarRepository {
       })
 
       return { profile, wasExisting: Boolean(existingByKey) }
+    })
+  }
+
+  /**
+   * Resolve (ou cria) um perfil "email-only" (D4) — mesmo princípio de
+   * `resolveProfileForPhone`, mas sem telefone disponível. `RadarProfile`
+   * não tem chave natural para "só e-mail" (só `[teamId, normalizedPhone,
+   * normalizedName]`, que exige telefone), então o lock advisory em
+   * `(teamId, normalizedEmail)` é a única proteção contra corrida — suficiente
+   * porque tudo roda dentro da mesma transação. Quando o caller já tem um
+   * telefone válido disponível, deve chamar `resolveProfileForPhone`
+   * diretamente (que agora também promove um perfil email-only existente,
+   * ver bloco acima) em vez deste método.
+   */
+  async resolveProfileForEmail(input: {
+    teamId: string
+    normalizedEmail: string
+    emailValue: string
+    displayName: string | null
+    normalizedName: string | null
+    emailSource: string
+    lastSeenAt?: Date
+  }) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedEmail}))`
+
+      const existingByIdentity = await tx.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: "email",
+            normalizedValue: input.normalizedEmail,
+          },
+        },
+        select: { profileId: true },
+      })
+
+      if (existingByIdentity) {
+        const profile = await tx.radarProfile.update({
+          where: { id: existingByIdentity.profileId },
+          data: { lastSeenAt: input.lastSeenAt ?? new Date() },
+        })
+        return { profile, wasExisting: true }
+      }
+
+      const profile = await tx.radarProfile.create({
+        data: {
+          teamId: input.teamId,
+          displayName: input.displayName || input.emailValue,
+          normalizedName: input.normalizedName || input.normalizedEmail,
+          normalizedPhone: null,
+          displayPhone: null,
+          primaryEmail: input.emailValue,
+          normalizedPrimaryEmail: input.normalizedEmail,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      await tx.radarIdentity.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          type: "email",
+          value: input.emailValue,
+          normalizedValue: input.normalizedEmail,
+          source: input.emailSource,
+          isPrimary: true,
+        },
+      })
+
+      return { profile, wasExisting: false }
     })
   }
 
@@ -626,6 +752,22 @@ export class RadarRepository {
         isBounced: true,
         isComplained: true,
         updatedAt: true,
+      },
+    })
+  }
+
+  async findEmailContactById(contactId: string) {
+    return prisma.emailContact.findUnique({
+      where: { id: contactId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isUnsubscribed: true,
+        isBounced: true,
+        isComplained: true,
+        updatedAt: true,
+        list: { select: { teamId: true } },
       },
     })
   }

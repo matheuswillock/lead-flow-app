@@ -4143,8 +4143,8 @@ model RadarProfile {
   teamId                   String    @db.Uuid
   normalizedName           String    @db.Text
   displayName              String    @db.Text
-  normalizedPhone          String    @db.Text
-  displayPhone             String    @db.Text
+  normalizedPhone          String?   @db.Text
+  displayPhone             String?   @db.Text
   primaryEmail             String?   @db.Text
   normalizedPrimaryEmail   String?   @db.Text
   primaryDocument          String?   @db.Text

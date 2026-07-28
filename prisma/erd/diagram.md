@@ -3031,8 +3031,8 @@ meeting_scheduled meeting_scheduled
     String id "🗝️"
     String normalizedName 
     String displayName 
-    String normalizedPhone 
-    String displayPhone 
+    String normalizedPhone "❓"
+    String displayPhone "❓"
     String primaryEmail "❓"
     String normalizedPrimaryEmail "❓"
     String primaryDocument "❓"

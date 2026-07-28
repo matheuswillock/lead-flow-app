@@ -3,7 +3,7 @@ export type RadarConsentStatus = "allowed" | "blocked" | "unknown"
 export type RadarProfileListItem = {
   id: string
   displayName: string
-  displayPhone: string
+  displayPhone: string | null
   primaryEmail: string | null
   lastSeenAt: string | null
   primarySegment?: string | null
@@ -95,7 +95,7 @@ export type RadarMetrics = {
 
 export type RadarProfileDetail = RadarProfileListItem & {
   normalizedName: string
-  normalizedPhone: string
+  normalizedPhone: string | null
   primaryDocument: string | null
   identities: Array<{
     id: string

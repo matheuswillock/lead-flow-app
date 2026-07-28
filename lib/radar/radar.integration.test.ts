@@ -20,6 +20,7 @@ let normalizeRadarEmail: typeof import("@/lib/radar/normalization").normalizeRad
 let normalizeRadarPhone: typeof import("@/lib/radar/normalization").normalizeRadarPhone
 let syncLeadToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncLeadToRadarUseCase").syncLeadToRadarUseCase
 let syncPortfolioToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncPortfolioToRadarUseCase").syncPortfolioToRadarUseCase
+let syncEmailContactToRadarUseCase: typeof import("@/app/api/useCases/radar/SyncEmailContactToRadarUseCase").syncEmailContactToRadarUseCase
 let teamHasRadarFeature: typeof import("@/lib/radar/team-has-radar-feature").teamHasRadarFeature
 let radarSegmentQueryService: typeof import("@/app/api/services/radar/RadarSegmentQueryService").radarSegmentQueryService
 let teamRadarSegmentService: typeof import("@/app/api/services/radar/TeamRadarSegmentService").teamRadarSegmentService
@@ -36,6 +37,7 @@ if (RUN_INTEGRATION) {
   ;({ normalizeRadarEmail, normalizeRadarPhone } = await import("@/lib/radar/normalization"))
   ;({ syncLeadToRadarUseCase } = await import("@/app/api/useCases/radar/SyncLeadToRadarUseCase"))
   ;({ syncPortfolioToRadarUseCase } = await import("@/app/api/useCases/radar/SyncPortfolioToRadarUseCase"))
+  ;({ syncEmailContactToRadarUseCase } = await import("@/app/api/useCases/radar/SyncEmailContactToRadarUseCase"))
   ;({ teamHasRadarFeature } = await import("@/lib/radar/team-has-radar-feature"))
   ;({ radarSegmentQueryService } = await import("@/app/api/services/radar/RadarSegmentQueryService"))
   ;({ teamRadarSegmentService } = await import("@/app/api/services/radar/TeamRadarSegmentService"))
@@ -498,6 +500,255 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
         where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transferLead.phone) },
       })
       await prisma.lead.delete({ where: { id: transferLead.id } })
+    }
+  })
+
+  it("EmailContact sem Lead correspondente gera perfil email-only (D4)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const list = await prisma.emailContactList.create({
+      data: {
+        id: randomUUID(),
+        teamId: scope.teamId,
+        createdBy: scope.ctx.profileId,
+        name: `Lista D4 ${suffix}`,
+      },
+    })
+    const contact = await prisma.emailContact.create({
+      data: {
+        id: randomUUID(),
+        listId: list.id,
+        email: `email-only-${suffix}@example.com`,
+        name: "Contato Email Only",
+      },
+    })
+
+    try {
+      const result = await radarService.syncFromEmail(scope, { emailContactId: contact.id })
+      expect(result.created).toBe(1)
+
+      const profile = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) },
+      })
+      expect(profile).not.toBeNull()
+      expect(profile?.normalizedPhone).toBeNull()
+      expect(profile?.displayPhone).toBeNull()
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarChannelConsent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) },
+      })
+      await prisma.emailContact.delete({ where: { id: contact.id } })
+      await prisma.emailContactList.delete({ where: { id: list.id } })
+    }
+  })
+
+  it("perfil email-only é promovido (não duplicado) quando um telefone real chega para o mesmo e-mail (D4)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const sharedEmail = `promote-${suffix}@example.com`
+    const list = await prisma.emailContactList.create({
+      data: {
+        id: randomUUID(),
+        teamId: scope.teamId,
+        createdBy: scope.ctx.profileId,
+        name: `Lista Promoção ${suffix}`,
+      },
+    })
+    const contact = await prisma.emailContact.create({
+      data: {
+        id: randomUUID(),
+        listId: list.id,
+        email: sharedEmail,
+        name: "Contato A Promover",
+      },
+    })
+
+    let promotedLead: Awaited<ReturnType<typeof prisma.lead.create>> | null = null
+    try {
+      const emailOnlyResult = await radarService.syncFromEmail(scope, { emailContactId: contact.id })
+      expect(emailOnlyResult.created).toBe(1)
+
+      const emailOnlyProfile = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) },
+      })
+      expect(emailOnlyProfile).not.toBeNull()
+      expect(emailOnlyProfile?.normalizedPhone).toBeNull()
+
+      const phoneDigits = String(Date.now()).slice(-4)
+      promotedLead = await prisma.lead.create({
+        data: {
+          id: randomUUID(),
+          leadCode: `Radar-promote-${suffix}`,
+          managerId: scope.ctx.profileId,
+          teamId: scope.teamId,
+          name: "Lead Promovido",
+          phone: `1199994${phoneDigits}`,
+          email: sharedEmail,
+          status: "new_opportunity",
+        },
+      })
+
+      const crmResult = await radarService.syncFromCrm(scope, { leadId: promotedLead.id })
+      expect(crmResult.created).toBe(0)
+      expect(crmResult.enriched).toBe(1)
+
+      const promotedProfile = await prisma.radarProfile.findUnique({ where: { id: emailOnlyProfile!.id } })
+      expect(promotedProfile?.normalizedPhone).toBe(normalizeRadarPhone(promotedLead.phone!))
+
+      const profilesWithEmail = await prisma.radarProfile.count({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) },
+      })
+      expect(profilesWithEmail).toBe(1)
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarChannelConsent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(sharedEmail) },
+      })
+      await prisma.emailContact.delete({ where: { id: contact.id } })
+      await prisma.emailContactList.delete({ where: { id: list.id } })
+      if (promotedLead) {
+        await prisma.lead.delete({ where: { id: promotedLead.id } })
+      }
+    }
+  })
+
+  it("handleEmailWebhookEvent cria perfil email-only no primeiro evento sem Lead/perfil prévio (D4)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const recipientEmail = `webhook-only-${suffix}@example.com`
+
+    try {
+      await radarService.handleEmailWebhookEvent({
+        teamId: scope.teamId,
+        recipientEmail,
+        recipientName: "Destinatário Webhook",
+        logId: randomUUID(),
+        eventType: "opened",
+        occurredAt: new Date(),
+      })
+
+      const profile = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) },
+      })
+      expect(profile).not.toBeNull()
+      expect(profile?.normalizedPhone).toBeNull()
+
+      const event = await prisma.radarEvent.findFirst({
+        where: { teamId: scope.teamId, profileId: profile!.id, eventType: "email.opened" },
+      })
+      expect(event).not.toBeNull()
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
+      })
+      await prisma.radarChannelConsent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(recipientEmail) },
+      })
+    }
+  })
+
+  it("push inline (SyncEmailContactToRadarUseCase) é idempotente frente ao batch — não duplica identidade/evento/perfil (D4)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const list = await prisma.emailContactList.create({
+      data: {
+        id: randomUUID(),
+        teamId: scope.teamId,
+        createdBy: scope.ctx.profileId,
+        name: `Lista Inline ${suffix}`,
+      },
+    })
+    const contact = await prisma.emailContact.create({
+      data: {
+        id: randomUUID(),
+        listId: list.id,
+        email: `inline-contact-${suffix}@example.com`,
+        name: "Contato Inline",
+      },
+    })
+
+    try {
+      // Simula o backfill batch rodando primeiro.
+      const batchResult = await radarService.syncFromEmail(scope, { emailContactId: contact.id })
+      expect(batchResult.created).toBe(1)
+
+      const profileAfterBatch = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) },
+      })
+      expect(profileAfterBatch).not.toBeNull()
+
+      const identitiesAfterBatch = await prisma.radarIdentity.count({
+        where: { profileId: profileAfterBatch!.id },
+      })
+      const sourceLinksAfterBatch = await prisma.radarSourceLink.count({
+        where: { profileId: profileAfterBatch!.id },
+      })
+      const profilesCountAfterBatch = await prisma.radarProfile.count({ where: { teamId: scope.teamId } })
+
+      // Push inline chega depois (ex.: EmailContactListUseCase.addContact disparou o fire-and-forget).
+      const inlineResult = await syncEmailContactToRadarUseCase.execute({
+        emailContactId: contact.id,
+        teamId: scope.teamId,
+      })
+      expect(inlineResult.isValid).toBe(true)
+
+      const identitiesAfterInline = await prisma.radarIdentity.count({
+        where: { profileId: profileAfterBatch!.id },
+      })
+      const sourceLinksAfterInline = await prisma.radarSourceLink.count({
+        where: { profileId: profileAfterBatch!.id },
+      })
+      const profilesCountAfterInline = await prisma.radarProfile.count({ where: { teamId: scope.teamId } })
+
+      expect(identitiesAfterInline).toBe(identitiesAfterBatch)
+      expect(sourceLinksAfterInline).toBe(sourceLinksAfterBatch)
+      expect(profilesCountAfterInline).toBe(profilesCountAfterBatch)
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarChannelConsent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) },
+      })
+      await prisma.emailContact.delete({ where: { id: contact.id } })
+      await prisma.emailContactList.delete({ where: { id: list.id } })
     }
   })
 
