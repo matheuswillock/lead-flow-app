@@ -35,6 +35,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
       page?: number;
       pageSize?: number;
       status?: TeamWebhookStatus;
+      search?: string;
     }
   ) {
     const search = new URLSearchParams({
@@ -43,6 +44,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
       pageSize: String(params.pageSize ?? 20),
     });
     if (params.status) search.set("status", params.status);
+    if (params.search?.trim()) search.set("search", params.search.trim());
 
     const response = await fetch(`/api/v1/integrations/webhooks?${search.toString()}`, {
       method: "GET",

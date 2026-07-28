@@ -18,6 +18,7 @@ export class TeamWebhookUseCase implements ITeamWebhookUseCase {
     params: {
       direction: TeamWebhookDirection;
       status?: TeamWebhookStatus;
+      search?: string;
       page: number;
       pageSize: number;
     },

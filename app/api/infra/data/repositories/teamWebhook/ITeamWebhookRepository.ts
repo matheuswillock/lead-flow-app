@@ -40,6 +40,7 @@ export type UpdateTeamWebhookData = Partial<CreateTeamWebhookData> & {
 export type ListTeamWebhooksParams = {
   direction: TeamWebhookDirection;
   status?: TeamWebhookStatus;
+  search?: string;
   page: number;
   pageSize: number;
 };

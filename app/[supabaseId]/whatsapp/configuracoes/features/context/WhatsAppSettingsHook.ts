@@ -11,7 +11,7 @@ import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage, Reusa
 
 const buildRequestKey = (teamId: string): string => `whatsapp-settings:${teamId}`
 
-const QR_POLL_INTERVAL_MS = 8000
+const QR_POLL_INTERVAL_MS = 3000
 const QR_POLL_MAX_TICKS = 30
 const QR_GEN_MAX_ATTEMPTS = 5
 const QR_GEN_BASE_DELAY_MS = 3000
@@ -32,6 +32,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
   const [isReconnecting, setIsReconnecting] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [isSyncingContacts, setIsSyncingContacts] = useState(false)
+  const [isPurgingConversations, setIsPurgingConversations] = useState(false)
 
   const inFlightKeyRef = useRef<string | null>(null)
   const pollInFlightRef = useRef(false)
@@ -128,6 +129,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       const result = await whatsAppSettingsService.reconnect(activeTeamId, supabaseId)
       setConfig(result)
       lastSuccessKeyRef.current = null
+      dispatchWhatsAppConfigChanged()
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao gerar QR Code automaticamente:', error)
     } finally {
@@ -223,6 +225,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     if (current !== 'CONNECTED') return
 
     toast.success('WhatsApp conectado com sucesso')
+    dispatchWhatsAppConfigChanged()
     void whatsAppSettingsService.syncHistory(activeTeamId, supabaseId).catch((error) => {
       console.error('[useWhatsAppSettings] Erro ao sincronizar histórico:', error)
     })
@@ -337,6 +340,29 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     }
   }, [activeTeamId, supabaseId, isSyncingContacts])
 
+  const purgeConversations = useCallback(async () => {
+    if (!activeTeamId) {
+      toast.error('Selecione um time para zerar as conversas')
+      return
+    }
+    if (isPurgingConversations) return
+    setIsPurgingConversations(true)
+    try {
+      const result = await whatsAppSettingsService.purgeConversations(activeTeamId, supabaseId)
+      dispatchWhatsAppConfigChanged()
+      toast.success(
+        result.deletedCount === 0
+          ? 'Nenhuma conversa ativa para remover'
+          : `${result.deletedCount} conversa(s) removida(s) com sucesso`
+      )
+    } catch (error) {
+      console.error('[useWhatsAppSettings] Erro ao zerar conversas:', error)
+      toast.error(error instanceof Error ? error.message : 'Não foi possível zerar as conversas')
+    } finally {
+      setIsPurgingConversations(false)
+    }
+  }, [activeTeamId, supabaseId, isPurgingConversations])
+
   return {
     config,
     usage,
@@ -348,10 +374,12 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     isReconnecting,
     isDisconnecting,
     isSyncingContacts,
+    isPurgingConversations,
     connect,
     reconnect,
     disconnect,
     reload,
     syncPhoneContacts,
+    purgeConversations,
   }
 }
