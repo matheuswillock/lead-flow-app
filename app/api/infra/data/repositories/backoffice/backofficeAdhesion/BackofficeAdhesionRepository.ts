@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   BackofficeAdhesionOptions,
   BackofficeAdhesionWithRelations,
+  BackofficeAdhesionInvoiceSource,
   CreateBackofficeAdhesionManagerProfileInput,
   CreateBackofficeAdhesionInput,
   IBackofficeAdhesionRepository,
@@ -181,6 +182,32 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     const id = rows[0]?.id
     if (!id) return null
     return this.findById(id)
+  }
+
+  async findByCreatedProfileId(profileId: string): Promise<BackofficeAdhesionInvoiceSource[]> {
+    const adhesions = await prisma.backofficeAdhesion.findMany({
+      where: { createdProfileId: profileId },
+      select: {
+        id: true,
+        installmentLedger: true,
+        paidAt: true,
+        createdAt: true,
+        product: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    return adhesions.map((adhesion) => ({
+      id: adhesion.id,
+      productName: adhesion.product?.name ?? null,
+      installmentLedger: adhesion.installmentLedger,
+      paidAt: adhesion.paidAt,
+      createdAt: adhesion.createdAt,
+    }))
   }
 
   async mutateInstallmentLedger(

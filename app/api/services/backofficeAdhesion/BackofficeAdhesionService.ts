@@ -17,6 +17,8 @@ import {
   validateBackofficeAdhesionToken,
 } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import {
+  hasExternalActivation,
+  isAdhesionAccountActivated,
   readInstallmentLedger,
   type AdhesionInstallmentLedgerEntry,
 } from "@/lib/backoffice-adhesions/installment-ledger"
@@ -173,6 +175,8 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
     productId: adhesion.productId,
     hasUnlimitedUsers: adhesion.hasUnlimitedUsers === true,
     multiskillEnabled: adhesion.multiskillEnabled === true,
+    accountProvisioned: Boolean(adhesion.createdProfileId),
+    hasExternalActivation: hasExternalActivation(adhesion.installmentLedger),
   }
 }
 
@@ -909,11 +913,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (!existing) {
       throw new Error("Adesão não encontrada")
     }
-    if (existing.status !== "paid") {
-      throw new Error("Convite só pode ser reenviado para adesões pagas")
+    if (!isAdhesionAccountActivated(existing)) {
+      throw new Error("Convite disponível apenas após ativação da conta ou pagamento externo")
     }
     if (!existing.email) {
-      throw new Error("Adesão paga sem e-mail para reenvio de convite")
+      throw new Error("Adesão sem e-mail para reenvio de convite")
     }
 
     if (!existing.createdSupabaseId && !existing.createdProfileId) {
@@ -1845,7 +1849,23 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           )
         })
       } else {
-        await this.sendSetPasswordEmail(adhesion, "invite", linkData)
+        try {
+          await this.sendSetPasswordEmail(
+            { ...adhesion, createdProfileId: createdProfile.profileId },
+            "invite",
+            linkData
+          )
+        } catch (emailError) {
+          console.error(
+            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][invite-email]",
+            {
+              adhesionId: adhesion.id,
+              profileId: createdProfile.profileId,
+              error: emailError,
+            }
+          )
+          throw emailError
+        }
       }
     } catch (accountError) {
       await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
@@ -2221,6 +2241,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       userName: adhesion.fullName,
       userEmail: adhesion.email,
       setPasswordUrl: buildSetPasswordEmailAuthLink(linkData, type),
+      profileId: adhesion.createdProfileId ?? undefined,
+      adhesionId: adhesion.id,
     })
   }
 }

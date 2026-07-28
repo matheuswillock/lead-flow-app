@@ -3,7 +3,7 @@ export interface BackofficeClientInvoiceDetails {
   invoiceIdDisplay: string
   invoiceName: string
   invoiceKind: "subscription" | "addon_user" | "addon_team" | "other"
-  source: "asaas" | "pending_action"
+  source: "asaas" | "pending_action" | "adhesion_external"
   customerName: string
   status: string
   statusGroup: "paid" | "overdue" | "upcoming" | "other"
