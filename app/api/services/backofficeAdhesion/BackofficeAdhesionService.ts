@@ -16,7 +16,6 @@ import {
   validateBackofficeAdhesionToken,
 } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import {
-  hasCustomInstallmentAmounts,
   readInstallmentLedger,
   type AdhesionInstallmentLedgerEntry,
 } from "@/lib/backoffice-adhesions/installment-ledger"
@@ -106,7 +105,7 @@ function usesCustomInstallmentCheckout(
     (rule) => rule.billingCycle === adhesion.cycle && rule.paymentMethod === "CREDIT_CARD"
   )
   if (cardRule?.installmentSplitMode === "CUSTOM") return true
-  return hasCustomInstallmentAmounts(readInstallmentLedger(adhesion.installmentLedger))
+  return false
 }
 
 function roundCurrency(value: number): number {
@@ -950,18 +949,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         return mapPayment(adhesion)
       }
 
-      try {
-        await asaasFetch(`${asaasApi.payments}/${adhesion.asaasPaymentId}`, {
-          method: "DELETE",
-        })
-      } catch (error) {
-        console.error(
-          "[BackofficeAdhesionService][createCheckout] Failed to cancel old Asaas payment:",
-          error
-        )
-      }
-
-      adhesion = await this.repo.clearPaymentArtifacts(adhesion.id)
+      adhesion = await this.cancelExistingCheckoutPayments(adhesion)
+    } else if (readInstallmentLedger(adhesion.installmentLedger).some((entry) => entry.asaasPaymentId)) {
+      adhesion = await this.cancelExistingCheckoutPayments(adhesion)
     }
 
     const normalized = this.normalizeCheckoutInput(input, adhesion.cycle)
@@ -1327,6 +1317,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (adhesion.status === "paid" && !allPaid) {
       await this.repo.update(adhesion.id, { status: "pending", paidAt: null })
       await this.userSubscriptionRepo.cancelActiveByAdhesionId(adhesion.id)
+      if (adhesion.createdProfileId) {
+        await this.repo.revokePaidAdhesionAccess(adhesion.createdProfileId)
+      }
       return
     }
 
@@ -1972,6 +1965,66 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       ...(extras?.paidAt !== undefined ? { paidAt: extras.paidAt } : {}),
       ...(extras?.billingType !== undefined ? { billingType: extras.billingType } : {}),
     })
+  }
+
+  private collectLedgerAsaasPaymentIds(ledger: AdhesionInstallmentLedgerEntry[]): string[] {
+    const ids = new Set<string>()
+    for (const entry of ledger) {
+      if (entry.asaasPaymentId) ids.add(entry.asaasPaymentId)
+    }
+    return [...ids]
+  }
+
+  private async cancelAsaasPayments(paymentIds: string[]): Promise<void> {
+    for (const paymentId of [...new Set(paymentIds)]) {
+      try {
+        await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+      } catch (error) {
+        console.error("[BackofficeAdhesionService][cancelAsaasPayments]", { paymentId, error })
+      }
+    }
+  }
+
+  private resetPendingLedgerPaymentIds(
+    ledger: AdhesionInstallmentLedgerEntry[]
+  ): AdhesionInstallmentLedgerEntry[] {
+    return ledger.map((entry) =>
+      entry.status === "paid"
+        ? entry
+        : { ...entry, asaasPaymentId: null, paidAt: null }
+    )
+  }
+
+  private async cancelExistingCheckoutPayments(
+    adhesion: BackofficeAdhesionWithRelations
+  ): Promise<BackofficeAdhesionWithRelations> {
+    const ledger = readInstallmentLedger(adhesion.installmentLedger)
+    const paymentIds = this.collectLedgerAsaasPaymentIds(ledger)
+    if (adhesion.asaasPaymentId) {
+      paymentIds.push(adhesion.asaasPaymentId)
+    }
+
+    if (paymentIds.length > 0) {
+      await this.cancelAsaasPayments(paymentIds)
+    }
+
+    const resetLedger = this.resetPendingLedgerPaymentIds(ledger)
+    const ledgerChanged = JSON.stringify(resetLedger) !== JSON.stringify(ledger)
+    const hadMainPayment =
+      Boolean(adhesion.asaasPaymentId) ||
+      Boolean(adhesion.pixPayload) ||
+      Boolean(adhesion.invoiceUrl)
+
+    if (hadMainPayment) {
+      await this.repo.update(adhesion.id, { installmentLedger: resetLedger })
+      return this.repo.clearPaymentArtifacts(adhesion.id)
+    }
+
+    if (ledgerChanged) {
+      return this.repo.update(adhesion.id, { installmentLedger: resetLedger })
+    }
+
+    return adhesion
   }
 
   private async chargePendingInstallments(input: {

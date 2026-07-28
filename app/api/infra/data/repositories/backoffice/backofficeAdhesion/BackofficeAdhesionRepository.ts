@@ -415,6 +415,19 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     })
   }
 
+  async revokePaidAdhesionAccess(profileId: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.profile.update({
+        where: { id: profileId },
+        data: { subscriptionStatus: SubscriptionStatus.canceled },
+      }),
+      prisma.profileSubscription.updateMany({
+        where: { profileId },
+        data: { subscriptionStatus: SubscriptionStatus.canceled },
+      }),
+    ])
+  }
+
   async upsertProfileSubscription(data: {
     profileId: string
     adhesionId: string

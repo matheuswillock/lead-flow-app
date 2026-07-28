@@ -1,21 +1,24 @@
 import { describe, expect, it } from "bun:test"
-import { hasCustomInstallmentAmounts, readInstallmentLedger } from "./installment-ledger"
+import { readInstallmentLedger } from "./installment-ledger"
 
 describe("installment-ledger", () => {
-  it("detecta parcelas com valores distintos", () => {
+  it("normaliza entradas do ledger com índice e valores", () => {
     const ledger = readInstallmentLedger([
       { index: 0, amount: 1200, paymentSource: "ASAAS", status: "pending" },
       { index: 1, amount: 990, paymentSource: "ASAAS", status: "pending" },
       { index: 2, amount: 990, paymentSource: "ASAAS", status: "pending" },
     ])
-    expect(hasCustomInstallmentAmounts(ledger)).toBe(true)
+    expect(ledger).toHaveLength(3)
+    expect(ledger[0]?.amount).toBe(1200)
+    expect(ledger[2]?.amount).toBe(990)
   })
 
-  it("ignora ledger com parcelas iguais", () => {
+  it("preserva parcelas pagas com arredondamento distinto na última parcela", () => {
     const ledger = readInstallmentLedger([
-      { index: 0, amount: 100, paymentSource: "ASAAS", status: "pending" },
-      { index: 1, amount: 100, paymentSource: "ASAAS", status: "pending" },
+      { index: 0, amount: 33.33, paymentSource: "ASAAS", status: "pending" },
+      { index: 1, amount: 33.33, paymentSource: "ASAAS", status: "pending" },
+      { index: 2, amount: 33.34, paymentSource: "ASAAS", status: "pending" },
     ])
-    expect(hasCustomInstallmentAmounts(ledger)).toBe(false)
+    expect(ledger.map((entry) => entry.amount)).toEqual([33.33, 33.33, 33.34])
   })
 })

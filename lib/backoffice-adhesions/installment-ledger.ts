@@ -29,9 +29,3 @@ export function readInstallmentLedger(value: unknown): AdhesionInstallmentLedger
     return [{ index, amount, paymentSource, status, asaasPaymentId, paidAt }]
   })
 }
-
-export function hasCustomInstallmentAmounts(ledger: AdhesionInstallmentLedgerEntry[]): boolean {
-  if (ledger.length <= 1) return false
-  const unique = new Set(ledger.map((entry) => entry.amount.toFixed(2)))
-  return unique.size > 1
-}

@@ -220,6 +220,7 @@ export interface IBackofficeAdhesionRepository {
       subscriptionNextDueDate: Date
     }
   ): Promise<void>
+  revokePaidAdhesionAccess(profileId: string): Promise<void>
   upsertProfileSubscription(data: {
     profileId: string
     adhesionId: string
