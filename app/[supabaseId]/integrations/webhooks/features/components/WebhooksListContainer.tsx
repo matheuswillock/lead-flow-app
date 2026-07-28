@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -20,6 +21,8 @@ import { formatIntimezone } from "@/lib/dates";
 import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type { TeamWebhookDirection, TeamWebhookSummary } from "../services/ITeamWebhooksService";
 import { WebhookStatusBadge } from "./WebhookStatusBadge";
+import { WebhookListPlayPauseButton } from "./WebhookListPlayPauseButton";
+import { WebhooksTablePagination } from "./WebhooksTablePagination";
 
 type Props = {
   supabaseId: string;
@@ -30,7 +33,13 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
   const { activeTeam, isLoading: isTeamLoading } = useTeamContext();
   const { tz } = useTimezone();
   const [items, setItems] = useState<TeamWebhookSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const isInbound = direction === "inbound";
   const title = isInbound ? "Webhooks de entrada" : "Webhooks de saída";
@@ -40,13 +49,24 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
   const basePath = `/${supabaseId}/integrations/webhooks/${direction}`;
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
     if (!activeTeam?.id) return;
     let cancelled = false;
     setLoading(true);
     teamWebhooksService
-      .list(supabaseId, activeTeam.id, { direction, page: 1, pageSize: 50 })
+      .list(supabaseId, activeTeam.id, { direction, page, pageSize, search: search || undefined })
       .then((result) => {
-        if (!cancelled) setItems(result.items);
+        if (!cancelled) {
+          setItems(result.items);
+          setTotal(result.total);
+        }
       })
       .catch((error) => {
         if (!cancelled) {
@@ -59,9 +79,34 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activeTeam?.id, direction, supabaseId]);
+  }, [activeTeam?.id, direction, page, pageSize, search, supabaseId]);
 
-  if (isTeamLoading || loading) {
+  const handleToggleStatus = async (item: TeamWebhookSummary) => {
+    if (!activeTeam?.id || togglingId) return;
+    setTogglingId(item.id);
+    try {
+      const body =
+        item.status === "active"
+          ? { status: "disabled" as const }
+          : item.status === "paused"
+            ? { action: "reactivate" as const }
+            : { status: "active" as const };
+      const updated = await teamWebhooksService.changeStatus(
+        supabaseId,
+        activeTeam.id,
+        item.id,
+        body
+      );
+      setItems((current) => current.map((row) => (row.id === item.id ? updated : row)));
+      toast.success("Status atualizado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao alterar status");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  if (isTeamLoading || (loading && items.length === 0 && !searchInput)) {
     return (
       <div className="flex flex-col gap-4 p-6">
         <Skeleton className="h-8 w-64" />
@@ -91,6 +136,17 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
         </Button>
       </div>
 
+      <div className="relative max-w-md">
+        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Buscar por nome"
+          className="pl-9"
+          aria-label="Buscar webhook por nome"
+        />
+      </div>
+
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -99,14 +155,21 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
               <TableHead>Status</TableHead>
               {!isInbound ? <TableHead>Destino</TableHead> : null}
               <TableHead>Último uso</TableHead>
+              <TableHead className="w-[72px] text-center">Ativo</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 ? (
+            {loading ? (
               <TableRow>
-                <TableCell colSpan={isInbound ? 4 : 5} className="text-center text-muted-foreground">
-                  Nenhum webhook cadastrado ainda.
+                <TableCell colSpan={isInbound ? 5 : 6} className="text-center text-muted-foreground">
+                  Carregando...
+                </TableCell>
+              </TableRow>
+            ) : items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={isInbound ? 5 : 6} className="text-center text-muted-foreground">
+                  {search ? "Nenhum webhook encontrado para esta busca." : "Nenhum webhook cadastrado ainda."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -126,6 +189,13 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
                       ? formatIntimezone(new Date(item.lastUsedAt), "dd/MM/yyyy HH:mm", tz)
                       : "—"}
                   </TableCell>
+                  <TableCell className="text-center">
+                    <WebhookListPlayPauseButton
+                      status={item.status}
+                      disabled={togglingId === item.id}
+                      onToggle={() => void handleToggleStatus(item)}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`${basePath}/${item.id}`}>Abrir</Link>
@@ -136,6 +206,17 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
             )}
           </TableBody>
         </Table>
+        <WebhooksTablePagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          disabled={loading || Boolean(togglingId)}
+          onPageChange={setPage}
+          onPageSizeChange={(next) => {
+            setPageSize(next);
+            setPage(1);
+          }}
+        />
       </div>
     </div>
   );

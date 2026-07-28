@@ -24,6 +24,9 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
       teamId: ctx.teamId,
       direction: params.direction,
       ...(params.status ? { status: params.status } : {}),
+      ...(params.search
+        ? { name: { contains: params.search, mode: "insensitive" as const } }
+        : {}),
     };
 
     const [total, items] = await Promise.all([

@@ -8,30 +8,33 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Field, FieldGroup } from "@/components/ui/field";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type { TeamWebhookSummary } from "../services/ITeamWebhooksService";
+import {
+  WebhookInboundConfigFields,
+  type WebhookInboundFormValues,
+} from "./WebhookInboundConfigFields";
 
 type Props = { supabaseId: string };
 
 export function InboundWebhookCreateContainer({ supabaseId }: Props) {
   const router = useRouter();
   const { activeTeam } = useTeamContext();
-  const [name, setName] = useState("Webhook Genérico de Leads");
-  const [tokenMode, setTokenMode] = useState<"manual" | "auto" | "none">("auto");
-  const [manualToken, setManualToken] = useState("");
-  const [expiryMode, setExpiryMode] = useState<"hours_24" | "months_6" | "indeterminate">(
-    "indeterminate"
-  );
+  const [values, setValues] = useState<WebhookInboundFormValues>({
+    name: "Webhook Genérico de Leads",
+    tokenMode: "auto",
+    manualToken: "",
+    expiryMode: "indeterminate",
+  });
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<TeamWebhookSummary | null>(null);
 
   const canSubmit =
     Boolean(activeTeam?.id) &&
-    name.trim().length > 0 &&
-    (tokenMode !== "manual" || manualToken.trim().length >= 8) &&
+    values.name.trim().length > 0 &&
+    (values.tokenMode !== "manual" || values.manualToken.trim().length >= 8) &&
     !saving;
 
   const onSubmit = async () => {
@@ -40,13 +43,12 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
     try {
       const result = await teamWebhooksService.create(supabaseId, activeTeam.id, {
         direction: "inbound",
-        name: name.trim(),
-        tokenMode,
-        manualToken: tokenMode === "manual" ? manualToken.trim() : undefined,
-        expiryMode,
+        name: values.name.trim(),
+        tokenMode: values.tokenMode,
+        manualToken: values.tokenMode === "manual" ? values.manualToken.trim() : undefined,
+        expiryMode: values.expiryMode,
       });
       toast.success("Webhook de entrada criado");
-      // Mantém token/URL reais na tela — o GET de detalhe mascara o token.
       setCreated(result);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao criar webhook");
@@ -138,52 +140,10 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
         <h1 className="text-2xl font-semibold">Novo webhook de entrada</h1>
       </div>
 
-      <FieldGroup>
-        <Field>
-          <Label htmlFor="inbound-name">Nome</Label>
-          <Input id="inbound-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
-        </Field>
-        <Field>
-          <Label>Modo do token</Label>
-          <RadioGroup value={tokenMode} onValueChange={(v) => setTokenMode(v as typeof tokenMode)} className="gap-3">
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="auto" id="token-auto" />
-              <Label htmlFor="token-auto">Token automático</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="manual" id="token-manual" />
-              <Label htmlFor="token-manual">Token manual</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="none" id="token-none" />
-              <Label htmlFor="token-none">Sem token</Label>
-            </div>
-          </RadioGroup>
-        </Field>
-        {tokenMode === "manual" ? (
-          <Field>
-            <Label htmlFor="manual-token">Token manual</Label>
-            <Input id="manual-token" value={manualToken} onChange={(e) => setManualToken(e.target.value)} />
-          </Field>
-        ) : null}
-        <Field>
-          <Label>Expiração</Label>
-          <RadioGroup value={expiryMode} onValueChange={(v) => setExpiryMode(v as typeof expiryMode)} className="gap-3">
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="indeterminate" id="exp-ind" />
-              <Label htmlFor="exp-ind">Indeterminado</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="hours_24" id="exp-24" />
-              <Label htmlFor="exp-24">24 horas</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="months_6" id="exp-6" />
-              <Label htmlFor="exp-6">6 meses</Label>
-            </div>
-          </RadioGroup>
-        </Field>
-      </FieldGroup>
+      <WebhookInboundConfigFields
+        values={values}
+        onChange={(patch) => setValues((current) => ({ ...current, ...patch }))}
+      />
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" asChild disabled={saving}>

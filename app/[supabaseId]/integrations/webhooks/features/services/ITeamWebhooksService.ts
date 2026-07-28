@@ -87,6 +87,7 @@ export interface ITeamWebhooksService {
       page?: number;
       pageSize?: number;
       status?: TeamWebhookStatus;
+      search?: string;
     }
   ): Promise<{ items: TeamWebhookSummary[]; total: number; page: number; pageSize: number }>;
   getById(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;

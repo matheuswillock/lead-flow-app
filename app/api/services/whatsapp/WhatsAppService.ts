@@ -202,10 +202,15 @@ class WhatsAppService implements IWhatsAppService {
     const config = await whatsAppRepository.findConfigByTeamId(teamId)
     if (!config) return null
 
+    const needsLiveSync =
+      config.status === "QR_READY" ||
+      config.status === "PENDING" ||
+      (config.status === "DISCONNECTED" && Boolean(config.qrCodeImageUrl))
+
     // Evita chamada externa à Evolution no caminho quente: só sincroniza se o
-    // último sync tiver mais de CONFIG_SYNC_TTL_MS.
+    // último sync tiver mais de CONFIG_SYNC_TTL_MS (exceto durante espera de QR).
     const lastSyncMs = config.lastSyncAt?.getTime() ?? 0
-    if (Date.now() - lastSyncMs < CONFIG_SYNC_TTL_MS) {
+    if (!needsLiveSync && Date.now() - lastSyncMs < CONFIG_SYNC_TTL_MS) {
       return toConfigOutput(config)
     }
 
