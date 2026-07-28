@@ -1623,6 +1623,8 @@ meeting_scheduled meeting_scheduled
     Boolean hasUnlimitedUsers 
     Json additional_users_data 
     Json additional_teams_data 
+    Json installmentSchedule 
+    Json installmentLedger 
     DateTime createdAt 
     DateTime updatedAt 
     }
