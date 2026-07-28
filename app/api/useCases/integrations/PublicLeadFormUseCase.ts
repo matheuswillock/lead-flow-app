@@ -308,6 +308,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
           : hasMeetingData
             ? LeadStatus.scheduled
             : LeadStatus.new_opportunity,
+        originChannel: "legacy_public_widget",
       };
 
       const leadOutput = await leadUseCase.createLead(

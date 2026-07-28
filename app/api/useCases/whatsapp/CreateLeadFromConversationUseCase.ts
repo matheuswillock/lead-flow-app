@@ -55,6 +55,7 @@ class CreateLeadFromConversationUseCase {
         {
           name: input.name.trim(),
           phone,
+          originChannel: "whatsapp_manual",
         } as CreateLeadRequest,
         input.access.teamId,
         {

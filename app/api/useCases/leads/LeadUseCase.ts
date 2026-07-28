@@ -469,6 +469,8 @@ export class LeadUseCase implements ILeadUseCase {
         isReferral: data.isReferral ?? null,
         referrerName: data.referrerName || null,
         referrerPhone: data.referrerPhone || null,
+        originChannel: data.originChannel ?? "manual",
+        originMetadata: (data.originMetadata as Prisma.InputJsonValue) ?? undefined,
         ...(data.referrerLeadId
           ? { referrerLead: { connect: { id: data.referrerLeadId } } }
           : {}),

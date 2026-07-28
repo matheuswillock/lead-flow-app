@@ -2,10 +2,12 @@ import type { IMetaLeadUseCase, CreateLeadFromMetaDTO } from "./IMetaLeadUseCase
 import { Output } from "@/lib/output";
 import { metaLeadService, type MetaWebhookPayload } from "../../services/MetaLeadService";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
-import { leadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { prisma } from "../../infra/data/prisma";
-import { LeadStatus, ActivityType } from "@prisma/client";
-import { buildStudioActivityData } from "@/lib/studio-feed-identity";
+import { ActivityType } from "@prisma/client";
+import { leadUseCase } from "../leads/leadUseCaseFactory";
+import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
+
+type MetaManagerLookup = { id: string; supabaseId: string | null };
 
 /**
  * MetaLeadUseCase
@@ -38,9 +40,9 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       }
 
       // 2. Determinar manager
-      const finalManagerId = await this.getManagerId(managerId);
-      
-      if (!finalManagerId) {
+      const manager = await this.getManagerId(managerId);
+
+      if (!manager) {
         return new Output(
           false,
           [],
@@ -49,12 +51,22 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
         );
       }
 
+      if (!manager.supabaseId) {
+        return new Output(
+          false,
+          [],
+          ['Manager não possui autenticação vinculada'],
+          null
+        );
+      }
+
       // 3. Criar lead no sistema
-      console.info(`📝 Criando lead no sistema para manager ${finalManagerId}...`);
-      
+      console.info(`📝 Criando lead no sistema para manager ${manager.id}...`);
+
       const lead = await this.createLeadFromMeta({
         metaData,
-        managerId: finalManagerId
+        managerId: manager.id,
+        supabaseId: manager.supabaseId,
       });
 
       return new Output(
@@ -162,7 +174,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
    * Cria lead no sistema a partir dos dados do Meta
    */
   private async createLeadFromMeta(dto: CreateLeadFromMetaDTO): Promise<any> {
-    const { metaData, managerId, assignedTo } = dto;
+    const { metaData, managerId, supabaseId, assignedTo } = dto;
 
     try {
       // Verificar se ja existe lead com este email
@@ -173,7 +185,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
 
       if (existingLead) {
         console.warn(`⚠️  Lead duplicado encontrado: ${existingLead.id}`);
-        
+
         // Adicionar atividade mencionando tentativa de duplicação
         await prisma.lead.update({
           where: { id: existingLead.id },
@@ -193,7 +205,6 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
 
       // Mapear plano de saúde
       const healthPlan = await healthPlanService.resolvePlanNameFromText(metaData.currentHealthPlan);
-      const leadCode = await this.generateLeadCode(metaData.name || "Lead");
 
       const team = await prisma.team.findFirst({
         where: { masterId: managerId },
@@ -208,43 +219,61 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
         throw new Error("Time padrao nao encontrado para o manager.");
       }
 
-      // Criar lead
-      const lead = await leadRepository.create({
-        manager: { connect: { id: managerId } },
-        team: { connect: { id: team.id } },
-        leadCode,
-        name: metaData.name,
-        email: metaData.email || null,
-        phone: metaData.phone || null,
-        age: metaData.age || null,
-        currentHealthPlan: healthPlan,
-        notes: metaData.notes,
-        status: LeadStatus.new_opportunity,
-        creator: { connect: { id: managerId } },
-        updater: { connect: { id: managerId } },
-        ...(assignedTo && {
-          assignee: { connect: { id: assignedTo } }
-        }),
-        activities: {
-          create: buildStudioActivityData({
-            type: ActivityType.note,
-            body: `Lead importado automaticamente do Meta Lead Ads\n\nFormulário ID: ${metaData.formId || 'N/A'}\nAnúncio ID: ${metaData.adId || 'N/A'}\nCidade: ${metaData.city || 'N/A'}\n\nDados brutos: ${JSON.stringify(metaData.rawData, null, 2)}`,
-            payload: {
-              kind: "lead_creation",
-              channel: "webhook",
-              provider: "meta",
-              source: "meta_lead_ads",
-              leadgenId: metaData.leadgenId,
-              formId: metaData.formId ?? null,
-              adId: metaData.adId ?? null,
-              createdTime: metaData.createdTime ?? null,
-              city: metaData.city ?? null,
-              importedAt: new Date().toISOString(),
-            },
-          }),
-        },
-      });
+      const activityPayload = {
+        kind: "lead_creation",
+        channel: "webhook",
+        provider: "meta",
+        source: "meta_lead_ads",
+        leadgenId: metaData.leadgenId,
+        formId: metaData.formId ?? null,
+        adId: metaData.adId ?? null,
+        createdTime: metaData.createdTime ?? null,
+        city: metaData.city ?? null,
+        importedAt: new Date().toISOString(),
+      };
 
+      const leadData: CreateLeadRequest = {
+        name: metaData.name,
+        email: metaData.email || undefined,
+        phone: metaData.phone || undefined,
+        cnpj: undefined,
+        age: metaData.age || undefined,
+        currentHealthPlan: healthPlan || undefined,
+        currentValue: undefined,
+        referenceHospital: undefined,
+        currentTreatment: undefined,
+        meetingDate: undefined,
+        meetingTitle: undefined,
+        meetingNotes: undefined,
+        meetingLink: undefined,
+        notes: metaData.notes || undefined,
+        assignedTo,
+        closerId: undefined,
+        ticket: undefined,
+        contractDueDate: undefined,
+        soldPlan: undefined,
+        confirmDuplicate: true,
+        originChannel: "meta_webhook",
+        originMetadata: activityPayload,
+      };
+
+      const leadOutput = await leadUseCase.createLead(
+        supabaseId,
+        leadData,
+        team.id,
+        {
+          authorAsStudio: true,
+          body: `Lead importado automaticamente do Meta Lead Ads\n\nFormulário ID: ${metaData.formId || 'N/A'}\nAnúncio ID: ${metaData.adId || 'N/A'}\nCidade: ${metaData.city || 'N/A'}\n\nDados brutos: ${JSON.stringify(metaData.rawData, null, 2)}`,
+          payload: activityPayload,
+        },
+        { autoScheduleMeeting: false }
+      );
+
+      if (!leadOutput.isValid) {
+        throw new Error(leadOutput.errorMessages.join("; ") || "Erro ao criar lead via Meta Lead Ads");
+      }
+
+      const lead = leadOutput.result as { id: string };
       console.info(`✅ Lead criado com sucesso: ${lead.id}`);
 
       return lead;
@@ -253,25 +282,6 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       console.error('❌ Erro ao criar lead do Meta:', error);
       throw error;
     }
-  }
-
-  private async generateLeadCode(name: string): Promise<string> {
-    const clean = name.replace(/[^A-Za-zÀ-ÿ]/g, "");
-    const firstLetter = (clean[0] || "L").toUpperCase();
-    const lastLetter = (clean[clean.length - 1] || "D").toUpperCase();
-
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const digitsLength = 4 + Math.floor(Math.random() * 3);
-      const digits = Array.from({ length: digitsLength }, () => Math.floor(Math.random() * 10)).join("");
-      const code = `${firstLetter}${digits}${lastLetter}`;
-      const existing = await leadRepository.findByLeadCode(code);
-      if (!existing) {
-        return code;
-      }
-    }
-
-    const fallbackDigits = Date.now().toString().slice(-6);
-    return `${firstLetter}${fallbackDigits}${lastLetter}`;
   }
 
   /**
@@ -299,15 +309,19 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
   }
 
   /**
-   * Obtém ID do manager
+   * Obtém ID + supabaseId do manager
    * Se não informado, busca o primeiro manager master ativo
    */
-  private async getManagerId(managerId?: string): Promise<string | null> {
-    if (managerId) {
-      return managerId;
-    }
-
+  private async getManagerId(managerId?: string): Promise<MetaManagerLookup | null> {
     try {
+      if (managerId) {
+        const profile = await prisma.profile.findUnique({
+          where: { id: managerId },
+          select: { id: true, supabaseId: true },
+        });
+        return profile ?? null;
+      }
+
       // Buscar primeiro manager master com assinatura ativa
       const manager = await prisma.profile.findFirst({
         where: {
@@ -316,10 +330,11 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
           subscriptionStatus: {
             in: ['active', 'trial']
           }
-        }
+        },
+        select: { id: true, supabaseId: true },
       });
 
-      return manager?.id || null;
+      return manager ?? null;
     } catch (error) {
       console.error('Erro ao buscar manager:', error);
       return null;
