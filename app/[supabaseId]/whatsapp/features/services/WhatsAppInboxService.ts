@@ -1,5 +1,5 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppInboxSearchResult, WhatsAppMessage, WhatsAppMessageActionPayload, WhatsAppMessageActionsState, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppForwardMessageResult, WhatsAppInboxSearchResult, WhatsAppMessage, WhatsAppMessageActionPayload, WhatsAppMessageActionsState, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 export class WhatsAppApiError extends Error {
   readonly code: string | null
@@ -240,7 +240,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     supabaseId: string,
     messageId: string,
     destinations: Array<{ conversationId: string; clientMessageId: string }>
-  ): Promise<void> {
+  ): Promise<WhatsAppForwardMessageResult> {
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/forward`,
       {
@@ -250,7 +250,18 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       }
     )
     const output: unknown = await this.parseJsonResponse(response)
+    const result = (output as Record<string, unknown>).result as WhatsAppForwardMessageResult | null
+    if (result?.results?.length) {
+      if (response.ok && (output as Record<string, unknown>)?.isValid) {
+        return result
+      }
+      const allFailed = result.results.every((item) => !item.ok)
+      if (!allFailed) {
+        return result
+      }
+    }
     this.throwIfInvalid(response, output, 'Não foi possível encaminhar a mensagem')
+    return result ?? { sourceMessageId: messageId, results: [] }
   }
 
   async searchConversationMessages(

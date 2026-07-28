@@ -154,6 +154,18 @@ export type WhatsAppMessageActionPayload =
   | { kind: 'DELETE_FOR_ME' }
   | { kind: 'DELETE_FOR_EVERYONE' }
 
+export type WhatsAppForwardDestinationResult = {
+  conversationId: string
+  clientMessageId: string
+  ok: boolean
+  error?: string
+}
+
+export type WhatsAppForwardMessageResult = {
+  sourceMessageId: string
+  results: WhatsAppForwardDestinationResult[]
+}
+
 export type WhatsAppConnectionStatus = 'PENDING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'
 
 export type WhatsAppHistorySyncStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'

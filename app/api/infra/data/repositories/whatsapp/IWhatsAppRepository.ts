@@ -280,6 +280,7 @@ export interface IWhatsAppRepository {
 
   listMessages(params: {
     conversationId: string
+    profileId?: string
     page?: number
     limit?: number
   }): Promise<{ messages: WhatsAppMessageSelect[]; total: number }>

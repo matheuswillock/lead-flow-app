@@ -1059,7 +1059,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         clientMessageId,
         media,
         target.mentionedJids ?? undefined,
-        true
+        true,
+        target.quotedMessageId ?? undefined
       ).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao reenviar mensagem:', error)
         setIsSending(false)

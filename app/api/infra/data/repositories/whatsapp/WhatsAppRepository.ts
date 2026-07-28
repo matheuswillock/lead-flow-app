@@ -617,6 +617,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
 
   async listMessages(params: {
     conversationId: string
+    profileId?: string
     page?: number
     limit?: number
   }): Promise<{ messages: WhatsAppMessageSelect[]; total: number }> {
@@ -627,6 +628,15 @@ class WhatsAppRepository implements IWhatsAppRepository {
     const where: Prisma.WhatsAppMessageWhereInput = {
       conversationId: params.conversationId,
       deletedAt: null,
+      ...(params.profileId
+        ? {
+            NOT: {
+              visibility: {
+                some: { profileId: params.profileId },
+              },
+            },
+          }
+        : {}),
     }
 
     const [messages, total] = await prisma.$transaction([

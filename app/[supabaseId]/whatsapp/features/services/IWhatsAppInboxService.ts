@@ -1,4 +1,4 @@
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppInboxSearchResult, WhatsAppMessage, WhatsAppMessageActionPayload, WhatsAppMessageActionsState, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppForwardMessageResult, WhatsAppInboxSearchResult, WhatsAppMessage, WhatsAppMessageActionPayload, WhatsAppMessageActionsState, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 export interface IWhatsAppInboxService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
@@ -48,7 +48,7 @@ export interface IWhatsAppInboxService {
     supabaseId: string,
     messageId: string,
     destinations: Array<{ conversationId: string; clientMessageId: string }>
-  ): Promise<void>
+  ): Promise<WhatsAppForwardMessageResult>
   searchConversationMessages(
     teamId: string,
     supabaseId: string,

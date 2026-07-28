@@ -46,6 +46,12 @@ function mediaTypeFromMessage(
   }
 }
 
+function synthesizeMediaFileName(mimeType: string, mediatype: string): string {
+  const subtype = mimeType.split("/")[1]?.split(";")[0]?.trim()
+  if (subtype) return `media.${subtype}`
+  return `media.${mediatype}`
+}
+
 class ForwardMessageUseCase {
   async execute(input: ForwardMessageInput): Promise<Output> {
     try {
@@ -70,12 +76,15 @@ class ForwardMessageUseCase {
       }
 
       const mediatype = mediaTypeFromMessage(source.messageType)
+      const resolvedFileName =
+        source.mediaFileName?.trim() ||
+        (source.mediaMimeType ? synthesizeMediaFileName(source.mediaMimeType, mediatype ?? "document") : null)
       const canForwardMedia =
         mediatype != null &&
         !!source.storagePath &&
         !!source.mediaSha256 &&
         !!source.mediaMimeType &&
-        !!source.mediaFileName &&
+        !!resolvedFileName &&
         typeof source.mediaSizeBytes === "number" &&
         source.mediaSizeBytes > 0
 
@@ -107,7 +116,7 @@ class ForwardMessageUseCase {
               ? {
                   mediatype: mediatype!,
                   mimeType: source.mediaMimeType!,
-                  fileName: source.mediaFileName!,
+                  fileName: resolvedFileName!,
                   storagePath: source.storagePath!,
                   sha256: source.mediaSha256!,
                   sizeBytes: source.mediaSizeBytes!,

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -30,6 +30,7 @@ export function ForwardMessageDialog({ open, onOpenChange, message }: ForwardMes
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filter, setFilter] = useState("")
   const [isForwarding, setIsForwarding] = useState(false)
+  const clientMessageIdsRef = useRef<Record<string, string>>({})
 
   const candidates = useMemo(() => {
     const term = filter.trim().toLowerCase()
@@ -49,34 +50,64 @@ export function ForwardMessageDialog({ open, onOpenChange, message }: ForwardMes
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
+  const resetState = () => {
+    setSelectedIds([])
+    setFilter("")
+    setIsForwarding(false)
+    clientMessageIdsRef.current = {}
+  }
+
   const handleOpenChange = (next: boolean) => {
     if (!next) {
-      setSelectedIds([])
-      setFilter("")
-      setIsForwarding(false)
+      resetState()
     }
     onOpenChange(next)
+  }
+
+  const resolveClientMessageId = (conversationId: string) => {
+    const existing = clientMessageIdsRef.current[conversationId]
+    if (existing) return existing
+    const created = crypto.randomUUID()
+    clientMessageIdsRef.current[conversationId] = created
+    return created
   }
 
   const handleForward = async () => {
     if (!message || !activeTeamId || selectedIds.length === 0 || isForwarding) return
     setIsForwarding(true)
     try {
-      await whatsAppInboxService.forwardMessage(
+      const result = await whatsAppInboxService.forwardMessage(
         activeTeamId,
         supabaseId,
         message.id,
         selectedIds.map((conversationId) => ({
           conversationId,
-          clientMessageId: crypto.randomUUID(),
+          clientMessageId: resolveClientMessageId(conversationId),
         }))
       )
-      toast.success(
-        selectedIds.length === 1
-          ? "Mensagem encaminhada"
-          : `Mensagem encaminhada para ${selectedIds.length} conversas`
-      )
-      handleOpenChange(false)
+
+      const failedIds = result.results.filter((item) => !item.ok).map((item) => item.conversationId)
+      const successCount = result.results.filter((item) => item.ok).length
+
+      if (failedIds.length === 0) {
+        toast.success(
+          selectedIds.length === 1
+            ? "Mensagem encaminhada"
+            : `Mensagem encaminhada para ${selectedIds.length} conversas`
+        )
+        handleOpenChange(false)
+        return
+      }
+
+      if (successCount > 0) {
+        toast.warning(
+          `Encaminhado para ${successCount} conversa(s). ${failedIds.length} destino(s) falharam — tente novamente.`
+        )
+      } else {
+        toast.error("Não foi possível encaminhar para os destinos selecionados.")
+      }
+
+      setSelectedIds(failedIds)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível encaminhar a mensagem")
     } finally {
