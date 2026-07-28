@@ -84,7 +84,6 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
     qrCodeText: null,
     qrCodeImageUrl: null,
     webhookSecret: "secret",
-    hostBaseUrl: "https://evo.test",
     lastConnectedAt: null,
     lastDisconnectedAt: null,
     lastSyncAt: null,
@@ -193,7 +192,6 @@ describe("MarkConversationReadUseCase", () => {
           id: "evo-msg-1",
         },
       ],
-      hostBaseUrl: "https://evo.test",
     })
     expect(repository.bulkSetInboundBrokerReadAt).toHaveBeenCalled()
     expect((output.result as { readReceiptSent: boolean }).readReceiptSent).toBe(true)

@@ -51,15 +51,16 @@ Antes da primeira PR, o responsável técnico deve comparar o código atual com 
 
 ## 2.1 Progresso de implementação
 
-**Atualizado em:** 2026-07-27 — branch `feat/whatsapp-inbox-v3-phase-3`.
+**Atualizado em:** 2026-07-28 — branch `feat/whatsapp-inbox-v3-phase-4`.
 
 | Fase | Estado | Evidência atual | Pendente para conclusão |
 | --- | --- | --- | --- |
 | Gate read-only de produção | **ops pendente** | Checklist e runbook em §17.2.1. Nenhuma migration remota nem enforcement aplicados nesta entrega. | Owner: Advisors, RLS/grants/publication no banco vivo, provisionar pepper, `WHATSAPP_WEBHOOK_HEADER_ENFORCE=true` em homolog→prod. |
-| Fase 0 — segurança/base operacional | **concluída (código)** | `resolveEvoApiBaseUrl` + testes SSRF/HTTPS; runbook ops §17.2.1; coluna `hostBaseUrl` permanece legado não lido (remoção em T4.6). | Ativar enforcement em homolog conforme runbook. |
+| Fase 0 — segurança/base operacional | **concluída (código)** | `resolveEvoApiBaseUrl` + testes SSRF/HTTPS; runbook ops §17.2.1; `hostBaseUrl` removido (T4.6 + migration `drop-whatsapp-host-base-url`). | Ativar enforcement em homolog conforme runbook; inventário/rotação `EVO_API_KEY` permanece ops. |
 | Fase 1 — envio durável | **concluída** | Frontend gera `clientMessageId` imutável na bolha; resend envia `retryFailed`; dedupe HTTP×Realtime via `mergeMessageByClientId`; reconciliador usa `nextReconcileAt`; testes `SendMessageUseCase` + merge. | Smoke E2E duas abas em staging. |
 | Fase 2 — contatos, busca e sync | **concluída** | Dual-write webhook→canonical/identity; migration `20260727163017_backfill-whatsapp-contact-identities.sql` (idempotente); sync com checkpoint/batch/lease + `parkContactSyncJob` para retomada. | Aplicar migration no ambiente alvo (local reset / push remoto só com autorização); validar cron sync sob carga. |
 | Fase 3 — mídia, áudio e interface | **concluída (código)** | Upload assinado `POST .../media/uploads` sem Base64 no browser; send referencia `storagePath`+hash; ingestão inbound com `mediaStatus` + cron `ingest-media`; GET tipado 202/410/422/503; preview/cancel/progress; mic “Como liberar”/reteste; waveform `ResizeObserver` + reduced motion; hit targets 44px + safe-area. | Smoke mobile E2E 320–1440; aplicar migration `whatsapp-media-status` no ambiente alvo. |
+| Fase 4 — paridade e maturidade | **concluída (código)** | Quote (`quotedMessageId`/`quotedProviderMessageId`); busca na conversa + separadores; actions/actions-state/forward; ContextMenu + AlertDialog; atalhos `/`/Escape; capabilities Evolution (`CAPABILITY_UNAVAILABLE` para react/delete-for-everyone); emitters SLO + painel `ops-metrics`; wallpapers originais; Base64 legado GET removido; Impeccable audit/critique em `docs/audits/whatsapp-inbox-v3-phase-4/`. | Aplicar migrations Phase 4 no ambiente alvo só com autorização; gate ops/SLO 7 dias pós-deploy; homologar react/delete-for-everyone na Evolution se desejado. |
 
 Validações desta rodada: testes focados WhatsApp V3, `bun run typecheck`, `bun run lint`, `bun run governance:check`, `bun run lint:pt-br`, `bun run design:check`.
 
@@ -2118,6 +2119,16 @@ Executar **antes** de ligar rollout V3 em produção. Nenhuma migration remota o
 4. **Webhook header:** provisionar `WHATSAPP_WEBHOOK_HEADER_SECRET` (≥32 bytes) nos envs; ressincronizar headers Evolution (`scripts/resync-whatsapp-webhook-headers.ts`); em **homolog** setar `WHATSAPP_WEBHOOK_HEADER_ENFORCE=true` e validar 401 sem header; só então espelhar em produção.
 5. **Backfill contatos:** migration `supabase/migrations/20260727163017_backfill-whatsapp-contact-identities.sql` (idempotente; faz parte do histórico Supabase). Validar em local com `bun run db:migrate:reset:local` antes de push remoto autorizado.
 6. **Flags V3:** allowlists `WHATSAPP_V3_*_TEAM_IDS` em staging antes de `*`.
+
+### 17.2.2 Runbook ops — SLOs e dead-letter (T4.5)
+
+Entrega de código instrumenta métricas e painel; o gate “7 dias” é critério **pós-deploy**.
+
+1. **Emitters:** logs estruturados `[whatsapp.slo]` via `lib/whatsapp/slo-metrics.ts` (`whatsapp_webhook_to_ui_ms`, `whatsapp_outbox_failure`, `whatsapp_media_ingest_failure`, `whatsapp_action_capability_unavailable`, `whatsapp_send_unknown`) — sem PII.
+2. **Painel time:** `GET /api/v1/teams/:teamId/whatsapp/ops-metrics` (gestor/infra) + card em Configurações WhatsApp — contagens agregadas (dead-letter, webhook pendente, UNKNOWN outbound, mídia FAILED, actions PENDING/UNKNOWN).
+3. **Requeue:** `POST /api/v1/teams/:teamId/whatsapp/webhook-events/:eventId/requeue` apenas para eventos `DEAD_LETTER` do time (auditado).
+4. **Alertas iniciais:** qualquer crescimento sustentado de dead-letter; `UNKNOWN` outbound > baseline; mídia FAILED acima do baseline (§15.2). Calibrar thresholds após 7 dias.
+5. **Migrations Phase 4:** `drop-whatsapp-host-base-url` + `whatsapp-inbox-v3-phase-4-actions` — aplicar remoto só com autorização do owner; validar local com `bun run db:migrate:reset:local` antes.
 
 ### 17.3 Etapas
 
