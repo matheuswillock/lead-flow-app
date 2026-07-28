@@ -180,4 +180,52 @@ describe("motor dos formulários públicos", () => {
       calculatePublicFormScorePercent(draft, [{ questionId: sourceId, value: ["a"] }]),
     ).toBe(100)
   })
+
+  it("mantém scoring legado por opção quando scoreWeight está ausente no snapshot", () => {
+    const draft: PublicFormDraftInput = {
+      ...form(),
+      questions: [
+        {
+          id: sourceId,
+          type: "single_choice",
+          title: "Tem interesse?",
+          required: true,
+          scoreWeight: 0,
+          options: [
+            { value: "sim", label: "Sim", score: 80, scorePolarity: "positive" },
+            { value: "nao", label: "Não", score: 20, scorePolarity: "positive" },
+          ],
+        },
+      ],
+      rules: [],
+    }
+    expect(calculatePublicFormMaxPossibleScore(draft)).toBe(80)
+    expect(
+      calculatePublicFormScorePercent(draft, [{ questionId: sourceId, value: "sim" }]),
+    ).toBe(100)
+    expect(
+      calculatePublicFormScorePercent(draft, [{ questionId: sourceId, value: "nao" }]),
+    ).toBe(25)
+  })
+
+  it("remove perguntas posteriores ao sair cedo para agradecimentos", () => {
+    const draft = form()
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: PUBLIC_FORM_THANK_YOU_TARGET,
+        operator: "equals",
+        comparisonValue: "nao",
+        action: "show",
+        elseAction: "skip",
+      },
+    ]
+    expect(resolveVisibleQuestionIds(draft, [{ questionId: sourceId, value: "nao" }])).toEqual([
+      sourceId,
+    ])
+    expect(resolveVisibleQuestionIds(draft, [{ questionId: sourceId, value: "sim" }])).toEqual([
+      sourceId,
+      targetId,
+    ])
+  })
 })

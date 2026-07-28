@@ -28,6 +28,37 @@ function ruleHits(
   return got.some((v) => expected.some((e) => v.includes(e)))
 }
 
+function getMaxSelections(question: PublicFormQuestionInput): number | null {
+  const maxSelections = question.config?.maxSelections
+  if (typeof maxSelections !== "number" || !Number.isFinite(maxSelections)) return null
+  const floored = Math.floor(maxSelections)
+  return floored > 0 ? floored : null
+}
+
+/**
+ * Earliest question index that triggers "show thank-you", or null when the flow continues.
+ */
+export function getThankYouCutoffIndex(
+  form: PublicFormDraftInput,
+  answers: PublicFormAnswerInput[],
+): number | null {
+  const map = new Map(answers.map((a) => [a.questionId, a.value]))
+  let cutoff: number | null = null
+  for (const rule of form.rules) {
+    if (rule.targetQuestionId !== PUBLIC_FORM_THANK_YOU_TARGET) continue
+    const got = values(map.get(rule.sourceQuestionId))
+    const expected = values(rule.comparisonValue)
+    const hit = ruleHits(rule.operator, got, expected)
+    const elseAction = rule.elseAction ?? inverseAction(rule.action)
+    const effective = hit ? rule.action : elseAction
+    if (effective !== "show") continue
+    const sourceIndex = form.questions.findIndex((question) => question.id === rule.sourceQuestionId)
+    if (sourceIndex < 0) continue
+    cutoff = cutoff == null ? sourceIndex : Math.min(cutoff, sourceIndex)
+  }
+  return cutoff
+}
+
 export function resolveVisibleQuestionIds(
   form: PublicFormDraftInput,
   answers: PublicFormAnswerInput[],
@@ -43,6 +74,15 @@ export function resolveVisibleQuestionIds(
     const effective = hit ? r.action : elseAction
     if (effective === "skip") visible.delete(r.targetQuestionId)
   }
+
+  // Early thank-you exit: remaining questions after the terminating source are not required.
+  const cutoffIndex = getThankYouCutoffIndex(form, answers)
+  if (cutoffIndex != null) {
+    for (const [index, question] of form.questions.entries()) {
+      if (index > cutoffIndex && question.id) visible.delete(question.id)
+    }
+  }
+
   return form.questions
     .map((q) => q.id)
     .filter((id): id is string => Boolean(id && visible.has(id)))
@@ -53,18 +93,16 @@ export function shouldGoToThankYou(
   form: PublicFormDraftInput,
   answers: PublicFormAnswerInput[],
 ): boolean {
-  const map = new Map(answers.map((a) => [a.questionId, a.value]))
-  for (const r of form.rules) {
-    if (r.targetQuestionId !== PUBLIC_FORM_THANK_YOU_TARGET) continue
-    const got = values(map.get(r.sourceQuestionId))
-    const expected = values(r.comparisonValue)
-    const hit = ruleHits(r.operator, got, expected)
-    const elseAction = r.elseAction ?? inverseAction(r.action)
-    const effective = hit ? r.action : elseAction
-    // "Exibir" a página de agradecimentos encerra o fluxo.
-    if (effective === "show") return true
-  }
-  return false
+  return getThankYouCutoffIndex(form, answers) != null
+}
+
+/** Snapshots published before scoreWeight use the legacy option-score model. */
+export function usesLegacyOptionScoring(form: PublicFormDraftInput): boolean {
+  const weightSum = form.questions.reduce(
+    (sum, question) => sum + Math.max(0, question.scoreWeight ?? 0),
+    0,
+  )
+  return weightSum <= 0
 }
 
 function contributionForChoice(
@@ -91,14 +129,54 @@ function contributionForNonChoice(
   return isAnswered(answerValue) ? weight : 0
 }
 
+function calculateLegacyOptionScore(
+  form: PublicFormDraftInput,
+  answers: PublicFormAnswerInput[],
+): number {
+  const qs = new Map(form.questions.map((q) => [q.id, q]))
+  return answers.reduce((sum, answer) => {
+    const question = qs.get(answer.questionId)
+    if (!question?.options.length) return sum
+    return (
+      sum +
+      question.options
+        .filter((option) => values(answer.value).includes(option.value))
+        .reduce((n, option) => n + Math.max(0, option.score), 0)
+    )
+  }, 0)
+}
+
+function calculateLegacyMaxPossibleScore(form: PublicFormDraftInput): number {
+  return form.questions.reduce((sum, question) => {
+    if (!question.options.length) return sum
+    if (question.type === "multiple_choice") {
+      const positiveScores = question.options
+        .map((option) => Math.max(0, option.score))
+        .sort((a, b) => b - a)
+      const maxSelections = getMaxSelections(question)
+      const selectable =
+        maxSelections != null ? positiveScores.slice(0, maxSelections) : positiveScores
+      return sum + selectable.reduce((n, score) => n + score, 0)
+    }
+    if (["single_choice", "health_plan", "boolean"].includes(question.type)) {
+      return sum + Math.max(0, ...question.options.map((option) => option.score), 0)
+    }
+    return sum
+  }, 0)
+}
+
 /**
  * Score already in 0–100% using question scoreWeights (form budget).
  * Floored at 0 when negative options pull below zero.
+ * Legacy snapshots without scoreWeight keep option-score semantics.
  */
 export function calculatePublicFormScore(
   form: PublicFormDraftInput,
   answers: PublicFormAnswerInput[],
 ) {
+  if (usesLegacyOptionScoring(form)) {
+    return Math.max(0, calculateLegacyOptionScore(form, answers))
+  }
   const qs = new Map(form.questions.map((q) => [q.id, q]))
   const raw = answers.reduce((sum, answer) => {
     const question = qs.get(answer.questionId)
@@ -114,6 +192,9 @@ export function calculatePublicFormScore(
 
 /** Max possible score is the form budget of question weights (always 100 when balanced). */
 export function calculatePublicFormMaxPossibleScore(form: PublicFormDraftInput) {
+  if (usesLegacyOptionScoring(form)) {
+    return calculateLegacyMaxPossibleScore(form)
+  }
   return form.questions.reduce((sum, question) => {
     if (question.type === "calculation") return sum
     return sum + Math.max(0, question.scoreWeight ?? 0)
@@ -128,13 +209,6 @@ export function calculatePublicFormScorePercent(
   const max = calculatePublicFormMaxPossibleScore(form)
   if (max <= 0) return 0
   return Math.min(100, Math.round((100 * raw) / max))
-}
-
-function getMaxSelections(question: PublicFormQuestionInput): number | null {
-  const maxSelections = question.config?.maxSelections
-  if (typeof maxSelections !== "number" || !Number.isFinite(maxSelections)) return null
-  const floored = Math.floor(maxSelections)
-  return floored > 0 ? floored : null
 }
 
 export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
