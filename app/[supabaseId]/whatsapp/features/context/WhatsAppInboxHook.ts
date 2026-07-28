@@ -176,6 +176,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [unreadTotal, setUnreadTotal] = useState(0)
   const [allUnreadTotal, setAllUnreadTotal] = useState(0)
   const [mineUnreadTotal, setMineUnreadTotal] = useState(0)
+  const [replyTarget, setReplyTarget] = useState<WhatsAppMessage | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
   const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
@@ -670,6 +671,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setMessages([])
       setTotalMessages(0)
       setMessagePage(1)
+      setReplyTarget(null)
       lastRealtimeInsertMessageAtRef.current = null
       if (!id) return
 
@@ -834,7 +836,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       clientMessageId: string,
       media?: SendMessageMediaInput,
       mentionedJids?: string[],
-      retryFailed?: boolean
+      retryFailed?: boolean,
+      quotedMessageId?: string
     ) => {
       if (!activeTeamId) return
       isSendingRef.current = true
@@ -848,7 +851,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           text,
           media,
           mentionedJids,
-          retryFailed
+          retryFailed,
+          quotedMessageId
         )
         // Promote the optimistic bubble to the real message id so the realtime
         // INSERT for the same id / clientMessageId is de-duplicated.
@@ -889,8 +893,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
             isAutoResponse: false,
             createdAt: new Date().toISOString(),
             mentionedJids: mentionedJids && mentionedJids.length > 0 ? mentionedJids : null,
+            quotedMessageId: quotedMessageId ?? null,
           })
         )
+        setReplyTarget(null)
       } catch (error) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -910,13 +916,19 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   )
 
   const sendMessage = useCallback(
-    (text: string, media?: SendMessageMediaInput, mentionedJids?: string[], options?: { clientMessageId?: string }) => {
+    (
+      text: string,
+      media?: SendMessageMediaInput,
+      mentionedJids?: string[],
+      options?: { clientMessageId?: string; quotedMessageId?: string }
+    ) => {
       if (!activeTeamId || !selectedConversationId || isSendingRef.current) return
 
       const trimmedText = text.trim()
       if (!trimmedText && !media) return
 
       const clientMessageId = options?.clientMessageId ?? crypto.randomUUID()
+      const quotedMessageId = options?.quotedMessageId
       const optimisticId = `optimistic-${clientMessageId}`
       const messageType = media
         ? media.mediatype === 'image'
@@ -927,6 +939,15 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
               ? 'AUDIO'
               : 'VIDEO'
         : 'TEXT'
+
+      const quotedSource = quotedMessageId
+        ? messagesRef.current.find((m) => m.id === quotedMessageId) ?? replyTarget
+        : null
+      const quotedPreview = quotedSource
+        ? quotedSource.contentText?.trim() ||
+          quotedSource.caption?.trim() ||
+          `[${quotedSource.messageType}]`
+        : null
 
       const optimisticMessage: WhatsAppMessage = {
         id: optimisticId,
@@ -956,6 +977,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         isAutoResponse: false,
         createdAt: new Date().toISOString(),
         mentionedJids: mentionedJids && mentionedJids.length > 0 ? mentionedJids : null,
+        quotedMessageId: quotedMessageId ?? null,
+        quotedPreview,
       }
 
       setMessages((prev) => [...prev, optimisticMessage])
@@ -966,14 +989,16 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         optimisticId,
         clientMessageId,
         media,
-        mentionedJids
+        mentionedJids,
+        undefined,
+        quotedMessageId
       ).catch((error) => {
         console.error('[useWhatsAppInbox] Erro inesperado ao enviar mensagem:', error)
         setIsSending(false)
         isSendingRef.current = false
       })
     },
-    [activeTeamId, selectedConversationId, performSend, currentProfileId]
+    [activeTeamId, selectedConversationId, performSend, currentProfileId, replyTarget]
   )
 
   const resendMessage = useCallback(
@@ -1935,11 +1960,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     unreadTotal,
     allUnreadTotal,
     mineUnreadTotal,
+    replyTarget,
     selectConversation,
     loadMoreConversations,
     loadOlderMessages,
     sendMessage,
     resendMessage,
+    setReplyTarget,
     setSearchQuery,
     setFilterMode,
     setFilterTagIds,

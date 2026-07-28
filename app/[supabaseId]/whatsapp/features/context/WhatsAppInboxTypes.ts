@@ -114,7 +114,45 @@ export interface WhatsAppMessage {
   createdAt: string
   /** Group mentions used for outbound idempotency hash; retained for retry. */
   mentionedJids?: string[] | null
+  quotedMessageId?: string | null
+  quotedProviderMessageId?: string | null
+  /** Optional denormalized preview of the quoted message body. */
+  quotedPreview?: string | null
+  deletedForEveryoneAt?: string | null
+  isPinned?: boolean
+  isFavorite?: boolean
+  isHiddenForMe?: boolean
 }
+
+export interface WhatsAppMessageActionCapabilities {
+  reply: boolean
+  forward: boolean
+  react: boolean
+  deleteForEveryone: boolean
+}
+
+export interface WhatsAppMessageActionsState {
+  messageId: string
+  capabilities: WhatsAppMessageActionCapabilities
+  state: {
+    isPinned: boolean
+    isFavorite: boolean
+    isHiddenForMe: boolean
+    deletedForEveryoneAt: string | null
+    direction: string
+    reactions: Array<{ emoji: string; profileId: string | null }>
+  }
+}
+
+export type WhatsAppMessageActionPayload =
+  | { kind: 'REACT'; emoji: string }
+  | { kind: 'UNREACT'; emoji: string }
+  | { kind: 'PIN'; expiresAt?: string }
+  | { kind: 'UNPIN' }
+  | { kind: 'FAVORITE' }
+  | { kind: 'UNFAVORITE' }
+  | { kind: 'DELETE_FOR_ME' }
+  | { kind: 'DELETE_FOR_EVERYONE' }
 
 export type WhatsAppConnectionStatus = 'PENDING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'
 
@@ -178,6 +216,7 @@ export interface InboxState {
   unreadTotal: number
   allUnreadTotal: number
   mineUnreadTotal: number
+  replyTarget: WhatsAppMessage | null
 }
 
 export interface SendMessageMediaInput {
@@ -198,9 +237,10 @@ export interface InboxActions {
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[],
-    options?: { clientMessageId?: string }
+    options?: { clientMessageId?: string; quotedMessageId?: string }
   ) => void
   resendMessage: (messageId: string) => void
+  setReplyTarget: (message: WhatsAppMessage | null) => void
   setSearchQuery: (q: string) => void
   setFilterMode: (mode: ConversationFilterMode) => void
   setFilterTagIds: (tagIds: string[]) => void

@@ -6,6 +6,7 @@ import { BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConnectionCard } from '../components/ConnectionCard'
 import { TagManagerCard } from '../components/TagManagerCard'
+import { OpsSloCard } from '../components/OpsSloCard'
 
 export function WhatsAppSettingsContainer() {
   const { supabaseId } = useParams<{ supabaseId: string }>()
@@ -27,6 +28,7 @@ export function WhatsAppSettingsContainer() {
         </Button>
       </div>
       <ConnectionCard />
+      <OpsSloCard />
       <TagManagerCard />
     </div>
   )

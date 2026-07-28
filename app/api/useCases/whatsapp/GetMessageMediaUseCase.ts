@@ -14,21 +14,6 @@ interface GetMessageMediaInput {
   access: TeamAccess
 }
 
-function extractLegacyOutboundMedia(
-  rawPayload: unknown
-): { base64: string; mimeType?: string } | null {
-  if (typeof rawPayload !== "object" || rawPayload === null) return null
-  const record = rawPayload as Record<string, unknown>
-  const outbound = record["outboundMedia"]
-  if (typeof outbound !== "object" || outbound === null) return null
-  const media = outbound as Record<string, unknown>
-  if (typeof media.base64 !== "string" || !media.base64) return null
-  return {
-    base64: media.base64,
-    mimeType: typeof media.mimeType === "string" ? media.mimeType : undefined,
-  }
-}
-
 class GetMessageMediaUseCase {
   async execute(input: GetMessageMediaInput): Promise<Output> {
     try {
@@ -72,17 +57,6 @@ class GetMessageMediaUseCase {
         return new Output(false, [], ["Storage temporariamente indisponível"], {
           ...whatsappError("MEDIA_UNAVAILABLE", true),
           mediaStatus: message.mediaStatus ?? "FAILED",
-        })
-      }
-
-      // Legacy Base64 in rawPayload — read-only until T4.6 cleanup.
-      const legacyOutbound = extractLegacyOutboundMedia(message.rawPayload)
-      if (legacyOutbound) {
-        return new Output(true, [], [], {
-          base64: legacyOutbound.base64,
-          mimeType: legacyOutbound.mimeType || message.mediaMimeType,
-          fileName: message.mediaFileName,
-          mediaStatus: "AVAILABLE",
         })
       }
 

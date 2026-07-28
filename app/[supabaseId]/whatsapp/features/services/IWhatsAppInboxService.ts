@@ -1,4 +1,4 @@
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppInboxSearchResult, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppInboxSearchResult, WhatsAppMessage, WhatsAppMessageActionPayload, WhatsAppMessageActionsState, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
 
 export interface IWhatsAppInboxService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
@@ -28,8 +28,34 @@ export interface IWhatsAppInboxService {
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[],
-    retryFailed?: boolean
+    retryFailed?: boolean,
+    quotedMessageId?: string
   ): Promise<{ messageId: string; status: WhatsAppMessage['status'] }>
+  fetchMessageActionsState(
+    teamId: string,
+    supabaseId: string,
+    messageId: string
+  ): Promise<WhatsAppMessageActionsState>
+  postMessageAction(
+    teamId: string,
+    supabaseId: string,
+    messageId: string,
+    clientActionId: string,
+    action: WhatsAppMessageActionPayload
+  ): Promise<void>
+  forwardMessage(
+    teamId: string,
+    supabaseId: string,
+    messageId: string,
+    destinations: Array<{ conversationId: string; clientMessageId: string }>
+  ): Promise<void>
+  searchConversationMessages(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    query: string,
+    signal?: AbortSignal
+  ): Promise<{ messages: WhatsAppMessage[]; total: number }>
   fetchContacts(
     teamId: string,
     supabaseId: string,
