@@ -949,6 +949,25 @@ class WhatsAppRepository implements IWhatsAppRepository {
     return true
   }
 
+  async requeueAllDeadLetterEvents(input: { teamId: string; actorProfileId: string }): Promise<number> {
+    const requeuedCount = await prisma.$executeRaw`
+      update whatsapp_webhook_events
+      set status = 'PENDING', "attemptCount" = 0, "lastError" = null,
+        "nextAttemptAt" = now(), "processingStartedAt" = null, "updatedAt" = now()
+      where "teamId" = ${input.teamId}::uuid and status = 'DEAD_LETTER'
+    `
+    const count = Number(requeuedCount)
+    if (count > 0) {
+      await this.createAuditEvent({
+        teamId: input.teamId,
+        actorProfileId: input.actorProfileId,
+        action: "webhook.dead_letter.requeue_all",
+        metadata: { requeuedCount: count },
+      })
+    }
+    return count
+  }
+
   async reconcileStaleOutboundCommands(now = new Date()): Promise<number> {
     const updated = await prisma.$executeRaw`
       update whatsapp_outbound_commands
@@ -1141,6 +1160,39 @@ class WhatsAppRepository implements IWhatsAppRepository {
         },
       }),
     ])
+  }
+
+  async softDeleteAllTeamConversationsWithAudit(input: {
+    teamId: string
+    actorProfileId: string
+  }): Promise<number> {
+    const now = new Date()
+    const conversations = await prisma.whatsAppConversation.findMany({
+      where: { teamId: input.teamId, deletedAt: null },
+      select: { id: true },
+    })
+    if (conversations.length === 0) return 0
+
+    const conversationIds = conversations.map((conversation) => conversation.id)
+    await prisma.$transaction([
+      prisma.whatsAppConversation.updateMany({
+        where: { id: { in: conversationIds } },
+        data: { deletedAt: now, isArchived: true },
+      }),
+      prisma.whatsAppMessage.updateMany({
+        where: { conversationId: { in: conversationIds }, deletedAt: null },
+        data: { deletedAt: now },
+      }),
+      prisma.whatsAppAuditEvent.create({
+        data: {
+          teamId: input.teamId,
+          actorProfileId: input.actorProfileId,
+          action: "conversations.purge",
+          metadata: { count: conversations.length },
+        },
+      }),
+    ])
+    return conversations.length
   }
 
   async createAuditEvent(input: {

@@ -28,6 +28,7 @@ import type {
 
 const CONVERSATIONS_LIMIT = 20
 const MESSAGES_LIMIT = 50
+const CONFIG_POLL_INTERVAL_MS = 3000
 const SEARCH_DEBOUNCE_MS = 400
 
 function dedupeConversationsById(items: WhatsAppConversation[]): WhatsAppConversation[] {
@@ -189,6 +190,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const inFlightConfigKeyRef = useRef<string | null>(null)
   const lastSuccessConfigKeyRef = useRef<string | null>(null)
   const lastConnectedPhoneRef = useRef<string | null>(null)
+  const prevConnectionStatusRef = useRef<WhatsAppConfig['status'] | null>(null)
+  const configPollInFlightRef = useRef(false)
 
   const currentConvsKeyRef = useRef<string | null>(null)
   const inFlightConvsKeyRef = useRef<string | null>(null)
@@ -626,6 +629,59 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     window.addEventListener(WHATSAPP_CONFIG_CHANGED_EVENT, onConfigChanged)
     return () => window.removeEventListener(WHATSAPP_CONFIG_CHANGED_EVENT, onConfigChanged)
   }, [loadConfig])
+
+  useEffect(() => {
+    const shouldPoll =
+      config?.status === 'QR_READY' ||
+      config?.status === 'PENDING' ||
+      config?.status === 'DISCONNECTED'
+
+    if (!activeTeamId || !shouldPoll) return
+
+    let cancelled = false
+    const intervalId = window.setInterval(() => {
+      void (async () => {
+        if (cancelled || configPollInFlightRef.current) return
+        configPollInFlightRef.current = true
+        try {
+          const refreshed = await whatsAppInboxService.fetchConfig(activeTeamId, supabaseId)
+          if (cancelled) return
+          setConfig(refreshed)
+          if (refreshed) {
+            lastSuccessConfigKeyRef.current = `${supabaseId}:${activeTeamId}`
+          }
+        } catch (error) {
+          if (!cancelled) {
+            console.error('[useWhatsAppInbox] Erro ao atualizar status de conexão:', error)
+          }
+        } finally {
+          configPollInFlightRef.current = false
+        }
+      })()
+    }, CONFIG_POLL_INTERVAL_MS)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [activeTeamId, supabaseId, config?.status])
+
+  useEffect(() => {
+    const prev = prevConnectionStatusRef.current
+    const current = config?.status ?? null
+    prevConnectionStatusRef.current = current
+
+    if (!activeTeamId) return
+    if (current !== 'CONNECTED') return
+    if (prev === 'CONNECTED') return
+
+    void loadConversations(1, pendingSearchRef.current, filterModeRef.current)
+    if (config?.historySyncStatus === 'IDLE') {
+      void whatsAppInboxService.syncHistory(activeTeamId, supabaseId).catch((error) => {
+        console.error('[useWhatsAppInbox] Erro ao sincronizar histórico após conexão:', error)
+      })
+    }
+  }, [config?.status, config?.historySyncStatus, activeTeamId, supabaseId, loadConversations])
 
   useEffect(() => {
     if (!activeTeamId || config?.historySyncStatus !== 'RUNNING') return

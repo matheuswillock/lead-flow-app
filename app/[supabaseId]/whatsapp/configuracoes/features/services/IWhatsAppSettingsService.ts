@@ -17,4 +17,6 @@ export interface IWhatsAppSettingsService {
     teamId: string,
     supabaseId: string
   ): Promise<{ imported: number; updatedConversations: number; totalContacts: number }>
+  purgeConversations(teamId: string, supabaseId: string): Promise<{ deletedCount: number }>
+  requeueDeadLetterEvents(teamId: string, supabaseId: string): Promise<{ requeuedCount: number }>
 }

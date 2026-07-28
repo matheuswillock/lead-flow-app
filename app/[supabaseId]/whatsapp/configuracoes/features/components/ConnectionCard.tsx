@@ -8,6 +8,7 @@ import {
   PlugZap,
   QrCode,
   RefreshCw,
+  Trash2,
   Wifi,
   WifiOff,
 } from 'lucide-react'
@@ -91,13 +92,16 @@ export function ConnectionCard() {
     isReconnecting,
     isDisconnecting,
     isSyncingContacts,
+    isPurgingConversations,
     connect,
     reconnect,
     disconnect,
     syncPhoneContacts,
+    purgeConversations,
   } = useWhatsAppSettingsContext()
 
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
+  const [purgeDialogOpen, setPurgeDialogOpen] = useState(false)
 
   const isSharedNumber = Boolean(config?.primaryConfigId)
   const isAwaitingQrAfterDisconnect =
@@ -107,6 +111,9 @@ export function ConnectionCard() {
   const showReconnectActions =
     canManageInfrastructure && !isSharedNumber && config?.status !== 'CONNECTED'
   const reconnectButtonVariant = config?.status === 'CONNECTED' ? 'outline' : 'default'
+  const phoneLabel =
+    config?.phoneNumber ??
+    (config?.status === 'CONNECTED' ? 'Sincronizando número...' : 'Número não conectado')
 
   if (isLoading && !config) {
     return (
@@ -208,7 +215,7 @@ export function ConnectionCard() {
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
                   <Phone className="size-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">{config.phoneNumber ?? 'Número não conectado'}</span>
+                  <span className="text-sm font-medium">{phoneLabel}</span>
                 </div>
                 <span className="text-xs text-muted-foreground">
                   Última sincronização: {formatSyncDate(config.lastSyncAt, tz)}
@@ -340,6 +347,37 @@ export function ConnectionCard() {
                     {isReconnecting ? 'Reconectando...' : 'Reconectar'}
                   </Button>
                 )
+              ) : null}
+
+              {config.status === 'CONNECTED' ? (
+                <AlertDialog open={purgeDialogOpen} onOpenChange={setPurgeDialogOpen}>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={isPurgingConversations}>
+                      <Trash2 data-icon="inline-start" />
+                      {isPurgingConversations ? 'Zerando...' : 'Zerar conversas'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Zerar conversas do time</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta ação remove todas as conversas ativas da inbox deste time. As mensagens
+                        deixam de aparecer na lista, mas o WhatsApp permanece conectado.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          setPurgeDialogOpen(false)
+                          void purgeConversations()
+                        }}
+                      >
+                        Zerar conversas
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               ) : null}
 
               {config.status !== 'DISCONNECTED' ? (

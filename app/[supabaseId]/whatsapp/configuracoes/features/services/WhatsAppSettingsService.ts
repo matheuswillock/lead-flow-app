@@ -142,6 +142,33 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
       }) ?? { imported: 0, updatedConversations: 0, totalContacts: 0 }
     )
   }
+
+  async purgeConversations(teamId: string, supabaseId: string): Promise<{ deletedCount: number }> {
+    const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/conversations`, {
+      method: 'DELETE',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível zerar as conversas'))
+    }
+    return (output.result as { deletedCount: number }) ?? { deletedCount: 0 }
+  }
+
+  async requeueDeadLetterEvents(teamId: string, supabaseId: string): Promise<{ requeuedCount: number }> {
+    const response = await fetch(
+      `/api/v1/teams/${teamId}/whatsapp/webhook-events/requeue-dead-letter`,
+      {
+        method: 'POST',
+        headers: this.buildHeaders(supabaseId, teamId),
+      }
+    )
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível reenfileirar os eventos dead-letter'))
+    }
+    return (output.result as { requeuedCount: number }) ?? { requeuedCount: 0 }
+  }
 }
 
 export const whatsAppSettingsService = new WhatsAppSettingsService()
