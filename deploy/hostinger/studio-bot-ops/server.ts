@@ -362,6 +362,51 @@ async function compose(...args) {
   return { stdout: stdout?.trim() || "", stderr: stderr?.trim() || "" };
 }
 
+async function ensureEnvOpsFile() {
+  const envOpsPath = path.join(DEPLOY_DIR, ".env.ops");
+  const examplePaths = [
+    path.join(DEPLOY_DIR, "deploy/hostinger/.env.ops.example"),
+    path.join(DEPLOY_DIR, ".env.ops.example"),
+  ];
+
+  try {
+    await fs.access(envOpsPath);
+    return { created: false, path: envOpsPath, migratedToken: false };
+  } catch {
+    // missing — provision below
+  }
+
+  let template = "";
+  for (const examplePath of examplePaths) {
+    try {
+      template = await fs.readFile(examplePath, "utf8");
+      break;
+    } catch {
+      // try next
+    }
+  }
+
+  if (!template) {
+    template = [
+      "OPS_AGENT_TOKEN=",
+      "BACKUP_DATABASE_URL=",
+      "BACKUP_ROOT=/opt/lead-flow-app/backups",
+      "BACKUP_SCRIPT_PATH=/app/backup-supabase.sh",
+      "BACKUP_RETENTION_DAYS=14",
+      "",
+    ].join("\n");
+  }
+
+  if (TOKEN) {
+    template = /^OPS_AGENT_TOKEN=/m.test(template)
+      ? template.replace(/^OPS_AGENT_TOKEN=.*$/m, `OPS_AGENT_TOKEN=${TOKEN}`)
+      : `OPS_AGENT_TOKEN=${TOKEN}\n${template}`;
+  }
+
+  await fs.writeFile(envOpsPath, template, { mode: 0o600 });
+  return { created: true, path: envOpsPath, migratedToken: Boolean(TOKEN) };
+}
+
 async function listContainers() {
   const { stdout } = await execFileAsync(
     "docker",
@@ -737,10 +782,12 @@ async function handleSyncHost(body, res) {
   await fs.writeFile(packPath, buf);
   await execFileAsync("tar", ["-xzf", packPath, "-C", DEPLOY_DIR]);
   await fs.writeFile(HOST_VERSION_FILE, `${version}\n`, "utf8");
+  const envOps = await ensureEnvOpsFile();
+  const build = await compose("build", "studio-bot-ops");
   const pull = await compose("pull");
   const up = await compose("up", "-d");
   await fs.rm(tmpDir, { recursive: true, force: true });
-  return json(res, 200, { ok: true, version, backupDir, pull, up });
+  return json(res, 200, { ok: true, version, backupDir, envOps, build, pull, up });
 }
 
 const server = http.createServer(async (req, res) => {
