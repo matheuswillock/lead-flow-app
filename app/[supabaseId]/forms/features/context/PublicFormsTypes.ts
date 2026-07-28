@@ -28,6 +28,9 @@ export type PublicFormSettings = {
   defaultBackgroundColor: string
   defaultTextColor: string
   defaultLineColor: string
+  defaultAccentColor: string
+  defaultButtonTextColor: string
+  defaultInputBackgroundColor: string
 }
 
 export type PublicFormDetail = PublicFormDraftInput &

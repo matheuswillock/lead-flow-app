@@ -29,10 +29,14 @@ export const publicFormDetailSelect = {
   ctaLabel: true,
   successTitle: true,
   successDescription: true,
+  successActions: true,
   useDefaultTheme: true,
   backgroundColor: true,
   textColor: true,
   lineColor: true,
+  accentColor: true,
+  buttonTextColor: true,
+  inputBackgroundColor: true,
   schedulingEnabled: true,
   meetingDurationMinutes: true,
   schedulingMessage: true,
@@ -57,12 +61,13 @@ export const publicFormDetailSelect = {
       description: true,
       placeholder: true,
       required: true,
+      scoreWeight: true,
       config: true,
       mappingTarget: true,
       mappingKey: true,
       options: {
         orderBy: { position: "asc" as const },
-        select: { id: true, label: true, value: true, score: true },
+        select: { id: true, label: true, value: true, score: true, scorePolarity: true },
       },
     },
   },
@@ -199,6 +204,9 @@ export interface IPublicFormsRepository {
       defaultBackgroundColor: string
       defaultTextColor: string
       defaultLineColor: string
+      defaultAccentColor: string
+      defaultButtonTextColor: string
+      defaultInputBackgroundColor: string
     },
   ): Promise<PublicFormSettings>
   findPublishedByPublicId(publicId: string): Promise<PublicFormPublishedSnapshot | null>

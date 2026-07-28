@@ -2,6 +2,7 @@ import { ActivityType, Prisma } from "@prisma/client"
 import { randomUUID } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
+import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
 import {
   type IPublicFormsRepository,
   type PublicFormCompleteSubmissionInput,
@@ -69,6 +70,7 @@ async function replaceDraftRelations(
         description: question.description,
         placeholder: question.placeholder,
         required: question.required,
+        scoreWeight: question.scoreWeight ?? 0,
         position,
         config: json(question.config ?? {}),
         mappingTarget: question.mappingTarget,
@@ -81,6 +83,7 @@ async function replaceDraftRelations(
         description: question.description,
         placeholder: question.placeholder,
         required: question.required,
+        scoreWeight: question.scoreWeight ?? 0,
         position,
         config: json(question.config ?? {}),
         mappingTarget: question.mappingTarget,
@@ -95,6 +98,7 @@ async function replaceDraftRelations(
           label: option.label,
           value: option.value,
           score: option.score,
+          scorePolarity: option.scorePolarity ?? "positive",
           position: optionPosition,
         })),
       })
@@ -107,7 +111,8 @@ async function replaceDraftRelations(
         id: rule.id,
         formId,
         sourceQuestionId: rule.sourceQuestionId,
-        targetQuestionId: rule.targetQuestionId,
+        targetQuestionId:
+          rule.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET ? null : rule.targetQuestionId,
         operator: rule.operator,
         comparisonValue:
           rule.comparisonValue === undefined ? Prisma.JsonNull : json(rule.comparisonValue),
@@ -237,10 +242,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           ctaLabel: input.ctaLabel,
           successTitle: input.successTitle,
           successDescription: input.successDescription,
+          successActions: json(input.successActions ?? []),
           useDefaultTheme: input.useDefaultTheme,
           backgroundColor: input.backgroundColor,
           textColor: input.textColor,
           lineColor: input.lineColor,
+          accentColor: input.accentColor,
+          buttonTextColor: input.buttonTextColor,
+          inputBackgroundColor: input.inputBackgroundColor,
           schedulingEnabled: input.schedulingEnabled,
           meetingDurationMinutes: input.meetingDurationMinutes,
           schedulingMessage: input.schedulingMessage,
@@ -270,10 +279,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           ctaLabel: input.ctaLabel,
           successTitle: input.successTitle,
           successDescription: input.successDescription,
+          successActions: json(input.successActions ?? []),
           useDefaultTheme: input.useDefaultTheme,
           backgroundColor: input.backgroundColor,
           textColor: input.textColor,
           lineColor: input.lineColor,
+          accentColor: input.accentColor,
+          buttonTextColor: input.buttonTextColor,
+          inputBackgroundColor: input.inputBackgroundColor,
           schedulingEnabled: input.schedulingEnabled,
           meetingDurationMinutes: input.meetingDurationMinutes,
           schedulingMessage: input.schedulingMessage,
@@ -359,6 +372,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       defaultBackgroundColor: string
       defaultTextColor: string
       defaultLineColor: string
+      defaultAccentColor: string
+      defaultButtonTextColor: string
+      defaultInputBackgroundColor: string
     },
   ) {
     return prisma.publicFormSettings.upsert({

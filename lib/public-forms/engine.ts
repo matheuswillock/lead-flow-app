@@ -1,10 +1,31 @@
 import { parseCurrencyBR, phoneDigitCount } from "./masks"
+import {
+  isAnswered,
+  isChoiceQuestionType,
+  maxPositiveRelativeScore,
+  signedOptionScore,
+} from "./scoring"
 import type { PublicFormAnswerInput, PublicFormDraftInput, PublicFormQuestionInput } from "./types"
+import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
 
 const values = (v: unknown) => (Array.isArray(v) ? v.map(String) : v == null ? [] : [String(v)])
 
 function inverseAction(action: "show" | "skip"): "show" | "skip" {
   return action === "show" ? "skip" : "show"
+}
+
+function ruleHits(
+  operator: PublicFormDraftInput["rules"][number]["operator"],
+  got: string[],
+  expected: string[],
+): boolean {
+  if (operator === "equals" || operator === "selected") {
+    return expected.some((v) => got.includes(v))
+  }
+  if (operator === "not_equals" || operator === "not_selected") {
+    return expected.every((v) => !got.includes(v))
+  }
+  return got.some((v) => expected.some((e) => v.includes(e)))
 }
 
 export function resolveVisibleQuestionIds(
@@ -14,14 +35,10 @@ export function resolveVisibleQuestionIds(
   const map = new Map(answers.map((a) => [a.questionId, a.value])),
     visible = new Set(form.questions.map((q) => q.id).filter(Boolean) as string[])
   for (const r of form.rules) {
+    if (r.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET) continue
     const got = values(map.get(r.sourceQuestionId)),
       expected = values(r.comparisonValue)
-    const hit =
-      r.operator === "equals" || r.operator === "selected"
-        ? expected.some((v) => got.includes(v))
-        : r.operator === "not_equals" || r.operator === "not_selected"
-          ? expected.every((v) => !got.includes(v))
-          : got.some((v) => expected.some((e) => v.includes(e)))
+    const hit = ruleHits(r.operator, got, expected)
     const elseAction = r.elseAction ?? inverseAction(r.action)
     const effective = hit ? r.action : elseAction
     if (effective === "skip") visible.delete(r.targetQuestionId)
@@ -31,50 +48,75 @@ export function resolveVisibleQuestionIds(
     .filter((id): id is string => Boolean(id && visible.has(id)))
 }
 
+/** True when a rule branch targets the thank-you page for the current answers. */
+export function shouldGoToThankYou(
+  form: PublicFormDraftInput,
+  answers: PublicFormAnswerInput[],
+): boolean {
+  const map = new Map(answers.map((a) => [a.questionId, a.value]))
+  for (const r of form.rules) {
+    if (r.targetQuestionId !== PUBLIC_FORM_THANK_YOU_TARGET) continue
+    const got = values(map.get(r.sourceQuestionId))
+    const expected = values(r.comparisonValue)
+    const hit = ruleHits(r.operator, got, expected)
+    const elseAction = r.elseAction ?? inverseAction(r.action)
+    const effective = hit ? r.action : elseAction
+    // "Exibir" a página de agradecimentos encerra o fluxo.
+    if (effective === "show") return true
+  }
+  return false
+}
+
+function contributionForChoice(
+  question: PublicFormQuestionInput,
+  answerValue: unknown,
+): number {
+  const weight = Math.max(0, question.scoreWeight ?? 0)
+  if (weight <= 0) return 0
+  const maxRelative = maxPositiveRelativeScore(question)
+  const selected = question.options.filter((option) =>
+    values(answerValue).includes(option.value),
+  )
+  const raw = selected.reduce((sum, option) => sum + signedOptionScore(option), 0)
+  if (maxRelative <= 0) return 0
+  return (raw / maxRelative) * weight
+}
+
+function contributionForNonChoice(
+  question: PublicFormQuestionInput,
+  answerValue: unknown,
+): number {
+  const weight = Math.max(0, question.scoreWeight ?? 0)
+  if (weight <= 0) return 0
+  return isAnswered(answerValue) ? weight : 0
+}
+
+/**
+ * Score already in 0–100% using question scoreWeights (form budget).
+ * Floored at 0 when negative options pull below zero.
+ */
 export function calculatePublicFormScore(
   form: PublicFormDraftInput,
   answers: PublicFormAnswerInput[],
 ) {
   const qs = new Map(form.questions.map((q) => [q.id, q]))
-  return answers.reduce(
-    (sum, a) =>
-      sum +
-      (qs
-        .get(a.questionId)
-        ?.options.filter((o) => values(a.value).includes(o.value))
-        .reduce((n, o) => n + o.score, 0) ?? 0),
-    0,
-  )
+  const raw = answers.reduce((sum, answer) => {
+    const question = qs.get(answer.questionId)
+    if (!question) return sum
+    if (isChoiceQuestionType(question.type) && question.options.length > 0) {
+      return sum + contributionForChoice(question, answer.value)
+    }
+    if (question.type === "calculation") return sum
+    return sum + contributionForNonChoice(question, answer.value)
+  }, 0)
+  return Math.max(0, raw)
 }
 
-function getMaxSelections(question: PublicFormQuestionInput): number | null {
-  const maxSelections = question.config?.maxSelections
-  if (typeof maxSelections !== "number" || !Number.isFinite(maxSelections)) return null
-  const floored = Math.floor(maxSelections)
-  return floored > 0 ? floored : null
-}
-
-/** Max possible raw score across scoreable questions (for 0–100% normalization). */
+/** Max possible score is the form budget of question weights (always 100 when balanced). */
 export function calculatePublicFormMaxPossibleScore(form: PublicFormDraftInput) {
   return form.questions.reduce((sum, question) => {
-    if (!question.options.length) return sum
-    if (question.type === "multiple_choice") {
-      // maxSelections limita quantas opções o respondente pode marcar — o
-      // máximo alcançável soma só as N maiores pontuações positivas, não
-      // todas as opções (senão o máximo fica inflado e bandas altas de score
-      // ficam inatingíveis).
-      const positiveScores = question.options
-        .map((option) => Math.max(0, option.score))
-        .sort((a, b) => b - a)
-      const maxSelections = getMaxSelections(question)
-      const selectable =
-        maxSelections != null ? positiveScores.slice(0, maxSelections) : positiveScores
-      return sum + selectable.reduce((n, score) => n + score, 0)
-    }
-    if (["single_choice", "health_plan", "boolean"].includes(question.type)) {
-      return sum + Math.max(0, ...question.options.map((option) => option.score), 0)
-    }
-    return sum
+    if (question.type === "calculation") return sum
+    return sum + Math.max(0, question.scoreWeight ?? 0)
   }, 0)
 }
 
@@ -85,7 +127,14 @@ export function calculatePublicFormScorePercent(
   const raw = calculatePublicFormScore(form, answers)
   const max = calculatePublicFormMaxPossibleScore(form)
   if (max <= 0) return 0
-  return Math.round((100 * raw) / max)
+  return Math.min(100, Math.round((100 * raw) / max))
+}
+
+function getMaxSelections(question: PublicFormQuestionInput): number | null {
+  const maxSelections = question.config?.maxSelections
+  if (typeof maxSelections !== "number" || !Number.isFinite(maxSelections)) return null
+  const floored = Math.floor(maxSelections)
+  return floored > 0 ? floored : null
 }
 
 export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {

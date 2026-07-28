@@ -1,18 +1,50 @@
 import { z } from "zod"
+import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
+
 const uuid = z.string().uuid("Identificador inválido"),
   color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor inválida"),
   text = z.string().trim().max(2000).nullable().optional()
+
 const option = z.object({
   id: uuid.optional(),
   label: z.string().trim().min(1).max(300),
   value: z.string().trim().min(1).max(300),
   score: z.number().int().min(0).max(100).default(0),
+  scorePolarity: z.enum(["positive", "negative"]).default("positive"),
 })
+
 const coverHighlight = z.object({
   id: z.string().min(1).max(80),
   value: z.string().trim().min(1).max(80),
   label: z.string().trim().min(1).max(120),
 })
+
+const successAction = z
+  .object({
+    id: z.string().min(1).max(80),
+    label: z.string().trim().min(1).max(80),
+    type: z.enum(["link", "whatsapp", "close"]),
+    url: z.string().trim().max(2000).nullable().optional(),
+    whatsappPhone: z.string().trim().max(30).nullable().optional(),
+    whatsappMessage: z.string().trim().max(500).nullable().optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.type === "link" && !value.url?.trim()) {
+      context.addIssue({
+        code: "custom",
+        path: ["url"],
+        message: "Informe a URL do botão",
+      })
+    }
+    if (value.type === "whatsapp" && !value.whatsappPhone?.trim()) {
+      context.addIssue({
+        code: "custom",
+        path: ["whatsappPhone"],
+        message: "Informe o WhatsApp do botão",
+      })
+    }
+  })
+
 const question = z.object({
   id: uuid.optional(),
   type: z.enum([
@@ -38,59 +70,78 @@ const question = z.object({
   description: text,
   placeholder: z.string().max(300).nullable().optional(),
   required: z.boolean().default(false),
+  scoreWeight: z.number().int().min(0).max(100).default(0),
   config: z.record(z.string(), z.unknown()).default({}),
   mappingTarget: z.enum(["native_field", "custom_field", "notes", "history"]).nullable().optional(),
   mappingKey: z.string().max(200).nullable().optional(),
   options: z.array(option).max(100).default([]),
 })
-export const publicFormDraftSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  description: text,
-  assignedSdrId: uuid.nullable().optional(),
-  eligibleCloserIds: z.array(uuid).max(100).default([]),
-  coverTitle: text,
-  coverDescription: text,
-  coverBadge: z.string().trim().max(80).nullable().optional(),
-  coverHighlights: z.array(coverHighlight).max(6).default([]),
-  ctaLabel: z.string().trim().min(1).max(80).default("Começar"),
-  successTitle: z.string().trim().min(1).max(200).default("Respostas enviadas"),
-  successDescription: text,
-  useDefaultTheme: z.boolean().default(true),
-  backgroundColor: color.nullable().optional(),
-  textColor: color.nullable().optional(),
-  lineColor: color.nullable().optional(),
-  schedulingEnabled: z.boolean().default(false),
-  meetingDurationMinutes: z.number().int().min(5).max(480).default(30),
-  schedulingMessage: text,
-  formKind: z.enum(["standard", "health_plan_simulator"]).default("standard"),
-  questions: z.array(question).max(200).default([]),
-  rules: z
-    .array(
-      z.object({
-        id: uuid.optional(),
-        sourceQuestionId: uuid,
-        targetQuestionId: uuid,
-        operator: z.enum(["equals", "not_equals", "contains", "selected", "not_selected"]),
-        comparisonValue: z.unknown().optional(),
-        action: z.enum(["show", "skip"]),
-        elseAction: z.enum(["show", "skip"]).optional(),
-      }),
-    )
-    .max(500)
-    .default([]),
-  scoreBands: z
-    .array(
-      z.object({
-        id: uuid.optional(),
-        label: z.string().trim().min(1).max(200),
-        summary: text,
-        minScore: z.number().int().min(0).max(100),
-        maxScore: z.number().int().min(0).max(100),
-      }),
-    )
-    .max(100)
-    .default([]),
-})
+
+export const publicFormDraftSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    description: text,
+    assignedSdrId: uuid.nullable().optional(),
+    eligibleCloserIds: z.array(uuid).max(100).default([]),
+    coverTitle: text,
+    coverDescription: text,
+    coverBadge: z.string().trim().max(80).nullable().optional(),
+    coverHighlights: z.array(coverHighlight).max(6).default([]),
+    ctaLabel: z.string().trim().min(1).max(80).default("Começar"),
+    successTitle: z.string().trim().min(1).max(200).default("Respostas enviadas"),
+    successDescription: text,
+    successActions: z.array(successAction).max(6).default([]),
+    useDefaultTheme: z.boolean().default(true),
+    backgroundColor: color.nullable().optional(),
+    textColor: color.nullable().optional(),
+    lineColor: color.nullable().optional(),
+    accentColor: color.nullable().optional(),
+    buttonTextColor: color.nullable().optional(),
+    inputBackgroundColor: color.nullable().optional(),
+    schedulingEnabled: z.boolean().default(false),
+    meetingDurationMinutes: z.number().int().min(5).max(480).default(30),
+    schedulingMessage: text,
+    formKind: z.enum(["standard", "health_plan_simulator"]).default("standard"),
+    questions: z.array(question).max(200).default([]),
+    rules: z
+      .array(
+        z.object({
+          id: uuid.optional(),
+          sourceQuestionId: uuid,
+          targetQuestionId: z.union([uuid, z.literal(PUBLIC_FORM_THANK_YOU_TARGET)]),
+          operator: z.enum(["equals", "not_equals", "contains", "selected", "not_selected"]),
+          comparisonValue: z.unknown().optional(),
+          action: z.enum(["show", "skip"]),
+          elseAction: z.enum(["show", "skip"]).optional(),
+        }),
+      )
+      .max(500)
+      .default([]),
+    scoreBands: z
+      .array(
+        z.object({
+          id: uuid.optional(),
+          label: z.string().trim().min(1).max(200),
+          summary: text,
+          minScore: z.number().int().min(0).max(100),
+          maxScore: z.number().int().min(0).max(100),
+        }),
+      )
+      .max(100)
+      .default([]),
+  })
+  .superRefine((value, context) => {
+    if (value.questions.length === 0) return
+    const total = value.questions.reduce((sum, question) => sum + question.scoreWeight, 0)
+    if (total !== 100) {
+      context.addIssue({
+        code: "custom",
+        path: ["questions"],
+        message: "A soma das pontuações das perguntas deve ser 100%",
+      })
+    }
+  })
+
 export const publicFormSettingsSchema = z
   .object({
     approvalRequired: z.boolean(),
@@ -98,6 +149,9 @@ export const publicFormSettingsSchema = z
     defaultBackgroundColor: color,
     defaultTextColor: color,
     defaultLineColor: color,
+    defaultAccentColor: color,
+    defaultButtonTextColor: color,
+    defaultInputBackgroundColor: color,
   })
   .superRefine((value, context) => {
     if (value.approvalRequired && value.approverRoles.length === 0) {
@@ -108,12 +162,14 @@ export const publicFormSettingsSchema = z
       })
     }
   })
+
 export const publicFormSubmissionSchema = z.object({
   requestKey: z.string().min(8).max(200),
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
   scheduling: z.object({ startsAt: z.string().datetime() }).optional(),
 })
+
 export const publicFormMetricEventSchema = z.object({
   visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/),
   eventType: z.enum([

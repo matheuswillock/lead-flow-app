@@ -4697,16 +4697,19 @@ enum PublicFormMetricType {
 }
 
 model PublicFormSettings {
-  id                     String     @id @default(uuid()) @db.Uuid
-  teamId                 String     @unique @db.Uuid
-  approvalRequired       Boolean    @default(false)
-  approverRoles          UserRole[] @default([manager])
-  defaultBackgroundColor String     @default("#FFFFFF") @db.VarChar(7)
-  defaultTextColor       String     @default("#18181B") @db.VarChar(7)
-  defaultLineColor       String     @default("#E4E4E7") @db.VarChar(7)
-  createdAt              DateTime   @default(now()) @db.Timestamptz(6)
-  updatedAt              DateTime   @updatedAt @db.Timestamptz(6)
-  team                   Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  id                           String     @id @default(uuid()) @db.Uuid
+  teamId                       String     @unique @db.Uuid
+  approvalRequired             Boolean    @default(false)
+  approverRoles                UserRole[] @default([manager])
+  defaultBackgroundColor       String     @default("#FFFFFF") @db.VarChar(7)
+  defaultTextColor             String     @default("#18181B") @db.VarChar(7)
+  defaultLineColor             String     @default("#E4E4E7") @db.VarChar(7)
+  defaultAccentColor           String     @default("#FF6900") @db.VarChar(7)
+  defaultButtonTextColor       String     @default("#FFFFFF") @db.VarChar(7)
+  defaultInputBackgroundColor  String     @default("#FFFFFF") @db.VarChar(7)
+  createdAt                    DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt                    DateTime   @updatedAt @db.Timestamptz(6)
+  team                         Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@map("corretor_studio_public_form_settings")
 }
@@ -4740,10 +4743,14 @@ model PublicForm {
   ctaLabel               String                     @default("Começar") @db.Text
   successTitle           String                     @default("Respostas enviadas") @db.Text
   successDescription     String?                    @db.Text
+  successActions         Json?
   useDefaultTheme        Boolean                    @default(true)
   backgroundColor        String?                    @db.VarChar(7)
   textColor              String?                    @db.VarChar(7)
   lineColor              String?                    @db.VarChar(7)
+  accentColor            String?                    @db.VarChar(7)
+  buttonTextColor        String?                    @db.VarChar(7)
+  inputBackgroundColor   String?                    @db.VarChar(7)
   schedulingEnabled      Boolean                    @default(false)
   meetingDurationMinutes Int                        @default(30)
   schedulingMessage      String?                    @db.Text
@@ -4793,6 +4800,7 @@ model PublicFormQuestion {
   description   String?                  @db.Text
   placeholder   String?                  @db.Text
   required      Boolean                  @default(false)
+  scoreWeight   Int                      @default(0)
   position      Int
   config        Json                     @default("{}")
   mappingTarget PublicFormMappingTarget?
@@ -4812,15 +4820,16 @@ model PublicFormQuestion {
 }
 
 model PublicFormOption {
-  id         String             @id @default(uuid()) @db.Uuid
-  questionId String             @db.Uuid
-  label      String             @db.Text
-  value      String             @db.Text
-  position   Int
-  score      Int                @default(0)
-  createdAt  DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime           @updatedAt @db.Timestamptz(6)
-  question   PublicFormQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  id            String             @id @default(uuid()) @db.Uuid
+  questionId    String             @db.Uuid
+  label         String             @db.Text
+  value         String             @db.Text
+  position      Int
+  score         Int                @default(0)
+  scorePolarity String             @default("positive") @db.VarChar(16)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(6)
+  question      PublicFormQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([questionId, position])
   @@index([questionId, position])
@@ -4831,7 +4840,7 @@ model PublicFormRule {
   id               String                 @id @default(uuid()) @db.Uuid
   formId           String                 @db.Uuid
   sourceQuestionId String                 @db.Uuid
-  targetQuestionId String                 @db.Uuid
+  targetQuestionId String?                @db.Uuid
   operator         PublicFormRuleOperator
   comparisonValue  Json?
   action           PublicFormRuleAction
@@ -4840,7 +4849,7 @@ model PublicFormRule {
   updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
   form             PublicForm             @relation(fields: [formId], references: [id], onDelete: Cascade)
   sourceQuestion   PublicFormQuestion     @relation("PublicFormRuleSource", fields: [sourceQuestionId], references: [id], onDelete: Cascade)
-  targetQuestion   PublicFormQuestion     @relation("PublicFormRuleTarget", fields: [targetQuestionId], references: [id], onDelete: Cascade)
+  targetQuestion   PublicFormQuestion?    @relation("PublicFormRuleTarget", fields: [targetQuestionId], references: [id], onDelete: Cascade)
 
   @@index([formId])
   @@index([sourceQuestionId])

@@ -3234,6 +3234,9 @@ meeting_scheduled meeting_scheduled
     String defaultBackgroundColor 
     String defaultTextColor 
     String defaultLineColor 
+    String defaultAccentColor 
+    String defaultButtonTextColor 
+    String defaultInputBackgroundColor 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3261,10 +3264,14 @@ meeting_scheduled meeting_scheduled
     String ctaLabel 
     String successTitle 
     String successDescription "❓"
+    Json successActions "❓"
     Boolean useDefaultTheme 
     String backgroundColor "❓"
     String textColor "❓"
     String lineColor "❓"
+    String accentColor "❓"
+    String buttonTextColor "❓"
+    String inputBackgroundColor "❓"
     Boolean schedulingEnabled 
     Int meetingDurationMinutes 
     String schedulingMessage "❓"
@@ -3289,6 +3296,7 @@ meeting_scheduled meeting_scheduled
     String description "❓"
     String placeholder "❓"
     Boolean required 
+    Int scoreWeight 
     Int position 
     Json config 
     PublicFormMappingTarget mappingTarget "❓"
@@ -3304,6 +3312,7 @@ meeting_scheduled meeting_scheduled
     String value 
     Int position 
     Int score 
+    String scorePolarity 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3804,7 +3813,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_form_rules" |o--|| "PublicFormRuleAction" : "enum:elseAction"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "sourceQuestion"
-    "corretor_studio_public_form_rules" }o--|| corretor_studio_public_form_questions : "targetQuestion"
+    "corretor_studio_public_form_rules" }o--|o corretor_studio_public_form_questions : "targetQuestion"
     "corretor_studio_public_form_score_bands" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_publications" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_publications" }o--|| corretor_studio_profiles : "publishedBy"
