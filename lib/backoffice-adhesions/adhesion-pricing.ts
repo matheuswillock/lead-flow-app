@@ -107,12 +107,12 @@ export function resolveProductPriceForCycle(
         : product.priceMonthly
 
   if (value == null) {
-    throw new Error(`Produto ${product.featureSlug} sem preço para o ciclo ${cycle}`)
+    throw new Error(`Produto ${product.name} sem preço para o ciclo ${cycle}`)
   }
 
   const price = Number(value.toString())
   if (!Number.isFinite(price) || price <= 0) {
-    throw new Error(`Produto ${product.featureSlug} com preço inválido para o ciclo ${cycle}`)
+    throw new Error(`Produto ${product.name} com preço inválido para o ciclo ${cycle}`)
   }
 
   return price
@@ -171,10 +171,16 @@ export function calculateBackofficeAdhesionPricing(
     try {
       const cardRule = resolvePaymentRule(paymentRules, input.cycle, "CREDIT_CARD")
       const cardMonthlyExtras = roundCurrency(monthlyExtraTeamsAmount + monthlyExtraUsersAmount)
-      creditCardMonthlyTotalAmount = roundCurrency(
-        resolveCardMonthlyPriceFromRule(cardRule, input.cycle) + cardMonthlyExtras
-      )
-      creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      if (cardRule.installmentSplitMode === "CUSTOM") {
+        const cardBaseTotal = roundCurrency(Number(cardRule.price.toString()))
+        creditCardTotalAmount = roundCurrency(cardBaseTotal + cardMonthlyExtras * cycleMonths)
+        creditCardMonthlyTotalAmount = roundCurrency(creditCardTotalAmount / cycleMonths)
+      } else {
+        creditCardMonthlyTotalAmount = roundCurrency(
+          resolveCardMonthlyPriceFromRule(cardRule, input.cycle) + cardMonthlyExtras
+        )
+        creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      }
       maxCardInstallments = cardRule.maxInstallments
     } catch {
       // fallback to flat price

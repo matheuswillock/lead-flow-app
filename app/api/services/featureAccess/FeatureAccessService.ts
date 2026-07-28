@@ -6,6 +6,7 @@ import type {
   UserRoleInfo,
 } from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
+import { addProductFeatureSlugsToSet } from "@/lib/backoffice-products/product-feature-slugs"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
@@ -165,14 +166,14 @@ export class FeatureAccessService implements IFeatureAccessService {
 
     const paidProductSlugs = new Set<string>()
     for (const item of userSubscriptions) {
-      paidProductSlugs.add(item.product.featureSlug)
+      addProductFeatureSlugsToSet(paidProductSlugs, item.product)
     }
     for (const item of ownerSubscriptions) {
-      paidProductSlugs.add(item.product.featureSlug)
+      addProductFeatureSlugsToSet(paidProductSlugs, item.product)
     }
 
-    if (hasActiveMainSubscription && ownerProfileSubscription?.product?.featureSlug) {
-      paidProductSlugs.add(ownerProfileSubscription.product.featureSlug)
+    if (hasActiveMainSubscription && ownerProfileSubscription?.product) {
+      addProductFeatureSlugsToSet(paidProductSlugs, ownerProfileSubscription.product)
     }
 
     const featureById = new Map(features.map((f) => [f.id, f]))
