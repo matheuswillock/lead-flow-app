@@ -2,6 +2,7 @@ import { cacheLife, cacheTag } from 'next/cache';
 import { Output } from '@/lib/output';
 import { cacheTags } from '@/lib/cache/cacheTags';
 import { portfolioService } from '@/app/api/services/Portfolio/PortfolioService';
+import { syncPortfolioToRadarInline } from '@/app/api/useCases/radar/syncPortfolioToRadarInline';
 import type { IPortfolioUseCase } from './IPortfolioUseCase';
 import type {
   CreatePortfolioEntryPayload,
@@ -83,6 +84,7 @@ export class PortfolioUseCase implements IPortfolioUseCase {
   ): Promise<Output> {
     try {
       const result = await portfolioService.createPortfolioEntry(teamId, profileId, data);
+      syncPortfolioToRadarInline(result.portfolioId, teamId);
       return new Output(true, ['Cliente adicionado na carteira com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao criar cliente na carteira:', error);
@@ -137,6 +139,7 @@ export class PortfolioUseCase implements IPortfolioUseCase {
         isCloser,
         data
       );
+      syncPortfolioToRadarInline(result.portfolioId, teamId);
       return new Output(true, ['Carteira atualizada com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao atualizar carteira:', error);
@@ -185,6 +188,7 @@ export class PortfolioUseCase implements IPortfolioUseCase {
         isCloser,
         payload
       );
+      syncPortfolioToRadarInline(result.portfolioId, teamId);
       return new Output(true, ['Dados atualizados com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao atualizar detalhe:', error);
