@@ -129,12 +129,87 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   }
 
   async clearDefaultForFeatureSlug(featureSlug: string, exceptId?: string): Promise<void> {
-    await prisma.backofficeProduct.updateMany({
+    const demoted = await prisma.backofficeProduct.findMany({
       where: {
         featureSlugs: { has: featureSlug },
+        isDefault: true,
         ...(exceptId ? { id: { not: exceptId } } : {}),
       },
+      select: { id: true, featureSlugs: true },
+    })
+
+    if (demoted.length === 0) {
+      return
+    }
+
+    await prisma.backofficeProduct.updateMany({
+      where: { id: { in: demoted.map((product) => product.id) } },
       data: { isDefault: false },
+    })
+
+    const companionSlugs = new Set<string>()
+    for (const product of demoted) {
+      for (const slug of product.featureSlugs) {
+        if (slug !== featureSlug) {
+          companionSlugs.add(slug)
+        }
+      }
+    }
+
+    for (const slug of companionSlugs) {
+      await this.ensureDefaultForFeatureSlug(slug, exceptId)
+    }
+  }
+
+  private async ensureDefaultForFeatureSlug(
+    featureSlug: string,
+    exceptId?: string
+  ): Promise<void> {
+    const hasDefault = await prisma.backofficeProduct.findFirst({
+      where: {
+        featureSlugs: { has: featureSlug },
+        isDefault: true,
+        isActive: true,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true },
+    })
+
+    if (hasDefault) {
+      return
+    }
+
+    const candidates = await prisma.backofficeProduct.findMany({
+      where: {
+        featureSlugs: { has: featureSlug },
+        isActive: true,
+        isDefault: false,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true, featureSlugs: true, name: true },
+    })
+
+    const candidate =
+      candidates
+        .slice()
+        .sort((left, right) => {
+          const leftIsSingle =
+            left.featureSlugs.length === 1 && left.featureSlugs[0] === featureSlug ? 0 : 1
+          const rightIsSingle =
+            right.featureSlugs.length === 1 && right.featureSlugs[0] === featureSlug ? 0 : 1
+          if (leftIsSingle !== rightIsSingle) {
+            return leftIsSingle - rightIsSingle
+          }
+          return left.name.localeCompare(right.name)
+        })[0] ?? null
+
+    if (!candidate) {
+      return
+    }
+
+    await prisma.backofficeProduct.update({
+      where: { id: candidate.id },
+      data: { isDefault: true },
     })
   }
 

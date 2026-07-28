@@ -182,6 +182,22 @@ function sumPendingLedgerAmount(ledger: AdhesionInstallmentLedgerEntry[]): numbe
   )
 }
 
+function resolveCheckoutChargeAmount(
+  publicDetails: BackofficeAdhesionPublicDTO,
+  billingType: "PIX" | "CREDIT_CARD"
+): number {
+  const ledgerHasPending =
+    publicDetails.installmentSchedule.length > 0 && publicDetails.remainingBalance > 0
+
+  if (ledgerHasPending) {
+    return publicDetails.remainingBalance
+  }
+
+  return billingType === "PIX"
+    ? publicDetails.pixTotalAmount
+    : publicDetails.creditCardTotalAmount
+}
+
 function mapPublicAdhesion(
   adhesion: BackofficeAdhesionWithRelations,
   paymentRules?: BackofficeProductPaymentRule[]
@@ -1098,10 +1114,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
-    const chargeAmount =
-      normalized.billingType === "PIX"
-        ? publicDetails.chargeAmount
-        : publicDetails.chargeAmount
+    const chargeAmount = resolveCheckoutChargeAmount(publicDetails, normalized.billingType)
 
     const paymentResult = await this.createAsaasPayment(adhesion, customerId, normalized, chargeAmount)
     const updated = await this.repo.updateCheckoutData(adhesion.id, {
