@@ -190,6 +190,27 @@ export class RadarRepository {
       select: { id: true, sourceType: true, sourceId: true, eventType: true, occurredAt: true },
     })
     for (const event of losingEvents) {
+      // D5 (fix review PR #561): profile.first_contact usa o próprio
+      // profileId como sourceId — perdedor e vencedor sempre têm sourceId
+      // diferente entre si, então o dedupe genérico abaixo (que exige
+      // sourceId igual) nunca encontraria o conflito. Mantém só o mais
+      // antigo dos dois "primeiro contato".
+      if (event.eventType === "profile.first_contact") {
+        const existingFirstContact = await tx.radarEvent.findFirst({
+          where: { teamId, profileId: winningProfileId, eventType: "profile.first_contact" },
+          select: { id: true, occurredAt: true },
+        })
+        if (!existingFirstContact) {
+          await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+        } else if (event.occurredAt < existingFirstContact.occurredAt) {
+          await tx.radarEvent.delete({ where: { id: existingFirstContact.id } })
+          await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+        } else {
+          await tx.radarEvent.delete({ where: { id: event.id } })
+        }
+        continue
+      }
+
       const conflict = await tx.radarEvent.findFirst({
         where: {
           teamId,

@@ -223,6 +223,80 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     }
   })
 
+  it("lead que perde o telefone válido e muda para status de marco também gera o marco (branch só-com-e-mail, D5 fix review PR #561)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const sharedEmail = `email-only-milestone-${suffix}@example.com`
+    const phone = `1199989${String(Date.now()).slice(-6)}`
+
+    const milestoneLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-email-only-milestone-${suffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Email Only",
+        phone,
+        email: sharedEmail,
+        status: "new_opportunity",
+      },
+    })
+
+    try {
+      // 1º sync: telefone válido, cria o perfil e a identidade email (D8).
+      await radarService.syncFromCrm(scope, { leadId: milestoneLead.id })
+
+      const profile = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) },
+      })
+      expect(profile).not.toBeNull()
+
+      // Telefone é limpo (ex.: anonimização) e o status muda para um marco —
+      // 2º sync cai no branch "só-com-e-mail" de syncFromCrm, que só acha o
+      // perfil via identidade email, sem passar por resolveProfileForPhone.
+      await prisma.lead.update({
+        where: { id: milestoneLead.id },
+        data: { phone: null, status: "contract_finalized" },
+      })
+      await radarService.syncFromCrm(scope, { leadId: milestoneLead.id })
+
+      const statusChangedEvent = await prisma.radarEvent.findFirst({
+        where: {
+          teamId: scope.teamId,
+          profileId: profile!.id,
+          sourceType: "crm_lead",
+          sourceId: `${milestoneLead.id}:contract_finalized`,
+          eventType: "lead.status_changed",
+        },
+      })
+      expect(statusChangedEvent).not.toBeNull()
+
+      const milestoneEvent = await prisma.radarEvent.findFirst({
+        where: {
+          teamId: scope.teamId,
+          profileId: profile!.id,
+          sourceType: "crm_lead",
+          sourceId: `${milestoneLead.id}:contract_finalized:milestone`,
+          eventType: "lead.milestone.contract_finalized",
+        },
+      })
+      expect(milestoneEvent).not.toBeNull()
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) },
+      })
+      await prisma.lead.delete({ where: { id: milestoneLead.id } })
+    }
+  })
+
   it("re-sync do mesmo status de marco não duplica o RadarEvent (D5)", async () => {
     const suffix = randomUUID().slice(0, 8)
     const phone = `1199990${String(Date.now()).slice(-6)}`
@@ -1076,6 +1150,14 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
         where: { teamId: scope.teamId, sourceType: "email_log", sourceId: `merge-event-${suffix}` },
       })
       expect(movedEvent?.profileId).toBe(phoneProfile.id)
+
+      // D5 (fix review PR #561): phoneProfile e emailProfile nasceram cada um
+      // com seu próprio profile.first_contact (sourceId = profile.id, nunca
+      // igual entre os dois) — a fusão precisa manter só 1, não os 2.
+      const firstContactEvents = await prisma.radarEvent.findMany({
+        where: { teamId: scope.teamId, profileId: phoneProfile.id, eventType: "profile.first_contact" },
+      })
+      expect(firstContactEvents).toHaveLength(1)
     } finally {
       await prisma.radarEvent.deleteMany({ where: { profileId: phoneProfile.id } })
       await prisma.radarIdentity.deleteMany({ where: { profileId: phoneProfile.id } })
