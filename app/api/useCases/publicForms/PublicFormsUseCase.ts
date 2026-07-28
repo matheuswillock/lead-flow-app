@@ -9,6 +9,7 @@ import type {
   PublicFormListFilters,
   PublicFormMetricEventInput,
 } from "@/lib/public-forms/types"
+import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
 import { getPageKey } from "@/lib/public-forms/pages"
 
 function isManager(access: TeamAccess) {
@@ -63,7 +64,9 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
     }
   }
   const bands = [...draft.scoreBands].sort((a, b) => a.minScore - b.minScore)
-  const questionIds = new Set(draft.questions.map((question) => question.id))
+  const questionIds = new Set(
+    draft.questions.map((question) => question.id).filter((id): id is string => Boolean(id)),
+  )
   for (const question of draft.questions) {
     if (
       question.mappingTarget &&
@@ -83,11 +86,25 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
     }
   }
   for (const rule of draft.rules) {
-    if (!questionIds.has(rule.sourceQuestionId) || !questionIds.has(rule.targetQuestionId)) {
+    const sourceId = rule.sourceQuestionId
+    const targetId = rule.targetQuestionId
+    const targetOk =
+      targetId === PUBLIC_FORM_THANK_YOU_TARGET ||
+      (typeof targetId === "string" && questionIds.has(targetId))
+    if (typeof sourceId !== "string" || !questionIds.has(sourceId) || !targetOk) {
       errors.push("Remova regras que apontam para perguntas inexistentes")
     }
-    if (rule.sourceQuestionId === rule.targetQuestionId) {
+    if (sourceId === targetId) {
       errors.push("Uma regra não pode controlar a própria pergunta")
+    }
+  }
+  if (draft.questions.length > 0) {
+    const totalWeight = draft.questions.reduce(
+      (sum, question) => sum + (question.scoreWeight ?? 0),
+      0,
+    )
+    if (totalWeight !== 100) {
+      errors.push("A soma das pontuações das perguntas deve ser 100%")
     }
   }
   bands.forEach((band, index) => {

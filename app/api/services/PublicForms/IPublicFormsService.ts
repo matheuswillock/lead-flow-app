@@ -32,6 +32,9 @@ export interface IPublicFormsService {
       defaultBackgroundColor: string
       defaultTextColor: string
       defaultLineColor: string
+      defaultAccentColor: string
+      defaultButtonTextColor: string
+      defaultInputBackgroundColor: string
     },
   ): Promise<unknown>
   getPublic(publicId: string): Promise<unknown>

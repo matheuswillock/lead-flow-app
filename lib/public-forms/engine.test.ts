@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import type { PublicFormDraftInput } from "./types"
+import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
 import {
   calculatePublicFormMaxPossibleScore,
   calculatePublicFormScore,
   calculatePublicFormScorePercent,
   resolveVisibleQuestionIds,
+  shouldGoToThankYou,
   validateAnswer,
 } from "./engine"
 
@@ -18,6 +20,7 @@ function form(): PublicFormDraftInput {
     eligibleCloserIds: [],
     ctaLabel: "Começar",
     successTitle: "Concluído",
+    successActions: [],
     useDefaultTheme: true,
     schedulingEnabled: false,
     meetingDurationMinutes: 30,
@@ -27,9 +30,10 @@ function form(): PublicFormDraftInput {
         type: "single_choice",
         title: "Tem interesse?",
         required: true,
+        scoreWeight: 60,
         options: [
-          { value: "sim", label: "Sim", score: 100 },
-          { value: "nao", label: "Não", score: 0 },
+          { value: "sim", label: "Sim", score: 100, scorePolarity: "positive" },
+          { value: "nao", label: "Não", score: 0, scorePolarity: "positive" },
         ],
       },
       {
@@ -37,6 +41,7 @@ function form(): PublicFormDraftInput {
         type: "email",
         title: "E-mail",
         required: true,
+        scoreWeight: 40,
         options: [],
       },
     ],
@@ -62,17 +67,54 @@ describe("motor dos formulários públicos", () => {
     ).toEqual([sourceId, targetId])
   })
 
-  it("calcula pontos apenas pelas opções respondidas", () => {
-    expect(calculatePublicFormScore(form(), [{ questionId: sourceId, value: "sim" }])).toBe(100)
+  it("calcula pontuação pelo orçamento das perguntas (0–100)", () => {
+    expect(calculatePublicFormScore(form(), [{ questionId: sourceId, value: "sim" }])).toBe(60)
+    expect(
+      calculatePublicFormScore(form(), [
+        { questionId: sourceId, value: "sim" },
+        { questionId: targetId, value: "a@b.com" },
+      ]),
+    ).toBe(100)
   })
 
   it("normaliza pontuação em percentual 0–100", () => {
     expect(
-      calculatePublicFormScorePercent(form(), [{ questionId: sourceId, value: "sim" }]),
+      calculatePublicFormScorePercent(form(), [
+        { questionId: sourceId, value: "sim" },
+        { questionId: targetId, value: "a@b.com" },
+      ]),
     ).toBe(100)
     expect(
       calculatePublicFormScorePercent(form(), [{ questionId: sourceId, value: "nao" }]),
     ).toBe(0)
+  })
+
+  it("aplica polaridade negativa nas opções", () => {
+    const draft = form()
+    draft.questions[0] = {
+      ...draft.questions[0],
+      options: [
+        { value: "sim", label: "Sim", score: 100, scorePolarity: "positive" },
+        { value: "nao", label: "Não", score: 50, scorePolarity: "negative" },
+      ],
+    }
+    expect(calculatePublicFormScore(draft, [{ questionId: sourceId, value: "nao" }])).toBe(0)
+  })
+
+  it("detecta destino página de agradecimentos", () => {
+    const draft = form()
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: PUBLIC_FORM_THANK_YOU_TARGET,
+        operator: "equals",
+        comparisonValue: "nao",
+        action: "show",
+        elseAction: "skip",
+      },
+    ]
+    expect(shouldGoToThankYou(draft, [{ questionId: sourceId, value: "nao" }])).toBe(true)
+    expect(shouldGoToThankYou(draft, [{ questionId: sourceId, value: "sim" }])).toBe(false)
   })
 
   it("rejeita opções manipuladas e formatos inválidos", () => {
@@ -103,9 +145,9 @@ describe("motor dos formulários públicos", () => {
       ...form().questions[0],
       type: "multiple_choice" as const,
       options: [
-        { id: "o1", value: "a", label: "A", score: 0 },
-        { id: "o2", value: "b", label: "B", score: 0 },
-        { id: "o3", value: "c", label: "C", score: 0 },
+        { id: "o1", value: "a", label: "A", score: 0, scorePolarity: "positive" as const },
+        { id: "o2", value: "b", label: "B", score: 0, scorePolarity: "positive" as const },
+        { id: "o3", value: "c", label: "C", score: 0, scorePolarity: "positive" as const },
       ],
       config: { maxSelections: 2 },
     }
@@ -113,40 +155,77 @@ describe("motor dos formulários públicos", () => {
     expect(validateAnswer(question, ["a", "b", "c"])).toBe("Selecione no máximo 2 opções")
   })
 
-  it("máximo possível de multiple_choice soma só as maxSelections maiores pontuações, não todas as opções", () => {
+  it("máximo possível soma os scoreWeights das perguntas", () => {
+    expect(calculatePublicFormMaxPossibleScore(form())).toBe(100)
+  })
+
+  it("múltipla escolha usa peso relativo dentro do scoreWeight da pergunta", () => {
     const question = {
       id: sourceId,
       type: "multiple_choice" as const,
       title: "Hospital de referência",
       required: false,
+      scoreWeight: 100,
       options: [
-        { value: "a", label: "A", score: 150 },
-        { value: "b", label: "B", score: 150 },
-        { value: "c", label: "C", score: 150 },
+        { value: "a", label: "A", score: 50, scorePolarity: "positive" as const },
+        { value: "b", label: "B", score: 50, scorePolarity: "positive" as const },
+        { value: "c", label: "C", score: 50, scorePolarity: "positive" as const },
       ],
       config: { maxSelections: 1 },
     }
     const draft: PublicFormDraftInput = { ...form(), questions: [question], rules: [] }
 
-    expect(calculatePublicFormMaxPossibleScore(draft)).toBe(150)
+    expect(calculatePublicFormMaxPossibleScore(draft)).toBe(100)
     expect(
       calculatePublicFormScorePercent(draft, [{ questionId: sourceId, value: ["a"] }]),
     ).toBe(100)
   })
 
-  it("sem maxSelections, o máximo de multiple_choice ainda soma todas as opções positivas", () => {
-    const question = {
-      id: sourceId,
-      type: "multiple_choice" as const,
-      title: "Sem limite",
-      required: false,
-      options: [
-        { value: "a", label: "A", score: 50 },
-        { value: "b", label: "B", score: 50 },
+  it("mantém scoring legado por opção quando scoreWeight está ausente no snapshot", () => {
+    const draft: PublicFormDraftInput = {
+      ...form(),
+      questions: [
+        {
+          id: sourceId,
+          type: "single_choice",
+          title: "Tem interesse?",
+          required: true,
+          scoreWeight: 0,
+          options: [
+            { value: "sim", label: "Sim", score: 80, scorePolarity: "positive" },
+            { value: "nao", label: "Não", score: 20, scorePolarity: "positive" },
+          ],
+        },
       ],
+      rules: [],
     }
-    const draft: PublicFormDraftInput = { ...form(), questions: [question], rules: [] }
+    expect(calculatePublicFormMaxPossibleScore(draft)).toBe(80)
+    expect(
+      calculatePublicFormScorePercent(draft, [{ questionId: sourceId, value: "sim" }]),
+    ).toBe(100)
+    expect(
+      calculatePublicFormScorePercent(draft, [{ questionId: sourceId, value: "nao" }]),
+    ).toBe(25)
+  })
 
-    expect(calculatePublicFormMaxPossibleScore(draft)).toBe(100)
+  it("remove perguntas posteriores ao sair cedo para agradecimentos", () => {
+    const draft = form()
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: PUBLIC_FORM_THANK_YOU_TARGET,
+        operator: "equals",
+        comparisonValue: "nao",
+        action: "show",
+        elseAction: "skip",
+      },
+    ]
+    expect(resolveVisibleQuestionIds(draft, [{ questionId: sourceId, value: "nao" }])).toEqual([
+      sourceId,
+    ])
+    expect(resolveVisibleQuestionIds(draft, [{ questionId: sourceId, value: "sim" }])).toEqual([
+      sourceId,
+      targetId,
+    ])
   })
 })

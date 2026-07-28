@@ -10,8 +10,13 @@ import type {
   PublicFormDraftInput,
   PublicFormListFilters,
   PublicFormMetricEventInput,
+  PublicFormScorePolarity,
   PublicFormSnapshot,
+  PublicFormSuccessAction,
+  PublicFormThemeColors,
 } from "@/lib/public-forms/types"
+import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
+import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import type { IPublicFormsService } from "./IPublicFormsService"
 
@@ -19,7 +24,66 @@ function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+function parseSuccessActions(value: unknown): PublicFormSuccessAction[] {
+  if (!Array.isArray(value)) return []
+  const actions: PublicFormSuccessAction[] = []
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue
+    const record = item as Record<string, unknown>
+    const type = record.type
+    if (type !== "link" && type !== "whatsapp" && type !== "close") continue
+    if (typeof record.id !== "string" || typeof record.label !== "string") continue
+    actions.push({
+      id: record.id,
+      label: record.label,
+      type,
+      url: typeof record.url === "string" ? record.url : null,
+      whatsappPhone: typeof record.whatsappPhone === "string" ? record.whatsappPhone : null,
+      whatsappMessage:
+        typeof record.whatsappMessage === "string" ? record.whatsappMessage : null,
+    })
+  }
+  return actions
+}
+
+function parseScorePolarity(value: unknown): PublicFormScorePolarity {
+  return value === "negative" ? "negative" : "positive"
+}
+
+const DEFAULT_THEME: PublicFormThemeColors = {
+  backgroundColor: "#FFFFFF",
+  textColor: "#18181B",
+  lineColor: "#E4E4E7",
+  accentColor: "#FF6900",
+  buttonTextColor: "#FFFFFF",
+  inputBackgroundColor: "#FFFFFF",
+}
+
 export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraftInput {
+  const questions = form.questions.map((question) => ({
+    id: question.id,
+    type: question.type,
+    title: question.title,
+    description: question.description,
+    placeholder: question.placeholder,
+    required: question.required,
+    scoreWeight: question.scoreWeight ?? 0,
+    config: question.config as Record<string, unknown>,
+    mappingTarget: question.mappingTarget,
+    mappingKey: question.mappingKey,
+    options: question.options.map((option) => ({
+      id: option.id,
+      label: option.label,
+      value: option.value,
+      score: option.score,
+      scorePolarity: parseScorePolarity(option.scorePolarity),
+    })),
+  }))
+
+  const needsRebalance =
+    questions.length > 0 &&
+    questions.reduce((sum, question) => sum + question.scoreWeight, 0) !== 100
+
   return {
     name: form.name,
     description: form.description,
@@ -34,36 +98,24 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     ctaLabel: form.ctaLabel,
     successTitle: form.successTitle,
     successDescription: form.successDescription,
+    successActions: parseSuccessActions(form.successActions),
     useDefaultTheme: form.useDefaultTheme,
     backgroundColor: form.backgroundColor,
     textColor: form.textColor,
     lineColor: form.lineColor,
+    accentColor: form.accentColor,
+    buttonTextColor: form.buttonTextColor,
+    inputBackgroundColor: form.inputBackgroundColor,
     schedulingEnabled: form.schedulingEnabled,
     meetingDurationMinutes: form.meetingDurationMinutes,
     schedulingMessage: form.schedulingMessage,
     formKind:
       form.formKind === "health_plan_simulator" ? "health_plan_simulator" : "standard",
-    questions: form.questions.map((question) => ({
-      id: question.id,
-      type: question.type,
-      title: question.title,
-      description: question.description,
-      placeholder: question.placeholder,
-      required: question.required,
-      config: question.config as Record<string, unknown>,
-      mappingTarget: question.mappingTarget,
-      mappingKey: question.mappingKey,
-      options: question.options.map((option) => ({
-        id: option.id,
-        label: option.label,
-        value: option.value,
-        score: option.score,
-      })),
-    })),
+    questions: needsRebalance ? redistributeQuestionScoresEvenly(questions) : questions,
     rules: form.rules.map((rule) => ({
       id: rule.id,
       sourceQuestionId: rule.sourceQuestionId,
-      targetQuestionId: rule.targetQuestionId,
+      targetQuestionId: rule.targetQuestionId ?? PUBLIC_FORM_THANK_YOU_TARGET,
       operator: rule.operator,
       comparisonValue: rule.comparisonValue,
       action: rule.action,
@@ -79,6 +131,37 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
   }
 }
 
+function resolveThemeFromDraft(
+  draft: PublicFormDraftInput,
+  settings?: {
+    defaultBackgroundColor: string
+    defaultTextColor: string
+    defaultLineColor: string
+    defaultAccentColor: string
+    defaultButtonTextColor: string
+    defaultInputBackgroundColor: string
+  } | null,
+): PublicFormThemeColors {
+  if (draft.useDefaultTheme && settings) {
+    return {
+      backgroundColor: settings.defaultBackgroundColor,
+      textColor: settings.defaultTextColor,
+      lineColor: settings.defaultLineColor,
+      accentColor: settings.defaultAccentColor,
+      buttonTextColor: settings.defaultButtonTextColor,
+      inputBackgroundColor: settings.defaultInputBackgroundColor,
+    }
+  }
+  return {
+    backgroundColor: draft.backgroundColor ?? DEFAULT_THEME.backgroundColor,
+    textColor: draft.textColor ?? DEFAULT_THEME.textColor,
+    lineColor: draft.lineColor ?? DEFAULT_THEME.lineColor,
+    accentColor: draft.accentColor ?? DEFAULT_THEME.accentColor,
+    buttonTextColor: draft.buttonTextColor ?? DEFAULT_THEME.buttonTextColor,
+    inputBackgroundColor: draft.inputBackgroundColor ?? DEFAULT_THEME.inputBackgroundColor,
+  }
+}
+
 export function buildPublicFormPreviewSnapshot(form: PublicFormDetailRecord): PublicFormSnapshot {
   const draft = mapPublicFormDraft(form)
   return {
@@ -87,11 +170,7 @@ export function buildPublicFormPreviewSnapshot(form: PublicFormDetailRecord): Pu
     publicId: form.publicId,
     version: form.publications[0]?.version ?? 0,
     publishedAt: new Date().toISOString(),
-    theme: {
-      backgroundColor: draft.backgroundColor ?? "#FFFFFF",
-      textColor: draft.textColor ?? "#18181B",
-      lineColor: draft.lineColor ?? "#E4E4E7",
-    },
+    theme: resolveThemeFromDraft(draft),
     eligibleClosers: form.eligibleClosers.map((item) => ({
       id: item.profileId,
       name: item.profile.fullName || "Consultor",
@@ -166,9 +245,16 @@ export class PublicFormsService implements IPublicFormsService {
         ...rule,
         id: crypto.randomUUID(),
         sourceQuestionId: questionIdMap.get(rule.sourceQuestionId) ?? rule.sourceQuestionId,
-        targetQuestionId: questionIdMap.get(rule.targetQuestionId) ?? rule.targetQuestionId,
+        targetQuestionId:
+          rule.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET
+            ? PUBLIC_FORM_THANK_YOU_TARGET
+            : (questionIdMap.get(rule.targetQuestionId) ?? rule.targetQuestionId),
       })),
       scoreBands: input.scoreBands.map((band) => ({ ...band, id: crypto.randomUUID() })),
+      successActions: input.successActions.map((action) => ({
+        ...action,
+        id: crypto.randomUUID(),
+      })),
     })
   }
 
@@ -193,17 +279,7 @@ export class PublicFormsService implements IPublicFormsService {
     const settings = await this.getSettings(teamId)
     const draft = mapPublicFormDraft(form)
     const version = (form.publications[0]?.version ?? 0) + 1
-    const theme = draft.useDefaultTheme
-      ? {
-          backgroundColor: settings.defaultBackgroundColor,
-          textColor: settings.defaultTextColor,
-          lineColor: settings.defaultLineColor,
-        }
-      : {
-          backgroundColor: draft.backgroundColor ?? "#FFFFFF",
-          textColor: draft.textColor ?? "#18181B",
-          lineColor: draft.lineColor ?? "#E4E4E7",
-        }
+    const theme = resolveThemeFromDraft(draft, settings)
     const snapshot: PublicFormSnapshot = {
       ...draft,
       formId: id,
@@ -236,6 +312,9 @@ export class PublicFormsService implements IPublicFormsService {
       defaultBackgroundColor: string
       defaultTextColor: string
       defaultLineColor: string
+      defaultAccentColor: string
+      defaultButtonTextColor: string
+      defaultInputBackgroundColor: string
     },
   ) {
     return publicFormsRepository.updateSettings(teamId, input)
