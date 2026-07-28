@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { CepService } from "@/lib/services/CepService"
@@ -450,21 +451,40 @@ export function PublicCheckoutPaymentStep({
               </Field>
             </div>
 
-            <Field label="Parcelas" hint={`Max: ${Math.max(1, maxInstallments)}`}>
-              <div className="flex flex-wrap gap-2">
-                {installmentsOptions.map((opt) => (
-                  <Button
-                    key={opt}
-                    type="button"
-                    variant={form.installments === opt ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => updateField("installments", opt)}
-                    disabled={isLocked}
-                  >
-                    {opt}x
-                  </Button>
-                ))}
-              </div>
+            <Field
+              label="Parcelas"
+              hint={
+                details.installmentSplitMode === "CUSTOM"
+                  ? "Cronograma fixo desta precificação"
+                  : `Max: ${Math.max(1, maxInstallments)}`
+              }
+            >
+              {details.installmentSplitMode === "CUSTOM" &&
+              details.installmentSchedule &&
+              details.installmentSchedule.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {details.installmentSchedule.map((amount, index) => (
+                    <Badge key={`${index}-${amount}`} variant="secondary">
+                      {index + 1}ª: {formatCurrency(amount)}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {installmentsOptions.map((opt) => (
+                    <Button
+                      key={opt}
+                      type="button"
+                      variant={form.installments === opt ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => updateField("installments", opt)}
+                      disabled={isLocked}
+                    >
+                      {opt}x
+                    </Button>
+                  ))}
+                </div>
+              )}
             </Field>
           </FieldGroup>
         </div>

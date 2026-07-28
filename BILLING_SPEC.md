@@ -161,20 +161,49 @@ flowchart TD
 
 ---
 
-### Estágio 4 — Schema alvo: P-MS + D14 (D12 / D14)
+### Estágio 4 — Schema alvo: P-MS + D14 (D12 / D14) — **fechado 2026-07-28**
 
 **Fazer:**
-1. `BackofficeProduct.featureSlugs String[]` — backfill de `featureSlug`; dropar coluna singular após callers. (**pendente**)
+1. `BackofficeProduct.featureSlugs String[]` — backfill de `featureSlug`; dropar coluna singular após callers — **feito**.
 2. `BackofficeProductPaymentRule`: `installmentSplitMode`, `installmentSchedule` — **feito**.
 3. Ciclos opcionais (subset 1..4) + UI opt-in + sync com lock de ciclos em uso — **feito**.
 4. Adesão: filtrar ciclos do produto; `productId` no POST/PATCH; ledger de parcelas externas + cobrança Asaas do saldo + ativação na criação — **feito**.
-5. Seed `CRM - Radar` (trimestral CUSTOM 1200+990+990) — **feito**.
-6. Validação use case: CUSTOM soma = price; Asaas checkout EQUAL completo — parcial (N cobranças no saldo da adesão).
-7. Documentar no PR o inventário §3A: lista de writers a migrar no Estágio 5–6 (sem dual-write novo).
+5. Seed `CRM - Radar` bundle `["crm","radar"]` (trimestral CUSTOM 1200+990+990) — **feito**.
+6. Checkout público EQUAL/CUSTOM: `normalizeCheckoutInput` com `maxCardInstallments`; DTO com schedule/saldo; UI CUSTOM — **feito**.
+7. Inventário §3A documentado abaixo (writers/readers Estágios 5–6).
 
-**Aceite (atual):** produto só com trimestral salva; adesão lista só ciclos definidos; CRM - Radar seedável; parcelas externas parciais ativam conta e cobram saldo.
+**Aceite:** produto com 2+ slugs libera todos no `FeatureAccessService`; checkout público CRM-Radar CUSTOM exibe cronograma; EQUAL respeita `maxCardInstallments`.
 
-**Aceite (ainda pendente multi-slug):** criar produto com 2+ slugs.
+---
+
+### Inventário writers/readers — Estágios 5–6
+
+Fonte: [`BILLING_AUDIT.md`](BILLING_AUDIT.md) §3A.2–3.3. **Meta Estágio 6:** escrita/leitura canônica só em `ProfileSubscription` + `BackofficeUserSubscription` + `ProfileSubscriptionCapacity` + `ProfileUserTypeAssignment` (D14).
+
+| Writer / Reader | Arquivo | Ação no Estágio 6 |
+|---|---|---|
+| `PaymentRepository` (dual-write) | `app/api/infra/data/repositories/payment/PaymentRepository.ts` | Só `ProfileSubscription` (+ produtos/capacity); remover espelho em `Profile` |
+| `AsaasSubscriptionSyncRepository` (dual-write) | `app/api/infra/data/repositories/billing/AsaasSubscriptionSyncRepository.ts` | Só `ProfileSubscription` |
+| `BillingRepository` (misto) | `app/api/infra/data/repositories/billing/BillingRepository.ts` | Só PS + capacity; remover `getLegacyAdhesionQuota` |
+| `BackofficeAdhesionRepository` | `app/api/infra/data/repositories/backoffice/backofficeAdhesion/` | Manter upsert PS + capacity (já modelo novo) |
+| `SubscriptionCreditRepository` | repositório de créditos | Só PS + capacity |
+| `CheckoutAsaasUseCase` | `app/api/useCases/checkout/` | Migrar de só `Profile` → PS + `BackofficeUserSubscription` |
+| `SubscriptionUpgradeUseCase` | use case upgrade | Idem |
+| `CreateManagerOnboarding` | onboarding | Idem |
+| `processAsaasWebhookEvent` | webhook handler | Idem |
+| `SubscriptionManagementUseCase` | cancel/update misto | Só PS; remover updates espelhados em `Profile` |
+| `TogglePermanentSubscriptionUseCase` | vitalício | PS canônico (ou flag dedicada acordada) |
+| `BackofficeUserSubscriptionRepository` | já novo modelo | Manter |
+| `BackofficeAllUsersRepository.upsertUserTypeAssignment` | user types | Manter |
+| `FeatureAccessRepository` / `FeatureAccessService` | `app/api/services/featureAccess/` | Já lê PS + BO subscriptions; alinhar com `SubscriptionCheck` |
+| `SubscriptionCheckService` | check ativo | Migrar para PS (hoje só `Profile.subscriptionStatus`) |
+| `PaymentRepository.findBySubscriptionId` | fallback Profile | Remover fallback legado |
+| `AsaasSubscriptionSyncRepository.getSyncSnapshot` | OR Profile/PS | Só PS |
+| `BillingRepository.getBillingSnapshot` | dual path capacity | Só capacity + catálogo |
+| `SubscriptionManagementUseCase` (read) | misto | Só PS |
+| Backoffice platform/users | listagem | PS relation canônica |
+
+**Regra:** nenhum **novo** dual-write Profile+PS após Estágio 4.
 
 ---
 
@@ -315,3 +344,16 @@ flowchart TD
 - Seed migration `seed-crm-radar-pricing` + `prisma/seed-backoffice-products.ts` (CRM - Radar trimestral CUSTOM).
 
 **Pendente:** multi-slug `featureSlugs[]`; checkout público EQUAL/CUSTOM completo no fluxo do cliente.
+
+### [Estágio 4 fechado] Multi-slug + checkout público D12 + inventário §3A — 2026-07-28
+
+**Branch:** `feat/billing-stage-4-close`
+
+**O que foi feito:**
+- Schema: `featureSlugs String[]` com backfill, índice GIN e drop de `featureSlug` singular.
+- Backend: repositório/use case pricing, entitlements (`FeatureAccessService`), adesão e `team-has-product-feature` com `has` no array.
+- UI pricing: multi-select de slugs; tabela com badges; seed/migration CRM-Radar `["crm","radar"]`.
+- Checkout público: `normalizeCheckoutInput` usa `maxCardInstallments` da regra; DTO expõe `installmentSplitMode`, `installmentSchedule`, `remainingBalance`, `chargeAmount`; UI CUSTOM mostra cronograma fixo.
+- Documentação: inventário writers/readers Estágios 5–6 nesta SPEC (seção acima).
+
+**Estágio 4 encerrado.** Próximo: Estágio 5 (cutover de dados).

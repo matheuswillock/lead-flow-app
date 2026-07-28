@@ -3159,7 +3159,7 @@ model EmailOrphanEvent {
 model BackofficeProduct {
   id              String                       @id @default(uuid()) @db.Uuid
   name            String                       @db.Text
-  featureSlug     String                       @map("featureSlug") @db.Text
+  featureSlugs    String[]                     @default([]) @map("featureSlugs")
   description     String?                      @db.Text
   type            BackofficeProductType
   billingMode     BackofficeProductBillingMode @default(RECURRING)
@@ -3178,8 +3178,7 @@ model BackofficeProduct {
   profileSubscriptions ProfileSubscription[]
   adhesions            BackofficeAdhesion[]
 
-  @@index([featureSlug])
-  @@index([featureSlug, isDefault])
+  @@index([featureSlugs], type: Gin)
   @@index([type, isActive])
   @@map("backoffice_products")
 }
