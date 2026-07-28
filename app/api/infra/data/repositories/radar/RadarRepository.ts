@@ -455,6 +455,22 @@ export class RadarRepository {
         },
       })
 
+      if (!existingByKey) {
+        // D5: "primeiro contato" — profile.id é sempre novo neste ponto,
+        // então uma segunda ocorrência para o mesmo perfil é estruturalmente
+        // impossível; não precisa de appendEventIfNew/dedupe.
+        await tx.radarEvent.create({
+          data: {
+            profileId: profile.id,
+            teamId: input.teamId,
+            eventType: "profile.first_contact",
+            sourceType: "profile",
+            sourceId: profile.id,
+            occurredAt: input.lastSeenAt ?? new Date(),
+          },
+        })
+      }
+
       return { profile, wasExisting: Boolean(existingByKey) }
     })
   }
@@ -523,6 +539,20 @@ export class RadarRepository {
           normalizedValue: input.normalizedEmail,
           source: input.emailSource,
           isPrimary: true,
+        },
+      })
+
+      // D5: "primeiro contato" — este branch só é alcançado quando é uma
+      // criação genuína (o branch existingByIdentity acima já retorna
+      // antes), então profile.id é sempre novo aqui.
+      await tx.radarEvent.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          eventType: "profile.first_contact",
+          sourceType: "profile",
+          sourceId: profile.id,
+          occurredAt: input.lastSeenAt ?? new Date(),
         },
       })
 

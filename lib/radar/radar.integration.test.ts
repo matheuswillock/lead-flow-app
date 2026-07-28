@@ -159,6 +159,215 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     expect(second.created).toBe(0)
   })
 
+  it("syncFromCrm grava lead.milestone.* junto com lead.status_changed para os 4 status de marco (D5)", async () => {
+    const milestoneCases: Array<{ status: string; expectedEventType: string }> = [
+      { status: "new_opportunity", expectedEventType: "lead.milestone.new_opportunity" },
+      { status: "invoicePayment", expectedEventType: "lead.milestone.invoice_payment" },
+      { status: "future_sale", expectedEventType: "lead.milestone.future_sale" },
+      { status: "contract_finalized", expectedEventType: "lead.milestone.contract_finalized" },
+    ]
+
+    for (const [index, { status, expectedEventType }] of milestoneCases.entries()) {
+      const suffix = randomUUID().slice(0, 8)
+      const phone = `1199${index}${String(Date.now()).slice(-6)}`
+      const milestoneLead = await prisma.lead.create({
+        data: {
+          id: randomUUID(),
+          leadCode: `Radar-milestone-${suffix}`,
+          managerId: scope.ctx.profileId,
+          teamId: scope.teamId,
+          name: "Lead Marco",
+          phone,
+          email: `milestone-${suffix}@example.com`,
+          status: status as never,
+        },
+      })
+
+      try {
+        await radarService.syncFromCrm(scope, { leadId: milestoneLead.id })
+
+        const statusChangedEvent = await prisma.radarEvent.findFirst({
+          where: {
+            teamId: scope.teamId,
+            sourceType: "crm_lead",
+            sourceId: `${milestoneLead.id}:${status}`,
+            eventType: "lead.status_changed",
+          },
+        })
+        expect(statusChangedEvent).not.toBeNull()
+
+        const milestoneEvent = await prisma.radarEvent.findFirst({
+          where: {
+            teamId: scope.teamId,
+            sourceType: "crm_lead",
+            sourceId: `${milestoneLead.id}:${status}:milestone`,
+            eventType: expectedEventType,
+          },
+        })
+        expect(milestoneEvent).not.toBeNull()
+      } finally {
+        await prisma.radarEvent.deleteMany({
+          where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+        })
+        await prisma.radarIdentity.deleteMany({
+          where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+        })
+        await prisma.radarSourceLink.deleteMany({
+          where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+        })
+        await prisma.radarProfile.deleteMany({
+          where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) },
+        })
+        await prisma.lead.delete({ where: { id: milestoneLead.id } })
+      }
+    }
+  })
+
+  it("re-sync do mesmo status de marco não duplica o RadarEvent (D5)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const phone = `1199990${String(Date.now()).slice(-6)}`
+    const milestoneLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-milestone-idem-${suffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Marco Idempotente",
+        phone,
+        email: `milestone-idem-${suffix}@example.com`,
+        status: "contract_finalized",
+      },
+    })
+
+    try {
+      await radarService.syncFromCrm(scope, { leadId: milestoneLead.id })
+      await radarService.syncFromCrm(scope, { leadId: milestoneLead.id })
+
+      const milestoneEventsCount = await prisma.radarEvent.count({
+        where: {
+          teamId: scope.teamId,
+          sourceType: "crm_lead",
+          sourceId: `${milestoneLead.id}:contract_finalized:milestone`,
+          eventType: "lead.milestone.contract_finalized",
+        },
+      })
+      expect(milestoneEventsCount).toBe(1)
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) },
+      })
+      await prisma.lead.delete({ where: { id: milestoneLead.id } })
+    }
+  })
+
+  it("profile.first_contact é gravado exatamente uma vez quando um perfil nasce via CRM (D5)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const phone = `1199991${String(Date.now()).slice(-6)}`
+    const firstContactLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-first-contact-${suffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Primeiro Contato",
+        phone,
+        email: `first-contact-${suffix}@example.com`,
+        status: "new_opportunity",
+      },
+    })
+
+    try {
+      await radarService.syncFromCrm(scope, { leadId: firstContactLead.id })
+      await radarService.syncFromCrm(scope, { leadId: firstContactLead.id })
+
+      const profile = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) },
+      })
+      expect(profile).not.toBeNull()
+
+      const firstContactEventsCount = await prisma.radarEvent.count({
+        where: { teamId: scope.teamId, profileId: profile!.id, eventType: "profile.first_contact" },
+      })
+      expect(firstContactEventsCount).toBe(1)
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) },
+      })
+      await prisma.lead.delete({ where: { id: firstContactLead.id } })
+    }
+  })
+
+  it("profile.first_contact é gravado exatamente uma vez quando um perfil email-only nasce (D5)", async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const list = await prisma.emailContactList.create({
+      data: {
+        id: randomUUID(),
+        teamId: scope.teamId,
+        createdBy: scope.ctx.profileId,
+        name: `Lista First Contact ${suffix}`,
+      },
+    })
+    const contact = await prisma.emailContact.create({
+      data: {
+        id: randomUUID(),
+        listId: list.id,
+        email: `first-contact-email-${suffix}@example.com`,
+        name: null,
+      },
+    })
+
+    try {
+      await radarService.syncFromEmail(scope, { emailContactId: contact.id })
+      await radarService.syncFromEmail(scope, { emailContactId: contact.id })
+
+      const profile = await prisma.radarProfile.findFirst({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) },
+      })
+      expect(profile).not.toBeNull()
+
+      const firstContactEventsCount = await prisma.radarEvent.count({
+        where: { teamId: scope.teamId, profileId: profile!.id, eventType: "profile.first_contact" },
+      })
+      expect(firstContactEventsCount).toBe(1)
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarChannelConsent.deleteMany({
+        where: { profile: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) } },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPrimaryEmail: normalizeRadarEmail(contact.email) },
+      })
+      await prisma.emailContact.delete({ where: { id: contact.id } })
+      await prisma.emailContactList.delete({ where: { id: list.id } })
+    }
+  })
+
   it("conflito de telefone: sync WhatsApp com nome divergente reusa o perfil do CRM sem migrar a identidade phone (D8)", async () => {
     const lead = await prisma.lead.findUniqueOrThrow({
       where: { id: leadId },

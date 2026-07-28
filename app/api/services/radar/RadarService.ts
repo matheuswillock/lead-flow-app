@@ -32,6 +32,7 @@ import {
 } from "@/lib/radar/resolve-field-value"
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
+import { LEAD_STATUS_MILESTONE_EVENT_TYPE } from "@/lib/radar/lead-milestone-map"
 import {
   formatDisplayPhone,
   isValidRadarPrimaryIdentity,
@@ -266,6 +267,19 @@ export class RadarService {
           occurredAt: lead.statusEnteredAt,
           metadata: { status: lead.status },
         })
+
+        const milestoneEventType = lead.status ? LEAD_STATUS_MILESTONE_EVENT_TYPE[lead.status] : undefined
+        if (milestoneEventType) {
+          await radarRepository.appendEventIfNew({
+            profileId: profile.id,
+            teamId: scope.teamId,
+            eventType: milestoneEventType,
+            sourceType: "crm_lead",
+            sourceId: `${lead.id}:${lead.status}:milestone`,
+            occurredAt: lead.statusEnteredAt,
+            metadata: { status: lead.status },
+          })
+        }
       } catch (error) {
         counters.errors.push(`lead:${lead.id}`)
         console.error("[RadarService][syncFromCrm]", lead.id, error)
