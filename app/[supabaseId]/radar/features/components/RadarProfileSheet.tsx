@@ -69,7 +69,9 @@ export function RadarProfileSheet({
                   {profile.primaryDocument ? (
                     <p className="text-sm text-muted-foreground">Documento: {profile.primaryDocument}</p>
                   ) : null}
-                  <p className="text-sm text-muted-foreground">{profile.displayPhone}</p>
+                  {profile.displayPhone ? (
+                    <p className="text-sm text-muted-foreground">{profile.displayPhone}</p>
+                  ) : null}
                   {profile.primaryEmail ? (
                     <p className="text-sm text-muted-foreground">{profile.primaryEmail}</p>
                   ) : null}

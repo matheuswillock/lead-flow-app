@@ -13,6 +13,7 @@ import {
   type UnsubscribeSourceCandidate,
 } from "@/lib/email/resolve-contact-unsubscribe-source"
 import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
+import { syncEmailContactToRadarInline } from "@/app/api/useCases/radar/syncEmailContactToRadarInline"
 
 export interface CreateContactListInput {
   name: string
@@ -418,11 +419,13 @@ export class EmailContactListUseCase {
         where: { listId_email: { listId, email: normalizedEmail } },
       })
 
-      await prisma.emailContact.upsert({
+      const upsertedContact = await prisma.emailContact.upsert({
         where: { listId_email: { listId, email: normalizedEmail } },
         update: { name: name ?? null },
         create: { id: randomUUID(), listId, email: normalizedEmail, name: name ?? null },
+        select: { id: true },
       })
+      syncEmailContactToRadarInline(upsertedContact.id, ctx.teamId)
 
       const defaultList = await this.ensureDefaultList(ctx)
       if (!existing.isSystemDefault) {
